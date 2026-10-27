@@ -33,5 +33,29 @@
       ],
       "groups": [{ "id": "East", "label": "East team", "colorRole": "highlight" }, { "id": "West" }]
     }
+  },
+  "table": {
+    "spec": { "type": "table", "options": { "title": "Revenue by region" }, "data": {
+      "columns": [
+        { "id": "region", "kind": "rowLabel", "label": "Region" },
+        { "id": "revenue", "kind": "value", "label": "Revenue", "format": "1,234.5" },
+        { "id": "plan", "kind": "value", "label": "Plan", "format": "1,234.5" },
+        { "id": "vsPlan", "kind": "computed", "label": "vs plan", "calc": { "op": "percentDelta", "a": "revenue", "b": "plan" }, "format": "+1.2%" },
+        { "id": "status", "kind": "status", "label": "Status" },
+        { "id": "note", "kind": "text", "label": "Note" }
+      ],
+      "rows": [{ "id": "T", "role": "total", "totalPolicy": "source" }, { "id": "X", "label": "Template only" }]
+    } },
+    "columns": { "label": "name", "id": "code" },
+    "rows": [
+      { "code": "S", "name": "South", "revenue": 90.5, "plan": 100, "status": "at-risk", "note": "Late orders", "unused": "a" },
+      { "code": "N", "name": "North", "revenue": 120, "plan": 100, "status": "on-track", "note": "Ahead", "unused": "b" },
+      { "code": "T", "name": "Total", "revenue": 210.5, "plan": 200, "status": null, "note": "All regions", "unused": "c" }
+    ],
+    "data": { "rows": [
+      { "id": "S", "label": "South", "cells": { "revenue": 90.5, "plan": 100, "status": "at-risk", "note": "Late orders" } },
+      { "id": "N", "label": "North", "cells": { "revenue": 120, "plan": 100, "status": "on-track", "note": "Ahead" } },
+      { "id": "T", "role": "total", "totalPolicy": "source", "label": "Total", "cells": { "revenue": 210.5, "plan": 200, "status": null, "note": "All regions" } }
+    ] }
   }
 }

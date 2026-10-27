@@ -14,7 +14,7 @@ Every chart is one spec, `{ "type", "data", "options", "annotations", "theme" }`
 - [bar](docs/reference/bar.md): Horizontal bars per item
 - [line](docs/reference/line.md): Lines and areas over time
 - [dimswitch](docs/reference/dimswitch.md): KPIs by one dimension and period, from sums
-- [table](docs/reference/table.md): Management table with totals
+- [table](docs/reference/table.md): Management table with totals; rows [label,id]
 - [waterfall](docs/reference/waterfall.md): Bridge; rows label,value[,type]
 - [kpi](docs/reference/kpi.md): Single-metric card
 - [combo](docs/reference/combo.md): Columns with line or area overlays

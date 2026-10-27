@@ -14,6 +14,8 @@ export { InputError } from './core/inputError';
  * Which source column holds each role. Category charts name category, series
  * and value; choropleth and tilemap name category and value; waterfall names
  * label and value; scatter names x and y; sankey names source, target and value.
+ * A table may name label and id; its spec's data.columns declares the
+ * columns, each input column reading the source field named like its id.
  */
 export interface RowsColumns {
   category?: string;
@@ -38,6 +40,8 @@ export interface RowsColumns {
   /** Sankey: the stages of the two nodes, for flows between segments month to month. */
   sourceStage?: string;
   targetStage?: string;
+  /** Table row id. Without it the rows are row-1, row-2, ... */
+  id?: string;
   /** fraction when a share of one half arrives as 0.5, percent when it arrives as 50, number otherwise. */
   valueKind?: 'number' | 'percent' | 'fraction';
 }
