@@ -27,7 +27,7 @@ import type {
 } from './model';
 import { maxOf, minOf, pushAll } from '../../arrays';
 
-const ITEM_KINDS: GanttItem['kind'][] = ['bar', 'milestone', 'chevron', 'bracket', 'shade'];
+const ITEM_KINDS: GanttItem['kind'][] = ['bar', 'milestone', 'chevron', 'bracket', 'shade', 'rule'];
 export const MAX_COLS = 3;
 
 /** Resolve the options once: theme, surface, size, measurer, highlights and fonts. */

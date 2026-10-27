@@ -443,7 +443,11 @@ function rowMarks(ctx: MarkCtx, r: NormRow, i: number, shades: Map<Id, { nodeId:
       itemNodes.push({ ...itemDates(it), id: it.id, kind: it.kind, nodeId: shades.get(it.id)!.nodeId, rect: place.rect });
       continue;
     }
-    if (it.kind === 'bar') {
+    if (it.kind === 'rule') {
+      // A 2 px line on the bar box's bottom edge; hover and focus keep the whole box.
+      const y = place.rect.y + place.rect.h - 1;
+      nodes.push({ t: 'line', id: nodeId, x1: xs, y1: y, x2: xs + place.rect.w, y2: y, stroke: surfaceFloorPaint(markRolePaint('neutralLight', true), barSurfaces(ctx.env)), width: 2, owner, part: 'ganttRule', display });
+    } else if (it.kind === 'bar') {
       const fill = surfaceFloorPaint(ctx.paints.item(it), barSurfaces(ctx.env));
       const seam = { stroke: { token: 'background' as const }, strokeWidth: strokeToken(env.theme, 'hair') };
       // Touching bars keep their page seam; the separation rule lets a pale one take its edge.

@@ -146,4 +146,12 @@ describe('tagged union issues', () => {
     expect(flattenIssues(result.error!.issues).map((issue) => issue.path.join('.')))
       .toEqual(['secondaryAxis.acknowledge', 'secondaryAxis.domain.0']);
   });
+  // A coloured rule would enter the colour key as a status the chart never draws.
+  it('refuses a colour on a gantt rule item', () => {
+    const result = ganttDataSchema.safeParse({ rows: [{ id: 'a', label: 'A',
+      items: [{ id: 'x', kind: 'rule', start: '2026-03-02', end: '2026-03-09', colorRole: 'bad' }] }] });
+    expect(result.success).toBe(false);
+    expect(flattenIssues(result.error!.issues).map((issue) => `${issue.path.join('.')}: ${issue.message}`))
+      .toEqual(["rows.0.items.0.colorRole: a rule is always the quiet neutral; use kind 'bar' for a coloured span"]);
+  });
 });

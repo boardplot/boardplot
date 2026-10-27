@@ -556,6 +556,7 @@ export const fixtures: Fixture<GanttData, GanttOptions>[] = [
       source: 'Illustrative delivery plan',
     },
   },
+  // Status timeline example: every name, date and figure is invented for this fixture.
   {
     id: 'status-timeline',
     title: 'Status timeline (row sublabels, status-coloured spans, change events)',
@@ -567,7 +568,7 @@ export const fixtures: Fixture<GanttData, GanttOptions>[] = [
           label: 'Browser tag, shop pages',
           sublabel: 'page view, landing view',
           items: [
-            { id: 'tag-before', kind: 'bar', start: '2026-03-02', end: '2026-03-09', label: 'fired on every visit', colorRole: 'neutralLight', colorLabel: 'before' },
+            { id: 'tag-before', kind: 'rule', start: '2026-03-02', end: '2026-03-09', label: 'fired on every visit' },
             { id: 'tag-broken', kind: 'chevron', start: '2026-03-10', end: '2026-03-31', label: '−60% landing views per click; 1 in 4 visitors consent', colorRole: 'bad', colorLabel: 'broken' },
           ],
         },
@@ -576,7 +577,7 @@ export const fixtures: Fixture<GanttData, GanttOptions>[] = [
           label: 'Browser purchase event',
           sublabel: 'sent with the server API',
           items: [
-            { id: 'purchase-before', kind: 'bar', start: '2026-03-02', end: '2026-03-17', label: 'c. 64% / 52% of orders', colorRole: 'neutralLight', colorLabel: 'before' },
+            { id: 'purchase-before', kind: 'rule', start: '2026-03-02', end: '2026-03-17', label: 'c. 64% / 52% of orders' },
             { id: 'purchase-broken', kind: 'chevron', start: '2026-03-18', end: '2026-03-31', label: 'Near zero', colorRole: 'bad', colorLabel: 'broken' },
           ],
         },
@@ -585,7 +586,7 @@ export const fixtures: Fixture<GanttData, GanttOptions>[] = [
           label: 'Checkout event stream',
           sublabel: 'payment events per order',
           items: [
-            { id: 'checkout-before', kind: 'bar', start: '2026-03-02', end: '2026-03-09', label: 'c. 99%', colorRole: 'neutralLight', colorLabel: 'before' },
+            { id: 'checkout-before', kind: 'rule', start: '2026-03-02', end: '2026-03-09', label: 'c. 99%' },
             { id: 'checkout-step1', kind: 'bar', start: '2026-03-10', end: '2026-03-17', label: 'c. 91%', colorRole: 'warn', colorLabel: 'degraded' },
             { id: 'checkout-step2', kind: 'bar', start: '2026-03-18', end: '2026-03-23', label: 'c. 82%', colorRole: 'warn', colorLabel: 'degraded' },
             { id: 'checkout-broken', kind: 'chevron', start: '2026-03-24', end: '2026-03-31', label: 'c. 70%', colorRole: 'bad', colorLabel: 'broken' },
@@ -596,7 +597,7 @@ export const fixtures: Fixture<GanttData, GanttOptions>[] = [
           label: 'Attribution model',
           sublabel: 'orders with a web touchpoint',
           items: [
-            { id: 'attribution-before', kind: 'bar', start: '2026-03-02', end: '2026-03-17', label: '71–76%', colorRole: 'neutralLight', colorLabel: 'before' },
+            { id: 'attribution-before', kind: 'rule', start: '2026-03-02', end: '2026-03-17', label: '71–76%' },
             { id: 'attribution-degraded', kind: 'chevron', start: '2026-03-18', end: '2026-03-31', label: '48–55%', colorRole: 'warn', colorLabel: 'degraded' },
           ],
         },

@@ -292,7 +292,8 @@ export interface GridData {
 // ---- gantt — types RESERVED, implementation v1.5 ----
 export interface GanttItem {
   id: Id;
-  kind: 'bar' | 'milestone' | 'chevron' | 'bracket' | 'shade';
+  /** 'rule': a quiet neutral line with a muted label, for the state before a change; it takes no colour and no key entry. */
+  kind: 'bar' | 'milestone' | 'chevron' | 'bracket' | 'shade' | 'rule';
   start: string;
   end?: string;
   label?: string;

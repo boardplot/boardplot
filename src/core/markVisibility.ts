@@ -753,7 +753,7 @@ export function referenceLineClearance(geometry: Pick<Geometry, 'scene' | 'label
  * Lines that are data marks keep their whole stroke: series lines and their
  * casings, area edges, slopes, sparks and ridges, hatch stripes, highlight
  * rings, the seams between bar segments, whiskers, stems, rails and caps,
- * targets, ties, and the key swatches beside their names. Every other line
+ * targets, ties, gantt rule items, and the key swatches beside their names. Every other line
  * part (references, targets lines, annotation rules, brackets, connectors,
  * leaders, gridlines, axis rules, and any part added later) breaks around text.
  */
@@ -761,7 +761,7 @@ const DATA_MARK_LINE_PARTS = new Set([
   'line', 'lineCasing', 'areaSeparator', 'slope', 'spark', 'ridge', 'track', 'forecastHatch', 'noDataHatch', 'highlightRing', 'segmentSeam',
   'boxMedian', 'boxWhisker', 'boxWhiskerCap', 'stem', 'rail', 'rangeRail', 'rangeCap', 'target', 'tie', 'metric',
   'kpiAttainmentTick', 'tick', 'treemapGroup', 'waffleGroupRule', 'waffleSubtotal', 'rowTint',
-  'swatch', 'legendKey', 'legendTick', 'axisTitleSwatch', 'sizeKeyTick', 'diagramIcon',
+  'swatch', 'legendKey', 'legendTick', 'axisTitleSwatch', 'sizeKeyTick', 'diagramIcon', 'ganttRule',
 ]);
 const behindText = (node: SceneNode): node is Extract<SceneNode, { t: 'line' | 'path' }> =>
   (node.t === 'line' || (node.t === 'path' && node.stroke !== undefined && node.fill === undefined)) && !DATA_MARK_LINE_PARTS.has(node.part);

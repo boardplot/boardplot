@@ -54,7 +54,7 @@ One form; its chart ID is `gantt`.
 | rows[].kind (rows[] branch 1) | string |  | Task row containing individual timeline items; task is the default row kind. One of `'task'`. |
 | rows[].items (rows[] branch 1) | array | yes | Timeline items placed in this task row. |
 | rows[].items[].id (rows[] branch 1) | string | yes | Unique item identity used by annotations and scene elements. |
-| rows[].items[].kind (rows[] branch 1) | string | yes | Timeline mark. Milestone labels try their row bands before the lane; unsafe leaders use a numbered key. One of `'bar'`, `'milestone'`, `'chevron'`, `'bracket'`, `'shade'`. |
+| rows[].items[].kind (rows[] branch 1) | string | yes | Timeline mark. Milestone labels try their row bands before the lane; unsafe leaders use a numbered key. 'rule' is a quiet span for the state before a change: a 2 px neutral line at the bottom of the bar box with its label above it in muted ink, flush left; it never takes a colour or a colour-key entry. One of `'bar'`, `'milestone'`, `'chevron'`, `'bracket'`, `'shade'`, `'rule'`. |
 | rows[].items[].start (rows[] branch 1) | string | yes | ISO 8601 start date; an anchor can move it while preserving duration. |
 | rows[].items[].end (rows[] branch 1) | string |  | Inclusive ISO 8601 end date for an interval; omission uses the start date. |
 | rows[].items[].label (rows[] branch 1) | string |  | Displayed item name. An omitted name leaves category content empty. |

@@ -19,7 +19,7 @@ const anchorSchema = z.strictObject({
 
 const itemSchema = z.strictObject({
   id: idSchema.describe("Unique item identity used by annotations and scene elements."),
-  kind: z.enum(['bar', 'milestone', 'chevron', 'bracket', 'shade']).describe("Timeline mark. Milestone labels try their row bands before the lane; unsafe leaders use a numbered key."),
+  kind: z.enum(['bar', 'milestone', 'chevron', 'bracket', 'shade', 'rule']).describe("Timeline mark. Milestone labels try their row bands before the lane; unsafe leaders use a numbered key. 'rule' is a quiet span for the state before a change: a 2 px neutral line at the bottom of the bar box with its label above it in muted ink, flush left; it never takes a colour or a colour-key entry."),
   start: z.string().describe("ISO 8601 start date; an anchor can move it while preserving duration."),
   end: z.string().optional().describe("Inclusive ISO 8601 end date for an interval; omission uses the start date."),
   label: z.string().optional().describe("Displayed item name. An omitted name leaves category content empty."),
@@ -82,6 +82,10 @@ export const ganttDataSchema = z
       row.items.forEach((item, itemIndex) => {
         if (item.scope === 'shared' && item.kind !== 'milestone') {
           ctx.addIssue({ code: 'custom', path: ['rows', rowIndex, 'items', itemIndex, 'scope'], message: "scope 'shared' applies to milestones only" });
+        }
+        // A rule is the quiet state before a change: a colour would put it in the key.
+        if (item.kind === 'rule') for (const key of ['colorRole', 'colorLabel'] as const) {
+          if (item[key] !== undefined) ctx.addIssue({ code: 'custom', path: ['rows', rowIndex, 'items', itemIndex, key], message: "a rule is always the quiet neutral; use kind 'bar' for a coloured span", params: { refused: true } });
         }
       });
     });
