@@ -11,7 +11,7 @@ import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { CROSSABLE_RULE_PART, PRIORITY, type LabelRequest, type SlotCandidate } from '../../label/solver';
 import type { Rect } from '../../geometry';
 import type { OwnerRef } from '../../types/cell';
-import type { PlacedAnnotation, SceneNode } from '../../types/scene';
+import type { Paint, PlacedAnnotation, SceneNode } from '../../types/scene';
 import { dayNum } from './calendar';
 import { fmtDay } from './marks';
 import { BADGE_LEVELS, laneTop, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv } from './model';
@@ -75,10 +75,26 @@ export function badgeRadius(env: GanttEnv, domain: GanttDomain): number {
   return Math.max(9, ...domain.events.filter((event) => event.badge).map((event) => env.measure(event.label, env.fonts.strong).width / 2 + 4));
 }
 
-/** Badge levels by event id: a badge closer than 2r + 4 px to one already on a level moves up one level. */
+/** A badge's circle fill; its label ink is decided against it in each theme. */
+export function badgeFill(event: GanttDomain['events'][number]): Paint {
+  return { token: event.tone === 'bad' ? 'bad' : 'ink' };
+}
+
+/**
+ * The marker band right over the calendar head: ordinary event labels or
+ * numbered rings, else the today label; 0 without either. Badges stack in
+ * their own strip above it, so a badge never takes a seat a marker draws in without badges.
+ */
+export function markerBand(domain: GanttDomain, markerLabelH: number): number {
+  if (domain.events.some((event) => !event.badge)) return domain.eventBadgeMode ? markerLabelH + 8 : 2 * markerLabelH + 8;
+  return domain.todayDay !== null ? markerLabelH + 6 : 0;
+}
+
+/** Badge levels by event id: a badge closer than 2r + 4 px to one already on a level moves up one level. None without annotation labels. */
 export function badgeLevels(env: GanttEnv, domain: GanttDomain, x: (day: number) => number): Map<string, number> {
-  const pitch = 2 * badgeRadius(env, domain) + 4;
   const levels = new Map<string, number>();
+  if (!env.labelOn('annotation')) return levels;
+  const pitch = 2 * badgeRadius(env, domain) + 4;
   const xs: number[][] = [];
   for (const event of domain.events.filter((e) => e.badge).sort((a, b) => a.ruleDay - b.ruleDay)) {
     const ex = x(event.ruleDay);
@@ -90,9 +106,9 @@ export function badgeLevels(env: GanttEnv, domain: GanttDomain, x: (day: number)
   return levels;
 }
 
-/** The marker strip the badges need over the calendar head, in px; 0 without badges. */
+/** The strip the badges need over the marker band, in px; 0 without badges or without annotation labels (no badge is drawn). */
 export function badgeStrip(env: GanttEnv, domain: GanttDomain): number {
-  if (!domain.events.some((event) => event.badge)) return 0;
+  if (!env.labelOn('annotation') || !domain.events.some((event) => event.badge)) return 0;
   const r = badgeRadius(env, domain);
   const levels = (env.options as { [BADGE_LEVELS]?: number })[BADGE_LEVELS] ?? 1;
   return 2 * r + 8 + (levels - 1) * (2 * r + 4);
@@ -115,7 +131,7 @@ function eventRules(env: GanttEnv, domain: GanttDomain, band: GanttBand, body: G
     const ex = body.x(event.ruleDay);
     const owner: OwnerRef = { annotationId: event.id };
     // A badge sits over the head; its rule starts 2 px under the circle.
-    const badgeCy = headerTop - 2 - r - (levels.get(event.id) ?? 0) * (2 * r + 4);
+    const badgeCy = headerTop - markerBand(domain, markerLabelH) - 2 - r - (levels.get(event.id) ?? 0) * (2 * r + 4);
     const drawsBadge = event.badge && labelOn('annotation');
     const rule = ruleNodes(`ann:event:${event.id}:line`, ex, drawsBadge ? badgeCy + r + 2 : headerTop, rowsBottom, headNames, {
       stroke: { token: event.tone === 'bad' ? 'bad' : 'leader' },
@@ -135,7 +151,7 @@ function eventRules(env: GanttEnv, domain: GanttDomain, band: GanttBand, body: G
         const badgeId = `ann:event:${event.id}:badge`;
         badges.push({
           t: 'circle', id: badgeId, cx: ex, cy: badgeCy, r,
-          fill: { token: event.tone === 'bad' ? 'bad' : 'ink' },
+          fill: badgeFill(event),
           owner,
           part: 'eventBadge',
         });
@@ -191,7 +207,7 @@ function eventRules(env: GanttEnv, domain: GanttDomain, band: GanttBand, body: G
       }
     } else if (labelOn('annotation')) {
       const tsize = measure(event.label, tick);
-      const top = headerTop - band.markerStrip + 2;
+      const top = headerTop - markerBand(domain, markerLabelH) + 2;
       const labelRowH = markerLabelH + 2;
       const candidates: SlotCandidate[] = [];
       for (const row of [0, 1]) {

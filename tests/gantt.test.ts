@@ -4,6 +4,7 @@ import { layoutResolvedRequest, resolveChartRequest } from '../src/index';
 import { rectContains, rectsOverlap, segmentHitsRect } from '../src/core/geometry';
 import { leaderPieces } from '../src/core/label/solver';
 import type { GanttMarks } from '../src/core/charts/gantt/layout';
+import type { Annotation } from '../src/core/types/annotations';
 import { render } from '../src/cli/render';
 import { callTool } from '../src/mcp/server';
 import { renderSvg } from '../src/core/svg/renderSvg';
@@ -286,4 +287,22 @@ it('gantt grows a table row whose wrapped name and sublabel need more than the r
   const wrapped = geometry.labels.find(label => label.id === 'activity:interview-prep')!;
   expect(wrapped.lines).toHaveLength(2);
   expect(geometry.labels.filter(label => label.id.startsWith('sublabel:') && label.hidden)).toEqual([]);
+});
+
+// A badge took the seat of a numbered ring or an event name, and both labels vanished; without labels its strip still took height; its label was white on any fill.
+it('gantt badges keep every marker label, take no height without annotation labels, and pick their ink against their fill', () => {
+  const data = { rows: [{ id: 'a', label: 'Alpha', items: [{ id: 'a1', kind: 'bar', label: 'Work', start: '2026-01-02', end: '2026-01-28' }] }] };
+  const event = (at: string, label: string, badge = false): Annotation => ({ kind: 'event', at, label, tone: 'bad', ...(badge ? { labelPlacement: 'badge' as const } : {}) });
+  const layout = (annotations: Annotation[], labels?: object) => {
+    const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'gantt', data, options: { size: { width: 600 }, theme: 'standard', ...(labels ? { labels } : {}) }, annotations }));
+    if (geometry.refused) throw new Error('gantt refused');
+    return geometry;
+  };
+  const ordinary = [event('2026-01-11', 'Go'), event('2026-01-15', 'Two'), event('2026-01-20', 'Three'), event('2026-01-25', 'Four')];
+  const mixed = layout([event('2026-01-10', 'ABC', true), ...ordinary]);
+  expect(mixed.labels.filter(label => label.id.startsWith('event:') && label.hidden)).toEqual([]);
+  const badgeText = mixed.scene.flatMap(node => node.t === 'text' && node.id === 'label:event:event-1' ? [node] : []);
+  expect(badgeText[0]?.ink).toEqual({ token: 'ink', theme: { kind: 'contrast-ink', fill: { token: 'bad' } } });
+  const sameDay = Array.from({ length: 10 }, (_, i) => event('2026-01-10', String(i + 1), true));
+  expect(layout(sameDay, { annotation: false }).sizing?.naturalHeight).toBe(layout([]).sizing?.naturalHeight);
 });

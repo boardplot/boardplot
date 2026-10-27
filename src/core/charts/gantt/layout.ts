@@ -44,14 +44,14 @@ import { ACCEPTANCE_PROBE, CARD_HEIGHT_MEMO, cardReferenceHeight, FORCE_COMPACT,
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { getChart } from '../../registry';
 import { AUTO_LEGEND } from '../../legendPolicy';
-import { panelTypeClass } from '../../theme';
+import { contrastInkPaint, panelTypeClass } from '../../theme';
 import type { Id } from '../../types/cell';
 import type { GanttData, GanttItem } from '../../types/data';
 import type { BaseOptionsFor, LabelKind, LabelContent } from '../../types/options';
 import type { Geometry, LintWarning, PlacedLabel, SceneNode } from '../../types/scene';
 import { dateFromDay, dayNum } from './calendar';
 import { GANTT_ROW_PITCH, resolveGanttDomain, resolveGanttEnv } from './domain';
-import { badgeLevels, layoutGanttAnnotations, ruleNodes, type GanttAnnotationLayer } from './events';
+import { badgeFill, badgeLevels, layoutGanttAnnotations, ruleNodes, type GanttAnnotationLayer } from './events';
 import { flagRowPitch, ganttSpanBlockers, planGanttLabels, planRowFlags } from './labels';
 import { fmtDay, ganttPaints, layoutGanttMarks, type GanttMarkGeometry } from './marks';
 import { BADGE_LEVELS, NO_LANE, ROW_TEXT_PITCH, RULE_LABEL_GAP, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv } from './model';
@@ -122,7 +122,7 @@ function labelNodes(env: GanttEnv, domain: GanttDomain, labels: PlacedLabel[]) {
   const { strong, tick, headerMajor, label } = env.fonts;
   const rowIndent = new Map(domain.rows.map((r) => [r.id, r.indent]));
   // A row's sublabel prints muted under (or after) its name.
-  const badges = new Set(domain.events.filter((event) => event.badge).map((event) => `event:${event.id}`));
+  const badges = new Map(domain.events.filter((event) => event.badge).map((event) => [`event:${event.id}`, badgeFill(event)]));
   const nodes = labelsToNodes(env.theme, labels, (l) =>
     l.kind === 'valueLine' || badges.has(l.id)
       ? strong
@@ -140,7 +140,7 @@ function labelNodes(env: GanttEnv, domain: GanttDomain, labels: PlacedLabel[]) {
   const rules = new Set(domain.rows.flatMap((row) => row.items.filter((it) => it.kind === 'rule').map((it) => it.id)));
   // A badge label reads on its filled circle.
   return nodes.map((node) => node.t !== 'text' ? node
-    : badges.has(node.id.replace(/^label:/, '')) ? { ...node, ink: { token: 'inkInverse' as const } }
+    : badges.has(node.id.replace(/^label:/, '')) ? { ...node, ink: contrastInkPaint(badges.get(node.id.replace(/^label:/, ''))!) }
     : node.id.startsWith('label:sublabel:') || (node.part === 'item' && rules.has(node.owner.segmentId ?? '')) ? { ...node, ink: { token: 'inkMuted' as const } } : node);
 }
 
