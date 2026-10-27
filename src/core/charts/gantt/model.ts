@@ -56,6 +56,8 @@ export type GanttEventAnnotation = Extract<Annotation, { kind: 'event' }>;
 export interface GanttEvent {
   id: Id;
   day: number;
+  /** Where the rule draws, in days: the start edge of `day`, or the middle of it for a milestone or cadence marker, so the rule runs through the marker. */
+  ruleDay: number;
   label: string;
   /** Gantt paints 'bad' and draws every other tone neutral. */
   tone?: EventTone;

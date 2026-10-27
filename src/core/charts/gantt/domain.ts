@@ -242,8 +242,8 @@ function resolveGanttEvents(
           ? annotation.at.categoryId
           : null;
     const date = at === null ? null : parseISODate(at);
-    const day = date ? dayNum(date) : at === null ? null : (anchorDayById.get(at) ?? null);
-    if (day === null) {
+    const ruleDay = date ? dayNum(date) : at === null ? null : (anchorDayById.get(at) ?? null);
+    if (ruleDay === null) {
       warnings.push({
         code: 'bad-anchor',
         severity: 'warn',
@@ -252,6 +252,7 @@ function resolveGanttEvents(
       });
       return;
     }
+    const day = Math.floor(ruleDay);
     if (day < span.d0Day || day >= span.d1Day) {
       warnings.push({
         code: 'event-out-of-range',
@@ -264,6 +265,7 @@ function resolveGanttEvents(
     events.push({
       id,
       day,
+      ruleDay,
       label: annotation.label,
       tone: annotation.tone,
       priority: annotation.priority,
@@ -410,10 +412,11 @@ export function resolveGanttDomain(data: GanttData, env: GanttEnv, warnings: Lin
   };
   for (const it of allItems) resolveAnchor(it);
   pushAll(warnings, overlapWarnings(rows));
+  // An anchor's rule position: a span's start edge, a point marker's middle.
   const anchorDayById = new Map<Id, number>();
-  for (const item of allItems) anchorDayById.set(item.id, item.startDay);
+  for (const item of allItems) anchorDayById.set(item.id, item.startDay + (item.kind === 'milestone' ? 0.5 : 0));
   for (const row of rows) {
-    for (const event of row.cadence?.events ?? []) anchorDayById.set(event.id, event.day);
+    for (const event of row.cadence?.events ?? []) anchorDayById.set(event.id, event.day + 0.5);
   }
   const calendar = ganttCalendar(allItems, allCadenceDays, env.options, warnings);
   const events = resolveGanttEvents(env.options, anchorDayById, calendar, warnings);
