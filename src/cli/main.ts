@@ -123,6 +123,9 @@ function dispatch(verb: string, flags: Flags, seen: UsageSeen): VerbResult {
         outDir: text(flags, 'out'),
         overwrite: flags.overwrite === true,
         fontTables: text(flags, 'font-tables'),
+        placement: text(flags, 'placement'),
+        deckFont: text(flags, 'deck-font'),
+        deckWeights: text(flags, 'deck-weights'),
         ...(text(flags, 'return') === undefined ? {} : { return: text(flags, 'return')!.split(',').map((entry) => entry.trim()) }),
         ...rowFlags(flags),
       })));

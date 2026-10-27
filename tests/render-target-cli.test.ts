@@ -140,6 +140,57 @@ describe('render target on the CLI and MCP', () => {
     expect(mcp('boardplot_render', { spec: small, ...fix }).ok).toBe(true);
   });
 
+  // Prevents a Claude Slides fragment that the Slides type refuses (SVG text, oversize SVG, too many
+  // elements), text under Boardplot's 24 px slide floor, or a slide whose labels collide.
+  it('exports a long-label chart with a rotated label and mixed weights as a Claude Slides fragment', () => {
+    const names = ['Enterprise software licences', 'Managed cloud services', 'Professional services', 'Hardware maintenance',
+      'Training and certification', 'Partner marketplace fees', 'Support subscriptions', 'Consulting retainers',
+      'Data platform add-ons', 'Security and compliance', 'Developer tooling', 'Analytics workspaces',
+      'Mobile device management', 'Identity and access', 'Backup and recovery', 'Network monitoring'];
+    const spec = {
+      type: 'column',
+      data: {
+        categories: names.map((label, index) => ({ id: `c${index}`, label })),
+        series: [{ id: 'rev', label: 'Revenue', values: [412, 388, 251, 198, 143, 129, 117, 96, 84, 61, 58, 52, 47, 40, 33, 27] }],
+      },
+      options: { title: 'Licences and cloud bring in half of revenue', subtitle: { measure: 'Revenue', company: 'Example Co', period: 'FY25' }, unit: '€m', highlight: 'c1', source: 'Invented data' },
+    };
+    const result = cli(['render', specFile(spec), '--format', 'claude-slides', '--deck-font', 'Geist', '--deck-weights', '400,600']);
+    expect(result.ok).toBe(true);
+    const slides = result.claudeSlides;
+    expect(slides).toMatchObject({ title: spec.options.title, source: 'Invented data', font: { family: 'Geist', measured: 'exact' }, fit: { fits: true } });
+    const html: string = slides.html;
+    expect(html).not.toMatch(/<text|<style|data-|<script|<foreignObject|https?:/);
+    const svg = /<svg[\s\S]*<\/svg>/.exec(html)![0];
+    expect(new TextEncoder().encode(svg).length).toBe(slides.svgBytes);
+    expect(slides.svgBytes).toBeLessThanOrEqual(48_000);
+    const boxes = [...html.matchAll(/<p style="([^"]*)">(.*?)<\/p>/g)].map(([, style, body]) => {
+      const value = (name: string) => Number(new RegExp(`(?:^|;)${name}:(-?[\\d.]+)`).exec(style!)?.[1] ?? 0);
+      return { left: value('left'), top: value('top'), width: value('width'), height: value('height'), size: value('font-size'), angle: Number(/rotate\((-?[\d.]+)deg\)/.exec(style!)?.[1] ?? 0), weight: value('font-weight'), bold: body!.includes('<b>') };
+    });
+    expect(slides.elements).toBe(1 + boxes.length);
+    expect(slides.elements).toBeLessThanOrEqual(180);
+    expect(Math.min(...boxes.map((box) => box.size))).toBeGreaterThanOrEqual(24);
+    expect(boxes.some((box) => box.angle !== 0)).toBe(true);
+    expect(boxes.some((box) => box.bold || box.weight >= 600) && boxes.some((box) => box.weight === 400)).toBe(true);
+    // Each box turns about its centre; two boxes overlap when no axis of either separates them.
+    const corners = (box: (typeof boxes)[number]) => {
+      const cx = box.left + box.width / 2, cy = box.top + box.height / 2, a = box.angle * Math.PI / 180;
+      return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => {
+        const x = sx! * box.width / 2, y = sy! * box.height / 2;
+        return { x: cx + x * Math.cos(a) - y * Math.sin(a), y: cy + x * Math.sin(a) + y * Math.cos(a) };
+      });
+    };
+    const separated = (p: { x: number; y: number }[], q: { x: number; y: number }[]) => [p, q].some((poly) => poly.some((point, i) => {
+      const next = poly[(i + 1) % 4]!, axis = { x: point.y - next.y, y: next.x - point.x };
+      const project = (list: typeof p) => list.map((c) => c.x * axis.x + c.y * axis.y);
+      const [a, b] = [project(p), project(q)], length = Math.hypot(axis.x, axis.y);
+      return (Math.min(...b) - Math.max(...a)) / length >= -0.5 || (Math.min(...a) - Math.max(...b)) / length >= -0.5;
+    }));
+    const overlaps = boxes.flatMap((box, i) => boxes.slice(i + 1).filter((other) => !separated(corners(box), corners(other))).map(() => i));
+    expect(overlaps).toEqual([]);
+  });
+
   it('draws a width in mm whose px value sits a fraction above a floor measured at that width', () => {
     // 84.67 mm is 320.0126 px; the choropleth measures its floor at the received width.
     const map = (fixtures({ type: 'choropleth', id: 'us-margin-by-state' }).body.fixtures as { spec: { options: object } }[])[0]!.spec;

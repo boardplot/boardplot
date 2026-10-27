@@ -559,6 +559,79 @@ export function renderSvg(geometry: Geometry, theme: Theme, opts: RenderSvgOptio
   return renderSvgInternal(geometry, theme, opts);
 }
 
+/** Escape text for markup with the serializer's XML rules: the five entities and numeric references only. */
+export const escapeMarkup = (value: string, channel?: string): string => esc(value, channel);
+
+export interface SlideShapesOptions {
+  /** Slide px per layout px. */
+  scale: number;
+  /** The accessible name: the chart title and type. */
+  ariaLabel: string;
+  /** Inline CSS of the root, from the Slides subset (the placement on the slide). */
+  style: string;
+  background?: boolean;
+  idScope?: string;
+}
+
+/**
+ * The shapes of a chart as one SVG for a Claude Slides fragment: no text, no
+ * ids, no `<style>`, no images, presentation attributes with literal colours.
+ * Width and height equal the viewBox, in slide px; one group scales the layout.
+ * The text goes on the slide as HTML (core/slides/claudeSlides).
+ */
+export function renderSlideShapes(geometry: Geometry, theme: Theme, opts: SlideShapesOptions): string {
+  validateThemeColors(theme);
+  validateThemeNumbers(theme);
+  validateGeometryNumbers(geometry);
+  validateNumber('scale', opts.scale, Number.MIN_VALUE);
+  if (opts.idScope !== undefined && !ID_SCOPE_PATTERN.test(opts.idScope)) {
+    throw new Error(`renderSlideShapes: idScope '${opts.idScope}' must match ${ID_SCOPE_PATTERN.source} (it is pasted into an id)`);
+  }
+  const formatter = paintFormatter(theme);
+  const bindings = sceneThemeBindings(geometry).map(binding => {
+    const childTheme = resolveTheme(binding.theme);
+    return { prefix: binding.prefix, theme: childTheme, formatter: paintFormatter(childTheme) };
+  });
+  const contextFor = (node: SceneNode) => {
+    let context = { theme, formatter };
+    for (const binding of bindings) if (node.id.startsWith(binding.prefix)) context = binding;
+    return context;
+  };
+  const { size } = geometry;
+  const slideWidth = n2(size.width * opts.scale);
+  const slideHeight = n2(size.height * opts.scale);
+  const out: string[] = [
+    `<svg viewBox="0 0 ${slideWidth} ${slideHeight}" width="${slideWidth}" height="${slideHeight}" aria-label="${esc(opts.ariaLabel, 'aria-label')}" style="${esc(opts.style, 'style')}">`,
+  ];
+  const patternDefs = new Map<string, string>();
+  for (const node of geometry.scene) {
+    if ((node.t === 'rect' || node.t === 'path') && isHatchPattern(node.pattern) && node.fill) {
+      const { theme, formatter } = contextFor(node);
+      const ground = node.t === 'rect' ? node.hatchGround : undefined;
+      const { id, stroke, background: bg, gap, width } = resolvedHatchPattern(node.fill, theme, formatter, opts.idScope, ground, node.hatch, node.pattern);
+      if (!patternDefs.has(id)) {
+        const tile = hatchTile(gap, width, node.pattern);
+        patternDefs.set(id,
+          `<pattern id="${esc(id, 'pattern id')}" patternUnits="userSpaceOnUse" width="${tile.size}" height="${tile.size}">` +
+          `<rect width="${tile.size}" height="${tile.size}" fill="${bg}"/>` +
+          `<path d="${tile.d}" fill="none" stroke="${stroke}" stroke-width="${tile.strokeWidth}"/></pattern>`);
+      }
+    }
+  }
+  if (patternDefs.size > 0) out.push(`<defs>${[...patternDefs.values()].join('')}</defs>`);
+  out.push(`<g transform="scale(${opts.scale})">`);
+  if (opts.background !== false) {
+    out.push(`<rect x="0" y="0" width="${n2(size.width)}" height="${n2(size.height)}" fill="${formatter.background()}"/>`);
+  }
+  for (const node of geometry.scene) {
+    const context = contextFor(node);
+    const shape = renderNode(node, context.theme, context.formatter, undefined, opts.idScope, theme.type.family, true);
+    if (shape) out.push(shape);
+  }
+  out.push('</g></svg>');
+  return out.join('');
+}
+
 /**
  * ONE place where a scope is welded onto an id — the def and the `url(#…)`
  * that points at it must never be derived by two different expressions
@@ -575,10 +648,11 @@ function renderNode(
   interaction?: InteractiveContext,
   idScope?: string,
   rootFontFamily = theme.type.family,
+  plain = false,
 ): string {
   const tf = node.tx || node.ty ? ` transform="translate(${n2(node.tx ?? 0)},${n2(node.ty ?? 0)})"` : '';
   try {
-    return renderNodeInner(node, theme, formatter, tf, interaction, idScope, rootFontFamily);
+    return renderNodeInner(node, theme, formatter, tf, interaction, idScope, rootFontFamily, plain);
   } catch (error) {
     // Name the node that carries the unrepresentable string: without it the
     // author is told a character is bad but not which of 40 labels holds it.
@@ -669,11 +743,14 @@ function renderNodeInner(
   interaction?: InteractiveContext,
   idScope?: string,
   rootFontFamily = theme.type.family,
+  /** Shapes only, for a slide fragment: no ids, titles, images or text, only a text node's backing. */
+  plain = false,
 ): string {
   const rc = interactiveAttrs(node, interaction) + (node.opacity === undefined ? '' : ` opacity="${node.opacity}"`)
     + (POINTER_TRANSPARENT_PARTS.has(node.part) ? ' pointer-events="none"' : '');
   switch (node.t) {
     case 'image': {
+      if (plain) return '';
       const { rect } = node;
       return `<image${tf} data-id="${esc(node.id)}" data-part="${esc(node.part)}"${rc} x="${n2(rect.x)}" y="${n2(rect.y)}" width="${n2(rect.w)}" height="${n2(rect.h)}" href="${esc(node.src)}" xlink:href="${esc(node.src)}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${esc(node.alt)}"><title>${esc(node.alt)}</title></image>`;
     }
@@ -698,15 +775,15 @@ function renderNodeInner(
         }
       }
       const radius = node.radius ? ` rx="${n2(node.radius)}"` : '';
-      const open = `<rect${tf} data-id="${esc(node.id, 'node.id')}" data-part="${esc(node.part, 'node.part')}"${rc} x="${n2(rect.x)}" y="${n2(rect.y)}" width="${n2(rect.w)}" height="${n2(rect.h)}"${radius} fill="${fill}"${extra}`;
+      const open = `<rect${tf}${plain ? '' : ` data-id="${esc(node.id, 'node.id')}" data-part="${esc(node.part, 'node.part')}"`}${rc} x="${n2(rect.x)}" y="${n2(rect.y)}" width="${n2(rect.w)}" height="${n2(rect.h)}"${radius} fill="${fill}"${extra}`;
       // A rectangle that stands for text carries it, the way an image does.
-      if (node.title === undefined) return `${open}/>`;
+      if (node.title === undefined || plain) return `${open}/>`;
       return `${open} role="img" aria-label="${esc(node.title, 'node.title')}"><title>${esc(node.title, 'node.title')}</title></rect>`;
     }
     case 'line': {
       const dash = node.dash ? ` stroke-dasharray="${node.dash.join(' ')}"` : '';
       const lineCap = node.lineCap ? ` stroke-linecap="${esc(node.lineCap, 'line.lineCap')}"` : '';
-      return `<line${tf} data-id="${esc(node.id, 'node.id')}" data-part="${esc(node.part, 'node.part')}"${rc} x1="${n2(node.x1)}" y1="${n2(node.y1)}" x2="${n2(node.x2)}" y2="${n2(node.y2)}" stroke="${formatter.attr(node.stroke)}" stroke-width="${node.width}"${dash}${lineCap}/>`;
+      return `<line${tf}${plain ? '' : ` data-id="${esc(node.id, 'node.id')}" data-part="${esc(node.part, 'node.part')}"`}${rc} x1="${n2(node.x1)}" y1="${n2(node.y1)}" x2="${n2(node.x2)}" y2="${n2(node.y2)}" stroke="${formatter.attr(node.stroke)}" stroke-width="${node.width}"${dash}${lineCap}/>`;
     }
     case 'path': {
       const fill = renderedPathFill(node, theme, formatter, idScope);
@@ -715,13 +792,13 @@ function renderNodeInner(
         : '';
       const dash = node.dash ? ` stroke-dasharray="${node.dash.join(' ')}"` : '';
       const lineCap = node.lineCap ? ` stroke-linecap="${esc(node.lineCap, 'path.lineCap')}"` : '';
-      return `<path${tf} data-id="${esc(node.id)}" data-part="${esc(node.part)}"${rc} d="${esc(node.d)}" fill="${fill}"${stroke}${dash}${lineCap} stroke-linejoin="round"/>`;
+      return `<path${tf}${plain ? '' : ` data-id="${esc(node.id)}" data-part="${esc(node.part)}"`}${rc} d="${esc(node.d)}" fill="${fill}"${stroke}${dash}${lineCap} stroke-linejoin="round"/>`;
     }
     case 'circle': {
       const stroke = node.stroke
         ? ` stroke="${formatter.attr(node.stroke)}" stroke-width="${node.strokeWidth ?? strokeToken(theme, 'mark')}"`
         : '';
-      return `<circle${tf} data-id="${esc(node.id, 'node.id')}" data-part="${esc(node.part, 'node.part')}"${rc} cx="${n2(node.cx)}" cy="${n2(node.cy)}" r="${n2(node.r)}" fill="${formatter.attr(node.fill)}"${stroke}${node.title === undefined ? '/>' : `><title>${esc(node.title, 'node.title')}</title></circle>`}`;
+      return `<circle${tf}${plain ? '' : ` data-id="${esc(node.id, 'node.id')}" data-part="${esc(node.part, 'node.part')}"`}${rc} cx="${n2(node.cx)}" cy="${n2(node.cy)}" r="${n2(node.r)}" fill="${formatter.attr(node.fill)}"${stroke}${node.title === undefined || plain ? '/>' : `><title>${esc(node.title, 'node.title')}</title></circle>`}`;
     }
     case 'text': {
       const anchor = node.align === 'start' ? 'start' : node.align === 'end' ? 'end' : 'middle';
@@ -731,6 +808,8 @@ function renderNodeInner(
       const backing = node.backing
         ? `<rect x="${n2(node.backing.x)}" y="${n2(node.backing.y)}" width="${n2(node.backing.w)}" height="${n2(node.backing.h)}" fill="${formatter.background()}" opacity="0.92"/>`
         : '';
+      // A slide fragment draws the label itself as HTML over the shapes; only its backing stays a shape.
+      if (plain) return tf && backing ? `<g${tf}>${backing}</g>` : backing;
       // letter-spacing adds a trailing advance after the LAST glyph too —
       // shift end/middle anchors so tracked text keeps its shared edge
       const ls = font.letterSpacing ?? 0;

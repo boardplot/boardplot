@@ -169,6 +169,13 @@ export function resolveFace(stack: string | undefined, weight: number): Face | u
   return face;
 }
 
+/** The bundled family whose rows a stand-in family is measured with (Helvetica Neue → helvetica), or undefined. */
+export function bundledStandIn(family: string): string | undefined {
+  const key = tableFamilyKey(family);
+  const entry = Object.entries(BUNDLED_STAND_INS).find(([name]) => tableFamilyKey(name) === key);
+  return entry?.[1];
+}
+
 /** Families with a shipped table, for diagnostics and tests. */
 export function tabledFamilies(): string[] {
   return [...new Set([...FACE_TABLES.map((t) => t.family), ...Object.keys(BUNDLED_STAND_INS)])];

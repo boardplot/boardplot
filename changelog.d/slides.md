@@ -1,0 +1,3 @@
+### Added
+
+- `boardplot render --format claude-slides`: a chart as a fragment for a slide of the Claude Slides artifact type, with one SVG of shapes and one positioned `<p>` per text line in the deck font. New flags `--placement`, `--deck-font` and `--deck-weights`; the result carries `claudeSlides` (`html`, `title`, `source`, `elements`, `svgBytes`, `font`, `face`, `fit`, `warnings`); `face` is the deck's `faces` entry with the plain css2 link. The fragment goes directly into the slide's `<section>`; the default placement `128,232,1664,688` leaves room for the slide heading and the footer band. The manual has a "Claude Slides fragments" section. Other formats and their SVG output do not change.

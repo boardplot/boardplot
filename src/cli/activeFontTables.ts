@@ -12,8 +12,8 @@
 import { readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createMetricTablesMeasurer, measurableFamilies } from '../core/fontMetrics/injected';
-import { parseFontMetricTables } from '../core/fontMetrics/tableDocument';
-import type { TextMeasurer } from '../core/text';
+import { parseFontMetricTables, type FontMetricTables } from '../core/fontMetrics/tableDocument';
+import { defaultMeasurer, type TextMeasurer } from '../core/text';
 import { InputError } from './result';
 
 const FONT_TABLES_ENV = 'BOARDPLOT_FONT_TABLES';
@@ -25,6 +25,8 @@ interface ActiveFontTables {
   families: string[];
   faces: number;
   measure: TextMeasurer;
+  /** The parsed file, for the vertical metrics of a face (the claude-slides export). */
+  tables: FontMetricTables;
 }
 
 const loaded = new Map<string, ActiveFontTables>();
@@ -65,7 +67,7 @@ function loadFontTables(path: string, source: string): ActiveFontTables {
   }
   const active: ActiveFontTables = {
     file, families, faces: tables.faces.length,
-    measure: createMetricTablesMeasurer(tables, { bundledFallback: true }),
+    measure: createMetricTablesMeasurer(tables, { bundledFallback: true }), tables,
   };
   loaded.clear();
   loaded.set(key, active);
@@ -94,6 +96,28 @@ export function withFontTables<T>(flag: string | undefined, work: () => T): T {
 /** The tables the running verb measures with, if any. */
 export function activeFontTables(): ActiveFontTables | undefined {
   return scoped;
+}
+
+let scopedMeasurer: TextMeasurer | undefined;
+
+/**
+ * Run `work` with a measurer made from the active one (the tables', else the
+ * bundled `defaultMeasurer`): the claude-slides export measures each weight as
+ * the deck draws it.
+ */
+export function withMeasurer<T>(make: (base: TextMeasurer) => TextMeasurer, work: () => T): T {
+  const before = scopedMeasurer;
+  scopedMeasurer = make(scoped?.measure ?? defaultMeasurer);
+  try {
+    return work();
+  } finally {
+    scopedMeasurer = before;
+  }
+}
+
+/** The measurer layout takes from the host: a format's own, else the tables', else none (the bundled default). */
+export function activeMeasurer(): TextMeasurer | undefined {
+  return scopedMeasurer ?? scoped?.measure;
 }
 
 /** What a result body says about the tables: the file name stays out, the families go in. */

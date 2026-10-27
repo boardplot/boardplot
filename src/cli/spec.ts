@@ -22,7 +22,7 @@ import { resolveTheme, resolvedPaintToken, seriesColorIndex } from '../core/them
 import { sceneThemeBindings } from '../core/repaintGeometry';
 import type { GridMarks } from '../core/grid/layoutGrid';
 import { validateTheme, type ThemeUsage } from '../core/themeRules';
-import { activeFontTables } from './activeFontTables';
+import { activeFontTables, activeMeasurer } from './activeFontTables';
 import { renderSvg, XmlCharError } from '../core/svg/renderSvg';
 import { claimsForChart } from '../core/claims';
 import { adoptThemeObject, isThemeObject, rootContextErrors } from '../core/doc/themeObject';
@@ -80,10 +80,10 @@ function passedFamilies(): readonly string[] | undefined {
   return activeFontTables()?.families;
 }
 
-/** The options with the host's table measurer, when the host passed tables. */
+/** The options with the host's table measurer, when the host passed tables, or the measurer a render format set. */
 function withHostMeasure<T extends object | undefined>(options: T): T {
-  const tables = activeFontTables();
-  return (tables ? { ...options, measure: tables.measure } : options) as T;
+  const measure = activeMeasurer();
+  return (measure ? { ...options, measure } : options) as T;
 }
 
 /** A root theme given as a full token object is adopted under its own name (core/doc/themeObject). */
