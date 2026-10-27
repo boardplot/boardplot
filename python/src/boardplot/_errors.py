@@ -7,6 +7,7 @@ readable line, plus a ``Suggest:`` line when there is a suggestion.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 __all__ = [
@@ -27,6 +28,19 @@ def _line(code: str | None, path: str | None, message: str) -> str:
     if text and not text.endswith((".", "!", "?")):
         text += "."
     return f"{head}: {text}"
+
+
+# The engine's texts name the MCP discovery tools; a Python caller has these calls instead.
+_PYTHON_CALLS = {"boardplot_list": "bp.list_charts()", "boardplot_describe": "bp.describe()"}
+# A quoted part (the caller's own input, such as a type name) comes first, so it stays as it is.
+_TOOL_NAME = re.compile(r"""((?<!\w)'[^']*'(?!\w)|"[^"]*")|\b(boardplot_list|boardplot_describe)\b""")
+
+
+def _python_names(text: Any) -> Any:
+    """``text`` with each MCP discovery tool name outside quotes replaced by the Python call that returns the same body."""
+    if not isinstance(text, str):
+        return text
+    return _TOOL_NAME.sub(lambda match: match.group(1) or _PYTHON_CALLS[match.group(2)], text)
 
 
 class BoardplotError(Exception):
@@ -57,10 +71,10 @@ class BoardplotError(Exception):
     def from_finding(cls, finding: dict[str, Any], errors: list[dict[str, Any]] | None = None, **extra: Any) -> BoardplotError:
         """Build the error from one engine finding (``code``, ``message``, ``path``, ``suggest``, ``fix``...)."""
         return cls(
-            str(finding.get("message") or finding.get("code") or "the engine refused the input"),
+            _python_names(str(finding.get("message") or finding.get("code") or "the engine refused the input")),
             code=finding.get("code"),
             path=finding.get("path") or None,
-            suggest=finding.get("suggest"),
+            suggest=_python_names(finding.get("suggest")),
             fix=finding.get("fix"),
             details=finding,
             errors=errors,

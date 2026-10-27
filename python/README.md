@@ -65,6 +65,21 @@ Rules:
   bp.chart(wide, "column", category="quarter", value=["revenue", "cost"], title="Revenue pulls away from cost")
   ```
 
+- `butterfly` and `variance` also need options that name series ids. `butterfly` takes `options={"a": ..., "b": ...}`: the series in the left and the right pane. `variance` takes `options={"variant": ..., "variance": {"of": ..., "vs": ...}}`: the variant (`absolute`, `relative` or `integrated`), the series it measures and the reference series. A template gives the reference series `role: "reference"`.
+
+  ```python
+  import boardplot as bp
+
+  rows = [{"region": r, "scenario": s, "revenue": v}
+          for r, s, v in [("North", "plan", 100), ("North", "actual", 80), ("South", "plan", 90), ("South", "actual", 95)]]
+  bp.chart(rows, "butterfly", category="region", series="scenario", value="revenue",
+           title="North trails plan", options={"a": "plan", "b": "actual"})
+  bp.chart(rows, "variance", category="region", series="scenario", value="revenue",
+           title="North trails plan", options={"variant": "absolute", "variance": {"of": "actual", "vs": "plan"}},
+           template={"data": {"series": [{"id": "plan", "role": "reference", "values": []}]}})
+  ```
+
+- `state` names a column with the reason a cell has no value: `na` (not available), `nm` (not meaningful) or `suppressed` (withheld). A row with a state needs an empty value. Leave the state empty for a row with a value. The drawn chart shows a cell with a state as a missing value. The states are kept in `c.reading["data"]["states"]` only.
 - `x` and `y` are scatter roles only. A bar chart uses `category` and `value`.
 - Python does not aggregate, sort or sample. It sends only the mapped columns to the engine.
 - Numbers in `category`, `series`, `category_label`, `series_label`, `label` and `group` columns become text: the year 2024 becomes the id `"2024"`.
@@ -72,6 +87,40 @@ Rules:
 - Other chart types (table, histogram, box and the others) take a spec: `bp.Chart.from_spec(spec)`. A spec can be a dict, a JSON string or a `pathlib.Path` to a JSON file.
 
 Other arguments: `options=` (the Boardplot spec options), `title=` (short for `options["title"]`), `annotations=`, `theme=`, `name=`, `pack=` (choropleth and tilemap) and `template=` (a partial spec whose labels, colours and formats the rows keep).
+
+`annotations=` is a list of annotation dicts. Each one has a `kind`. Its other fields, and any anchors with ids from the chart, depend on the kind: `note` takes `at`, `diff` takes `from` and `to`, and `valueLine` takes a value instead of an anchor. `bp.describe("bar", path="annotations")` lists the kinds and their fields.
+
+```python
+import boardplot as bp
+
+rows = [{"brand": "Aster", "share": 34}, {"brand": "Dune", "share": 25}, {"brand": "Elm", "share": 18}]
+bp.chart(rows, "bar", category="brand", value="share", title="Aster leads the market",
+         annotations=[{"kind": "note", "at": {"categoryId": "Aster", "seriesId": "share"}, "text": "Largest share"}])
+```
+
+A scatter chart does not name its axes or its size key from the column names. Name them in `options`:
+
+```python
+import boardplot as bp
+
+products = [{"product": "A", "margin": 20, "growth": 5, "revenue": 100},
+            {"product": "B", "margin": 35, "growth": 12, "revenue": 60},
+            {"product": "C", "margin": 12, "growth": -3, "revenue": 140}]
+bp.chart(products, "scatter", x="margin", y="growth", size="revenue", label="product", title="B grows fastest",
+         options={"axisTitles": {"x": "Margin, %", "y": "Growth, %"}, "sizeLegend": {"label": "Revenue, €m"}})
+```
+
+A template gives labels, colours and formats to the categories and series whose ids match the rows. The series colour key is `fill`. The template's `values` are replaced by the rows:
+
+```python
+import boardplot as bp
+
+template = {"data": {"categories": [{"id": "N", "label": "North"}, {"id": "S", "label": "South"}],
+                     "series": [{"id": "revenue", "label": "Revenue", "fill": "#1f6f8b", "format": "1,234.0", "values": []}]},
+            "options": {"unit": "EUR"}}
+rows = [{"region": "N", "revenue": 1234.5}, {"region": "S", "revenue": 987.0}]
+bp.chart(rows, "column", category="region", value="revenue", title="North sells more", template=template)
+```
 
 ## The Chart object
 
@@ -121,7 +170,7 @@ fixed = {"type": "column", "data": {"categories": ["Q1"], "series": [{"id": "rev
 bp.Chart.from_spec(fixed)
 ```
 
-Error classes: `BoardplotError` is the base. `InputError` is for DataFrame and argument problems, `SpecError` is for specs the engine refuses, `RefusalError` is for sizes the engine refuses, and `EngineUnavailableError` means there is no V8 engine or the engine build does not match. Each error has `code`, `path`, `message`, `suggest`, `fix` and `details`.
+Error classes: `BoardplotError` is the base. `InputError` is for argument problems and for the DataFrame problems that Python finds: a missing column, a lazy frame, a cell without a JSON form. A spec value without a JSON form (NaN, infinity, an object) also raises `InputError`, with its path. `SpecError` is for specs the engine refuses. It is also for the row problems that the engine finds: a null category id, two rows for the same category and series, and an empty frame. For a problem in one row, `path` names the source row, for example `/rows/1/region`. For an empty frame, `path` is `/rows`. `RefusalError` is for sizes the engine refuses, and `EngineUnavailableError` means there is no V8 engine or the engine build does not match. Each error has `code`, `path`, `message`, `suggest`, `fix` and `details`.
 
 ## Discovery
 
@@ -144,7 +193,9 @@ In a live notebook (JupyterLab, Notebook 7, VS Code, Colab), a chart shows as an
 
 ```python
 import boardplot as bp
+import pandas as pd
 
+df = pd.DataFrame({"region": ["North", "South", "East"], "revenue": [42.0, 35.5, 51.2]})
 c = bp.chart(df, "bar", category="region", value="revenue", title="East leads revenue")
 clicks = []
 c.on_click(clicks.append)   # every click on a mark adds Boardplot's record of it
@@ -161,6 +212,38 @@ view   # another cell reads view.value["selection"], the last clicked record
 ```
 
 The browser bundle (3.8 MB) goes to the page once per kernel, not once per chart. Tables show no row clicks yet.
+
+## Streamlit
+
+```bash
+pip install "boardplot[streamlit]"
+```
+
+```python
+import boardplot as bp
+import pandas as pd
+import streamlit as st
+
+df = pd.DataFrame({"region": ["North", "South", "East"], "revenue": [42.0, 35.5, 51.2]})
+result = bp.st_chart(df, "bar", category="region", value="revenue", title="East leads revenue",
+                     key="rev", on_click="rerun")
+if result.click:
+    st.write("You picked", result.click.get("categoryLabel"))
+```
+
+`bp.st_chart` takes a `Chart`, or data with the `bp.chart` arguments. The chart fills its container: the main column, a `st.columns` column or the sidebar. Every chart needs at least 280 px of width. Streamlit's default sidebar leaves about 240 px, so widen it with `st.set_page_config(initial_sidebar_state=360)`.
+
+`on_click` sets what a click does:
+
+| `on_click` | Effect |
+|---|---|
+| `"ignore"` (default) | Nothing goes to Python. A click never reruns the script. |
+| `"rerun"` | Each click reruns the script. `result.click` holds the record in that run, `result.selection` the last record across runs. |
+| a function | Streamlit calls it with the record before the rerun. It needs `key=`. |
+
+Inside `st.form`, Streamlit drops click events, so a chart there takes only `on_click="ignore"`.
+
+Without `theme=`, the chart follows the app theme, also when the reader switches it: `boardroom` on a light app, `standard-dark` on a dark one. An explicit `theme=` always wins. `python/examples/streamlit_app.py` is a complete app.
 
 ## Display modes
 
@@ -226,7 +309,7 @@ npm ci
 node python/js/build.mjs                     # writes python/src/boardplot/_assets/ and _version.py
 npx tsc -p python/js/tsconfig.json --noEmit
 cd python && python -m build --wheel         # needs the assets; the build stops with a hint without them
-pip install dist/boardplot-*.whl pytest pandas polars
+pip install dist/boardplot-*.whl pytest pandas polars streamlit
 pytest
 ```
 

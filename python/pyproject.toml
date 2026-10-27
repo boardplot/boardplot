@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 license-files = ["src/boardplot/_assets/licenses/*"]
-keywords = ["chart", "charts", "svg", "data-visualization", "business-charts", "jupyter", "dataframe"]
+keywords = ["chart", "charts", "svg", "data-visualization", "business-charts", "jupyter", "streamlit", "dataframe"]
 classifiers = [
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
@@ -25,6 +25,11 @@ dependencies = [
   # EngineUnavailableError with the reason.
   'mini-racer>=0.14.1; sys_platform == "darwin" or (sys_platform == "linux" and (platform_machine == "x86_64" or platform_machine == "aarch64")) or (sys_platform == "win32" and (platform_machine == "AMD64" or platform_machine == "ARM64"))',
 ]
+
+[project.optional-dependencies]
+# bp.st_chart uses Streamlit Components v2 (Streamlit 1.51 and later). 1.59 is the lowest
+# version whose AppTest runs a packaged v2 component, so it is the lowest version the tests prove.
+streamlit = ["streamlit>=1.59"]
 
 [project.urls]
 Homepage = "https://github.com/boardplot/boardplot"

@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import os
+import re
 import sys
 import warnings
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -66,6 +68,41 @@ def _id_text(cell: Any) -> Any:
     if isinstance(cell, float) and cell.is_integer():
         return str(int(cell))
     return str(cell)
+
+
+def _pointer(path: str, key: Any) -> str:
+    return f"{path}/{str(key).replace('~', '~0').replace('/', '~1')}"
+
+
+def _json_ready(value: Any, path: str) -> Any:
+    """A spec part as JSON values: a numpy scalar becomes its Python value; NaN, infinity and
+    other values without a JSON form raise InputError with their JSON path."""
+    if value is None or isinstance(value, (bool, str)):
+        return value
+    if isinstance(value, Mapping):
+        out: dict[str, Any] = {}
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise InputError(f"a spec key is text, not the {type(key).__name__} {key!r}", code="invalid-spec",
+                                 path=path or "/", suggest="Write every key of the spec as a string.")
+            out[key] = _json_ready(item, _pointer(path, key))
+        return out
+    if isinstance(value, (list, tuple)):
+        return [_json_ready(item, _pointer(path, index)) for index, item in enumerate(value)]
+    if isinstance(value, int):
+        return int(value)
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise InputError(f"{value} is not a number JSON can carry", code="invalid-number", path=path or "/",
+                             suggest="Use None for a missing value, or a finite number.")
+        return float(value)
+    item = getattr(value, "item", None)
+    if callable(item) and type(value).__module__.split(".")[0] == "numpy" and not getattr(value, "shape", ()):
+        converted = item()  # once: a numpy longdouble gives back another numpy scalar
+        if converted is None or isinstance(converted, (bool, int, float, str)):
+            return _json_ready(converted, path)
+    raise InputError(f"a {type(value).__name__} value has no JSON form", code="unsupported-value", path=path or "/",
+                     suggest="Use numbers, strings, booleans, None, lists and dicts in a spec.")
 
 
 def _rows_shapes() -> dict[str, Any]:
@@ -122,6 +159,54 @@ def _prepare(payload: dict[str, Any]) -> dict[str, Any]:
     return _engine.call("prepare", payload)
 
 
+# The engine's schema floors for options.size, in layout px, for a finding that names none.
+_SIZE_FLOORS = {"width": 100, "height": 24}
+# options.size of a bare chart, or of the one chart of a document.
+_SIZE_PATH = re.compile(r"(?:/charts/0)?/options/size/(width|height)")
+
+
+def _floor_side(finding: Any) -> str | None:
+    """The side ("width" or "height") whose explicit size is below the engine's schema floor, or None."""
+    if not isinstance(finding, Mapping) or finding.get("code") != "invalid-options":
+        return None
+    match = _SIZE_PATH.fullmatch(str(finding.get("path") or ""))
+    return match.group(1) if match else None
+
+
+def _floor_of(finding: Mapping[str, Any], side: str) -> float:
+    expected = finding.get("expected")
+    named = expected.get("minimum") if isinstance(expected, Mapping) else None
+    return named if isinstance(named, (int, float)) and not isinstance(named, bool) else _SIZE_FLOORS[side]
+
+
+def _below_size_floor(body: Mapping[str, Any], payload: dict[str, Any]) -> RefusalError | None:
+    """An explicit to_svg size below the engine's floor, as a RefusalError with the chart's own minimum.
+
+    The engine refuses such a size as invalid-options at options.size (a schema check), not as a layout
+    refusal. One more draw with the too-small sides at the floor gives the size this chart needs.
+    """
+    errors = body.get("errors") or []
+    sides = [_floor_side(e) for e in errors]
+    if not errors or not all(side in payload for side in sides):
+        return None
+    retry = _prepare({**payload, **{side: _floor_of(e, side) for e, side in zip(errors, sides) if side}})
+    minimum = _minimum(retry.get("refusal")) if retry.get("kind") == "refused" else None
+    size = retry.get("size")
+    if retry.get("kind") == "drawn" and isinstance(size, Mapping):
+        minimum = (size["width"], size["height"])
+    first = errors[0]
+    return RefusalError(
+        str(first.get("message") or first.get("code")),
+        code=first.get("code"),
+        path=first.get("path"),
+        suggest=f"Draw it at {minimum[0]:g}×{minimum[1]:g} px or larger." if minimum else
+        f"Draw it at least {_SIZE_FLOORS['width']} px wide and {_SIZE_FLOORS['height']} px high.",
+        details=dict(first),
+        errors=errors,
+        minimum=minimum,
+    )
+
+
 def _is_document(spec: Mapping[str, Any]) -> bool:
     return isinstance(spec.get("charts"), list)
 
@@ -148,7 +233,7 @@ def _place_theme(spec: dict[str, Any], theme: Any) -> None:
 
 def _build(spec: dict[str, Any], rows: list[dict[str, Any]] | None = None, columns: dict[str, Any] | None = None) -> Chart:
     """Map, validate and draw once; on a size refusal draw once more at the minimum the refusal names."""
-    payload: dict[str, Any] = {"spec": spec}
+    payload: dict[str, Any] = {"spec": _json_ready(spec, "")}
     if rows is not None:
         payload["rows"] = rows
         payload["columns"] = columns
@@ -162,7 +247,8 @@ def _build(spec: dict[str, Any], rows: list[dict[str, Any]] | None = None, colum
     refusal = body["refusal"]
     minimum = _minimum(refusal)
     if minimum is not None:
-        retry = _prepare({"spec": resolved, "width": minimum[0], "height": minimum[1]})
+        # The same rows again, so the reading keeps what the engine read from them (reading["data"]).
+        retry = _prepare({**payload, "width": minimum[0], "height": minimum[1]})
         if retry.get("kind") == "drawn":
             found = [BoardplotWarning.from_finding(w) for w in retry.get("warnings") or []]
             found.append(BoardplotWarning(
@@ -290,8 +376,8 @@ class Chart:
 
     @property
     def warnings(self) -> list[BoardplotWarning]:
-        """The findings of the validation render."""
-        return list(self._warnings)
+        """The findings of the validation render (copies)."""
+        return copy.deepcopy(self._warnings)
 
     @property
     def refusal(self) -> dict[str, Any] | None:
@@ -303,9 +389,15 @@ class Chart:
     @classmethod
     def from_spec(cls, spec: Mapping[str, Any] | str | os.PathLike[str]) -> Chart:
         """A Chart from a bare chart spec or a one-chart document: a dict, a JSON string, or a path to a JSON file."""
+        if isinstance(spec, str):
+            spec = spec.removeprefix("\ufeff")  # a byte order mark, as a Windows editor writes it
         if isinstance(spec, os.PathLike) or (isinstance(spec, str) and not spec.lstrip().startswith("{")):
             path = Path(spec)
-            if not path.is_file():
+            try:
+                is_file = path.is_file()
+            except OSError:  # a text too long for a file name, for example
+                is_file = False
+            if not is_file:
                 raise InputError(
                     f"{str(spec)[:80]!r} is neither a JSON object nor a file",
                     code="invalid-spec",
@@ -365,17 +457,17 @@ class Chart:
                 raise _refusal_error(self._refusal or {"code": "no-static-svg", "message": "the chart has no static SVG"}, "no static SVG: ")
             return self._svg
         payload: dict[str, Any] = {"spec": self._spec}
-        if width is not None:
-            payload["width"] = width
-        if height is not None:
-            payload["height"] = height
-        if target is not None:
-            payload["target"] = target
+        for key, given in (("width", width), ("height", height), ("target", target)):
+            if given is not None:
+                payload[key] = _json_ready(given, f"/{key}")
         body = _prepare(payload)
         if body.get("kind") == "drawn":
             return body["svg"]
         if body.get("kind") == "refused":
             raise _refusal_error(body["refusal"])
+        floor = _below_size_floor(body, payload)
+        if floor is not None:
+            raise floor
         raise _spec_error(body)
 
     def save(self, path: str | os.PathLike[str], *, overwrite: bool = False) -> Path:
@@ -399,6 +491,7 @@ class Chart:
 
     def on_click(self, callback: Any) -> Any:
         """Call ``callback(record)`` when a reader clicks a record in the widget view."""
+        _check_callback(callback)
         return self.widget().on_click(callback)
 
     def _display_(self) -> Any:
@@ -433,6 +526,13 @@ class Chart:
 
     def __repr__(self) -> str:
         return self._summary()
+
+
+def _check_callback(callback: Any) -> None:
+    """A click callback must be callable when it is registered, not fail when the first click arrives."""
+    if not callable(callback):
+        raise InputError(f"on_click takes a function that receives the clicked record, not {callback!r}",
+                         code="invalid-argument", suggest="Pass a function, for example clicks.append or a def that takes one record.")
 
 
 def _role_columns(shape: str, roles: dict[str, Any], type_name: str) -> None:
@@ -513,6 +613,14 @@ def chart(
     if value_kind not in VALUE_KINDS:
         raise InputError(f"value_kind must be one of {', '.join(VALUE_KINDS)}, not {value_kind!r}", code="invalid-argument",
                          suggest="fraction when a share arrives as 0.5, percent when it arrives as 50, number otherwise.")
+    if annotations is not None and (isinstance(annotations, (str, bytes, Mapping)) or not isinstance(annotations, Iterable)):
+        raise InputError(f"annotations= is a list of annotation dicts, not {annotations!r}", code="invalid-argument",
+                         path="/annotations",
+                         suggest="Pass a list, for example [{'kind': 'note', 'at': {'categoryId': 'A', 'seriesId': 'v'}, 'text': 'Largest share'}].")
+    if theme is not None and not isinstance(theme, (str, Mapping)):
+        raise InputError(f"theme= is a preset name or a theme dict, not {theme!r}", code="invalid-argument", path="/theme",
+                         suggest="Pass a preset name such as 'boardroom' or 'standard-dark' (bp.list_charts()['themes'] lists them), "
+                         "{'preset': ..., 'overrides': {...}} or a full theme dict.")
     shapes = _rows_shapes()
     canonical = shapes["types"].get(type)
     shape = shapes["shapes"].get(canonical) if canonical else None
@@ -597,6 +705,10 @@ def chart(
     spec: dict[str, Any] = copy.deepcopy(dict(template or {}))
     if _is_document(spec):
         raise InputError("template= is a bare chart spec, not a document with charts", code="invalid-argument")
+    for part in ("options", "data"):
+        if spec.get(part) is not None and not isinstance(spec[part], Mapping):
+            raise InputError(f"template['{part}'] is a dict, not {spec[part]!r}", code="invalid-argument", path=f"/{part}",
+                             suggest=f"Give the template's {part} as a dict, or leave it out.")
     spec["type"] = type
     if name is not None:
         spec["name"] = name

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import os
 import zipfile
 from pathlib import Path
@@ -25,8 +26,9 @@ def test_installed_wheel_has_assets_and_draws():
     for name in ("boardplot/_assets/engine.js", "boardplot/_assets/runtime.js", "boardplot/_assets/widget.js",
                  "boardplot/_assets/build.json", "boardplot/_version.py",
                  "boardplot/_assets/licenses/LICENSE", "boardplot/_assets/licenses/NOTICE.md",
-                 "boardplot/_assets/licenses/THIRD_PARTY_NOTICES.md"):
+                 "boardplot/_assets/licenses/THIRD_PARTY_NOTICES.md", "boardplot/pyproject.toml"):
         assert name in names, name
+    assert len(fnmatch.filter(names, "boardplot/_assets/streamlit/boardplot-*.js")) == 1, "the Streamlit bundle"
     notices = archive.read("boardplot/_assets/licenses/THIRD_PARTY_NOTICES.md").decode("utf-8")
     for package in ("## react ", "## react-dom ", "## zod ", "## Font width tables"):
         assert package in notices, package

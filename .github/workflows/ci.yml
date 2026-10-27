@@ -220,7 +220,7 @@ jobs:
           "$(bin "$RUNNER_TEMP/build-env")/python" -m build --wheel --outdir "$RUNNER_TEMP/dist" python
           python -m venv "$RUNNER_TEMP/test-env"
           wheel=$(ls "$RUNNER_TEMP"/dist/boardplot-*.whl)
-          "$(bin "$RUNNER_TEMP/test-env")/python" -m pip install --quiet "$wheel" pytest pandas polars
+          "$(bin "$RUNNER_TEMP/test-env")/python" -m pip install --quiet "$wheel" pytest pandas polars streamlit
           echo "BOARDPLOT_WHEEL=$wheel" >> "$GITHUB_ENV"
           echo "TEST_PYTHON=$(bin "$RUNNER_TEMP/test-env")/python" >> "$GITHUB_ENV"
 

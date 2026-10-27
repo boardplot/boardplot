@@ -468,9 +468,12 @@ export function mount(el: HTMLElement, initial: MountOptions): MountHandle {
         laidOut = null;
         refusal = null;
         boundaryError = null;
-        theme = readTheme();
         report('loading');
       }
+      // Every host call reads the host theme again: a host such as Streamlit
+      // can change its colours without an attribute change the observer sees.
+      watchAncestors();
+      theme = readTheme();
       render();
       schedule();
     },
