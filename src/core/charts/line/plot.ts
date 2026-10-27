@@ -13,6 +13,7 @@ import { AXIS_TITLE_GAP, measureValueAxisWidth, planValueAxisTitle, valueAxisTit
 import { dateTickRow, dayCategories } from '../../calendarLabels';
 import type { DateTickInterval } from '../../dateFormat';
 import { formatAutomaticPercent, notApplicableGlyph, numberRange } from '../../format';
+import { percentCellsOnly } from '../../annotatePass';
 import { frameTextOptions, normalizeLegendOption, plotHeightAfter, solveFrame, type FrameBand, type FrameInput, type FrameResult, type LegendItemInput, authoredFootnoteCount } from '../../frame';
 import { stepDownFont } from '../../label/rowFit';
 import { planCategoryRow, rotatedLeftOverhang } from '../../label/categoryRow';
@@ -465,12 +466,14 @@ function valueAxisTicks(env: LineEnv, domain: LineDomain, frame: FrameResult) {
   // Where not every point prints its value, a value scale
   // reads the rest, unless the author turns it off.
   const axisShown = bumpDerived ? true : va.show ?? domain.labelModes.values !== 'all';
+  // Percent cells print '%' on the ticks as on the point labels (fmtPercent).
+  const percentAxis = !bumpDerived && variant !== 'stacked100-area' && !domain.rebased && percentCellsOnly(domain.dataSeries);
   const axisFmt = bumpDerived
     ? (v: number): string => String(Math.round(v))
     : variant === 'stacked100-area'
       ? (v: number) => formatAutomaticPercent(v, 0, false, options.locale?.language)
-      : domain.fmt;
-  const axisTickSpec = bumpDerived || variant === 'stacked100-area' ? undefined : domain.valueSpec.spec;
+      : percentAxis ? domain.valueSpec.fmtPercent : domain.fmt;
+  const axisTickSpec = bumpDerived || variant === 'stacked100-area' ? undefined : percentAxis ? domain.valueSpec.percentSpec : domain.valueSpec.spec;
   let bumpTicks: number[] | undefined;
   if (bumpDerived) {
     const max = domain.bumpLadderMax;

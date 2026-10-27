@@ -185,7 +185,8 @@ export function mekkoPlotArea(env: MekkoEnv, domain: MekkoDomain, frame: FrameRe
   const hasCagr = (options.annotations ?? []).some((a) => a.kind === 'cagr');
   const catsOnTop = mode === 'percent';
   const showCats = kindSetting(env, 'category') !== false;
-  const showTotals = kindSetting(env, 'total') !== false;
+  // Shares of an unknown whole print no total, so a chart of only those keeps no totals row.
+  const showTotals = kindSetting(env, 'total') !== false && domain.cats.some((c) => !domain.wholeUnknown.has(c.id));
   const axisFmt = mode === 'percent' ? (v: number) => formatAutomaticPercent(v, 0, false, options.locale?.language) : env.fmt;
   // A percent or unit mekko on a small canvas prints every value on its
   // segment (and a unit stack its total above it), so the value axis repeats

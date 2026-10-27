@@ -166,6 +166,35 @@ describe('rows mappings', () => {
     }
   });
 
+  // A bar table from rows was refused at /data/panels, because the rows filled series values and a bar table reads its values from panels.
+  it('bartable rows fill one panel keyed by segment, and a refused value points at its row', () => {
+    const template = { type: 'bartable', data: { panels: [{ id: 'impact', label: 'Impact', ends: [{ low: 1, high: 2 }], values: {} }], columns: [{ id: 'n', values: [3] }] } };
+    const rows = [{ c: 'A', s: 'run', v: 10 }, { c: 'A', s: 'grow', v: 5 }, { c: 'B', s: 'run', v: 7 }];
+    const { spec } = specFromRows(template, { rows, columns: { category: 'c', series: 's', value: 'v', valueKind: 'percent' } });
+    expect(spec.data).toEqual({
+      categories: [{ id: 'A' }, { id: 'B' }],
+      series: [{ id: 'run' }, { id: 'grow' }],
+      panels: [{ id: 'impact', label: 'Impact', unit: '%', values: { run: [10, 7], grow: [5, null] } }],
+    });
+    expect(render({ spec, return: ['svg'] }).body.ok).toBe(true);
+    const refused = JSON.parse(callTool('boardplot_render', { spec: { type: 'bartable' }, rows: [...rows, { c: 'C', s: 'run', v: -1 }], columns: { category: 'c', series: 's', value: 'v' } }).text);
+    expect(refused.errors).toContainEqual(expect.objectContaining({ code: 'invalid-data', path: '/rows/3/v' }));
+  });
+
+  // One bar table panel adds its segments, so USD beside EUR, shares beside amounts, or a cell format were summed or lost without a word.
+  it('bartable rows refuse two units, mixed percent and number values, and cell metadata at their row', () => {
+    const refusal = (rows: Record<string, unknown>[], columns: Record<string, string>) => {
+      try { specFromRows({ type: 'bartable' }, { rows, columns: { category: 'c', series: 's', value: 'v', ...columns } }); } catch (error) {
+        return { code: (error as InputError).code, path: (error as InputError).details.path };
+      }
+      return undefined;
+    };
+    expect(refusal([{ c: 'A', s: 'us', v: 10, u: 'USD' }, { c: 'A', s: 'eu', v: 5, u: 'EUR' }], { unit: 'u' })).toEqual({ code: 'invalid-value', path: '/rows/1/u' });
+    expect(refusal([{ c: 'A', s: 'run', v: 10 }, { c: 'B', s: 'run', v: { pct: 5 } }], {})).toEqual({ code: 'invalid-value', path: '/rows/1/v' });
+    expect(refusal([{ c: 'A', s: 'run', v: 10 }, { c: 'B', s: 'run', v: { number: 10, format: '0.0' } }], {})).toEqual({ code: 'invalid-value', path: '/rows/1/v' });
+    expect(refusal([{ c: 'A', s: 'us', v: 10, u: 'USD' }, { c: 'A', s: 'eu', v: 5, u: 'USD' }], { unit: 'u' })).toBeUndefined();
+  });
+
   /** Rows as a CSV file with the given separator; null and an absent field become an empty field. */
   const rowsCsv = (rows: Record<string, unknown>[], separator: ',' | ';') => {
     const header = [...new Set(rows.flatMap(row => Object.keys(row)))];

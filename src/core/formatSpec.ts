@@ -1198,6 +1198,8 @@ export function seriesRasterFormatter(
   fmtSigned: (value: number) => string;
   /** An authored percent cell ({ pct }): the exhibit raster with '%', unless an example sets the style. */
   fmtPercent: (value: number) => string;
+  /** The spec fmtPercent prints with, for a value axis whose ticks print what the percent cells print. */
+  percentSpec: NumberFormatSpec;
   /** `values` gives the series' numbers where it is not a normalized series (`vals` or `cells`). */
   forSeries: (series: { format?: string; unit?: string; values?: readonly unknown[] }, cellFormat?: string) => (value: number) => string;
   /** True when the value prints as zero at its formatter's precision before the nonzero lift. */
@@ -1304,7 +1306,7 @@ export function seriesRasterFormatter(
     }
     return roundsToZero(value / MAGNITUDE_DIVISOR[spec.magnitude], ownPrecision(series, spec).decimals);
   };
-  return { spec, fmt, fmtSigned, fmtPercent, forSeries, roundsToZeroAt };
+  return { spec, fmt, fmtSigned, fmtPercent, percentSpec: example ? spec : percentSpec, forSeries, roundsToZeroAt };
 }
 
 /**

@@ -10,13 +10,35 @@
 import { chartString } from '../../strings/funnel';
 import { warnMissingValue } from '../../dataGaps';
 import { normalizeSeriesValues } from '../../normalize/shared';
-import { cellValue, type Id } from '../../types/cell';
+import { cellMeta, cellValue, isPctCell, type Cell, type Id } from '../../types/cell';
 import type { Category, Series } from '../../types/data';
 import type { LintWarning } from '../../types/scene';
 import type { Theme } from '../../types/theme';
 import type { FunnelDerived } from './layout';
 import { disclosureNote } from '../../notes';
 import { emptyIdRecord } from '../../idRecords';
+
+type Raster = { fmt: (v: number) => string; fmtPercent: (v: number) => string; forSeries: (series: { format?: string; unit?: string }, cellFormat?: string) => (v: number) => string };
+
+/**
+ * The value and total texts of the rows and the centered layout. A percent
+ * cell keeps its '%', as on column; an example on the cell or series
+ * keeps winning. Stages of percent cells only total in percent too.
+ */
+export function funnelValueFormats(plotted: readonly Series[], cells: readonly (readonly Cell[])[], formats: readonly Raster[], totalRaster: Raster): {
+  valueText: (si: number, ci: number, value: number) => string;
+  totalFmt: (value: number) => string;
+} {
+  const percentOnly = cells.every((row, si) => !plotted[si]!.format && row.every((cell) => cell === null || (isPctCell(cell) && !cell.format)))
+    && cells.some((row) => row.some((cell) => cell !== null));
+  return {
+    valueText: (si, ci, value) => {
+      const cell = cells[si]![ci]!;
+      return (isPctCell(cell) && !cell.format && !plotted[si]!.format ? formats[ci]!.fmtPercent : formats[ci]!.forSeries(plotted[si]!, cellMeta(cell)?.format))(value);
+    },
+    totalFmt: percentOnly ? totalRaster.fmtPercent : totalRaster.fmt,
+  };
+}
 
 interface FunnelNumbers extends Pick<FunnelDerived, 'stageTotals' | 'conversions' | 'worstDrop'> {
   /** values[si][ci]; null where the author left the cell empty. */

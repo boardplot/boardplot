@@ -19,7 +19,7 @@ import { rowLabelBand } from '../../label/rowLabels';
 import { fittedLabel, gutterBudget, stepDownFont } from '../../label/rowFit';
 import { namedLineText } from '../../annotateParts';
 import type { AnchorResolution } from '../../annotate';
-import { percentLevels, runAnnotatePass } from '../../annotatePass';
+import { percentCellsOnly, percentLevels, runAnnotatePass } from '../../annotatePass';
 import { applyValueAxisTitleInk, layoutValueAxis, planValueAxisTitle, valueAxisTitleRequest } from '../../axis';
 import { arrowHeadPath, arrowShaftEnd } from '../../svgPath';
 import { formatterFromExample, neededDecimals, seriesRasterFormatter } from '../../formatSpec';
@@ -261,6 +261,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     ), options.locale?.language, options.unit, options.target);
   const fmt = valueSpec.fmt;
   const percent = options.unit === '%' || percentLevels(dataSeries.map(series => ({ vals: series.cells })));
+  const percentAxis = percentCellsOnly(dataSeries.map((series) => ({ vals: series.cells.map((cell) => ({ ...cell, format: cell.meta?.format })), format: series.format })));
   const referenceFmt = percent && !options.format
     ? (v: number) => formatAutomaticNumber(v, { locale: options.locale?.language, decimals: Math.max(autoDecimals(v), neededDecimals(v)), suffix: '%' }) : fmt;
   if (variant === 'dumbbell' && dataSeries.length !== 2) {
@@ -415,17 +416,20 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   const strongFont: FontSpec = { family: theme.type.family, ...theme.type.label, weight: emphasisWeight(theme) };
 
   // ---- label texts + which side each dot labels (measured BEFORE the scale) ----
-  const textFor = (v: number, meta: CellMeta | null, s?: NormSeries): string | null => {
+  const textFor = (v: number, cell: { meta: CellMeta | null; isPct?: boolean }, s?: NormSeries): string | null => {
+    const { meta } = cell;
     if (meta?.label === false) return null;
-    const base = displayFor(v, meta, s);
+    const base = displayFor(v, cell, s);
     return typeof meta?.label === 'string' ? meta.label.replace(/\$\{value\}/g, base) : base;
   };
   // The dots of a row compare across series ("40 unchanged", "48 to 45"): every series keeps the shared precision,
   // and a series format or unit still applies (forSeries on its format and unit alone).
   const seriesKeys = new Map<NormSeries, { format?: string; unit?: string }>();
   const seriesKey = (s: NormSeries) => seriesKeys.get(s) ?? seriesKeys.set(s, { format: s.format, unit: s.unit }).get(s)!;
-  const displayFor = (v: number, meta: CellMeta | null, s?: NormSeries): string =>
-    meta?.format ? formatterFromExample(meta.format, options.locale?.language)(v) : (s ? valueSpec.forSeries(seriesKey(s)) : fmt)(v);
+  // A percent cell keeps its '%', as on column.
+  const displayFor = (v: number, cell: { meta: CellMeta | null; isPct?: boolean }, s?: NormSeries): string =>
+    cell.meta?.format ? formatterFromExample(cell.meta.format, options.locale?.language)(v)
+      : (cell.isPct && !s?.format ? valueSpec.fmtPercent : s ? valueSpec.forSeries(seriesKey(s)) : fmt)(v);
   /** Primary label side for a dot ('right' unless dumbbell-min / negative lollipop). */
   const primarySide = (si: number, ci: number, v: number): 'left' | 'right' => {
     // A row of two dots labels its left dot left and its right dot
@@ -462,7 +466,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
         if (cell.v === null) return;
         // A dot inside its range labels above it, inside the rail's span; the bounds reserve the edges.
         if (cell.range && cell.v >= cell.range.low && cell.v <= cell.range.high) return;
-        const text = textFor(cell.v, cell.meta, s);
+        const text = textFor(cell.v, cell, s);
         if (!text) return;
         const w = measure(text, pointFont(cell, si)).width;
         if (primarySide(si, ci, cell.v) === 'right') maxRightW = Math.max(maxRightW, w);
@@ -510,7 +514,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   // A lollipop whose every dot prints its value needs no value axis: the
   // stems start at the zero baseline. A dropped value brings the axis back (below), and an authored show stands.
   const autoAxis = variant === 'lollipop' && options.valueAxis?.show === undefined && labelOn('point')
-    && dataSeries.every((s) => s.cells.every((cell) => cell.v === null || textFor(cell.v, cell.meta, s) !== null));
+    && dataSeries.every((s) => s.cells.every((cell) => cell.v === null || textFor(cell.v, cell, s) !== null));
   const axisShown = autoAxis ? false : options.valueAxis?.show !== false;
   const axisTitle = axisShown && labelOn('axisTitle')
     ? planValueAxisTitle(options.axisTitles?.primary, theme, measure, plot0.w)
@@ -660,8 +664,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
         plot,
         orient: 'x',
         gridlines: gridOn,
-        format: fmt,
-        formatSpec: valueSpec.spec,
+        ...(percentAxis ? { format: valueSpec.fmtPercent, formatSpec: valueSpec.percentSpec } : { format: fmt, formatSpec: valueSpec.spec }),
         theme,
         measure,
         canvasWidth: size.width,
@@ -782,8 +785,8 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
       const ca = sa.cells[ci]!;
       const cb = sb.cells[ci]!;
       if (ca.v !== null && cb.v !== null && Math.abs(x(ca.v) - x(cb.v)) < 2 * r + 2) {
-        const ta = textFor(ca.v, ca.meta, sa);
-        const tb = textFor(cb.v, cb.meta, sb);
+        const ta = textFor(ca.v, ca, sa);
+        const tb = textFor(cb.v, cb, sb);
         // Two values label the outer ends of their pair, as every other row
         // does; only an unchanged pair prints one label.
         if (ta && tb && ta === tb) {
@@ -988,7 +991,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
         strokeWidth: hollow ? strokeToken(theme, 'mark') : strokeToken(theme, 'rule'),
         owner,
         part: 'dot',
-        display: { value: displayFor(v, cell.meta, s) },
+        display: { value: displayFor(v, cell, s) },
       });
       occupied.claim({ x: cx - r, y: cy - r, w: 2 * r, h: 2 * r }, 'mark', owner);
       row.dots.push({ seriesId: s.id, cx, cy, nodeId });
@@ -1003,7 +1006,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
       });
 
       if (labelOn('point') && !mergedLabel) {
-        const text = textFor(v, cell.meta, s);
+        const text = textFor(v, cell, s);
         if (text) {
           const font = pointFont(cell, si);
           if (font === strongFont) boldLabelIds.add(`point:${s.id}:${cat.id}`);
@@ -1293,7 +1296,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
           const range = s.cells[ci]!.range;
           // Each value reads as its label prints it: cell or series format and an authored label.
           const cell = s.cells[ci]!;
-          const text = textFor(v, cell.meta, s) ?? displayFor(v, cell.meta, s);
+          const text = textFor(v, cell, s) ?? displayFor(v, cell, s);
           const value = dataSeries.length > 1 ? `${s.label} ${text}` : text;
           return range
             ? chartString(options, 'dotRangeDesc', { v1: value, v2: fmt(range.low), v3: fmt(range.high), v4: range.mid === undefined ? '' : chartString(options, 'midpointClause', { v1: fmt(range.mid) }) })

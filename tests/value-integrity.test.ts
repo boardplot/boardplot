@@ -186,6 +186,54 @@ describe('value integrity on the chart', () => {
     const geometry = definition.layout(definition.normalize!(data), options as never) as { frame?: { noteList?: { text: string; ref?: number }[] } };
     expect(geometry.frame?.noteList?.filter((note) => note.ref !== undefined) ?? []).toEqual([]);
   });
+
+  // Percent cells printed "70" on bar, dot and funnel and bare ticks on a line axis, so a share read as a count.
+  it('percent cells keep their percent sign on value labels and value axis ticks', () => {
+    const data = { categories: [{ id: 'B' }, { id: 'A' }], series: [{ id: 'v', values: [{ pct: 30 }, { pct: 70 }] }] };
+    for (const type of ['bar', 'dot', 'funnel', 'line']) expect(texts(type, data, {}), type).toContain('70%');
+    expect(texts('line', data, {})).toContain('50%');
+    expect(texts('bar', data, { format: '0.0' })).toContain('70.0');
+  });
+
+  // A percent mekko of authored shares printed a total of 0 over each column, since shares alone carry no amount.
+  it('mekko shares without an amount print no column total', () => {
+    const data = { categories: [{ id: 'B' }, { id: 'A' }], series: [{ id: 'v', values: [{ pct: 30 }, { pct: 70 }] }, { id: 'w', values: [{ pct: 70 }, { pct: 30 }] }] };
+    const printed = texts('mekko', data, {});
+    expect(printed).toContain('70%');
+    expect(printed).not.toContain('0');
+  });
+
+  // A centered funnel and a bar Rest built from percent cells still printed bare numbers ("70", "30") after the main paths kept their '%'.
+  it('a centered funnel and a bar Rest of percent cells keep their percent sign', () => {
+    const data = { categories: [{ id: 'B' }, { id: 'A' }], series: [{ id: 'v', values: [{ pct: 30 }, { pct: 70 }] }] };
+    expect(texts('funnel', data, { variant: 'centered' })).toContain('70%');
+    const three = { categories: [{ id: 'a' }, { id: 'b' }, { id: 'c' }], series: [{ id: 'v', values: [{ pct: 70 }, { pct: 20 }, { pct: 10 }] }] };
+    expect(texts('bar', three, { topN: { n: 1 } })).toContain('30%');
+  });
+
+  // The described totals of a mekko with an n/a column still read "0" for a column of shares with no amount.
+  it('a mekko description names no total for shares of an unknown whole', () => {
+    const data = { categories: [{ id: 'A' }, { id: 'Z' }], series: [{ id: 'v', values: [{ pct: 70 }, 0] }, { id: 'w', values: [{ pct: 30 }, 0] }] };
+    const svg = renderGolden(getChart('mekko')! as never, { id: 'probe', data, options: {} } as Fixture, 'authored').output;
+    const desc = /<desc[^>]*>([\s\S]*?)<\/desc>/.exec(svg)![1]!;
+    expect(desc).toContain('Suppressed: Z (n/a)');
+    expect(desc).not.toContain('A 0');
+  });
+
+  // The value axis ticks of column, bar and dot charts of percent cells read as counts, with no '%'.
+  it('a value axis of percent cells prints percent ticks; an authored format keeps winning', () => {
+    const ticks = (type: string, values: unknown[], options: Record<string, unknown>): string[] => {
+      const svg = renderGolden(getChart(type)! as never, { id: 'probe', data: { categories: [{ id: 'B' }, { id: 'A' }], series: [{ id: 'v', values }] }, options: { valueAxis: { show: true }, ...options } } as Fixture, 'authored').output;
+      return [...svg.matchAll(/<text[^>]*data-id="axis:[xy]:tick:[^"]*"[^>]*>([\s\S]*?)<\/text>/g)].map((m) => m[1]!.replace(/<[^>]+>/g, ''));
+    };
+    const pct = [{ pct: 30 }, { pct: 70 }];
+    expect(ticks('column', pct, {})).toContain('20%');
+    expect(ticks('bar', pct, {})).toContain('20%');
+    expect(ticks('dot', pct, {})).toContain('40%');
+    expect(ticks('dot', [{ pct: 1.5 }, { pct: 2.5 }], { locale: { decimal: ',', thousands: '.' } })).toContain('1,6%');
+    expect(ticks('column', pct, { format: '0.0' })).toEqual(['0', '20', '40', '60', '80']);
+    expect(ticks('column', [30, 70], {})).toEqual(['0', '20', '40', '60', '80']);
+  });
 });
 
 // An inside actual label wider than its variance column read across the neighbouring columns.

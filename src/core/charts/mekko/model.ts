@@ -77,6 +77,8 @@ export interface MekkoDomain {
   na: Set<Id>;
   /** Columns with a missing part: no total, no shares of the known parts. */
   incomplete: Set<Id>;
+  /** Percent columns of authored shares with no amount (no total100, no number cell): no total prints. */
+  wholeUnknown: Set<Id>;
   /** Per category, series indices top to bottom. */
   order: number[][];
   columnTotals: Record<Id, number>;
