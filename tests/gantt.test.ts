@@ -280,7 +280,7 @@ it('gantt draws a long arrow name across two event rules, and no rule piece runs
 // A wrapped two-line name plus a sublabel is taller than the common row pitch: the row must grow, not hide the sublabel.
 it('gantt grows a table row whose wrapped name and sublabel need more than the row pitch', () => {
   const fixture = getFixtures('gantt').find(f => f.id === 'status-gantt')!;
-  const data = { ...fixture.data, rows: fixture.data.rows.map(row => ({ ...row, sublabel: 'PMO' })) } as typeof fixture.data;
+  const data = { ...(fixture.data as object), rows: (fixture.data as { rows: object[] }).rows.map((row) => ({ ...row, sublabel: 'PMO' })) };
   const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'gantt', data, options: { ...fixture.options, size: { width: 480 } }, annotations: fixture.annotations }));
   if (geometry.refused) throw new Error('gantt refused');
   const wrapped = geometry.labels.find(label => label.id === 'activity:interview-prep')!;
