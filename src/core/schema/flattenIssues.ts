@@ -26,10 +26,11 @@ import * as z from 'zod';
  * and the wrapper's own issues are kept. A branch whose only failure is an
  * extra key matched best of all and is reported first.
  *
- * A branch that failed on its own literal tag (a gantt row without
+ * A branch that failed on its own literal string tag (a gantt row without
  * `kind: 'cadence'`) is not the branch the author meant when another branch
- * passed its tag and failed on a named field, so its issues are dropped. Identical issues (same path and
- * message), as branches that share fields report them, are listed once.
+ * has no issue at that tag and failed on a present named field, so its issues
+ * are dropped. Identical issues (same path and message), as branches that
+ * share fields report them, are listed once.
  */
 export function flattenIssues(issues: readonly z.core.$ZodIssue[]): z.core.$ZodIssue[] {
   const seen = new Set<string>();
@@ -52,8 +53,10 @@ function flattenUnions(issues: readonly z.core.$ZodIssue[]): z.core.$ZodIssue[] 
       continue;
     }
     const branches = issue.code === 'invalid_union' ? issue.errors : [];
-    // Only a branch that passed its tag and failed on a named field outranks a tagged one.
-    const untagged = branches.filter((branch) => !branch.some(tagIssue) && branch.some((inner) => inner.path.length > 0));
+    // Only a branch that passed the failed tags and failed on a present named field outranks a tagged one.
+    const tags = new Set(branches.flat().filter(tagIssue).map((inner) => inner.path[0]));
+    const untagged = branches.filter((branch) => !branch.some((inner) => tags.has(inner.path[0]!))
+      && branch.some((inner) => inner.path.length > 0 && !missingIssue(inner)));
     const nested = flattenUnions((untagged.length > 0 ? untagged : branches).flat());
     const withPath = nested.filter((inner) => inner.path.length > 0);
     const specific = (withPath.length > 0 ? withPath : nested.filter((inner) => inner.code === 'unrecognized_keys'))
@@ -73,7 +76,7 @@ function flattenUnions(issues: readonly z.core.$ZodIssue[]): z.core.$ZodIssue[] 
 
 /** A branch's own literal tag failed: `kind` expected exactly 'cadence'. */
 function tagIssue(issue: z.core.$ZodIssue): boolean {
-  return issue.code === 'invalid_value' && issue.path.length === 1 && issue.values.length === 1;
+  return issue.code === 'invalid_value' && issue.path.length === 1 && issue.values.length === 1 && typeof issue.values[0] === 'string';
 }
 
 function missingIssue(issue: z.core.$ZodIssue): boolean {

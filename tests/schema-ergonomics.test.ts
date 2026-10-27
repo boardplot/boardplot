@@ -16,6 +16,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import type * as z from 'zod';
 import '../src/core/charts';
 import { parseDocumentInput } from '../src/core/doc/document';
 import { NormalizeError } from '../src/core/normalize/shared';
@@ -25,6 +26,7 @@ import { adaptNamedColumns } from '../src/core/schema/namedColumns';
 import { unitConflict } from '../src/core/schema/units';
 import { flattenIssues } from '../src/core/schema/flattenIssues';
 import { ganttDataSchema } from '../src/core/charts/gantt/schema';
+import { getChartSchemas } from '../src/core/registry';
 
 function acceptance(input: unknown): boolean {
   try {
@@ -136,5 +138,12 @@ describe('tagged union issues', () => {
       items: [{ id: 'x', kind: 'barr', start: '2026-03-02' }] }] });
     expect(result.success).toBe(false);
     expect(flattenIssues(result.error!.issues).map((issue) => issue.path.join('.'))).toEqual(['rows.0.items.0.kind']);
+  });
+
+  // A branch that only misses a field (combo's ruler axis without `ruler`) must not outrank the meant shape.
+  it('keeps the real errors of the meant branch when the other branch only misses a field', () => {
+    const result = (getChartSchemas('combo')!.optionsSchema as z.ZodType).safeParse({ secondaryAxis: { acknowledge: false, domain: ['oops', 10] } });
+    expect(flattenIssues(result.error!.issues).map((issue) => issue.path.join('.')))
+      .toEqual(['secondaryAxis.acknowledge', 'secondaryAxis.domain.0']);
   });
 });
