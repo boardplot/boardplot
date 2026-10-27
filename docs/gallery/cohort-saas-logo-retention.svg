@@ -1,0 +1,332 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 580" width="720" height="580" direction="ltr" style="max-width:100%;height:auto;text-transform:none;letter-spacing:normal;word-spacing:normal;font-style:normal;font-variant:normal" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Newer cohorts retain better: month-3 logo retention improved from 50% to 64% through 2025" aria-describedby="bp-desc-b886d1e090" data-bp-sizing="{&quot;aspect&quot;:&quot;content&quot;,&quot;minWidth&quot;:280,&quot;minHeight&quot;:515,&quot;fit&quot;:&quot;content&quot;,&quot;compactFloor&quot;:{&quot;width&quot;:280,&quot;height&quot;:28},&quot;measuredMinWidth&quot;:261,&quot;measuredMinHeight&quot;:515,&quot;naturalWidth&quot;:660,&quot;naturalHeight&quot;:541,&quot;comfortableWidth&quot;:350,&quot;comfortableHeight&quot;:644}" data-bp-mode="full" font-family="'Helvetica Neue', Helvetica, Arial, Roboto, sans-serif">
+<desc id="bp-desc-b886d1e090">Cohort retention triangle, 12 cohorts by 12 periods since start. Retention = active / cohort base (period 0). Period 0 is 100% by construction. The oldest cohort reaches 21.3% at M11; the newest reaches 100% at M0. 66 cells are blank because those cohorts have not reached that period. Bases: 1200 for the oldest cohort, 1900 for the newest.</desc>
+<rect x="0" y="0" width="720" height="580" fill="#FFFFFF"/>
+<text data-id="frame:title:0" data-part="title" data-bp-role="title" x="24" y="37.60" text-anchor="start" font-size="20" font-weight="700" fill="#0D2A43"><tspan x="24" dy="0">Newer cohorts retain better: month-3 logo retention</tspan><tspan x="24" dy="25">improved from 50% to 64% through 2025</tspan></text>
+<text data-id="frame:subtitle:1" data-part="subtitle" data-bp-role="subtitle" x="24" y="86.32" text-anchor="start" font-size="14" font-weight="400" fill="#0D2A43"><tspan>Nurthwold Cloud · </tspan><tspan font-weight="700">Paying accounts still active</tspan><tspan> in % of cohort base · Cohorts Jan-Dec 2025</tspan></text>
+<text data-id="frame:source:2" data-part="source" data-bp-role="source" x="24" y="565.38" text-anchor="start" font-size="11" font-weight="400" fill="#4E6070"><tspan x="24" dy="0">Source: Illustrative subscription ledger, monthly logo snapshots</tspan></text>
+<rect data-id="frame:swatch:3" data-part="swatch" x="24" y="102.26" width="12" height="12" fill="#ffffff" stroke="#5E6C7B" stroke-width="1.5"/>
+<text data-id="frame:legendLabel:4" data-part="legendLabel" data-bp-role="category" x="41" y="112.56" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="41" dy="0">0%</tspan></text>
+<rect data-id="frame:swatch:5" data-part="swatch" x="73" y="102.26" width="12" height="12" fill="#c4ced7"/>
+<text data-id="frame:legendLabel:6" data-part="legendLabel" data-bp-role="category" x="90" y="112.56" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="90" dy="0">25%</tspan></text>
+<rect data-id="frame:swatch:7" data-part="swatch" x="128.50" y="102.26" width="12" height="12" fill="#899caf"/>
+<text data-id="frame:legendLabel:8" data-part="legendLabel" data-bp-role="category" x="145.50" y="112.56" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="145.50" dy="0">50%</tspan></text>
+<rect data-id="frame:swatch:9" data-part="swatch" x="184" y="102.26" width="12" height="12" fill="#4d6b86"/>
+<text data-id="frame:legendLabel:10" data-part="legendLabel" data-bp-role="category" x="201" y="112.56" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="201" dy="0">75%</tspan></text>
+<rect data-id="frame:swatch:11" data-part="swatch" x="239.50" y="102.26" width="12" height="12" fill="#12395E"/>
+<text data-id="frame:legendLabel:12" data-part="legendLabel" data-bp-role="category" x="256.50" y="112.56" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="256.50" dy="0">100%</tspan></text>
+<rect data-id="frame:swatch:13" data-part="swatch" x="302" y="102.26" width="12" height="12" fill="#e8eaed"/>
+<text data-id="frame:legendLabel:14" data-part="legendLabel" data-bp-role="category" x="319" y="112.56" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="319" dy="0">M0 base</tspan></text>
+<rect data-id="cell:c01:t0" data-part="cell" x="158" y="145.80" width="43" height="31.33" fill="#e8eaed"/>
+<rect data-id="cell:c01:t1" data-part="cell" x="203" y="145.80" width="43" height="31.33" fill="#6b849b"/>
+<rect data-id="cell:c01:t2" data-part="cell" x="248" y="145.80" width="43" height="31.33" fill="#7c91a6"/>
+<rect data-id="cell:c01:t3" data-part="cell" x="293" y="145.80" width="43" height="31.33" fill="#899caf"/>
+<rect data-id="cell:c01:t4" data-part="cell" x="338" y="145.80" width="43" height="31.33" fill="#95a6b7"/>
+<rect data-id="cell:c01:t5" data-part="cell" x="383" y="145.80" width="43" height="31.33" fill="#a1b0bf"/>
+<rect data-id="cell:c01:t6" data-part="cell" x="428" y="145.80" width="43" height="31.33" fill="#a9b7c4"/>
+<rect data-id="cell:c01:t7" data-part="cell" x="473" y="145.80" width="43" height="31.33" fill="#b2bfcb"/>
+<rect data-id="cell:c01:t8" data-part="cell" x="518" y="145.80" width="43" height="31.33" fill="#b9c4cf"/>
+<rect data-id="cell:c01:t9" data-part="cell" x="563" y="145.80" width="43" height="31.33" fill="#c1cbd5"/>
+<rect data-id="cell:c01:t10" data-part="cell" x="608" y="145.80" width="43" height="31.33" fill="#c8d1da"/>
+<rect data-id="cell:c01:t11" data-part="cell" x="653" y="145.80" width="43" height="31.33" fill="#cdd5dd"/>
+<rect data-id="cell:c02:t0" data-part="cell" x="158" y="179.13" width="43" height="31.33" fill="#e8eaed"/>
+<rect data-id="cell:c02:t1" data-part="cell" x="203" y="179.13" width="43" height="31.33" fill="#688199"/>
+<rect data-id="cell:c02:t2" data-part="cell" x="248" y="179.13" width="43" height="31.33" fill="#778da2"/>
+<rect data-id="cell:c02:t3" data-part="cell" x="293" y="179.13" width="43" height="31.33" fill="#879aad"/>
+<rect data-id="cell:c02:t4" data-part="cell" x="338" y="179.13" width="43" height="31.33" fill="#93a5b6"/>
+<rect data-id="cell:c02:t5" data-part="cell" x="383" y="179.13" width="43" height="31.33" fill="#a0b0bf"/>
+<rect data-id="cell:c02:t6" data-part="cell" x="428" y="179.13" width="43" height="31.33" fill="#acbac7"/>
+<rect data-id="cell:c02:t7" data-part="cell" x="473" y="179.13" width="43" height="31.33" fill="#b4c0cc"/>
+<rect data-id="cell:c02:t8" data-part="cell" x="518" y="179.13" width="43" height="31.33" fill="#bdc8d2"/>
+<rect data-id="cell:c02:t9" data-part="cell" x="563" y="179.13" width="43" height="31.33" fill="#c4cdd7"/>
+<rect data-id="cell:c02:t10" data-part="cell" x="608" y="179.13" width="43" height="31.33" fill="#cbd3dc"/>
+<rect data-id="cell:c02:t11" data-part="cell" x="653" y="179.13" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c03:t0" data-part="cell" x="158" y="212.45" width="43" height="31.33" fill="#e8eaed"/>
+<rect data-id="cell:c03:t1" data-part="cell" x="203" y="212.45" width="43" height="31.33" fill="#688198"/>
+<rect data-id="cell:c03:t2" data-part="cell" x="248" y="212.45" width="43" height="31.33" fill="#758ca1"/>
+<rect data-id="cell:c03:t3" data-part="cell" x="293" y="212.45" width="43" height="31.33" fill="#7d93a7"/>
+<rect data-id="cell:c03:t4" data-part="cell" x="338" y="212.45" width="43" height="31.33" fill="#889bae"/>
+<rect data-id="cell:c03:t5" data-part="cell" x="383" y="212.45" width="43" height="31.33" fill="#8ea1b2"/>
+<rect data-id="cell:c03:t6" data-part="cell" x="428" y="212.45" width="43" height="31.33" fill="#98a9b9"/>
+<rect data-id="cell:c03:t7" data-part="cell" x="473" y="212.45" width="43" height="31.33" fill="#a1b0bf"/>
+<rect data-id="cell:c03:t8" data-part="cell" x="518" y="212.45" width="43" height="31.33" fill="#a6b5c2"/>
+<rect data-id="cell:c03:t9" data-part="cell" x="563" y="212.45" width="43" height="31.33" fill="#adbbc8"/>
+<rect data-id="cell:c03:t10" data-part="cell" x="608" y="212.45" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c03:t11" data-part="cell" x="653" y="212.45" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c04:t0" data-part="cell" x="158" y="245.78" width="43" height="31.33" fill="#e8eaed"/>
+<rect data-id="cell:c04:t1" data-part="cell" x="203" y="245.78" width="43" height="31.33" fill="#5e7891"/>
+<rect data-id="cell:c04:t2" data-part="cell" x="248" y="245.78" width="43" height="31.33" fill="#6f879d"/>
+<rect data-id="cell:c04:t3" data-part="cell" x="293" y="245.78" width="43" height="31.33" fill="#7d93a7"/>
+<rect data-id="cell:c04:t4" data-part="cell" x="338" y="245.78" width="43" height="31.33" fill="#8a9daf"/>
+<rect data-id="cell:c04:t5" data-part="cell" x="383" y="245.78" width="43" height="31.33" fill="#96a8b8"/>
+<rect data-id="cell:c04:t6" data-part="cell" x="428" y="245.78" width="43" height="31.33" fill="#9fafbe"/>
+<rect data-id="cell:c04:t7" data-part="cell" x="473" y="245.78" width="43" height="31.33" fill="#aab8c5"/>
+<rect data-id="cell:c04:t8" data-part="cell" x="518" y="245.78" width="43" height="31.33" fill="#b3bfcb"/>
+<rect data-id="cell:c04:t9" data-part="cell" x="563" y="245.78" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c04:t10" data-part="cell" x="608" y="245.78" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c04:t11" data-part="cell" x="653" y="245.78" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c05:t0" data-part="cell" x="158" y="279.10" width="43" height="31.33" fill="#e8eaed"/>
+<rect data-id="cell:c05:t1" data-part="cell" x="203" y="279.10" width="43" height="31.33" fill="#627c95"/>
+<rect data-id="cell:c05:t2" data-part="cell" x="248" y="279.10" width="43" height="31.33" fill="#6a829a"/>
+<rect data-id="cell:c05:t3" data-part="cell" x="293" y="279.10" width="43" height="31.33" fill="#758ca2"/>
+<rect data-id="cell:c05:t4" data-part="cell" x="338" y="279.10" width="43" height="31.33" fill="#8095a9"/>
+<rect data-id="cell:c05:t5" data-part="cell" x="383" y="279.10" width="43" height="31.33" fill="#869aad"/>
+<rect data-id="cell:c05:t6" data-part="cell" x="428" y="279.10" width="43" height="31.33" fill="#8fa2b3"/>
+<rect data-id="cell:c05:t7" data-part="cell" x="473" y="279.10" width="43" height="31.33" fill="#95a6b7"/>
+<rect data-id="cell:c05:t8" data-part="cell" x="518" y="279.10" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c05:t9" data-part="cell" x="563" y="279.10" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c05:t10" data-part="cell" x="608" y="279.10" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c05:t11" data-part="cell" x="653" y="279.10" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c06:t0" data-part="cell" x="158" y="312.43" width="43" height="31.33" fill="#e8eaed"/>
+<rect data-id="cell:c06:t1" data-part="cell" x="203" y="312.43" width="43" height="31.33" fill="#5a758f"/>
+<rect data-id="cell:c06:t2" data-part="cell" x="248" y="312.43" width="43" height="31.33" fill="#6a839a"/>
+<rect data-id="cell:c06:t3" data-part="cell" x="293" y="312.43" width="43" height="31.33" fill="#778da2"/>
+<rect data-id="cell:c06:t4" data-part="cell" x="338" y="312.43" width="43" height="31.33" fill="#8397ab"/>
+<rect data-id="cell:c06:t5" data-part="cell" x="383" y="312.43" width="43" height="31.33" fill="#8fa2b3"/>
+<rect data-id="cell:c06:t6" data-part="cell" x="428" y="312.43" width="43" height="31.33" fill="#98a9b9"/>
+<rect data-id="cell:c06:t7" data-part="cell" x="473" y="312.43" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c06:t8" data-part="cell" x="518" y="312.43" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c06:t9" data-part="cell" x="563" y="312.43" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c06:t10" data-part="cell" x="608" y="312.43" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c06:t11" data-part="cell" x="653" y="312.43" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c07:t0" data-part="cell" x="158" y="345.75" width="43" height="31.33" fill="#e8eaed"/>
+<rect data-id="cell:c07:t1" data-part="cell" x="203" y="345.75" width="43" height="31.33" fill="#5f7992"/>
+<rect data-id="cell:c07:t2" data-part="cell" x="248" y="345.75" width="43" height="31.33" fill="#657e96"/>
+<rect data-id="cell:c07:t3" data-part="cell" x="293" y="345.75" width="43" height="31.33" fill="#6e869c"/>
+<rect data-id="cell:c07:t4" data-part="cell" x="338" y="345.75" width="43" height="31.33" fill="#748ba0"/>
+<rect data-id="cell:c07:t5" data-part="cell" x="383" y="345.75" width="43" height="31.33" fill="#7d92a6"/>
+<rect data-id="cell:c07:t6" data-part="cell" x="428" y="345.75" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c07:t7" data-part="cell" x="473" y="345.75" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c07:t8" data-part="cell" x="518" y="345.75" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c07:t9" data-part="cell" x="563" y="345.75" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c07:t10" data-part="cell" x="608" y="345.75" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c07:t11" data-part="cell" x="653" y="345.75" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c08:t0" data-part="cell" x="158" y="379.08" width="43" height="31.33" fill="#e8eaed"/>
+<rect data-id="cell:c08:t1" data-part="cell" x="203" y="379.08" width="43" height="31.33" fill="#56728c"/>
+<rect data-id="cell:c08:t2" data-part="cell" x="248" y="379.08" width="43" height="31.33" fill="#627c95"/>
+<rect data-id="cell:c08:t3" data-part="cell" x="293" y="379.08" width="43" height="31.33" fill="#6b839a"/>
+<rect data-id="cell:c08:t4" data-part="cell" x="338" y="379.08" width="43" height="31.33" fill="#758ca1"/>
+<rect data-id="cell:c08:t5" data-part="cell" x="383" y="379.08" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c08:t6" data-part="cell" x="428" y="379.08" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c08:t7" data-part="cell" x="473" y="379.08" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c08:t8" data-part="cell" x="518" y="379.08" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c08:t9" data-part="cell" x="563" y="379.08" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c08:t10" data-part="cell" x="608" y="379.08" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c08:t11" data-part="cell" x="653" y="379.08" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c09:t0" data-part="cell" x="158" y="412.40" width="43" height="31.33" fill="#e8eaed"/>
+<rect data-id="cell:c09:t1" data-part="cell" x="203" y="412.40" width="43" height="31.33" fill="#526f8a"/>
+<rect data-id="cell:c09:t2" data-part="cell" x="248" y="412.40" width="43" height="31.33" fill="#5e7992"/>
+<rect data-id="cell:c09:t3" data-part="cell" x="293" y="412.40" width="43" height="31.33" fill="#678098"/>
+<rect data-id="cell:c09:t4" data-part="cell" x="338" y="412.40" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c09:t5" data-part="cell" x="383" y="412.40" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c09:t6" data-part="cell" x="428" y="412.40" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c09:t7" data-part="cell" x="473" y="412.40" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c09:t8" data-part="cell" x="518" y="412.40" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c09:t9" data-part="cell" x="563" y="412.40" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c09:t10" data-part="cell" x="608" y="412.40" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c09:t11" data-part="cell" x="653" y="412.40" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c10:t0" data-part="cell" x="158" y="445.73" width="43" height="31.33" fill="#e8eaed"/>
+<rect data-id="cell:c10:t1" data-part="cell" x="203" y="445.73" width="43" height="31.33" fill="#4f6c87"/>
+<rect data-id="cell:c10:t2" data-part="cell" x="248" y="445.73" width="43" height="31.33" fill="#58748e"/>
+<rect data-id="cell:c10:t3" data-part="cell" x="293" y="445.73" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c10:t4" data-part="cell" x="338" y="445.73" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c10:t5" data-part="cell" x="383" y="445.73" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c10:t6" data-part="cell" x="428" y="445.73" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c10:t7" data-part="cell" x="473" y="445.73" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c10:t8" data-part="cell" x="518" y="445.73" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c10:t9" data-part="cell" x="563" y="445.73" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c10:t10" data-part="cell" x="608" y="445.73" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c10:t11" data-part="cell" x="653" y="445.73" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c11:t0" data-part="cell" x="158" y="479.05" width="43" height="31.33" fill="#e8eaed"/>
+<rect data-id="cell:c11:t1" data-part="cell" x="203" y="479.05" width="43" height="31.33" fill="#4f6c87"/>
+<rect data-id="cell:c11:t2" data-part="cell" x="248" y="479.05" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c11:t3" data-part="cell" x="293" y="479.05" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c11:t4" data-part="cell" x="338" y="479.05" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c11:t5" data-part="cell" x="383" y="479.05" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c11:t6" data-part="cell" x="428" y="479.05" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c11:t7" data-part="cell" x="473" y="479.05" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c11:t8" data-part="cell" x="518" y="479.05" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c11:t9" data-part="cell" x="563" y="479.05" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c11:t10" data-part="cell" x="608" y="479.05" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c11:t11" data-part="cell" x="653" y="479.05" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c12:t0" data-part="cell" x="158" y="512.38" width="43" height="31.33" fill="#e8eaed"/>
+<rect data-id="cell:c12:t1" data-part="cell" x="203" y="512.38" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c12:t2" data-part="cell" x="248" y="512.38" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c12:t3" data-part="cell" x="293" y="512.38" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c12:t4" data-part="cell" x="338" y="512.38" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c12:t5" data-part="cell" x="383" y="512.38" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c12:t6" data-part="cell" x="428" y="512.38" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c12:t7" data-part="cell" x="473" y="512.38" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c12:t8" data-part="cell" x="518" y="512.38" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c12:t9" data-part="cell" x="563" y="512.38" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c12:t10" data-part="cell" x="608" y="512.38" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="cell:c12:t11" data-part="cell" x="653" y="512.38" width="43" height="31.33" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<path data-id="colTint:t3" data-part="colTint" d="M292.63 145.43H336.38V544.08H292.63Z" fill="none" stroke="#1D4ED8" stroke-width="0.75" stroke-linejoin="round"/>
+<text data-id="label:category:t3" data-part="category" data-bp-role="category" x="305.25" y="138.66" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="305.25" dy="0">M3</tspan></text>
+<text data-id="label:category:t0" data-part="category" data-bp-role="category" x="170.25" y="138.66" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="170.25" dy="0">M0</tspan></text>
+<text data-id="label:category:t1" data-part="category" data-bp-role="category" x="215.25" y="138.66" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="215.25" dy="0">M1</tspan></text>
+<text data-id="label:category:t10" data-part="category" data-bp-role="category" x="616.50" y="138.66" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="616.50" dy="0">M10</tspan></text>
+<text data-id="label:category:t11" data-part="category" data-bp-role="category" x="661.50" y="138.66" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="661.50" dy="0">M11</tspan></text>
+<text data-id="label:category:t2" data-part="category" data-bp-role="category" x="260.25" y="138.66" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="260.25" dy="0">M2</tspan></text>
+<text data-id="label:category:t4" data-part="category" data-bp-role="category" x="350.25" y="138.66" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="350.25" dy="0">M4</tspan></text>
+<text data-id="label:category:t5" data-part="category" data-bp-role="category" x="395.25" y="138.66" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="395.25" dy="0">M5</tspan></text>
+<text data-id="label:category:t6" data-part="category" data-bp-role="category" x="440.25" y="138.66" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="440.25" dy="0">M6</tspan></text>
+<text data-id="label:category:t7" data-part="category" data-bp-role="category" x="485.25" y="138.66" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="485.25" dy="0">M7</tspan></text>
+<text data-id="label:category:t8" data-part="category" data-bp-role="category" x="530.25" y="138.66" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="530.25" dy="0">M8</tspan></text>
+<text data-id="label:category:t9" data-part="category" data-bp-role="category" x="575.25" y="138.66" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="575.25" dy="0">M9</tspan></text>
+<text data-id="label:series:c01" data-part="series" data-bp-role="category" x="150" y="166.12" text-anchor="end" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="150" dy="0">Jan 2025 (n = 1,200)</tspan></text>
+<text data-id="label:series:c02" data-part="series" data-bp-role="category" x="150" y="199.45" text-anchor="end" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="150" dy="0">Feb 2025 (n = 1,150)</tspan></text>
+<text data-id="label:series:c03" data-part="series" data-bp-role="category" x="150" y="232.77" text-anchor="end" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="150" dy="0">Mar 2025 (n = 1,300)</tspan></text>
+<text data-id="label:series:c04" data-part="series" data-bp-role="category" x="150" y="266.10" text-anchor="end" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="150" dy="0">Apr 2025 (n = 1,400)</tspan></text>
+<text data-id="label:series:c05" data-part="series" data-bp-role="category" x="150" y="299.42" text-anchor="end" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="150" dy="0">May 2025 (n = 1,350)</tspan></text>
+<text data-id="label:series:c06" data-part="series" data-bp-role="category" x="150" y="332.75" text-anchor="end" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="150" dy="0">Jun 2025 (n = 1,500)</tspan></text>
+<text data-id="label:series:c07" data-part="series" data-bp-role="category" x="150" y="366.07" text-anchor="end" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="150" dy="0">Jul 2025 (n = 1,600)</tspan></text>
+<text data-id="label:series:c08" data-part="series" data-bp-role="category" x="150" y="399.40" text-anchor="end" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="150" dy="0">Aug 2025 (n = 1,550)</tspan></text>
+<text data-id="label:series:c09" data-part="series" data-bp-role="category" x="150" y="432.72" text-anchor="end" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="150" dy="0">Sep 2025 (n = 1,700)</tspan></text>
+<text data-id="label:series:c10" data-part="series" data-bp-role="category" x="150" y="466.05" text-anchor="end" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="150" dy="0">Oct 2025 (n = 1,750)</tspan></text>
+<text data-id="label:series:c11" data-part="series" data-bp-role="category" x="150" y="499.37" text-anchor="end" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="150" dy="0">Nov 2025 (n = 1,800)</tspan></text>
+<text data-id="label:series:c12" data-part="series" data-bp-role="category" x="150" y="532.70" text-anchor="end" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="150" dy="0">Dec 2025 (n = 1,900)</tspan></text>
+<text data-id="label:point:c01:t0" data-part="point" data-bp-role="value" x="162.50" y="166.12" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="162.50" dy="0">100%</tspan></text>
+<text data-id="label:point:c01:t11" data-part="point" data-bp-role="value" x="661.25" y="166.12" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="661.25" dy="0">21%</tspan></text>
+<text data-id="label:point:c02:t0" data-part="point" data-bp-role="value" x="162.50" y="199.45" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="162.50" dy="0">100%</tspan></text>
+<text data-id="label:point:c03:t0" data-part="point" data-bp-role="value" x="162.50" y="232.77" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="162.50" dy="0">100%</tspan></text>
+<text data-id="label:point:c04:t0" data-part="point" data-bp-role="value" x="162.50" y="266.10" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="162.50" dy="0">100%</tspan></text>
+<text data-id="label:point:c05:t0" data-part="point" data-bp-role="value" x="162.50" y="299.42" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="162.50" dy="0">100%</tspan></text>
+<text data-id="label:point:c06:t0" data-part="point" data-bp-role="value" x="162.50" y="332.75" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="162.50" dy="0">100%</tspan></text>
+<text data-id="label:point:c07:t0" data-part="point" data-bp-role="value" x="162.50" y="366.07" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="162.50" dy="0">100%</tspan></text>
+<text data-id="label:point:c08:t0" data-part="point" data-bp-role="value" x="162.50" y="399.40" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="162.50" dy="0">100%</tspan></text>
+<text data-id="label:point:c09:t0" data-part="point" data-bp-role="value" x="162.50" y="432.72" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="162.50" dy="0">100%</tspan></text>
+<text data-id="label:point:c10:t0" data-part="point" data-bp-role="value" x="162.50" y="466.05" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="162.50" dy="0">100%</tspan></text>
+<text data-id="label:point:c11:t0" data-part="point" data-bp-role="value" x="162.50" y="499.37" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="162.50" dy="0">100%</tspan></text>
+<text data-id="label:point:c12:t0" data-part="point" data-bp-role="value" x="162.50" y="532.70" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="162.50" dy="0">100%</tspan></text>
+<text data-id="label:point:c09:t3" data-part="point" data-bp-role="value" x="301.25" y="432.72" text-anchor="start" font-size="13" font-weight="400" fill="#050505" style="font-variant-numeric: tabular-nums"><tspan x="301.25" dy="0">64%</tspan></text>
+<text data-id="label:point:c08:t3" data-part="point" data-bp-role="value" x="301.25" y="399.40" text-anchor="start" font-size="13" font-weight="400" fill="#050505" style="font-variant-numeric: tabular-nums"><tspan x="301.25" dy="0">63%</tspan></text>
+<text data-id="label:point:c07:t3" data-part="point" data-bp-role="value" x="301.25" y="366.07" text-anchor="start" font-size="13" font-weight="400" fill="#050505" style="font-variant-numeric: tabular-nums"><tspan x="301.25" dy="0">61%</tspan></text>
+<text data-id="label:point:c05:t3" data-part="point" data-bp-role="value" x="301.25" y="299.42" text-anchor="start" font-size="13" font-weight="400" fill="#050505" style="font-variant-numeric: tabular-nums"><tspan x="301.25" dy="0">58%</tspan></text>
+<text data-id="label:point:c06:t3" data-part="point" data-bp-role="value" x="301.25" y="332.75" text-anchor="start" font-size="13" font-weight="400" fill="#050505" style="font-variant-numeric: tabular-nums"><tspan x="301.25" dy="0">57%</tspan></text>
+<text data-id="label:point:c03:t3" data-part="point" data-bp-role="value" x="301.25" y="232.77" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="301.25" dy="0">55%</tspan></text>
+<text data-id="label:point:c04:t3" data-part="point" data-bp-role="value" x="301.25" y="266.10" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="301.25" dy="0">55%</tspan></text>
+<text data-id="label:point:c02:t3" data-part="point" data-bp-role="value" x="301.25" y="199.45" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="301.25" dy="0">51%</tspan></text>
+<text data-id="label:point:c01:t3" data-part="point" data-bp-role="value" x="301.25" y="166.12" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="301.25" dy="0">50%</tspan></text>
+<text data-id="label:point:c10:t3" data-part="point" data-bp-role="value" x="310.75" y="466.05" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="310.75" dy="0">–</tspan></text>
+<text data-id="label:point:c11:t3" data-part="point" data-bp-role="value" x="310.75" y="499.37" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="310.75" dy="0">–</tspan></text>
+<text data-id="label:point:c12:t3" data-part="point" data-bp-role="value" x="310.75" y="532.70" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="310.75" dy="0">–</tspan></text>
+<text data-id="label:point:c11:t1" data-part="point" data-bp-role="value" x="211.25" y="499.37" text-anchor="start" font-size="13" font-weight="400" fill="#FFFFFF" style="font-variant-numeric: tabular-nums"><tspan x="211.25" dy="0">74%</tspan></text>
+<text data-id="label:point:c10:t1" data-part="point" data-bp-role="value" x="211.25" y="466.05" text-anchor="start" font-size="13" font-weight="400" fill="#FFFFFF" style="font-variant-numeric: tabular-nums"><tspan x="211.25" dy="0">74%</tspan></text>
+<text data-id="label:point:c09:t1" data-part="point" data-bp-role="value" x="211.25" y="432.72" text-anchor="start" font-size="13" font-weight="400" fill="#FFFFFF" style="font-variant-numeric: tabular-nums"><tspan x="211.25" dy="0">73%</tspan></text>
+<text data-id="label:point:c08:t1" data-part="point" data-bp-role="value" x="211.25" y="399.40" text-anchor="start" font-size="13" font-weight="400" fill="#FFFFFF" style="font-variant-numeric: tabular-nums"><tspan x="211.25" dy="0">71%</tspan></text>
+<text data-id="label:point:c10:t2" data-part="point" data-bp-role="value" x="256.25" y="466.05" text-anchor="start" font-size="13" font-weight="400" fill="#FFFFFF" style="font-variant-numeric: tabular-nums"><tspan x="256.25" dy="0">70%</tspan></text>
+<text data-id="label:point:c06:t1" data-part="point" data-bp-role="value" x="211.25" y="332.75" text-anchor="start" font-size="13" font-weight="400" fill="#FFFFFF" style="font-variant-numeric: tabular-nums"><tspan x="211.25" dy="0">70%</tspan></text>
+<text data-id="label:point:c04:t1" data-part="point" data-bp-role="value" x="211.25" y="266.10" text-anchor="start" font-size="13" font-weight="400" fill="#FFFFFF" style="font-variant-numeric: tabular-nums"><tspan x="211.25" dy="0">68%</tspan></text>
+<text data-id="label:point:c09:t2" data-part="point" data-bp-role="value" x="256.25" y="432.72" text-anchor="start" font-size="13" font-weight="400" fill="#FFFFFF" style="font-variant-numeric: tabular-nums"><tspan x="256.25" dy="0">68%</tspan></text>
+<text data-id="label:point:c07:t1" data-part="point" data-bp-role="value" x="211.25" y="366.07" text-anchor="start" font-size="13" font-weight="400" fill="#FFFFFF" style="font-variant-numeric: tabular-nums"><tspan x="211.25" dy="0">68%</tspan></text>
+<text data-id="label:point:c05:t1" data-part="point" data-bp-role="value" x="211.25" y="299.42" text-anchor="start" font-size="13" font-weight="400" fill="#050505" style="font-variant-numeric: tabular-nums"><tspan x="211.25" dy="0">66%</tspan></text>
+<text data-id="label:point:c08:t2" data-part="point" data-bp-role="value" x="256.25" y="399.40" text-anchor="start" font-size="13" font-weight="400" fill="#050505" style="font-variant-numeric: tabular-nums"><tspan x="256.25" dy="0">66%</tspan></text>
+<text data-id="label:point:c07:t2" data-part="point" data-bp-role="value" x="256.25" y="366.07" text-anchor="start" font-size="13" font-weight="400" fill="#050505" style="font-variant-numeric: tabular-nums"><tspan x="256.25" dy="0">65%</tspan></text>
+<text data-id="label:point:c03:t1" data-part="point" data-bp-role="value" x="211.25" y="232.77" text-anchor="start" font-size="13" font-weight="400" fill="#050505" style="font-variant-numeric: tabular-nums"><tspan x="211.25" dy="0">64%</tspan></text>
+<text data-id="label:point:c02:t1" data-part="point" data-bp-role="value" x="211.25" y="199.45" text-anchor="start" font-size="13" font-weight="400" fill="#050505" style="font-variant-numeric: tabular-nums"><tspan x="211.25" dy="0">64%</tspan></text>
+<text data-id="label:point:c05:t2" data-part="point" data-bp-role="value" x="256.25" y="299.42" text-anchor="start" font-size="13" font-weight="400" fill="#050505" style="font-variant-numeric: tabular-nums"><tspan x="256.25" dy="0">63%</tspan></text>
+<text data-id="label:point:c06:t2" data-part="point" data-bp-role="value" x="256.25" y="332.75" text-anchor="start" font-size="13" font-weight="400" fill="#050505" style="font-variant-numeric: tabular-nums"><tspan x="256.25" dy="0">63%</tspan></text>
+<text data-id="label:point:c01:t1" data-part="point" data-bp-role="value" x="211.25" y="166.12" text-anchor="start" font-size="13" font-weight="400" fill="#050505" style="font-variant-numeric: tabular-nums"><tspan x="211.25" dy="0">62%</tspan></text>
+<text data-id="label:point:c04:t2" data-part="point" data-bp-role="value" x="256.25" y="266.10" text-anchor="start" font-size="13" font-weight="400" fill="#050505" style="font-variant-numeric: tabular-nums"><tspan x="256.25" dy="0">61%</tspan></text>
+<text data-id="label:point:c07:t4" data-part="point" data-bp-role="value" x="346.25" y="366.07" text-anchor="start" font-size="13" font-weight="400" fill="#050505" style="font-variant-numeric: tabular-nums"><tspan x="346.25" dy="0">59%</tspan></text>
+<text data-id="label:point:c08:t4" data-part="point" data-bp-role="value" x="346.25" y="399.40" text-anchor="start" font-size="13" font-weight="400" fill="#050505" style="font-variant-numeric: tabular-nums"><tspan x="346.25" dy="0">58%</tspan></text>
+<text data-id="label:point:c03:t2" data-part="point" data-bp-role="value" x="256.25" y="232.77" text-anchor="start" font-size="13" font-weight="400" fill="#050505" style="font-variant-numeric: tabular-nums"><tspan x="256.25" dy="0">58%</tspan></text>
+<text data-id="label:point:c02:t2" data-part="point" data-bp-role="value" x="256.25" y="199.45" text-anchor="start" font-size="13" font-weight="400" fill="#050505" style="font-variant-numeric: tabular-nums"><tspan x="256.25" dy="0">58%</tspan></text>
+<text data-id="label:point:c01:t2" data-part="point" data-bp-role="value" x="256.25" y="166.12" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="256.25" dy="0">55%</tspan></text>
+<text data-id="label:point:c07:t5" data-part="point" data-bp-role="value" x="391.25" y="366.07" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="391.25" dy="0">55%</tspan></text>
+<text data-id="label:point:c05:t4" data-part="point" data-bp-role="value" x="346.25" y="299.42" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="346.25" dy="0">54%</tspan></text>
+<text data-id="label:point:c06:t4" data-part="point" data-bp-role="value" x="346.25" y="332.75" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="346.25" dy="0">52%</tspan></text>
+<text data-id="label:point:c05:t5" data-part="point" data-bp-role="value" x="391.25" y="299.42" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="391.25" dy="0">51%</tspan></text>
+<text data-id="label:point:c03:t4" data-part="point" data-bp-role="value" x="346.25" y="232.77" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="346.25" dy="0">50%</tspan></text>
+<text data-id="label:point:c04:t4" data-part="point" data-bp-role="value" x="346.25" y="266.10" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="346.25" dy="0">50%</tspan></text>
+<text data-id="label:point:c03:t5" data-part="point" data-bp-role="value" x="391.25" y="232.77" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="391.25" dy="0">48%</tspan></text>
+<text data-id="label:point:c05:t6" data-part="point" data-bp-role="value" x="436.25" y="299.42" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="436.25" dy="0">47%</tspan></text>
+<text data-id="label:point:c06:t5" data-part="point" data-bp-role="value" x="391.25" y="332.75" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="391.25" dy="0">47%</tspan></text>
+<text data-id="label:point:c02:t4" data-part="point" data-bp-role="value" x="346.25" y="199.45" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="346.25" dy="0">46%</tspan></text>
+<text data-id="label:point:c01:t4" data-part="point" data-bp-role="value" x="346.25" y="166.12" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="346.25" dy="0">45%</tspan></text>
+<text data-id="label:point:c05:t7" data-part="point" data-bp-role="value" x="481.25" y="299.42" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="481.25" dy="0">45%</tspan></text>
+<text data-id="label:point:c04:t5" data-part="point" data-bp-role="value" x="391.25" y="266.10" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="391.25" dy="0">44%</tspan></text>
+<text data-id="label:point:c06:t6" data-part="point" data-bp-role="value" x="436.25" y="332.75" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="436.25" dy="0">44%</tspan></text>
+<text data-id="label:point:c03:t6" data-part="point" data-bp-role="value" x="436.25" y="232.77" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="436.25" dy="0">44%</tspan></text>
+<text data-id="label:point:c04:t6" data-part="point" data-bp-role="value" x="436.25" y="266.10" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="436.25" dy="0">41%</tspan></text>
+<text data-id="label:point:c02:t5" data-part="point" data-bp-role="value" x="391.25" y="199.45" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="391.25" dy="0">40%</tspan></text>
+<text data-id="label:point:c03:t7" data-part="point" data-bp-role="value" x="481.25" y="232.77" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="481.25" dy="0">40%</tspan></text>
+<text data-id="label:point:c01:t5" data-part="point" data-bp-role="value" x="391.25" y="166.12" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="391.25" dy="0">40%</tspan></text>
+<text data-id="label:point:c03:t8" data-part="point" data-bp-role="value" x="526.25" y="232.77" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="526.25" dy="0">38%</tspan></text>
+<text data-id="label:point:c01:t6" data-part="point" data-bp-role="value" x="436.25" y="166.12" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="436.25" dy="0">36%</tspan></text>
+<text data-id="label:point:c04:t7" data-part="point" data-bp-role="value" x="481.25" y="266.10" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="481.25" dy="0">36%</tspan></text>
+<text data-id="label:point:c02:t6" data-part="point" data-bp-role="value" x="436.25" y="199.45" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="436.25" dy="0">35%</tspan></text>
+<text data-id="label:point:c03:t9" data-part="point" data-bp-role="value" x="571.25" y="232.77" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="571.25" dy="0">34%</tspan></text>
+<text data-id="label:point:c01:t7" data-part="point" data-bp-role="value" x="481.25" y="166.12" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="481.25" dy="0">32%</tspan></text>
+<text data-id="label:point:c04:t8" data-part="point" data-bp-role="value" x="526.25" y="266.10" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="526.25" dy="0">32%</tspan></text>
+<text data-id="label:point:c02:t7" data-part="point" data-bp-role="value" x="481.25" y="199.45" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="481.25" dy="0">32%</tspan></text>
+<text data-id="label:point:c01:t8" data-part="point" data-bp-role="value" x="526.25" y="166.12" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="526.25" dy="0">30%</tspan></text>
+<text data-id="label:point:c02:t8" data-part="point" data-bp-role="value" x="526.25" y="199.45" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="526.25" dy="0">28%</tspan></text>
+<text data-id="label:point:c01:t9" data-part="point" data-bp-role="value" x="571.25" y="166.12" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="571.25" dy="0">26%</tspan></text>
+<text data-id="label:point:c02:t9" data-part="point" data-bp-role="value" x="571.25" y="199.45" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="571.25" dy="0">25%</tspan></text>
+<text data-id="label:point:c01:t10" data-part="point" data-bp-role="value" x="616.25" y="166.12" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="616.25" dy="0">23%</tspan></text>
+<text data-id="label:point:c02:t10" data-part="point" data-bp-role="value" x="616.25" y="199.45" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="616.25" dy="0">22%</tspan></text>
+<text data-id="label:point:c02:t11" data-part="point" data-bp-role="value" x="670.75" y="199.45" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="670.75" dy="0">–</tspan></text>
+<text data-id="label:point:c03:t10" data-part="point" data-bp-role="value" x="625.75" y="232.77" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="625.75" dy="0">–</tspan></text>
+<text data-id="label:point:c03:t11" data-part="point" data-bp-role="value" x="670.75" y="232.77" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="670.75" dy="0">–</tspan></text>
+<text data-id="label:point:c04:t10" data-part="point" data-bp-role="value" x="625.75" y="266.10" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="625.75" dy="0">–</tspan></text>
+<text data-id="label:point:c04:t11" data-part="point" data-bp-role="value" x="670.75" y="266.10" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="670.75" dy="0">–</tspan></text>
+<text data-id="label:point:c04:t9" data-part="point" data-bp-role="value" x="580.75" y="266.10" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="580.75" dy="0">–</tspan></text>
+<text data-id="label:point:c05:t10" data-part="point" data-bp-role="value" x="625.75" y="299.42" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="625.75" dy="0">–</tspan></text>
+<text data-id="label:point:c05:t11" data-part="point" data-bp-role="value" x="670.75" y="299.42" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="670.75" dy="0">–</tspan></text>
+<text data-id="label:point:c05:t8" data-part="point" data-bp-role="value" x="535.75" y="299.42" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="535.75" dy="0">–</tspan></text>
+<text data-id="label:point:c05:t9" data-part="point" data-bp-role="value" x="580.75" y="299.42" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="580.75" dy="0">–</tspan></text>
+<text data-id="label:point:c06:t10" data-part="point" data-bp-role="value" x="625.75" y="332.75" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="625.75" dy="0">–</tspan></text>
+<text data-id="label:point:c06:t11" data-part="point" data-bp-role="value" x="670.75" y="332.75" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="670.75" dy="0">–</tspan></text>
+<text data-id="label:point:c06:t7" data-part="point" data-bp-role="value" x="490.75" y="332.75" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="490.75" dy="0">–</tspan></text>
+<text data-id="label:point:c06:t8" data-part="point" data-bp-role="value" x="535.75" y="332.75" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="535.75" dy="0">–</tspan></text>
+<text data-id="label:point:c06:t9" data-part="point" data-bp-role="value" x="580.75" y="332.75" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="580.75" dy="0">–</tspan></text>
+<text data-id="label:point:c07:t10" data-part="point" data-bp-role="value" x="625.75" y="366.07" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="625.75" dy="0">–</tspan></text>
+<text data-id="label:point:c07:t11" data-part="point" data-bp-role="value" x="670.75" y="366.07" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="670.75" dy="0">–</tspan></text>
+<text data-id="label:point:c07:t6" data-part="point" data-bp-role="value" x="445.75" y="366.07" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="445.75" dy="0">–</tspan></text>
+<text data-id="label:point:c07:t7" data-part="point" data-bp-role="value" x="490.75" y="366.07" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="490.75" dy="0">–</tspan></text>
+<text data-id="label:point:c07:t8" data-part="point" data-bp-role="value" x="535.75" y="366.07" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="535.75" dy="0">–</tspan></text>
+<text data-id="label:point:c07:t9" data-part="point" data-bp-role="value" x="580.75" y="366.07" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="580.75" dy="0">–</tspan></text>
+<text data-id="label:point:c08:t10" data-part="point" data-bp-role="value" x="625.75" y="399.40" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="625.75" dy="0">–</tspan></text>
+<text data-id="label:point:c08:t11" data-part="point" data-bp-role="value" x="670.75" y="399.40" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="670.75" dy="0">–</tspan></text>
+<text data-id="label:point:c08:t5" data-part="point" data-bp-role="value" x="400.75" y="399.40" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="400.75" dy="0">–</tspan></text>
+<text data-id="label:point:c08:t6" data-part="point" data-bp-role="value" x="445.75" y="399.40" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="445.75" dy="0">–</tspan></text>
+<text data-id="label:point:c08:t7" data-part="point" data-bp-role="value" x="490.75" y="399.40" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="490.75" dy="0">–</tspan></text>
+<text data-id="label:point:c08:t8" data-part="point" data-bp-role="value" x="535.75" y="399.40" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="535.75" dy="0">–</tspan></text>
+<text data-id="label:point:c08:t9" data-part="point" data-bp-role="value" x="580.75" y="399.40" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="580.75" dy="0">–</tspan></text>
+<text data-id="label:point:c09:t10" data-part="point" data-bp-role="value" x="625.75" y="432.72" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="625.75" dy="0">–</tspan></text>
+<text data-id="label:point:c09:t11" data-part="point" data-bp-role="value" x="670.75" y="432.72" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="670.75" dy="0">–</tspan></text>
+<text data-id="label:point:c09:t4" data-part="point" data-bp-role="value" x="355.75" y="432.72" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="355.75" dy="0">–</tspan></text>
+<text data-id="label:point:c09:t5" data-part="point" data-bp-role="value" x="400.75" y="432.72" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="400.75" dy="0">–</tspan></text>
+<text data-id="label:point:c09:t6" data-part="point" data-bp-role="value" x="445.75" y="432.72" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="445.75" dy="0">–</tspan></text>
+<text data-id="label:point:c09:t7" data-part="point" data-bp-role="value" x="490.75" y="432.72" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="490.75" dy="0">–</tspan></text>
+<text data-id="label:point:c09:t8" data-part="point" data-bp-role="value" x="535.75" y="432.72" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="535.75" dy="0">–</tspan></text>
+<text data-id="label:point:c09:t9" data-part="point" data-bp-role="value" x="580.75" y="432.72" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="580.75" dy="0">–</tspan></text>
+<text data-id="label:point:c10:t10" data-part="point" data-bp-role="value" x="625.75" y="466.05" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="625.75" dy="0">–</tspan></text>
+<text data-id="label:point:c10:t11" data-part="point" data-bp-role="value" x="670.75" y="466.05" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="670.75" dy="0">–</tspan></text>
+<text data-id="label:point:c10:t4" data-part="point" data-bp-role="value" x="355.75" y="466.05" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="355.75" dy="0">–</tspan></text>
+<text data-id="label:point:c10:t5" data-part="point" data-bp-role="value" x="400.75" y="466.05" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="400.75" dy="0">–</tspan></text>
+<text data-id="label:point:c10:t6" data-part="point" data-bp-role="value" x="445.75" y="466.05" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="445.75" dy="0">–</tspan></text>
+<text data-id="label:point:c10:t7" data-part="point" data-bp-role="value" x="490.75" y="466.05" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="490.75" dy="0">–</tspan></text>
+<text data-id="label:point:c10:t8" data-part="point" data-bp-role="value" x="535.75" y="466.05" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="535.75" dy="0">–</tspan></text>
+<text data-id="label:point:c10:t9" data-part="point" data-bp-role="value" x="580.75" y="466.05" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="580.75" dy="0">–</tspan></text>
+<text data-id="label:point:c11:t10" data-part="point" data-bp-role="value" x="625.75" y="499.37" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="625.75" dy="0">–</tspan></text>
+<text data-id="label:point:c11:t11" data-part="point" data-bp-role="value" x="670.75" y="499.37" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="670.75" dy="0">–</tspan></text>
+<text data-id="label:point:c11:t2" data-part="point" data-bp-role="value" x="265.75" y="499.37" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="265.75" dy="0">–</tspan></text>
+<text data-id="label:point:c11:t4" data-part="point" data-bp-role="value" x="355.75" y="499.37" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="355.75" dy="0">–</tspan></text>
+<text data-id="label:point:c11:t5" data-part="point" data-bp-role="value" x="400.75" y="499.37" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="400.75" dy="0">–</tspan></text>
+<text data-id="label:point:c11:t6" data-part="point" data-bp-role="value" x="445.75" y="499.37" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="445.75" dy="0">–</tspan></text>
+<text data-id="label:point:c11:t7" data-part="point" data-bp-role="value" x="490.75" y="499.37" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="490.75" dy="0">–</tspan></text>
+<text data-id="label:point:c11:t8" data-part="point" data-bp-role="value" x="535.75" y="499.37" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="535.75" dy="0">–</tspan></text>
+<text data-id="label:point:c11:t9" data-part="point" data-bp-role="value" x="580.75" y="499.37" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="580.75" dy="0">–</tspan></text>
+<text data-id="label:point:c12:t1" data-part="point" data-bp-role="value" x="220.75" y="532.70" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="220.75" dy="0">–</tspan></text>
+<text data-id="label:point:c12:t10" data-part="point" data-bp-role="value" x="625.75" y="532.70" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="625.75" dy="0">–</tspan></text>
+<text data-id="label:point:c12:t11" data-part="point" data-bp-role="value" x="670.75" y="532.70" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="670.75" dy="0">–</tspan></text>
+<text data-id="label:point:c12:t2" data-part="point" data-bp-role="value" x="265.75" y="532.70" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="265.75" dy="0">–</tspan></text>
+<text data-id="label:point:c12:t4" data-part="point" data-bp-role="value" x="355.75" y="532.70" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="355.75" dy="0">–</tspan></text>
+<text data-id="label:point:c12:t5" data-part="point" data-bp-role="value" x="400.75" y="532.70" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="400.75" dy="0">–</tspan></text>
+<text data-id="label:point:c12:t6" data-part="point" data-bp-role="value" x="445.75" y="532.70" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="445.75" dy="0">–</tspan></text>
+<text data-id="label:point:c12:t7" data-part="point" data-bp-role="value" x="490.75" y="532.70" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="490.75" dy="0">–</tspan></text>
+<text data-id="label:point:c12:t8" data-part="point" data-bp-role="value" x="535.75" y="532.70" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="535.75" dy="0">–</tspan></text>
+<text data-id="label:point:c12:t9" data-part="point" data-bp-role="value" x="580.75" y="532.70" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="580.75" dy="0">–</tspan></text>
+</svg>

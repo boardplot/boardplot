@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "boardplot": {
+      "command": "node",
+      "args": [
+        "/absolute/path/to/boardplot-marketplace/plugins/boardplot/runtime/dist/mcp/server.js"
+      ]
+    }
+  }
+}

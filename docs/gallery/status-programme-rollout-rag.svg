@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 455" width="720" height="455" direction="ltr" style="max-width:100%;height:auto;text-transform:none;letter-spacing:normal;word-spacing:normal;font-style:normal;font-variant:normal" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Data, footprint, and sourcing need intervention before Wave 2" aria-describedby="bp-desc-3d2e43aff6" data-bp-sizing="{&quot;aspect&quot;:&quot;content&quot;,&quot;minWidth&quot;:301,&quot;minHeight&quot;:391,&quot;fit&quot;:&quot;content&quot;,&quot;measuredMinWidth&quot;:301,&quot;measuredMinHeight&quot;:391,&quot;naturalWidth&quot;:504,&quot;naturalHeight&quot;:455,&quot;comfortableWidth&quot;:377,&quot;comfortableHeight&quot;:489}" data-bp-mode="full" font-family="'Helvetica Neue', Helvetica, Arial, Roboto, sans-serif">
+<desc id="bp-desc-3d2e43aff6">Categorical status matrix, 8 rows by 6 columns. On track 12, At risk 10, Off track 5, No status 21.</desc>
+<defs><pattern id="bp-hatch-98761b-fbd98f-45-6-0p75-3d2e43aff6" patternUnits="userSpaceOnUse" width="8.48" height="8.48"><rect width="8.48" height="8.48" fill="#fbd98f"/><path d="M0 8.48L8.48 0M-4.24 4.24L4.24 -4.24M4.24 12.72L12.72 4.24" fill="none" stroke="#98761b" stroke-width="0.75"/></pattern></defs>
+<rect x="0" y="0" width="720" height="455" fill="#FFFFFF"/>
+<text data-id="frame:title:0" data-part="title" data-bp-role="title" x="24" y="37.60" text-anchor="start" font-size="20" font-weight="700" fill="#0D2A43"><tspan x="24" dy="0">Data, footprint, and sourcing need intervention before Wave 2</tspan></text>
+<text data-id="frame:subtitle:1" data-part="subtitle" data-bp-role="subtitle" x="24" y="61.32" text-anchor="start" font-size="14" font-weight="400" fill="#0D2A43"><tspan>Northstar Transformation · </tspan><tspan font-weight="700">Delivery confidence by programme and stage</tspan><tspan> · June 2026</tspan></text>
+<text data-id="frame:source:2" data-part="source" data-bp-role="source" x="24" y="440.38" text-anchor="start" font-size="11" font-weight="400" fill="#4E6070"><tspan x="24" dy="0">Source: Illustrative programme status, June 2026</tspan></text>
+<rect data-id="frame:swatch:3" data-part="swatch" x="24" y="77.26" width="12" height="12" fill="#4980E2"/>
+<text data-id="frame:legendLabel:4" data-part="legendLabel" data-bp-role="category" x="41" y="87.56" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="41" dy="0">On track</tspan></text>
+<rect data-id="frame:swatch:5" data-part="swatch" x="101.50" y="77.26" width="12" height="12" fill="url(#bp-hatch-98761b-fbd98f-45-6-0p75-3d2e43aff6)"/>
+<text data-id="frame:legendLabel:6" data-part="legendLabel" data-bp-role="category" x="118.50" y="87.56" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="118.50" dy="0">At risk</tspan></text>
+<rect data-id="frame:swatch:7" data-part="swatch" x="166.50" y="77.26" width="12" height="12" fill="#A0431A"/>
+<text data-id="frame:legendLabel:8" data-part="legendLabel" data-bp-role="category" x="183.50" y="87.56" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="183.50" dy="0">Off track</tspan></text>
+<rect data-id="frame:swatch:9" data-part="swatch" x="244" y="77.26" width="12" height="12" fill="#f2f3f4"/>
+<text data-id="frame:legendLabel:10" data-part="legendLabel" data-bp-role="category" x="261" y="87.56" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="261" dy="0">No status</tspan></text>
+<rect data-id="cell:pricing:design" data-part="cell" x="174.50" y="122.80" width="86.08" height="36.11" fill="#4980E2"/>
+<path data-id="cellOutline:pricing:design" data-part="cellOutline" d="M175.26 123.56L259.82 123.56L259.82 158.15L175.26 158.15Z" fill="none" stroke-linejoin="round"/>
+<rect data-id="cell:pricing:pilot" data-part="cell" x="261.58" y="122.80" width="86.08" height="36.11" fill="#4980E2"/>
+<path data-id="cellOutline:pricing:pilot" data-part="cellOutline" d="M262.34 123.56L346.91 123.56L346.91 158.15L262.34 158.15Z" fill="none" stroke-linejoin="round"/>
+<rect data-id="cell:pricing:wave-1" data-part="cell" x="348.67" y="122.80" width="86.08" height="36.11" fill="#4980E2"/>
+<path data-id="cellOutline:pricing:wave-1" data-part="cellOutline" d="M349.43 123.56L433.99 123.56L433.99 158.15L349.43 158.15Z" fill="none" stroke-linejoin="round"/>
+<rect data-id="cell:pricing:wave-2" data-part="cell" x="435.75" y="122.80" width="86.08" height="36.11" fill="url(#bp-hatch-98761b-fbd98f-45-6-0p75-3d2e43aff6)"/>
+<rect data-id="cell:pricing:scale" data-part="cell" x="522.83" y="122.80" width="86.08" height="36.11" fill="url(#bp-hatch-98761b-fbd98f-45-6-0p75-3d2e43aff6)"/>
+<rect data-id="cell:pricing:stabilize" data-part="cell" x="609.92" y="122.80" width="86.08" height="36.11" fill="#f2f3f4"/>
+<rect data-id="cell:sales:design" data-part="cell" x="174.50" y="159.91" width="86.08" height="36.11" fill="#4980E2"/>
+<path data-id="cellOutline:sales:design" data-part="cellOutline" d="M175.26 160.67L259.82 160.67L259.82 195.27L175.26 195.27Z" fill="none" stroke-linejoin="round"/>
+<rect data-id="cell:sales:pilot" data-part="cell" x="261.58" y="159.91" width="86.08" height="36.11" fill="#4980E2"/>
+<path data-id="cellOutline:sales:pilot" data-part="cellOutline" d="M262.34 160.67L346.91 160.67L346.91 195.27L262.34 195.27Z" fill="none" stroke-linejoin="round"/>
+<rect data-id="cell:sales:wave-1" data-part="cell" x="348.67" y="159.91" width="86.08" height="36.11" fill="url(#bp-hatch-98761b-fbd98f-45-6-0p75-3d2e43aff6)"/>
+<rect data-id="cell:sales:wave-2" data-part="cell" x="435.75" y="159.91" width="86.08" height="36.11" fill="#A0431A"/>
+<path data-id="cellOutline:sales:wave-2" data-part="cellOutline" d="M436.51 160.67L521.07 160.67L521.07 195.27L436.51 195.27Z" fill="none" stroke-linejoin="round"/>
+<rect data-id="cell:sales:scale" data-part="cell" x="522.83" y="159.91" width="86.08" height="36.11" fill="#f2f3f4"/>
+<rect data-id="cell:sales:stabilize" data-part="cell" x="609.92" y="159.91" width="86.08" height="36.11" fill="#f2f3f4"/>
+<rect data-id="cell:service:design" data-part="cell" x="174.50" y="197.03" width="86.08" height="36.11" fill="#4980E2"/>
+<path data-id="cellOutline:service:design" data-part="cellOutline" d="M175.26 197.78L259.82 197.78L259.82 232.38L175.26 232.38Z" fill="none" stroke-linejoin="round"/>
+<rect data-id="cell:service:pilot" data-part="cell" x="261.58" y="197.03" width="86.08" height="36.11" fill="url(#bp-hatch-98761b-fbd98f-45-6-0p75-3d2e43aff6)"/>
+<rect data-id="cell:service:wave-1" data-part="cell" x="348.67" y="197.03" width="86.08" height="36.11" fill="url(#bp-hatch-98761b-fbd98f-45-6-0p75-3d2e43aff6)"/>
+<rect data-id="cell:service:wave-2" data-part="cell" x="435.75" y="197.03" width="86.08" height="36.11" fill="#f2f3f4"/>
+<rect data-id="cell:service:scale" data-part="cell" x="522.83" y="197.03" width="86.08" height="36.11" fill="#f2f3f4"/>
+<rect data-id="cell:service:stabilize" data-part="cell" x="609.92" y="197.03" width="86.08" height="36.11" fill="#f2f3f4"/>
+<rect data-id="cell:data:design" data-part="cell" x="174.50" y="234.14" width="86.08" height="36.11" fill="#4980E2"/>
+<path data-id="cellOutline:data:design" data-part="cellOutline" d="M175.26 234.90L259.82 234.90L259.82 269.49L175.26 269.49Z" fill="none" stroke-linejoin="round"/>
+<rect data-id="cell:data:pilot" data-part="cell" x="261.58" y="234.14" width="86.08" height="36.11" fill="#A0431A"/>
+<path data-id="cellOutline:data:pilot" data-part="cellOutline" d="M262.34 234.90L346.91 234.90L346.91 269.49L262.34 269.49Z" fill="none" stroke-linejoin="round"/>
+<rect data-id="cell:data:wave-1" data-part="cell" x="348.67" y="234.14" width="86.08" height="36.11" fill="#A0431A"/>
+<path data-id="cellOutline:data:wave-1" data-part="cellOutline" d="M349.43 234.90L433.99 234.90L433.99 269.49L349.43 269.49Z" fill="none" stroke-linejoin="round"/>
+<rect data-id="cell:data:wave-2" data-part="cell" x="435.75" y="234.14" width="86.08" height="36.11" fill="#f2f3f4"/>
+<rect data-id="cell:data:scale" data-part="cell" x="522.83" y="234.14" width="86.08" height="36.11" fill="#f2f3f4"/>
+<rect data-id="cell:data:stabilize" data-part="cell" x="609.92" y="234.14" width="86.08" height="36.11" fill="#f2f3f4"/>
+<rect data-id="cell:erp:design" data-part="cell" x="174.50" y="271.25" width="86.08" height="36.11" fill="url(#bp-hatch-98761b-fbd98f-45-6-0p75-3d2e43aff6)"/>
+<rect data-id="cell:erp:pilot" data-part="cell" x="261.58" y="271.25" width="86.08" height="36.11" fill="url(#bp-hatch-98761b-fbd98f-45-6-0p75-3d2e43aff6)"/>
+<rect data-id="cell:erp:wave-1" data-part="cell" x="348.67" y="271.25" width="86.08" height="36.11" fill="#f2f3f4"/>
+<rect data-id="cell:erp:wave-2" data-part="cell" x="435.75" y="271.25" width="86.08" height="36.11" fill="#f2f3f4"/>
+<rect data-id="cell:erp:scale" data-part="cell" x="522.83" y="271.25" width="86.08" height="36.11" fill="#f2f3f4"/>
+<rect data-id="cell:erp:stabilize" data-part="cell" x="609.92" y="271.25" width="86.08" height="36.11" fill="#f2f3f4"/>
+<rect data-id="cell:talent:design" data-part="cell" x="174.50" y="308.36" width="86.08" height="36.11" fill="#4980E2"/>
+<path data-id="cellOutline:talent:design" data-part="cellOutline" d="M175.26 309.12L259.82 309.12L259.82 343.72L175.26 343.72Z" fill="none" stroke-linejoin="round"/>
+<rect data-id="cell:talent:pilot" data-part="cell" x="261.58" y="308.36" width="86.08" height="36.11" fill="#4980E2"/>
+<path data-id="cellOutline:talent:pilot" data-part="cellOutline" d="M262.34 309.12L346.91 309.12L346.91 343.72L262.34 343.72Z" fill="none" stroke-linejoin="round"/>
+<rect data-id="cell:talent:wave-1" data-part="cell" x="348.67" y="308.36" width="86.08" height="36.11" fill="#4980E2"/>
+<path data-id="cellOutline:talent:wave-1" data-part="cellOutline" d="M349.43 309.12L433.99 309.12L433.99 343.72L349.43 343.72Z" fill="none" stroke-linejoin="round"/>
+<rect data-id="cell:talent:wave-2" data-part="cell" x="435.75" y="308.36" width="86.08" height="36.11" fill="#4980E2"/>
+<path data-id="cellOutline:talent:wave-2" data-part="cellOutline" d="M436.51 309.12L521.07 309.12L521.07 343.72L436.51 343.72Z" fill="none" stroke-linejoin="round"/>
+<rect data-id="cell:talent:scale" data-part="cell" x="522.83" y="308.36" width="86.08" height="36.11" fill="url(#bp-hatch-98761b-fbd98f-45-6-0p75-3d2e43aff6)"/>
+<rect data-id="cell:talent:stabilize" data-part="cell" x="609.92" y="308.36" width="86.08" height="36.11" fill="#f2f3f4"/>
+<rect data-id="cell:sourcing:design" data-part="cell" x="174.50" y="345.48" width="86.08" height="36.11" fill="#4980E2"/>
+<path data-id="cellOutline:sourcing:design" data-part="cellOutline" d="M175.26 346.24L259.82 346.24L259.82 380.83L175.26 380.83Z" fill="none" stroke-linejoin="round"/>
+<rect data-id="cell:sourcing:pilot" data-part="cell" x="261.58" y="345.48" width="86.08" height="36.11" fill="url(#bp-hatch-98761b-fbd98f-45-6-0p75-3d2e43aff6)"/>
+<rect data-id="cell:sourcing:wave-1" data-part="cell" x="348.67" y="345.48" width="86.08" height="36.11" fill="#A0431A"/>
+<path data-id="cellOutline:sourcing:wave-1" data-part="cellOutline" d="M349.43 346.24L433.99 346.24L433.99 380.83L349.43 380.83Z" fill="none" stroke-linejoin="round"/>
+<rect data-id="cell:sourcing:wave-2" data-part="cell" x="435.75" y="345.48" width="86.08" height="36.11" fill="#f2f3f4"/>
+<rect data-id="cell:sourcing:scale" data-part="cell" x="522.83" y="345.48" width="86.08" height="36.11" fill="#f2f3f4"/>
+<rect data-id="cell:sourcing:stabilize" data-part="cell" x="609.92" y="345.48" width="86.08" height="36.11" fill="#f2f3f4"/>
+<rect data-id="cell:footprint:design" data-part="cell" x="174.50" y="382.59" width="86.08" height="36.11" fill="url(#bp-hatch-98761b-fbd98f-45-6-0p75-3d2e43aff6)"/>
+<rect data-id="cell:footprint:pilot" data-part="cell" x="261.58" y="382.59" width="86.08" height="36.11" fill="#A0431A"/>
+<path data-id="cellOutline:footprint:pilot" data-part="cellOutline" d="M262.34 383.35L346.91 383.35L346.91 417.94L262.34 417.94Z" fill="none" stroke-linejoin="round"/>
+<rect data-id="cell:footprint:wave-1" data-part="cell" x="348.67" y="382.59" width="86.08" height="36.11" fill="#f2f3f4"/>
+<rect data-id="cell:footprint:wave-2" data-part="cell" x="435.75" y="382.59" width="86.08" height="36.11" fill="#f2f3f4"/>
+<rect data-id="cell:footprint:scale" data-part="cell" x="522.83" y="382.59" width="86.08" height="36.11" fill="#f2f3f4"/>
+<rect data-id="cell:footprint:stabilize" data-part="cell" x="609.92" y="382.59" width="86.08" height="36.11" fill="#f2f3f4"/>
+<text data-id="label:category:design" data-part="category" data-bp-role="category" x="196.79" y="113.66" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="196.79" dy="0">Design</tspan></text>
+<text data-id="label:category:pilot" data-part="category" data-bp-role="category" x="291.63" y="113.66" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="291.63" dy="0">Pilot</tspan></text>
+<text data-id="label:category:scale" data-part="category" data-bp-role="category" x="549.12" y="113.66" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="549.12" dy="0">Scale</tspan></text>
+<text data-id="label:category:stabilize" data-part="category" data-bp-role="category" x="627.96" y="113.66" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="627.96" dy="0">Stabilize</tspan></text>
+<text data-id="label:category:wave-1" data-part="category" data-bp-role="category" x="369.21" y="113.66" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="369.21" dy="0">Wave 1</tspan></text>
+<text data-id="label:category:wave-2" data-part="category" data-bp-role="category" x="456.29" y="113.66" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="456.29" dy="0">Wave 2</tspan></text>
+<text data-id="label:series:data" data-part="series" data-bp-role="category" x="166.50" y="256.85" text-anchor="end" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="166.50" dy="0">Data platform</tspan></text>
+<text data-id="label:series:erp" data-part="series" data-bp-role="category" x="166.50" y="293.97" text-anchor="end" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="166.50" dy="0">ERP harmonization</tspan></text>
+<text data-id="label:series:footprint" data-part="series" data-bp-role="category" x="166.50" y="405.30" text-anchor="end" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="166.50" dy="0">Footprint optimization</tspan></text>
+<text data-id="label:series:pricing" data-part="series" data-bp-role="category" x="166.50" y="145.52" text-anchor="end" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="166.50" dy="0">Pricing excellence</tspan></text>
+<text data-id="label:series:sales" data-part="series" data-bp-role="category" x="166.50" y="182.63" text-anchor="end" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="166.50" dy="0">CRM effectiveness</tspan></text>
+<text data-id="label:series:service" data-part="series" data-bp-role="category" x="166.50" y="219.74" text-anchor="end" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="166.50" dy="0">Service operating model</tspan></text>
+<text data-id="label:series:sourcing" data-part="series" data-bp-role="category" x="166.50" y="368.19" text-anchor="end" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="166.50" dy="0">Strategic sourcing</tspan></text>
+<text data-id="label:series:talent" data-part="series" data-bp-role="category" x="166.50" y="331.08" text-anchor="end" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="166.50" dy="0">Talent academy</tspan></text>
+</svg>

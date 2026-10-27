@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 540" width="720" height="540" direction="ltr" style="max-width:100%;height:auto;text-transform:none;letter-spacing:normal;word-spacing:normal;font-style:normal;font-variant:normal" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Higher price goes with lower volume in this panel" aria-describedby="bp-desc-7d6f2e2259" data-bp-sizing="{&quot;aspect&quot;:&quot;4:3&quot;,&quot;minWidth&quot;:480,&quot;minHeight&quot;:360,&quot;fit&quot;:&quot;fill&quot;,&quot;compactFloor&quot;:{&quot;width&quot;:280,&quot;height&quot;:240},&quot;measuredMinWidth&quot;:0,&quot;measuredMinHeight&quot;:270,&quot;naturalWidth&quot;:720,&quot;naturalHeight&quot;:540,&quot;comfortableWidth&quot;:600,&quot;comfortableHeight&quot;:450}" data-bp-mode="full" font-family="'Helvetica Neue', Helvetica, Arial, Roboto, sans-serif">
+<desc id="bp-desc-7d6f2e2259">Scatter chart with 12 points. X from 82 to 124, Y from 66 to 148. A dashed least-squares trend line falls across 12 points.</desc>
+<rect x="0" y="0" width="720" height="540" fill="#FFFFFF"/>
+<text data-id="frame:title:0" data-part="title" data-bp-role="title" x="24" y="37.60" text-anchor="start" font-size="20" font-weight="700" fill="#0D2A43"><tspan x="24" dy="0">Higher price goes with lower volume in this panel</tspan></text>
+<text data-id="frame:subtitle:1" data-part="subtitle" data-bp-role="subtitle" x="24" y="61.32" text-anchor="start" font-size="14" font-weight="400" fill="#0D2A43"><tspan>Brevinth Beverages · </tspan><tspan font-weight="700">Price index vs volume index</tspan><tspan> · FY26</tspan></text>
+<text data-id="frame:source:2" data-part="source" data-bp-role="source" x="24" y="525.38" text-anchor="start" font-size="11" font-weight="400" fill="#4E6070"><tspan x="24" dy="0">Source: Illustrative SKU panel, 12 SKUs</tspan></text>
+<line data-id="frame:swatch:3" data-part="swatch" x1="24" y1="83.26" x2="42" y2="83.26" stroke="#0D2A43" stroke-width="1" stroke-dasharray="4 3"/>
+<text data-id="frame:legendLabel:4" data-part="legendLabel" data-bp-role="category" x="47" y="87.56" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="47" dy="0">Linear trend: slope −2.0, r² 0.95</tspan></text>
+<line data-id="axis:y:grid:0" data-part="gridline" x1="52.50" y1="461.70" x2="696" y2="461.70" stroke="#E9EEF3" stroke-width="0.75"/>
+<text data-id="axis:y:tick:0" data-part="tick" data-bp-role="axis" x="30.50" y="465.01" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="30.50" dy="0">60</tspan></text>
+<path data-id="axis:y:grid:1" data-part="gridline" d="M52.5 396.4L449.71 396.4M483.96 396.4L696 396.4" fill="none" stroke="#E9EEF3" stroke-width="0.75" stroke-linejoin="round"/>
+<text data-id="axis:y:tick:1" data-part="tick" data-bp-role="axis" x="30.50" y="399.71" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="30.50" dy="0">80</tspan></text>
+<path data-id="axis:y:grid:2" data-part="gridline" d="M52.5 331.1L291.28 331.1M328.53 331.1L696 331.1" fill="none" stroke="#E9EEF3" stroke-width="0.75" stroke-linejoin="round"/>
+<text data-id="axis:y:tick:2" data-part="tick" data-bp-role="axis" x="24" y="334.41" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="24" dy="0">100</tspan></text>
+<line data-id="axis:y:grid:3" data-part="gridline" x1="52.50" y1="265.80" x2="696" y2="265.80" stroke="#E9EEF3" stroke-width="0.75"/>
+<text data-id="axis:y:tick:3" data-part="tick" data-bp-role="axis" x="24" y="269.11" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="24" dy="0">120</tspan></text>
+<path data-id="axis:y:grid:4" data-part="gridline" d="M52.5 200.5L200.2 200.5M242.45 200.5L696 200.5" fill="none" stroke="#E9EEF3" stroke-width="0.75" stroke-linejoin="round"/>
+<text data-id="axis:y:tick:4" data-part="tick" data-bp-role="axis" x="24" y="203.81" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="24" dy="0">140</tspan></text>
+<line data-id="axis:y:grid:5" data-part="gridline" x1="52.50" y1="135.20" x2="696" y2="135.20" stroke="#E9EEF3" stroke-width="0.75"/>
+<text data-id="axis:y:tick:5" data-part="tick" data-bp-role="axis" x="24" y="138.51" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="24" dy="0">160</tspan></text>
+<text data-id="axis:x:tick:0" data-part="tick" data-bp-role="axis" x="45.50" y="478.26" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="45.50" dy="0">80</tspan></text>
+<text data-id="axis:x:tick:1" data-part="tick" data-bp-role="axis" x="174.20" y="478.26" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="174.20" dy="0">90</tspan></text>
+<text data-id="axis:x:tick:2" data-part="tick" data-bp-role="axis" x="299.65" y="478.26" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="299.65" dy="0">100</tspan></text>
+<text data-id="axis:x:tick:3" data-part="tick" data-bp-role="axis" x="428.35" y="478.26" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="428.35" dy="0">110</tspan></text>
+<text data-id="axis:x:tick:4" data-part="tick" data-bp-role="axis" x="557.05" y="478.26" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="557.05" dy="0">120</tspan></text>
+<text data-id="axis:x:tick:5" data-part="tick" data-bp-role="axis" x="685.75" y="478.26" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="685.75" dy="0">130</tspan></text>
+<text data-id="axis:x:title" data-part="axisTitle" data-bp-role="caption" x="374.25" y="496.26" text-anchor="middle" font-size="12" font-weight="400" fill="#0D2A43"><tspan x="374.25" dy="0">Price index (market = 100)</tspan></text>
+<text data-id="axis:y:title" data-part="axisTitle" data-bp-role="caption" x="24" y="119.76" text-anchor="start" font-size="12" font-weight="400" fill="#0D2A43"><tspan x="24" dy="0">Volume index (market = 100)</tspan></text>
+<line data-id="axis:x:line" data-part="axisLine" x1="52.50" y1="461.70" x2="696" y2="461.70" stroke="#4E6070" stroke-width="1"/>
+<line data-id="axis:x:tickMark:80" data-part="tickMark" x1="52.50" y1="461.70" x2="52.50" y2="465.70" stroke="#4E6070" stroke-width="1"/>
+<line data-id="axis:x:tickMark:90" data-part="tickMark" x1="181.20" y1="461.70" x2="181.20" y2="465.70" stroke="#4E6070" stroke-width="1"/>
+<line data-id="axis:x:tickMark:100" data-part="tickMark" x1="309.90" y1="461.70" x2="309.90" y2="465.70" stroke="#4E6070" stroke-width="1"/>
+<line data-id="axis:x:tickMark:110" data-part="tickMark" x1="438.60" y1="461.70" x2="438.60" y2="465.70" stroke="#4E6070" stroke-width="1"/>
+<line data-id="axis:x:tickMark:120" data-part="tickMark" x1="567.30" y1="461.70" x2="567.30" y2="465.70" stroke="#4E6070" stroke-width="1"/>
+<line data-id="axis:x:tickMark:130" data-part="tickMark" x1="696" y1="461.70" x2="696" y2="465.70" stroke="#4E6070" stroke-width="1"/>
+<line data-id="trend:all" data-part="trendLine" x1="78.24" y1="181.79" x2="618.78" y2="450.32" stroke="#0D2A43" stroke-width="2" stroke-dasharray="4 3"/>
+<circle data-id="mark:alpine" data-part="point" cx="78.24" cy="174.38" r="5.50" fill="#12395E" stroke="#FFFFFF" stroke-width="1"/>
+<circle data-id="mark:brava" data-part="point" cx="155.46" cy="229.89" r="5.50" fill="#12395E" stroke="#FFFFFF" stroke-width="1"/>
+<circle data-id="mark:corsa" data-part="point" cx="194.07" cy="203.76" r="5.50" fill="#12395E" stroke="#FFFFFF" stroke-width="1"/>
+<circle data-id="mark:dolomit" data-part="point" cx="245.55" cy="272.33" r="5.50" fill="#12395E" stroke="#FFFFFF" stroke-width="1"/>
+<circle data-id="mark:etna" data-part="point" cx="284.16" cy="291.92" r="5.50" fill="#12395E" stroke="#FFFFFF" stroke-width="1"/>
+<circle data-id="mark:fjord" data-part="point" cx="309.90" cy="318.04" r="5.50" fill="#12395E" stroke="#FFFFFF" stroke-width="1"/>
+<circle data-id="mark:garda" data-part="point" cx="348.51" cy="301.72" r="5.50" fill="#12395E" stroke="#FFFFFF" stroke-width="1"/>
+<circle data-id="mark:hekla" data-part="point" cx="387.12" cy="357.22" r="5.50" fill="#12395E" stroke="#FFFFFF" stroke-width="1"/>
+<circle data-id="mark:ischia" data-part="point" cx="438.60" cy="370.28" r="5.50" fill="#12395E" stroke="#FFFFFF" stroke-width="1"/>
+<circle data-id="mark:juist" data-part="point" cx="490.08" cy="399.67" r="5.50" fill="#12395E" stroke="#FFFFFF" stroke-width="1"/>
+<circle data-id="mark:karst" data-part="point" cx="541.56" cy="386.61" r="5.50" fill="#12395E" stroke="#FFFFFF" stroke-width="1"/>
+<circle data-id="mark:lago" data-part="point" cx="618.78" cy="442.11" r="5.50" fill="#12395E" stroke="#FFFFFF" stroke-width="1"/>
+<text data-id="label:point:alpine" data-part="point" data-bp-role="category" x="59.74" y="161.54" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="59.74" dy="0">Alpine</tspan></text>
+<text data-id="label:point:lago" data-part="point" data-bp-role="category" x="628.28" y="446.77" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="628.28" dy="0">Lago</tspan></text>
+<text data-id="label:trend:all" data-part="valueLine" data-bp-role="note" x="580.53" y="424.00" text-anchor="start" font-size="13" font-weight="700" fill="#0D2A43"><tspan x="580.53" dy="0">Linear trend</tspan></text>
+<text data-id="label:point:brava" data-part="point" data-bp-role="category" x="114.24" y="249.26" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="114.24" dy="0">Brava</tspan></text>
+<text data-id="label:point:corsa" data-part="point" data-bp-role="category" x="203.57" y="208.43" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="203.57" dy="0">Corsa</tspan></text>
+<text data-id="label:point:dolomit" data-part="point" data-bp-role="category" x="193.83" y="291.71" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="193.83" dy="0">Dolomit</tspan></text>
+<text data-id="label:point:etna" data-part="point" data-bp-role="category" x="249.94" y="311.30" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="249.94" dy="0">Etna</tspan></text>
+<text data-id="label:point:fjord" data-part="point" data-bp-role="category" x="294.65" y="340.20" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="294.65" dy="0">Fjord</tspan></text>
+<text data-id="label:point:garda" data-part="point" data-bp-role="category" x="358.01" y="306.38" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="358.01" dy="0">Garda</tspan></text>
+<text data-id="label:point:hekla" data-part="point" data-bp-role="category" x="343.62" y="361.88" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="343.62" dy="0">Hekla</tspan></text>
+<text data-id="label:point:ischia" data-part="point" data-bp-role="category" x="397.38" y="389.66" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="397.38" dy="0">Ischia</tspan></text>
+<text data-id="label:point:juist" data-part="point" data-bp-role="category" x="453.08" y="404.33" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="453.08" dy="0">Juist</tspan></text>
+<text data-id="label:point:karst" data-part="point" data-bp-role="category" x="551.06" y="391.27" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="551.06" dy="0">Karst</tspan></text>
+</svg>

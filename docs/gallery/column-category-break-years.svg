@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 447" width="720" height="447" direction="ltr" style="max-width:100%;height:auto;text-transform:none;letter-spacing:normal;word-spacing:normal;font-style:normal;font-variant:normal" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Services grew from a quarter to 42% of revenue, most of it since 2020" aria-describedby="bp-desc-d6c51665d3" data-bp-sizing="{&quot;aspect&quot;:&quot;16:9&quot;,&quot;minWidth&quot;:480,&quot;minHeight&quot;:270,&quot;fit&quot;:&quot;fill&quot;,&quot;compactFloor&quot;:{&quot;width&quot;:280,&quot;height&quot;:180},&quot;measuredMinWidth&quot;:0,&quot;measuredMinHeight&quot;:200,&quot;naturalWidth&quot;:720,&quot;naturalHeight&quot;:447,&quot;comfortableWidth&quot;:600,&quot;comfortableHeight&quot;:338}" data-bp-mode="full" font-family="'Helvetica Neue', Helvetica, Arial, Roboto, sans-serif">
+<desc id="bp-desc-d6c51665d3">stacked column chart, 6 categories × 2 series. Totals: 2000 46, 2010 64, 2020 95, 2024 118, 2025 126, 2026 139.</desc>
+<rect x="0" y="0" width="720" height="447" fill="#FFFFFF"/>
+<text data-id="frame:title:0" data-part="title" data-bp-role="title" x="24" y="37.60" text-anchor="start" font-size="20" font-weight="700" fill="#0D2A43"><tspan x="24" dy="0">Services grew from a quarter to 42% of revenue, most of it since 2020</tspan></text>
+<text data-id="frame:subtitle:1" data-part="subtitle" data-bp-role="subtitle" x="24" y="61.32" text-anchor="start" font-size="14" font-weight="400" fill="#0D2A43"><tspan>Brevinth Devices · </tspan><tspan font-weight="700">Revenue by business</tspan><tspan> in $m · 2000–2026</tspan></text>
+<text data-id="frame:source:2" data-part="source" data-bp-role="source" x="24" y="432.38" text-anchor="start" font-size="11" font-weight="400" fill="#4E6070"><tspan x="24" dy="0">Source: Illustrative annual reports; decade steps to 2020, then annual</tspan></text>
+<line data-id="axis:baseline" data-part="baseline" x1="24" y1="387.10" x2="696" y2="387.10" stroke="#0D2A43" stroke-width="1"/>
+<line data-id="seriesConnector:y2000:y2010:products" data-part="seriesConnector" x1="103.46" y1="322.95" x2="147.73" y2="296.36" stroke="#97A6B4" stroke-width="1"/>
+<line data-id="seriesConnector:y2000:y2010:services" data-part="seriesConnector" x1="103.51" y1="300.12" x2="147.78" y2="265.94" stroke="#97A6B4" stroke-width="1"/>
+<line data-id="seriesConnector:y2010:y2020:products" data-part="seriesConnector" x1="200.03" y1="296.33" x2="244.30" y2="262.14" stroke="#97A6B4" stroke-width="1"/>
+<line data-id="seriesConnector:y2010:y2020:services" data-part="seriesConnector" x1="200.12" y1="265.84" x2="244.39" y2="206.96" stroke="#97A6B4" stroke-width="1"/>
+<line data-id="seriesConnector:y2024:y2025:products" data-part="seriesConnector" x1="441.07" y1="247.04" x2="485.34" y2="241.34" stroke="#97A6B4" stroke-width="1"/>
+<line data-id="seriesConnector:y2024:y2025:services" data-part="seriesConnector" x1="441.17" y1="163.45" x2="485.44" y2="148.25" stroke="#97A6B4" stroke-width="1"/>
+<line data-id="seriesConnector:y2025:y2026:products" data-part="seriesConnector" x1="537.61" y1="241.34" x2="581.88" y2="233.74" stroke="#97A6B4" stroke-width="1"/>
+<line data-id="seriesConnector:y2025:y2026:services" data-part="seriesConnector" x1="537.77" y1="148.22" x2="582.04" y2="123.52" stroke="#97A6B4" stroke-width="1"/>
+<rect data-id="mark:products:y2000" data-part="segment" x="50.96" y="322.52" width="52.24" height="64.58" fill="#12395E"/>
+<rect data-id="mark:services:y2000" data-part="segment" x="50.96" y="299.73" width="52.24" height="22.79" fill="#5E99C5"/>
+<rect data-id="mark:products:y2010" data-part="segment" x="147.48" y="295.93" width="52.24" height="91.17" fill="#12395E"/>
+<rect data-id="mark:services:y2010" data-part="segment" x="147.48" y="265.54" width="52.24" height="30.39" fill="#5E99C5"/>
+<rect data-id="mark:products:y2020" data-part="segment" x="243.99" y="261.74" width="52.24" height="125.36" fill="#12395E"/>
+<rect data-id="mark:services:y2020" data-part="segment" x="243.99" y="206.66" width="52.24" height="55.08" fill="#5E99C5"/>
+<rect data-id="mark:products:y2024" data-part="segment" x="388.76" y="246.55" width="52.24" height="140.55" fill="#12395E"/>
+<rect data-id="mark:services:y2024" data-part="segment" x="388.76" y="162.97" width="52.24" height="83.57" fill="#5E99C5"/>
+<rect data-id="mark:products:y2025" data-part="segment" x="485.28" y="240.85" width="52.24" height="146.25" fill="#12395E"/>
+<rect data-id="mark:services:y2025" data-part="segment" x="485.28" y="147.78" width="52.24" height="93.07" fill="#5E99C5"/>
+<rect data-id="mark:products:y2026" data-part="segment" x="581.79" y="233.25" width="52.24" height="153.85" fill="#12395E"/>
+<rect data-id="mark:services:y2026" data-part="segment" x="581.79" y="123.09" width="52.24" height="110.16" fill="#5E99C5"/>
+<line data-id="seam:mark:products:y2000:0" data-part="segmentSeam" x1="50.96" y1="322.52" x2="103.21" y2="322.52" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:products:y2010:1" data-part="segmentSeam" x1="147.48" y1="295.93" x2="199.72" y2="295.93" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:products:y2020:2" data-part="segmentSeam" x1="243.99" y1="261.74" x2="296.24" y2="261.74" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:products:y2024:3" data-part="segmentSeam" x1="388.76" y1="246.55" x2="441.01" y2="246.55" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:products:y2025:4" data-part="segmentSeam" x1="485.28" y1="240.85" x2="537.52" y2="240.85" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:products:y2026:5" data-part="segmentSeam" x1="581.79" y1="233.25" x2="634.04" y2="233.25" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="axis:baseline:over" data-part="baseline" x1="24" y1="387.10" x2="696" y2="387.10" stroke="#0D2A43" stroke-width="1"/>
+<line data-id="axis:x:categoryBreak:y2020:gap" data-part="categoryBreak" x1="340.19" y1="387.10" x2="344.81" y2="387.10" stroke="#FFFFFF" stroke-width="5"/>
+<line data-id="axis:x:categoryBreak:y2020:1" data-part="categoryBreak" x1="338.27" y1="390.43" x2="343.27" y2="381.77" stroke="#0D2A43" stroke-width="1"/>
+<line data-id="axis:x:categoryBreak:y2020:2" data-part="categoryBreak" x1="341.73" y1="392.43" x2="346.73" y2="383.77" stroke="#0D2A43" stroke-width="1"/>
+<text data-id="label:grandTotal:y2000" data-part="grandTotal" data-bp-role="value" x="69.58" y="292.41" text-anchor="start" font-size="13" font-weight="700" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="69.58" dy="0">46</tspan></text>
+<text data-id="label:grandTotal:y2010" data-part="grandTotal" data-bp-role="value" x="166.10" y="258.22" text-anchor="start" font-size="13" font-weight="700" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="166.10" dy="0">64</tspan></text>
+<text data-id="label:grandTotal:y2020" data-part="grandTotal" data-bp-role="value" x="262.61" y="199.34" text-anchor="start" font-size="13" font-weight="700" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="262.61" dy="0">95</tspan></text>
+<text data-id="label:grandTotal:y2024" data-part="grandTotal" data-bp-role="value" x="403.64" y="155.65" text-anchor="start" font-size="13" font-weight="700" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="403.64" dy="0">118</tspan></text>
+<text data-id="label:grandTotal:y2025" data-part="grandTotal" data-bp-role="value" x="500.15" y="140.46" text-anchor="start" font-size="13" font-weight="700" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="500.15" dy="0">126</tspan></text>
+<text data-id="label:grandTotal:y2026" data-part="grandTotal" data-bp-role="value" x="596.67" y="115.77" text-anchor="start" font-size="13" font-weight="700" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="596.67" dy="0">139</tspan></text>
+<text data-id="label:category:y2000" data-part="category" data-bp-role="category" x="62.33" y="405.56" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070"><tspan x="62.33" dy="0">2000</tspan></text>
+<text data-id="label:category:y2010" data-part="category" data-bp-role="category" x="158.85" y="405.56" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070"><tspan x="158.85" dy="0">2010</tspan></text>
+<text data-id="label:category:y2020" data-part="category" data-bp-role="category" x="255.36" y="405.56" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070"><tspan x="255.36" dy="0">2020</tspan></text>
+<text data-id="label:category:y2024" data-part="category" data-bp-role="category" x="400.14" y="405.56" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070"><tspan x="400.14" dy="0">2024</tspan></text>
+<text data-id="label:category:y2025" data-part="category" data-bp-role="category" x="496.65" y="405.56" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070"><tspan x="496.65" dy="0">2025</tspan></text>
+<text data-id="label:category:y2026" data-part="category" data-bp-role="category" x="593.17" y="405.56" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070"><tspan x="593.17" dy="0">2026</tspan></text>
+<text data-id="label:seriesEdge:products" data-part="series" data-bp-role="category" x="642.04" y="314.84" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="642.04" dy="0">Products</tspan></text>
+<text data-id="label:seriesEdge:services" data-part="series" data-bp-role="category" x="642.04" y="182.83" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="642.04" dy="0">Services</tspan></text>
+<text data-id="label:segment:products:y2026" data-part="segment" data-bp-role="value" x="600.42" y="314.84" text-anchor="start" font-size="13" font-weight="400" fill="#FFFFFF" style="font-variant-numeric: tabular-nums"><tspan x="600.42" dy="0">81</tspan></text>
+<text data-id="label:segment:products:y2025" data-part="segment" data-bp-role="value" x="503.90" y="318.63" text-anchor="start" font-size="13" font-weight="400" fill="#FFFFFF" style="font-variant-numeric: tabular-nums"><tspan x="503.90" dy="0">77</tspan></text>
+<text data-id="label:segment:products:y2024" data-part="segment" data-bp-role="value" x="407.39" y="321.48" text-anchor="start" font-size="13" font-weight="400" fill="#FFFFFF" style="font-variant-numeric: tabular-nums"><tspan x="407.39" dy="0">74</tspan></text>
+<text data-id="label:segment:products:y2020" data-part="segment" data-bp-role="value" x="262.61" y="329.08" text-anchor="start" font-size="13" font-weight="400" fill="#FFFFFF" style="font-variant-numeric: tabular-nums"><tspan x="262.61" dy="0">66</tspan></text>
+<text data-id="label:segment:services:y2026" data-part="segment" data-bp-role="value" x="600.42" y="182.83" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="600.42" dy="0">58</tspan></text>
+<text data-id="label:segment:services:y2025" data-part="segment" data-bp-role="value" x="503.90" y="198.97" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="503.90" dy="0">49</tspan></text>
+<text data-id="label:segment:products:y2010" data-part="segment" data-bp-role="value" x="166.10" y="346.18" text-anchor="start" font-size="13" font-weight="400" fill="#FFFFFF" style="font-variant-numeric: tabular-nums"><tspan x="166.10" dy="0">48</tspan></text>
+<text data-id="label:segment:services:y2024" data-part="segment" data-bp-role="value" x="407.39" y="209.42" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="407.39" dy="0">44</tspan></text>
+<text data-id="label:segment:products:y2000" data-part="segment" data-bp-role="value" x="69.58" y="359.47" text-anchor="start" font-size="13" font-weight="400" fill="#FFFFFF" style="font-variant-numeric: tabular-nums"><tspan x="69.58" dy="0">34</tspan></text>
+<text data-id="label:segment:services:y2020" data-part="segment" data-bp-role="value" x="262.61" y="238.86" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="262.61" dy="0">29</tspan></text>
+<text data-id="label:segment:services:y2010" data-part="segment" data-bp-role="value" x="166.10" y="285.40" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="166.10" dy="0">16</tspan></text>
+<text data-id="label:segment:services:y2000" data-part="segment" data-bp-role="value" x="69.58" y="315.79" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="69.58" dy="0">12</tspan></text>
+</svg>

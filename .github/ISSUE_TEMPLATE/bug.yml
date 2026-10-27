@@ -1,0 +1,43 @@
+name: Bug
+description: A chart that draws wrong, a refusal you did not expect, or a crash.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Boardplot version
+      description: The output of `npx boardplot --version`, or the `version` field an MCP tool returns.
+    validations:
+      required: true
+  - type: dropdown
+    id: interface
+    attributes:
+      label: Where you used it
+      options:
+        - CLI
+        - MCP server
+        - React
+        - Claude Code plugin
+        - Codex plugin
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: spec
+    attributes:
+      label: The smallest spec that shows the bug
+      description: Remove data you cannot share; invented values are fine.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened, and what you expected
+      description: Attach the SVG or PNG when the drawing is wrong.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Node.js version and operating system

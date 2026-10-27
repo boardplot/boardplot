@@ -1,0 +1,10 @@
+# The golden manifest maps fixture ids to SHA-256 hashes of their SVG output.
+# Ids that contain "key" make the hashes look like API keys to the default rules.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "SHA-256 golden hashes in tests/golden/manifest.json"
+condition = "AND"
+paths = ['''tests/golden/manifest\.json$''']
+regexes = ['''^[0-9a-f]{64}$''']

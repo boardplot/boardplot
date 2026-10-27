@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 539" width="960" height="539" direction="ltr" style="max-width:100%;height:auto;text-transform:none;letter-spacing:normal;word-spacing:normal;font-style:normal;font-variant:normal" preserveAspectRatio="xMidYMid meet" role="img" aria-label="A mature European age structure, by sex" aria-describedby="bp-desc-eee93e6acf" data-bp-sizing="{&quot;aspect&quot;:&quot;16:9&quot;,&quot;minWidth&quot;:280,&quot;minHeight&quot;:459,&quot;fit&quot;:&quot;fill&quot;,&quot;compactFloor&quot;:{&quot;width&quot;:280,&quot;height&quot;:180},&quot;measuredMinWidth&quot;:0,&quot;measuredMinHeight&quot;:459,&quot;naturalWidth&quot;:960,&quot;naturalHeight&quot;:540,&quot;comfortableWidth&quot;:350,&quot;comfortableHeight&quot;:574}" data-bp-mode="full" font-family="'Helvetica Neue', Helvetica, Arial, Roboto, sans-serif">
+<desc id="bp-desc-eee93e6acf">Population pyramid: Men (left) and Women (right) across 18 ordered bands, youngest at the bottom. 17 closed bands 5-wide plus the open-ended '85+', whose row is not width-comparable. Men totals 41,565 thousands, Women totals 41,855 thousands, grand total 83,420 thousands. Bars are counts in thousands. 85+: Men 690, Women 1,520; 80–84: Men 1,180, Women 1,520; 75–79: Men 1,720, Women 1,950; 70–74: Men 2,250, Women 2,400; 65–69: Men 2,450, Women 2,530; 60–64: Men 2,540, Women 2,560; 55–59: Men 2,905, Women 2,895; 50–54: Men 3,290, Women 3,225; 45–49: Men 3,350, Women 3,255; 40–44: Men 2,915, Women 2,810; 35–39: Men 2,665, Women 2,545; 30–34: Men 2,610, Women 2,455; 25–29: Men 2,570, Women 2,380; 20–24: Men 2,450, Women 2,255; 15–19: Men 2,115, Women 1,990; 10–14: Men 2,010, Women 1,905; 5–9: Men 1,980, Women 1,880; 0–4: Men 1,875, Women 1,780.</desc>
+<rect x="0" y="0" width="960" height="539" fill="#FFFFFF"/>
+<text data-id="frame:title:0" data-part="title" data-bp-role="title" x="28" y="37.60" text-anchor="start" font-size="20" font-weight="700" fill="#0D2A43"><tspan x="28" dy="0">A mature European age structure, by sex</tspan></text>
+<text data-id="frame:subtitle:1" data-part="subtitle" data-bp-role="subtitle" x="28" y="61.32" text-anchor="start" font-size="14" font-weight="400" fill="#0D2A43"><tspan font-weight="700">Population</tspan><tspan> in thousands · 2023</tspan></text>
+<text data-id="frame:source:2" data-part="source" data-bp-role="source" x="28" y="524.38" text-anchor="start" font-size="11" font-weight="400" fill="#4E6070"><tspan x="28" dy="0">Source: Stylised five-year age profile — illustrative, not an official statistical series</tspan></text>
+<line data-id="axis:baseline:left" data-part="baseline" x1="451.50" y1="97.80" x2="451.50" y2="502.70" stroke="#0D2A43" stroke-width="1"/>
+<line data-id="axis:baseline:right" data-part="baseline" x1="508.50" y1="97.80" x2="508.50" y2="502.70" stroke="#0D2A43" stroke-width="1"/>
+<rect data-id="mark:m:a85" data-part="bar" x="372.00" y="100.05" width="79.50" height="18.00" fill="#5E6C7B"/>
+<rect data-id="mark:f:a85" data-part="bar" x="508.50" y="100.05" width="175.14" height="18.00" fill="#12395E"/>
+<rect data-id="mark:m:a80" data-part="bar" x="315.54" y="122.54" width="135.96" height="18.00" fill="#5E6C7B"/>
+<rect data-id="mark:f:a80" data-part="bar" x="508.50" y="122.54" width="175.14" height="18.00" fill="#12395E"/>
+<rect data-id="mark:m:a75" data-part="bar" x="253.31" y="145.04" width="198.19" height="18.00" fill="#5E6C7B"/>
+<rect data-id="mark:f:a75" data-part="bar" x="508.50" y="145.04" width="224.69" height="18.00" fill="#12395E"/>
+<rect data-id="mark:m:a70" data-part="bar" x="192.25" y="167.53" width="259.25" height="18.00" fill="#5E6C7B"/>
+<rect data-id="mark:f:a70" data-part="bar" x="508.50" y="167.53" width="276.54" height="18.00" fill="#12395E"/>
+<rect data-id="mark:m:a65" data-part="bar" x="169.20" y="190.03" width="282.30" height="18.00" fill="#5E6C7B"/>
+<rect data-id="mark:f:a65" data-part="bar" x="508.50" y="190.03" width="291.52" height="18.00" fill="#12395E"/>
+<rect data-id="mark:m:a60" data-part="bar" x="158.83" y="212.52" width="292.67" height="18.00" fill="#5E6C7B"/>
+<rect data-id="mark:f:a60" data-part="bar" x="508.50" y="212.52" width="294.97" height="18.00" fill="#12395E"/>
+<rect data-id="mark:m:a55" data-part="bar" x="116.77" y="235.02" width="334.73" height="18.00" fill="#5E6C7B"/>
+<rect data-id="mark:f:a55" data-part="bar" x="508.50" y="235.02" width="333.57" height="18.00" fill="#12395E"/>
+<rect data-id="mark:m:a50" data-part="bar" x="72.41" y="257.51" width="379.09" height="18.00" fill="#5E6C7B"/>
+<rect data-id="mark:f:a50" data-part="bar" x="508.50" y="257.51" width="371.60" height="18.00" fill="#12395E"/>
+<rect data-id="mark:m:a45" data-part="bar" x="65.50" y="280.01" width="386" height="18.00" fill="#5E6C7B"/>
+<rect data-id="mark:f:a45" data-part="bar" x="508.50" y="280.01" width="375.05" height="18.00" fill="#12395E"/>
+<rect data-id="mark:m:a40" data-part="bar" x="115.62" y="302.50" width="335.88" height="18.00" fill="#5E6C7B"/>
+<rect data-id="mark:f:a40" data-part="bar" x="508.50" y="302.50" width="323.78" height="18.00" fill="#12395E"/>
+<rect data-id="mark:m:a35" data-part="bar" x="144.43" y="324.99" width="307.07" height="18.00" fill="#5E6C7B"/>
+<rect data-id="mark:f:a35" data-part="bar" x="508.50" y="324.99" width="293.24" height="18.00" fill="#12395E"/>
+<rect data-id="mark:m:a30" data-part="bar" x="150.77" y="347.49" width="300.73" height="18.00" fill="#5E6C7B"/>
+<rect data-id="mark:f:a30" data-part="bar" x="508.50" y="347.49" width="282.87" height="18.00" fill="#12395E"/>
+<rect data-id="mark:m:a25" data-part="bar" x="155.37" y="369.98" width="296.13" height="18.00" fill="#5E6C7B"/>
+<rect data-id="mark:f:a25" data-part="bar" x="508.50" y="369.98" width="274.23" height="18.00" fill="#12395E"/>
+<rect data-id="mark:m:a20" data-part="bar" x="169.20" y="392.48" width="282.30" height="18.00" fill="#5E6C7B"/>
+<rect data-id="mark:f:a20" data-part="bar" x="508.50" y="392.48" width="259.83" height="18.00" fill="#12395E"/>
+<rect data-id="mark:m:a15" data-part="bar" x="207.80" y="414.97" width="243.70" height="18.00" fill="#5E6C7B"/>
+<rect data-id="mark:f:a15" data-part="bar" x="508.50" y="414.97" width="229.30" height="18.00" fill="#12395E"/>
+<rect data-id="mark:m:a10" data-part="bar" x="219.90" y="437.47" width="231.60" height="18.00" fill="#5E6C7B"/>
+<rect data-id="mark:f:a10" data-part="bar" x="508.50" y="437.47" width="219.50" height="18.00" fill="#12395E"/>
+<rect data-id="mark:m:a5" data-part="bar" x="223.36" y="459.96" width="228.14" height="18.00" fill="#5E6C7B"/>
+<rect data-id="mark:f:a5" data-part="bar" x="508.50" y="459.96" width="216.62" height="18.00" fill="#12395E"/>
+<rect data-id="mark:m:a0" data-part="bar" x="235.46" y="482.46" width="216.04" height="18.00" fill="#5E6C7B"/>
+<rect data-id="mark:f:a0" data-part="bar" x="508.50" y="482.46" width="205.10" height="18.00" fill="#12395E"/>
+<text data-id="label:category:a0" data-part="category" data-bp-role="category" x="480" y="496.11" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="480" dy="0">0–4</tspan></text>
+<text data-id="label:category:a10" data-part="category" data-bp-role="category" x="480" y="451.12" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="480" dy="0">10–14</tspan></text>
+<text data-id="label:category:a15" data-part="category" data-bp-role="category" x="480" y="428.63" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="480" dy="0">15–19</tspan></text>
+<text data-id="label:category:a20" data-part="category" data-bp-role="category" x="480" y="406.14" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="480" dy="0">20–24</tspan></text>
+<text data-id="label:category:a25" data-part="category" data-bp-role="category" x="480" y="383.64" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="480" dy="0">25–29</tspan></text>
+<text data-id="label:category:a30" data-part="category" data-bp-role="category" x="480" y="361.15" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="480" dy="0">30–34</tspan></text>
+<text data-id="label:category:a35" data-part="category" data-bp-role="category" x="480" y="338.65" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="480" dy="0">35–39</tspan></text>
+<text data-id="label:category:a40" data-part="category" data-bp-role="category" x="480" y="316.16" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="480" dy="0">40–44</tspan></text>
+<text data-id="label:category:a45" data-part="category" data-bp-role="category" x="480" y="293.66" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="480" dy="0">45–49</tspan></text>
+<text data-id="label:category:a5" data-part="category" data-bp-role="category" x="480" y="473.62" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="480" dy="0">5–9</tspan></text>
+<text data-id="label:category:a50" data-part="category" data-bp-role="category" x="480" y="271.17" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="480" dy="0">50–54</tspan></text>
+<text data-id="label:category:a55" data-part="category" data-bp-role="category" x="480" y="248.67" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="480" dy="0">55–59</tspan></text>
+<text data-id="label:category:a60" data-part="category" data-bp-role="category" x="480" y="226.18" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="480" dy="0">60–64</tspan></text>
+<text data-id="label:category:a65" data-part="category" data-bp-role="category" x="480" y="203.69" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="480" dy="0">65–69</tspan></text>
+<text data-id="label:category:a70" data-part="category" data-bp-role="category" x="480" y="181.19" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="480" dy="0">70–74</tspan></text>
+<text data-id="label:category:a75" data-part="category" data-bp-role="category" x="480" y="158.70" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="480" dy="0">75–79</tspan></text>
+<text data-id="label:category:a80" data-part="category" data-bp-role="category" x="480" y="136.20" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="480" dy="0">80–84</tspan></text>
+<text data-id="label:category:a85" data-part="category" data-bp-role="category" x="480" y="113.71" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="480" dy="0">85+</tspan></text>
+<text data-id="label:point:f:a0" data-part="point" data-bp-role="value" x="717.60" y="496.11" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="717.60" dy="0">1,780</tspan></text>
+<text data-id="label:point:f:a85" data-part="point" data-bp-role="value" x="687.64" y="113.71" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="687.64" dy="0">1,520</tspan></text>
+<text data-id="label:point:m:a0" data-part="point" data-bp-role="value" x="197.96" y="496.11" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="197.96" dy="0">1,875</tspan></text>
+<text data-id="label:point:m:a85" data-part="point" data-bp-role="value" x="345.50" y="113.71" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="345.50" dy="0">690</tspan></text>
+<text data-id="label:series:f" data-part="series" data-bp-role="category" x="508.50" y="87.88" text-anchor="start" font-size="13" font-weight="700" fill="#0D2A43"><tspan x="508.50" dy="0">Women</tspan></text>
+<text data-id="label:series:m" data-part="series" data-bp-role="category" x="425" y="87.88" text-anchor="start" font-size="13" font-weight="700" fill="#0D2A43"><tspan x="425" dy="0">Men</tspan></text>
+<text data-id="label:point:f:a45" data-part="point" data-bp-role="value" x="887.55" y="293.66" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="887.55" dy="0">3,255</tspan></text>
+<text data-id="label:point:m:a45" data-part="point" data-bp-role="value" x="28" y="293.66" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="28" dy="0">3,350</tspan></text>
+<text data-id="label:point:f:a10" data-part="point" data-bp-role="value" x="732.00" y="451.12" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="732.00" dy="0">1,905</tspan></text>
+<text data-id="label:point:f:a15" data-part="point" data-bp-role="value" x="741.80" y="428.63" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="741.80" dy="0">1,990</tspan></text>
+<text data-id="label:point:f:a20" data-part="point" data-bp-role="value" x="772.33" y="406.14" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="772.33" dy="0">2,255</tspan></text>
+<text data-id="label:point:f:a25" data-part="point" data-bp-role="value" x="786.73" y="383.64" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="786.73" dy="0">2,380</tspan></text>
+<text data-id="label:point:f:a30" data-part="point" data-bp-role="value" x="795.37" y="361.15" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="795.37" dy="0">2,455</tspan></text>
+<text data-id="label:point:f:a35" data-part="point" data-bp-role="value" x="805.74" y="338.65" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="805.74" dy="0">2,545</tspan></text>
+<text data-id="label:point:f:a40" data-part="point" data-bp-role="value" x="836.28" y="316.16" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="836.28" dy="0">2,810</tspan></text>
+<text data-id="label:point:f:a5" data-part="point" data-bp-role="value" x="729.12" y="473.62" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="729.12" dy="0">1,880</tspan></text>
+<text data-id="label:point:f:a50" data-part="point" data-bp-role="value" x="884.10" y="271.17" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="884.10" dy="0">3,225</tspan></text>
+<text data-id="label:point:f:a55" data-part="point" data-bp-role="value" x="846.07" y="248.67" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="846.07" dy="0">2,895</tspan></text>
+<text data-id="label:point:f:a60" data-part="point" data-bp-role="value" x="807.47" y="226.18" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="807.47" dy="0">2,560</tspan></text>
+<text data-id="label:point:f:a65" data-part="point" data-bp-role="value" x="804.02" y="203.69" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="804.02" dy="0">2,530</tspan></text>
+<text data-id="label:point:f:a70" data-part="point" data-bp-role="value" x="789.04" y="181.19" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="789.04" dy="0">2,400</tspan></text>
+<text data-id="label:point:f:a75" data-part="point" data-bp-role="value" x="737.19" y="158.70" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="737.19" dy="0">1,950</tspan></text>
+<text data-id="label:point:f:a80" data-part="point" data-bp-role="value" x="687.64" y="136.20" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="687.64" dy="0">1,520</tspan></text>
+<text data-id="label:point:m:a10" data-part="point" data-bp-role="value" x="182.40" y="451.12" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="182.40" dy="0">2,010</tspan></text>
+<text data-id="label:point:m:a15" data-part="point" data-bp-role="value" x="170.30" y="428.63" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="170.30" dy="0">2,115</tspan></text>
+<text data-id="label:point:m:a20" data-part="point" data-bp-role="value" x="131.70" y="406.14" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="131.70" dy="0">2,450</tspan></text>
+<text data-id="label:point:m:a25" data-part="point" data-bp-role="value" x="117.87" y="383.64" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="117.87" dy="0">2,570</tspan></text>
+<text data-id="label:point:m:a30" data-part="point" data-bp-role="value" x="113.27" y="361.15" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="113.27" dy="0">2,610</tspan></text>
+<text data-id="label:point:m:a35" data-part="point" data-bp-role="value" x="106.93" y="338.65" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="106.93" dy="0">2,665</tspan></text>
+<text data-id="label:point:m:a40" data-part="point" data-bp-role="value" x="78.12" y="316.16" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="78.12" dy="0">2,915</tspan></text>
+<text data-id="label:point:m:a5" data-part="point" data-bp-role="value" x="185.86" y="473.62" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="185.86" dy="0">1,980</tspan></text>
+<text data-id="label:point:m:a50" data-part="point" data-bp-role="value" x="34.91" y="271.17" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="34.91" dy="0">3,290</tspan></text>
+<text data-id="label:point:m:a55" data-part="point" data-bp-role="value" x="79.27" y="248.67" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="79.27" dy="0">2,905</tspan></text>
+<text data-id="label:point:m:a60" data-part="point" data-bp-role="value" x="121.33" y="226.18" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="121.33" dy="0">2,540</tspan></text>
+<text data-id="label:point:m:a65" data-part="point" data-bp-role="value" x="131.70" y="203.69" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="131.70" dy="0">2,450</tspan></text>
+<text data-id="label:point:m:a70" data-part="point" data-bp-role="value" x="154.75" y="181.19" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="154.75" dy="0">2,250</tspan></text>
+<text data-id="label:point:m:a75" data-part="point" data-bp-role="value" x="215.81" y="158.70" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="215.81" dy="0">1,720</tspan></text>
+<text data-id="label:point:m:a80" data-part="point" data-bp-role="value" x="278.04" y="136.20" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="278.04" dy="0">1,180</tspan></text>
+</svg>

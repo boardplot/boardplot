@@ -1,0 +1,126 @@
+name: CI
+
+# Runs on pull requests and on pushes to main. It never uses pull_request_target, so code
+# from a fork never runs with a write token or a secret. The workflow uses no secrets.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# A new push to a pull request cancels the older run of the same pull request.
+# Runs on main are never cancelled, so every commit on main gets a full result.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  checks:
+    name: Checks and package
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check generated files
+        run: |
+          npm run check:chart-entries
+          npm run check:choropleth-fixtures
+          npm run check:plugin-version
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Node 22 on x64 checks the golden SVG bytes. The Node 22 test jobs below skip this file.
+      - name: Check golden SVG bytes
+        run: npx --no-install vitest run tests/golden-svg.test.ts --maxWorkers=1
+
+      - name: Keep list plus describe under the token ceiling
+        run: npm run eval:tokens
+
+      - name: Build and smoke-test the installed package
+        run: npm run smoke:package -- --artifacts "$RUNNER_TEMP/boardplot-build"
+
+      - name: Check the diagnostic doc pointers and the skill's links
+        run: node scripts/check-doc-anchors.mjs --zip "$RUNNER_TEMP/boardplot-build/boardplot-cowork.zip"
+
+      - name: Run the code blocks of the manual against the build
+        run: node scripts/check-manual.mjs
+
+      - name: Check the generated documentation
+        run: npm run docs:build
+
+      - name: Build the Next example with the packed library
+        run: npm run smoke:next -- --tarball "$RUNNER_TEMP"/boardplot-build/boardplot-*.tgz
+
+      - name: Check for generated tracked-file drift
+        run: git diff HEAD --exit-code && test -z "$(git status --porcelain)"
+
+  # Each ARM job uses two cores and runs one third of the test files.
+  tests:
+    name: Product tests (Node ${{ matrix.node }}, ${{ matrix.shard }}/3)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+        shard: [1, 2, 3]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run the product test suite
+        shell: bash
+        run: |
+          args=()
+          if [[ "$TEST_NODE" == 22 ]]; then
+            args+=(--exclude tests/golden-svg.test.ts)
+          fi
+          npm test -- --maxWorkers=2 --shard="$TEST_SHARD/3" "${args[@]}"
+        env:
+          CI: 1
+          TEST_NODE: ${{ matrix.node }}
+          TEST_SHARD: ${{ matrix.shard }}
+
+  # One check for the branch ruleset to require. It fails when any job above fails or is skipped.
+  ci-result:
+    name: CI result
+    needs: [checks, tests]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require every job to succeed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Job results: $RESULTS"
+          for result in $RESULTS; do
+            test "$result" = success
+          done

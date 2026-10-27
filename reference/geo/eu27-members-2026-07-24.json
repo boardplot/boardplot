@@ -1,0 +1,39 @@
+{
+  "selection": "EU member selection",
+  "asOf": "2026-07-24",
+  "effectiveSince": "2020-02-01",
+  "geometryScope": {
+    "policy": "European land components only; no outermost-region insets",
+    "longitude": [-11, 35],
+    "latitude": [34, 72]
+  },
+  "codes": [
+    "AT",
+    "BE",
+    "BG",
+    "HR",
+    "CY",
+    "CZ",
+    "DK",
+    "EE",
+    "FI",
+    "FR",
+    "DE",
+    "GR",
+    "HU",
+    "IE",
+    "IT",
+    "LV",
+    "LT",
+    "LU",
+    "MT",
+    "NL",
+    "PL",
+    "PT",
+    "RO",
+    "SK",
+    "SI",
+    "ES",
+    "SE"
+  ]
+}

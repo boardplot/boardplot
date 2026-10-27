@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 511" width="720" height="511" direction="ltr" style="max-width:100%;height:auto;text-transform:none;letter-spacing:normal;word-spacing:normal;font-style:normal;font-variant:normal" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Acme leads in the two largest markets but trails everywhere in Asia" aria-describedby="bp-desc-ab36b5449e" data-bp-sizing="{&quot;aspect&quot;:&quot;16:9&quot;,&quot;minWidth&quot;:280,&quot;minHeight&quot;:270,&quot;fit&quot;:&quot;fill&quot;,&quot;measuredMinWidth&quot;:0,&quot;measuredMinHeight&quot;:258,&quot;naturalWidth&quot;:720,&quot;naturalHeight&quot;:405,&quot;comfortableWidth&quot;:350,&quot;comfortableHeight&quot;:338}" data-bp-mode="full" font-family="'Helvetica Neue', Helvetica, Arial, Roboto, sans-serif">
+<desc id="bp-desc-ab36b5449e">percent-axis marimekko, 4 columns × 4 series; column widths proportional to category totals. Totals: Americas 13.9, EMEA 9.7, APAC 6.5, LatAm 1.9.</desc>
+<rect x="0" y="0" width="720" height="511" fill="#FFFFFF"/>
+<text data-id="frame:title:0" data-part="title" data-bp-role="title" x="24" y="37.60" text-anchor="start" font-size="20" font-weight="700" fill="#0D2A43"><tspan x="24" dy="0">Acme leads in the two largest markets but trails everywhere in Asia</tspan></text>
+<text data-id="frame:subtitle:1" data-part="subtitle" data-bp-role="subtitle" x="24" y="61.32" text-anchor="start" font-size="14" font-weight="400" fill="#0D2A43"><tspan>Acme Corp · </tspan><tspan font-weight="700">Market share by region</tspan><tspan> in % of market · FY25 · AC</tspan></text>
+<text data-id="frame:source:2" data-part="source" data-bp-role="source" x="24" y="496.38" text-anchor="start" font-size="11" font-weight="400" fill="#4E6070"><tspan x="24" dy="0">Source: Illustrative market sizing FY25; team analysis</tspan></text>
+<text data-id="axis:y:tick:0" data-part="tick" data-bp-role="axis" x="37.50" y="474.01" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="37.50" dy="0">0%</tspan></text>
+<text data-id="axis:y:tick:1" data-part="tick" data-bp-role="axis" x="31" y="407.33" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="31" dy="0">20%</tspan></text>
+<text data-id="axis:y:tick:2" data-part="tick" data-bp-role="axis" x="31" y="340.65" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="31" dy="0">40%</tspan></text>
+<text data-id="axis:y:tick:3" data-part="tick" data-bp-role="axis" x="31" y="273.97" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="31" dy="0">60%</tspan></text>
+<text data-id="axis:y:tick:4" data-part="tick" data-bp-role="axis" x="31" y="207.29" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="31" dy="0">80%</tspan></text>
+<text data-id="axis:y:tick:5" data-part="tick" data-bp-role="axis" x="24" y="140.61" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="24" dy="0">100%</tspan></text>
+<line data-id="axis:baseline" data-part="baseline" x1="63.50" y1="470.70" x2="696" y2="470.70" stroke="#0D2A43" stroke-width="1"/>
+<rect data-id="mark:gamma:americas" data-part="segment" x="63.50" y="137.30" width="274.74" height="28.78" fill="#72767C"/>
+<rect data-id="mark:beta:americas" data-part="segment" x="63.50" y="166.08" width="274.74" height="62.36" fill="#B58629"/>
+<rect data-id="mark:alpha:americas" data-part="segment" x="63.50" y="228.45" width="274.74" height="95.94" fill="#5E99C5"/>
+<rect data-id="mark:acme:americas" data-part="segment" x="63.50" y="324.39" width="274.74" height="146.31" fill="#1D4ED8"/>
+<rect data-id="mark:gamma:emea" data-part="segment" x="338.24" y="137.30" width="191.73" height="30.93" fill="#72767C"/>
+<rect data-id="mark:beta:emea" data-part="segment" x="338.24" y="168.23" width="191.73" height="51.56" fill="#B58629"/>
+<rect data-id="mark:alpha:emea" data-part="segment" x="338.24" y="219.79" width="191.73" height="106.55" fill="#5E99C5"/>
+<rect data-id="mark:acme:emea" data-part="segment" x="338.24" y="326.34" width="191.73" height="144.36" fill="#1D4ED8"/>
+<rect data-id="mark:gamma:apac" data-part="segment" x="529.97" y="137.30" width="128.48" height="30.78" fill="#72767C"/>
+<rect data-id="mark:beta:apac" data-part="segment" x="529.97" y="168.08" width="128.48" height="61.55" fill="#B58629"/>
+<rect data-id="mark:alpha:apac" data-part="segment" x="529.97" y="229.63" width="128.48" height="148.75" fill="#5E99C5"/>
+<rect data-id="mark:acme:apac" data-part="segment" x="529.97" y="378.37" width="128.48" height="92.33" fill="#1D4ED8"/>
+<rect data-id="mark:gamma:latam" data-part="segment" x="658.45" y="137.30" width="37.55" height="52.64" fill="#72767C"/>
+<rect data-id="mark:beta:latam" data-part="segment" x="658.45" y="189.94" width="37.55" height="87.74" fill="#B58629"/>
+<rect data-id="mark:alpha:latam" data-part="segment" x="658.45" y="277.68" width="37.55" height="122.83" fill="#5E99C5"/>
+<rect data-id="mark:acme:latam" data-part="segment" x="658.45" y="400.51" width="37.55" height="70.19" fill="#1D4ED8"/>
+<line data-id="seam:mark:gamma:americas:0" data-part="segmentSeam" x1="338.24" y1="137.30" x2="338.24" y2="166.08" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:beta:americas:1" data-part="segmentSeam" x1="63.50" y1="166.08" x2="338.24" y2="166.08" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:beta:americas:2" data-part="segmentSeam" x1="338.24" y1="166.08" x2="338.24" y2="168.23" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:beta:americas:3" data-part="segmentSeam" x1="338.24" y1="168.23" x2="338.24" y2="219.79" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:beta:americas:4" data-part="segmentSeam" x1="338.24" y1="219.79" x2="338.24" y2="228.45" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:alpha:americas:5" data-part="segmentSeam" x1="63.50" y1="228.45" x2="338.24" y2="228.45" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:alpha:americas:6" data-part="segmentSeam" x1="338.24" y1="228.45" x2="338.24" y2="324.39" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:acme:americas:7" data-part="segmentSeam" x1="63.50" y1="324.39" x2="338.24" y2="324.39" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:acme:americas:8" data-part="segmentSeam" x1="338.24" y1="324.39" x2="338.24" y2="326.34" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:acme:americas:9" data-part="segmentSeam" x1="338.24" y1="326.34" x2="338.24" y2="470.70" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:gamma:emea:10" data-part="segmentSeam" x1="529.97" y1="137.30" x2="529.97" y2="168.08" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:gamma:emea:11" data-part="segmentSeam" x1="529.97" y1="168.08" x2="529.97" y2="168.23" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:beta:emea:12" data-part="segmentSeam" x1="338.24" y1="168.23" x2="529.97" y2="168.23" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:beta:emea:13" data-part="segmentSeam" x1="529.97" y1="168.23" x2="529.97" y2="219.79" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:alpha:emea:14" data-part="segmentSeam" x1="338.24" y1="219.79" x2="529.97" y2="219.79" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:alpha:emea:15" data-part="segmentSeam" x1="529.97" y1="219.79" x2="529.97" y2="229.63" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:alpha:emea:16" data-part="segmentSeam" x1="529.97" y1="229.63" x2="529.97" y2="326.34" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:acme:emea:17" data-part="segmentSeam" x1="338.24" y1="326.34" x2="529.97" y2="326.34" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:acme:emea:18" data-part="segmentSeam" x1="529.97" y1="326.34" x2="529.97" y2="378.37" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:acme:emea:19" data-part="segmentSeam" x1="529.97" y1="378.37" x2="529.97" y2="470.70" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:gamma:apac:20" data-part="segmentSeam" x1="658.45" y1="137.30" x2="658.45" y2="168.08" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:beta:apac:21" data-part="segmentSeam" x1="529.97" y1="168.08" x2="658.45" y2="168.08" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:beta:apac:22" data-part="segmentSeam" x1="658.45" y1="168.08" x2="658.45" y2="189.94" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:beta:apac:23" data-part="segmentSeam" x1="658.45" y1="189.94" x2="658.45" y2="229.63" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:alpha:apac:24" data-part="segmentSeam" x1="529.97" y1="229.63" x2="658.45" y2="229.63" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:alpha:apac:25" data-part="segmentSeam" x1="658.45" y1="229.63" x2="658.45" y2="277.68" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:alpha:apac:26" data-part="segmentSeam" x1="658.45" y1="277.68" x2="658.45" y2="378.37" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:acme:apac:27" data-part="segmentSeam" x1="529.97" y1="378.37" x2="658.45" y2="378.37" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:acme:apac:28" data-part="segmentSeam" x1="658.45" y1="378.37" x2="658.45" y2="400.51" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:acme:apac:29" data-part="segmentSeam" x1="658.45" y1="400.51" x2="658.45" y2="470.70" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:beta:latam:30" data-part="segmentSeam" x1="658.45" y1="189.94" x2="696" y2="189.94" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:alpha:latam:31" data-part="segmentSeam" x1="658.45" y1="277.68" x2="696" y2="277.68" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:mark:acme:latam:32" data-part="segmentSeam" x1="658.45" y1="400.51" x2="696" y2="400.51" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="axis:baseline:over" data-part="baseline" x1="63.50" y1="470.70" x2="696" y2="470.70" stroke="#0D2A43" stroke-width="1"/>
+<path data-id="ridge:acme" data-part="ridge" d="M63.50 324.39L338.24 324.39L338.24 326.34L529.97 326.34L529.97 378.37L658.45 378.37L658.45 400.51L696 400.51" fill="none" stroke="#0D2A43" stroke-width="2" stroke-linejoin="round"/>
+<text data-id="label:axis:y:title" data-part="axisTitle" data-bp-role="caption" x="24" y="90.75" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="24" dy="0">Market share, %</tspan></text>
+<text data-id="label:total:americas" data-part="total" data-bp-role="value" x="162.37" y="131.98" text-anchor="start" font-size="13" font-weight="700" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="162.37" dy="0">13.9 USD bn</tspan></text>
+<text data-id="label:total:apac" data-part="total" data-bp-role="value" x="584.96" y="131.98" text-anchor="start" font-size="13" font-weight="700" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="584.96" dy="0">6.5</tspan></text>
+<text data-id="label:total:emea" data-part="total" data-bp-role="value" x="424.86" y="131.98" text-anchor="start" font-size="13" font-weight="700" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="424.86" dy="0">9.7</tspan></text>
+<text data-id="label:total:latam" data-part="total" data-bp-role="value" x="667.97" y="131.98" text-anchor="start" font-size="13" font-weight="700" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="667.97" dy="0">1.9</tspan></text>
+<text data-id="label:category:americas" data-part="category" data-bp-role="category" x="173.37" y="112.16" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="173.37" dy="0">Americas</tspan></text>
+<text data-id="label:category:apac" data-part="category" data-bp-role="category" x="576.21" y="112.16" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="576.21" dy="0">APAC</tspan></text>
+<text data-id="label:category:emea" data-part="category" data-bp-role="category" x="415.36" y="112.16" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="415.36" dy="0">EMEA</tspan></text>
+<text data-id="label:category:latam" data-part="category" data-bp-role="category" x="657.50" y="112.16" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="657.50" dy="0">LatAm</tspan></text>
+<text data-id="label:segment:acme:americas" data-part="segment" data-bp-role="caption" x="168.87" y="402.20" text-anchor="start" font-size="13" font-weight="400" fill="#FFFFFF"><tspan x="168.87" dy="0">Acme 44%</tspan></text>
+<text data-id="label:segment:acme:emea" data-part="segment" data-bp-role="value" x="420.86" y="403.18" text-anchor="start" font-size="13" font-weight="400" fill="#FFFFFF" style="font-variant-numeric: tabular-nums"><tspan x="420.86" dy="0">43%</tspan></text>
+<text data-id="label:segment:acme:apac" data-part="segment" data-bp-role="value" x="580.96" y="429.20" text-anchor="start" font-size="13" font-weight="400" fill="#FFFFFF" style="font-variant-numeric: tabular-nums"><tspan x="580.96" dy="0">28%</tspan></text>
+<text data-id="label:segment:acme:latam" data-part="segment" data-bp-role="value" x="663.97" y="440.27" text-anchor="start" font-size="13" font-weight="400" fill="#FFFFFF" style="font-variant-numeric: tabular-nums"><tspan x="663.97" dy="0">21%</tspan></text>
+<text data-id="label:segment:alpha:apac" data-part="segment" data-bp-role="value" x="580.96" y="308.66" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="580.96" dy="0">45%</tspan></text>
+<text data-id="label:segment:alpha:latam" data-part="segment" data-bp-role="value" x="663.97" y="343.76" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="663.97" dy="0">37%</tspan></text>
+<text data-id="label:segment:alpha:emea" data-part="segment" data-bp-role="value" x="420.86" y="277.73" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="420.86" dy="0">32%</tspan></text>
+<text data-id="label:segment:alpha:americas" data-part="segment" data-bp-role="caption" x="160.37" y="281.08" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="160.37" dy="0">AlphaCo 29%</tspan></text>
+<text data-id="label:segment:beta:latam" data-part="segment" data-bp-role="value" x="663.97" y="238.47" text-anchor="start" font-size="13" font-weight="400" fill="#050505" style="font-variant-numeric: tabular-nums"><tspan x="663.97" dy="0">26%</tspan></text>
+<text data-id="label:segment:beta:americas" data-part="segment" data-bp-role="caption" x="157.87" y="201.92" text-anchor="start" font-size="13" font-weight="400" fill="#050505"><tspan x="157.87" dy="0">BetaCorp 19%</tspan></text>
+<text data-id="label:segment:beta:apac" data-part="segment" data-bp-role="value" x="580.96" y="203.51" text-anchor="start" font-size="13" font-weight="400" fill="#050505" style="font-variant-numeric: tabular-nums"><tspan x="580.96" dy="0">18%</tspan></text>
+<text data-id="label:segment:gamma:latam" data-part="segment" data-bp-role="value" x="663.97" y="168.28" text-anchor="start" font-size="13" font-weight="400" fill="#FFFFFF" style="font-variant-numeric: tabular-nums"><tspan x="663.97" dy="0">16%</tspan></text>
+<text data-id="label:segment:beta:emea" data-part="segment" data-bp-role="value" x="420.86" y="198.67" text-anchor="start" font-size="13" font-weight="400" fill="#050505" style="font-variant-numeric: tabular-nums"><tspan x="420.86" dy="0">16%</tspan></text>
+<text data-id="label:segment:gamma:emea" data-part="segment" data-bp-role="value" x="424.36" y="157.43" text-anchor="start" font-size="13" font-weight="400" fill="#FFFFFF" style="font-variant-numeric: tabular-nums"><tspan x="424.36" dy="0">9%</tspan></text>
+<text data-id="label:segment:gamma:apac" data-part="segment" data-bp-role="value" x="584.46" y="157.35" text-anchor="start" font-size="13" font-weight="400" fill="#FFFFFF" style="font-variant-numeric: tabular-nums"><tspan x="584.46" dy="0">9%</tspan></text>
+<text data-id="label:segment:gamma:americas" data-part="segment" data-bp-role="caption" x="165.87" y="156.35" text-anchor="start" font-size="13" font-weight="400" fill="#FFFFFF"><tspan x="165.87" dy="0">Gamma 8%</tspan></text>
+</svg>

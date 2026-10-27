@@ -1,0 +1,42 @@
+import '../core/charts/dimswitch/fixtures';
+/** Fixture catalogue. Import this entry only in tooling, tests, and authored examples. */
+
+import '../core/charts/bar/fixtures';
+import '../core/charts/bartable/fixtures';
+import '../core/charts/box/fixtures';
+import '../core/charts/bullet/fixtures';
+import '../core/charts/butterfly/fixtures';
+import '../core/charts/choropleth/fixtures';
+import '../core/charts/cohort/fixtures';
+import '../core/charts/column/fixtures';
+import '../core/charts/combo/fixtures';
+import '../core/charts/creative/fixtures';
+import '../core/charts/diagram/fixtures';
+import '../core/charts/dot/fixtures';
+import '../core/charts/funnel/fixtures';
+import '../core/charts/gantt/fixtures';
+import '../core/charts/grid/fixtures';
+import '../core/charts/heatmap/fixtures';
+import '../core/charts/histogram/fixtures';
+import '../core/charts/kpi/fixtures';
+import '../core/charts/likert/fixtures';
+import '../core/charts/line/fixtures';
+import '../core/charts/mekko/fixtures';
+import '../core/charts/pareto/fixtures';
+import '../core/charts/pie/fixtures';
+import '../core/charts/pvm/fixtures';
+import '../core/charts/pyramid/fixtures';
+import '../core/charts/scatter/fixtures';
+import '../core/charts/slope/fixtures';
+import '../core/charts/sparkline/fixtures';
+import '../core/charts/status/fixtures';
+import '../core/charts/table/fixtures';
+import '../core/charts/tilemap/fixtures';
+import '../core/charts/treemap/fixtures';
+import '../core/charts/sankey/fixtures';
+import '../core/charts/variance/fixtures';
+import '../core/charts/waffle/fixtures';
+import '../core/charts/waterfall/fixtures';
+
+export { allFixtures, getFixtures, getRefusalExamples } from './registry';
+export type { Fixture } from '../core/registry';

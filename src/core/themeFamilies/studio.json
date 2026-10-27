@@ -1,0 +1,138 @@
+{
+ "name": "studio",
+ "scheme": "light",
+ "color": {
+  "good": "#0B7A49",
+  "goodFill": "#1DB06A",
+  "bad": "#C0373F",
+  "badFill": "#E2564A",
+  "neutral": "#75807A",
+  "neutralMark": "#8F928E",
+  "neutralLight": "#D4DAD2",
+  "highlight": "#0F7F67",
+  "total": "#24564E",
+  "others": "#F1ECE1",
+  "othersMark": "#DCD7CD",
+  "ink": "#33302B",
+  "inkInverse": "#FFFFFF",
+  "inkMuted": "#6E675D",
+  "axis": "#33302B",
+  "grid": "#EDE8DD",
+  "leader": "#A89F90",
+  "background": "#FFFEFB",
+  "series": [
+   "#24564E",
+   "#C68610",
+   "#C1553F",
+   "#609E93",
+   "#7B82C7",
+   "#84538F"
+  ],
+  "seriesOverflow": "repeatLast",
+  "palettes": {
+   "atlantic": [
+    "#075A8E",
+    "#55BEF7",
+    "#2AB1A9",
+    "#838CDA",
+    "#208668",
+    "#9259AC"
+   ]
+  },
+  "status": {
+   "advanced": "#75807A",
+   "open": "#D4DAD2",
+   "lost": "#E2564A",
+   "pending": "#A8AFA5",
+   "won": "#0F7F67",
+   "gantt-workstream": "#24564E",
+   "gantt-detail": "#B5BCB2",
+   "gantt-special": "#0F7F67",
+   "gantt-cadence": "#24564E"
+  },
+  "colorblind": {
+   "good": "#467DDE",
+   "bad": "#E16D08",
+   "badFill": "#A0431A"
+  },
+  "warn": "#896600",
+  "warnFill": "#F5A800"
+ },
+ "scenario": {
+  "AC": "solid",
+  "PY": "solidLight",
+  "PL": "outline",
+  "FC": "hatch45"
+ },
+ "pattern": {
+  "hatchAngle": 45,
+  "hatchColor": "segment",
+  "hatchGap": 6,
+  "hatchStrokeWidth": 0.75,
+  "outlineStrokeWidth": 1.5
+ },
+ "type": {
+  "family": "'Helvetica Neue', Helvetica, Arial, sans-serif",
+  "title": {
+   "size": 18,
+   "weight": 700,
+   "lineHeight": 1.25
+  },
+  "subtitle": {
+   "size": 12,
+   "weight": 400,
+   "lineHeight": 1.3
+  },
+  "label": {
+   "size": 11.5,
+   "weight": 400,
+   "lineHeight": 1.2
+  },
+  "axis": {
+   "size": 10.5,
+   "weight": 400,
+   "lineHeight": 1.2
+  },
+  "footnote": {
+   "size": 9,
+   "weight": 400,
+   "lineHeight": 1.3
+  },
+  "micro": {
+   "size": 9,
+   "weight": 400,
+   "lineHeight": 1.2
+  },
+  "scale": {
+   "S": {
+    "title": 15,
+    "subtitle": 10.5,
+    "label": 10,
+    "axis": 9.5,
+    "footnote": 8.5,
+    "micro": 9
+   },
+   "L": {
+    "title": 22,
+    "subtitle": 14,
+    "label": 13,
+    "axis": 12,
+    "footnote": 10.5,
+    "micro": 9.5
+   }
+  }
+ },
+ "space": {
+  "tierGap": 5,
+  "facetGap": 30,
+  "labelPad": 6
+ },
+ "surface": {
+  "chipTint": 0.9,
+  "rowTint": 0.94,
+  "elapsedTint": 0.95,
+  "anchorTint": 0.97,
+  "chipRadius": 3,
+  "panelShadow": "0 10px 24px rgba(51,48,43,0.07), 0 2px 6px rgba(51,48,43,0.05)"
+ }
+}

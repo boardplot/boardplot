@@ -1,0 +1,8 @@
+import type { DimSwitchData } from './types';
+/** Invented sums with an organic member that has no spend field. */
+export const exampleData: DimSwitchData = {
+ dimension:{label:'Channel',total:{id:'total',label:'Total'},members:[{id:'paid',label:'Paid Search'},{id:'search-a',label:'Search A',parentId:'paid'},{id:'search-b',label:'Search B',parentId:'paid'},{id:'organic',label:'Organic'}],headline:['spend','revenue']},
+ measures:[{id:'orders',scale:'count',label:'Orders',change:'relative',value:{field:'orders'},judge:{family:'volume',base:'orders'}},{id:'new',scale:'count',label:'New customers',parentId:'orders',value:{field:'nc'}},{id:'existing',scale:'count',label:'Existing customers',parentId:'orders',value:{op:'sub',a:{field:'orders'},b:{field:'nc'}}},{id:'revenue',scale:'money',label:'Net revenue',value:{field:'rev'},format:'$1.2',unit:'$'},{id:'spend',scale:'money',label:'Marketing spend',value:{field:'spend'},format:'$1.2',unit:'$'},{id:'cac',scale:'perUnit',label:'CAC',value:{op:'div',a:{field:'spend'},b:{field:'nc'}},format:'$1.2',unit:'$',judge:{family:'cost',base:'nc'}}],
+ periods:[{id:'range',label:'Range',kind:'range'},{id:'prior',label:'Prior',kind:'prior'},{id:'w1',label:'Week 1'},{id:'w2',label:'Week 2',partial:true}],
+ facts:['total','paid','search-a','search-b','organic'].flatMap((memberId,i)=>['range','prior','w1','w2'].map((periodId,j)=>({memberId,periodId,sums:{orders:120-i*15+j*8,nc:60-i*7+j*2,rev:12000-i*1500+j*500,...(memberId==='organic'?{}:{spend:1800-i*200+j*30})},ref:{orders:110-i*15,nc:50-i*7,rev:11000-i*1500,...(memberId==='organic'?{}:{spend:1900-i*200})}}))),
+};

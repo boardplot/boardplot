@@ -1,0 +1,35 @@
+{
+  "settings": {
+    "theme": "standard"
+  },
+  "spec": {
+    "version": 1,
+    "charts": [
+      {
+        "name": "weekly-orders",
+        "type": "column",
+        "data": {
+          "categories": [
+            "Week 1"
+          ],
+          "series": [
+            {
+              "id": "orders",
+              "values": [
+                "24"
+              ]
+            }
+          ]
+        },
+        "options": {
+          "title": "Weekly orders",
+          "subtitle": "Orders, count",
+          "size": {
+            "width": 600,
+            "height": 340
+          }
+        }
+      }
+    ]
+  }
+}

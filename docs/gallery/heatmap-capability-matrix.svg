@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 457" width="720" height="457" direction="ltr" style="max-width:100%;height:auto;text-transform:none;letter-spacing:normal;word-spacing:normal;font-style:normal;font-variant:normal" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Digital and analytics capabilities lag everywhere outside Digital Ventures" aria-describedby="bp-desc-8a7b87fda3" data-bp-sizing="{&quot;aspect&quot;:&quot;content&quot;,&quot;minWidth&quot;:358,&quot;minHeight&quot;:373,&quot;fit&quot;:&quot;content&quot;,&quot;compactFloor&quot;:{&quot;width&quot;:280,&quot;height&quot;:28},&quot;measuredMinWidth&quot;:358,&quot;measuredMinHeight&quot;:373,&quot;naturalWidth&quot;:673,&quot;naturalHeight&quot;:457,&quot;comfortableWidth&quot;:448,&quot;comfortableHeight&quot;:467}" data-bp-mode="full" font-family="'Helvetica Neue', Helvetica, Arial, Roboto, sans-serif">
+<desc id="bp-desc-8a7b87fda3">Harvey-ball matrix, 6 rows × 5 columns. Values range 0 to 4. Row means: Pricing excellence 3, CRM effectiveness 3, Digital channels 2, Data &amp; analytics 2, Talent &amp; skills 2, Ecosystem partnerships 2.</desc>
+<rect x="0" y="0" width="720" height="457" fill="#FFFFFF"/>
+<text data-id="frame:title:0" data-part="title" data-bp-role="title" x="24" y="37.60" text-anchor="start" font-size="20" font-weight="700" fill="#0D2A43"><tspan x="24" dy="0">Digital and analytics capabilities lag</tspan><tspan x="24" dy="25">everywhere outside Digital Ventures</tspan></text>
+<text data-id="frame:subtitle:1" data-part="subtitle" data-bp-role="subtitle" x="24" y="86.32" text-anchor="start" font-size="14" font-weight="400" fill="#0D2A43"><tspan>Brevinth Industrial Group · </tspan><tspan font-weight="700">Capability maturity, 0 = absent to 4 = leading</tspan><tspan> · June 2026</tspan></text>
+<text data-id="frame:source:2" data-part="source" data-bp-role="source" x="24" y="430.38" text-anchor="start" font-size="11" font-weight="400" fill="#4E6070"><tspan x="24" dy="0">Source: Illustrative capability assessment, June 2026</tspan></text>
+<text data-id="frame:footnote:3" data-part="footnote" data-bp-role="note" x="24" y="412.08" text-anchor="start" font-size="11" font-weight="400" fill="#4E6070"><tspan x="24" dy="0">Shaded rows: the digital and analytics capabilities the title names.</tspan></text>
+<rect data-id="rowTint:digital-channels" data-part="rowTint" x="24" y="214" width="672" height="46.10" fill="#e4eafa"/>
+<rect data-id="rowTint:data-analytics" data-part="rowTint" x="24" y="258.10" width="672" height="46.10" fill="#e4eafa"/>
+<rect data-id="cell:pricing:industrial" data-part="cell" x="173" y="127.80" width="103" height="42.10" fill="#FFFFFF"/>
+<circle data-id="harveyRing:pricing:industrial" data-part="harveyRing" cx="224.50" cy="148.85" r="12.04" fill="#FFFFFF" stroke="#12395E" stroke-width="1.5"/>
+<path data-id="harveyFill:pricing:industrial" data-part="harveyFill" d="M224.50 148.85L224.50 136.81A12.04 12.04 0 1 1 212.46 148.85Z" fill="#12395E" stroke-linejoin="round"/>
+<rect data-id="cell:pricing:automotive" data-part="cell" x="278" y="127.80" width="103" height="42.10" fill="#FFFFFF"/>
+<circle data-id="harveyRing:pricing:automotive" data-part="harveyRing" cx="329.50" cy="148.85" r="12.04" fill="#FFFFFF" stroke="#12395E" stroke-width="1.5"/>
+<circle data-id="harveyFill:pricing:automotive" data-part="harveyFill" cx="329.50" cy="148.85" r="12.04" fill="#12395E"/>
+<rect data-id="cell:pricing:energy" data-part="cell" x="383" y="127.80" width="103" height="42.10" fill="#FFFFFF"/>
+<circle data-id="harveyRing:pricing:energy" data-part="harveyRing" cx="434.50" cy="148.85" r="12.04" fill="#FFFFFF" stroke="#12395E" stroke-width="1.5"/>
+<path data-id="harveyFill:pricing:energy" data-part="harveyFill" d="M434.50 148.85L434.50 136.81A12.04 12.04 0 1 1 422.46 148.85Z" fill="#12395E" stroke-linejoin="round"/>
+<rect data-id="cell:pricing:aftermarket" data-part="cell" x="488" y="127.80" width="103" height="42.10" fill="#FFFFFF"/>
+<circle data-id="harveyRing:pricing:aftermarket" data-part="harveyRing" cx="539.50" cy="148.85" r="12.04" fill="#FFFFFF" stroke="#12395E" stroke-width="1.5"/>
+<path data-id="harveyFill:pricing:aftermarket" data-part="harveyFill" d="M539.50 148.85L539.50 136.81A12.04 12.04 0 0 1 539.50 160.89Z" fill="#12395E" stroke-linejoin="round"/>
+<rect data-id="cell:pricing:digital-bu" data-part="cell" x="593" y="127.80" width="103" height="42.10" fill="#FFFFFF"/>
+<circle data-id="harveyRing:pricing:digital-bu" data-part="harveyRing" cx="644.50" cy="148.85" r="12.04" fill="#FFFFFF" stroke="#12395E" stroke-width="1.5"/>
+<path data-id="harveyFill:pricing:digital-bu" data-part="harveyFill" d="M644.50 148.85L644.50 136.81A12.04 12.04 0 1 1 632.46 148.85Z" fill="#12395E" stroke-linejoin="round"/>
+<rect data-id="cell:crm:industrial" data-part="cell" x="173" y="171.90" width="103" height="42.10" fill="#FFFFFF"/>
+<circle data-id="harveyRing:crm:industrial" data-part="harveyRing" cx="224.50" cy="192.95" r="12.04" fill="#FFFFFF" stroke="#12395E" stroke-width="1.5"/>
+<path data-id="harveyFill:crm:industrial" data-part="harveyFill" d="M224.50 192.95L224.50 180.91A12.04 12.04 0 1 1 212.46 192.95Z" fill="#12395E" stroke-linejoin="round"/>
+<rect data-id="cell:crm:automotive" data-part="cell" x="278" y="171.90" width="103" height="42.10" fill="#FFFFFF"/>
+<circle data-id="harveyRing:crm:automotive" data-part="harveyRing" cx="329.50" cy="192.95" r="12.04" fill="#FFFFFF" stroke="#12395E" stroke-width="1.5"/>
+<circle data-id="harveyFill:crm:automotive" data-part="harveyFill" cx="329.50" cy="192.95" r="12.04" fill="#12395E"/>
+<rect data-id="cell:crm:energy" data-part="cell" x="383" y="171.90" width="103" height="42.10" fill="#FFFFFF"/>
+<circle data-id="harveyRing:crm:energy" data-part="harveyRing" cx="434.50" cy="192.95" r="12.04" fill="#FFFFFF" stroke="#12395E" stroke-width="1.5"/>
+<path data-id="harveyFill:crm:energy" data-part="harveyFill" d="M434.50 192.95L434.50 180.91A12.04 12.04 0 0 1 434.50 204.99Z" fill="#12395E" stroke-linejoin="round"/>
+<rect data-id="cell:crm:aftermarket" data-part="cell" x="488" y="171.90" width="103" height="42.10" fill="#FFFFFF"/>
+<circle data-id="harveyRing:crm:aftermarket" data-part="harveyRing" cx="539.50" cy="192.95" r="12.04" fill="#FFFFFF" stroke="#12395E" stroke-width="1.5"/>
+<path data-id="harveyFill:crm:aftermarket" data-part="harveyFill" d="M539.50 192.95L539.50 180.91A12.04 12.04 0 0 1 539.50 204.99Z" fill="#12395E" stroke-linejoin="round"/>
+<rect data-id="cell:crm:digital-bu" data-part="cell" x="593" y="171.90" width="103" height="42.10" fill="#FFFFFF"/>
+<circle data-id="harveyRing:crm:digital-bu" data-part="harveyRing" cx="644.50" cy="192.95" r="12.04" fill="#FFFFFF" stroke="#12395E" stroke-width="1.5"/>
+<circle data-id="harveyFill:crm:digital-bu" data-part="harveyFill" cx="644.50" cy="192.95" r="12.04" fill="#12395E"/>
+<rect data-id="cell:digital-channels:industrial" data-part="cell" x="173" y="216" width="103" height="42.10" fill="#e4eafa"/>
+<circle data-id="harveyRing:digital-channels:industrial" data-part="harveyRing" cx="224.50" cy="237.05" r="12.04" fill="#FFFFFF" stroke="#12395E" stroke-width="1.5"/>
+<path data-id="harveyFill:digital-channels:industrial" data-part="harveyFill" d="M224.50 237.05L224.50 225.01A12.04 12.04 0 0 1 236.54 237.05Z" fill="#12395E" stroke-linejoin="round"/>
+<rect data-id="cell:digital-channels:automotive" data-part="cell" x="278" y="216" width="103" height="42.10" fill="#e4eafa"/>
+<circle data-id="harveyRing:digital-channels:automotive" data-part="harveyRing" cx="329.50" cy="237.05" r="12.04" fill="#FFFFFF" stroke="#12395E" stroke-width="1.5"/>
+<path data-id="harveyFill:digital-channels:automotive" data-part="harveyFill" d="M329.50 237.05L329.50 225.01A12.04 12.04 0 0 1 329.50 249.09Z" fill="#12395E" stroke-linejoin="round"/>
+<rect data-id="cell:digital-channels:energy" data-part="cell" x="383" y="216" width="103" height="42.10" fill="#e4eafa"/>
+<circle data-id="harveyRing:digital-channels:energy" data-part="harveyRing" cx="434.50" cy="237.05" r="12.04" fill="#FFFFFF" stroke="#12395E" stroke-width="1.5"/>
+<path data-id="harveyFill:digital-channels:energy" data-part="harveyFill" d="M434.50 237.05L434.50 225.01A12.04 12.04 0 0 1 434.50 249.09Z" fill="#12395E" stroke-linejoin="round"/>
+<rect data-id="cell:digital-channels:aftermarket" data-part="cell" x="488" y="216" width="103" height="42.10" fill="#e4eafa"/>
+<circle data-id="harveyRing:digital-channels:aftermarket" data-part="harveyRing" cx="539.50" cy="237.05" r="12.04" fill="#FFFFFF" stroke="#12395E" stroke-width="1.5"/>
+<rect data-id="cell:digital-channels:digital-bu" data-part="cell" x="593" y="216" width="103" height="42.10" fill="#e4eafa"/>
+<circle data-id="harveyRing:digital-channels:digital-bu" data-part="harveyRing" cx="644.50" cy="237.05" r="12.04" fill="#FFFFFF" stroke="#12395E" stroke-width="1.5"/>
+<circle data-id="harveyFill:digital-channels:digital-bu" data-part="harveyFill" cx="644.50" cy="237.05" r="12.04" fill="#12395E"/>
+<rect data-id="cell:data-analytics:industrial" data-part="cell" x="173" y="260.10" width="103" height="42.10" fill="#e4eafa"/>
+<circle data-id="harveyRing:data-analytics:industrial" data-part="harveyRing" cx="224.50" cy="281.15" r="12.04" fill="#FFFFFF" stroke="#12395E" stroke-width="1.5"/>
+<path data-id="harveyFill:data-analytics:industrial" data-part="harveyFill" d="M224.50 281.15L224.50 269.11A12.04 12.04 0 0 1 236.54 281.15Z" fill="#12395E" stroke-linejoin="round"/>
+<rect data-id="cell:data-analytics:automotive" data-part="cell" x="278" y="260.10" width="103" height="42.10" fill="#e4eafa"/>
+<circle data-id="harveyRing:data-analytics:automotive" data-part="harveyRing" cx="329.50" cy="281.15" r="12.04" fill="#FFFFFF" stroke="#12395E" stroke-width="1.5"/>
+<path data-id="harveyFill:data-analytics:automotive" data-part="harveyFill" d="M329.50 281.15L329.50 269.11A12.04 12.04 0 0 1 329.50 293.19Z" fill="#12395E" stroke-linejoin="round"/>
+<rect data-id="cell:data-analytics:energy" data-part="cell" x="383" y="260.10" width="103" height="42.10" fill="#e4eafa"/>
+<circle data-id="harveyRing:data-analytics:energy" data-part="harveyRing" cx="434.50" cy="281.15" r="12.04" fill="#FFFFFF" stroke="#12395E" stroke-width="1.5"/>
+<path data-id="harveyFill:data-analytics:energy" data-part="harveyFill" d="M434.50 281.15L434.50 269.11A12.04 12.04 0 0 1 446.54 281.15Z" fill="#12395E" stroke-linejoin="round"/>
+<rect data-id="cell:data-analytics:aftermarket" data-part="cell" x="488" y="260.10" width="103" height="42.10" fill="#e4eafa"/>
+<circle data-id="harveyRing:data-analytics:aftermarket" data-part="harveyRing" cx="539.50" cy="281.15" r="12.04" fill="#FFFFFF" stroke="#12395E" stroke-width="1.5"/>
+<path data-id="harveyFill:data-analytics:aftermarket" data-part="harveyFill" d="M539.50 281.15L539.50 269.11A12.04 12.04 0 0 1 551.54 281.15Z" fill="#12395E" stroke-linejoin="round"/>
+<rect data-id="cell:data-analytics:digital-bu" data-part="cell" x="593" y="260.10" width="103" height="42.10" fill="#e4eafa"/>
+<circle data-id="harveyRing:data-analytics:digital-bu" data-part="harveyRing" cx="644.50" cy="281.15" r="12.04" fill="#FFFFFF" stroke="#12395E" stroke-width="1.5"/>
+<path data-id="harveyFill:data-analytics:digital-bu" data-part="harveyFill" d="M644.50 281.15L644.50 269.11A12.04 12.04 0 1 1 632.46 281.15Z" fill="#12395E" stroke-linejoin="round"/>
+<rect data-id="cell:talent:industrial" data-part="cell" x="173" y="304.20" width="103" height="42.10" fill="#FFFFFF"/>
+<circle data-id="harveyRing:talent:industrial" data-part="harveyRing" cx="224.50" cy="325.25" r="12.04" fill="#FFFFFF" stroke="#12395E" stroke-width="1.5"/>
+<path data-id="harveyFill:talent:industrial" data-part="harveyFill" d="M224.50 325.25L224.50 313.21A12.04 12.04 0 0 1 224.50 337.29Z" fill="#12395E" stroke-linejoin="round"/>
+<rect data-id="cell:talent:automotive" data-part="cell" x="278" y="304.20" width="103" height="42.10" fill="#FFFFFF"/>
+<circle data-id="harveyRing:talent:automotive" data-part="harveyRing" cx="329.50" cy="325.25" r="12.04" fill="#FFFFFF" stroke="#12395E" stroke-width="1.5"/>
+<path data-id="harveyFill:talent:automotive" data-part="harveyFill" d="M329.50 325.25L329.50 313.21A12.04 12.04 0 1 1 317.46 325.25Z" fill="#12395E" stroke-linejoin="round"/>
+<rect data-id="cell:talent:energy" data-part="cell" x="383" y="304.20" width="103" height="42.10" fill="#FFFFFF"/>
+<circle data-id="harveyRing:talent:energy" data-part="harveyRing" cx="434.50" cy="325.25" r="12.04" fill="#FFFFFF" stroke="#12395E" stroke-width="1.5"/>
+<path data-id="harveyFill:talent:energy" data-part="harveyFill" d="M434.50 325.25L434.50 313.21A12.04 12.04 0 0 1 434.50 337.29Z" fill="#12395E" stroke-linejoin="round"/>
+<rect data-id="cell:talent:aftermarket" data-part="cell" x="488" y="304.20" width="103" height="42.10" fill="#FFFFFF"/>
+<circle data-id="harveyRing:talent:aftermarket" data-part="harveyRing" cx="539.50" cy="325.25" r="12.04" fill="#FFFFFF" stroke="#12395E" stroke-width="1.5"/>
+<path data-id="harveyFill:talent:aftermarket" data-part="harveyFill" d="M539.50 325.25L539.50 313.21A12.04 12.04 0 0 1 551.54 325.25Z" fill="#12395E" stroke-linejoin="round"/>
+<rect data-id="cell:talent:digital-bu" data-part="cell" x="593" y="304.20" width="103" height="42.10" fill="#FFFFFF"/>
+<circle data-id="harveyRing:talent:digital-bu" data-part="harveyRing" cx="644.50" cy="325.25" r="12.04" fill="#FFFFFF" stroke="#12395E" stroke-width="1.5"/>
+<path data-id="harveyFill:talent:digital-bu" data-part="harveyFill" d="M644.50 325.25L644.50 313.21A12.04 12.04 0 1 1 632.46 325.25Z" fill="#12395E" stroke-linejoin="round"/>
+<rect data-id="cell:partnerships:industrial" data-part="cell" x="173" y="348.30" width="103" height="42.10" fill="#FFFFFF"/>
+<circle data-id="harveyRing:partnerships:industrial" data-part="harveyRing" cx="224.50" cy="369.35" r="12.04" fill="#FFFFFF" stroke="#12395E" stroke-width="1.5"/>
+<path data-id="harveyFill:partnerships:industrial" data-part="harveyFill" d="M224.50 369.35L224.50 357.31A12.04 12.04 0 0 1 224.50 381.39Z" fill="#12395E" stroke-linejoin="round"/>
+<rect data-id="cell:partnerships:automotive" data-part="cell" x="278" y="348.30" width="103" height="42.10" fill="#FFFFFF"/>
+<circle data-id="harveyRing:partnerships:automotive" data-part="harveyRing" cx="329.50" cy="369.35" r="12.04" fill="#FFFFFF" stroke="#12395E" stroke-width="1.5"/>
+<path data-id="harveyFill:partnerships:automotive" data-part="harveyFill" d="M329.50 369.35L329.50 357.31A12.04 12.04 0 0 1 341.54 369.35Z" fill="#12395E" stroke-linejoin="round"/>
+<rect data-id="cell:partnerships:energy" data-part="cell" x="383" y="348.30" width="103" height="42.10" fill="#FFFFFF"/>
+<circle data-id="harveyRing:partnerships:energy" data-part="harveyRing" cx="434.50" cy="369.35" r="12.04" fill="#FFFFFF" stroke="#12395E" stroke-width="1.5"/>
+<path data-id="harveyFill:partnerships:energy" data-part="harveyFill" d="M434.50 369.35L434.50 357.31A12.04 12.04 0 1 1 422.46 369.35Z" fill="#12395E" stroke-linejoin="round"/>
+<rect data-id="cell:partnerships:aftermarket" data-part="cell" x="488" y="348.30" width="103" height="42.10" fill="#FFFFFF"/>
+<circle data-id="harveyRing:partnerships:aftermarket" data-part="harveyRing" cx="539.50" cy="369.35" r="12.04" fill="#FFFFFF" stroke="#12395E" stroke-width="1.5"/>
+<path data-id="harveyFill:partnerships:aftermarket" data-part="harveyFill" d="M539.50 369.35L539.50 357.31A12.04 12.04 0 0 1 551.54 369.35Z" fill="#12395E" stroke-linejoin="round"/>
+<rect data-id="cell:partnerships:digital-bu" data-part="cell" x="593" y="348.30" width="103" height="42.10" fill="#FFFFFF"/>
+<circle data-id="harveyRing:partnerships:digital-bu" data-part="harveyRing" cx="644.50" cy="369.35" r="12.04" fill="#FFFFFF" stroke="#12395E" stroke-width="1.5"/>
+<path data-id="harveyFill:partnerships:digital-bu" data-part="harveyFill" d="M644.50 369.35L644.50 357.31A12.04 12.04 0 0 1 644.50 381.39Z" fill="#12395E" stroke-linejoin="round"/>
+<line data-id="rule:top" data-part="gridline" x1="24" y1="126.80" x2="696" y2="126.80" stroke="#E9EEF3" stroke-width="1"/>
+<line data-id="rule:bottom" data-part="gridline" x1="24" y1="391.40" x2="696" y2="391.40" stroke="#E9EEF3" stroke-width="1"/>
+<text data-id="label:series:data-analytics" data-part="series" data-bp-role="category" x="24" y="285.81" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="24" dy="0">Data &amp; analytics</tspan></text>
+<text data-id="label:series:digital-channels" data-part="series" data-bp-role="category" x="24" y="241.71" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="24" dy="0">Digital channels</tspan></text>
+<text data-id="label:category:aftermarket" data-part="category" data-bp-role="category" x="505.25" y="120.66" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="505.25" dy="0">Aftermarket</tspan></text>
+<text data-id="label:category:automotive" data-part="category" data-bp-role="category" x="296.25" y="120.66" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="296.25" dy="0">Automotive</tspan></text>
+<text data-id="label:category:digital-bu" data-part="category" data-bp-role="category" x="597.75" y="120.66" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="597.75" dy="0">Digital Ventures</tspan></text>
+<text data-id="label:category:energy" data-part="category" data-bp-role="category" x="413.50" y="120.66" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="413.50" dy="0">Energy</tspan></text>
+<text data-id="label:category:industrial" data-part="category" data-bp-role="category" x="197.50" y="120.66" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="197.50" dy="0">Industrial</tspan></text>
+<text data-id="label:series:crm" data-part="series" data-bp-role="category" x="24" y="197.61" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="24" dy="0">CRM effectiveness</tspan></text>
+<text data-id="label:series:partnerships" data-part="series" data-bp-role="category" x="24" y="374.01" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="24" dy="0">Ecosystem partnerships</tspan></text>
+<text data-id="label:series:pricing" data-part="series" data-bp-role="category" x="24" y="153.51" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="24" dy="0">Pricing excellence</tspan></text>
+<text data-id="label:series:talent" data-part="series" data-bp-role="category" x="24" y="329.91" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="24" dy="0">Talent &amp; skills</tspan></text>
+</svg>

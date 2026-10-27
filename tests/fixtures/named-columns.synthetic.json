@@ -1,0 +1,42 @@
+{
+  "$comment": "Synthetic named-column example. The rows are invented, no client data. `input` is what a caller passes to adaptNamedColumns; `expected` is the canonical result the adapter returns, asserted by tests/schema-ergonomics.test.ts. Source order is the category and series order; the missing Q3 cost cell arrives as null, and the absent Q2 cost amount carries the authored state instead of a number.",
+  "input": {
+    "contract": {
+      "category": "period",
+      "series": "driver",
+      "value": "amount",
+      "unit": "unit",
+      "state": "state"
+    },
+    "rows": [
+      { "period": "Q1 2026", "driver": "Revenue", "amount": 1240, "unit": "EURm", "note": "audited" },
+      { "period": "Q1 2026", "driver": "Cost", "amount": 810, "unit": "EURm", "note": "audited" },
+      { "period": "Q2 2026", "driver": "Revenue", "amount": 1315, "unit": "EURm" },
+      { "period": "Q2 2026", "driver": "Cost", "amount": null, "unit": "EURm", "state": "suppressed" },
+      { "period": "Q3 2026", "driver": "Revenue", "amount": 1389, "unit": "EURm" }
+    ]
+  },
+  "expected": {
+    "data": {
+      "categories": [
+        { "id": "Q1 2026", "label": "Q1 2026" },
+        { "id": "Q2 2026", "label": "Q2 2026" },
+        { "id": "Q3 2026", "label": "Q3 2026" }
+      ],
+      "series": [
+        {
+          "id": "Revenue",
+          "unit": "EURm",
+          "values": [{ "number": 1240 }, { "number": 1315 }, { "number": 1389 }]
+        },
+        {
+          "id": "Cost",
+          "unit": "EURm",
+          "values": [{ "number": 810 }, null, null]
+        }
+      ]
+    },
+    "states": [{ "categoryId": "Q2 2026", "seriesId": "Cost", "state": "suppressed", "row": 3 }],
+    "ignoredColumns": ["note"]
+  }
+}

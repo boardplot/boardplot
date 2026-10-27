@@ -1,0 +1,38 @@
+# Dependabot opens a pull request when a pinned package or action has a newer version.
+# Package and action updates wait 7 days after a release, so a hijacked release that is pulled
+# again in that time never reaches a pull request.
+#
+# Minor and patch updates come as one pull request per ecosystem. Each major update comes as its
+# own pull request, so a failing major never blocks the safe updates.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    cooldown:
+      default-days: 7
+    ignore:
+      # Two tests use the TypeScript 5 compiler API, which TypeScript 7 does not have.
+      # Typecheck already runs TypeScript 7 through the `typescript-7` alias, and that alias
+      # is not ignored.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      # engines.node is >=22.12, so the types stay on the oldest supported Node line.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+    groups:
+      npm-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]

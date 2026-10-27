@@ -1,0 +1,180 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 712" width="720" height="712" direction="ltr" style="max-width:100%;height:auto;text-transform:none;letter-spacing:normal;word-spacing:normal;font-style:normal;font-variant:normal" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Demand is broad-based across Europe" aria-describedby="bp-desc-26987d9cb1" data-bp-sizing="{&quot;aspect&quot;:&quot;content&quot;,&quot;minWidth&quot;:320,&quot;minHeight&quot;:712,&quot;fit&quot;:&quot;content&quot;,&quot;measuredMinWidth&quot;:0,&quot;measuredMinHeight&quot;:712,&quot;naturalWidth&quot;:720,&quot;naturalHeight&quot;:712,&quot;comfortableWidth&quot;:400,&quot;comfortableHeight&quot;:890}" data-bp-mode="full" font-family="'Helvetica Neue', Helvetica, Arial, Roboto, sans-serif">
+<desc id="bp-desc-26987d9cb1">51-region equal-tile grid; every region has identical visual area. Mapped range 70 to 100. 1 listed regions have a missing value and a hatched trace. Source: Boardplot original europe tile layout; hand-authored and checked against the pinned Natural Earth Admin-0 Countries 10m, point of view Germany (deu) anchors. User source: Illustrative planning data</desc>
+<defs><pattern id="bp-hatch-5E6C7B-FFFFFF-45-6-0p75-26987d9cb1" patternUnits="userSpaceOnUse" width="8.48" height="8.48"><rect width="8.48" height="8.48" fill="#FFFFFF"/><path d="M0 8.48L8.48 0M-4.24 4.24L4.24 -4.24M4.24 12.72L12.72 4.24" fill="none" stroke="#5E6C7B" stroke-width="0.75"/></pattern></defs>
+<rect x="0" y="0" width="720" height="712" fill="#FFFFFF"/>
+<text data-id="frame:title:0" data-part="title" data-bp-role="title" x="24" y="37.60" text-anchor="start" font-size="20" font-weight="700" fill="#0D2A43"><tspan x="24" dy="0">Demand is broad-based across Europe</tspan></text>
+<text data-id="frame:subtitle:1" data-part="subtitle" data-bp-role="subtitle" x="24" y="61.32" text-anchor="start" font-size="14" font-weight="400" fill="#0D2A43"><tspan font-weight="700">Demand index</tspan><tspan> · 2026</tspan></text>
+<text data-id="frame:source:2" data-part="source" data-bp-role="source" x="24" y="697.38" text-anchor="start" font-size="11" font-weight="400" fill="#4E6070"><tspan x="24" dy="0">Source: Illustrative planning data · Tile layout: Boardplot, after Natural Earth</tspan></text>
+<rect data-id="legend:step:0" data-part="swatch" x="24" y="75.20" width="61.09" height="10" fill="#c1cbd5"/>
+<rect data-id="legend:step:1" data-part="swatch" x="85.09" y="75.20" width="61.09" height="10" fill="#9aabba"/>
+<rect data-id="legend:step:2" data-part="swatch" x="146.18" y="75.20" width="61.09" height="10" fill="#738aa0"/>
+<rect data-id="legend:step:3" data-part="swatch" x="207.27" y="75.20" width="61.09" height="10" fill="#4c6a86"/>
+<rect data-id="legend:step:4" data-part="swatch" x="268.36" y="75.20" width="61.09" height="10" fill="#25496b"/>
+<line data-id="legend:tick:0" data-part="legendTick" x1="24" y1="75.20" x2="24" y2="88.20" stroke="#4E6070" stroke-width="0.75"/>
+<text data-id="legend:tickLabel:0" data-part="legendLabel" data-bp-role="category" x="24" y="101.64" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070"><tspan x="24" dy="0">70</tspan></text>
+<line data-id="legend:tick:1" data-part="legendTick" x1="85.09" y1="75.20" x2="85.09" y2="88.20" stroke="#4E6070" stroke-width="0.75"/>
+<text data-id="legend:tickLabel:1" data-part="legendLabel" data-bp-role="category" x="85.09" y="101.64" text-anchor="middle" font-size="13" font-weight="400" fill="#4E6070"><tspan x="85.09" dy="0">75</tspan></text>
+<line data-id="legend:tick:2" data-part="legendTick" x1="146.18" y1="75.20" x2="146.18" y2="88.20" stroke="#4E6070" stroke-width="0.75"/>
+<text data-id="legend:tickLabel:2" data-part="legendLabel" data-bp-role="category" x="146.18" y="101.64" text-anchor="middle" font-size="13" font-weight="400" fill="#4E6070"><tspan x="146.18" dy="0">80</tspan></text>
+<line data-id="legend:tick:3" data-part="legendTick" x1="207.27" y1="75.20" x2="207.27" y2="88.20" stroke="#4E6070" stroke-width="0.75"/>
+<text data-id="legend:tickLabel:3" data-part="legendLabel" data-bp-role="category" x="207.27" y="101.64" text-anchor="middle" font-size="13" font-weight="400" fill="#4E6070"><tspan x="207.27" dy="0">85</tspan></text>
+<line data-id="legend:tick:4" data-part="legendTick" x1="268.36" y1="75.20" x2="268.36" y2="88.20" stroke="#4E6070" stroke-width="0.75"/>
+<text data-id="legend:tickLabel:4" data-part="legendLabel" data-bp-role="category" x="268.36" y="101.64" text-anchor="middle" font-size="13" font-weight="400" fill="#4E6070"><tspan x="268.36" dy="0">90</tspan></text>
+<line data-id="legend:tick:5" data-part="legendTick" x1="329.45" y1="75.20" x2="329.45" y2="88.20" stroke="#4E6070" stroke-width="0.75"/>
+<text data-id="legend:tickLabel:5" data-part="legendLabel" data-bp-role="category" x="329.45" y="101.64" text-anchor="end" font-size="13" font-weight="400" fill="#4E6070"><tspan x="329.45" dy="0">100</tspan></text>
+<rect data-id="legend:no-data" data-part="swatch" x="353.45" y="75.20" width="14" height="10" fill="url(#bp-hatch-5E6C7B-FFFFFF-45-6-0p75-26987d9cb1)" stroke="#5E6C7B" stroke-width="0.75"/>
+<text data-id="legend:no-data:label" data-part="legendLabel" data-bp-role="category" x="371.45" y="83.84" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070"><tspan x="371.45" dy="0">No data</tspan></text>
+<rect data-id="tile:AD" data-part="tile" x="194.50" y="451.25" width="53.50" height="53.50" fill="#c1cbd5"/>
+<rect data-id="tile:AL" data-part="tile" x="472" y="562.25" width="53.50" height="53.50" fill="#9aabba"/>
+<rect data-id="tile:AT" data-part="tile" x="361" y="395.75" width="53.50" height="53.50" fill="#738aa0"/>
+<rect data-id="tile:AX" data-part="tile" x="361" y="173.75" width="53.50" height="53.50" fill="#25496b"/>
+<rect data-id="tile:BA" data-part="tile" x="472" y="451.25" width="53.50" height="53.50" fill="#25496b"/>
+<rect data-id="tile:BE" data-part="tile" x="194.50" y="340.25" width="53.50" height="53.50" fill="#c1cbd5"/>
+<rect data-id="tile:BG" data-part="tile" x="583" y="451.25" width="53.50" height="53.50" fill="#738aa0"/>
+<rect data-id="tile:BY" data-part="tile" x="527.50" y="284.75" width="53.50" height="53.50" fill="#4c6a86"/>
+<rect data-id="tile:CH" data-part="tile" x="250" y="395.75" width="53.50" height="53.50" fill="#25496b"/>
+<rect data-id="tile:CY" data-part="tile" x="638.50" y="617.75" width="53.50" height="53.50" fill="#c1cbd5"/>
+<rect data-id="tile:CZ" data-part="tile" x="361" y="340.25" width="53.50" height="53.50" fill="#9aabba"/>
+<rect data-id="tile:DE" data-part="tile" x="305.50" y="284.75" width="53.50" height="53.50" fill="url(#bp-hatch-5E6C7B-FFFFFF-45-6-0p75-26987d9cb1)" stroke="#5E6C7B" stroke-width="0.75"/>
+<rect data-id="tile:DK" data-part="tile" x="305.50" y="229.25" width="53.50" height="53.50" fill="#25496b"/>
+<rect data-id="tile:EE" data-part="tile" x="416.50" y="173.75" width="53.50" height="53.50" fill="#25496b"/>
+<rect data-id="tile:ES" data-part="tile" x="139" y="451.25" width="53.50" height="53.50" fill="#9aabba"/>
+<rect data-id="tile:FI" data-part="tile" x="416.50" y="118.25" width="53.50" height="53.50" fill="#738aa0"/>
+<rect data-id="tile:FO" data-part="tile" x="83.50" y="173.75" width="53.50" height="53.50" fill="#4c6a86"/>
+<rect data-id="tile:FR" data-part="tile" x="194.50" y="395.75" width="53.50" height="53.50" fill="#25496b"/>
+<rect data-id="tile:GB" data-part="tile" x="194.50" y="284.75" width="53.50" height="53.50" fill="#c1cbd5"/>
+<rect data-id="tile:GG" data-part="tile" x="83.50" y="340.25" width="53.50" height="53.50" fill="#9aabba"/>
+<rect data-id="tile:GI" data-part="tile" x="139" y="506.75" width="53.50" height="53.50" fill="#4c6a86"/>
+<rect data-id="tile:GR" data-part="tile" x="527.50" y="617.75" width="53.50" height="53.50" fill="#25496b"/>
+<rect data-id="tile:HR" data-part="tile" x="416.50" y="451.25" width="53.50" height="53.50" fill="#25496b"/>
+<rect data-id="tile:HU" data-part="tile" x="416.50" y="395.75" width="53.50" height="53.50" fill="#9aabba"/>
+<rect data-id="tile:IE" data-part="tile" x="83.50" y="284.75" width="53.50" height="53.50" fill="#738aa0"/>
+<rect data-id="tile:IM" data-part="tile" x="139" y="284.75" width="53.50" height="53.50" fill="#25496b"/>
+<rect data-id="tile:IS" data-part="tile" x="28" y="118.25" width="53.50" height="53.50" fill="#25496b"/>
+<rect data-id="tile:IT" data-part="tile" x="305.50" y="451.25" width="53.50" height="53.50" fill="#c1cbd5"/>
+<rect data-id="tile:JE" data-part="tile" x="139" y="340.25" width="53.50" height="53.50" fill="#738aa0"/>
+<rect data-id="tile:LI" data-part="tile" x="305.50" y="395.75" width="53.50" height="53.50" fill="#4c6a86"/>
+<rect data-id="tile:LT" data-part="tile" x="472" y="284.75" width="53.50" height="53.50" fill="#25496b"/>
+<rect data-id="tile:LU" data-part="tile" x="250" y="340.25" width="53.50" height="53.50" fill="#c1cbd5"/>
+<rect data-id="tile:LV" data-part="tile" x="472" y="229.25" width="53.50" height="53.50" fill="#9aabba"/>
+<rect data-id="tile:MC" data-part="tile" x="250" y="451.25" width="53.50" height="53.50" fill="#738aa0"/>
+<rect data-id="tile:MD" data-part="tile" x="583" y="395.75" width="53.50" height="53.50" fill="#25496b"/>
+<rect data-id="tile:ME" data-part="tile" x="472" y="506.75" width="53.50" height="53.50" fill="#25496b"/>
+<rect data-id="tile:MK" data-part="tile" x="527.50" y="562.25" width="53.50" height="53.50" fill="#c1cbd5"/>
+<rect data-id="tile:MT" data-part="tile" x="305.50" y="617.75" width="53.50" height="53.50" fill="#738aa0"/>
+<rect data-id="tile:NL" data-part="tile" x="250" y="284.75" width="53.50" height="53.50" fill="#4c6a86"/>
+<rect data-id="tile:NO" data-part="tile" x="305.50" y="118.25" width="53.50" height="53.50" fill="#25496b"/>
+<rect data-id="tile:PL" data-part="tile" x="416.50" y="284.75" width="53.50" height="53.50" fill="#c1cbd5"/>
+<rect data-id="tile:PT" data-part="tile" x="83.50" y="451.25" width="53.50" height="53.50" fill="#9aabba"/>
+<rect data-id="tile:RO" data-part="tile" x="527.50" y="395.75" width="53.50" height="53.50" fill="#4c6a86"/>
+<rect data-id="tile:RS" data-part="tile" x="527.50" y="451.25" width="53.50" height="53.50" fill="#25496b"/>
+<rect data-id="tile:SE" data-part="tile" x="361" y="118.25" width="53.50" height="53.50" fill="#25496b"/>
+<rect data-id="tile:SI" data-part="tile" x="361" y="451.25" width="53.50" height="53.50" fill="#9aabba"/>
+<rect data-id="tile:SK" data-part="tile" x="416.50" y="340.25" width="53.50" height="53.50" fill="#738aa0"/>
+<rect data-id="tile:SM" data-part="tile" x="305.50" y="506.75" width="53.50" height="53.50" fill="#4c6a86"/>
+<rect data-id="tile:UA" data-part="tile" x="583" y="340.25" width="53.50" height="53.50" fill="#25496b"/>
+<rect data-id="tile:VA" data-part="tile" x="305.50" y="562.25" width="53.50" height="53.50" fill="#c1cbd5"/>
+<rect data-id="tile:XK" data-part="tile" x="527.50" y="506.75" width="53.50" height="53.50" fill="#9aabba"/>
+<text data-id="label:category:AD" data-part="category" data-bp-role="category" x="221.25" y="473.84" text-anchor="middle" font-size="13" font-weight="700" fill="#0D2A43"><tspan x="221.25" dy="0">AD</tspan></text>
+<text data-id="label:category:AD:value" data-part="category" data-bp-role="category" x="221.25" y="489.44" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="221.25" dy="0">70</tspan></text>
+<text data-id="label:category:AL" data-part="category" data-bp-role="category" x="498.75" y="584.84" text-anchor="middle" font-size="13" font-weight="700" fill="#0D2A43"><tspan x="498.75" dy="0">AL</tspan></text>
+<text data-id="label:category:AL:value" data-part="category" data-bp-role="category" x="498.75" y="600.44" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="498.75" dy="0">77</tspan></text>
+<text data-id="label:category:AT" data-part="category" data-bp-role="category" x="387.75" y="418.34" text-anchor="middle" font-size="13" font-weight="700" fill="#050505"><tspan x="387.75" dy="0">AT</tspan></text>
+<text data-id="label:category:AT:value" data-part="category" data-bp-role="category" x="387.75" y="433.94" text-anchor="middle" font-size="13" font-weight="400" fill="#050505"><tspan x="387.75" dy="0">84</tspan></text>
+<text data-id="label:category:AX" data-part="category" data-bp-role="category" x="387.75" y="196.34" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF"><tspan x="387.75" dy="0">AX</tspan></text>
+<text data-id="label:category:AX:value" data-part="category" data-bp-role="category" x="387.75" y="211.94" text-anchor="middle" font-size="13" font-weight="400" fill="#FFFFFF"><tspan x="387.75" dy="0">91</tspan></text>
+<text data-id="label:category:BA" data-part="category" data-bp-role="category" x="498.75" y="473.84" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF"><tspan x="498.75" dy="0">BA</tspan></text>
+<text data-id="label:category:BA:value" data-part="category" data-bp-role="category" x="498.75" y="489.44" text-anchor="middle" font-size="13" font-weight="400" fill="#FFFFFF"><tspan x="498.75" dy="0">98</tspan></text>
+<text data-id="label:category:BE" data-part="category" data-bp-role="category" x="221.25" y="362.84" text-anchor="middle" font-size="13" font-weight="700" fill="#0D2A43"><tspan x="221.25" dy="0">BE</tspan></text>
+<text data-id="label:category:BE:value" data-part="category" data-bp-role="category" x="221.25" y="378.44" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="221.25" dy="0">74</tspan></text>
+<text data-id="label:category:BG" data-part="category" data-bp-role="category" x="609.75" y="473.84" text-anchor="middle" font-size="13" font-weight="700" fill="#050505"><tspan x="609.75" dy="0">BG</tspan></text>
+<text data-id="label:category:BG:value" data-part="category" data-bp-role="category" x="609.75" y="489.44" text-anchor="middle" font-size="13" font-weight="400" fill="#050505"><tspan x="609.75" dy="0">81</tspan></text>
+<text data-id="label:category:BY" data-part="category" data-bp-role="category" x="554.25" y="307.34" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF"><tspan x="554.25" dy="0">BY</tspan></text>
+<text data-id="label:category:BY:value" data-part="category" data-bp-role="category" x="554.25" y="322.94" text-anchor="middle" font-size="13" font-weight="400" fill="#FFFFFF"><tspan x="554.25" dy="0">88</tspan></text>
+<text data-id="label:category:CH" data-part="category" data-bp-role="category" x="276.75" y="418.34" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF"><tspan x="276.75" dy="0">CH</tspan></text>
+<text data-id="label:category:CH:value" data-part="category" data-bp-role="category" x="276.75" y="433.94" text-anchor="middle" font-size="13" font-weight="400" fill="#FFFFFF"><tspan x="276.75" dy="0">95</tspan></text>
+<text data-id="label:category:CY" data-part="category" data-bp-role="category" x="665.25" y="640.34" text-anchor="middle" font-size="13" font-weight="700" fill="#0D2A43"><tspan x="665.25" dy="0">CY</tspan></text>
+<text data-id="label:category:CY:value" data-part="category" data-bp-role="category" x="665.25" y="655.94" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="665.25" dy="0">71</tspan></text>
+<text data-id="label:category:CZ" data-part="category" data-bp-role="category" x="387.75" y="362.84" text-anchor="middle" font-size="13" font-weight="700" fill="#0D2A43"><tspan x="387.75" dy="0">CZ</tspan></text>
+<text data-id="label:category:CZ:value" data-part="category" data-bp-role="category" x="387.75" y="378.44" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="387.75" dy="0">78</tspan></text>
+<rect data-id="plate:category:DE" data-part="labelPlate" x="320" y="302.70" width="24.50" height="17.60" rx="2" fill="#FFFFFF"/>
+<text data-id="label:category:DE" data-part="category" data-bp-role="category" x="332.25" y="316.18" text-anchor="middle" font-size="13" font-weight="700" fill="#0D2A43"><tspan x="332.25" dy="0">DE</tspan></text>
+<text data-id="label:category:DK" data-part="category" data-bp-role="category" x="332.25" y="251.84" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF"><tspan x="332.25" dy="0">DK</tspan></text>
+<text data-id="label:category:DK:value" data-part="category" data-bp-role="category" x="332.25" y="267.44" text-anchor="middle" font-size="13" font-weight="400" fill="#FFFFFF"><tspan x="332.25" dy="0">92</tspan></text>
+<text data-id="label:category:EE" data-part="category" data-bp-role="category" x="443.25" y="196.34" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF"><tspan x="443.25" dy="0">EE</tspan></text>
+<text data-id="label:category:EE:value" data-part="category" data-bp-role="category" x="443.25" y="211.94" text-anchor="middle" font-size="13" font-weight="400" fill="#FFFFFF"><tspan x="443.25" dy="0">99</tspan></text>
+<text data-id="label:category:ES" data-part="category" data-bp-role="category" x="165.75" y="473.84" text-anchor="middle" font-size="13" font-weight="700" fill="#0D2A43"><tspan x="165.75" dy="0">ES</tspan></text>
+<text data-id="label:category:ES:value" data-part="category" data-bp-role="category" x="165.75" y="489.44" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="165.75" dy="0">75</tspan></text>
+<text data-id="label:category:FI" data-part="category" data-bp-role="category" x="443.25" y="140.84" text-anchor="middle" font-size="13" font-weight="700" fill="#050505"><tspan x="443.25" dy="0">FI</tspan></text>
+<text data-id="label:category:FI:value" data-part="category" data-bp-role="category" x="443.25" y="156.44" text-anchor="middle" font-size="13" font-weight="400" fill="#050505"><tspan x="443.25" dy="0">82</tspan></text>
+<text data-id="label:category:FO" data-part="category" data-bp-role="category" x="110.25" y="196.34" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF"><tspan x="110.25" dy="0">FO</tspan></text>
+<text data-id="label:category:FO:value" data-part="category" data-bp-role="category" x="110.25" y="211.94" text-anchor="middle" font-size="13" font-weight="400" fill="#FFFFFF"><tspan x="110.25" dy="0">89</tspan></text>
+<text data-id="label:category:FR" data-part="category" data-bp-role="category" x="221.25" y="418.34" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF"><tspan x="221.25" dy="0">FR</tspan></text>
+<text data-id="label:category:FR:value" data-part="category" data-bp-role="category" x="221.25" y="433.94" text-anchor="middle" font-size="13" font-weight="400" fill="#FFFFFF"><tspan x="221.25" dy="0">96</tspan></text>
+<text data-id="label:category:GB" data-part="category" data-bp-role="category" x="221.25" y="307.34" text-anchor="middle" font-size="13" font-weight="700" fill="#0D2A43"><tspan x="221.25" dy="0">GB</tspan></text>
+<text data-id="label:category:GB:value" data-part="category" data-bp-role="category" x="221.25" y="322.94" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="221.25" dy="0">72</tspan></text>
+<text data-id="label:category:GG" data-part="category" data-bp-role="category" x="110.25" y="362.84" text-anchor="middle" font-size="13" font-weight="700" fill="#0D2A43"><tspan x="110.25" dy="0">GG</tspan></text>
+<text data-id="label:category:GG:value" data-part="category" data-bp-role="category" x="110.25" y="378.44" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="110.25" dy="0">79</tspan></text>
+<text data-id="label:category:GI" data-part="category" data-bp-role="category" x="165.75" y="529.34" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF"><tspan x="165.75" dy="0">GI</tspan></text>
+<text data-id="label:category:GI:value" data-part="category" data-bp-role="category" x="165.75" y="544.94" text-anchor="middle" font-size="13" font-weight="400" fill="#FFFFFF"><tspan x="165.75" dy="0">86</tspan></text>
+<text data-id="label:category:GR" data-part="category" data-bp-role="category" x="554.25" y="640.34" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF"><tspan x="554.25" dy="0">GR</tspan></text>
+<text data-id="label:category:GR:value" data-part="category" data-bp-role="category" x="554.25" y="655.94" text-anchor="middle" font-size="13" font-weight="400" fill="#FFFFFF"><tspan x="554.25" dy="0">93</tspan></text>
+<text data-id="label:category:HR" data-part="category" data-bp-role="category" x="443.25" y="473.84" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF"><tspan x="443.25" dy="0">HR</tspan></text>
+<text data-id="label:category:HR:value" data-part="category" data-bp-role="category" x="443.25" y="489.44" text-anchor="middle" font-size="13" font-weight="400" fill="#FFFFFF"><tspan x="443.25" dy="0">100</tspan></text>
+<text data-id="label:category:HU" data-part="category" data-bp-role="category" x="443.25" y="418.34" text-anchor="middle" font-size="13" font-weight="700" fill="#0D2A43"><tspan x="443.25" dy="0">HU</tspan></text>
+<text data-id="label:category:HU:value" data-part="category" data-bp-role="category" x="443.25" y="433.94" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="443.25" dy="0">76</tspan></text>
+<text data-id="label:category:IE" data-part="category" data-bp-role="category" x="110.25" y="307.34" text-anchor="middle" font-size="13" font-weight="700" fill="#050505"><tspan x="110.25" dy="0">IE</tspan></text>
+<text data-id="label:category:IE:value" data-part="category" data-bp-role="category" x="110.25" y="322.94" text-anchor="middle" font-size="13" font-weight="400" fill="#050505"><tspan x="110.25" dy="0">83</tspan></text>
+<text data-id="label:category:IM" data-part="category" data-bp-role="category" x="165.75" y="307.34" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF"><tspan x="165.75" dy="0">IM</tspan></text>
+<text data-id="label:category:IM:value" data-part="category" data-bp-role="category" x="165.75" y="322.94" text-anchor="middle" font-size="13" font-weight="400" fill="#FFFFFF"><tspan x="165.75" dy="0">90</tspan></text>
+<text data-id="label:category:IS" data-part="category" data-bp-role="category" x="54.75" y="140.84" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF"><tspan x="54.75" dy="0">IS</tspan></text>
+<text data-id="label:category:IS:value" data-part="category" data-bp-role="category" x="54.75" y="156.44" text-anchor="middle" font-size="13" font-weight="400" fill="#FFFFFF"><tspan x="54.75" dy="0">97</tspan></text>
+<text data-id="label:category:IT" data-part="category" data-bp-role="category" x="332.25" y="473.84" text-anchor="middle" font-size="13" font-weight="700" fill="#0D2A43"><tspan x="332.25" dy="0">IT</tspan></text>
+<text data-id="label:category:IT:value" data-part="category" data-bp-role="category" x="332.25" y="489.44" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="332.25" dy="0">73</tspan></text>
+<text data-id="label:category:JE" data-part="category" data-bp-role="category" x="165.75" y="362.84" text-anchor="middle" font-size="13" font-weight="700" fill="#050505"><tspan x="165.75" dy="0">JE</tspan></text>
+<text data-id="label:category:JE:value" data-part="category" data-bp-role="category" x="165.75" y="378.44" text-anchor="middle" font-size="13" font-weight="400" fill="#050505"><tspan x="165.75" dy="0">80</tspan></text>
+<text data-id="label:category:LI" data-part="category" data-bp-role="category" x="332.25" y="418.34" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF"><tspan x="332.25" dy="0">LI</tspan></text>
+<text data-id="label:category:LI:value" data-part="category" data-bp-role="category" x="332.25" y="433.94" text-anchor="middle" font-size="13" font-weight="400" fill="#FFFFFF"><tspan x="332.25" dy="0">87</tspan></text>
+<text data-id="label:category:LT" data-part="category" data-bp-role="category" x="498.75" y="307.34" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF"><tspan x="498.75" dy="0">LT</tspan></text>
+<text data-id="label:category:LT:value" data-part="category" data-bp-role="category" x="498.75" y="322.94" text-anchor="middle" font-size="13" font-weight="400" fill="#FFFFFF"><tspan x="498.75" dy="0">94</tspan></text>
+<text data-id="label:category:LU" data-part="category" data-bp-role="category" x="276.75" y="362.84" text-anchor="middle" font-size="13" font-weight="700" fill="#0D2A43"><tspan x="276.75" dy="0">LU</tspan></text>
+<text data-id="label:category:LU:value" data-part="category" data-bp-role="category" x="276.75" y="378.44" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="276.75" dy="0">70</tspan></text>
+<text data-id="label:category:LV" data-part="category" data-bp-role="category" x="498.75" y="251.84" text-anchor="middle" font-size="13" font-weight="700" fill="#0D2A43"><tspan x="498.75" dy="0">LV</tspan></text>
+<text data-id="label:category:LV:value" data-part="category" data-bp-role="category" x="498.75" y="267.44" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="498.75" dy="0">77</tspan></text>
+<text data-id="label:category:MC" data-part="category" data-bp-role="category" x="276.75" y="473.84" text-anchor="middle" font-size="13" font-weight="700" fill="#050505"><tspan x="276.75" dy="0">MC</tspan></text>
+<text data-id="label:category:MC:value" data-part="category" data-bp-role="category" x="276.75" y="489.44" text-anchor="middle" font-size="13" font-weight="400" fill="#050505"><tspan x="276.75" dy="0">84</tspan></text>
+<text data-id="label:category:MD" data-part="category" data-bp-role="category" x="609.75" y="418.34" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF"><tspan x="609.75" dy="0">MD</tspan></text>
+<text data-id="label:category:MD:value" data-part="category" data-bp-role="category" x="609.75" y="433.94" text-anchor="middle" font-size="13" font-weight="400" fill="#FFFFFF"><tspan x="609.75" dy="0">91</tspan></text>
+<text data-id="label:category:ME" data-part="category" data-bp-role="category" x="498.75" y="529.34" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF"><tspan x="498.75" dy="0">ME</tspan></text>
+<text data-id="label:category:ME:value" data-part="category" data-bp-role="category" x="498.75" y="544.94" text-anchor="middle" font-size="13" font-weight="400" fill="#FFFFFF"><tspan x="498.75" dy="0">98</tspan></text>
+<text data-id="label:category:MK" data-part="category" data-bp-role="category" x="554.25" y="584.84" text-anchor="middle" font-size="13" font-weight="700" fill="#0D2A43"><tspan x="554.25" dy="0">MK</tspan></text>
+<text data-id="label:category:MK:value" data-part="category" data-bp-role="category" x="554.25" y="600.44" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="554.25" dy="0">74</tspan></text>
+<text data-id="label:category:MT" data-part="category" data-bp-role="category" x="332.25" y="640.34" text-anchor="middle" font-size="13" font-weight="700" fill="#050505"><tspan x="332.25" dy="0">MT</tspan></text>
+<text data-id="label:category:MT:value" data-part="category" data-bp-role="category" x="332.25" y="655.94" text-anchor="middle" font-size="13" font-weight="400" fill="#050505"><tspan x="332.25" dy="0">81</tspan></text>
+<text data-id="label:category:NL" data-part="category" data-bp-role="category" x="276.75" y="307.34" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF"><tspan x="276.75" dy="0">NL</tspan></text>
+<text data-id="label:category:NL:value" data-part="category" data-bp-role="category" x="276.75" y="322.94" text-anchor="middle" font-size="13" font-weight="400" fill="#FFFFFF"><tspan x="276.75" dy="0">88</tspan></text>
+<text data-id="label:category:NO" data-part="category" data-bp-role="category" x="332.25" y="140.84" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF"><tspan x="332.25" dy="0">NO</tspan></text>
+<text data-id="label:category:NO:value" data-part="category" data-bp-role="category" x="332.25" y="156.44" text-anchor="middle" font-size="13" font-weight="400" fill="#FFFFFF"><tspan x="332.25" dy="0">95</tspan></text>
+<text data-id="label:category:PL" data-part="category" data-bp-role="category" x="443.25" y="307.34" text-anchor="middle" font-size="13" font-weight="700" fill="#0D2A43"><tspan x="443.25" dy="0">PL</tspan></text>
+<text data-id="label:category:PL:value" data-part="category" data-bp-role="category" x="443.25" y="322.94" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="443.25" dy="0">71</tspan></text>
+<text data-id="label:category:PT" data-part="category" data-bp-role="category" x="110.25" y="473.84" text-anchor="middle" font-size="13" font-weight="700" fill="#0D2A43"><tspan x="110.25" dy="0">PT</tspan></text>
+<text data-id="label:category:PT:value" data-part="category" data-bp-role="category" x="110.25" y="489.44" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="110.25" dy="0">78</tspan></text>
+<text data-id="label:category:RO" data-part="category" data-bp-role="category" x="554.25" y="418.34" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF"><tspan x="554.25" dy="0">RO</tspan></text>
+<text data-id="label:category:RO:value" data-part="category" data-bp-role="category" x="554.25" y="433.94" text-anchor="middle" font-size="13" font-weight="400" fill="#FFFFFF"><tspan x="554.25" dy="0">85</tspan></text>
+<text data-id="label:category:RS" data-part="category" data-bp-role="category" x="554.25" y="473.84" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF"><tspan x="554.25" dy="0">RS</tspan></text>
+<text data-id="label:category:RS:value" data-part="category" data-bp-role="category" x="554.25" y="489.44" text-anchor="middle" font-size="13" font-weight="400" fill="#FFFFFF"><tspan x="554.25" dy="0">92</tspan></text>
+<text data-id="label:category:SE" data-part="category" data-bp-role="category" x="387.75" y="140.84" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF"><tspan x="387.75" dy="0">SE</tspan></text>
+<text data-id="label:category:SE:value" data-part="category" data-bp-role="category" x="387.75" y="156.44" text-anchor="middle" font-size="13" font-weight="400" fill="#FFFFFF"><tspan x="387.75" dy="0">99</tspan></text>
+<text data-id="label:category:SI" data-part="category" data-bp-role="category" x="387.75" y="473.84" text-anchor="middle" font-size="13" font-weight="700" fill="#0D2A43"><tspan x="387.75" dy="0">SI</tspan></text>
+<text data-id="label:category:SI:value" data-part="category" data-bp-role="category" x="387.75" y="489.44" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="387.75" dy="0">75</tspan></text>
+<text data-id="label:category:SK" data-part="category" data-bp-role="category" x="443.25" y="362.84" text-anchor="middle" font-size="13" font-weight="700" fill="#050505"><tspan x="443.25" dy="0">SK</tspan></text>
+<text data-id="label:category:SK:value" data-part="category" data-bp-role="category" x="443.25" y="378.44" text-anchor="middle" font-size="13" font-weight="400" fill="#050505"><tspan x="443.25" dy="0">82</tspan></text>
+<text data-id="label:category:SM" data-part="category" data-bp-role="category" x="332.25" y="529.34" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF"><tspan x="332.25" dy="0">SM</tspan></text>
+<text data-id="label:category:SM:value" data-part="category" data-bp-role="category" x="332.25" y="544.94" text-anchor="middle" font-size="13" font-weight="400" fill="#FFFFFF"><tspan x="332.25" dy="0">89</tspan></text>
+<text data-id="label:category:UA" data-part="category" data-bp-role="category" x="609.75" y="362.84" text-anchor="middle" font-size="13" font-weight="700" fill="#FFFFFF"><tspan x="609.75" dy="0">UA</tspan></text>
+<text data-id="label:category:UA:value" data-part="category" data-bp-role="category" x="609.75" y="378.44" text-anchor="middle" font-size="13" font-weight="400" fill="#FFFFFF"><tspan x="609.75" dy="0">96</tspan></text>
+<text data-id="label:category:VA" data-part="category" data-bp-role="category" x="332.25" y="584.84" text-anchor="middle" font-size="13" font-weight="700" fill="#0D2A43"><tspan x="332.25" dy="0">VA</tspan></text>
+<text data-id="label:category:VA:value" data-part="category" data-bp-role="category" x="332.25" y="600.44" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="332.25" dy="0">72</tspan></text>
+<text data-id="label:category:XK" data-part="category" data-bp-role="category" x="554.25" y="529.34" text-anchor="middle" font-size="13" font-weight="700" fill="#0D2A43"><tspan x="554.25" dy="0">XK</tspan></text>
+<text data-id="label:category:XK:value" data-part="category" data-bp-role="category" x="554.25" y="544.94" text-anchor="middle" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="554.25" dy="0">79</tspan></text>
+</svg>

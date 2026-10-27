@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 433" width="720" height="433" direction="ltr" style="max-width:100%;height:auto;text-transform:none;letter-spacing:normal;word-spacing:normal;font-style:normal;font-variant:normal" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Software and utilities carry about 42% of the upside" aria-describedby="bp-desc-26082f1729" data-bp-sizing="{&quot;aspect&quot;:&quot;content&quot;,&quot;minWidth&quot;:398,&quot;minHeight&quot;:343,&quot;fit&quot;:&quot;content&quot;,&quot;compactFloor&quot;:{&quot;width&quot;:280,&quot;height&quot;:28},&quot;measuredMinWidth&quot;:398,&quot;measuredMinHeight&quot;:343,&quot;naturalWidth&quot;:720,&quot;naturalHeight&quot;:433,&quot;comfortableWidth&quot;:498,&quot;comfortableHeight&quot;:429}" data-bp-mode="full" font-family="'Helvetica Neue', Helvetica, Arial, Roboto, sans-serif">
+<desc id="bp-desc-26082f1729">Table of 8 rows with the columns # of companies and 2 stacked-bar panels, EBITDA impact, $bn; Share of 2030 EBITDA, %, each on its own scale. Segments: Run, Grow. The label at the end of each bar is the row total or its range. A bar with a range fills its segments to the low end and runs a light outlined extension to the high end. A Total row closes the table.</desc>
+<rect x="0" y="0" width="720" height="433" fill="#FFFFFF"/>
+<text data-id="frame:title:0" data-part="title" data-bp-role="title" x="24" y="37.60" text-anchor="start" font-size="20" font-weight="700" fill="#0D2A43"><tspan x="24" dy="0">Software and utilities carry about 42% of the upside</tspan></text>
+<text data-id="frame:subtitle:1" data-part="subtitle" data-bp-role="subtitle" x="24" y="61.32" text-anchor="start" font-size="14" font-weight="400" fill="#0D2A43"><tspan>Estimated 2030 EBITDA run-rate impact</tspan></text>
+<text data-id="frame:source:2" data-part="source" data-bp-role="source" x="24" y="418.38" text-anchor="start" font-size="11" font-weight="400" fill="#4E6070"><tspan x="24" dy="0">Source: Illustrative model</tspan></text>
+<rect data-id="frame:swatch:3" data-part="swatch" x="24" y="77.26" width="12" height="12" fill="#12395E"/>
+<text data-id="frame:legendLabel:4" data-part="legendLabel" data-bp-role="category" x="41" y="87.56" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="41" dy="0">Run</tspan></text>
+<rect data-id="frame:swatch:5" data-part="swatch" x="77.50" y="77.26" width="12" height="12" fill="#5E99C5"/>
+<text data-id="frame:legendLabel:6" data-part="legendLabel" data-bp-role="category" x="94.50" y="87.56" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="94.50" dy="0">Grow</tspan></text>
+<rect data-id="frame:swatch:7" data-part="swatch" x="138" y="77.26" width="12" height="12" fill="#CFD9E2" stroke="#5E6C7B" stroke-width="0.75"/>
+<text data-id="frame:legendLabel:8" data-part="legendLabel" data-bp-role="category" x="155" y="87.56" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="155" dy="0">Range, low to high</tspan></text>
+<rect data-id="combined-band:sw" data-part="combinedBand" x="24" y="138.40" width="672" height="28" fill="#f1f6fa"/>
+<rect data-id="combined-band:ut" data-part="combinedBand" x="24" y="166.40" width="672" height="28" fill="#f1f6fa"/>
+<rect data-id="bartable-total-ground" data-part="tableTotalGround" x="24" y="365.40" width="672" height="31" fill="#FFFFFF"/>
+<line data-id="bartable-head-rule" data-part="tableHeaderRule" x1="24" y1="135.40" x2="696" y2="135.40" stroke="#0D2A43" stroke-width="1"/>
+<rect data-id="segment:abs:sw:run" data-part="segment" x="161" y="145.40" width="54.80" height="14" fill="#12395E"/>
+<rect data-id="segment:abs:sw:grow" data-part="segment" x="215.80" y="145.40" width="137.01" height="14" fill="#5E99C5"/>
+<rect data-id="range:abs:sw" data-part="rangeExtension" x="352.81" y="145.40" width="87.19" height="14" fill="#CFD9E2" stroke="#5E6C7B" stroke-width="0.75"/>
+<rect data-id="segment:pct:sw:run" data-part="segment" x="513.50" y="145.40" width="15.32" height="14" fill="#12395E"/>
+<rect data-id="segment:pct:sw:grow" data-part="segment" x="528.82" y="145.40" width="49.78" height="14" fill="#5E99C5"/>
+<rect data-id="range:pct:sw" data-part="rangeExtension" x="578.60" y="145.40" width="27.90" height="14" fill="#CFD9E2" stroke="#5E6C7B" stroke-width="0.75"/>
+<rect data-id="segment:abs:ut:run" data-part="segment" x="161" y="173.40" width="39.86" height="14" fill="#12395E"/>
+<rect data-id="segment:abs:ut:grow" data-part="segment" x="200.86" y="173.40" width="99.64" height="14" fill="#5E99C5"/>
+<rect data-id="range:abs:ut" data-part="rangeExtension" x="300.50" y="173.40" width="139.50" height="14" fill="#CFD9E2" stroke="#5E6C7B" stroke-width="0.75"/>
+<rect data-id="segment:pct:ut:run" data-part="segment" x="513.50" y="173.40" width="15.56" height="14" fill="#12395E"/>
+<rect data-id="segment:pct:ut:grow" data-part="segment" x="529.06" y="173.40" width="51.87" height="14" fill="#5E99C5"/>
+<rect data-id="range:pct:ut" data-part="rangeExtension" x="580.92" y="173.40" width="72.08" height="14" fill="#CFD9E2" stroke="#5E6C7B" stroke-width="0.75"/>
+<rect data-id="segment:abs:rt:run" data-part="segment" x="161" y="201.40" width="47.76" height="14" fill="#12395E"/>
+<rect data-id="segment:abs:rt:grow" data-part="segment" x="208.76" y="201.40" width="109.17" height="14" fill="#5E99C5"/>
+<rect data-id="range:abs:rt" data-part="rangeExtension" x="317.94" y="201.40" width="87.19" height="14" fill="#CFD9E2" stroke="#5E6C7B" stroke-width="0.75"/>
+<rect data-id="segment:pct:rt:run" data-part="segment" x="513.50" y="201.40" width="13.47" height="14" fill="#12395E"/>
+<rect data-id="segment:pct:rt:grow" data-part="segment" x="526.97" y="201.40" width="42.33" height="14" fill="#5E99C5"/>
+<rect data-id="range:pct:rt" data-part="rangeExtension" x="569.30" y="201.40" width="25.58" height="14" fill="#CFD9E2" stroke="#5E6C7B" stroke-width="0.75"/>
+<rect data-id="segment:abs:lg:run" data-part="segment" x="161" y="229.40" width="35.90" height="14" fill="#12395E"/>
+<rect data-id="segment:abs:lg:grow" data-part="segment" x="196.90" y="229.40" width="86.16" height="14" fill="#5E99C5"/>
+<rect data-id="range:abs:lg" data-part="rangeExtension" x="283.06" y="229.40" width="69.75" height="14" fill="#CFD9E2" stroke="#5E6C7B" stroke-width="0.75"/>
+<rect data-id="segment:pct:lg:run" data-part="segment" x="513.50" y="229.40" width="18.97" height="14" fill="#12395E"/>
+<rect data-id="segment:pct:lg:grow" data-part="segment" x="532.47" y="229.40" width="53.11" height="14" fill="#5E99C5"/>
+<rect data-id="range:pct:lg" data-part="rangeExtension" x="585.58" y="229.40" width="32.55" height="14" fill="#CFD9E2" stroke="#5E6C7B" stroke-width="0.75"/>
+<rect data-id="segment:abs:in:run" data-part="segment" x="161" y="257.40" width="36.62" height="14" fill="#12395E"/>
+<rect data-id="segment:abs:in:grow" data-part="segment" x="197.62" y="257.40" width="68.01" height="14" fill="#5E99C5"/>
+<rect data-id="range:abs:in" data-part="rangeExtension" x="265.63" y="257.40" width="69.75" height="14" fill="#CFD9E2" stroke="#5E6C7B" stroke-width="0.75"/>
+<rect data-id="segment:pct:in:run" data-part="segment" x="513.50" y="257.40" width="22.62" height="14" fill="#12395E"/>
+<rect data-id="segment:pct:in:grow" data-part="segment" x="536.12" y="257.40" width="47.13" height="14" fill="#5E99C5"/>
+<rect data-id="range:pct:in" data-part="rangeExtension" x="583.25" y="257.40" width="32.55" height="14" fill="#CFD9E2" stroke="#5E6C7B" stroke-width="0.75"/>
+<rect data-id="segment:abs:md:run" data-part="segment" x="161" y="285.40" width="15.69" height="14" fill="#12395E"/>
+<rect data-id="segment:abs:md:grow" data-part="segment" x="176.69" y="285.40" width="36.62" height="14" fill="#5E99C5"/>
+<rect data-id="range:abs:md" data-part="rangeExtension" x="213.31" y="285.40" width="34.88" height="14" fill="#CFD9E2" stroke="#5E6C7B" stroke-width="0.75"/>
+<rect data-id="segment:pct:md:run" data-part="segment" x="513.50" y="285.40" width="9.30" height="14" fill="#12395E"/>
+<rect data-id="segment:pct:md:grow" data-part="segment" x="522.80" y="285.40" width="18.60" height="14" fill="#5E99C5"/>
+<rect data-id="range:pct:md" data-part="rangeExtension" x="541.40" y="285.40" width="27.90" height="14" fill="#CFD9E2" stroke="#5E6C7B" stroke-width="0.75"/>
+<rect data-id="segment:abs:ch:run" data-part="segment" x="161" y="313.40" width="5.23" height="14" fill="#12395E"/>
+<rect data-id="segment:abs:ch:grow" data-part="segment" x="166.23" y="313.40" width="12.21" height="14" fill="#5E99C5"/>
+<rect data-id="range:abs:ch" data-part="rangeExtension" x="178.44" y="313.40" width="34.88" height="14" fill="#CFD9E2" stroke="#5E6C7B" stroke-width="0.75"/>
+<rect data-id="segment:pct:ch:run" data-part="segment" x="513.50" y="313.40" width="7.15" height="14" fill="#12395E"/>
+<rect data-id="segment:pct:ch:grow" data-part="segment" x="520.65" y="313.40" width="16.10" height="14" fill="#5E99C5"/>
+<rect data-id="range:pct:ch" data-part="rangeExtension" x="536.75" y="313.40" width="18.60" height="14" fill="#CFD9E2" stroke="#5E6C7B" stroke-width="0.75"/>
+<rect data-id="segment:abs:co:run" data-part="segment" x="161" y="341.40" width="4.65" height="14" fill="#12395E"/>
+<rect data-id="segment:abs:co:grow" data-part="segment" x="165.65" y="341.40" width="9.30" height="14" fill="#5E99C5"/>
+<rect data-id="range:abs:co" data-part="rangeExtension" x="174.95" y="341.40" width="13.95" height="14" fill="#CFD9E2" stroke="#5E6C7B" stroke-width="0.75"/>
+<rect data-id="segment:pct:co:run" data-part="segment" x="513.50" y="341.40" width="4.88" height="14" fill="#12395E"/>
+<rect data-id="segment:pct:co:grow" data-part="segment" x="518.38" y="341.40" width="11.39" height="14" fill="#5E99C5"/>
+<line data-id="seam:segment:abs:sw:run:0" data-part="segmentSeam" x1="215.80" y1="145.40" x2="215.80" y2="159.40" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:segment:pct:sw:run:1" data-part="segmentSeam" x1="528.82" y1="145.40" x2="528.82" y2="159.40" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:segment:abs:ut:run:2" data-part="segmentSeam" x1="200.86" y1="173.40" x2="200.86" y2="187.40" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:segment:pct:ut:run:3" data-part="segmentSeam" x1="529.06" y1="173.40" x2="529.06" y2="187.40" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:segment:abs:rt:run:4" data-part="segmentSeam" x1="208.76" y1="201.40" x2="208.76" y2="215.40" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:segment:pct:rt:run:5" data-part="segmentSeam" x1="526.97" y1="201.40" x2="526.97" y2="215.40" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:segment:abs:lg:run:6" data-part="segmentSeam" x1="196.90" y1="229.40" x2="196.90" y2="243.40" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:segment:pct:lg:run:7" data-part="segmentSeam" x1="532.47" y1="229.40" x2="532.47" y2="243.40" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:segment:abs:in:run:8" data-part="segmentSeam" x1="197.62" y1="257.40" x2="197.62" y2="271.40" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:segment:pct:in:run:9" data-part="segmentSeam" x1="536.12" y1="257.40" x2="536.12" y2="271.40" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:segment:abs:md:run:10" data-part="segmentSeam" x1="176.69" y1="285.40" x2="176.69" y2="299.40" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:segment:pct:md:run:11" data-part="segmentSeam" x1="522.80" y1="285.40" x2="522.80" y2="299.40" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:segment:abs:ch:run:12" data-part="segmentSeam" x1="166.23" y1="313.40" x2="166.23" y2="327.40" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:segment:pct:ch:run:13" data-part="segmentSeam" x1="520.65" y1="313.40" x2="520.65" y2="327.40" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:segment:abs:co:run:14" data-part="segmentSeam" x1="165.65" y1="341.40" x2="165.65" y2="355.40" stroke="#FFFFFF" stroke-width="0.5"/>
+<line data-id="seam:segment:pct:co:run:15" data-part="segmentSeam" x1="518.38" y1="341.40" x2="518.38" y2="355.40" stroke="#FFFFFF" stroke-width="0.5"/>
+<rect data-id="range:pct:co" data-part="rangeExtension" x="529.77" y="341.40" width="16.28" height="14" fill="#CFD9E2" stroke="#5E6C7B" stroke-width="0.75"/>
+<line data-id="bartable-total-rule" data-part="tableTotalRule" x1="24" y1="365.40" x2="696" y2="365.40" stroke="#0D2A43" stroke-width="1"/>
+<line data-id="bartable-total-rule-below" data-part="tableTotalRule" x1="24" y1="396.40" x2="696" y2="396.40" stroke="#0D2A43" stroke-width="1"/>
+<text data-id="label:cell:n:ch" data-part="point" data-bp-role="value" x="145" y="325.06" text-anchor="end" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="145" dy="0">15</tspan></text>
+<text data-id="label:cell:n:co" data-part="point" data-bp-role="value" x="145" y="353.06" text-anchor="end" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="145" dy="0">23</tspan></text>
+<text data-id="label:cell:n:in" data-part="point" data-bp-role="value" x="145" y="269.06" text-anchor="end" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="145" dy="0">45</tspan></text>
+<text data-id="label:cell:n:lg" data-part="point" data-bp-role="value" x="145" y="241.06" text-anchor="end" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="145" dy="0">20</tspan></text>
+<text data-id="label:cell:n:md" data-part="point" data-bp-role="value" x="145" y="297.06" text-anchor="end" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="145" dy="0">14</tspan></text>
+<text data-id="label:cell:n:rt" data-part="point" data-bp-role="value" x="145" y="213.06" text-anchor="end" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="145" dy="0">64</tspan></text>
+<text data-id="label:cell:n:sw" data-part="point" data-bp-role="value" x="145" y="157.06" text-anchor="end" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="145" dy="0">30</tspan></text>
+<text data-id="label:cell:n:ut" data-part="point" data-bp-role="value" x="145" y="185.06" text-anchor="end" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="145" dy="0">45</tspan></text>
+<text data-id="label:end:abs:ch" data-part="total" data-bp-role="value" x="219.31" y="325.06" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="219.31" dy="0">10–30</tspan></text>
+<text data-id="label:end:abs:co" data-part="total" data-bp-role="value" x="194.90" y="353.06" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="194.90" dy="0">8–16</tspan></text>
+<text data-id="label:end:abs:in" data-part="total" data-bp-role="value" x="341.38" y="269.06" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="341.38" dy="0">60–100</tspan></text>
+<text data-id="label:end:abs:lg" data-part="total" data-bp-role="value" x="358.81" y="241.06" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="358.81" dy="0">70–110</tspan></text>
+<text data-id="label:end:abs:md" data-part="total" data-bp-role="value" x="254.19" y="297.06" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="254.19" dy="0">30–50</tspan></text>
+<text data-id="label:end:abs:rt" data-part="total" data-bp-role="value" x="411.13" y="213.06" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="411.13" dy="0">90–140</tspan></text>
+<text data-id="label:end:abs:sw" data-part="total" data-bp-role="value" x="446" y="157.06" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="446" dy="0">110–160</tspan></text>
+<text data-id="label:end:abs:ut" data-part="total" data-bp-role="value" x="446" y="185.06" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="446" dy="0">80–160</tspan></text>
+<text data-id="label:end:pct:ch" data-part="total" data-bp-role="value" x="561.35" y="325.06" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="561.35" dy="0">10–18</tspan></text>
+<text data-id="label:end:pct:co" data-part="total" data-bp-role="value" x="552.05" y="353.06" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="552.05" dy="0">7–14</tspan></text>
+<text data-id="label:end:pct:in" data-part="total" data-bp-role="value" x="621.80" y="269.06" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="621.80" dy="0">30–44</tspan></text>
+<text data-id="label:end:pct:lg" data-part="total" data-bp-role="value" x="624.13" y="241.06" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="624.13" dy="0">31–45</tspan></text>
+<text data-id="label:end:pct:md" data-part="total" data-bp-role="value" x="575.30" y="297.06" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="575.30" dy="0">12–24</tspan></text>
+<text data-id="label:end:pct:rt" data-part="total" data-bp-role="value" x="600.88" y="213.06" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="600.88" dy="0">24–35</tspan></text>
+<text data-id="label:end:pct:sw" data-part="total" data-bp-role="value" x="612.50" y="157.06" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="612.50" dy="0">28–40</tspan></text>
+<text data-id="label:end:pct:ut" data-part="total" data-bp-role="value" x="659" y="185.06" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="659" dy="0">29–60</tspan></text>
+<text data-id="label:head:abs" data-part="axisTitle" data-bp-role="caption" x="161" y="129.28" text-anchor="start" font-size="13" font-weight="600" fill="#0D2A43"><tspan x="161" dy="0">EBITDA IMPACT, $bn</tspan></text>
+<text data-id="label:head:n" data-part="axisTitle" data-bp-role="caption" x="145" y="112.64" text-anchor="end" font-size="13" font-weight="600" fill="#0D2A43"><tspan x="145" dy="0"># OF</tspan><tspan x="145" dy="15.60">COMPANIES</tspan></text>
+<text data-id="label:head:pct" data-part="axisTitle" data-bp-role="caption" x="513.50" y="129.28" text-anchor="start" font-size="13" font-weight="600" fill="#0D2A43"><tspan x="513.50" dy="0">SHARE OF 2030 EBITDA, %</tspan></text>
+<text data-id="label:row:ch" data-part="category" data-bp-role="category" x="24" y="325.06" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="24" dy="0">Chemicals</tspan></text>
+<text data-id="label:row:co" data-part="category" data-bp-role="category" x="24" y="353.06" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="24" dy="0">Construction</tspan></text>
+<text data-id="label:row:in" data-part="category" data-bp-role="category" x="24" y="269.06" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="24" dy="0">Insurance</tspan></text>
+<text data-id="label:row:lg" data-part="category" data-bp-role="category" x="24" y="241.06" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="24" dy="0">Logistics</tspan></text>
+<text data-id="label:row:md" data-part="category" data-bp-role="category" x="24" y="297.06" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="24" dy="0">Media</tspan></text>
+<text data-id="label:row:rt" data-part="category" data-bp-role="category" x="24" y="213.06" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="24" dy="0">Retail</tspan></text>
+<text data-id="label:row:sw" data-part="category" data-bp-role="category" x="24" y="157.06" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="24" dy="0">Software</tspan></text>
+<text data-id="label:row:ut" data-part="category" data-bp-role="category" x="24" y="185.06" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="24" dy="0">Utilities</tspan></text>
+<text data-id="label:total:abs" data-part="grandTotal" data-bp-role="value" x="161" y="387.08" text-anchor="start" font-size="13" font-weight="600" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="161" dy="0">458–766</tspan></text>
+<text data-id="label:total:label" data-part="category" data-bp-role="category" x="24" y="387.08" text-anchor="start" font-size="13" font-weight="600" fill="#0D2A43"><tspan x="24" dy="0">Total</tspan></text>
+<text data-id="label:total:n" data-part="grandTotal" data-bp-role="value" x="145" y="387.08" text-anchor="end" font-size="13" font-weight="600" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="145" dy="0">256</tspan></text>
+</svg>

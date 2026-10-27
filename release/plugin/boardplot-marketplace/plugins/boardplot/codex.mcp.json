@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "boardplot": {
+      "command": "node",
+      "args": [
+        "./scripts/boardplot.mjs",
+        "mcp"
+      ],
+      "cwd": "."
+    }
+  }
+}

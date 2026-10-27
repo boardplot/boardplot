@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 434" width="720" height="434" direction="ltr" style="max-width:100%;height:auto;text-transform:none;letter-spacing:normal;word-spacing:normal;font-style:normal;font-variant:normal" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Cloud ARR compounds at 31.5% p.a. and overtakes license by FY23" aria-describedby="bp-desc-1116c5e019" data-bp-sizing="{&quot;aspect&quot;:&quot;16:9&quot;,&quot;minWidth&quot;:480,&quot;minHeight&quot;:270,&quot;fit&quot;:&quot;fill&quot;,&quot;compactFloor&quot;:{&quot;width&quot;:280,&quot;height&quot;:180},&quot;measuredMinWidth&quot;:0,&quot;measuredMinHeight&quot;:252,&quot;naturalWidth&quot;:720,&quot;naturalHeight&quot;:434,&quot;comfortableWidth&quot;:600,&quot;comfortableHeight&quot;:338}" data-bp-mode="full" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif">
+<desc id="bp-desc-1116c5e019">line chart, 3 series × 6 categories. Latest values: Cloud ARR 189, License 71, Maintenance 78.</desc>
+<rect x="0" y="0" width="720" height="434" fill="#0E1A26"/>
+<text data-id="frame:title:0" data-part="title" data-bp-role="title" x="24" y="37.60" text-anchor="start" font-size="20" font-weight="700" fill="#F4F7FA"><tspan x="24" dy="0">Cloud ARR compounds at 31.5% p.a. and overtakes license by FY23</tspan></text>
+<text data-id="frame:subtitle:1" data-part="subtitle" data-bp-role="subtitle" x="24" y="61.32" text-anchor="start" font-size="14" font-weight="400" fill="#F4F7FA"><tspan>Brevinth Software · </tspan><tspan font-weight="700">Revenue run-rate</tspan><tspan> in $m · FY20–FY25 · AC vs FC</tspan></text>
+<text data-id="frame:source:2" data-part="source" data-bp-role="source" x="24" y="419.38" text-anchor="start" font-size="11" font-weight="400" fill="#AAB7C4"><tspan x="24" dy="0">Source: Brevinth audited accounts; FY25 company forecast</tspan></text>
+<line data-id="axis:y:grid:0" data-part="gridline" x1="52.50" y1="374.10" x2="647.25" y2="374.10" stroke="#2A3947" stroke-width="0.75"/>
+<text data-id="axis:y:tick:0" data-part="tick" data-bp-role="axis" x="30.50" y="377.41" text-anchor="start" font-size="12" font-weight="400" fill="#AAB7C4" style="font-variant-numeric: tabular-nums"><tspan x="30.50" dy="0">40</tspan></text>
+<path data-id="axis:y:grid:1" data-part="gridline" d="M52.5 344.92L91.19 344.92M112.94 344.92L647.25 344.92" fill="none" stroke="#2A3947" stroke-width="0.75" stroke-linejoin="round"/>
+<text data-id="axis:y:tick:1" data-part="tick" data-bp-role="axis" x="30.50" y="348.23" text-anchor="start" font-size="12" font-weight="400" fill="#AAB7C4" style="font-variant-numeric: tabular-nums"><tspan x="30.50" dy="0">60</tspan></text>
+<path data-id="axis:y:grid:2" data-part="gridline" d="M52.5 315.74L610.31 315.74" fill="none" stroke="#2A3947" stroke-width="0.75" stroke-linejoin="round"/>
+<text data-id="axis:y:tick:2" data-part="tick" data-bp-role="axis" x="30.50" y="319.05" text-anchor="start" font-size="12" font-weight="400" fill="#AAB7C4" style="font-variant-numeric: tabular-nums"><tspan x="30.50" dy="0">80</tspan></text>
+<line data-id="axis:y:grid:3" data-part="gridline" x1="52.50" y1="286.56" x2="647.25" y2="286.56" stroke="#2A3947" stroke-width="0.75"/>
+<text data-id="axis:y:tick:3" data-part="tick" data-bp-role="axis" x="24" y="289.87" text-anchor="start" font-size="12" font-weight="400" fill="#AAB7C4" style="font-variant-numeric: tabular-nums"><tspan x="24" dy="0">100</tspan></text>
+<line data-id="axis:y:grid:4" data-part="gridline" x1="52.50" y1="257.38" x2="647.25" y2="257.38" stroke="#2A3947" stroke-width="0.75"/>
+<text data-id="axis:y:tick:4" data-part="tick" data-bp-role="axis" x="24" y="260.69" text-anchor="start" font-size="12" font-weight="400" fill="#AAB7C4" style="font-variant-numeric: tabular-nums"><tspan x="24" dy="0">120</tspan></text>
+<line data-id="axis:y:grid:5" data-part="gridline" x1="52.50" y1="228.19" x2="647.25" y2="228.19" stroke="#2A3947" stroke-width="0.75"/>
+<text data-id="axis:y:tick:5" data-part="tick" data-bp-role="axis" x="24" y="231.50" text-anchor="start" font-size="12" font-weight="400" fill="#AAB7C4" style="font-variant-numeric: tabular-nums"><tspan x="24" dy="0">140</tspan></text>
+<line data-id="axis:y:grid:6" data-part="gridline" x1="52.50" y1="199.01" x2="647.25" y2="199.01" stroke="#2A3947" stroke-width="0.75"/>
+<text data-id="axis:y:tick:6" data-part="tick" data-bp-role="axis" x="24" y="202.32" text-anchor="start" font-size="12" font-weight="400" fill="#AAB7C4" style="font-variant-numeric: tabular-nums"><tspan x="24" dy="0">160</tspan></text>
+<line data-id="axis:y:grid:7" data-part="gridline" x1="52.50" y1="169.83" x2="647.25" y2="169.83" stroke="#2A3947" stroke-width="0.75"/>
+<text data-id="axis:y:tick:7" data-part="tick" data-bp-role="axis" x="24" y="173.14" text-anchor="start" font-size="12" font-weight="400" fill="#AAB7C4" style="font-variant-numeric: tabular-nums"><tspan x="24" dy="0">180</tspan></text>
+<line data-id="axis:y:grid:8" data-part="gridline" x1="52.50" y1="140.65" x2="647.25" y2="140.65" stroke="#2A3947" stroke-width="0.75"/>
+<text data-id="axis:y:tick:8" data-part="tick" data-bp-role="axis" x="24" y="143.96" text-anchor="start" font-size="12" font-weight="400" fill="#AAB7C4" style="font-variant-numeric: tabular-nums"><tspan x="24" dy="0">200</tspan></text>
+<line data-id="axis:y:baseline-disclosure:1" data-part="baselineDisclosure" x1="48.27" y1="370.43" x2="53.27" y2="361.77" stroke="#DCE4EB" stroke-width="1"/>
+<line data-id="axis:y:baseline-disclosure:2" data-part="baselineDisclosure" x1="51.73" y1="372.43" x2="56.73" y2="363.77" stroke="#DCE4EB" stroke-width="1"/>
+<line data-id="axis:baseline" data-part="baseline" x1="52.50" y1="374.10" x2="647.25" y2="374.10" stroke="#DCE4EB" stroke-width="1"/>
+<path data-id="casing:mark:line:license:0" data-part="lineCasing" d="M102.06 251.54L201.19 260.29L300.31 273.42L399.44 290.93L498.56 304.07" fill="none" stroke="#0E1A26" stroke-width="5" stroke-linejoin="round"/>
+<path data-id="mark:line:license:0" data-part="line" d="M102.06 251.54L201.19 260.29L300.31 273.42L399.44 290.93L498.56 304.07" fill="none" stroke="#667583" stroke-width="2" stroke-linejoin="round"/>
+<path data-id="casing:mark:line:license:0:fc" data-part="lineCasing" d="M498.56 304.07L597.69 328.87" fill="none" stroke="#0E1A26" stroke-width="5" stroke-linejoin="round"/>
+<path data-id="mark:line:license:0:fc" data-part="line" d="M498.56 304.07L597.69 328.87" fill="none" stroke="#667583" stroke-width="2" stroke-dasharray="4 3" stroke-linecap="butt" stroke-linejoin="round"/>
+<rect data-id="marker:license:fy20" data-part="marker" x="99.06" y="248.54" width="6" height="6" fill="#667583"/>
+<rect data-id="marker:license:fy21" data-part="marker" x="198.19" y="257.29" width="6" height="6" fill="#667583"/>
+<rect data-id="marker:license:fy22" data-part="marker" x="297.31" y="270.42" width="6" height="6" fill="#667583"/>
+<rect data-id="marker:license:fy23" data-part="marker" x="396.44" y="287.93" width="6" height="6" fill="#667583"/>
+<rect data-id="marker:license:fy24" data-part="marker" x="495.56" y="301.07" width="6" height="6" fill="#667583"/>
+<rect data-id="marker:license:fy25" data-part="marker" x="594.69" y="325.87" width="6" height="6" fill="#0E1A26" stroke="#667583" stroke-width="1.5"/>
+<path data-id="casing:mark:line:maintenance:0" data-part="lineCasing" d="M102.06 292.39L201.19 295.31L300.31 298.23L399.44 304.07L498.56 315.74" fill="none" stroke="#0E1A26" stroke-width="5" stroke-linejoin="round"/>
+<path data-id="mark:line:maintenance:0" data-part="line" d="M102.06 292.39L201.19 295.31L300.31 298.23L399.44 304.07L498.56 315.74" fill="none" stroke="#8e99a4" stroke-width="2" stroke-linejoin="round"/>
+<path data-id="casing:mark:line:maintenance:0:fc" data-part="lineCasing" d="M498.56 315.74L597.69 318.66" fill="none" stroke="#0E1A26" stroke-width="5" stroke-linejoin="round"/>
+<path data-id="mark:line:maintenance:0:fc" data-part="line" d="M498.56 315.74L597.69 318.66" fill="none" stroke="#8e99a4" stroke-width="2" stroke-dasharray="4 3" stroke-linecap="butt" stroke-linejoin="round"/>
+<path data-id="marker:maintenance:fy20" data-part="marker" d="M102.06 288.39L106.06 292.39L102.06 296.39L98.06 292.39Z" fill="#8e99a4" stroke-linejoin="round"/>
+<path data-id="marker:maintenance:fy21" data-part="marker" d="M201.19 291.31L205.19 295.31L201.19 299.31L197.19 295.31Z" fill="#8e99a4" stroke-linejoin="round"/>
+<path data-id="marker:maintenance:fy22" data-part="marker" d="M300.31 294.23L304.31 298.23L300.31 302.23L296.31 298.23Z" fill="#8e99a4" stroke-linejoin="round"/>
+<path data-id="marker:maintenance:fy23" data-part="marker" d="M399.44 300.07L403.44 304.07L399.44 308.07L395.44 304.07Z" fill="#8e99a4" stroke-linejoin="round"/>
+<path data-id="marker:maintenance:fy24" data-part="marker" d="M498.56 311.74L502.56 315.74L498.56 319.74L494.56 315.74Z" fill="#8e99a4" stroke-linejoin="round"/>
+<path data-id="marker:maintenance:fy25" data-part="marker" d="M597.69 314.66L601.69 318.66L597.69 322.66L593.69 318.66Z" fill="#0E1A26" stroke="#8e99a4" stroke-width="1.5" stroke-linejoin="round"/>
+<path data-id="casing:mark:line:cloud:0" data-part="lineCasing" d="M102.06 362.43L201.19 336.16L300.31 306.98L399.44 260.29L498.56 210.69" fill="none" stroke="#0E1A26" stroke-width="5" stroke-linejoin="round"/>
+<path data-id="mark:line:cloud:0" data-part="line" d="M102.06 362.43L201.19 336.16L300.31 306.98L399.44 260.29L498.56 210.69" fill="none" stroke="#67A9EA" stroke-width="2.5" stroke-linejoin="round"/>
+<path data-id="casing:mark:line:cloud:0:fc" data-part="lineCasing" d="M498.56 210.69L597.69 156.70" fill="none" stroke="#0E1A26" stroke-width="5" stroke-linejoin="round"/>
+<path data-id="mark:line:cloud:0:fc" data-part="line" d="M498.56 210.69L597.69 156.70" fill="none" stroke="#67A9EA" stroke-width="2.5" stroke-dasharray="4 3" stroke-linecap="butt" stroke-linejoin="round"/>
+<circle data-id="marker:cloud:fy20" data-part="marker" cx="102.06" cy="362.43" r="3" fill="#67A9EA"/>
+<circle data-id="marker:cloud:fy21" data-part="marker" cx="201.19" cy="336.16" r="3" fill="#67A9EA"/>
+<circle data-id="marker:cloud:fy22" data-part="marker" cx="300.31" cy="306.98" r="3" fill="#67A9EA"/>
+<circle data-id="marker:cloud:fy23" data-part="marker" cx="399.44" cy="260.29" r="3" fill="#67A9EA"/>
+<circle data-id="marker:cloud:fy24" data-part="marker" cx="498.56" cy="210.69" r="3" fill="#67A9EA"/>
+<circle data-id="marker:cloud:fy25" data-part="marker" cx="597.69" cy="156.70" r="3" fill="#0E1A26" stroke="#67A9EA" stroke-width="1.5"/>
+<path data-id="ann:cagr-1:arm:0" data-part="arm" d="M102.0625 112.69999999999999L102.0625 102.69999999999999L596.2061947472474 102.69999999999999" fill="none" stroke="#F4F7FA" stroke-width="1" stroke-linejoin="round"/>
+<path data-id="ann:cagr-1:arrowHead:1" data-part="arrowHead" d="M597.69 102.70L593.23 104.97L593.23 100.43Z" fill="#F4F7FA" stroke-linejoin="round"/>
+<line data-id="forecast-divider:fy25" data-part="forecastDivider" x1="548.13" y1="135.70" x2="548.13" y2="374.10" stroke="#758596" stroke-width="1" stroke-dasharray="4 3"/>
+<text data-id="label:series:cloud" data-part="series" data-bp-role="category" x="613.69" y="161.36" text-anchor="start" font-size="13" font-weight="700" fill="#67A9EA"><tspan>Cloud ARR </tspan><tspan>189</tspan></text>
+<text data-id="label:forecast:fy25" data-part="annotation" data-bp-role="caption" x="552.13" y="126.75" text-anchor="start" font-size="12" font-weight="400" fill="#AAB7C4"><tspan x="552.13" dy="0">FC</tspan></text>
+<text data-id="label:series:license" data-part="series" data-bp-role="category" x="613.69" y="338.42" text-anchor="start" font-size="12" font-weight="400" fill="#75838f"><tspan>License </tspan><tspan>71</tspan></text>
+<text data-id="label:series:maintenance" data-part="series" data-bp-role="category" x="613.69" y="318.42" text-anchor="start" font-size="12" font-weight="400" fill="#8e99a4"><tspan>Maintenance </tspan><tspan>78</tspan></text>
+<text data-id="label:category:fy20" data-part="category" data-bp-role="category" x="86.06" y="392.56" text-anchor="start" font-size="13" font-weight="400" fill="#AAB7C4"><tspan x="86.06" dy="0">FY20</tspan></text>
+<text data-id="label:category:fy21" data-part="category" data-bp-role="category" x="185.19" y="392.56" text-anchor="start" font-size="13" font-weight="400" fill="#AAB7C4"><tspan x="185.19" dy="0">FY21</tspan></text>
+<text data-id="label:category:fy22" data-part="category" data-bp-role="category" x="284.31" y="392.56" text-anchor="start" font-size="13" font-weight="400" fill="#AAB7C4"><tspan x="284.31" dy="0">FY22</tspan></text>
+<text data-id="label:category:fy23" data-part="category" data-bp-role="category" x="383.44" y="392.56" text-anchor="start" font-size="13" font-weight="400" fill="#AAB7C4"><tspan x="383.44" dy="0">FY23</tspan></text>
+<text data-id="label:category:fy24" data-part="category" data-bp-role="category" x="482.56" y="392.56" text-anchor="start" font-size="13" font-weight="400" fill="#AAB7C4"><tspan x="482.56" dy="0">FY24</tspan></text>
+<text data-id="label:category:fy25" data-part="category" data-bp-role="category" x="577.69" y="392.56" text-anchor="start" font-size="13" font-weight="400" fill="#AAB7C4"><tspan x="577.69" dy="0">FY25F</tspan></text>
+<text data-id="label:annotation:cagr-1" data-part="annotation" data-bp-role="note" x="277.38" y="95.38" text-anchor="start" font-size="13" font-weight="700" fill="#F4F7FA"><tspan x="277.38" dy="0">Cloud ARR +31.5% p.a.</tspan></text>
+<text data-id="label:annotation:abs-2" data-part="annotation" data-bp-role="value" x="94.56" y="351.09" text-anchor="start" font-size="13" font-weight="700" fill="#67A9EA" style="font-variant-numeric: tabular-nums"><tspan x="94.56" dy="0">48</tspan></text>
+</svg>

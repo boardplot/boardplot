@@ -1,0 +1,16 @@
+{
+  "name": "boardplot",
+  "displayName": "Boardplot",
+  "description": "Create consulting-grade charts through a skill and a local MCP server.",
+  "author": {
+    "name": "Boardplot",
+    "url": "https://github.com/boardplot"
+  },
+  "homepage": "https://github.com/boardplot/boardplot",
+  "repository": "https://github.com/boardplot/boardplot",
+  "license": "Apache-2.0",
+  "keywords": [
+    "charts",
+    "mcp"
+  ]
+}

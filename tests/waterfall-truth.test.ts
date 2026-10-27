@@ -1,0 +1,333 @@
+/**
+ * Waterfall truth cases, kept red-capable.
+ *
+ * a pure-negative waterfall must not inherit an absolute `|| 1` domain
+ * fallback — with it a -1e-13 delta rendered as a 0.5px sliver while +1e-13 filled
+ * 90.9% of the plot, and the asymmetry reached both finite boundaries
+ * (-MIN_VALUE, -MAX_VALUE). The generator sweep never rolls hi === 0 exactly,
+ * so these are DIRECTED cases, not rolls (the sweep's universe was
+ * mixed-sign traversals; real data includes pure-negative ones).
+ *
+ * duplicate item ids passed the schema, overwrote the level map, and
+ * emitted duplicate scene identities. Refused at the schema now; the segment
+ * surface is the in-file twin.
+ */
+import { describe, expect, it } from 'vitest';
+import '../src/core/charts';
+import { getChartDefinition } from '../src/core/registry';
+import { getFixtures } from '../src/fixtures';
+import type { Geometry } from '../src/core/types/scene';
+
+const def = getChartDefinition('waterfall')!;
+
+function barRatio(value: number): number {
+  const data = def.normalize({ items: [{ id: 'x', label: 'X', value }] });
+  const geometry = def.layout(data as never, {} as never) as unknown as {
+    plot: { h: number };
+    marks: { bars: { rect: { h: number } }[] };
+  };
+  return geometry.marks.bars[0]!.rect.h / geometry.plot.h;
+}
+
+describe('pure-negative domain symmetry', () => {
+  for (const magnitude of [1e-13, 1, 1e13]) {
+    it(`|${magnitude}|: the lone negative delta occupies what its positive twin occupies`, () => {
+      const positive = barRatio(magnitude);
+      const negative = barRatio(-magnitude);
+      expect(negative).toBeGreaterThan(0.5);
+      expect(Math.abs(negative - positive)).toBeLessThanOrEqual(0.05);
+    });
+  }
+
+  // The contract now ends at ±1e15 (MAGNITUDE_CEILING): values beyond it are refused at the schema with a rescale-your-
+  // unit message, which prevents span overflow for every contract
+  // path. The denormal
+  // floor remains a layout property worth pinning.
+  it(`denormal floor -${Number.MIN_VALUE}: the bar is a bar, not a sliver`, () => {
+    expect(barRatio(-Number.MIN_VALUE)).toBeGreaterThan(0.4);
+  });
+
+  for (const oversized of [1e15 + 1e3, -8.9e307, Number.MAX_VALUE]) {
+    it(`magnitude ${oversized} is refused at the schema, naming the rescale fix`, () => {
+      const parsed = def.dataSchema.safeParse({
+        items: [{ id: 'x', label: 'X', value: oversized }],
+      });
+      expect(parsed.success).toBe(false);
+      if (parsed.success) return;
+      expect(
+        parsed.error.issues.some((entry) =>
+          entry.message.includes('exceeds the supported magnitude of 1e15'),
+        ),
+      ).toBe(true);
+    });
+  }
+
+  it('the ceiling itself stays accepted — the class boundary', () => {
+    expect(
+      def.dataSchema.safeParse({ items: [{ id: 'x', label: 'X', value: 1e15 }] }).success,
+    ).toBe(true);
+  });
+});
+
+describe('the CAGR end drop leg is never a stub', () => {
+  it('a closing-heavy bridge keeps at least 16px of end leg', () => {
+    const data = def.normalize({
+      items: [
+        { id: 'open', label: 'Open', type: 'total', value: 135, date: '2020-12-31' },
+        { id: 'lift', label: 'Lift', value: 25 },
+        { id: 'close', label: 'Close', type: 'total', date: '2024-12-31' },
+      ],
+    });
+    const geometry = def.layout(data as never, {
+      annotations: [{ kind: 'cagr' }],
+    } as never) as unknown as {
+      scene: { part?: string; owner?: { annotationId?: string }; d?: string }[];
+    };
+    const arm = geometry.scene.find(
+      (node) => node.part === 'arm' && node.owner?.annotationId !== undefined,
+    );
+    expect(arm?.d).toBeDefined();
+    const numbers = arm!.d!.match(/-?\d+(?:\.\d+)?/g)!.map(Number);
+    // d = M x0 y0 L x0 armY L x1 armY L x1 endLegY
+    const armYValue = numbers[3]!;
+    const endLegY = numbers[7]!;
+    expect(endLegY - armYValue).toBeGreaterThanOrEqual(15.5);
+  });
+});
+
+describe('duplicate ids are refused, not overwritten', () => {
+  it('duplicate item ids fail the data schema, naming id and position', () => {
+    const parsed = def.dataSchema.safeParse({
+      items: [
+        { id: 'same', label: 'First', value: 7 },
+        { id: 'same', label: 'Second', value: 8 },
+      ],
+    });
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+    const issue = parsed.error.issues.find((entry) =>
+      entry.message.includes("duplicate waterfall item id 'same'"),
+    );
+    expect(issue?.path).toEqual(['items', 1, 'id']);
+  });
+
+  it('duplicate segment ids within one item fail too — the twin surface', () => {
+    const parsed = def.dataSchema.safeParse({
+      items: [
+        {
+          id: 'volume',
+          label: 'Volume',
+          segments: [
+            { id: 'b2b', value: 3 },
+            { id: 'b2b', value: 4 },
+          ],
+        },
+      ],
+    });
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+    expect(
+      parsed.error.issues.some((entry) =>
+        entry.message.includes("duplicate segment id 'b2b' in item 'volume'"),
+      ),
+    ).toBe(true);
+  });
+
+  it("colon-composed identity collision is refused — item 'a:b'+seg 'c' vs item 'a'+seg 'b:c' ", () => {
+    const parsed = def.dataSchema.safeParse({
+      items: [
+        { id: 'a:b', label: 'One', segments: [{ id: 'c', value: 1 }] },
+        { id: 'a', label: 'Two', segments: [{ id: 'b:c', value: 2 }] },
+      ],
+    });
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+    expect(
+      parsed.error.issues.some((entry) =>
+        entry.message.includes("compose the same scene identity 'a:b:c'"),
+      ),
+    ).toBe(true);
+  });
+
+  it("a plain item occupies its ':__value' slot — segment '__value' under a twin path collides", () => {
+    const parsed = def.dataSchema.safeParse({
+      items: [
+        { id: 'a', label: 'Plain', value: 5 },
+        { id: 'a:__value', label: 'Sneaky', value: 3 },
+      ],
+    });
+    // distinct plain items compose distinct keys — accepted…
+    expect(parsed.success).toBe(true);
+    const collision = def.dataSchema.safeParse({
+      items: [
+        { id: 'a', label: 'Plain', value: 5 },
+        { id: 'x', label: 'Host', segments: [{ id: 'y', value: 1 }] },
+        { id: 'x:y', label: 'Twin path', value: 2 },
+      ],
+    });
+    // …and 'x'+seg 'y' vs plain 'x:y' (key 'x:y:__value') stay distinct too:
+    // the guard refuses only genuinely identical composed identities.
+    expect(collision.success).toBe(true);
+  });
+
+  it('colon ids WITHOUT collision stay accepted — the documented contract is not narrowed', () => {
+    const parsed = def.dataSchema.safeParse({
+      items: [
+        { id: 'fy:21', label: 'FY21', type: 'total', value: 10 },
+        { id: 'price:effect', label: 'Price', value: 2 },
+      ],
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('distinct ids with duplicate values stay accepted — the class boundary', () => {
+    const parsed = def.dataSchema.safeParse({
+      items: [
+        { id: 'a', label: 'Same', value: 7 },
+        { id: 'b', label: 'Same', value: 7 },
+      ],
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+});
+
+describe('an opening total without a value', () => {
+  it('is derived backward across plain deltas, and refused when it cannot be', () => {
+    const run = (end: number | undefined) => def.layout(def.normalize({ items: [
+      { id: 'start', type: 'total' }, { id: 'price', value: 20 }, { id: 'cost', value: -5 },
+      { id: 'end', type: 'total', ...(end === undefined ? {} : { value: end }) },
+    ] }) as never, {} as never) as unknown as { derived: { totals: Record<string, number> }; warnings: { code: string; severity: string }[] };
+    expect(run(115).derived.totals.start).toBe(100);
+    expect(run(undefined).warnings).toContainEqual(expect.objectContaining({ code: 'waterfall-opening-missing', severity: 'error' }));
+  });
+});
+
+describe('two cases in one bridge', () => {
+  it('runs each case its own levels side by side in every step, keys the cases and draws no connectors', () => {
+    const waterfall = getChartDefinition('waterfall')!;
+    const fixture = getFixtures('waterfall').find((candidate) => candidate.id === 'two-case-budget-bridge')!;
+    const geometry = waterfall.layout(waterfall.normalize(structuredClone(fixture.data)), { ...fixture.options }) as Geometry<{ bars: { id: string }[]; connectors: unknown[] }, { totals: Record<string, number> }>;
+    expect([
+      geometry.derived.totals['fy26:conservative'],
+      geometry.derived.totals['fy26:aggressive'],
+      geometry.marks.bars.length,
+      geometry.marks.connectors.length,
+      geometry.legend?.items.map((item) => item.id),
+    ]).toEqual([127, 150, 12, 0, ['conservative', 'aggressive']]);
+  });
+
+  it('refuses a case bridge whose step gives the wrong number of values', () => {
+    const waterfall = getChartDefinition('waterfall')!;
+    const parsed = waterfall.dataSchema.safeParse({
+      cases: [{ id: 'a' }, { id: 'b' }],
+      items: [{ id: 'start', type: 'total', values: [10, 10] }, { id: 'step', values: [2] }, { id: 'end', type: 'total' }],
+    });
+    expect(parsed.success ? '' : parsed.error.issues.map((issue) => issue.message).join('; ')).toMatch(/needs 2 values, one per case/);
+  });
+
+  it("derives each case's blank opening backward from that case's closing total", () => {
+    const waterfall = getChartDefinition('waterfall')!;
+    const geometry = waterfall.layout(waterfall.normalize({
+      cases: [{ id: 'a' }, { id: 'b' }],
+      items: [{ id: 'start', type: 'total' }, { id: 'step', values: [2, 3] }, { id: 'end', type: 'total', values: [12, 16] }],
+    }), {} as never) as Geometry<object, { totals: Record<string, number> }>;
+    expect([geometry.derived.totals['start:a'], geometry.derived.totals['start:b']]).toEqual([10, 13]);
+  });
+
+  it("refuses a colon in a case id, which would let item 'a' in case 'b:c' and item 'a:b' in case 'c' share a bar id", () => {
+    const waterfall = getChartDefinition('waterfall')!;
+    expect(() => waterfall.layout(waterfall.normalize({
+      cases: [{ id: 'b:c' }, { id: 'c' }],
+      items: [{ id: 'a', type: 'total', values: [1, 1] }, { id: 'a:b', values: [2, 3] }],
+    }), {} as never)).toThrow(expect.objectContaining({ code: 'waterfall-case-id-colon' }));
+  });
+});
+
+// stacked in one column, +25 overpainted -33 and the part left showing read -8.
+describe('mixed-sign segments draw in sequence', () => {
+  it('each part has its own block beside the other, and the step prints its value as the net', () => {
+    const fixture = getFixtures('waterfall').find((entry) => entry.id === 'mixed-sign-segments')!;
+    const geometry = def.layout(def.normalize(fixture.data) as never, (fixture.options ?? {}) as never) as unknown as Geometry<{ bars: { id: string; segments: { rect: { x: number; w: number } }[] }[] }, object>;
+    const [up, down] = geometry.marks.bars.find((bar) => bar.id === 'net')!.segments;
+    expect([up!.rect.x + up!.rect.w <= down!.rect.x, geometry.labels.find((label) => label.id === 'sum:net')?.text]).toEqual([true, 'net −8']);
+  });
+});
+
+describe('a check value off by its inputs\' rounding agrees', () => {
+  // Large totals and segment checks must disclose integer gaps without treating decimal addition noise as a gap.
+  it('discloses large exact gaps with a binary rounding bound for decimal sums', () => {
+    const checks = (items: object[]) => (def.layout(def.normalize({ items }) as never, {} as never) as Geometry)
+      .warnings.filter(warning => ['check-value-rounded', 'derived-mismatch'].includes(warning.code)).map(warning => warning.code);
+    for (const magnitude of [1e12, 1e15 - 2]) {
+      for (const gap of [0, 1, 2]) {
+        const expected = gap === 0 ? [] : [gap === 1 ? 'check-value-rounded' : 'derived-mismatch'];
+        expect(checks([{ id: 's', type: 'total', value: magnitude }, { id: 'a', value: 0 }, { id: 'e', type: 'total', value: magnitude + gap }])).toEqual(expected);
+        expect(checks([{ id: 'a', value: magnitude + gap, segments: [{ id: 'x', value: magnitude }, { id: 'y', value: 0 }] }])).toEqual(expected);
+      }
+    }
+    expect(checks([{ id: 's', type: 'total', value: 1e12 + 0.25 }, { id: 'a', value: 0 }, { id: 'e', type: 'total', value: 1e12 + 0.75 }])).toEqual(['derived-mismatch']);
+    expect(checks([{ id: 'a', value: 0.1 }, { id: 'b', value: 0.2 }, { id: 'e', type: 'total', value: 0.3 }])).toEqual([]);
+    // fractions added to an integer near 1e15 round away, so the float sum stays an integer that is not the exact sum.
+    const fractions = [{ id: 's', type: 'total', value: 999999999999990 }, ...Array.from({ length: 40 }, (_, i) => ({ id: `d${i}`, value: 0.025 }))];
+    expect(checks([...fractions, { id: 'e', type: 'total', value: 999999999999991 }])).not.toContain('derived-mismatch');
+    // the bridge drew the float running sum 999999999999990; it draws the exact sum.
+    expect((def.layout(def.normalize({ items: [...fractions, { id: 'e', type: 'total' }] }) as never, {} as never) as Geometry<object, { totals: Record<string, number> }>).derived.totals.e).toBe(999999999999991);
+    // the segment sum added plainly, missed the exact total by 0.1 and drew the closing total as one bar.
+    const segmented = def.layout(def.normalize({ items: [
+      { id: 'a', segments: [{ id: 'x', value: 999999999999990 }, { id: 'y', value: 0.05 }, { id: 'z', value: 0.05 }] },
+      { id: 'e', type: 'total' },
+    ] }) as never, {} as never) as unknown as Geometry<{ bars: { id: string; segments: unknown[] }[] }, object>;
+    expect(segmented.marks.bars.find((bar) => bar.id === 'e')!.segments).toHaveLength(3);
+    // at 1.5e15 the step-order total and the segment sum differ by one float step (0.25), and the mid total drew as one bar.
+    const large = def.layout(def.normalize({ items: [
+      { id: 'a', segments: [{ id: 'x', value: 5e14 }, { id: 'y', value: -0.025 }, { id: 'z', value: 0.1 }] },
+      { id: 'b', segments: [{ id: 'x', value: 1e15 }, { id: 'y', value: 0.075 }, { id: 'z', value: -0.025 }] },
+      { id: 's', type: 'total' },
+      { id: 'c', segments: [{ id: 'y', value: 0.075 }, { id: 'z', value: -0.025 }] },
+      { id: 'e', type: 'total' },
+    ] }) as never, {} as never) as unknown as Geometry<{ bars: { id: string; segments: unknown[] }[] }, object>;
+    expect(large.marks.bars.filter((bar) => bar.id === 's' || bar.id === 'e').map((bar) => bar.segments.length)).toEqual([3, 3]);
+  });
+
+  it('allows half a unit of the finest decimal per summand, prints at that precision, and still flags a real mismatch', () => {
+    const mismatches = (items: object[]) => (def.layout(def.normalize({ items }) as never, {} as never) as unknown as { warnings: { code: string; message: string }[] })
+      .warnings.filter((warning) => warning.code === 'derived-mismatch').map((warning) => warning.message);
+    const six = (end: number) => [{ id: 'a', value: 4.127116 }, { id: 'b', value: 6.127116 }, { id: 'end', type: 'total', value: end }];
+    expect(mismatches(six(10.254231))).toEqual([]);
+    const two = (end: number) => [{ id: 'open', type: 'total', value: 10 }, { id: 'a', value: 1.01 }, { id: 'b', value: 1 }, { id: 'end', type: 'total', value: end }];
+    expect(mismatches(two(12))).toEqual([]);
+    expect(mismatches(two(12.5))).toEqual(["total 'end': supplied 12.50 ≠ computed 12.01 — computed wins"]);
+    expect(mismatches(six(10.25))).toEqual(["total 'end': supplied 10.250000 ≠ computed 10.254232 — computed wins"]);
+  });
+
+  // An authored end total inside the rounding slack vanished: 101 drew, and the authored 102 was named nowhere.
+  it('discloses a check value inside the rounding slack with both numbers', () => {
+    const geometry = def.layout(def.normalize({ items: [
+      { id: 's', type: 'total', value: 50 }, { id: 'a', value: 12 }, { id: 'b', value: 23 }, { id: 'c', value: -8 }, { id: 'd', value: 24 },
+      { id: 'e', label: 'End', type: 'total', value: 102 },
+    ] }) as never, {} as never) as unknown as { warnings: { code: string; message: string }[] };
+    expect(geometry.warnings.filter((warning) => warning.code === 'derived-mismatch')).toEqual([]);
+    expect(geometry.warnings.filter((warning) => warning.code === 'check-value-rounded').map((warning) => warning.message)).toEqual([
+      "total 'e': supplied 102 differs from the computed 101 by less than its inputs' rounding; the computed 101 is drawn and a note names both",
+    ]);
+    expect(JSON.stringify(geometry)).toContain('End is drawn at 101, the sum of its steps; the data states 102');
+    const rounded = (items: object[]) => (def.layout(def.normalize({ items }) as never, {} as never) as unknown as { warnings: { code: string }[] })
+      .warnings.filter((warning) => warning.code === 'check-value-rounded').length;
+    // A one-unit gap at 1e9 is not float noise; 0.1 + 0.2 against 0.3 is.
+    expect(rounded([{ id: 's', type: 'total', value: 1_000_000_000 }, { id: 'a', value: 0 }, { id: 'e', type: 'total', value: 1_000_000_001 }])).toBe(1);
+    expect(rounded([{ id: 'a', value: 0.1 }, { id: 'b', value: 0.2 }, { id: 'e', type: 'total', value: 0.3 }])).toBe(0);
+  });
+
+  it('takes the precision from the numbers each check sums, not from an unrelated precise step', () => {
+    const mismatches = (items: object[]) => (def.layout(def.normalize({ items }) as never, {} as never) as unknown as { warnings: { code: string; message: string }[] })
+      .warnings.filter((warning) => warning.code === 'derived-mismatch').map((warning) => warning.message);
+    expect(mismatches([
+      { id: 'open', type: 'total', value: 10 },
+      { id: 'a', value: 1.4 },
+      { id: 'sub', type: 'subtotal', value: 11.5 },
+      { id: 'mix', value: 11.5, segments: [{ id: 'x', value: 10 }, { id: 'y', value: 1.4 }] },
+      { id: 'b', value: 0.123456 },
+    ])).toEqual([]);
+  });
+});

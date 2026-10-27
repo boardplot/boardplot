@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 364" width="720" height="364" direction="ltr" style="max-width:100%;height:auto;text-transform:none;letter-spacing:normal;word-spacing:normal;font-style:normal;font-variant:normal" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Go-live lands mid-June with two weeks of hypercare" aria-describedby="bp-desc-a0c783a5f3" data-bp-sizing="{&quot;aspect&quot;:&quot;content&quot;,&quot;minWidth&quot;:371,&quot;minHeight&quot;:316,&quot;fit&quot;:&quot;content&quot;,&quot;compactFloor&quot;:{&quot;width&quot;:280,&quot;height&quot;:28},&quot;measuredMinWidth&quot;:371,&quot;measuredMinHeight&quot;:316,&quot;naturalWidth&quot;:720,&quot;naturalHeight&quot;:364,&quot;comfortableWidth&quot;:464,&quot;comfortableHeight&quot;:395}" data-bp-mode="full" font-family="'Helvetica Neue', Helvetica, Arial, Roboto, sans-serif">
+<desc id="bp-desc-a0c783a5f3">Gantt chart at weeks scale from 6 Apr 2026 to 5 Jul 2026. Preparation 6 Apr 2026 – 17 Apr 2026; Build 20 Apr 2026 – 22 May 2026; Test &amp; QA 25 May 2026 – 12 Jun 2026; Launch 15 Jun 2026 – 3 Jul 2026.</desc>
+<rect x="0" y="0" width="720" height="364" fill="#FFFFFF"/>
+<text data-id="frame:title:0" data-part="title" data-bp-role="title" x="24" y="37.60" text-anchor="start" font-size="20" font-weight="700" fill="#0D2A43"><tspan x="24" dy="0">Go-live lands mid-June with two weeks of hypercare</tspan></text>
+<text data-id="frame:subtitle:1" data-part="subtitle" data-bp-role="subtitle" x="24" y="61.32" text-anchor="start" font-size="14" font-weight="400" fill="#0D2A43"><tspan font-weight="700">Launch plan</tspan><tspan> · Q2 2026</tspan></text>
+<text data-id="frame:source:2" data-part="source" data-bp-role="source" x="24" y="349.38" text-anchor="start" font-size="11" font-weight="400" fill="#4E6070"><tspan x="24" dy="0">Source: Illustrative launch plan; each phase is anchored to the one before it</tspan></text>
+<rect data-id="frame:swatch:3" data-part="swatch" x="24" y="77.26" width="12" height="12" fill="#12395E"/>
+<text data-id="frame:legendLabel:4" data-part="legendLabel" data-bp-role="category" x="41" y="87.56" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="41" dy="0">Workstream</tspan></text>
+<rect data-id="frame:swatch:5" data-part="swatch" x="121" y="77.26" width="12" height="12" fill="#c3cfd8"/>
+<text data-id="frame:legendLabel:6" data-part="legendLabel" data-bp-role="category" x="138" y="87.56" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="138" dy="0">After go-live</tspan></text>
+<path data-id="frame:swatch:7" data-part="swatch" d="M 223 78.26 L 228 83.26 L 223 88.26 L 218 83.26 Z" fill="#12395E" stroke="#12395E" stroke-width="1.5" stroke-linejoin="round"/>
+<text data-id="frame:legendLabel:8" data-part="legendLabel" data-bp-role="category" x="234" y="87.56" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="234" dy="0">Milestone</tspan></text>
+<rect data-id="frame:swatch:9" data-part="swatch" x="300.50" y="77.26" width="12" height="12" fill="#f9fbfd"/>
+<text data-id="frame:legendLabel:10" data-part="legendLabel" data-bp-role="category" x="317.50" y="87.56" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="317.50" dy="0">Weekend</tspan></text>
+<rect data-id="frame:swatch:11" data-part="swatch" x="383" y="77.26" width="12" height="12" fill="#d2dcf7"/>
+<text data-id="frame:legendLabel:12" data-part="legendLabel" data-bp-role="category" x="400" y="87.56" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="400" dy="0">Elapsed to today</tspan></text>
+<rect data-id="ann:elapsed:band" data-part="elapsedEra" x="162.50" y="167.20" width="178.81" height="160" fill="#f4f6fd"/>
+<rect data-id="weekend:0" data-part="weekend" x="191.81" y="167.20" width="11.73" height="160" fill="#fdfefe"/>
+<rect data-id="weekend:1" data-part="weekend" x="232.85" y="167.20" width="11.73" height="160" fill="#fdfefe"/>
+<rect data-id="weekend:2" data-part="weekend" x="273.89" y="167.20" width="11.73" height="160" fill="#fdfefe"/>
+<rect data-id="weekend:3" data-part="weekend" x="314.93" y="167.20" width="11.73" height="160" fill="#fdfefe"/>
+<rect data-id="weekend:4" data-part="weekend" x="355.97" y="167.20" width="11.73" height="160" fill="#fdfefe"/>
+<rect data-id="weekend:5" data-part="weekend" x="397.01" y="167.20" width="11.73" height="160" fill="#fdfefe"/>
+<rect data-id="weekend:6" data-part="weekend" x="438.04" y="167.20" width="11.73" height="160" fill="#fdfefe"/>
+<rect data-id="weekend:7" data-part="weekend" x="479.08" y="167.20" width="11.73" height="160" fill="#fdfefe"/>
+<rect data-id="weekend:8" data-part="weekend" x="520.12" y="167.20" width="11.73" height="160" fill="#fdfefe"/>
+<rect data-id="weekend:9" data-part="weekend" x="561.16" y="167.20" width="11.73" height="160" fill="#fdfefe"/>
+<rect data-id="weekend:10" data-part="weekend" x="602.20" y="167.20" width="11.73" height="160" fill="#fdfefe"/>
+<rect data-id="weekend:11" data-part="weekend" x="643.24" y="167.20" width="11.73" height="160" fill="#fdfefe"/>
+<rect data-id="weekend:12" data-part="weekend" x="684.27" y="167.20" width="11.73" height="160" fill="#fdfefe"/>
+<line data-id="rowRule:1" data-part="rowRule" x1="24" y1="207.20" x2="696" y2="207.20" stroke="#E9EEF3" stroke-width="0.75"/>
+<line data-id="rowRule:2" data-part="rowRule" x1="24" y1="247.20" x2="696" y2="247.20" stroke="#E9EEF3" stroke-width="0.75"/>
+<line data-id="rowRule:3" data-part="rowRule" x1="24" y1="287.20" x2="696" y2="287.20" stroke="#E9EEF3" stroke-width="0.75"/>
+<line data-id="rowRule:4" data-part="rowRule" x1="24" y1="327.20" x2="696" y2="327.20" stroke="#E9EEF3" stroke-width="0.75"/>
+<rect data-id="header:major:0" data-part="headerCell" x="162.50" y="123.20" width="146.57" height="22" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<text data-id="header:major:0:text" data-part="scale" data-bp-role="axis" x="208.78" y="137.64" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="208.78" dy="0">Apr 2026</tspan></text>
+<rect data-id="header:major:1" data-part="headerCell" x="309.07" y="123.20" width="181.74" height="22" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<text data-id="header:major:1:text" data-part="scale" data-bp-role="axis" x="370.94" y="137.64" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="370.94" dy="0">May 2026</tspan></text>
+<rect data-id="header:major:2" data-part="headerCell" x="490.81" y="123.20" width="175.88" height="22" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<text data-id="header:major:2:text" data-part="scale" data-bp-role="axis" x="551.50" y="137.64" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="551.50" dy="0">Jun 2026</tspan></text>
+<rect data-id="header:major:3" data-part="headerCell" x="666.69" y="123.20" width="29.31" height="22" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<text data-id="header:major:3:text" data-part="scale" data-bp-role="axis" x="672.84" y="137.64" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="672.84" dy="0">Jul</tspan></text>
+<rect data-id="header:minor:0" data-part="headerCell" x="162.50" y="145.20" width="41.04" height="22" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<text data-id="header:minor:0:text" data-part="scale" data-bp-role="axis" x="169.27" y="159.64" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="169.27" dy="0">W15</tspan></text>
+<rect data-id="header:minor:1" data-part="headerCell" x="203.54" y="145.20" width="41.04" height="22" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<text data-id="header:minor:1:text" data-part="scale" data-bp-role="axis" x="210.31" y="159.64" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="210.31" dy="0">W16</tspan></text>
+<rect data-id="header:minor:2" data-part="headerCell" x="244.58" y="145.20" width="41.04" height="22" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<text data-id="header:minor:2:text" data-part="scale" data-bp-role="axis" x="251.35" y="159.64" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="251.35" dy="0">W17</tspan></text>
+<rect data-id="header:minor:3" data-part="headerCell" x="285.62" y="145.20" width="41.04" height="22" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<text data-id="header:minor:3:text" data-part="scale" data-bp-role="axis" x="292.38" y="159.64" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="292.38" dy="0">W18</tspan></text>
+<rect data-id="header:minor:4" data-part="headerCell" x="326.65" y="145.20" width="41.04" height="22" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<text data-id="header:minor:4:text" data-part="scale" data-bp-role="axis" x="333.42" y="159.64" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="333.42" dy="0">W19</tspan></text>
+<rect data-id="header:minor:5" data-part="headerCell" x="367.69" y="145.20" width="41.04" height="22" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<text data-id="header:minor:5:text" data-part="scale" data-bp-role="axis" x="374.46" y="159.64" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="374.46" dy="0">W20</tspan></text>
+<rect data-id="header:minor:6" data-part="headerCell" x="408.73" y="145.20" width="41.04" height="22" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<text data-id="header:minor:6:text" data-part="scale" data-bp-role="axis" x="415.50" y="159.64" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="415.50" dy="0">W21</tspan></text>
+<rect data-id="header:minor:7" data-part="headerCell" x="449.77" y="145.20" width="41.04" height="22" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<text data-id="header:minor:7:text" data-part="scale" data-bp-role="axis" x="456.54" y="159.64" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="456.54" dy="0">W22</tspan></text>
+<rect data-id="header:minor:8" data-part="headerCell" x="490.81" y="145.20" width="41.04" height="22" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<text data-id="header:minor:8:text" data-part="scale" data-bp-role="axis" x="497.58" y="159.64" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="497.58" dy="0">W23</tspan></text>
+<rect data-id="header:minor:9" data-part="headerCell" x="531.85" y="145.20" width="41.04" height="22" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<text data-id="header:minor:9:text" data-part="scale" data-bp-role="axis" x="538.62" y="159.64" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="538.62" dy="0">W24</tspan></text>
+<rect data-id="header:minor:10" data-part="headerCell" x="572.88" y="145.20" width="41.04" height="22" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<text data-id="header:minor:10:text" data-part="scale" data-bp-role="axis" x="579.65" y="159.64" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="579.65" dy="0">W25</tspan></text>
+<rect data-id="header:minor:11" data-part="headerCell" x="613.92" y="145.20" width="41.04" height="22" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<text data-id="header:minor:11:text" data-part="scale" data-bp-role="axis" x="620.69" y="159.64" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="620.69" dy="0">W26</tspan></text>
+<rect data-id="header:minor:12" data-part="headerCell" x="654.96" y="145.20" width="41.04" height="22" fill="#FFFFFF" stroke="#E9EEF3" stroke-width="0.75"/>
+<text data-id="header:minor:12:text" data-part="scale" data-bp-role="axis" x="661.73" y="159.64" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="661.73" dy="0">W27</tspan></text>
+<line data-id="grid:major:0" data-part="grid" x1="309.07" y1="167.20" x2="309.07" y2="327.20" stroke="#E9EEF3" stroke-width="1"/>
+<line data-id="grid:major:1" data-part="grid" x1="490.81" y1="316.20" x2="490.81" y2="327.20" stroke="#E9EEF3" stroke-width="1"/>
+<line data-id="grid:major:1:head:1" data-part="grid" x1="490.81" y1="276.20" x2="490.81" y2="298.20" stroke="#E9EEF3" stroke-width="1"/>
+<line data-id="grid:major:1:head:2" data-part="grid" x1="490.81" y1="167.20" x2="490.81" y2="258.20" stroke="#E9EEF3" stroke-width="1"/>
+<line data-id="grid:major:2" data-part="grid" x1="666.69" y1="316.20" x2="666.69" y2="327.20" stroke="#E9EEF3" stroke-width="1"/>
+<line data-id="grid:major:2:head:1" data-part="grid" x1="666.69" y1="167.20" x2="666.69" y2="298.20" stroke="#E9EEF3" stroke-width="1"/>
+<line data-id="grid:minor:0" data-part="grid" x1="203.54" y1="196.20" x2="203.54" y2="327.20" stroke="#E9EEF3" stroke-width="1" stroke-dasharray="2 3"/>
+<line data-id="grid:minor:0:head:1" data-part="grid" x1="203.54" y1="167.20" x2="203.54" y2="178.20" stroke="#E9EEF3" stroke-width="1" stroke-dasharray="2 3"/>
+<line data-id="grid:minor:1" data-part="grid" x1="244.58" y1="167.20" x2="244.58" y2="327.20" stroke="#E9EEF3" stroke-width="1" stroke-dasharray="2 3"/>
+<line data-id="grid:minor:2" data-part="grid" x1="285.62" y1="236.20" x2="285.62" y2="327.20" stroke="#E9EEF3" stroke-width="1" stroke-dasharray="2 3"/>
+<line data-id="grid:minor:2:head:1" data-part="grid" x1="285.62" y1="167.20" x2="285.62" y2="218.20" stroke="#E9EEF3" stroke-width="1" stroke-dasharray="2 3"/>
+<line data-id="grid:minor:3" data-part="grid" x1="326.65" y1="167.20" x2="326.65" y2="327.20" stroke="#E9EEF3" stroke-width="1" stroke-dasharray="2 3"/>
+<line data-id="grid:minor:4" data-part="grid" x1="367.69" y1="167.20" x2="367.69" y2="327.20" stroke="#E9EEF3" stroke-width="1" stroke-dasharray="2 3"/>
+<line data-id="grid:minor:5" data-part="grid" x1="408.73" y1="167.20" x2="408.73" y2="327.20" stroke="#E9EEF3" stroke-width="1" stroke-dasharray="2 3"/>
+<line data-id="grid:minor:6" data-part="grid" x1="449.77" y1="167.20" x2="449.77" y2="327.20" stroke="#E9EEF3" stroke-width="1" stroke-dasharray="2 3"/>
+<line data-id="grid:minor:7" data-part="grid" x1="531.85" y1="316.20" x2="531.85" y2="327.20" stroke="#E9EEF3" stroke-width="1" stroke-dasharray="2 3"/>
+<line data-id="grid:minor:7:head:1" data-part="grid" x1="531.85" y1="276.20" x2="531.85" y2="298.20" stroke="#E9EEF3" stroke-width="1" stroke-dasharray="2 3"/>
+<line data-id="grid:minor:7:head:2" data-part="grid" x1="531.85" y1="167.20" x2="531.85" y2="258.20" stroke="#E9EEF3" stroke-width="1" stroke-dasharray="2 3"/>
+<line data-id="grid:minor:8" data-part="grid" x1="572.88" y1="167.20" x2="572.88" y2="327.20" stroke="#E9EEF3" stroke-width="1" stroke-dasharray="2 3"/>
+<line data-id="grid:minor:9" data-part="grid" x1="613.92" y1="316.20" x2="613.92" y2="327.20" stroke="#E9EEF3" stroke-width="1" stroke-dasharray="2 3"/>
+<line data-id="grid:minor:9:head:1" data-part="grid" x1="613.92" y1="167.20" x2="613.92" y2="298.20" stroke="#E9EEF3" stroke-width="1" stroke-dasharray="2 3"/>
+<line data-id="grid:minor:10" data-part="grid" x1="654.96" y1="316.20" x2="654.96" y2="327.20" stroke="#E9EEF3" stroke-width="1" stroke-dasharray="2 3"/>
+<line data-id="grid:minor:10:head:1" data-part="grid" x1="654.96" y1="167.20" x2="654.96" y2="298.20" stroke="#E9EEF3" stroke-width="1" stroke-dasharray="2 3"/>
+<line data-id="grid:edge:0" data-part="grid" x1="162.50" y1="167.20" x2="162.50" y2="327.20" stroke="#E9EEF3" stroke-width="1"/>
+<line data-id="grid:edge:1" data-part="grid" x1="696" y1="167.20" x2="696" y2="327.20" stroke="#E9EEF3" stroke-width="1"/>
+<rect data-id="mark:prep:prep-scope" data-part="bar" x="162.50" y="175.20" width="70.35" height="24" fill="#12395E" stroke="#12395E" stroke-width="1.5"/>
+<rect data-id="mark:build:build-dev" data-part="bar" x="244.58" y="215.20" width="193.47" height="24" fill="#12395E" stroke="#12395E" stroke-width="1.5"/>
+<rect data-id="mark:test:test-qa" data-part="bar" x="449.77" y="255.20" width="111.39" height="24" fill="#12395E" stroke="#12395E" stroke-width="1.5"/>
+<path data-id="mark:launch:launch-go" data-part="milestone" d="M575.82 299.20L583.82 307.20L575.82 315.20L567.82 307.20Z" fill="#12395E" stroke="#12395E" stroke-width="1.5" stroke-linejoin="round"/>
+<path data-id="mark:launch:hypercare" data-part="chevron" d="M584.61 295.20L675.27 295.20L684.27 307.20L675.27 319.20L584.61 319.20Z" fill="#c3cfd8" stroke-linejoin="round"/>
+<path data-id="ann:today:line" data-part="todayLine" d="M341.31 165.2L341.31 169.2M341.31 172.2L341.31 176.2M341.31 179.2L341.31 183.2M341.31 186.2L341.31 190.2M341.31 193.2L341.31 197.2M341.31 200.2L341.31 204.2M341.31 207.2L341.31 211.2M341.31 214.2L341.31 215.21M341.31 242.2L341.31 246.2M341.31 249.2L341.31 253.2M341.31 256.2L341.31 260.2M341.31 263.2L341.31 267.2M341.31 270.2L341.31 274.2M341.31 277.2L341.31 281.2M341.31 284.2L341.31 288.2M341.31 291.2L341.31 295.2M341.31 298.2L341.31 302.2M341.31 305.2L341.31 309.2M341.31 312.2L341.31 316.2M341.31 319.2L341.31 323.2M341.31 326.2L341.31 327.2" fill="none" stroke="#0D2A43" stroke-width="1" stroke-dasharray="4 3" stroke-linecap="butt" stroke-linejoin="round"/>
+<path data-id="ann:today:line:over:0" data-part="todayLine" d="M341.31 215.21L341.31 218.2M341.31 221.2L341.31 225.2M341.31 228.2L341.31 232.2M341.31 235.2L341.31 239.19" fill="none" stroke="#FFFFFF" stroke-width="1" stroke-dasharray="4 3" stroke-linecap="butt" stroke-linejoin="round"/>
+<line data-id="ann:today:line:head:1" data-part="todayLine" x1="341.31" y1="123.20" x2="341.31" y2="147.20" stroke="#0D2A43" stroke-width="1" stroke-dasharray="4 3"/>
+<text data-id="label:colHeader:0" data-part="activity" data-bp-role="category" x="109.50" y="149.86" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="109.50" dy="0">Owner</tspan></text>
+<text data-id="label:valueLine:today" data-part="valueLine" data-bp-role="caption" x="283.31" y="118.38" text-anchor="start" font-size="13" font-weight="700" fill="#0D2A43"><tspan x="283.31" dy="0">Today, 6 May 2026</tspan></text>
+<text data-id="label:activity:build" data-part="activity" data-bp-role="category" x="24" y="231.88" text-anchor="start" font-size="13" font-weight="700" fill="#0D2A43"><tspan x="24" dy="0">Build</tspan></text>
+<text data-id="label:activity:launch" data-part="activity" data-bp-role="category" x="24" y="311.88" text-anchor="start" font-size="13" font-weight="700" fill="#0D2A43"><tspan x="24" dy="0">Launch</tspan></text>
+<text data-id="label:activity:prep" data-part="activity" data-bp-role="category" x="24" y="191.88" text-anchor="start" font-size="13" font-weight="700" fill="#0D2A43"><tspan x="24" dy="0">Preparation</tspan></text>
+<text data-id="label:activity:test" data-part="activity" data-bp-role="category" x="24" y="271.88" text-anchor="start" font-size="13" font-weight="700" fill="#0D2A43"><tspan x="24" dy="0">Test &amp; QA</tspan></text>
+<text data-id="label:col:build:0" data-part="activity" data-bp-role="category" x="109.50" y="231.86" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="109.50" dy="0">Eng</tspan></text>
+<text data-id="label:col:launch:0" data-part="activity" data-bp-role="category" x="109.50" y="311.86" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="109.50" dy="0">GTM</tspan></text>
+<text data-id="label:col:prep:0" data-part="activity" data-bp-role="category" x="109.50" y="191.86" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="109.50" dy="0">PM</tspan></text>
+<text data-id="label:col:test:0" data-part="activity" data-bp-role="category" x="109.50" y="271.86" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="109.50" dy="0">QA</tspan></text>
+<text data-id="label:item:launch:launch-go" data-part="item" data-bp-role="category" x="471.32" y="311.86" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="471.32" dy="0">Go live · 15 Jun</tspan></text>
+<text data-id="label:item:build:build-dev" data-part="item" data-bp-role="category" x="276.69" y="231.86" text-anchor="start" font-size="13" font-weight="400" fill="#FFFFFF"><tspan x="276.69" dy="0">Build</tspan></text>
+<text data-id="label:item:test:test-qa" data-part="item" data-bp-role="category" x="475.71" y="271.86" text-anchor="start" font-size="13" font-weight="400" fill="#FFFFFF"><tspan x="475.71" dy="0">QA cycles</tspan></text>
+<text data-id="label:item:launch:hypercare" data-part="item" data-bp-role="category" x="603.94" y="311.86" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="603.94" dy="0">Hypercare</tspan></text>
+<text data-id="label:item:prep:prep-scope" data-part="item" data-bp-role="category" x="173.68" y="191.86" text-anchor="start" font-size="13" font-weight="400" fill="#FFFFFF"><tspan x="173.68" dy="0">Scoping</tspan></text>
+</svg>

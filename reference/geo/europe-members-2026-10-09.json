@@ -1,0 +1,82 @@
+{
+  "selection": "Europe member selection",
+  "asOf": "2026-10-09",
+  "geometryScope": {
+    "policy": "European land components only; no overseas insets. Longitude starts at -22 so Iceland stays and the Azores (east of -26 to -25) and Madeira (south of 34) do not.",
+    "longitude": [
+      -22,
+      45
+    ],
+    "latitude": [
+      34,
+      72
+    ]
+  },
+  "codes": [
+    "AT",
+    "BE",
+    "BG",
+    "HR",
+    "CY",
+    "CZ",
+    "DK",
+    "EE",
+    "FI",
+    "FR",
+    "DE",
+    "GR",
+    "HU",
+    "IE",
+    "IT",
+    "LV",
+    "LT",
+    "LU",
+    "MT",
+    "NL",
+    "PL",
+    "PT",
+    "RO",
+    "SK",
+    "SI",
+    "ES",
+    "SE",
+    "CH",
+    "NO",
+    "IS",
+    "GB",
+    "LI",
+    "AD",
+    "MC",
+    "SM",
+    "VA",
+    "AL",
+    "BA",
+    "ME",
+    "MK",
+    "RS",
+    "XK",
+    "UA",
+    "BY",
+    "MD",
+    "GI",
+    "JE",
+    "GG",
+    "IM",
+    "FO",
+    "AX"
+  ],
+  "excluded": {
+    "RU": "Spans two continents; a frame that shows it whole shrinks the rest of the map.",
+    "TR": "Spans two continents; most of it lies in Asia.",
+    "GE": "Caucasus state; not part of the Europe frame.",
+    "AM": "Caucasus state; not part of the Europe frame.",
+    "AZ": "Caucasus state; not part of the Europe frame."
+  },
+  "merged": {
+    "CYN": "Northern Cyprus joins CY (EU view: one island).",
+    "CNM": "UN buffer zone joins CY.",
+    "ESB": "Dhekelia base area joins CY so the island has no gap.",
+    "WSB": "Akrotiri base area joins CY so the island has no gap."
+  },
+  "markers": "Not listed by hand. A member is an outline when it draws at least 8 px2 on the 800 px canvas and a marker below that."
+}

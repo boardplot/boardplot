@@ -1,0 +1,66 @@
+import { chartStrings } from '../strings';
+
+const EN = {
+  // reader-facing wording linked only by its consumers.
+  "current": "Current",
+  "prior": "Prior",
+  "pvmBasisNote": "Volume/mix split on {v1}.",
+  "quantityUnit": "quantities in {v1}",
+  "noCountingUnit": "no common counting unit",
+  "pvmCoverageShort": "Covers the {v1} in both periods.",
+  "oneItem": "1 item",
+  "itemsCount": "{v1} items",
+  "pvmMethodNoteInPrice": "Volume at prior average price; mix at prior price deviations; price at current volumes (interaction included in price). Effects reconcile to the total change exactly.",
+  "pvmMethodNoteSeparate": "Volume at prior average price; mix at prior price deviations; price at prior volumes (Laspeyres) with the interaction shown separately. Effects reconcile exactly.",
+  "pvmMethodNoteCombined": "Volume and mix combined at prior prices; price at current volumes (interaction included in price). Effects reconcile to the total change exactly.",
+  "pvmMethodNoteCombinedSeparate": "Volume and mix combined at prior prices; price at prior volumes (Laspeyres) with the interaction shown separately. Effects reconcile exactly.",
+  "pvmEffectVolume": "Volume",
+  "pvmEffectMix": "Mix",
+  "pvmEffectVolumeMix": "Volume & mix",
+  "pvmEffectPrice": "Price",
+  "pvmEffectPriceLaspeyres": "Price (Laspeyres)",
+  "pvmEffectJoint": "Price x volume",
+  "countedQuantities": "quantities counted in {v1}",
+  "noCommonUnit": "quantities with no common counting unit declared",
+  "pvmSplitNote": "Volume and mix are separated on {v1}; that split moves with the counting unit, ",
+  "pvmSplitInvariant": "their sum does not.",
+  "pvmCoverageHead": "Price, volume and mix cover the {v1} present in both periods — ",
+  "pvmCoverageShares": "{v1} of prior and {v2} of current revenue.",
+  // the one-line footer convention.
+  "pvmConventionShort": "volume and mix at prior prices",
+  "pvmConventionShortCombined": "volume and mix combined at prior prices",
+  "pvmPriceAtPriorShort": "price at prior volumes, interaction apart",
+} as const;
+const DE: { [K in keyof typeof EN]: string } = {
+  // reader-facing wording linked only by its consumers.
+  "current": "Aktuell",
+  "prior": "Vorher",
+  "pvmBasisNote": "Volumen-/Mixaufteilung auf {v1}.",
+  "quantityUnit": "Mengen in {v1}",
+  "noCountingUnit": "keine gemeinsame Zähleinheit",
+  "pvmCoverageShort": "Deckt {v1} in beiden Perioden ab.",
+  "oneItem": "1 Artikel",
+  "itemsCount": "{v1} Artikel",
+  "pvmMethodNoteInPrice": "Volumen zum vorherigen Durchschnittspreis; Mix zu vorherigen Preisabweichungen; Preis zu aktuellen Mengen (Wechselwirkung im Preis enthalten). Die Effekte ergeben genau die Gesamtänderung.",
+  "pvmMethodNoteSeparate": "Volumen zum vorherigen Durchschnittspreis; Mix zu vorherigen Preisabweichungen; Preis zu vorherigen Mengen (Laspeyres), mit getrennter Wechselwirkung. Die Effekte stimmen genau überein.",
+  "pvmMethodNoteCombined": "Volumen und Mix zusammen zu vorherigen Preisen; Preis zu aktuellen Mengen (Wechselwirkung im Preis enthalten). Die Effekte ergeben genau die Gesamtänderung.",
+  "pvmMethodNoteCombinedSeparate": "Volumen und Mix zusammen zu vorherigen Preisen; Preis zu vorherigen Mengen (Laspeyres), mit getrennter Wechselwirkung. Die Effekte stimmen genau überein.",
+  "pvmEffectVolume": "Volumen",
+  "pvmEffectMix": "Mix",
+  "pvmEffectVolumeMix": "Volumen / Mix",
+  "pvmEffectPrice": "Preis",
+  "pvmEffectPriceLaspeyres": "Preis (Laspeyres)",
+  "pvmEffectJoint": "Preis × Volumen",
+  "countedQuantities": "Mengen in {v1}",
+  "noCommonUnit": "Mengen ohne angegebene gemeinsame Zähleinheit",
+  "pvmSplitNote": "Volumen und Mix werden anhand von {v1} getrennt. Die Aufteilung ändert sich mit der Zähleinheit. ",
+  "pvmSplitInvariant": "Ihre Summe bleibt gleich.",
+  "pvmCoverageHead": "Preis, Volumen und Mix decken die {v1} in beiden Perioden ab — ",
+  "pvmCoverageShares": "{v1} des vorherigen und {v2} des aktuellen Umsatzes.",
+  // the one-line footer convention.
+  "pvmConventionShort": "Volumen und Mix zu vorherigen Preisen",
+  "pvmConventionShortCombined": "Volumen und Mix zusammen zu vorherigen Preisen",
+  "pvmPriceAtPriorShort": "Preis zu vorherigen Mengen, Wechselwirkung getrennt",
+};
+
+export const { chartString } = chartStrings(EN, DE);

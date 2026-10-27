@@ -1,0 +1,31 @@
+{
+  "name": "boardplot",
+  "description": "Create consulting-grade charts through a skill and a local MCP server.",
+  "author": {
+    "name": "Boardplot",
+    "url": "https://github.com/boardplot"
+  },
+  "homepage": "https://github.com/boardplot/boardplot",
+  "repository": "https://github.com/boardplot/boardplot",
+  "license": "Apache-2.0",
+  "keywords": [
+    "charts",
+    "mcp"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./codex.mcp.json",
+  "interface": {
+    "displayName": "Boardplot",
+    "shortDescription": "Draw consulting-grade charts from data",
+    "longDescription": "Create consulting-grade charts from your data and read back what each drawing shows.",
+    "developerName": "Boardplot",
+    "category": "Data and analytics",
+    "capabilities": [
+      "Charts"
+    ],
+    "websiteURL": "https://github.com/boardplot/boardplot",
+    "defaultPrompt": [
+      "Create a Boardplot chart from my data."
+    ]
+  }
+}

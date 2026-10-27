@@ -1,0 +1,29 @@
+{
+  "name": "boardplot",
+  "owner": {
+    "name": "Boardplot",
+    "url": "https://github.com/boardplot"
+  },
+  "description": "The Boardplot plugin: consulting-grade charts through a skill and a local MCP server.",
+  "plugins": [
+    {
+      "name": "boardplot",
+      "source": "./plugins/boardplot",
+      "displayName": "Boardplot",
+      "description": "Consulting-grade charts through a skill, the CLI and a local MCP server.",
+      "author": {
+        "name": "Boardplot",
+        "url": "https://github.com/boardplot"
+      },
+      "homepage": "https://github.com/boardplot/boardplot",
+      "repository": "https://github.com/boardplot/boardplot",
+      "license": "Apache-2.0",
+      "keywords": [
+        "charts",
+        "mcp",
+        "offline"
+      ],
+      "category": "Data and analytics"
+    }
+  ]
+}

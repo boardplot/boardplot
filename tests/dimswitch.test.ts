@@ -1,0 +1,273 @@
+import { describe, expect, it } from 'vitest';
+import { withNumberMarks } from '../src/core/numberMarks';
+import '../src/core/charts';
+import { compileDimSwitch, dimswitchRowId } from '../src/core/charts/dimswitch/compile';
+import { resolveDimSwitch, dimswitchCore } from '../src/core/charts/dimswitch/core';
+import { exampleData } from '../src/core/charts/dimswitch/example';
+import { dimswitchDataSchema } from '../src/core/charts/dimswitch/schema';
+import { visibleRows } from '../src/core/charts/table/view';
+import { renderSvg } from '../src/core/svg/renderSvg';
+import { resolveTheme } from '../src/core/theme';
+import { requireGeometry } from '../src/core/sizing';
+import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
+import type { DimSwitchData, DimSwitchDerived, DimSwitchSums, DimSwitchVariant } from '../src/core/charts/dimswitch/types';
+import { claimsForChart } from '../src/core/claims/browser';
+import { tableCellNodeId } from '../src/core/charts/table/cellKey';
+import { DERIVATION_KINDS, recomputeClaim } from './helpers/recompute';
+import { getFixtures } from '../src/fixtures';
+const rows=(variant:DimSwitchVariant,depth:number,splits=false)=>visibleRows(resolveDimSwitch(exampleData,{variant,depth,splits}).table);
+const row=(member:string,measure:string,data=exampleData)=>resolveDimSwitch(data).table.rows.find(r=>r.id===dimswitchRowId('by-measure',member,measure))!;
+// A cycle spanning subtotal placement and driver ownership must give input advice, not overflow the stack.
+it('refuses combined partOf and driver placement cycles before group resolution', () => {
+ for (const grouped of [false, true]) {
+  const data: DimSwitchData = { ...exampleData, dimension: { ...exampleData.dimension, headline: ['result'] }, measures: [
+   { id: 'result', label: 'Result', value: { field: 'orders' }, partOf: 'driver', drivers: { measure: 'driver' }, ...(grouped ? { group: 'Statement' } : {}) },
+   { id: 'driver', label: 'Driver', value: { field: 'orders' } },
+  ] };
+  expect(dimswitchDataSchema.safeParse(data).success).toBe(true);
+  try {
+   compileDimSwitch(data);
+   expect.fail('expected a placement-cycle refusal');
+  } catch (error) {
+   expect(error).toMatchObject({ code: 'invalid-data', path: 'measures' });
+   expect((error as Error).message).toMatch(/cycle.*'result'\.partOf.*'driver'.*'result'\.drivers/);
+  }
+  delete data.measures[0]!.partOf;
+  data.measures[0]!.group = 'Statement';
+  expect(() => compileDimSwitch(data)).not.toThrow();
+ }
+});
+// One measure reads in one magnitude down a column: a member at 210k under a 1.2M total prints 0.21M, not 210.0k.
+// At the group's precision a member at 300 prints the bound "<0.01M", not 0.0003M, and an exact zero prints "0", not 0.00M.
+it('prints every member row of a money measure in the magnitude of its largest cell', () => {
+ const factor:Record<string,number>={total:100,paid:20,'search-b':0,organic:0.05};
+ const scaled=(sums:DimSwitchSums|undefined,f:number)=>sums && {...sums,rev:sums.rev!*f};
+ const data:DimSwitchData={...exampleData,facts:exampleData.facts.map(fact=>({...fact,sums:scaled(fact.sums,factor[fact.memberId] ?? 1)!,...(fact.ref ? {ref:scaled(fact.ref,factor[fact.memberId] ?? 1)} : {})}))};
+ expect(['total','paid','search-b','organic'].map(member=>row(member,'revenue',data).cells.range!.displayed)).toEqual(['1.20M','0.21M','0','<0.01M']);
+ // A measure whose largest figure is below 1 keeps the group precision with no magnitude letter: 0.18, not "<1" on every row.
+ const tiny=(sums:DimSwitchSums|undefined)=>sums && (sums.spend==null ? sums : {...sums,spend:sums.spend*0.0001});
+ const small:DimSwitchData={...exampleData,facts:exampleData.facts.map(fact=>({...fact,sums:tiny(fact.sums)!,...(fact.ref ? {ref:tiny(fact.ref)} : {})}))};
+ expect(['total','paid','search-a','search-b'].map(member=>row(member,'spend',small).cells.range!.displayed)).toEqual(['0.180','0.160','0.140','0.120']);
+});
+// One table prints one decimal separator: language alone must not switch the comparisons to commas while the values keep points.
+it('keeps the value separator in comparisons when only the language is German', () => {
+ const german=resolveDimSwitch(exampleData,{locale:{language:'de'}}).table.rows.find(r=>r.id===dimswitchRowId('by-measure','total','cac'))!;
+ const separator=(text:string)=>/[.,](?=\d)/.exec(text)?.[0];
+ expect(separator(german.cells.pp!.displayed)).toBe(separator(german.cells.range!.displayed));
+});
+// Explicit marks rule every number: an English example ('$1.2') and the generated comparison ('1.2%') both print the chart's comma, so one card never shows two decimal marks.
+it('prints values and generated comparisons with the explicit decimal mark', () => {
+ const cac=resolveDimSwitch(exampleData,withNumberMarks({locale:{decimal:','}})).table.rows.find(r=>r.id===dimswitchRowId('by-measure','total','cac'))!;
+ for (const text of [cac.cells.range!.displayed,cac.cells.pp!.displayed]) expect(text).toMatch(/\d,\d/);
+});
+
+describe('dimswitch compiler',()=>{
+  it('refuses an expansion id that does not start with a variant, since it names no row', () => {
+    const expand = (id: string) => () => compileDimSwitch(exampleData, { variant: 'by-measure', depth: 1, expansion: { expanded: [id] } });
+    expect(expand('["byMeasure","total","orders"]')).toThrow(/names no variant first/);
+    expect(expand(dimswitchRowId('by-measure', 'total', 'orders'))).not.toThrow();
+  });
+ it('validates invented cube data',()=>{expect(dimswitchDataSchema.parse(exampleData)).toEqual(exampleData);});
+ it('opens the same axis rung in either variant',()=>{
+  expect([1,2,3].map(d=>rows('by-measure',d).length)).toEqual([4,10,18]);
+  expect([1,2,3].map(d=>rows('by-member',d).length)).toEqual([7,15,23]); // no section row repeats the dimension label
+ });
+ it('adds splits without changing the depth defaults',()=>{
+  for(const variant of ['by-measure','by-member'] as const) for(const depth of [1,2,3]) {
+   expect(compileDimSwitch(exampleData,{variant,depth,splits:true}).depthCollapsed).toEqual(compileDimSwitch(exampleData,{variant,depth}).depthCollapsed);
+   expect(rows(variant,depth,true).filter(r=>r.kind!=='split').map(r=>r.id)).toEqual(rows(variant,depth).map(r=>r.id));
+  }
+ });
+ it('omits CAC for members without spend',()=>{expect(row('organic','cac')).toBeUndefined();expect(row('organic','orders')).toBeDefined();});
+ it('derives ratios from the supplied sums',()=>{expect(row('total','cac').cells.range!.raw).toBe(1800/60);});
+ it('does not judge a partial period',()=>{expect(row('total','orders').cells.w2!.tone).toBe('neutral');});
+ it('checks the sample in either window',()=>{
+  for(const low of ['current','reference']) {
+   const data=structuredClone(exampleData); const f=data.facts.find(f=>f.memberId==='total'&&f.periodId==='w1')!;
+   (low==='current'?f.sums:f.ref!).orders=10;
+   const resolved=resolveDimSwitch(data,{minimumSample:{orders:30}});
+   expect(resolved.table.rows.find(r=>r.id===dimswitchRowId('by-measure','total','orders'))!.cells.w1!.tone).toBe('neutral');
+  }
+ });
+ // A measured drop to zero stayed neutral despite sufficient current and reference samples.
+ it('judges a zero current value when the declared samples pass',()=>{
+  const current={completed:0,spend:0,eligible:100}, reference={completed:100,spend:10000,eligible:100};
+  const data:DimSwitchData={
+   dimension:{label:'Team',total:{id:'total',label:'Total'},members:[],headline:['completed']},
+   measures:[
+    {id:'completed',label:'Completed tasks',scale:'count',value:{field:'completed'},judge:{family:'volume',base:'eligible'}},
+    {id:'cost',label:'Cost per eligible task',scale:'perUnit',format:'$1.2',unit:'$',value:{op:'div',a:{field:'spend'},b:{field:'eligible'}},judge:{family:'cost',base:'eligible'}},
+   ],
+   periods:[{id:'range',label:'Range',kind:'range'},{id:'prior',label:'vs prior',kind:'prior'},{id:'w1',label:'Week 1'}],
+   facts:[{memberId:'total',periodId:'range',sums:current},{memberId:'total',periodId:'prior',sums:reference},{memberId:'total',periodId:'w1',sums:current,ref:reference}],
+  };
+  const r=resolveDimSwitch(data,{minimumSample:{eligible:50}});
+  const completed=r.table.rows.find(row=>row.id===dimswitchRowId('by-measure','total','completed'))!;
+  const cost=r.table.rows.find(row=>row.id===dimswitchRowId('by-measure','total','cost'))!;
+  expect(completed.cells.pp).toMatchObject({raw:-100,displayed:'−100%',tone:'bad'});
+  expect(cost.cells.pp).toMatchObject({raw:-100,displayed:'−100%',tone:'good'});
+  expect(r.table.rows.find(row=>row.id===completed.id+':change')!.cells.w1!.tone).toBe('bad');
+  expect(r.table.rows.find(row=>row.id===cost.id+':change')!.cells.w1!.tone).toBe('good');
+ });
+ it('falls back to revenue as the organic headline',()=>{const r=resolveDimSwitch(exampleData,{variant:'by-member'}).table.rows.find(r=>r.id===dimswitchRowId('by-member','organic'))!;expect(r.cells.range!.raw).toBe(6000);expect(r.unitAffix).toContain('Net revenue');});
+ it('keeps small per-unit costs in units',()=>{expect(row('total','cac').cells.range!.displayed).toBe('30.0');expect(row('total','cac').unitAffix).toBe('$');});
+ it('records every derived value and change',()=>{const r=resolveDimSwitch(exampleData);expect(r.computedCells.find(c=>c.rowId===dimswitchRowId('by-measure','total','cac')&&c.colId==='range')).toMatchObject({raw:30,displayed:'30.0',kind:'calc'});});
+ // A narrow table must keep its full omitted-period reading and honor the shared footer list limit.
+ it('draws a short period disclosure and keeps every omitted name in the note record',()=>{
+  // 13 periods: tight spacing fits one more period, so 10 stay left out and the 8-name short form still applies.
+  const periods=Array.from({length:13},(_,i)=>({id:`p${i+1}`,label:`Period ${i+1}`}));
+  const data:DimSwitchData={dimension:{label:'Segment',total:{id:'total',label:'Total'},members:[],headline:['orders']},measures:[{id:'orders',label:'Orders',scale:'count',value:{field:'orders'}}],
+   periods:[{id:'range',label:'Range',kind:'range'},{id:'prior',label:'Prior',kind:'prior'},...periods],
+   facts:[{memberId:'total',periodId:'range',sums:{orders:1200}},{memberId:'total',periodId:'prior',sums:{orders:1080}},...periods.map(p=>({memberId:'total',periodId:p.id,sums:{orders:100},ref:{orders:90}}))]};
+  for(const maxListed of [undefined,0,1,'all'] as const){
+   const geometry=requireGeometry(layoutResolvedRequest(resolveChartRequest({type:'dimswitch',data,options:{size:{width:320},footnotes:false,notes:{show:['note','disclosure'],...(maxListed===undefined?{}:{maxListed})}}})));
+   const shown=new Set((geometry.derived as unknown as DimSwitchDerived).table.columns.map(c=>c.id)),hidden=periods.filter(p=>!shown.has(p.id));expect(hidden.length).toBeGreaterThan(6);
+   const full=hidden.map(p=>p.label).join(', '),note=geometry.frame.noteList!.find(n=>n.text.includes(full))!;expect(note).toBeDefined();expect(note.inFrame).toBe(true);
+   const footer=geometry.scene.filter(n=>n.t==='text'&&geometry.frame.footnoteNodeIds?.includes(n.id)).map(n=>n.t==='text'?n.lines.join(' '):'').join(' ');
+   if(maxListed==='all'){expect(note.short).toBeUndefined();expect(footer).toContain(full);}
+   else{expect(note.short).toBeDefined();expect(footer).toContain(note.short);expect(footer).not.toContain(full);
+    const named=maxListed===undefined?8:maxListed;
+    expect(note.short).toBe(`${named===0?`${hidden.length} items`:`${hidden.slice(0,named).map(p=>p.label).join(', ')}, and ${hidden.length-named} more`} not shown at this width.`);}
+  }
+  // W9, W10 is narrower than "and 2 more": the full list draws, and 381 × 134 draws.
+  // 16 weeks: tight spacing fits one more week, so W1 to W9 stay left out.
+  const weeks=Array.from({length:16},(_,i)=>({id:`w${i+1}`,label:`W${i+1}`}));
+  const w15:DimSwitchData={...data,periods:[data.periods[0]!,data.periods[1]!,...weeks],facts:['range','prior',...weeks.map(p=>p.id)].map(periodId=>({memberId:'total',periodId,sums:{orders:100},ref:{orders:90}}))};
+  const geometry=requireGeometry(layoutResolvedRequest(resolveChartRequest({type:'dimswitch',data:w15,options:{notes:{show:['note','disclosure']},size:{width:381,height:134}}})));
+  const note=geometry.frame.noteList!.find(n=>n.kind==='disclosure')!;
+  expect(geometry.size).toEqual({width:381,height:134});
+  expect(note.text).toBe('W1, W2, W3, W4, W5, W6, W7, W8, W9 not shown at this width.');expect(note.short).toBeUndefined();
+  // An author-set maxListed: 0 keeps the count form even where the one name is narrower.
+  // Six weeks: smaller change lines and tight spacing fit five weeks at 320 px, so exactly W1 stays left out.
+  const w6:DimSwitchData={...w15,periods:w15.periods.slice(0,8),facts:w15.facts.slice(0,8)};
+  const counted=requireGeometry(layoutResolvedRequest(resolveChartRequest({type:'dimswitch',data:w6,options:{size:{width:320},notes:{show:['note','disclosure'],maxListed:0}}})));
+  const one=counted.frame.noteList!.find(n=>n.kind==='disclosure')!;
+  const drawn=counted.scene.filter(n=>n.t==='text'&&counted.frame.footnoteNodeIds?.includes(n.id)).map(n=>n.t==='text'?n.lines.join(' '):'').join(' ');
+  expect(one.text).toBe('W1 not shown at this width.');expect(one.short).toMatch(/^1 item/);expect(drawn).toContain(one.short);
+ });
+ // A supported underscore locale must keep the omitted-period footer in German at a fixed card height.
+ it('uses German list words for de_DE in a fixed-height card',()=>{
+  const periods=Array.from({length:23},(_,i)=>({id:`w${i+1}`,label:`W${i+1}`}));
+  const data:DimSwitchData={dimension:{label:'Segment',total:{id:'total',label:'Total'},members:[],headline:['orders']},measures:[{id:'orders',label:'Orders',scale:'count',value:{field:'orders'}}],
+   periods:[{id:'range',label:'Range',kind:'range'},{id:'prior',label:'Prior',kind:'prior'},...periods],
+   facts:['range','prior',...periods.map(p=>p.id)].map(periodId=>({memberId:'total',periodId,sums:{orders:100},ref:{orders:90}}))};
+  const geometry=requireGeometry(layoutResolvedRequest(resolveChartRequest({type:'dimswitch',data,options:{locale:{language:'de_DE'},notes:{show:['note','disclosure']},size:{width:480,height:460}}})));
+  const shown=new Set((geometry.derived as unknown as DimSwitchDerived).table.columns.map(c=>c.id)),hidden=periods.filter(p=>!shown.has(p.id));
+  expect(hidden.length).toBeGreaterThan(9);
+  const note=geometry.frame.noteList!.find(n=>n.kind==='disclosure'&&n.short)!;
+  expect(note.text).toBe(`${hidden.map(p=>p.label).join(', ')} bei dieser Breite nicht gezeigt.`);
+  expect(note.short).toBe(`${hidden.slice(0,8).map(p=>p.label).join(', ')}, und ${hidden.length-8} weitere bei dieser Breite nicht gezeigt.`);
+  expect(geometry.size).toEqual({width:480,height:460});
+ });
+ // A consumer must be able to reproduce each DimSwitch amount and change without losing small values or claiming an unavailable change was checked.
+ it('publishes exact amounts and reproducible calculations with their drawn labels',()=>{
+  const data=structuredClone(exampleData);data.dimension.sums=true;
+  data.measures.push({id:'tiny',label:'Small ratio',value:{op:'div',a:{field:'orders'},b:{field:'orders'},factor:1e-12},format:'1.2345678901234'});
+  data.facts.find(f=>f.memberId==='search-a'&&f.periodId==='w1')!.ref!.orders=0;
+  const geometry=requireGeometry(dimswitchCore.layout(data,{depth:3,size:{width:1600,height:2000}}));
+  const claims=claimsForChart('dimswitch',geometry);
+  expect(claims.length).toBeGreaterThan(0);
+  expect(new Set(claims.map(c=>c.id)).size).toBe(claims.length);
+  const tiny=claims.find(c=>c.nodeId===`cell:${dimswitchRowId('by-measure','total','tiny')}:range`)!;
+  expect(tiny.output.raw).toBe(1e-12);expect(tiny.output.displayed).toContain('000000000001');
+  const prior=claims.find(c=>c.nodeId===`cell:${dimswitchRowId('by-measure','total','orders')}:pp`)!;
+  expect(prior.inputs.some(i=>i.ref==='total:["prior","sums","orders"]')).toBe(true);
+  expect(claims.some(c=>c.nodeId?.startsWith('cellline:')&&c.output.displayed!=='')).toBe(true);
+  expect(claims.filter(c=>c.kind==='reconciliation').every(c=>c.nodeId===undefined&&c.output.displayed==='')).toBe(true);
+  expect(claims.some(c=>c.kind==='observed'&&c.output.state==='nm'&&c.output.raw===null)).toBe(true);
+  for(const claim of claims.filter(c=>DERIVATION_KINDS.includes(c.kind as typeof DERIVATION_KINDS[number]))) expect(recomputeClaim(claim),claim.id).toMatchObject({status:'reproduced'});
+ });
+ it('produces identical SVG bytes for identical input',()=>{const draw=()=>renderSvg(requireGeometry(dimswitchCore.layout(exampleData,{depth:1})) as unknown as Parameters<typeof renderSvg>[0],resolveTheme());expect(draw()).toBe(draw());});
+});
+
+describe('dimswitch source and ordering rules',()=>{
+ it('derives true partitions from sums before calculating ratios',()=>{
+  const data=structuredClone(exampleData);data.dimension.sums=true;
+  const result=resolveDimSwitch(data);
+  const total=result.table.rows.find(r=>r.id===dimswitchRowId('by-measure','total','cac'))!;
+  expect(total.cells.range!.raw).toBe((1400+1200)/(46+39+32));
+  expect(result.computedCells.some(r=>r.op==='dimswitch:partition-check'&&r.raw!==0)).toBe(true);
+ });
+ it('sorts by measure with deterministic id ties',()=>{
+  const data=structuredClone(exampleData);
+  for(const f of data.facts.filter(f=>f.periodId==='range')) f.sums.orders=100;
+  const r=compileDimSwitch(data,{order:{by:'orders',desc:true}}).data.rows.filter(r=>r.parentId===dimswitchRowId('by-measure','total','orders')&&!r.inline);
+  expect(r.map(r=>r.label)).toEqual(['Organic','Paid Search']);
+ });
+ it('withData hides a member only when every applicable measure is zero or empty in the Range',()=>{
+  const data=structuredClone(exampleData);const paid=data.facts.find(f=>f.memberId==='paid'&&f.periodId==='range')!;
+  paid.sums.spend=0;
+  data.facts.find(f=>f.memberId==='organic'&&f.periodId==='range')!.sums.rev=null;
+  const shown=(d:typeof data)=>compileDimSwitch(d,{show:'withData'}).data.rows.some(r=>r.id===dimswitchRowId('by-measure','paid','orders'));
+  // Spend is zero but orders still count in the Total: the member stays.
+  expect(shown(data)).toBe(true);
+  for(const field of Object.keys(paid.sums)) paid.sums[field]=0;
+  expect(shown(data)).toBe(false);
+  expect(compileDimSwitch(data,{show:'withData'}).data.rows.some(r=>r.id===dimswitchRowId('by-measure','organic','revenue'))).toBe(true);
+ });
+ it('does not mutate source facts when deriving a partition',()=>{const data=structuredClone(exampleData);data.dimension.sums=true;const before=JSON.stringify(data);compileDimSwitch(data);expect(JSON.stringify(data)).toBe(before);});
+});
+
+// a change line whose fitted format would print a nonzero change as 0pp keeps its digit where the width holds.
+it('keeps a fitted change line nonzero', async () => {
+ const {fixtures}=await import('../src/core/charts/dimswitch/fixtures');
+ const statement=fixtures.find(f=>f.id==='statement')!;
+ const geometry=requireGeometry(layoutResolvedRequest(resolveChartRequest({type:'dimswitch',data:statement.data,options:{...statement.options,target:'report',textScale:1.25}} as never)));
+ const text=(id:string)=>(geometry.scene.find(n=>n.t==='text'&&n.id===id) as {lines:string[]}|undefined)?.lines.join(' ');
+ const line=(week:string)=>text(tableCellNodeId('cellline',dimswitchRowId('by-measure','total','gm'),week,`${dimswitchRowId('by-measure','total','gm')}:change`));
+ expect([line('w1'),line('w3'),line('w4')]).toEqual(['+0.1pp','+0.4pp','−0.4pp']);
+});
+
+// At mid widths the full table must not cut row labels to stubs ("Ord…", "N… c…") or run a unit line
+// over the column rule while the number tracks keep free width.
+it('prints every row label whole and keeps units inside the label track at mid widths', async () => {
+ const {fixtures}=await import('../src/core/charts/dimswitch/fixtures');
+ const {measureText}=await import('../src/core/text');
+ for (const [id,width] of [['by-measure',496],['by-member',496],['sheet',424],['card-notes-de',512],['bands-and-plan',544],['statement-operators',480]] as const) {
+  const f=fixtures.find(f=>f.id===id)!;
+  const geometry=requireGeometry(layoutResolvedRequest(resolveChartRequest({type:'dimswitch',data:f.data,options:{...f.options,target:'report',size:{width}}} as never)));
+  const label=(geometry.marks as {columns:{id:string;x:number;w:number}[]}).columns.find(c=>c.id==='label')!;
+  const texts=geometry.scene.flatMap(n=>n.t==='text'&&n.owner?.colId==='label'&&(n.font.letterSpacing??0)===0?[n]:[]);
+  expect(texts.filter(n=>n.lines.some(l=>l.includes('…'))).map(n=>`${id}@${width} ${n.lines.join(' ')}`)).toEqual([]);
+  const over=texts.filter(n=>n.part==='tableRowUnit'&&n.x+measureText(n.lines[0]!,n.font).width>label.x+label.w+0.5);
+  expect(over.map(n=>`${id}@${width} ${n.lines[0]}`)).toEqual([]);
+ }
+});
+// An effect line the cell hides (the default with effectLabel) must not widen the label track and push periods out.
+it('ignores a hidden effect label when it sizes the label track', async () => {
+ const {fixtures}=await import('../src/core/charts/dimswitch/fixtures');
+ const f=fixtures.find(f=>f.id==='statement')!;
+ const data={...f.data,effectLabel:'Contribution margin effect on the channel total per order'};
+ const geometry=requireGeometry(layoutResolvedRequest(resolveChartRequest({type:'dimswitch',data,options:{...f.options,target:'report',size:{width:480}}} as never)));
+ expect((geometry.marks as {columns:{id:string}[]}).columns.map(c=>c.id)).toEqual(['label','range','pp','w1','w2','w3','w4']);
+});
+// A percent measure without a format printed a small rate as "0.0%": flattening dropped the row's automatic-format mark, so the value did not lift.
+it('lifts a small rate of a percent measure without a format', () => {
+  const fixture = getFixtures('dimswitch').find(entry => entry.id === 'thresholds-by-kind')!;
+  const data = structuredClone(fixture.data) as DimSwitchData;
+  data.facts.find(fact => fact.memberId === 'beta' && fact.periodId === 'actual')!.sums.completed = 0.03;
+  const svg = renderSvg(requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'dimswitch', data, options: fixture.options } as never))), resolveTheme());
+  expect(svg).toContain('&lt;0.1%');
+  expect(svg).not.toContain('>0.0%<');
+});
+
+// A width warning must name a dimswitch option the caller can edit, not a compiled table column.
+it('reports authored dimswitch width paths for clipped columns', async () => {
+ const {layoutResolvedRequest,resolveChartRequest}=await import('../src/core/request');
+ const {requireGeometry}=await import('../src/core/sizing');
+ const g=requireGeometry(layoutResolvedRequest(resolveChartRequest({type:'dimswitch',data:exampleData,options:{size:{width:1200},widths:{period:20,change:20},belowMinimum:'refuse'}})));
+ const warnings=g.warnings.filter(w=>w.code==='table-column-clipped'||w.code==='table-column-widened');
+ expect(warnings.length).toBeGreaterThan(0);
+ for(const warning of warnings) expect(warning.field).toEqual(['options','widths',warning.owner?.colId==='pp'?'change':'period']);
+});
+
+// The tight-spacing advice named a size at which the same warning came back: the card there took one more period.
+it('advises a size at which compact spacing holds', () => {
+  const fixture = getFixtures('dimswitch').find(entry => entry.id === 'statement-plain')!;
+  const data = { ...fixture.data, measures: fixture.data.measures.map((m: DimSwitchData['measures'][number]) => m.id === 'cm2' ? { ...m, label: 'Margin after costs' } : m) };
+  const tight = (size: { width: number; height?: number }) => requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'dimswitch', data, options: { ...fixture.options, size } })))
+    .warnings.find(warning => warning.code === 'table-tight-spacing');
+  const advice = tight({ width: 400 })?.fix?.[0];
+  if (advice?.op !== 'replace') throw new Error('no size advice at 400 px');
+  expect(tight(advice.value as { width: number; height?: number })).toBeUndefined();
+});

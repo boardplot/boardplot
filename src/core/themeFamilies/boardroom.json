@@ -1,0 +1,144 @@
+{
+ "name": "boardroom",
+ "scheme": "light",
+ "color": {
+  "good": "#0C7B4C",
+  "goodFill": "#0FA063",
+  "bad": "#C13743",
+  "badFill": "#E0524E",
+  "neutral": "#5E6C7B",
+  "neutralLight": "#CFD9E2",
+  "highlight": "#1D4ED8",
+  "total": "#12395E",
+  "others": "#E3EDF5",
+  "othersMark": "#CEDAE3",
+  "ink": "#0D2A43",
+  "inkInverse": "#FFFFFF",
+  "inkMuted": "#4E6070",
+  "axis": "#0D2A43",
+  "grid": "#E9EEF3",
+  "leader": "#97A6B4",
+  "background": "#FFFFFF",
+  "stack": [
+   "#12395E",
+   "#5E99C5",
+   "#B4C6D8"
+  ],
+  "series": [
+   "#12395E",
+   "#5E99C5",
+   "#B58629",
+   "#72767C",
+   "#6F69CC",
+   "#587000",
+   "#229B72",
+   "#335B83"
+  ],
+  "seriesOverflow": "repeatLast",
+  "palettes": {
+   "atlantic": [
+    "#075A8E",
+    "#55BEF7",
+    "#2AB1A9",
+    "#838CDA",
+    "#1F8567",
+    "#9259AC"
+   ]
+  },
+  "status": {
+   "advanced": "#566C90",
+   "open": "#C4D4E8",
+   "lost": "#E0524E",
+   "pending": "#92A7C2",
+   "won": "#1D4ED8",
+   "gantt-workstream": "#12395E",
+   "gantt-detail": "#AFBCC8",
+   "gantt-special": "#1D4ED8",
+   "gantt-cadence": "#12395E"
+  },
+  "colorblind": {
+   "good": "#4980E2",
+   "bad": "#E16D08",
+   "badFill": "#A0431A"
+  },
+  "warn": "#896600",
+  "warnFill": "#F5A800"
+ },
+ "scenario": {
+  "AC": "solid",
+  "PY": "solidLight",
+  "PL": "outline",
+  "FC": "hatch45"
+ },
+ "pattern": {
+  "hatchAngle": 45,
+  "hatchColor": "segment",
+  "hatchGap": 6,
+  "hatchStrokeWidth": 0.75,
+  "outlineStrokeWidth": 1.5
+ },
+ "type": {
+  "family": "'Helvetica Neue', Helvetica, Arial, Roboto, sans-serif",
+  "title": {
+   "size": 18,
+   "weight": 700,
+   "lineHeight": 1.25
+  },
+  "subtitle": {
+   "size": 12,
+   "weight": 400,
+   "lineHeight": 1.3
+  },
+  "label": {
+   "size": 11.5,
+   "weight": 400,
+   "lineHeight": 1.2
+  },
+  "axis": {
+   "size": 10.5,
+   "weight": 400,
+   "lineHeight": 1.2
+  },
+  "footnote": {
+   "size": 9,
+   "weight": 400,
+   "lineHeight": 1.3
+  },
+  "micro": {
+   "size": 9,
+   "weight": 400,
+   "lineHeight": 1.2
+  },
+  "scale": {
+   "S": {
+    "title": 15,
+    "subtitle": 10.5,
+    "label": 10,
+    "axis": 9.5,
+    "footnote": 8.5,
+    "micro": 9
+   },
+   "L": {
+    "title": 22,
+    "subtitle": 14,
+    "label": 13,
+    "axis": 12,
+    "footnote": 10.5,
+    "micro": 9.5
+   }
+  }
+ },
+ "space": {
+  "tierGap": 5,
+  "facetGap": 28,
+  "labelPad": 5
+ },
+ "surface": {
+  "chipTint": 0.9,
+  "rowTint": 0.94,
+  "elapsedTint": 0.95,
+  "anchorTint": 0.97,
+  "chipRadius": 2,
+  "panelShadow": "0 1px 2px rgba(13,42,67,0.10), 0 6px 20px rgba(13,42,67,0.07)"
+ }
+}

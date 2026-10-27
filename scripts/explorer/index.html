@@ -1,0 +1,406 @@
+<title>Boardplot Variant Explorer</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f1f3f5; --surface: #ffffff; --ink: #18252e; --muted: #596974;
+  --line: #cbd3d9; --accent: #155d85; --selected: #e5f1f8; --danger: #a32732;
+  --danger-bg: #fff0f0; --focus: #007daf; --shadow: #00000012;
+}
+</style>
+<meta charset="utf-8">
+<style>
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #151b20; --surface: #202930; --ink: #eef3f6; --muted: #b0bec8;
+    --line: #46545e; --accent: #88c9ef; --selected: #213e50; --danger: #ffa6ac;
+    --danger-bg: #46292d; --focus: #a4dcff; --shadow: #00000040;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #151b20; --surface: #202930; --ink: #eef3f6; --muted: #b0bec8;
+  --line: #46545e; --accent: #88c9ef; --selected: #213e50; --danger: #ffa6ac;
+  --danger-bg: #46292d; --focus: #a4dcff; --shadow: #00000040;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.5 "Avenir Next", "Segoe UI", Arial, sans-serif; font-variant-numeric: tabular-nums; overflow-x: hidden; }
+button, select, textarea { font: inherit; color: inherit; }
+button, select { min-height: 36px; border: 1px solid var(--line); background: var(--surface); border-radius: 4px; padding: 6px 11px; }
+button { cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--selected); font-weight: 600; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+button:disabled { color: var(--muted); cursor: wait; }
+[hidden] { display: none !important; }
+.explorer { max-width: 1800px; margin-inline: auto; padding-inline: 24px; padding-block: 24px 64px; min-width: 0; }
+.masthead { display: flex; gap: 20px; justify-content: space-between; align-items: start; margin-bottom: 24px; }
+h1 { font-size: 27px; line-height: 1.2; letter-spacing: -.6px; margin: 0 0 8px; font-weight: 650; }
+h2 { font-size: 19px; line-height: 1.3; margin: 0; font-weight: 650; }
+p { margin: 0; }
+.meta, .muted { color: var(--muted); }
+.masthead .meta { max-width: 700px; }
+.selection-bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 10; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 12px; margin-bottom: 16px; background: var(--surface); border: 1px solid var(--line); }
+.selection-part { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 16px 24px; align-items: end; padding-block: 16px; border-block: 1px solid var(--line); }
+.field { display: flex; flex-direction: column; gap: 5px; max-width: 100%; }
+.field > span, .control-name { font-size: 12px; color: var(--muted); font-weight: 600; }
+select { max-width: 100%; }
+.status-line { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding-block: 16px; color: var(--muted); font-size: 13px; }
+/* Charts always show at their real pixel size; a chart wider than its area scrolls sideways instead of shrinking. */
+.grid { display: flex; flex-wrap: wrap; gap: 24px; align-items: start; overflow-x: auto; }
+.card, .after-card { width: calc(var(--chart-width) + 26px); max-width: none; flex: none; background: var(--surface); min-width: 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.card-head { display: flex; gap: 12px; justify-content: space-between; align-items: start; padding: 16px 18px 10px; }
+.card-title { border: 0; background: none; padding: 0; text-align: left; min-height: 32px; font-size: 17px; font-weight: 650; color: var(--ink); }
+.card-title:hover { color: var(--accent); }
+.badge { white-space: nowrap; font-size: 12px; color: var(--muted); padding-top: 5px; }
+.chart { padding: 4px 12px 12px; min-width: 0; min-height: 100px; }
+.chart svg { display: block; max-width: none; height: auto; }
+.scale-note { font-size: 11px; color: var(--muted); margin-top: 5px; }
+.chart.loading { display: flex; align-items: center; color: var(--muted); padding-inline: 18px; }
+.card-foot { padding: 12px 18px 16px; border-top: 1px solid var(--line); }
+.card-id { font: 11px/1.5 "SFMono-Regular", Consolas, monospace; overflow-wrap: anywhere; color: var(--muted); margin-bottom: 6px; }
+.stats { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.actions button { font-size: 12px; min-height: 32px; padding: 4px 9px; }
+.refusal { padding: 16px; margin: 8px 4px; color: var(--danger); background: var(--danger-bg); border-radius: 4px; overflow-wrap: anywhere; }
+.refusal strong { display: block; margin-bottom: 4px; }
+.refusal p + p { margin-top: 8px; }
+.detail-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-bottom: 16px; }
+.detail-layout { display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: 24px; align-items: start; }
+.detail-cards, #detail-card { display: flex; flex-direction: column; gap: 16px; min-width: 0; max-width: 100%; }
+#detail-card { gap: 24px; }
+.detail-tools { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; }
+.width-row { display: flex; gap: 24px; align-items: start; max-width: 100%; overflow-x: auto; }
+.compare-line { flex: none; width: 2px; align-self: stretch; background: var(--line); }
+.after-card img { display: block; max-width: none; height: auto; }
+.after-empty { color: var(--muted); padding: 24px 6px; overflow-wrap: anywhere; }
+.width-filter { align-items: center; }
+.width-filter .control-name { margin: 0 4px 0 0; }
+.inspector { width: 290px; max-width: 100%; min-width: 0; max-height: calc(100vh - 160px); overflow-y: auto; padding-inline: 3px; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 78px); }
+.control { padding-block: 11px; border-bottom: 1px solid var(--line); }
+.control-name { display: block; margin-bottom: 6px; overflow-wrap: anywhere; }
+.buttons { display: flex; flex-wrap: wrap; gap: 5px; }
+.buttons button { font-size: 12px; padding: 5px 8px; min-height: 32px; max-width: 100%; overflow-wrap: anywhere; }
+.help { color: var(--muted); font-size: 12px; margin-top: 12px; }
+.hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
+.guide { margin-top: 12px; max-width: 760px; font-size: 13px; }
+.guide summary { cursor: pointer; color: var(--accent); font-weight: 600; min-height: 32px; display: flex; align-items: center; }
+.guide ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 6px; }
+.guide code { font: 12px/1.5 "SFMono-Regular", Consolas, monospace; overflow-wrap: anywhere; }
+.copy-box { padding: 16px; background: var(--surface); border: 1px solid var(--line); margin-bottom: 20px; }
+.copy-box textarea { display: block; width: 100%; min-height: 160px; margin-block: 10px; background: var(--page); border: 1px solid var(--line); padding: 10px; font: 12px/1.5 "SFMono-Regular", Consolas, monospace; }
+.notice { min-height: 22px; font-size: 12px; color: var(--accent); margin-top: 10px; }
+.measure { position: fixed; left: -100000px; top: 0; visibility: hidden; pointer-events: none; }
+.measure svg { max-width: none; }
+@media (max-width: 850px) { .detail-layout { grid-template-columns: minmax(0, 1fr); } .compare-row { flex-direction: column; } .compare-line { width: 100%; height: 2px; } .inspector { width: 100%; position: static; max-height: 360px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; } }
+@media (max-width: 480px) { .explorer { padding-inline: 16px; padding-block: 20px 40px; } .masthead { flex-direction: column; gap: 12px; } h1 { font-size: 24px; } .toolbar { gap: 12px; } .toolbar .field { flex: 1 1 145px; } .inspector { display: block; max-height: 280px; } .card-head { padding-inline: 12px; } .card-foot { padding-inline: 12px; } .badge { white-space: normal; text-align: right; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; } }
+</style>
+<main class="explorer">
+  <div id="selection-bar" class="selection-bar" hidden><button id="back" hidden>Back to overview</button><span id="selection-part" class="selection-part" hidden><span id="selection-count" role="status" aria-live="polite"></span><span aria-hidden="true">·</span><button id="copy-selection">Copy selection</button><span aria-hidden="true">·</span><button id="clear-selection">Clear</button></span></div>
+  <header class="masthead">
+    <div><h1>Boardplot Variant Explorer</h1><p class="meta">Compare chart forms and settings. Open a card to inspect it and copy its review packet.</p><p id="version" class="help">Loading catalog…</p>
+      <details class="guide"><summary>How to use</summary><ul>
+        <li><strong>Overview.</strong> One card for each chart type and variant, at the width, chart theme and locale in the toolbar. Click a card to open its chart page.</li>
+        <li><strong>Chart page.</strong> The chart at all five widths (960 to 320 px), one under the other. The width filter shows one width. The settings on the left change all widths. “Back to overview” in the top bar keeps your selection and scroll position.</li>
+        <li><strong>Real size.</strong> Every chart shows at its real pixel size. A row that is wider than the screen scrolls sideways.</li>
+        <li><strong>Data share.</strong> The part of the chart frame that the data marks cover. It is a ranking aid, not a verdict. “Sort overview: Data share · worst first” puts the smallest plots first. Table-like types (table, bartable, dimswitch, kpi) show n/a, because their data is text.</li>
+        <li><strong>Review one card.</strong> “Copy review packet” copies a review prompt with the card's ID and spec. Paste it into an AI chat and attach a screenshot of the chart.</li>
+        <li><strong>Review all widths.</strong> “Copy review packet (all widths)” on the chart page copies one prompt for all five widths. It lists which widths Boardplot refused.</li>
+        <li><strong>Review round.</strong> Click “Select for review” on the cards you want, then “Copy selection” in the top bar. You get one ID per line. Turn the IDs back into specs with <code>npm run -s explorer -- --spec -</code> (paste the list on stdin).</li>
+        <li><strong>Before / after.</strong> On the chart page, “Before / after” shows each card (before), a line, and the redesign for the same card (after). To add a redesign: put the image (PNG or SVG, at the card's width) in <code>scripts/explorer/after/</code>, add <code>"&lt;card ID&gt;": "&lt;file name&gt;"</code> to <code>scripts/explorer/after/index.json</code>, run <code>npm run explorer</code> and reload the page. The card ID must match exactly, so width, chart theme, locale and settings must be the same.</li>
+      </ul></details></div>
+    <label class="field"><span>Page appearance</span><select id="appearance"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+  </header>
+  <section id="copy-box" class="copy-box" hidden><strong>Press Cmd+C</strong><p class="help">Clipboard access is blocked. The text below is selected.</p><textarea id="copy-text" readonly aria-label="Text to copy"></textarea><button id="close-copy">Close</button></section>
+  <div class="toolbar">
+    <label class="field"><span>Open chart type</span><select id="type-picker"><option value="">Overview</option></select></label>
+    <label class="field overview-field"><span>Width (px)</span><select id="overview-width"></select></label>
+    <label class="field overview-field"><span>Chart theme</span><select id="overview-theme"></select></label>
+    <label class="field overview-field"><span>Locale</span><select id="overview-locale"></select></label>
+    <label class="field overview-field"><span>Sort overview</span><select id="sort"><option value="type">Chart type</option><option value="share">Data share · worst first</option></select></label>
+  </div>
+  <div class="status-line"><p id="progress" role="status" aria-live="polite">Loading…</p><p id="render-mode"></p></div>
+  <div id="overview" class="grid"></div>
+  <section id="detail" hidden>
+    <div class="detail-heading"><h2 id="detail-title"></h2></div>
+    <div class="detail-layout"><aside id="controls" class="inspector" aria-label="Chart settings"></aside><div class="detail-cards"><div class="detail-tools"><div id="width-filter" class="buttons width-filter" role="group" aria-label="Width filter"><span class="control-name">Width (px)</span></div><button id="copy-all-widths" type="button">Copy review packet (all widths)</button><button id="compare" type="button" aria-pressed="false">Before / after</button></div><div id="detail-card"></div></div></div>
+  </section>
+  <p id="notice" class="notice" role="status" aria-live="polite"></p>
+</main>
+<script src="boardplot.js"></script>
+<script>
+/* CARDSPEC_INLINE */
+</script>
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const clone = value => JSON.parse(JSON.stringify(value));
+  const {same,label,makeSpec,cardId} = CardSpec;
+  // The overview and the detail page keep their own theme and locale, so going back never re-renders the overview.
+  const view = {width:720,theme:'authored',locale:'en'};
+  const state = {theme:'authored',locale:'en',detailWidth:'all',compare:false,type:null,variant:null,settings:{}};
+  // These types show their data as text cells, which the mark box cannot see, so a share would read far too small.
+  const TABLE_LIKE = new Set(['table','bartable','dimswitch','kpi']);
+  const TARGET_HINT = 'target sets sizes and density for the medium. Hover boxes are not drawn here.';
+  let catalog, pool, generation=0, overviewRows=[], detailRows=[], overviewScroll=0, afterIndex={};
+  const selectionKey='boardplot-explorer-review-selection';
+  let selection=[];
+  try {
+    const saved=JSON.parse(localStorage.getItem(selectionKey));
+    if(Array.isArray(saved)) selection=[...new Set(saved.filter(id=>typeof id==='string'))];
+  } catch {}
+  function updateSelection(){
+    $('selection-bar').hidden=!state.type&&selection.length===0;$('back').hidden=!state.type;$('selection-part').hidden=selection.length===0;
+    $('selection-count').textContent=`${selection.length} selected`;
+    document.querySelectorAll('[data-review-id]').forEach(node=>{
+      const selected=selection.includes(node.dataset.reviewId);
+      node.setAttribute('aria-pressed',String(selected));node.textContent=selected?'Selected':'Select for review';
+    });
+  }
+  function toggleSelection(id){
+    if(selection.includes(id)) selection=selection.filter(value=>value!==id);else selection.push(id);
+    try { localStorage.setItem(selectionKey,JSON.stringify(selection)); } catch {}
+    updateSelection();
+  }
+  $('copy-selection').onclick=()=>copy(`Boardplot review round: ${selection.length} cards\n${selection.join('\n')}`);
+  $('clear-selection').onclick=()=>{
+    selection=[];
+    try { localStorage.setItem(selectionKey,JSON.stringify(selection)); } catch {}
+    updateSelection();
+  };
+  updateSelection();
+  const JUDGE = `Stay with this chart type and this data. Judge only what the library controls: proportions and use of space, the size of the plot in the frame, width use, aspect ratio for the amount of data, label placement and coverage, legend design, axes and ticks, class breaks, colour and contrast, text that the library adds by itself (notes, "not labelled" lists, attributions) and language consistency. Do not judge the title, subtitle, notes or source text that the user wrote, and do not judge the data.`;
+  const reviewPacket = (id,spec) => `You review one chart made by Boardplot, a chart library that aims at top consulting quality. The image is attached. Its ID and spec follow below.
+
+${JUDGE}
+
+Answer in this order:
+1. Verdict in one line: would a consulting partner send this chart to a client as it is? Yes, with fixes, or no.
+2. The problems, worst first, at most 7. For each: what is wrong, where it is, and why it hurts the reader.
+3. The fix for each problem. Name the Boardplot setting from the spec if one exists. Otherwise name the default the library should change.
+4. For each problem, a measurable rule that would catch it automatically, for example "the map takes at least 70% of the chart area" or "neighbouring band colours differ by at least ΔE 10". Write "needs judgement" if no measure fits.
+5. Draw the redesign at the same size, with the same data and the same chart type.
+
+ID: ${id}
+Spec: ${JSON.stringify(spec,null,2)}`;
+  const reviewPacketAll = rows => `You review one chart made by Boardplot, a chart library that aims at top consulting quality. The same chart follows at ${rows.length} widths: ${rows.map(row=>`${row.width} px`).join(', ')}. The images are attached in this order. If no images are attached, render each spec below to PNG with the Boardplot CLI first. A width that Boardplot refused to draw has no image; its refusal message is listed instead.
+
+${JUDGE}
+
+Answer in this order:
+1. Verdict per width, one line each: would a consulting partner send this chart to a client as it is? Yes, with fixes, or no. For a refused width, say whether the refusal is right or whether Boardplot should draw a simpler form at that width.
+2. The problems, worst first, at most 7 across all widths. For each: what is wrong, at which widths, where it is, and why it hurts the reader. Point out problems that appear or get worse as the width shrinks.
+3. The fix for each problem. Name the Boardplot setting from the spec if one exists. Otherwise name the default the library should change, and the widths it applies to.
+4. For each problem, a measurable rule that would catch it automatically, for example "the map takes at least 70% of the chart area" or "neighbouring band colours differ by at least ΔE 10". Write "needs judgement" if no measure fits.
+5. Draw the redesign for the width with the worst verdict, at that size, with the same data and the same chart type.
+
+${rows.map(row=>`Width ${row.width} px
+ID: ${row.id}
+Render: ${!row.filled?'not finished when copied':row.refusal?`refused (${row.refusal})`:'drawn'}
+Spec: ${JSON.stringify(row.spec,null,2)}`).join('\n\n')}`;
+
+  function measurementSpec(spec) { const measured=clone(spec);measured.charts[0].options={...measured.charts[0].options,interactive:true};return measured; }
+  function renderPair(spec) { const normal=Boardplot.render(spec);return {normal,marked:normal.ok?Boardplot.render(measurementSpec(spec)).svg:null}; }
+
+  class RenderPool {
+    constructor(){this.workers=[];this.queue=[];this.serial=0;this.fallback=false;this.yielding=false;}
+    async start(){
+      try {
+        const url=new URL('boardplot.js',location.href).href;
+        const code=`importScripts(${JSON.stringify(url)});self.onmessage=e=>{const {id,spec}=e.data;try{const normal=Boardplot.render(spec);const measured=JSON.parse(JSON.stringify(spec));measured.charts[0].options={...measured.charts[0].options,interactive:true};self.postMessage({id,normal,marked:normal.ok?Boardplot.render(measured).svg:null});}catch(error){self.postMessage({id,normal:{ok:false,errors:[{code:'worker-render-error',message:String(error)}],warnings:[],ms:0}});}};self.postMessage({ready:true});`;
+        this.blob=URL.createObjectURL(new Blob([code],{type:'text/javascript'}));
+        const count=Math.min(4,Math.max(1,(navigator.hardwareConcurrency||2)-1));
+        await Promise.all(Array.from({length:count},()=>new Promise((resolve,reject)=>{
+          const worker=new Worker(this.blob),slot={worker,job:null};this.workers.push(slot);
+          const timeout=setTimeout(()=>reject(new Error('Worker startup timed out')),8000);
+          worker.onerror=()=>{clearTimeout(timeout);reject(new Error('Worker is blocked'));this.useFallback();};
+          worker.onmessage=e=>{if(e.data.ready){clearTimeout(timeout);resolve();return;}const job=slot.job;if(!job||job.id!==e.data.id)return;slot.job=null;job.resolve(e.data);this.pump();};
+        })));
+        if(!this.fallback)$('render-mode').textContent=`${count} render workers`;
+      }catch{this.useFallback();}
+      finally{if(this.blob)URL.revokeObjectURL(this.blob);}
+    }
+    useFallback(){
+      if(this.fallback)return;this.fallback=true;
+      for(const slot of this.workers){slot.worker.terminate();if(slot.job)this.queue.unshift(slot.job);}
+      this.workers=[];$('render-mode').textContent='Main-thread queue · workers unavailable';this.pump();
+    }
+    run(spec,token){return new Promise(resolve=>{this.queue.push({id:++this.serial,spec,token,resolve});this.pump();});}
+    cancel(){for(const job of this.queue)job.resolve({cancelled:true});this.queue=[];}
+    pump(){
+      if(this.fallback){if(this.yielding||!this.queue.length)return;this.yielding=true;setTimeout(()=>{const job=this.queue.shift();if(job)job.resolve(renderPair(job.spec));this.yielding=false;this.pump();},0);return;}
+      for(const slot of this.workers){if(slot.job||!this.queue.length)continue;slot.job=this.queue.shift();try{slot.worker.postMessage({id:slot.job.id,spec:slot.job.spec});}catch{this.useFallback();return;}}
+    }
+  }
+  // The engine does not set data-bp-mark on series paths, so add these three parts.
+  const DATA_MARK_SELECTOR='[data-bp-mark], path[data-bp-part="line"], path[data-bp-part="area"], path[data-bp-part="spark"]';
+  function shareOf(svgText){
+    if(!svgText)return null;
+    const host=document.createElement('div');host.className='measure';host.innerHTML=svgText;document.body.append(host);
+    try{
+      const svg=host.querySelector('svg'),vb=svg?.viewBox.baseVal;if(!svg||!vb||!vb.width||!vb.height)return null;
+      const marks=svg.querySelectorAll(DATA_MARK_SELECTOR);if(!marks.length)return null;
+      const inverse=svg.getCTM()?.inverse();if(!inverse)return null;
+      let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
+      for(const mark of marks){
+        try{
+          const box=mark.getBBox(),ctm=mark.getCTM();if(!ctm||!box.width&&!box.height)continue;
+          const matrix=inverse.multiply(ctm);
+          const points=[[box.x,box.y],[box.x+box.width,box.y],[box.x,box.y+box.height],[box.x+box.width,box.y+box.height]].map(([x,y])=>new DOMPoint(x,y).matrixTransform(matrix));
+          const left=Math.max(vb.x,Math.min(...points.map(p=>p.x))),right=Math.min(vb.x+vb.width,Math.max(...points.map(p=>p.x)));
+          const top=Math.max(vb.y,Math.min(...points.map(p=>p.y))),bottom=Math.min(vb.y+vb.height,Math.max(...points.map(p=>p.y)));
+          if(right<left||bottom<top)continue;x0=Math.min(x0,left);x1=Math.max(x1,right);y0=Math.min(y0,top);y1=Math.max(y1,bottom);
+        }catch{}
+      }
+      return Number.isFinite(x0)?Math.max(0,Math.min(1,(x1-x0)*(y1-y0)/(vb.width*vb.height))):0;
+    }finally{host.remove();}
+  }
+  function element(tag,className,text){const node=document.createElement(tag);if(className)node.className=className;if(text!==undefined)node.textContent=text;return node;}
+  function button(text,action){const node=element('button','',text);node.type='button';node.addEventListener('click',action);return node;}
+  function copy(text){
+    // Called directly from a click handler so clipboard activation remains valid.
+    const fallback=()=>{$('copy-box').hidden=false;$('copy-text').value=text;$('copy-text').focus();$('copy-text').select();$('copy-box').scrollIntoView({block:'nearest'});$('notice').textContent='Press Cmd+C to copy the selected text.';};
+    try{navigator.clipboard.writeText(text).then(()=>{$('notice').textContent='Copied.';},fallback);}catch{fallback();}
+  }
+  function newCard(type,variant,settings,width,theme,locale,open){
+    const spec=makeSpec(variant,settings,width,theme,locale,Boardplot.withWidth),id=cardId(type,variant,settings,width,theme,locale,Boardplot.withWidth);
+    const node=element('article','card'),head=element('div','card-head'),tableLike=TABLE_LIKE.has(type);
+    node.dataset.width=width;node.style.setProperty('--chart-width',`${width}px`);
+    const title=open?button(`${type} · ${variant.label}`,open):element('h2','',`${type} · ${variant.label}`);if(open)title.className='card-title';
+    const badge=element('span','badge','Data share measuring…');badge.title='Part of the chart frame covered by data marks. A ranking aid, not a verdict.';head.append(title,badge);
+    const chart=element('div','chart loading','Waiting to render…');
+    const foot=element('div','card-foot'),identity=element('p','card-id',id),stats=element('p','stats',''),actions=element('div','actions');
+    const scaleNote=element('p','scale-note','scaled to fit');scaleNote.hidden=true;
+    const selected=selection.includes(id),review=button(selected?'Selected':'Select for review',()=>toggleSelection(id));
+    review.dataset.reviewId=id;review.setAttribute('aria-pressed',String(selected));
+    actions.append(review,button('Copy ID',()=>copy(id)),button('Copy spec',()=>copy(JSON.stringify(spec,null,2))),button('Copy review packet',()=>copy(reviewPacket(id,spec))));
+    foot.append(identity,stats,actions,scaleNote);node.append(head,chart,foot);
+    if(open)node.addEventListener('click',event=>{if(!event.target.closest('button,a'))open();});
+    return {node,spec,id,share:null,filled:false,fill(result){
+      this.filled=true;chart.classList.remove('loading');chart.replaceChildren();
+      const {normal,marked}=result;this.refusal=normal.ok?null:(normal.errors||[]).map(error=>`${error.code}: ${error.message}`).join('; ');
+      if(normal.ok&&normal.svg){chart.innerHTML=normal.svg;this.share=tableLike?null:shareOf(marked);
+        const svg=chart.querySelector('svg');node.style.setProperty('--chart-width',`${svg.viewBox.baseVal.width}px`);updateScaleNote(node);}
+      else{const refusal=element('div','refusal');refusal.append(element('strong','','Render refused'));
+        for(const error of normal.errors||[])refusal.append(element('p','',`${error.code}: ${error.message}`));chart.append(refusal);}
+      badge.textContent=tableLike?'Data share n/a (table-like)':this.share===null?'Data share n/a':`Data share ${Math.round(this.share*100)}%`;
+      stats.textContent=`${normal.ms.toFixed(1)} ms · ${normal.svg?(new TextEncoder().encode(normal.svg).length/1024).toFixed(1):'0.0'} KB SVG`;
+    }};
+  }
+  function updateScaleNote(card){
+    const svg=card.querySelector('.chart svg'),note=card.querySelector('.scale-note');
+    note.hidden=!svg||svg.getBoundingClientRect().width>=svg.viewBox.baseVal.width-.5;
+  }
+  const scaleObserver=new ResizeObserver(()=>document.querySelectorAll('.card').forEach(updateScaleNote));
+  scaleObserver.observe(document.querySelector('.explorer'));
+  function sortOverview(){
+    const rows=[...overviewRows];if($('sort').value==='share')rows.sort((a,b)=>(a.share??Infinity)-(b.share??Infinity)||a.id.localeCompare(b.id));else rows.sort((a,b)=>a.order-b.order);
+    for(const row of rows)$('overview').append(row.node);
+  }
+  function setView(detail){
+    $('overview').hidden=detail;$('detail').hidden=!detail;
+    document.querySelectorAll('.overview-field').forEach(node=>node.hidden=detail);updateSelection();
+  }
+  async function renderOverview(){
+    // Renders only the cards that are still empty, so a return from detail resumes where it stopped.
+    const token=generation,pending=overviewRows.filter(row=>!row.filled),total=overviewRows.length;let done=total-pending.length;
+    $('progress').textContent=`Rendered ${done} of ${total}`;
+    await Promise.all(pending.map(row=>pool.run(row.spec,token).then(result=>{if(result.cancelled||token!==generation)return;row.fill(result);done++;$('progress').textContent=`Rendered ${done} of ${total}`;})));
+    if(token===generation&&pending.length)sortOverview();
+  }
+  function showOverview(){
+    state.type=null;$('type-picker').value='';setView(false);
+    ++generation;pool.cancel();overviewRows=[];$('overview').replaceChildren();
+    for(const type of catalog.types)for(const variant of type.variants){
+      const row=newCard(type.type,variant,{},view.width,view.theme,view.locale,()=>openDetail(type.type,variant.id));row.order=overviewRows.length;overviewRows.push(row);$('overview').append(row.node);
+    }
+    return renderOverview();
+  }
+  function backToOverview(){
+    ++generation;pool.cancel();state.type=null;$('type-picker').value='';setView(false);
+    window.scrollTo({top:overviewScroll});renderOverview();
+  }
+  function group(name,values,current,action,defaultValue,source){
+    const node=element('section','control'),heading=element('span','control-name',name),buttons=element('div','buttons');node.append(heading,buttons);
+    for(const value of values){const isDefault=defaultValue!==undefined&&same(value,defaultValue);const choice=button(`${label(value)}${isDefault?' · default':''}`,()=>action(value));choice.setAttribute('aria-pressed',String(same(value,current)));if(isDefault)choice.title=`Default from ${source||'catalog'}`;buttons.append(choice);}
+    return node;
+  }
+  function currentVariant(){return catalog.types.find(t=>t.type===state.type).variants.find(v=>v.id===state.variant);}
+  function detailControls(){
+    const type=catalog.types.find(t=>t.type===state.type),variant=currentVariant(),controls=$('controls');controls.replaceChildren();
+    // A one-form type has no variant, so it shows no Variant control.
+    if(type.variants.some(v=>v.id))controls.append(group('Variant',type.variants.map(v=>v.id),state.variant,value=>{state.variant=value;state.settings={};updateDetail();}));
+    for(const setting of variant.settings){
+      const authored=setting.key.split('.').reduce((node,part)=>node?.[part],variant.spec.charts[0].options);
+      const current=Object.hasOwn(state.settings,setting.key)?state.settings[setting.key]:authored??setting.default;
+      const control=group(setting.key,setting.values,current,value=>{state.settings[setting.key]=value;updateDetail();},setting.engineDefault?undefined:setting.default,setting.defaultSource);
+      if(setting.key==='target')control.append(element('p','hint',TARGET_HINT));
+      controls.append(control);
+    }
+    controls.append(group('Chart theme',catalog.themes,state.theme,value=>{state.theme=value;updateDetail();}));
+    controls.append(group('Locale',catalog.locales,state.locale,value=>{state.locale=value;updateDetail();}));
+    controls.append(button('Reset settings',()=>{state.settings={};updateDetail();}));
+    controls.append(element('p','help',`${variant.settings.length} visible settings. ${variant.droppedSettings} settings had no effect at 720 px and were removed. Reset restores the fixture. Explicit buttons write the option, including schema defaults. “Engine default” removes the option.`));
+  }
+  function filterWidths(){
+    for(const choice of $('width-filter').querySelectorAll('button'))choice.setAttribute('aria-pressed',String(choice.dataset.width===String(state.detailWidth)));
+    for(const node of $('detail-card').children){node.hidden=state.detailWidth!=='all'&&node.dataset.width!==String(state.detailWidth);if(!node.hidden)updateScaleNote(node.querySelector('.card')||node);}
+  }
+  // "After" shows a redesign image mapped to the card's exact ID in after/index.json (copied from scripts/explorer/after/).
+  function afterCard(row){
+    const node=element('article','after-card'),head=element('div','card-head'),chart=element('div','chart'),file=afterIndex[row.id];
+    node.style.setProperty('--chart-width',`${row.width}px`);head.append(element('h2','','After · redesign'),element('span','badge',`${row.width} px`));
+    if(typeof file==='string'){const image=element('img');image.src=`after/${encodeURI(file)}`;image.alt=`Redesign for ${row.id}`;image.width=row.width;chart.append(image);}
+    else chart.append(element('p','after-empty',`No redesign yet. Add an image at ${row.width} px to scripts/explorer/after/ and map ${row.id} to its file name in index.json there.`));
+    node.append(head,chart);return node;
+  }
+  function detailNode(row){
+    const wrap=element('div',state.compare?'width-row compare-row':'width-row');wrap.dataset.width=row.width;wrap.append(row.node);
+    if(state.compare)wrap.append(element('div','compare-line'),afterCard(row));
+    return wrap;
+  }
+  async function updateDetail(){
+    const token=++generation;pool.cancel();detailControls();const variant=currentVariant();
+    $('detail-title').textContent=`${state.type} · ${variant.label}`;
+    const rows=detailRows=[...catalog.widths].sort((a,b)=>b-a).map(width=>Object.assign(newCard(state.type,variant,state.settings,width,state.theme,state.locale),{width}));
+    // Hold the old height while the new cards render, so a settings click does not jump the view.
+    const box=$('detail-card');box.style.minHeight=`${box.offsetHeight}px`;box.replaceChildren(...rows.map(detailNode));filterWidths();
+    let done=0;$('progress').textContent=`Rendered 0 of ${rows.length} widths`;
+    await Promise.all(rows.map(row=>pool.run(row.spec,token).then(result=>{if(result.cancelled||token!==generation)return;row.fill(result);done++;$('progress').textContent=`Rendered ${done} of ${rows.length} widths`;})));
+    if(token===generation)box.style.minHeight='';
+  }
+  function openDetail(type,variant){
+    // Opening detail stops unfinished overview cards; going back resumes them and restores the scroll position.
+    if(!state.type){overviewScroll=window.scrollY;state.theme=view.theme;state.locale=view.locale;state.detailWidth='all';}
+    state.type=type;state.variant=variant||catalog.types.find(t=>t.type===type).variants[0].id;state.settings={};
+    $('type-picker').value=type;setView(true);updateDetail();window.scrollTo({top:0});
+  }
+  function options(node,values,selected){for(const value of values){const option=element('option','',value==='authored'?'As authored':String(value));option.value=value;node.append(option);}node.value=selected;}
+  function appearance(value){if(value==='system')delete document.documentElement.dataset.theme;else document.documentElement.dataset.theme=value;try{localStorage.setItem('boardplot-explorer-appearance',value);}catch{}}
+  $('appearance').onchange=e=>appearance(e.target.value);
+  try{const saved=localStorage.getItem('boardplot-explorer-appearance');if(['system','light','dark'].includes(saved)){$('appearance').value=saved;appearance(saved);}}catch{}
+  $('close-copy').onclick=()=>{$('copy-box').hidden=true;};
+  async function start(){
+    document.querySelectorAll('.toolbar select').forEach(node=>node.disabled=true);
+    const response=await fetch('catalog.json');if(!response.ok)throw new Error(`Catalog load failed (${response.status})`);catalog=await response.json();
+    $('version').textContent=`v${catalog.version} · engine ${catalog.engineRev} · ${catalog.types.length} types · ${catalog.types.reduce((n,t)=>n+t.variants.length,0)} variants · ${catalog.commit.slice(0,9)}`;
+    for(const type of catalog.types){const option=element('option','',type.title);option.value=type.type;$('type-picker').append(option);}
+    options($('overview-width'),catalog.widths,view.width);options($('overview-theme'),catalog.themes,view.theme);options($('overview-locale'),catalog.locales,view.locale);
+    for(const width of ['all',...[...catalog.widths].sort((a,b)=>b-a)]){const choice=button(width==='all'?'All':String(width),()=>{state.detailWidth=width;filterWidths();});choice.dataset.width=String(width);$('width-filter').append(choice);}
+    pool=new RenderPool();await pool.start();
+    $('type-picker').onchange=e=>e.target.value?openDetail(e.target.value):backToOverview();
+    for(const [id,key] of [['overview-width','width'],['overview-theme','theme'],['overview-locale','locale']])$(id).onchange=e=>{view[key]=key==='width'?Number(e.target.value):e.target.value;showOverview();};
+    $('sort').onchange=sortOverview;
+    $('back').onclick=backToOverview;
+    $('copy-all-widths').onclick=()=>copy(reviewPacketAll(detailRows));
+    $('compare').onclick=()=>{state.compare=!state.compare;$('compare').setAttribute('aria-pressed',String(state.compare));updateDetail();};
+    try{const response=await fetch('after/index.json');if(response.ok){const index=await response.json();if(index&&typeof index==='object'&&!Array.isArray(index))afterIndex=index;}}catch{}
+    document.querySelectorAll('.toolbar select').forEach(node=>node.disabled=false);
+    await showOverview();
+  }
+  start().catch(error=>{$('progress').textContent=error.message;$('notice').textContent='Serve all three files together to load the explorer.';});
+})();
+</script>

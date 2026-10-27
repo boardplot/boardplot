@@ -1,0 +1,57 @@
+# Boardplot
+
+> Boardplot draws consulting-grade charts as deterministic SVG and as React components. An AI agent drives it through six MCP tools, a JSON-in JSON-out CLI or React code.
+
+Every chart is one spec, `{ "type", "data", "options", "annotations", "theme" }`, of which `type` and `data` are required. The MCP tools are `boardplot_list`, `boardplot_describe`, `boardplot_render`, `boardplot_measure`, `boardplot_fixtures` and `boardplot_feedback`; the CLI verbs of the same names take the same JSON. Render and measure read a query result from a local JSON or CSV file through `rowsFile` and `columns`, so its numbers never pass through the model; `boardplot_describe` with `path` answers one field.
+
+## Start here
+
+- [Manual](docs/manual.md): the spec, the tools, the CLI, React, targets and sizing, errors and themes
+
+## Chart references
+
+- [column](docs/reference/column.md): Vertical bars, grouped or stacked
+- [bar](docs/reference/bar.md): Horizontal bars per item
+- [line](docs/reference/line.md): Lines and areas over time
+- [dimswitch](docs/reference/dimswitch.md): KPIs by one dimension and period, from sums
+- [table](docs/reference/table.md): Management table with totals
+- [waterfall](docs/reference/waterfall.md): Bridge; rows label,value[,type]
+- [kpi](docs/reference/kpi.md): Single-metric card
+- [combo](docs/reference/combo.md): Columns with line or area overlays
+- [variance](docs/reference/variance.md): Variance tier against PY, PL or FC
+- [bullet](docs/reference/bullet.md): KPI rows with bands and target
+- [bartable](docs/reference/bartable.md): Table rows with stacked bars, one panel per measure
+- [pvm](docs/reference/pvm.md): Price, volume and mix bridge
+- [pie](docs/reference/pie.md): Pie or doughnut of shares
+- [status](docs/reference/status.md): Entity by period state matrix
+- [heatmap](docs/reference/heatmap.md): Row by column matrix
+- [gantt](docs/reference/gantt.md): Timeline with spans and events
+- [scatter](docs/reference/scatter.md): XY/bubble; rows x,y[,size,label,group]
+- [funnel](docs/reference/funnel.md): Stage funnel with conversion rates
+- [pareto](docs/reference/pareto.md): Sorted columns with cumulative curve
+- [mekko](docs/reference/mekko.md): Variable-width stacked columns
+- [sparkline](docs/reference/sparkline.md): One series as a mini line
+- [treemap](docs/reference/treemap.md): Part of a whole as nested areas
+- [sankey](docs/reference/sankey.md): Flows from sources to targets in stages; rows source,target,value
+- [grid](docs/reference/grid.md): Facets and metric stacks on one category axis
+- [slope](docs/reference/slope.md): Two-point slope lines
+- [dot](docs/reference/dot.md): Dots, dumbbells or lollipops
+- [cohort](docs/reference/cohort.md): Retention by cohort and period
+- [choropleth](docs/reference/choropleth.md): Region map coloured by value
+- [butterfly](docs/reference/butterfly.md): Two mirrored bar panes
+- [likert](docs/reference/likert.md): Diverging bars for survey scales
+- [histogram](docs/reference/histogram.md): Equal-width bins of raw values
+- [box](docs/reference/box.md): Box plots of raw observations
+- [waffle](docs/reference/waffle.md): Share of a whole as a grid of cells
+- [pyramid](docs/reference/pyramid.md): Mirrored bands on one scale
+- [diagram](docs/reference/diagram.md): Node and edge diagrams
+- [tilemap](docs/reference/tilemap.md): Equal-size region tiles
+- [creative](docs/reference/creative.md): Ad-creative review card (early alpha)
+
+## Optional
+
+- [Shared options](docs/reference/options.md): options every type accepts, the value cell and annotation anchors
+- [Theme](docs/reference/theme.md): presets, every token and the theme errors
+- [React](docs/reference/react.md): BoardplotChart and the per-type components, container sizing, server preparation, export
+- [Fixtures](docs/reference/fixtures.md): every runnable example by type
+- [Fonts](docs/FONTS.md): width tables for a licensed brand font

@@ -1,0 +1,136 @@
+{
+ "name": "glass",
+ "scheme": "dark",
+ "color": {
+  "good": "#2FC96E",
+  "bad": "#F0655C",
+  "neutral": "#97A5C4",
+  "neutralLight": "#4C5975",
+  "highlight": "#AE69C3",
+  "total": "#5B6DEC",
+  "others": "#232C44",
+  "othersMark": "#30394F",
+  "ink": "#E8EDF8",
+  "inkInverse": "#0B1020",
+  "inkMuted": "#A6B1CB",
+  "axis": "#9FABC6",
+  "grid": "#202B44",
+  "leader": "#6B7896",
+  "background": "#0F1626",
+  "series": [
+   "#4E8BE6",
+   "#35CDB3",
+   "#C6A4FF",
+   "#B5F5C8",
+   "#E9558F",
+   "#387008",
+   "#F0A018",
+   "#885080"
+  ],
+  "seriesOverflow": "repeatLast",
+  "palettes": {
+   "glass": [
+    "#4E8BE6",
+    "#35CDB3",
+    "#C6A4FF",
+    "#B5F5C8",
+    "#E9558F"
+   ]
+  },
+  "status": {
+   "advanced": "#8E9BBA",
+   "open": "#4A5775",
+   "lost": "#F0655C",
+   "pending": "#6F7F8E",
+   "won": "#AE69C3",
+   "gantt-workstream": "#4E8BE6",
+   "gantt-detail": "#556280",
+   "gantt-special": "#AE69C3",
+   "gantt-cadence": "#4E8BE6"
+  },
+  "colorblind": {
+   "good": "#5097FF",
+   "bad": "#C79A32",
+   "badFill": "#C8641E"
+  },
+  "warn": "#EFC53F",
+  "warnFill": "#EFC53F"
+ },
+ "scenario": {
+  "AC": "solid",
+  "PY": "solidLight",
+  "PL": "outline",
+  "FC": "hatch45"
+ },
+ "pattern": {
+  "hatchAngle": 45,
+  "hatchColor": "segment",
+  "hatchGap": 6,
+  "hatchStrokeWidth": 0.75,
+  "outlineStrokeWidth": 1.5
+ },
+ "type": {
+  "family": "Inter, 'Helvetica Neue', Helvetica, Arial, sans-serif",
+  "title": {
+   "size": 18,
+   "weight": 700,
+   "lineHeight": 1.25
+  },
+  "subtitle": {
+   "size": 12,
+   "weight": 400,
+   "lineHeight": 1.3
+  },
+  "label": {
+   "size": 11.5,
+   "weight": 400,
+   "lineHeight": 1.2
+  },
+  "axis": {
+   "size": 10.5,
+   "weight": 400,
+   "lineHeight": 1.2
+  },
+  "footnote": {
+   "size": 9,
+   "weight": 400,
+   "lineHeight": 1.3
+  },
+  "micro": {
+   "size": 9,
+   "weight": 400,
+   "lineHeight": 1.2
+  },
+  "scale": {
+   "S": {
+    "title": 15,
+    "subtitle": 10.5,
+    "label": 10,
+    "axis": 9.5,
+    "footnote": 8.5,
+    "micro": 9
+   },
+   "L": {
+    "title": 22,
+    "subtitle": 14,
+    "label": 13,
+    "axis": 12,
+    "footnote": 10.5,
+    "micro": 9.5
+   }
+  }
+ },
+ "space": {
+  "tierGap": 5,
+  "facetGap": 28,
+  "labelPad": 5
+ },
+ "surface": {
+  "chipTint": 0.88,
+  "rowTint": 0.94,
+  "elapsedTint": 0.95,
+  "anchorTint": 0.97,
+  "chipRadius": 4,
+  "panelShadow": "inset 0 1px 0 rgba(255,255,255,0.18), inset 0 0 0 0.5px rgba(255,255,255,0.05), 0 8px 32px rgba(0,0,0,0.25)"
+ }
+}

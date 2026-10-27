@@ -1,0 +1,43 @@
+# dependencies and build output
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# reference/ holds local reference material and is never committed, except
+# reference/geo/. That folder keeps the committed EU-27 member table. The
+# source archives next to it are downloaded by scripts/build-geo-packs.mjs from
+# the URLs in NOTICE.md and checked against pinned SHA-256 digests.
+# (reference/* rather than reference/: git never descends into an ignored
+# folder, so the re-include below would not work.)
+reference/*
+!reference/geo/
+reference/geo/*.zip
+
+# OS and editor files
+.DS_Store
+*.log
+
+# test artifacts
+tests/__screenshots__/tmp/
+tests/artifacts/
+
+# The plugin's MCP declaration; overrides a global .mcp.json ignore.
+!release/plugin/boardplot-marketplace/plugins/boardplot/.mcp.json
+
+# Local build and review output (gallery, harness pages, package copies)
+artifacts/
+.boardplot-package-manifest
+# scripts/check-manual.mjs imports the manual's code blocks from here and removes it
+.check-manual-*/
+
+# Build output. CI builds the plugin, the ZIPs and the tarball from the
+# checked-out tree; the repository never carries them.
+*.tgz
+*.zip
+*.pptx
+*.map
+/THIRD_PARTY_NOTICES.md
+release/plugin/BUILD-MANIFEST.json
+release/plugin/boardplot-marketplace/plugins/boardplot/runtime/
+release/plugin/boardplot-marketplace/plugins/boardplot/THIRD_PARTY_NOTICES.md

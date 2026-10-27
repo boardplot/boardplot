@@ -1,0 +1,18 @@
+{
+  "provider": {
+    "theme": "standard",
+    "locale": "de",
+    "direction": "rtl",
+    "motion": "reduce",
+    "density": "compact",
+    "strings": { "others": "Weitere", "total": "Gesamt", "source": "Quelle", "legendCount": "{count} Reihen" }
+  },
+  "chart": {
+    "type": "column",
+    "data": {
+      "categories": [{ "id": "q1", "label": "Q1" }, { "id": "q2", "label": "Q2" }],
+      "series": [{ "id": "sales", "label": "Sales", "values": [14, 19] }]
+    },
+    "options": { "title": "Quarterly sales", "unit": "EUR m", "size": { "width": 800, "height": 450 } }
+  }
+}

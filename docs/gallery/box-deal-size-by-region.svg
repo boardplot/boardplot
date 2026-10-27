@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 436" width="720" height="436" direction="ltr" style="max-width:100%;height:auto;text-transform:none;letter-spacing:normal;word-spacing:normal;font-style:normal;font-variant:normal" preserveAspectRatio="xMidYMid meet" role="img" aria-label="DACH's top quartile alone spans wider than the entire Nordics distribution" aria-describedby="bp-desc-9e6db8358b" data-bp-sizing="{&quot;aspect&quot;:&quot;16:9&quot;,&quot;minWidth&quot;:280,&quot;minHeight&quot;:363,&quot;fit&quot;:&quot;fill&quot;,&quot;compactFloor&quot;:{&quot;width&quot;:280,&quot;height&quot;:180},&quot;measuredMinWidth&quot;:242,&quot;measuredMinHeight&quot;:363,&quot;naturalWidth&quot;:720,&quot;naturalHeight&quot;:436,&quot;comfortableWidth&quot;:350,&quot;comfortableHeight&quot;:454}" data-bp-mode="full" font-family="'Helvetica Neue', Helvetica, Arial, Roboto, sans-serif">
+<desc id="bp-desc-9e6db8358b">Box plot, type7+tukey1.5. DACH: n = 120, Q1 47.2, median 97.6, Q3 234.1, whiskers 40.0 to 488.5, 1 outliers. Nordics: n = 80, Q1 93.7, median 132.5, Q3 171.3, whiskers 55.0 to 210.0. Benelux: n = 64, Q1 77.3, median 106.5, Q3 135.8, whiskers 48.0 to 165.0. Iberia: n = 48, Q1 61.3, median 87.5, Q3 113.8, whiskers 35.0 to 140.0. UK &amp; Ireland: n = 300, Q1 64.7, median 97.5, Q3 186.5, whiskers 60.0 to 360.0. Whisker rule: tukey; values outside it are outliers: observations beyond Q1 − 1.5×IQR or Q3 + 1.5×IQR.</desc>
+<rect x="0" y="0" width="720" height="436" fill="#FFFFFF"/>
+<text data-id="frame:title:0" data-part="title" data-bp-role="title" x="24" y="37.60" text-anchor="start" font-size="20" font-weight="700" fill="#0D2A43"><tspan x="24" dy="0">DACH's top quartile alone spans wider</tspan><tspan x="24" dy="25">than the entire Nordics distribution</tspan></text>
+<text data-id="frame:subtitle:1" data-part="subtitle" data-bp-role="subtitle" x="24" y="86.32" text-anchor="start" font-size="14" font-weight="400" fill="#0D2A43"><tspan font-weight="700">Closed-won deal size</tspan><tspan> in $k · FY26 year to date</tspan></text>
+<text data-id="frame:source:2" data-part="source" data-bp-role="source" x="24" y="421.38" text-anchor="start" font-size="11" font-weight="400" fill="#4E6070"><tspan x="24" dy="0">Source: Illustrative CRM extract</tspan></text>
+<text data-id="axis:x:tick:0" data-part="tick" data-bp-role="axis" x="108" y="375.76" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="108" dy="0">0</tspan></text>
+<path data-id="axis:x:grid:1" data-part="gridline" d="M222.75 135.47L222.75 211.97M222.75 231.07L222.75 259.77M222.75 278.87L222.75 307.57M222.75 326.67L222.75 359.2" fill="none" stroke="#E9EEF3" stroke-width="0.75" stroke-linejoin="round"/>
+<text data-id="axis:x:tick:1" data-part="tick" data-bp-role="axis" x="212.50" y="375.76" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="212.50" dy="0">100</tspan></text>
+<line data-id="axis:x:grid:2" data-part="gridline" x1="334" y1="120.20" x2="334" y2="359.20" stroke="#E9EEF3" stroke-width="0.75"/>
+<text data-id="axis:x:tick:2" data-part="tick" data-bp-role="axis" x="323.75" y="375.76" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="323.75" dy="0">200</tspan></text>
+<line data-id="axis:x:grid:3" data-part="gridline" x1="445.25" y1="120.20" x2="445.25" y2="359.20" stroke="#E9EEF3" stroke-width="0.75"/>
+<text data-id="axis:x:tick:3" data-part="tick" data-bp-role="axis" x="435" y="375.76" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="435" dy="0">300</tspan></text>
+<line data-id="axis:x:grid:4" data-part="gridline" x1="556.50" y1="120.20" x2="556.50" y2="359.20" stroke="#E9EEF3" stroke-width="0.75"/>
+<text data-id="axis:x:tick:4" data-part="tick" data-bp-role="axis" x="546.25" y="375.76" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="546.25" dy="0">400</tspan></text>
+<line data-id="axis:x:grid:5" data-part="gridline" x1="667.75" y1="120.20" x2="667.75" y2="359.20" stroke="#E9EEF3" stroke-width="0.75"/>
+<text data-id="axis:x:tick:parked" data-part="tick" data-bp-role="axis" x="673.50" y="376.64" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="673.50" dy="0">780</tspan></text>
+<line data-id="axis:x:break:1" data-part="axisBreak" x1="667.52" y1="362.53" x2="672.52" y2="353.87" stroke="#0D2A43" stroke-width="1"/>
+<line data-id="axis:x:break:2" data-part="axisBreak" x1="670.98" y1="364.53" x2="675.98" y2="355.87" stroke="#0D2A43" stroke-width="1"/>
+<line data-id="box:whiskerLow:dach" data-part="boxWhisker" x1="156" y1="144.10" x2="164.04" y2="144.10" stroke="#5E6C7B" stroke-width="1"/>
+<line data-id="box:capLow:dach" data-part="boxWhiskerCap" x1="156" y1="138.38" x2="156" y2="149.82" stroke="#5E6C7B" stroke-width="1"/>
+<line data-id="box:whiskerHigh:dach" data-part="boxWhisker" x1="371.88" y1="144.10" x2="654.96" y2="144.10" stroke="#5E6C7B" stroke-width="1"/>
+<line data-id="box:capHigh:dach" data-part="boxWhiskerCap" x1="654.96" y1="138.38" x2="654.96" y2="149.82" stroke="#5E6C7B" stroke-width="1"/>
+<rect data-id="box:rect:dach" data-part="boxRect" x="164.04" y="133.70" width="207.84" height="20.80" fill="#1D4ED8" stroke="#1D4ED8" stroke-width="1.5"/>
+<line data-id="box:median:dach" data-part="boxMedian" x1="220.02" y1="133.70" x2="220.02" y2="154.50" stroke="#FFFFFF" stroke-width="1.5"/>
+<circle data-id="box:beyond:dach:0" data-part="boxBeyond" cx="684.75" cy="144.10" r="2.50" fill="#FFFFFF" stroke="#1D4ED8" stroke-width="1.5"/>
+<line data-id="box:whiskerLow:nordics" data-part="boxWhisker" x1="172.69" y1="191.90" x2="215.77" y2="191.90" stroke="#5E6C7B" stroke-width="1"/>
+<line data-id="box:capLow:nordics" data-part="boxWhiskerCap" x1="172.69" y1="186.18" x2="172.69" y2="197.62" stroke="#5E6C7B" stroke-width="1"/>
+<line data-id="box:whiskerHigh:nordics" data-part="boxWhisker" x1="302.04" y1="191.90" x2="345.13" y2="191.90" stroke="#5E6C7B" stroke-width="1"/>
+<line data-id="box:capHigh:nordics" data-part="boxWhiskerCap" x1="345.13" y1="186.18" x2="345.13" y2="197.62" stroke="#5E6C7B" stroke-width="1"/>
+<rect data-id="box:rect:nordics" data-part="boxRect" x="215.77" y="181.50" width="86.27" height="20.80" fill="#1D4ED8" stroke="#1D4ED8" stroke-width="1.5"/>
+<line data-id="box:median:nordics" data-part="boxMedian" x1="258.91" y1="181.50" x2="258.91" y2="202.30" stroke="#FFFFFF" stroke-width="1.5"/>
+<line data-id="box:whiskerLow:benelux" data-part="boxWhisker" x1="164.90" y1="239.70" x2="197.44" y2="239.70" stroke="#5E6C7B" stroke-width="1"/>
+<line data-id="box:capLow:benelux" data-part="boxWhiskerCap" x1="164.90" y1="233.98" x2="164.90" y2="245.42" stroke="#5E6C7B" stroke-width="1"/>
+<line data-id="box:whiskerHigh:benelux" data-part="boxWhisker" x1="262.52" y1="239.70" x2="295.06" y2="239.70" stroke="#5E6C7B" stroke-width="1"/>
+<line data-id="box:capHigh:benelux" data-part="boxWhiskerCap" x1="295.06" y1="233.98" x2="295.06" y2="245.42" stroke="#5E6C7B" stroke-width="1"/>
+<rect data-id="box:rect:benelux" data-part="boxRect" x="197.44" y="229.30" width="65.08" height="20.80" fill="#CFD9E2" stroke="#5E6C7B" stroke-width="1.5"/>
+<line data-id="box:median:benelux" data-part="boxMedian" x1="229.98" y1="229.30" x2="229.98" y2="250.10" stroke="#0D2A43" stroke-width="1.5"/>
+<line data-id="box:whiskerLow:iberia" data-part="boxWhisker" x1="150.44" y1="287.50" x2="179.64" y2="287.50" stroke="#5E6C7B" stroke-width="1"/>
+<line data-id="box:capLow:iberia" data-part="boxWhiskerCap" x1="150.44" y1="281.78" x2="150.44" y2="293.22" stroke="#5E6C7B" stroke-width="1"/>
+<line data-id="box:whiskerHigh:iberia" data-part="boxWhisker" x1="238.05" y1="287.50" x2="267.25" y2="287.50" stroke="#5E6C7B" stroke-width="1"/>
+<line data-id="box:capHigh:iberia" data-part="boxWhiskerCap" x1="267.25" y1="281.78" x2="267.25" y2="293.22" stroke="#5E6C7B" stroke-width="1"/>
+<rect data-id="box:rect:iberia" data-part="boxRect" x="179.64" y="277.10" width="58.41" height="20.80" fill="#CFD9E2" stroke="#5E6C7B" stroke-width="1.5"/>
+<line data-id="box:median:iberia" data-part="boxMedian" x1="208.84" y1="277.10" x2="208.84" y2="297.90" stroke="#0D2A43" stroke-width="1.5"/>
+<line data-id="box:whiskerLow:uki" data-part="boxWhisker" x1="178.25" y1="335.30" x2="183.42" y2="335.30" stroke="#5E6C7B" stroke-width="1"/>
+<line data-id="box:capLow:uki" data-part="boxWhiskerCap" x1="178.25" y1="329.58" x2="178.25" y2="341.02" stroke="#5E6C7B" stroke-width="1"/>
+<line data-id="box:whiskerHigh:uki" data-part="boxWhisker" x1="319.01" y1="335.30" x2="512" y2="335.30" stroke="#5E6C7B" stroke-width="1"/>
+<line data-id="box:capHigh:uki" data-part="boxWhiskerCap" x1="512" y1="329.58" x2="512" y2="341.02" stroke="#5E6C7B" stroke-width="1"/>
+<rect data-id="box:rect:uki" data-part="boxRect" x="183.42" y="324.90" width="135.59" height="20.80" fill="#CFD9E2" stroke="#5E6C7B" stroke-width="1.5"/>
+<line data-id="box:median:uki" data-part="boxMedian" x1="219.97" y1="324.90" x2="219.97" y2="345.70" stroke="#0D2A43" stroke-width="1.5"/>
+<text data-id="label:axis:x:title" data-part="axisTitle" data-bp-role="caption" x="626" y="394.75" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="626" dy="0">Deal size, $k</tspan></text>
+<text data-id="label:boxN:benelux" data-part="annotation" data-bp-role="note" x="24" y="251.80" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="24" dy="0">n = 64</tspan></text>
+<text data-id="label:boxN:dach" data-part="annotation" data-bp-role="note" x="24" y="156.20" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="24" dy="0">n = 120</tspan></text>
+<text data-id="label:boxN:iberia" data-part="annotation" data-bp-role="note" x="24" y="299.60" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="24" dy="0">n = 48</tspan></text>
+<text data-id="label:boxN:nordics" data-part="annotation" data-bp-role="note" x="24" y="204.00" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="24" dy="0">n = 80</tspan></text>
+<text data-id="label:boxN:uki" data-part="annotation" data-bp-role="note" x="24" y="347.40" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="24" dy="0">n = 300</tspan></text>
+<text data-id="label:category:benelux" data-part="category" data-bp-role="category" x="24" y="236.56" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="24" dy="0">Benelux</tspan></text>
+<text data-id="label:category:dach" data-part="category" data-bp-role="category" x="24" y="140.96" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="24" dy="0">DACH</tspan></text>
+<text data-id="label:category:iberia" data-part="category" data-bp-role="category" x="24" y="284.36" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="24" dy="0">Iberia</tspan></text>
+<text data-id="label:category:nordics" data-part="category" data-bp-role="category" x="24" y="188.76" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="24" dy="0">Nordics</tspan></text>
+<text data-id="label:category:uki" data-part="category" data-bp-role="category" x="24" y="332.16" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="24" dy="0">UK &amp; Ireland</tspan></text>
+<text data-id="label:median:benelux" data-part="point" data-bp-role="value" x="213.23" y="224.96" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="213.23" dy="0">106.5</tspan></text>
+<text data-id="label:median:dach" data-part="point" data-bp-role="caption" x="183.52" y="129.36" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="183.52" dy="0">Median 97.6</tspan></text>
+<text data-id="label:median:iberia" data-part="point" data-bp-role="value" x="195.84" y="272.76" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="195.84" dy="0">87.5</tspan></text>
+<text data-id="label:median:nordics" data-part="point" data-bp-role="value" x="242.16" y="177.16" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="242.16" dy="0">132.5</tspan></text>
+<text data-id="label:median:uki" data-part="point" data-bp-role="value" x="206.97" y="320.56" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="206.97" dy="0">97.5</tspan></text>
+</svg>

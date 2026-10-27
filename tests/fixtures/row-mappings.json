@@ -1,0 +1,37 @@
+{
+  "waterfall": {
+    "spec": { "type": "waterfall", "options": { "title": "Changes from opening to closing", "format": "1.0" } },
+    "columns": { "label": "item", "value": "amount", "type": "kind" },
+    "rows": [
+      { "item": "Opening", "amount": 100, "kind": "total", "unused": "a" },
+      { "item": "Change", "amount": 20, "kind": "delta" },
+      { "item": "Subtotal", "amount": 120, "kind": "subtotal" },
+      { "item": "Change", "amount": -5, "kind": "delta" },
+      { "item": "Closing", "amount": 115, "kind": "total" }
+    ],
+    "data": { "items": [
+      { "id": "row-1", "label": "Opening", "value": 100, "type": "total" },
+      { "id": "row-2", "label": "Change", "value": 20, "type": "delta" },
+      { "id": "row-3", "label": "Subtotal", "value": 120, "type": "subtotal" },
+      { "id": "row-4", "label": "Change", "value": -5, "type": "delta" },
+      { "id": "row-5", "label": "Closing", "value": 115, "type": "total" }
+    ] }
+  },
+  "scatter": {
+    "spec": { "type": "scatter", "data": { "groups": [{ "id": "East", "label": "East team", "colorRole": "highlight" }] }, "options": { "title": "Output against effort", "axisTitles": { "x": "Effort", "y": "Output" }, "sizeLegend": { "label": "Volume" } } },
+    "columns": { "x": "effort", "y": "output", "size": "volume", "label": "item", "group": "team" },
+    "rows": [
+      { "effort": 2.5, "output": 8, "volume": 12, "item": "Example", "team": "East", "unused": "a" },
+      { "effort": 5, "output": 15, "volume": 20, "item": "Example", "team": "West" },
+      { "effort": 4, "output": 10, "volume": 8, "item": "Third", "team": "East" }
+    ],
+    "data": {
+      "points": [
+        { "id": "row-1", "x": 2.5, "y": 8, "size": 12, "label": "Example", "group": "East" },
+        { "id": "row-2", "x": 5, "y": 15, "size": 20, "label": "Example", "group": "West" },
+        { "id": "row-3", "x": 4, "y": 10, "size": 8, "label": "Third", "group": "East" }
+      ],
+      "groups": [{ "id": "East", "label": "East team", "colorRole": "highlight" }, { "id": "West" }]
+    }
+  }
+}

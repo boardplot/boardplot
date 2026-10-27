@@ -1,0 +1,439 @@
+{
+  "name": "boardplot",
+  "version": "0.52.5",
+  "description": "Consulting-grade charts for AI agents and React: one JSON spec gives a deterministic SVG, PNG or React chart.",
+  "mcpName": "io.github.boardplot/boardplot",
+  "type": "module",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/boardplot/boardplot#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/boardplot/boardplot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/boardplot/boardplot/issues"
+  },
+  "keywords": [
+    "chart",
+    "charts",
+    "svg",
+    "react",
+    "typescript",
+    "data-visualization",
+    "business-charts",
+    "waterfall",
+    "mekko",
+    "table",
+    "mcp",
+    "mcp-server",
+    "ai-agents",
+    "agent-skills",
+    "claude-code",
+    "codex"
+  ],
+  "sideEffects": [
+    "**/core/charts/index.ts",
+    "**/core/charts/*/fixtures.ts",
+    "**/geo/packs/dach.ts",
+    "**/geo/packs/de-states.ts",
+    "**/geo/packs/eu27.ts",
+    "**/geo/packs/europe.ts",
+    "**/geo/packs/us-states.ts",
+    "**/geo/packs/world.ts",
+    "dist/geo/index.js",
+    "dist/geo/dach.js",
+    "dist/geo/de-states.js",
+    "dist/geo/eu27.js",
+    "dist/geo/europe.js",
+    "dist/geo/us-states.js",
+    "dist/geo/world.js",
+    "dist/index.js",
+    "dist/validate.js",
+    "dist/theme.js",
+    "dist/react/index.js",
+    "dist/react/export.js",
+    "dist/react/prepare.js"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./validate": {
+      "types": "./dist/validate.d.ts",
+      "import": "./dist/validate.js",
+      "default": "./dist/validate.js"
+    },
+    "./rows": {
+      "types": "./dist/rows.d.ts",
+      "import": "./dist/rows.js",
+      "default": "./dist/rows.js"
+    },
+    "./theme": {
+      "types": "./dist/theme.d.ts",
+      "import": "./dist/theme.js",
+      "default": "./dist/theme.js"
+    },
+    "./fonts": {
+      "types": "./dist/fonts.d.ts",
+      "import": "./dist/fonts.js",
+      "default": "./dist/fonts.js"
+    },
+    "./fixtures": {
+      "types": "./dist/fixtures.d.ts",
+      "import": "./dist/fixtures.js",
+      "default": "./dist/fixtures.js"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "import": "./dist/react/index.js",
+      "default": "./dist/react/index.js"
+    },
+    "./react/spec": {
+      "types": "./dist/react/spec.d.ts",
+      "import": "./dist/react/spec.js",
+      "default": "./dist/react/spec.js"
+    },
+    "./react/export": {
+      "types": "./dist/react/export.d.ts",
+      "import": "./dist/react/export.js",
+      "default": "./dist/react/export.js"
+    },
+    "./react/story": {
+      "types": "./dist/react/story.d.ts",
+      "import": "./dist/react/story.js",
+      "default": "./dist/react/story.js"
+    },
+    "./react/theme": {
+      "types": "./dist/react/theme.d.ts",
+      "import": "./dist/react/theme.js",
+      "default": "./dist/react/theme.js"
+    },
+    "./react/prepare": {
+      "types": "./dist/react/prepare.d.ts",
+      "import": "./dist/react/prepare.js",
+      "default": "./dist/react/prepare.js"
+    },
+    "./react/bar": {
+      "types": "./dist/react/bar.d.ts",
+      "import": "./dist/react/bar.js",
+      "default": "./dist/react/bar.js"
+    },
+    "./react/bartable": {
+      "types": "./dist/react/bartable.d.ts",
+      "import": "./dist/react/bartable.js",
+      "default": "./dist/react/bartable.js"
+    },
+    "./react/box": {
+      "types": "./dist/react/box.d.ts",
+      "import": "./dist/react/box.js",
+      "default": "./dist/react/box.js"
+    },
+    "./react/bullet": {
+      "types": "./dist/react/bullet.d.ts",
+      "import": "./dist/react/bullet.js",
+      "default": "./dist/react/bullet.js"
+    },
+    "./react/butterfly": {
+      "types": "./dist/react/butterfly.d.ts",
+      "import": "./dist/react/butterfly.js",
+      "default": "./dist/react/butterfly.js"
+    },
+    "./react/choropleth": {
+      "types": "./dist/react/choropleth.d.ts",
+      "import": "./dist/react/choropleth.js",
+      "default": "./dist/react/choropleth.js"
+    },
+    "./react/cohort": {
+      "types": "./dist/react/cohort.d.ts",
+      "import": "./dist/react/cohort.js",
+      "default": "./dist/react/cohort.js"
+    },
+    "./react/column": {
+      "types": "./dist/react/column.d.ts",
+      "import": "./dist/react/column.js",
+      "default": "./dist/react/column.js"
+    },
+    "./react/combo": {
+      "types": "./dist/react/combo.d.ts",
+      "import": "./dist/react/combo.js",
+      "default": "./dist/react/combo.js"
+    },
+    "./react/diagram": {
+      "types": "./dist/react/diagram.d.ts",
+      "import": "./dist/react/diagram.js",
+      "default": "./dist/react/diagram.js"
+    },
+    "./react/dot": {
+      "types": "./dist/react/dot.d.ts",
+      "import": "./dist/react/dot.js",
+      "default": "./dist/react/dot.js"
+    },
+    "./react/funnel": {
+      "types": "./dist/react/funnel.d.ts",
+      "import": "./dist/react/funnel.js",
+      "default": "./dist/react/funnel.js"
+    },
+    "./react/gantt": {
+      "types": "./dist/react/gantt.d.ts",
+      "import": "./dist/react/gantt.js",
+      "default": "./dist/react/gantt.js"
+    },
+    "./react/grid": {
+      "types": "./dist/react/grid.d.ts",
+      "import": "./dist/react/grid.js",
+      "default": "./dist/react/grid.js"
+    },
+    "./react/heatmap": {
+      "types": "./dist/react/heatmap.d.ts",
+      "import": "./dist/react/heatmap.js",
+      "default": "./dist/react/heatmap.js"
+    },
+    "./react/histogram": {
+      "types": "./dist/react/histogram.d.ts",
+      "import": "./dist/react/histogram.js",
+      "default": "./dist/react/histogram.js"
+    },
+    "./react/creative": {
+      "types": "./dist/react/creative.d.ts",
+      "import": "./dist/react/creative.js",
+      "default": "./dist/react/creative.js"
+    },
+    "./react/kpi": {
+      "types": "./dist/react/kpi.d.ts",
+      "import": "./dist/react/kpi.js",
+      "default": "./dist/react/kpi.js"
+    },
+    "./react/likert": {
+      "types": "./dist/react/likert.d.ts",
+      "import": "./dist/react/likert.js",
+      "default": "./dist/react/likert.js"
+    },
+    "./react/line": {
+      "types": "./dist/react/line.d.ts",
+      "import": "./dist/react/line.js",
+      "default": "./dist/react/line.js"
+    },
+    "./react/mekko": {
+      "types": "./dist/react/mekko.d.ts",
+      "import": "./dist/react/mekko.js",
+      "default": "./dist/react/mekko.js"
+    },
+    "./react/pareto": {
+      "types": "./dist/react/pareto.d.ts",
+      "import": "./dist/react/pareto.js",
+      "default": "./dist/react/pareto.js"
+    },
+    "./react/pie": {
+      "types": "./dist/react/pie.d.ts",
+      "import": "./dist/react/pie.js",
+      "default": "./dist/react/pie.js"
+    },
+    "./react/pvm": {
+      "types": "./dist/react/pvm.d.ts",
+      "import": "./dist/react/pvm.js",
+      "default": "./dist/react/pvm.js"
+    },
+    "./react/pyramid": {
+      "types": "./dist/react/pyramid.d.ts",
+      "import": "./dist/react/pyramid.js",
+      "default": "./dist/react/pyramid.js"
+    },
+    "./react/sankey": {
+      "types": "./dist/react/sankey.d.ts",
+      "import": "./dist/react/sankey.js",
+      "default": "./dist/react/sankey.js"
+    },
+    "./react/scatter": {
+      "types": "./dist/react/scatter.d.ts",
+      "import": "./dist/react/scatter.js",
+      "default": "./dist/react/scatter.js"
+    },
+    "./react/slope": {
+      "types": "./dist/react/slope.d.ts",
+      "import": "./dist/react/slope.js",
+      "default": "./dist/react/slope.js"
+    },
+    "./react/sparkline": {
+      "types": "./dist/react/sparkline.d.ts",
+      "import": "./dist/react/sparkline.js",
+      "default": "./dist/react/sparkline.js"
+    },
+    "./react/status": {
+      "types": "./dist/react/status.d.ts",
+      "import": "./dist/react/status.js",
+      "default": "./dist/react/status.js"
+    },
+    "./react/table": {
+      "types": "./dist/react/table.d.ts",
+      "import": "./dist/react/table.js",
+      "default": "./dist/react/table.js"
+    },
+    "./react/tilemap": {
+      "types": "./dist/react/tilemap.d.ts",
+      "import": "./dist/react/tilemap.js",
+      "default": "./dist/react/tilemap.js"
+    },
+    "./react/treemap": {
+      "types": "./dist/react/treemap.d.ts",
+      "import": "./dist/react/treemap.js",
+      "default": "./dist/react/treemap.js"
+    },
+    "./react/variance": {
+      "types": "./dist/react/variance.d.ts",
+      "import": "./dist/react/variance.js",
+      "default": "./dist/react/variance.js"
+    },
+    "./react/waffle": {
+      "types": "./dist/react/waffle.d.ts",
+      "import": "./dist/react/waffle.js",
+      "default": "./dist/react/waffle.js"
+    },
+    "./react/waterfall": {
+      "types": "./dist/react/waterfall.d.ts",
+      "import": "./dist/react/waterfall.js",
+      "default": "./dist/react/waterfall.js"
+    },
+    "./geo": {
+      "types": "./dist/geo/index.d.ts",
+      "import": "./dist/geo/index.js",
+      "default": "./dist/geo/index.js"
+    },
+    "./geo/dach": {
+      "types": "./dist/geo/dach.d.ts",
+      "import": "./dist/geo/dach.js",
+      "default": "./dist/geo/dach.js"
+    },
+    "./geo/de-states": {
+      "types": "./dist/geo/de-states.d.ts",
+      "import": "./dist/geo/de-states.js",
+      "default": "./dist/geo/de-states.js"
+    },
+    "./geo/eu27": {
+      "types": "./dist/geo/eu27.d.ts",
+      "import": "./dist/geo/eu27.js",
+      "default": "./dist/geo/eu27.js"
+    },
+    "./geo/europe": {
+      "types": "./dist/geo/europe.d.ts",
+      "import": "./dist/geo/europe.js",
+      "default": "./dist/geo/europe.js"
+    },
+    "./geo/us-states": {
+      "types": "./dist/geo/us-states.d.ts",
+      "import": "./dist/geo/us-states.js",
+      "default": "./dist/geo/us-states.js"
+    },
+    "./geo/world": {
+      "types": "./dist/geo/world.d.ts",
+      "import": "./dist/geo/world.js",
+      "default": "./dist/geo/world.js"
+    },
+    "./react/dimswitch": {
+      "types": "./dist/react/dimswitch.d.ts",
+      "import": "./dist/react/dimswitch.js",
+      "default": "./dist/react/dimswitch.js"
+    }
+  },
+  "bin": {
+    "boardplot": "./dist/cli/index.js",
+    "boardplot-mcp": "./dist/mcp/server.js"
+  },
+  "files": [
+    "dist",
+    "llms.txt",
+    "docs/manual.md",
+    "docs/reference",
+    "docs/FONTS.md",
+    "docs/TELEMETRY.md",
+    "NOTICE.md",
+    "THIRD_PARTY_NOTICES.md",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:invariants": "vitest run tests/invariants.test.ts tests/golden-svg.test.ts",
+    "typecheck": "node node_modules/typescript-7/bin/tsc --noEmit --incremental --tsBuildInfoFile node_modules/.cache/boardplot-typecheck.tsbuildinfo",
+    "docs:build": "tsx scripts/generate-reference.mjs",
+    "generate:font-metrics": "node scripts/build-font-metrics.mjs",
+    "check:font-metrics": "node scripts/build-font-metrics.mjs --check",
+    "build": "tsup && npm run build:types",
+    "build:types": "node node_modules/typescript-7/bin/tsc --emitDeclarationOnly --declarationMap false -p tsconfig.build.json && node scripts/generate-chart-entries.mjs --declarations",
+    "build:debug": "tsup --sourcemap && npm run build:types",
+    "prepack": "npm run build",
+    "smoke:package": "node scripts/package-smoke.mjs",
+    "check:scorecard": "tsx scripts/layout-scorecard.mjs",
+    "smoke:next": "node scripts/next-smoke.mjs",
+    "generate:chart-entries": "node scripts/generate-chart-entries.mjs",
+    "check:chart-entries": "node scripts/generate-chart-entries.mjs --check",
+    "generate:choropleth-fixtures": "node scripts/generate-choropleth-fixtures.mjs",
+    "check:choropleth-fixtures": "node scripts/generate-choropleth-fixtures.mjs --check",
+    "check:plugin-version": "node scripts/plugin-version.mjs --check",
+    "version": "node scripts/plugin-version.mjs --stage",
+    "eval:tokens": "tsx evals/tokens.ts",
+    "gallery": "node scripts/gallery.mjs",
+    "check:ci": "node scripts/check-manual.mjs && node scripts/check-doc-anchors.mjs && npm run check:font-metrics && npm run check:chart-entries && npm run check:choropleth-fixtures && npm run check:plugin-version && npm run eval:tokens",
+    "explorer": "tsx scripts/explorer/build.mjs"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@fontsource/geist": "^5.3.0",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "axe-core": "4.14.0",
+    "d3-geo": "3.1.1",
+    "esbuild": "0.28.2",
+    "fontkit": "^2.0.4",
+    "jsdom": "^30.1.3",
+    "polylabel": "2.1.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "topojson-client": "3.1.0",
+    "topojson-server": "3.0.1",
+    "topojson-simplify": "3.0.3",
+    "tsup": "^9.0.0",
+    "tsx": "4.23.15",
+    "typescript": "^5.7.2",
+    "typescript-7": "npm:typescript@7.0.2",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.5"
+  },
+  "overrides": {
+    "bundle-require": {
+      "esbuild": "0.28.1"
+    },
+    "tsup": {
+      "esbuild": "0.28.1"
+    }
+  },
+  "engines": {
+    "node": ">=22.12"
+  },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "^22.18.0 || ^24.11.0 || >=26.0.0",
+      "onFail": "error"
+    }
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "optionalDependencies": {
+    "@resvg/resvg-js": "^2.6.2"
+  }
+}

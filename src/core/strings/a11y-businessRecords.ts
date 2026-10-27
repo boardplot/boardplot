@@ -1,0 +1,56 @@
+import { chartStrings } from '../strings';
+
+const EN = {
+  // reader-facing wording linked only by its consumers.
+  "band": "Band",
+  "start": "Start",
+  "end": "End",
+  "group": "Group",
+  "attainment": "Attainment",
+  "referenceNonpositive": "Reference is nonpositive",
+  "latest": "latest",
+  "position": "Position",
+  "stageTotal": "Stage total",
+  "stageConversion": "Stage conversion",
+  "noPrecedingStage": "No preceding stage",
+  "cumulativeShare": "Cumulative share",
+  "cumulativeAmount": "Cumulative amount",
+  "cells": "Cells",
+  "responseShare": "Response share",
+  "sampleSize": "Sample size",
+  "sampleSizeMissing": "Sample size not supplied",
+  "inflow": "Inflow",
+  "outflow": "Outflow",
+  "stage": "Stage",
+  "includes": "Includes",
+  "shareOfSource": "Share of source outflow",
+  "shareOfTarget": "Share of target inflow",
+} as const;
+const DE: { [K in keyof typeof EN]: string } = {
+  // reader-facing wording linked only by its consumers.
+  "band": "Band",
+  "start": "Start",
+  "end": "Ende",
+  "group": "Gruppe",
+  "attainment": "Zielerreichung",
+  "referenceNonpositive": "Referenz ist nicht positiv",
+  "latest": "Zuletzt",
+  "position": "Position",
+  "stageTotal": "Summe der Stufe",
+  "stageConversion": "Umwandlung der Stufe",
+  "noPrecedingStage": "Keine vorherige Stufe",
+  "cumulativeShare": "Kumulierter Anteil",
+  "cumulativeAmount": "Kumulierter Betrag",
+  "cells": "Zellen",
+  "responseShare": "Antwortanteil",
+  "sampleSize": "Stichprobengröße",
+  "sampleSizeMissing": "Stichprobengröße nicht angegeben",
+  "inflow": "Zufluss",
+  "outflow": "Abfluss",
+  "stage": "Stufe",
+  "includes": "Umfasst",
+  "shareOfSource": "Anteil am Abfluss der Quelle",
+  "shareOfTarget": "Anteil am Zufluss des Ziels",
+};
+
+export const { chartString } = chartStrings(EN, DE);

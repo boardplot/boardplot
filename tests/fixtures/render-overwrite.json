@@ -1,0 +1,8 @@
+{
+  "spec": {
+    "name": "overwrite-example",
+    "type": "column",
+    "data": { "categories": ["a", "b"], "series": [{ "id": "s", "values": [1, 2] }] }
+  },
+  "overwrite": true
+}

@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "locale": "en",
+  "charts": [
+    {
+      "name": "regions",
+      "type": "column",
+      "data": {
+        "categories": [{ "id": "north", "label": "North" }, { "id": "south", "label": "South" }],
+        "series": [{ "id": "volume", "label": "Volume", "values": [120, 95] }]
+      },
+      "options": { "title": "North leads volume", "size": { "width": 800, "height": 450 } }
+    },
+    {
+      "name": "detail",
+      "type": "table",
+      "data": {
+        "columns": [{ "id": "name", "kind": "rowLabel" }, { "id": "value", "kind": "value", "label": "Volume" }],
+        "rows": [
+          { "id": "north", "label": "North", "cells": { "value": 120 }, "children": [
+            { "id": "north-retail", "label": "Retail", "cells": { "value": 80 } },
+            { "id": "north-online", "label": "Online", "cells": { "value": 40 } }
+          ] },
+          { "id": "south", "label": "South", "cells": { "value": 95 } }
+        ]
+      },
+      "options": { "title": "Regional volume", "expansion": { "depth": 0 } }
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+name: Feature request
+description: A chart type, an option or a notation that Boardplot does not draw yet.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: use
+    attributes:
+      label: What you want to show, and to whom
+      description: The decision the chart supports, for example "monthly EBIT against plan for the board".
+    validations:
+      required: true
+  - type: textarea
+    id: example
+    attributes:
+      label: An example
+      description: A sketch, a screenshot of a chart you like, or the spec you tried.
+  - type: textarea
+    id: workaround
+    attributes:
+      label: What you do today

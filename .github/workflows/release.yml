@@ -1,0 +1,239 @@
+name: Release
+
+# A tag that starts with v starts this workflow. It builds and tests the tagged commit,
+# waits for a maintainer to approve the environment "npm-publish", publishes the tested
+# package to npm and attaches the plugin zips to the GitHub release.
+#
+# npm trusted publishing (OIDC): no npm token is stored anywhere. Set up once on npmjs.com,
+# package Settings, Trusted publishing, GitHub Actions:
+#   Organization or user: boardplot
+#   Repository:           boardplot
+#   Workflow filename:    release.yml
+#   Environment name:     npm-publish
+#   Allowed actions:      npm publish (tick it; "npm stage publish" is always allowed)
+# Docs: https://docs.npmjs.com/trusted-publishers
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+# One release at a time. A running release is never cancelled.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Build and package
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history, to prove that the tag points at a commit on main.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check the tag against package.json and main
+        shell: bash
+        run: |
+          version="$(node -p 'require("./package.json").version')"
+          test "$GITHUB_REF_NAME" = "v$version" || {
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $version"
+            exit 1
+          }
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+            echo "::error::Tag $GITHUB_REF_NAME is not on main"
+            exit 1
+          }
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Node 22 on x64 checks the golden SVG bytes. The test jobs below skip this file on Node 22.
+      - name: Check golden SVG bytes
+        run: npx --no-install vitest run tests/golden-svg.test.ts --maxWorkers=1
+
+      # Builds the package, installs it in a scratch project, tests it there and builds the
+      # plugin zips with scripts/build-plugin.mjs. The publish job ships these exact files.
+      - name: Build and smoke-test the installed package
+        run: npm run smoke:package -- --artifacts "$RUNNER_TEMP/boardplot-build"
+
+      - name: Collect the release files
+        shell: bash
+        run: |
+          mkdir "$RUNNER_TEMP/boardplot-release"
+          cp "$RUNNER_TEMP"/boardplot-build/boardplot-*.tgz "$RUNNER_TEMP/boardplot-release/"
+          cp "$RUNNER_TEMP/boardplot-build/boardplot-cowork.zip" "$RUNNER_TEMP/boardplot-release/"
+          cp "$RUNNER_TEMP/boardplot-build/boardplot-claude-code.zip" "$RUNNER_TEMP/boardplot-release/"
+          ls -l "$RUNNER_TEMP/boardplot-release"
+
+      - name: Keep the release files for the next jobs
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: boardplot-release
+          path: ${{ runner.temp }}/boardplot-release/
+          if-no-files-found: error
+          retention-days: 1
+
+  tests:
+    name: Product tests (Node ${{ matrix.node }}, ${{ matrix.shard }}/3)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    strategy:
+      fail-fast: true
+      matrix:
+        node: [22, 24]
+        shard: [1, 2, 3]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run the product test suite
+        shell: bash
+        run: |
+          args=()
+          if [[ "$TEST_NODE" == 22 ]]; then
+            args+=(--exclude tests/golden-svg.test.ts)
+          fi
+          npm test -- --maxWorkers=2 --shard="$TEST_SHARD/3" "${args[@]}"
+        env:
+          CI: 1
+          TEST_NODE: ${{ matrix.node }}
+          TEST_SHARD: ${{ matrix.shard }}
+
+  publish:
+    name: Publish to npm
+    needs: [package, tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # A maintainer approves this environment by hand. Only tags that match v* may deploy to it.
+    environment:
+      name: npm-publish
+      url: https://www.npmjs.com/package/boardplot
+    permissions:
+      contents: read
+      # Lets the job ask GitHub for an OIDC token. npm trades it for a one-time publish
+      # token and signs the provenance statement. There is no npm token secret.
+      id-token: write
+    steps:
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      # Trusted publishing needs npm 11.5.1 or newer and Node 22.14 or newer.
+      - name: Check the npm version
+        run: |
+          npm --version
+          node -e 'const [a,b,c]=process.argv[1].split(".").map(Number); if (a<11||(a===11&&(b<5||(b===5&&c<1)))) { console.error("npm "+process.argv[1]+" is older than 11.5.1"); process.exit(1) }' "$(npm --version)"
+
+      - name: Get the tested release files
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: boardplot-release
+          path: ${{ runner.temp }}/boardplot-release
+
+      # The files were built from GITHUB_SHA. Stop if the tag now points at another commit
+      # (for example after a forced tag move while the job waited for approval).
+      - name: Check that the tag still points at the tested commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          out="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$GITHUB_REF_NAME" -q '[.object.type, .object.sha] | @tsv')"
+          read -r type sha <<< "$out"
+          # An annotated tag points at a tag object. Follow it to the commit.
+          while [ "$type" = tag ]; do
+            out="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$sha" -q '[.object.type, .object.sha] | @tsv')"
+            read -r type sha <<< "$out"
+          done
+          if [ "$type" != commit ] || [ "$sha" != "$GITHUB_SHA" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME now points at $type $sha, not at the tested commit $GITHUB_SHA"
+            exit 1
+          fi
+
+      - name: Publish the tested package with provenance
+        shell: bash
+        run: |
+          tarball="$(ls "$RUNNER_TEMP"/boardplot-release/boardplot-*.tgz)"
+          # A version with a hyphen (0.2.0-rc.1) is a prerelease. It must not become "latest".
+          tag_args=()
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            tag_args+=(--tag next)
+          fi
+          npm publish "$tarball" --provenance --access public "${tag_args[@]}"
+
+  github-release:
+    name: GitHub release
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Get the tested release files
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: boardplot-release
+          path: ${{ runner.temp }}/boardplot-release
+
+      # --verify-tag below only proves that the tag exists. Prove that it still points at the
+      # commit that was tested and published.
+      - name: Check that the tag still points at the published commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          out="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$GITHUB_REF_NAME" -q '[.object.type, .object.sha] | @tsv')"
+          read -r type sha <<< "$out"
+          while [ "$type" = tag ]; do
+            out="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$sha" -q '[.object.type, .object.sha] | @tsv')"
+            read -r type sha <<< "$out"
+          done
+          if [ "$type" != commit ] || [ "$sha" != "$GITHUB_SHA" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME now points at $type $sha, not at the published commit $GITHUB_SHA"
+            exit 1
+          fi
+
+      - name: Create the release and attach the plugin zips
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          flags=()
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            flags+=(--prerelease)
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            "$RUNNER_TEMP/boardplot-release/boardplot-cowork.zip" \
+            "$RUNNER_TEMP/boardplot-release/boardplot-claude-code.zip" \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "Boardplot $GITHUB_REF_NAME" \
+            --generate-notes \
+            "${flags[@]}"

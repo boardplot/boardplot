@@ -1,0 +1,397 @@
+import { contrastRatio, tint } from './color';
+import { NormalizeError } from './normalize/shared';
+import { mixedPaint, paintColor, seriesPaint } from './theme';
+import { MARK_CONTRAST_FLOOR, oklabLightness, PALETTE_NORMAL_FLOOR, palettePerceptualDistance } from './themeRules';
+import type { Paint, ThemePaintSource, LintWarning } from './types/scene';
+import type { Theme } from './types/theme';
+
+/** The share of the ramp the lowest value of a min..max ramp keeps, so it never reads as empty. */
+const SEQUENTIAL_FLOOR = 0.15;
+
+/**
+ * Where an unsigned value sits on a sequential ramp, 0 to 1. Data that
+ * reaches zero keeps the zero anchor. Data that starts above zero spans its
+ * own min..max (88 to 99 would otherwise paint one colour), and a flat set
+ * sits in the middle rather than at full strength.
+ */
+export function sequentialShare(value: number, min: number, max: number): number {
+  if (max <= min) return max > 0 ? 0.5 : 0;
+  if (min <= 0) return max > 0 ? value / max : 0;
+  return SEQUENTIAL_FLOOR + ((1 - SEQUENTIAL_FLOOR) * (value - min)) / (max - min);
+}
+
+const BAND_STROKE_CONTRAST_FLOOR = 3.1;
+const CONTEXT_STROKE_SEPARATION_FLOOR = 1.3;
+function clearsLineBand(theme: Theme, paint: Paint): boolean {
+  const css = paintColor(theme, paint);
+  return contrastRatio(css, theme.color.background) >= BAND_STROKE_CONTRAST_FLOOR &&
+    contrastRatio(css, theme.color.others) >= BAND_STROKE_CONTRAST_FLOOR;
+}
+const lineBandContrast = (theme: Theme, css: string): number =>
+  Math.min(contrastRatio(css, theme.color.background), contrastRatio(css, theme.color.others));
+function lineBandPaint(theme: Theme, paint: Paint, seriesId: string): Paint {
+  const clearsBandContrast = (paint: Paint) => clearsLineBand(theme, paint);
+  if (clearsBandContrast(paint)) return paint;
+  const fallbackToken = 'token' in paint ? paint.token : 'inkMuted';
+  for (let step = 1; step <= 200; step++) {
+    const inkShare = step / 200;
+    const candidate = mixedPaint(paint, { token: 'markInk' }, 1 - inkShare, fallbackToken);
+    if (clearsBandContrast(candidate)) return candidate;
+  }
+  throw new NormalizeError(
+    'line-band-contrast-exhausted',
+    'annotations',
+    `series '${seriesId}' cannot reach ${BAND_STROKE_CONTRAST_FLOOR.toFixed(1)}:1 against the page and band`,
+    'use a stronger ink token or lighter band',
+  );
+}
+/** An authored colour under the band floor is drawn darker; this tells the author by how much. */
+export function lineBandAuthoredWarnings(theme: Theme, base: Paint, seriesId: string, authoredSource: string, authoredPaint?: Paint): LintWarning[] {
+  if (clearsLineBand(theme, base)) return [];
+  const start = paintColor(theme, base);
+  // highlightMode 'fade' washes the stroke first: the text names the authored colour, then the faded one.
+  const authored = authoredPaint ? `${paintColor(theme, authoredPaint)}, faded to ${start}` : start;
+  const drawn = paintColor(theme, lineBandPaint(theme, base, seriesId));
+  return [{
+    code: 'line-band-authored-contrast',
+    severity: 'warn',
+    message: `series '${seriesId}' has the authored ${authoredSource} colour ${authored}, which reaches ${lineBandContrast(theme, start).toFixed(2)}:1 against the page and band; it is drawn as ${drawn} (${lineBandContrast(theme, drawn).toFixed(2)}:1, floor ${BAND_STROKE_CONTRAST_FLOOR.toFixed(1)}:1)`,
+    suggest: 'choose a darker colour or a lighter band',
+  }];
+}
+const contextPaintAtShare = (inkShare: number): Paint =>
+  inkShare === 0
+    ? { token: 'neutralLight' }
+    : mixedPaint({ token: 'neutralLight' }, { token: 'markInk' }, 1 - inkShare, 'neutralLight');
+function lineContextPaint(theme: Theme, rank: number, contextRungCount: number, seriesId: string): Paint {
+  const paintCss = (paint: Paint) => paintColor(theme, paint);
+  const clearsBandContrast = (paint: Paint) => clearsLineBand(theme, paint);
+  let minimumSafeShare: number | undefined;
+  for (let step = 0; step <= 200; step++) {
+    const share = step / 200;
+    const candidate = contextPaintAtShare(share);
+    if (clearsBandContrast(candidate)) {
+      minimumSafeShare = share;
+      break;
+    }
+  }
+  if (minimumSafeShare === undefined) {
+    throw new NormalizeError(
+      'line-band-contrast-exhausted',
+      'annotations',
+      `series '${seriesId}' cannot reach ${BAND_STROKE_CONTRAST_FLOOR.toFixed(1)}:1 against the page and band`,
+      'use a stronger ink token or lighter band',
+    );
+  }
+  const basePaint = contextPaintAtShare(minimumSafeShare);
+  const availableContrast = contrastRatio(paintCss(basePaint), paintCss({ token: 'markInk' }));
+  const rungSeparation = Math.pow(availableContrast, 1 / Math.max(1, contextRungCount));
+  if (rungSeparation < CONTEXT_STROKE_SEPARATION_FLOOR) {
+    throw new NormalizeError(
+      'line-band-hierarchy-exhausted',
+      'annotations',
+      `${contextRungCount} context levels leave ${rungSeparation.toFixed(2)}:1 between strokes after band contrast`,
+      `use fewer series, a lighter band, or ${CONTEXT_STROKE_SEPARATION_FLOOR.toFixed(1)}:1 per level`,
+    );
+  }
+  const targetFromBase = Math.pow(rungSeparation, rank);
+  let separatedShare: number | undefined;
+  for (let step = Math.ceil(minimumSafeShare * 200); step <= 200; step++) {
+    const share = step / 200;
+    if (contrastRatio(paintCss(basePaint), paintCss(contextPaintAtShare(share))) >= targetFromBase) {
+      separatedShare = share;
+      break;
+    }
+  }
+  if (separatedShare === undefined) {
+    throw new NormalizeError(
+      'line-band-hierarchy-exhausted',
+      'annotations',
+      `series '${seriesId}' cannot separate context levels after band contrast`,
+      'use fewer context series or a lighter band',
+    );
+  }
+  return contextPaintAtShare(separatedShare);
+}
+
+function lineApartPaint(theme: Theme, share: number, top: number, apartFrom: readonly Paint[], darker?: { share: number; pairs: ReadonlyArray<readonly [number, number]> }): Paint {
+  if (darker && darker.pairs.every(([a, b]) =>
+    palettePerceptualDistance(paintColor(theme, contextPaintAtShare(a)), paintColor(theme, contextPaintAtShare(b))) >= PALETTE_NORMAL_FLOOR)) share = darker.share;
+  const others = apartFrom.map((paint) => paintColor(theme, paint));
+  let step = Math.round(share * 100);
+  while (step < Math.round(top * 100) && others.some((other) =>
+    palettePerceptualDistance(paintColor(theme, contextPaintAtShare(step / 100)), other) < PALETTE_NORMAL_FLOOR)) step++;
+  return contextPaintAtShare(step / 100);
+}
+
+function lineForecastPaint(paint: Paint, theme: Theme, crossesBand: boolean): Paint {
+  const floor = 3;
+  for (let share = 0.8; share < 1; share += 0.025) {
+    const candidate = mixedPaint(paint, { token: 'background' }, share, 'token' in paint ? paint.token : 'neutral');
+    if (contrastRatio(paintColor(theme, candidate), theme.color.background) >= floor && (!crossesBand || clearsLineBand(theme, candidate))) return candidate;
+  }
+  return contrastRatio(paintColor(theme, paint), theme.color.background) >= floor
+    ? paint : lineBandPaint(theme, paint, 'forecast');
+}
+
+interface FanPaintStep { paint: Paint; css: string }
+function paintAmount(target: number, baseCss: string, background: string): number {
+  let lo = 0;
+  let hi = 1;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (contrastRatio(tint(baseCss, mid, background), background) > target) lo = mid;
+    else hi = mid;
+  }
+  let amount = (lo + hi) / 2;
+  while (amount > 0 && contrastRatio(tint(baseCss, amount, background), background) < target) amount = Math.max(0, amount - 1 / 512);
+  return amount;
+}
+
+function fanPaintStep(centrePaint: Paint, baseCss: string, background: string, amount: number): FanPaintStep {
+  const paint: Paint = 'css' in centrePaint
+    ? mixedPaint(centrePaint, { token: 'background' }, 1 - amount, 'highlight')
+    : { ...centrePaint, tint: amount };
+  return { paint, css: tint(baseCss, amount, background) };
+}
+
+function preferredFanPaints(
+  centrePaint: Paint, baseCss: string, background: string, showBounds: boolean,
+): FanPaintStep[] | undefined {
+  const amounts = [0.82, 0.65]; // outer 18% and inner 35% of the central colour
+  if (showBounds) {
+    const innerContrast = contrastRatio(tint(baseCss, amounts[1]!, background), background);
+    const centreContrast = contrastRatio(baseCss, background);
+    amounts.push(paintAmount(Math.sqrt(innerContrast * centreContrast), baseCss, background));
+  }
+  const ladder = amounts.map((amount) => fanPaintStep(centrePaint, baseCss, background, amount));
+  const colors = [background, ...ladder.map((step) => step.css), baseCss];
+  return colors.slice(1).every((color, index) => contrastRatio(colors[index]!, color) >= 1.2)
+    ? ladder : undefined;
+}
+
+
+export function fanPaintSteps(theme: Theme, centrePaint: Paint, bandCount: number, showBounds: boolean, seriesId: string, deEmphasized: boolean): FanPaintStep[] {
+  const floor = 1.2;
+  const baseCss = paintColor(theme, centrePaint);
+  const background = theme.color.background;
+  const cBase = contrastRatio(baseCss, background);
+  let capacity = 0;
+  for (let acc = floor; acc <= cBase + 1e-9; acc *= floor) capacity++;
+  const needed = bandCount + 1 + (showBounds ? 1 : 0);
+  const rungs = Math.max(needed, Math.min(5, capacity));
+  if (capacity < needed) throw new NormalizeError(
+    'fan-tint-exhausted',
+    'fan.bands',
+    `series '${seriesId}' (${baseCss}) has ${cBase.toFixed(2)}:1 contrast on '${theme.name}': ${capacity} distinguishable washes at ${floor.toFixed(2)}:1; ${bandCount} bands plus centre${showBounds ? ' and bounds' : ''} need ${needed}`,
+    `use fewer bands${showBounds ? ', disable showBounds to save one rung' : ''}${deEmphasized ? `, highlight '${seriesId}'` : ''}, or a darker fill; the current washes cannot be distinguished`,
+  );
+  const preferred = bandCount === 2 ? preferredFanPaints(centrePaint, baseCss, background, showBounds) : undefined;
+  if (preferred) return preferred;
+  const fanLadder: FanPaintStep[] = [];
+  for (let i = 1; i <= bandCount + (showBounds ? 1 : 0); i++) {
+    const amount = paintAmount(Math.pow(cBase, i / rungs), baseCss, background);
+    fanLadder.push(fanPaintStep(centrePaint, baseCss, background, amount));
+  }
+  return fanLadder;
+}
+
+/**
+ * The qualitative band ladder of a bullet, from `poor` to `good`, evenly
+ * spaced in OKLab lightness. Neighbouring bands keep the swatch floor
+ * (0.12 lightness is 12 OKLab units between greys): when the
+ * theme's neutral range is narrower than the ladder needs, the poor end moves
+ * on toward the mark ink until it is wide enough, so four bands read as four.
+ * The bar paints in the mark ink. When the band farthest from the page falls
+ * under 3:1 against it, the whole ladder moves toward the page, as little as
+ * clears that band, and its lightest band stays 0.06 lightness from the page;
+ * a ladder that cannot clear stays where it was and the bar keeps its outline
+ * (separationStroke). A range the ink cannot widen warns and keeps its mix.
+ * `light`: every band prints its own name on its row, so the shade only groups
+ * and the key no longer decodes it. The good end then sits 0.06 lightness from
+ * the page and the bands step 0.06 apart (the warning floor), not 0.12.
+ */
+export function bulletBandPaints(theme: Theme, count: number, poor: Paint, good: Paint, warnings: LintWarning[] = [], light = false): Paint[] {
+  // Every band node and key swatch resolves the ladder again at paint time; the searches run once per
+  // ladder. The key holds the colours the ladder reads, so a theme edited in place misses it.
+  const key = JSON.stringify([count, light, poor, good, paintColor(theme, poor), paintColor(theme, good),
+    paintColor(theme, { token: 'background' }), paintColor(theme, { token: 'markInk' })]);
+  let ladder = bulletLadders.get(key);
+  if (!ladder) {
+    const own: LintWarning[] = [];
+    ladder = { paints: bulletLadder(theme, count, poor, good, own, light), warnings: own };
+    if (bulletLadders.size >= 256) bulletLadders.clear();
+    bulletLadders.set(key, ladder);
+  }
+  for (const warning of ladder.warnings) warnings.push({ ...warning });
+  return [...ladder.paints];
+}
+
+const bulletLadders = new Map<string, { paints: Paint[]; warnings: LintWarning[] }>();
+
+function bulletLadder(theme: Theme, count: number, poor: Paint, good: Paint, warnings: LintWarning[], light: boolean): Paint[] {
+  const PAGE_STEP = 0.06;
+  const BAND_STEP = (light ? PAGE_STEP : PALETTE_NORMAL_FLOOR / 100) + 0.005;
+  const lightness = (paint: Paint) => oklabLightness(paintColor(theme, paint)) ?? 0;
+  const needed = BAND_STEP * Math.max(0, count - 1);
+  const ink: Paint = { token: 'markInk' };
+  // The poor end of the ladder from poor to good: moved toward the mark ink until the span holds the steps.
+  const ladderEnd = (from: Paint, to: Paint): Paint => {
+    const lastL = lightness(to);
+    if (count <= 1 || Math.abs(lightness(from) - lastL) >= needed) return from;
+    let low = 0;
+    let high = 1;
+    const reach = lightness(mixedPaint(from, ink, 0)) - lastL;
+    if (Math.abs(reach) < needed) return from;
+    for (let step = 0; step < 20; step++) {
+      const weight = (low + high) / 2;
+      if (Math.abs(lightness(mixedPaint(from, ink, 1 - weight)) - lastL) >= needed) high = weight;
+      else low = weight;
+    }
+    return mixedPaint(from, ink, 1 - high);
+  };
+  const inkCss = paintColor(theme, ink);
+  const page: Paint = { token: 'background' };
+  const pageL = lightness(page);
+  const toPage = (paint: Paint, weight: number): Paint => weight === 0 ? paint : mixedPaint(paint, page, 1 - weight);
+  const clears = (weight: number) =>
+    contrastRatio(inkCss, paintColor(theme, ladderEnd(toPage(poor, weight), toPage(good, weight)))) >= MARK_CONTRAST_FLOOR;
+  if (light && count > 1) {
+    // The good end moves toward the page until it is 0.06 from it; the poor end then sits the steps away.
+    if (Math.abs(lightness(good) - pageL) > PAGE_STEP) {
+      let low = 0;
+      let high = 1;
+      for (let step = 0; step < 16; step++) {
+        const weight = (low + high) / 2;
+        if (Math.abs(lightness(toPage(good, weight)) - pageL) >= PAGE_STEP) low = weight;
+        else high = weight;
+      }
+      good = toPage(good, low);
+    }
+    const far = ladderEnd(poor, good);
+    const goodL = lightness(good);
+    if (Math.abs(lightness(far) - goodL) > needed) {
+      let low = 0;
+      let high = 1;
+      for (let step = 0; step < 20; step++) {
+        const weight = (low + high) / 2;
+        if (Math.abs(lightness(mixedPaint(far, good, weight)) - goodL) >= needed) high = weight;
+        else low = weight;
+      }
+      poor = mixedPaint(far, good, high);
+    } else poor = far;
+  } else if (count > 1 && !clears(0) && Math.abs(lightness(good) - pageL) > PAGE_STEP) {
+    let low = 0;
+    let high = 1;
+    for (let step = 0; step < 16; step++) {
+      const weight = (low + high) / 2;
+      if (Math.abs(lightness(toPage(good, weight)) - pageL) >= PAGE_STEP) low = weight;
+      else high = weight;
+    }
+    const most = low;
+    if (clears(most)) {
+      low = 0;
+      high = most;
+      for (let step = 0; step < 16; step++) {
+        const weight = (low + high) / 2;
+        if (clears(weight)) high = weight;
+        else low = weight;
+      }
+      poor = toPage(poor, high);
+      good = toPage(good, high);
+    }
+  }
+  const lastL = lightness(good);
+  const dark = ladderEnd(poor, good);
+  const firstL = lightness(dark);
+  const span = lastL - firstL;
+  if (count > 1 && Math.abs(span) < 0.06 * (count - 1)) {
+    warnings.push({
+      code: 'band-lightness-insufficient',
+      severity: 'warn',
+      message: `${count} bands cannot keep a 0.06 lightness step and separate the measure within the theme's neutral range; authored bands and colors remain`,
+    });
+  }
+  return Array.from({ length: count }, (_, index) => {
+    if (count > 1 && index === 0) return dark;
+    if (count > 1 && index === count - 1) return good;
+    const fraction = count === 1 ? 0.5 : index / (count - 1);
+    if (Math.abs(span) < 0.06 * Math.max(1, count - 1)) return mixedPaint(dark, good, 1 - fraction);
+    const target = firstL + span * fraction;
+    let low = 0;
+    let high = 1;
+    for (let step = 0; step < 16; step++) {
+      const weight = (low + high) / 2;
+      const l = lightness(mixedPaint(dark, good, 1 - weight));
+      if ((l - target) * Math.sign(span) < 0) low = weight;
+      else high = weight;
+    }
+    return mixedPaint(dark, good, 1 - (low + high) / 2);
+  });
+}
+
+/**
+ * A plain segment colour within 2:1 of the total's reads as a small total. It
+ * takes a light tint (60%, else 35%) of the first plain segment colour that
+ * stands apart from the total, when that tint also stands apart from the total
+ * and 1.3:1 from every colour in use. The check reads the theme painted in, so
+ * a repaint reruns it.
+ */
+function segmentApartPaints(theme: Theme, plain: readonly Paint[], others: readonly Paint[]): Paint[] {
+  const totalCss = paintColor(theme, { token: 'total' });
+  const apart = (paint: Paint) => contrastRatio(paintColor(theme, paint), totalCss) >= 2;
+  const result = [...plain];
+  const base = plain.find(apart);
+  if (!base) return result;
+  const tints = [0.6, 0.35];
+  for (let index = 0; index < result.length; index++) {
+    if (apart(result[index]!)) continue;
+    const used = [...others, ...result].map((other) => paintColor(theme, other));
+    const weight = tints.find((w) => {
+      const candidate = mixedPaint(base, { token: 'background' }, w);
+      const css = paintColor(theme, candidate);
+      return apart(candidate) && used.every((other) => contrastRatio(css, other) >= 1.3);
+    });
+    if (weight !== undefined) result[index] = mixedPaint(base, { token: 'background' }, weight, 'neutral');
+  }
+  return result;
+}
+
+/**
+ * The story lines of a highlighted bump chart (line.bump). The first takes the
+ * focus, the second the mark ink (or the first series colour a palette step
+ * from the focus). A third and later one takes the first series colour that
+ * is not in use and stays a palette step (PALETTE_NORMAL_FLOOR) from every
+ * earlier story colour and from the context grey; with none left, the first
+ * unused series colour. The choice reads the theme, so each third and later
+ * line keeps it as a bump-story recipe that a repaint resolves again.
+ */
+export function bumpStoryPaints(theme: Theme, count: number): Paint[] {
+  const css = (paint: Paint) => paintColor(theme, paint);
+  const focus: Paint = { token: 'focus' };
+  const pool = theme.color.series.map((_, index) => seriesPaint(index));
+  const second = [{ token: 'markInk' } as Paint, ...pool]
+    .find((paint) => palettePerceptualDistance(css(paint), css(focus)) >= PALETTE_NORMAL_FLOOR) ?? focus;
+  const result: Paint[] = [focus, second];
+  const grey = css({ token: 'neutralLight' });
+  while (result.length < count) {
+    const used = result.map(css);
+    const unused = pool.filter((paint) => !used.includes(css(paint)));
+    result.push(unused.find((paint) => [...used, grey].every((other) => palettePerceptualDistance(css(paint), other) >= PALETTE_NORMAL_FLOOR))
+      ?? unused[0] ?? focus);
+  }
+  return result.slice(0, count);
+}
+
+export function adaptivePaintColor(theme: Theme, source: Extract<ThemePaintSource, {kind: 'line-band' | 'line-context' | 'line-apart' | 'line-forecast' | 'fan-step' | 'bullet-band' | 'segment-apart' | 'bump-story'}>): string {
+  switch (source.kind) {
+    case 'bump-story': return paintColor(theme, bumpStoryPaints(theme, source.count)[source.index]!);
+    case 'segment-apart': return paintColor(theme, segmentApartPaints(theme, source.plain, source.others)[source.index]!);
+    case 'line-apart': return paintColor(theme, lineApartPaint(theme, source.share, source.top, source.apartFrom, source.darker));
+    case 'line-band': return paintColor(theme, lineBandPaint(theme, source.base, source.seriesId));
+    case 'line-context': return paintColor(theme, lineContextPaint(theme, source.rank, source.rungCount, source.seriesId));
+    case 'line-forecast': return paintColor(theme, lineForecastPaint(source.base, theme, source.crossesBand));
+    case 'fan-step': return paintColor(theme, fanPaintSteps(theme, source.base, source.bandCount, source.showBounds, source.seriesId, source.deEmphasized)[source.index]!.paint);
+    case 'bullet-band': return paintColor(theme, bulletBandPaints(theme, source.count, source.poor, source.good, [], source.light === true)[source.index]!);
+  }
+}
