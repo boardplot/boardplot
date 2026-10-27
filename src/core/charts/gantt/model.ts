@@ -239,3 +239,5 @@ export function laneTop(band: GanttBand, rows: readonly NormRow[], index: number
 
 /** Internal option: lay the chart out without the milestone lane (layout.ts gives an unused lane back to the timeline). */
 export const NO_LANE = Symbol('ganttNoLane');
+/** Internal option: per row id, the pitch its drawn name and sublabel need in the table form, once a pass has measured them. */
+export const ROW_TEXT_PITCH = Symbol('ganttRowTextPitch');

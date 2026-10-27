@@ -50,11 +50,11 @@ import type { GanttData, GanttItem } from '../../types/data';
 import type { BaseOptionsFor, LabelKind, LabelContent } from '../../types/options';
 import type { Geometry, LintWarning, PlacedLabel, SceneNode } from '../../types/scene';
 import { dateFromDay, dayNum } from './calendar';
-import { resolveGanttDomain, resolveGanttEnv } from './domain';
+import { GANTT_ROW_PITCH, resolveGanttDomain, resolveGanttEnv } from './domain';
 import { layoutGanttAnnotations, ruleNodes, type GanttAnnotationLayer } from './events';
 import { flagRowPitch, ganttSpanBlockers, planGanttLabels, planRowFlags } from './labels';
 import { fmtDay, ganttPaints, layoutGanttMarks, type GanttMarkGeometry } from './marks';
-import { NO_LANE, RULE_LABEL_GAP, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv } from './model';
+import { NO_LANE, ROW_TEXT_PITCH, RULE_LABEL_GAP, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv } from './model';
 import { formatDate } from '../../dateFormat';
 import { ganttBody, ganttFrame, STACKED_LANE_FLOOR } from './plot';
 import { maxOf, minOf, pushAll } from '../../arrays';
@@ -100,12 +100,12 @@ export interface GanttDerived {
 /** One sentence per row for the accessible description. */
 function rowSummaries(env: GanttEnv, domain: GanttDomain): string[] {
   return domain.rows.map((r) => {
+    const name = r.sublabel ? `${r.label}, ${r.sublabel}` : r.label;
     if (r.cadence) {
       const days = r.cadence.events.map((event) => event.day);
-      return chartString(env.options, 'cadenceSummary', { v1: r.label, v2: days.length, v3: fmtDay(env, minOf(days)), v4: fmtDay(env, maxOf(days)) });
+      return chartString(env.options, 'cadenceSummary', { v1: name, v2: days.length, v3: fmtDay(env, minOf(days)), v4: fmtDay(env, maxOf(days)) });
     }
     if (r.shared) return chartString(env.options, 'sharedMilestonesSummary', { v1: r.items.map((it) => `${it.label ?? it.id} ${fmtDay(env, it.startDay)}`).join(', ') });
-    const name = r.sublabel ? `${r.label}, ${r.sublabel}` : r.label;
     if (r.items.length === 0) return name;
     let lo = Infinity;
     let hi = -Infinity;
@@ -355,6 +355,17 @@ function layoutGanttPass(data: GanttData, options: GanttOptions = {}, keyed: Rea
   });
   if (grow !== undefined) return layoutGanttPass(data, { ...options, size: { width: size.width, height: grow } }, keyed, autoHeight, flags);
   const body = ganttBody(env, domain, frame, band, warnings);
+  // Table form: a row whose name and sublabel need more than its pitch is laid out again with that pitch.
+  if (!band.stacked) {
+    const known = (options as { [ROW_TEXT_PITCH]?: ReadonlyMap<string, number> })[ROW_TEXT_PITCH] ?? new Map<string, number>();
+    const grown = new Map(known);
+    body.rowLabels.forEach((label, i) => {
+      const need = label.sub ? label.h + 2 + label.sub.h + 2 * LABEL_PAD : 0;
+      const id = domain.rows[i]!.id;
+      if (need > Math.max(GANTT_ROW_PITCH, known.get(id) ?? 0) + 0.5) grown.set(id, need);
+    });
+    if (grown.size > known.size) return layoutGanttPass(data, { ...options, [ROW_TEXT_PITCH]: grown } as GanttOptions, keyed, autoHeight, flags);
+  }
   const geometry = layoutGanttMarks(env, domain, band, body, paints);
   commitClaims(occupied, geometry.claims);
   // Open height: plan the flag levels on the drawn timeline, then lay the chart out with those row heights.

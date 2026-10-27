@@ -21,7 +21,7 @@ import type { GanttCell } from '../../types/data';
 import type { LintWarning, Paint } from '../../types/scene';
 import { GANTT_ROW_PITCH, MAX_COLS } from './domain';
 import { barSurfaces, cadenceRowPaint, milestonePaints } from './marks';
-import { laneTop, NO_LANE, RULE_LABEL_GAP, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv, type GanttPaints, type MetadataColumns, type NormItem, type NormRow, type RowLabel } from './model';
+import { laneTop, NO_LANE, ROW_TEXT_PITCH, RULE_LABEL_GAP, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv, type GanttPaints, type MetadataColumns, type NormItem, type NormRow, type RowLabel } from './model';
 import { maxOf, minOf } from '../../arrays';
 
 /** The palest tint a wash swatch in the key takes, so a 12 px swatch reads as filled. */
@@ -316,7 +316,9 @@ export function ganttFrame(
   // A milestone cluster can only make a lane taller.
   const lanePitch = stacked ? (domain.milestones.clusterRowH > GANTT_ROW_PITCH ? domain.milestones.clusterRowH : STACKED_LANE_PITCH) : domain.milestones.clusterRowH;
   // A row with stacked milestone flags takes the height its flags need; the others keep the common pitch.
-  const pitches = domain.rows.map((row) => Math.max(lanePitch, domain.milestones.flagPitch.get(row.id) ?? 0));
+  // A wrapped name with a sublabel can need more than the common pitch: that row grows.
+  const textPitch = stacked ? undefined : (env.options as { [ROW_TEXT_PITCH]?: ReadonlyMap<string, number> })[ROW_TEXT_PITCH];
+  const pitches = domain.rows.map((row) => Math.max(lanePitch, domain.milestones.flagPitch.get(row.id) ?? 0, textPitch?.get(row.id) ?? 0));
   const extra = pitches.reduce((sum, pitch) => sum + pitch - lanePitch, 0);
   // A short canvas squeezes every row by the same factor.
   const squeeze = Math.min(1, Math.max(6 * n, bodyH - named * nameLineH) / (n * lanePitch + extra));
