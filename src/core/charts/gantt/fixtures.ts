@@ -568,7 +568,7 @@ export const fixtures: Fixture<GanttData, GanttOptions>[] = [
           sublabel: 'page view, landing view',
           items: [
             { id: 'tag-before', kind: 'bar', start: '2026-03-02', end: '2026-03-09', label: 'fired on every visit', colorRole: 'neutralLight', colorLabel: 'before' },
-            { id: 'tag-broken', kind: 'chevron', start: '2026-03-10', end: '2026-03-31', label: '−78% landing views per click; 1 in 6 visitors consent', colorRole: 'bad', colorLabel: 'broken' },
+            { id: 'tag-broken', kind: 'chevron', start: '2026-03-10', end: '2026-03-31', label: '−60% landing views per click; 1 in 4 visitors consent', colorRole: 'bad', colorLabel: 'broken' },
           ],
         },
         {
@@ -576,7 +576,7 @@ export const fixtures: Fixture<GanttData, GanttOptions>[] = [
           label: 'Browser purchase event',
           sublabel: 'sent with the server API',
           items: [
-            { id: 'purchase-before', kind: 'bar', start: '2026-03-02', end: '2026-03-17', label: 'c. 82% / 70% of orders', colorRole: 'neutralLight', colorLabel: 'before' },
+            { id: 'purchase-before', kind: 'bar', start: '2026-03-02', end: '2026-03-17', label: 'c. 64% / 52% of orders', colorRole: 'neutralLight', colorLabel: 'before' },
             { id: 'purchase-broken', kind: 'chevron', start: '2026-03-18', end: '2026-03-31', label: 'Near zero', colorRole: 'bad', colorLabel: 'broken' },
           ],
         },
@@ -585,10 +585,10 @@ export const fixtures: Fixture<GanttData, GanttOptions>[] = [
           label: 'Checkout event stream',
           sublabel: 'payment events per order',
           items: [
-            { id: 'checkout-before', kind: 'bar', start: '2026-03-02', end: '2026-03-09', label: 'c. 95%', colorRole: 'neutralLight', colorLabel: 'before' },
-            { id: 'checkout-step1', kind: 'bar', start: '2026-03-10', end: '2026-03-17', label: 'c. 88%', colorRole: 'warn', colorLabel: 'degraded' },
-            { id: 'checkout-step2', kind: 'bar', start: '2026-03-18', end: '2026-03-23', label: 'c. 79%', colorRole: 'warn', colorLabel: 'degraded' },
-            { id: 'checkout-broken', kind: 'chevron', start: '2026-03-24', end: '2026-03-31', label: 'c. 64%', colorRole: 'bad', colorLabel: 'broken' },
+            { id: 'checkout-before', kind: 'bar', start: '2026-03-02', end: '2026-03-09', label: 'c. 99%', colorRole: 'neutralLight', colorLabel: 'before' },
+            { id: 'checkout-step1', kind: 'bar', start: '2026-03-10', end: '2026-03-17', label: 'c. 91%', colorRole: 'warn', colorLabel: 'degraded' },
+            { id: 'checkout-step2', kind: 'bar', start: '2026-03-18', end: '2026-03-23', label: 'c. 82%', colorRole: 'warn', colorLabel: 'degraded' },
+            { id: 'checkout-broken', kind: 'chevron', start: '2026-03-24', end: '2026-03-31', label: 'c. 70%', colorRole: 'bad', colorLabel: 'broken' },
           ],
         },
         {
@@ -596,8 +596,8 @@ export const fixtures: Fixture<GanttData, GanttOptions>[] = [
           label: 'Attribution model',
           sublabel: 'orders with a web touchpoint',
           items: [
-            { id: 'attribution-before', kind: 'bar', start: '2026-03-02', end: '2026-03-17', label: '84–89%', colorRole: 'neutralLight', colorLabel: 'before' },
-            { id: 'attribution-degraded', kind: 'chevron', start: '2026-03-18', end: '2026-03-31', label: '61–70%', colorRole: 'warn', colorLabel: 'degraded' },
+            { id: 'attribution-before', kind: 'bar', start: '2026-03-02', end: '2026-03-17', label: '71–76%', colorRole: 'neutralLight', colorLabel: 'before' },
+            { id: 'attribution-degraded', kind: 'chevron', start: '2026-03-18', end: '2026-03-31', label: '48–55%', colorRole: 'warn', colorLabel: 'degraded' },
           ],
         },
         {
@@ -605,7 +605,7 @@ export const fixtures: Fixture<GanttData, GanttOptions>[] = [
           label: 'Server event feed',
           sublabel: 'via the tag gateway',
           items: [
-            { id: 'server-intact', kind: 'chevron', start: '2026-03-02', end: '2026-03-31', label: 'Unchanged: all event types daily; purchases = 85% of web orders', colorRole: 'good', colorLabel: 'intact' },
+            { id: 'server-intact', kind: 'chevron', start: '2026-03-02', end: '2026-03-31', label: 'Unchanged: all event types daily; purchases = 92% of web orders', colorRole: 'good', colorLabel: 'intact' },
           ],
         },
         {
@@ -613,7 +613,7 @@ export const fixtures: Fixture<GanttData, GanttOptions>[] = [
           label: 'Orders',
           sublabel: 'web shop, two regions',
           items: [
-            { id: 'orders-intact', kind: 'chevron', start: '2026-03-02', end: '2026-03-31', label: 'No break: region A 95–120, region B 30–44 web orders per day', colorRole: 'good', colorLabel: 'intact' },
+            { id: 'orders-intact', kind: 'chevron', start: '2026-03-02', end: '2026-03-31', label: 'No break: region A 210–240, region B 60–75 web orders per day', colorRole: 'good', colorLabel: 'intact' },
           ],
         },
       ],
