@@ -670,7 +670,7 @@ function layoutColumnWithNotes(
   }
   last = settleBandHeadroom(last);
   // The passes after the note (staircase row, rank key, band headroom) move the plot too.
-  if (unnamed()) last = settleBandHeadroom(nameUnprinted(last));
+  if (unnamed()) settleBandHeadroom(nameUnprinted(last));
   for (const label of pass.geometry.labels) if (named.has(label.id) && label.hidden) label.noted = true;
   // A mark the note names with its value carries that item; fillEdges counts it once a
   // drawn footnote holds it (a counted "and 2 more" holds nothing).

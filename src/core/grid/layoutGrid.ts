@@ -774,7 +774,6 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
     });
   });
 
-  const first = children[0]!.geo;
   const compactNotes = children.flatMap((child) => child.geo.a11y.compactNotes ?? []);
   return {
     type: 'grid',
@@ -806,8 +805,6 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
     warnings,
     debug: { occupied: occupiedAll, decisions },
   };
-
-  void first;
   } catch (error) {
     if (!(error instanceof GridChildRefusal)) throw error;
     const index = data.panels.findIndex(panel => panel.id === error.panelId);

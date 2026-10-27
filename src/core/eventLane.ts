@@ -702,7 +702,7 @@ export function settleEventLane<F extends { frame: FrameResult }, A>(input: Lane
   let dates = true;
   let plan: LanePlan;
   let framed = first;
-  let frameWarnings = firstWarnings;
+  let frameWarnings: LintWarning[];
   const dropped: string[] = [];
   const compacted: string[] = [];
   // The plot band the full key leaves, measured before the key drops a part.

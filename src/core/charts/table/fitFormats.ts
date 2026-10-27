@@ -420,7 +420,6 @@ export function fitTableFormats(
       for (const id of unified.keys()) fittedRows.add(id);
       current = { ...current, rows: withRowFormats(current.rows, unified) };
       fitted = resolveTable(current, unlifted, data);
-      result = fitted;
     }
   }
   // Resolve protects number row formats at their actual scale. Fitted column

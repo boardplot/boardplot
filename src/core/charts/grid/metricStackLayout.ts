@@ -278,7 +278,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const readLogicBox = textBox(readLogic, keyFont, frame.plot.w);
   const headerRoom = readLogicBox.h + 12 + 30;
   const topRoom = headerRoom + (bandFirstIndex === 0 ? firstOverhang : 0);
-  let neededPlotHeight = topRoom + headRoom + heights.reduce((a,b)=>a+b,0) + gap*(heights.length-1) + axisHeight;
+  const neededPlotHeight = topRoom + headRoom + heights.reduce((a,b)=>a+b,0) + gap*(heights.length-1) + axisHeight;
   const overhead = size.height-frame.plot.h;
   const naturalHeight = Math.ceil(overhead+neededPlotHeight);
   if (automatic) { size = { ...size, height: naturalHeight }; ({ occupied, frame } = frameAt()); }
@@ -293,7 +293,6 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
     const available = frame.plot.h-topRoom-headRoom-gap*(heights.length-1)-axisHeight;
     const total = heights.reduce((a,b)=>a+b,0);
     heights = heights.map(h=>h*available/total);
-    neededPlotHeight = frame.plot.h;
   }
   const scene: SceneNode[] = [...frame.nodes];
   const requests: LabelRequest[] = [];

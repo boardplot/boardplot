@@ -681,7 +681,7 @@ export function layoutHeatmap(
   const rowHeight = (items: Annotation[]) => items.reduce((sum, a) => sum + noteSizes.get(a.id!)!.h + 8, 0);
   const caretRoom = valueStyle && belowNotes.length > 0 ? CARET_ROOM : 0;
   const annotationTopH = rowHeight(aboveNotes);
-  let annotationBottomH = rowHeight(belowNotes) + caretRoom;
+  let annotationBottomH: number;
   const leftRoom = sideWidth('left'), rightRoom = sideWidth('right');
   const gutterRight = baseGutter + rightRoom + (rowNotes.length && !valueStyle ? 8 : 0);
 
