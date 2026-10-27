@@ -46,6 +46,14 @@ export interface BoardplotChartProps extends ContainerSizeOptions, RefusalProps,
   onSeriesClick?: (seriesId: Id) => void;
   /** Called with the record the reader clicks, the one the hover card names, or presses Enter or Space on; a click on a mark then fires no `onSeriesClick`. SVG charts only. */
   onRecordClick?: (record: InteractionRecord, event: MouseEvent<Element> | KeyboardEvent<Element>) => void;
+  /**
+   * Called with the row id and `{ row, event, columnId }` when the reader picks a table row: a click in
+   * it outside a link or a button, or Enter or Space on its focused cell. Table only (`table`, alias
+   * `tbl`); no other chart type receives it.
+   */
+  onRowSelect?: TableChartProps['onRowSelect'];
+  /** Which table rows `onRowSelect` covers; absent, every row but a section heading. Table only. */
+  isRowSelectable?: TableChartProps['isRowSelectable'];
   /** Line and area on a time, date or number x: Ctrl or Cmd with the wheel, a pinch, or + and - on the focused chart zoom; see the chart components. */
   zoom?: ZoomOption;
   /** Your own hover card content: `(record, { records, defaultContent, source })`; return `defaultContent`, wrap it, replace it or return null. Turns on `hover` when it is absent. SVG charts only. */
@@ -322,7 +330,7 @@ export function BoardplotChart(props: BoardplotChartProps): ReactElement {
   return <DataTableContext.Provider value={dataTable}><SpecChart {...props} parsed={parsed.value!} rewriteWarnings={mapped.rewriteWarnings} /></DataTableContext.Provider>;
 }
 
-function SpecChart({ parsed, spec: _spec, theme, size, target, onWarnings, prepared, rows: _rows, columns: _columns, onRowsReading: _onRowsReading, rewriteWarnings, ...host }: BoardplotChartProps & { parsed: ParsedChartSpec; rewriteWarnings?: (warnings: LintWarning[]) => LintWarning[] }): ReactElement {
+function SpecChart({ parsed, spec: _spec, theme, size, target, onWarnings, prepared, rows: _rows, columns: _columns, onRowsReading: _onRowsReading, rewriteWarnings, onRowSelect, isRowSelectable, ...host }: BoardplotChartProps & { parsed: ParsedChartSpec; rewriteWarnings?: (warnings: LintWarning[]) => LintWarning[] }): ReactElement {
   const { type, data, options = {} } = parsed.request;
   const { ready, failure } = useChartEngine(type);
   // Chart-level annotations win over options.annotations, as in resolveChartRequest.
@@ -335,11 +343,12 @@ function SpecChart({ parsed, spec: _spec, theme, size, target, onWarnings, prepa
   }), [onWarnings, parsed.warnings, rewriteWarnings]);
   if (failure !== undefined) return <SpecErrorCard errors={chunkFailure(`'${type}' chart engine`, failure)} {...frame} />;
   if (!ready) return <LoadingPlaceholder {...frame} />;
+  // The row props reach the table alone: a generic chart would take them into its options.
   if (type === 'table') {
     if (prepared && prepared.kind !== 'table') throw new Error('Expected a prepared table.');
     const { onGeometry: _onGeometry, fixedSize: _fixedSize, deferLayout: _deferLayout, ...table } = host;
     const Table = loadedTableChart()!;
-    return <Table {...common as object} {...table} onWarnings={reportWarnings} data={data as TableData} annotations={annotations as Annotation[] | undefined} prepared={prepared} />;
+    return <Table {...common as object} {...table} onRowSelect={onRowSelect} isRowSelectable={isRowSelectable} onWarnings={reportWarnings} data={data as TableData} annotations={annotations as Annotation[] | undefined} prepared={prepared} />;
   }
   if (prepared && prepared.kind !== 'svg') throw new Error('Expected a prepared SVG chart.');
   const Chart = componentFor(type);
