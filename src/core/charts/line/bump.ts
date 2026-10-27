@@ -20,6 +20,7 @@ import { lineLabelModes } from './labelModes';
 import type { BumpDerived, LineMarks } from './layout';
 import type { LineOptions } from './types';
 import { maxOf, minOf } from '../../arrays';
+import { emptyIdRecord } from '../../idRecords';
 
 type BumpDirection = 'higherIsBetter' | 'lowerIsBetter';
 type ValueAxis = NonNullable<LineOptions['valueAxis']>;
@@ -153,8 +154,8 @@ export function deriveBumpRanks(input: {
   };
   const sameToTheReader = (a: number, b: number): boolean => a === b || read(a) === read(b);
   const better = (a: number, b: number): boolean => sameToTheReader(a, b) ? false : direction === 'higherIsBetter' ? a > b : a < b;
-  const ranks: Record<Id, (number | null)[]> = {};
-  const participants: Record<Id, number> = {};
+  const ranks: Record<Id, (number | null)[]> = emptyIdRecord();
+  const participants: Record<Id, number> = emptyIdRecord();
   const ties: BumpDerived['ties'] = [];
   let maxRank = 1;
   for (const series of dataSeries) ranks[series.id] = cats.map(() => null);

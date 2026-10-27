@@ -18,6 +18,7 @@ import type { AxisGeometry, LintWarning, SceneNode } from '../../types/scene';
 import type { MekkoMarks } from './layout';
 import { colCx, colW, colX, type MekkoArea, type MekkoDomain, type MekkoEnv, type MekkoMarkGeometry, type MekkoPaints, type SegmentPlace } from './model';
 import { notApplicableGlyph } from '../../format';
+import { emptyIdRecord } from '../../idRecords';
 
 /** One column's stack, top to bottom: nodes, claims, edges and the drawn segments. */
 function stackColumn(
@@ -185,7 +186,7 @@ export function layoutMekkoMarks(
     marks: { columns: [] },
     segEdges: new Map(),
     segments: [] as SegmentPlace[],
-    widths: {},
+    widths: emptyIdRecord(),
   };
   const { nodes, claims } = geometry;
   if (area.showAxis) {

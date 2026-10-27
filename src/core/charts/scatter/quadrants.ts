@@ -21,6 +21,7 @@ import {
   type QuadrantPlan,
   type ScatterEnv,
 } from './model';
+import { emptyIdRecord } from '../../idRecords';
 
 type CutSource = 'declared' | 'median' | 'mean';
 type Cut = Disclosed & { source: CutSource };
@@ -119,7 +120,7 @@ function resolveCuts(pts: NormPt[], env: ScatterEnv, warnings: LintWarning[]): {
  */
 function classifyQuadrants(pts: NormPt[], cutX: Cut, cutY: Cut): { derived: QuadrantDerived; onThreshold: NormPt[] } {
   const counts: Record<QuadrantBox, number> = { tl: 0, tr: 0, bl: 0, br: 0 };
-  const assignment: Record<Id, QuadrantBox> = {};
+  const assignment: Record<Id, QuadrantBox> = emptyIdRecord();
   const onThreshold: NormPt[] = [];
   for (const p of pts) {
     const right = p.x >= cutX.value;

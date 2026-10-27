@@ -7,7 +7,7 @@
 import * as z from 'zod';
 import { valueBandsSchema } from '../../bands';
 import { boundedNumber, formatExample, MAGNITUDE_WORDS_DOC } from '../../schema/shared';
-import { addDuplicateIdIssues, refusedBaseOptions } from '../../schema/shared';
+import { addDuplicateIdIssues, idRecord, refusedBaseOptions } from '../../schema/shared';
 import type { TableData, TableOptions } from '../../types/table';
 import { heatOptionsWithoutEffect } from './encodings/heatOptions';
 import { baseOptionsSchema } from '../../schema/shared';
@@ -229,7 +229,7 @@ const rowSchema: z.ZodType = z.lazy(() =>
       text: z.string().trim().min(1, BADGE_TEXT_EMPTY).describe('Text.'),
       tone: z.enum(['good', 'warn', 'bad', 'neutral']).optional().describe('Default neutral.'),
     }).optional().describe('Section chip. Refused on other rows.'),
-    cells: z.record(idSchema.describe('Column id for this cell.'), cellSchema).optional().describe('Cells by column id; computed columns and calc rows use their calculation.'),
+    cells: idRecord(idSchema.describe('Column id for this cell.'), cellSchema).optional().describe('Cells by column id; computed columns and calc rows use their calculation.'),
 
     children: z.array(rowSchema).optional().describe('Child rows; normalized to parentId.'),
   }).describe('One authored table row and optional descendants.')
@@ -343,7 +343,7 @@ export const tableOptionsObject = baseOptionsSchema.safeExtend(refusedBaseOption
   judgements: z.enum(['all', 'exceptions']).optional().describe('Which tones show. exceptions: strong good and bad only.'),
   variant: z.enum(['steering', 'benchmark', 'status', 'receipts', 'hierarchy']).optional()
     .describe("Variant defaults only; no variant changes what a cell accepts. Default 'hierarchy'. 'steering': total on top, no group band. 'benchmark': strong row labels, no group band. 'status': square status chips. 'receipts': dates align right. A status cell, in any variant, takes a status-column key; for free status text use a text column with a cell tone."),
-  encodings: z.record(
+  encodings: idRecord(
     idSchema,
     z.union([
       z.literal('polarityBadge')
@@ -400,9 +400,9 @@ export const tableOptionsObject = baseOptionsSchema.safeExtend(refusedBaseOption
         .describe('Hide level-0 data rows and subtrees. The totals and the section headings stay: this is the totals-only step of a depth control, which collapsing a parent cannot reach, because a collapsed parent still draws its own row.'),
     })
     .optional().describe('Expansion order: depth, collapsed, expanded.'),
-  columnVisibility: z.record(idSchema.describe('Column-toggle group id.'), z.boolean().describe('True shows the group; false hides it.')).optional()
+  columnVisibility: idRecord(idSchema.describe('Column-toggle group id.'), z.boolean().describe('True shows the group; false hides it.')).optional()
     .describe('Visibility by column-toggle id.'),
-  inlineVisibility: z.record(idSchema.describe('Inline-line group id.'), z.boolean().describe('True shows the lines of that group; false hides them.')).optional()
+  inlineVisibility: idRecord(idSchema.describe('Inline-line group id.'), z.boolean().describe('True shows the lines of that group; false hides them.')).optional()
     .describe("Visibility by inlineGroup. An absent group is visible, so a Changes control hides every MoM line of a table with one entry."),
   magnitude: z.enum(['auto', 'thousand', 'million']).optional()
     .describe("Money scale for all rows and columns. 'thousand' prints whole thousands, 'million' keeps the example's decimals, and no column rolls up on its own. The scale letter leaves the cells and hoists to the frame, the column header or, where the format sits on the row, the row label. 'auto' (the default) lets each column and money row pick from its own largest value."),

@@ -71,6 +71,7 @@ import { ARROW_FOOTNOTE } from './encodings/arrow';
 import { heatRanges, statusDirectionNote } from './encodings/heat';
 import { chartNumberMarks } from '../../numberMarks';
 import { minOf, pushAll } from '../../arrays';
+import { emptyIdRecord } from '../../idRecords';
 
 export interface ResolveResult {
   table: ResolvedTable;
@@ -1396,7 +1397,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     return row.parentId !== null && flatById.get(row.parentId)?.role !== 'section';
   }
   const resolvedRows: ResolvedRow[] = flat.map((row) => {
-    const cells: Record<Id, ResolvedCell> = {};
+    const cells: Record<Id, ResolvedCell> = emptyIdRecord();
     for (const col of columns) {
       cells[col.id] = resolveCell(row, col);
     }

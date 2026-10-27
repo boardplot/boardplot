@@ -51,7 +51,7 @@ export function stackParts(
   series: readonly { id: Id }[],
   valueOf: (seriesIndex: number, categoryIndex: number) => number | null,
 ): Record<Id, Record<Id, number>> {
-  return Object.fromEntries(cats.flatMap((c, ci) => c.id in totals
+  return Object.fromEntries(cats.flatMap((c, ci) => Object.hasOwn(totals, c.id)
     ? [[c.id, Object.fromEntries(series.flatMap((s, si) => { const v = valueOf(si, ci); return v === null ? [] : [[s.id, v]]; }))]]
     : []));
 }

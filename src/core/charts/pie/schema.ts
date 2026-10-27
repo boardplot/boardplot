@@ -6,6 +6,7 @@ import {
   addCategorySeriesIdIssues,
   baseOptionsSchema,
   detailCellSchema,
+  idRecord,
   idSchema,
   refusedBaseOptions,
   valueKindSchema,
@@ -59,7 +60,7 @@ export const pieOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions(
   rotate: z
     .union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)])
     .optional().describe("Starting angle clockwise from 12 o'clock, in quarter turns. Defaults to 0 degrees."),
-  explode: z.record(z.string(), z.number().min(0).max(1)).optional().describe("Slice category ids mapped to outward offsets as fractions of the outer radius."),
+  explode: idRecord(z.string(), z.number().min(0).max(1)).optional().describe("Slice category ids mapped to outward offsets as fractions of the outer radius."),
   colors: z
     .enum(['categorical', 'sequential'])
     .optional()

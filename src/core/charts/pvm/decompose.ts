@@ -79,6 +79,7 @@ import type {
   PvmEffectId,
   PvmItem,
 } from './types';
+import { emptyIdRecord } from '../../idRecords';
 
 /** Relative tolerance of the reconciliation self-audit. */
 export const PVM_RESIDUAL_TOLERANCE = 1e-9;
@@ -409,7 +410,7 @@ export function decomposePvm(
     });
   }
 
-  const effectValues: Record<string, number> = {};
+  const effectValues: Record<string, number> = emptyIdRecord();
   for (const effect of effects) effectValues[effect.id] = effect.value;
 
   return {

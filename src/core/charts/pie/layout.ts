@@ -81,6 +81,7 @@ import { pieLabelContent, pieCenterLines } from './labels';
 import { labelAngle, placeRing, RING_GAP, type RingItem } from './ring';
 import { composedTextRole } from '../../textRole';
 import { maxOf, pushAll } from '../../arrays';
+import { emptyIdRecord } from '../../idRecords';
 
 export interface PieMarks {
   slices: {
@@ -422,7 +423,7 @@ function layoutPiePass(
   if (total <= 0) {
     throw new NormalizeError('empty-data', 'series', 'pie requires a positive total');
   }
-  const shares: Record<Id, number> = {};
+  const shares: Record<Id, number> = emptyIdRecord();
   for (const s of slices) shares[s.cat.id] = round2(((s.v ?? 0) / total) * 100);
 
   // ---- paints (categorical hues or perceptually stepped sequential tint) ----
@@ -615,7 +616,7 @@ function layoutPiePass(
     slice.labelOverride !== false && ((slice.v ?? 0) / total) * 360 >= INSIDE_MIN_DEG);
   const hole = Math.max(0, Math.min(insidePossible ? 0.72 : 0.9, options.doughnut ?? 0));
   const rotate = options.rotate ?? 0;
-  const explode: Record<Id, number> = { ...options.explode };
+  const explode: Record<Id, number> = Object.assign(emptyIdRecord(), options.explode);
   const sliceIds = new Set(slices.map((s) => s.cat.id));
   for (const id of Object.keys(options.explode ?? {}).sort()) {
     if (!sliceIds.has(id)) {
