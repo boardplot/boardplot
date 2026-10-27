@@ -75,7 +75,7 @@ function eventRules(env: GanttEnv, domain: GanttDomain, band: GanttBand, body: G
   // Badge n is footnote n: the author's notes take the first numbers.
   const badgeNo = (i: number): number => i + 1 + authoredFootnoteCount(env.options);
   domain.events.forEach((event, i) => {
-    const ex = body.x(event.day + 0.5);
+    const ex = body.x(event.ruleDay);
     const owner: OwnerRef = { annotationId: event.id };
     const rule = ruleNodes(`ann:event:${event.id}:line`, ex, headerTop, rowsBottom, headNames, {
       stroke: { token: event.tone === 'bad' ? 'bad' : 'leader' },

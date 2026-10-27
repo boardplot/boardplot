@@ -228,7 +228,7 @@ function sharedLabelsNeedLine(domain: GanttDomain, plot: { x: number; w: number 
   const rr = 8;
   const blockers = [
     ...shared.items.map((item) => ({ x: x(item.startDay + 0.5), half: rr })),
-    ...domain.events.map((event) => ({ x: x(event.day + 0.5), half: 6 })),
+    ...domain.events.map((event) => ({ x: x(event.ruleDay), half: 6 })),
     ...(domain.todayDay === null ? [] : [{ x: x(domain.todayDay + 0.5), half: 3 }]),
   ];
   // A seat needs the label solver's clearance to a blocker (3 px, as a seat
@@ -481,7 +481,7 @@ export function ganttBody(
   const bodyW = Math.max(40, availableBodyW - (laneEnabled ? laneGap + laneLabelW : 0));
   const x = (day: number): number => bodyX + ((day - d0Day) / (d1Day - d0Day)) * bodyW;
   const ruleClaims = [
-    ...domain.events.map((event) => ({ x: x(event.day + 0.5), halfWidth: 4 })), // text keeps 7 px off an event rule
+    ...domain.events.map((event) => ({ x: x(event.ruleDay), halfWidth: 4 })), // text keeps 7 px off an event rule
     ...(domain.todayDay === null ? [] : [{ x: x(domain.todayDay + 0.5), halfWidth: 1 }]),
   ].sort((a, b) => a.x - b.x);
   // Where each clustered milestone label centres in the lane: spread over its rows.

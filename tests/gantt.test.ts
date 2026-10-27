@@ -240,3 +240,20 @@ it('gantt minimal density does not take the height of milestone flags', () => {
   expect(minimal.labels.filter(label => label.kind === 'item' && !label.hidden)).toHaveLength(0);
   expect(minimal.size.height).toBeLessThan(layout('smart').size.height);
 });
+
+// An event at an item id marks the boundary where that item starts; a mid-day rule sat half a day inside the new span.
+it('gantt draws an event rule at an item id on the item start edge, and through a milestone diamond', () => {
+  const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'gantt', data: { rows: [
+    { id: 'a', label: 'A', items: [{ id: 'a1', kind: 'bar', start: '2026-03-02', end: '2026-03-09' }, { id: 'a2', kind: 'bar', start: '2026-03-10', end: '2026-03-31' }] },
+    { id: 'b', label: 'B', items: [{ id: 'b1', kind: 'milestone', start: '2026-03-20' }] }] },
+    options: { size: { width: 1000 } },
+    annotations: [{ id: 'e', kind: 'event', at: 'a2', label: 'Change' }, { id: 'm', kind: 'event', at: 'b1', label: 'Gate' }] }));
+  if (geometry.refused) throw new Error('gantt refused');
+  const node = (id: string) => geometry.scene.find(n => n.id === id)!;
+  // Rules turn into dash paths once labels cut them; a path's x values are its 'M'/'L' coordinates.
+  const xs = (n: unknown) => 'x1' in (n as object) ? [(n as { x1: number }).x1] : [...(n as { d: string }).d.matchAll(/[ML](-?[\d.]+) /g)].map(m => Number(m[1]));
+  const bar = node('mark:a:a2') as { rect: { x: number } };
+  expect(xs(node('ann:event:e:line'))[0]).toBeCloseTo(bar.rect.x, 1);
+  const diamond = xs(node('mark:b:b1'));
+  expect(xs(node('ann:event:m:line'))[0]).toBeCloseTo((Math.min(...diamond) + Math.max(...diamond)) / 2, 1);
+});
