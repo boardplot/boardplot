@@ -33,14 +33,17 @@ const SHAPE_ROLES: Record<RowsShape, { required: readonly ColumnRole[]; roles: r
   scatter: { required: ['x', 'y'], roles: ['x', 'y', 'size', 'label', 'group'] },
   flow: { required: ['source', 'target', 'value'], roles: ['source', 'target', 'value', 'sourceStage', 'targetStage'] },
   table: { required: [], roles: ['label', 'id'] },
+  histogram: { required: ['value'], roles: ['value'] },
+  box: { required: ['category', 'value'], roles: ['category', 'value', 'categoryLabel', 'date'] },
 };
 
 /**
  * Shapes whose numbers arrive as plain numbers only. A table value column
  * carries its own format, with percents in points, so a percent or fraction
- * conversion would write cells the table does not take.
+ * conversion would write cells the table does not take; histogram and box
+ * observations are plain numbers in their schemas.
  */
-const NUMBER_ONLY_SHAPES: readonly RowsShape[] = ['table'];
+const NUMBER_ONLY_SHAPES: readonly RowsShape[] = ['table', 'histogram', 'box'];
 
 /** Table column kinds that take their cells from the source field named like the column id. */
 const TABLE_INPUT_KINDS: ReadonlySet<unknown> = new Set(['value', 'text', 'status', 'date']);
@@ -374,7 +377,7 @@ function adaptTableRows(
       const source = sourceField(rowsArgument, contract, index, contract.id);
       if (typeof raw !== 'string' || !raw.trim()) {
         throw new InputError('invalid-identity', `${source.displayPath}: a row id must be non-empty text, received ${JSON.stringify(raw ?? null)}`, {
-          ...source, received: receivedDescription(raw),
+          ...source, received: receivedDescription(raw, raw !== undefined),
         });
       }
       const first = seen.get(raw);
@@ -432,6 +435,136 @@ function adaptTableRows(
 }
 
 /**
+ * One observation per source row, for histogram and box. A missing, blank,
+ * non-numeric or non-finite observation is refused with its row: dropping it
+ * would change the bins or quartiles without a word.
+ */
+function readObservation(
+  shape: 'histogram' | 'box', row: Row, index: number, contract: RowContract, decimalComma: boolean, rowsArgument: '/rows' | '/rowsFile',
+): number {
+  const column = contract.value!;
+  const raw = own(row, column);
+  const source = sourceField(rowsArgument, contract, index, column);
+  const received = receivedDescription(raw, raw !== undefined);
+  const value = raw === undefined || (typeof raw === 'string' && !raw.trim()) ? null : valueCell(raw, 'number', decimalComma, `rows[${index}].${column}`);
+  if (value === null) {
+    throw new InputError('missing-value', `${source.displayPath}: the observation is missing; a ${shape} draws every row and takes no missing value`, {
+      ...source, received, suggest: `Remove the rows without a ${column} before the call, or fill in their values.`,
+    });
+  }
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    const written = typeof value === 'string' && WRITTEN_NUMBER.test(value);
+    throw new InputError('invalid-value', `${source.displayPath}: ${typeof value === 'number' ? `${value} is not a finite number` : `${JSON.stringify(value)} is not a number`}`, {
+      ...source, received,
+      suggest: written ? plainNumberAdvice(value, 'number', decimalComma) : 'Fix or filter this value: an observation is a plain finite number.',
+    });
+  }
+  return value;
+}
+
+/**
+ * The spec's box groups by id. A repeated id is refused at the spec path, as
+ * the native box refuses it: indexing would keep the last one in silence.
+ */
+function boxTemplateGroups(list: unknown): Map<string, Row> {
+  const groups = new Map<string, Row>();
+  (Array.isArray(list) ? list : []).forEach((entry, index) => {
+    if (!isRecord(entry) || typeof entry.id !== 'string') return;
+    if (groups.has(entry.id)) {
+      throw new InputError('invalid-data', `spec data.groups: group id '${entry.id}' appears more than once`, {
+        path: `/spec/data/groups/${index}/id`, suggest: 'Give each spec group its own id.',
+      });
+    }
+    groups.set(entry.id, entry);
+  });
+  return groups;
+}
+
+/**
+ * Raw observations from rows. Histogram: one observation per row. Box: the
+ * category column names each row's group, groups keep their first appearance,
+ * and one group takes one label and one date. A group the spec already names
+ * keeps its other fields.
+ */
+function adaptObservationRows(
+  shape: 'histogram' | 'box', rows: Row[], contract: RowContract, data: Row, decimalComma: boolean, rowsArgument: '/rows' | '/rowsFile',
+): { data: Row; pathMap: RowsPathMap; ignoredColumns: string[] } {
+  if (!rows.length) throw new InputError('rows-empty', 'rows contain no data row', { path: rowsArgument });
+  // The category column may also be the date column: its ids are then the group dates.
+  const columns = Object.entries(contract).filter(([role, column]) => role !== 'date' || column !== contract.category).map(([, column]) => column);
+  const duplicate = columns.find((column, index) => columns.indexOf(column) !== index);
+  if (duplicate) throw new InputError('invalid-contract', `column '${duplicate}' is named for more than one role`, { path: '/columns' });
+  const present = new Set(rows.flatMap(row => Object.keys(row)));
+  for (const [role, column] of Object.entries(contract)) {
+    if (!present.has(column)) throw new InputError('missing-column', `'${column}' is named in columns but no row provides it`, {
+      path: `/columns/${role}`, suggest: `Columns present: ${[...present].sort().join(', ')}.`,
+    });
+  }
+  const pathMap: RowsPathMap = new Map();
+  const ignoredColumns = [...present].filter(column => !Object.values(contract).includes(column)).sort();
+  if (shape === 'histogram') {
+    const observations = rows.map((row, index) => {
+      pathMap.set(`/data/observations/${index}`, sourceField(rowsArgument, contract, index, contract.value!));
+      return readObservation(shape, row, index, contract, decimalComma, rowsArgument);
+    });
+    return { data: { ...data, observations }, pathMap, ignoredColumns };
+  }
+  const templates = boxTemplateGroups(data.groups);
+  const groups = new Map<string, { index: number; observations: number[]; label?: { value: string; row: number }; date?: { value: string; row: number } }>();
+  rows.forEach((row, index) => {
+    const category = contract.category!;
+    const raw = own(row, category);
+    const source = sourceField(rowsArgument, contract, index, category);
+    if (typeof raw !== 'string' || !raw) {
+      throw new InputError('invalid-identity', `${source.displayPath}: a group id must be non-empty text, received ${JSON.stringify(raw ?? null)}`, {
+        ...source, received: receivedDescription(raw, raw !== undefined),
+      });
+    }
+    let group = groups.get(raw);
+    if (!group) {
+      group = { index: groups.size, observations: [] };
+      groups.set(raw, group);
+      pathMap.set(`/data/groups/${group.index}/id`, source);
+    }
+    pathMap.set(`/data/groups/${group.index}/observations/${group.observations.length}`, sourceField(rowsArgument, contract, index, contract.value!));
+    group.observations.push(readObservation(shape, row, index, contract, decimalComma, rowsArgument));
+    for (const field of ['label', 'date'] as const) {
+      const column = contract[field === 'label' ? 'categoryLabel' : 'date'];
+      const value = column === undefined ? undefined : own(row, column);
+      if (column === undefined || value === undefined || value === null || value === '') continue;
+      const at = sourceField(rowsArgument, contract, index, column);
+      if (typeof value !== 'string') {
+        throw new InputError('invalid-value', `${at.displayPath}: a group ${field} must be text, received ${JSON.stringify(value)}`, { ...at, received: receivedDescription(value) });
+      }
+      const first = group[field];
+      if (first === undefined) {
+        group[field] = { value, row: index };
+        pathMap.set(`/data/groups/${group.index}/${field}`, at);
+      } else if (first.value !== value) {
+        throw new InputError('ambiguous-mapping', `${at.displayPath}: group '${raw}' has the ${field} '${first.value}' in row ${first.row + 1} and '${value}' here; one ${field} per group is required`, {
+          ...at, received: receivedDescription(value),
+        });
+      }
+    }
+  });
+  return {
+    data: {
+      ...data,
+      groups: [...groups].map(([id, group]) => {
+        const { observations: _authored, ...template } = templates.get(id) ?? {};
+        return {
+          ...template, id,
+          ...(group.label ? { label: group.label.value } : {}),
+          ...(group.date ? { date: group.date.value } : {}),
+          observations: group.observations,
+        };
+      }),
+    },
+    pathMap, ignoredColumns,
+  };
+}
+
+/**
  * The spec with its data taken from the rows. A category or series the spec
  * already names keeps its other fields (label, colorRole, unit, format), so a
  * spec works as a template the rows refill; a column the map names wins.
@@ -463,10 +596,12 @@ export function adaptRows(spec: unknown, columns: unknown, source: RowsSource): 
     throw new InputError('invalid-rows', 'rows must be an array of objects', { path: rowsArgument });
   }
   const decimalComma = loaded.decimalComma === true;
-  if (shape === 'waterfall' || shape === 'scatter' || shape === 'flow' || shape === 'table') {
+  if (shape === 'waterfall' || shape === 'scatter' || shape === 'flow' || shape === 'table' || shape === 'histogram' || shape === 'box') {
     const adapted = shape === 'table'
       ? adaptTableRows(loaded.rows, rowContract, template, tableInputs, decimalComma, rowsArgument)
-      : adaptItemRows(shape, loaded.rows, rowContract, template, valueKind, decimalComma, rowsArgument);
+      : shape === 'histogram' || shape === 'box'
+        ? adaptObservationRows(shape, loaded.rows, rowContract, template, decimalComma, rowsArgument)
+        : adaptItemRows(shape, loaded.rows, rowContract, template, valueKind, decimalComma, rowsArgument);
     return { spec: { ...spec, data: adapted.data }, pathMap: adapted.pathMap, rows: loaded.rows.length, ignoredColumns: adapted.ignoredColumns, states: [] };
   }
   const contract = rowContract as NamedColumnContract;

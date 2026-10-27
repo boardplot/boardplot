@@ -57,5 +57,34 @@
       { "id": "N", "label": "North", "cells": { "revenue": 120, "plan": 100, "status": "on-track", "note": "Ahead" } },
       { "id": "T", "role": "total", "totalPolicy": "source", "label": "Total", "cells": { "revenue": 210.5, "plan": 200, "status": null, "note": "All regions" } }
     ] }
+  },
+  "histogram": {
+    "spec": { "type": "histogram", "options": { "title": "Lead time in days" } },
+    "columns": { "value": "days" },
+    "rows": [
+      { "days": 3, "unused": "a" }, { "days": 5.5, "unused": "b" }, { "days": 4, "unused": "c" }, { "days": 8, "unused": "d" },
+      { "days": 2.5, "unused": "e" }, { "days": 6, "unused": "f" }, { "days": 4.5, "unused": "g" }, { "days": 12, "unused": "h" }
+    ],
+    "data": { "observations": [3, 5.5, 4, 8, 2.5, 6, 4.5, 12] }
+  },
+  "box": {
+    "spec": { "type": "box", "options": { "title": "Lead time by team" }, "data": { "groups": [{ "id": "East", "label": "East team" }] } },
+    "columns": { "category": "team", "value": "days", "categoryLabel": "name" },
+    "rows": [
+      { "team": "West", "name": "West team", "days": 4, "unused": "a" },
+      { "team": "East", "name": null, "days": 3.5, "unused": "b" },
+      { "team": "West", "name": "West team", "days": 6, "unused": "c" },
+      { "team": "East", "name": null, "days": 5, "unused": "d" },
+      { "team": "West", "name": null, "days": 7.5, "unused": "e" },
+      { "team": "East", "name": null, "days": 2, "unused": "f" },
+      { "team": "West", "name": "West team", "days": 9, "unused": "g" },
+      { "team": "East", "name": null, "days": 4, "unused": "h" },
+      { "team": "West", "name": "West team", "days": 5, "unused": "i" },
+      { "team": "East", "name": null, "days": 6.5, "unused": "j" }
+    ],
+    "data": { "groups": [
+      { "id": "West", "label": "West team", "observations": [4, 6, 7.5, 9, 5] },
+      { "id": "East", "label": "East team", "observations": [3.5, 5, 2, 4, 6.5] }
+    ] }
   }
 }

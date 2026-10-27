@@ -14,7 +14,7 @@ export const histogramDataSchema = z
       .array(z.number().finite())
       .min(4)
       .describe(
-        'Raw observations, at least four. Pre-binned counts and edges are rejected: bins the engine cannot recompute cannot be checked.',
+        'Raw observations, at least four. Pre-binned counts and edges are rejected: bins the engine cannot recompute cannot be checked. Rows: value.',
       ),
   })
   .strict() as unknown as z.ZodType<HistogramData>;

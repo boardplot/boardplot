@@ -13,9 +13,10 @@ export { InputError } from './core/inputError';
 /**
  * Which source column holds each role. Category charts name category, series
  * and value; choropleth and tilemap name category and value; waterfall names
- * label and value; scatter names x and y; sankey names source, target and value.
- * A table may name label and id; its spec's data.columns declares the
- * columns, each input column reading the source field named like its id.
+ * label and value; scatter names x and y; sankey names source, target and value. A table may name label and id; its
+ * spec's data.columns declares the columns, each input column reading the
+ * source field named like its id. Histogram names value; box names category
+ * (the group id) and value.
  */
 export interface RowsColumns {
   category?: string;
