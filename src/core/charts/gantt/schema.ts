@@ -32,6 +32,7 @@ const itemSchema = z.strictObject({
 const rowBaseSchema = z.strictObject({
   id: idSchema.describe("Unique timeline row identity."),
   label: z.string().describe("Visible timeline row name."),
+  sublabel: z.string().optional().describe("Second line under the row name, such as what the row measures. Printed in the label font and muted ink, on one line and never cut; the name band takes the wider of name and sublabel. On narrow canvases it follows the name on the row's name line. labels.activity: false hides it with the name."),
   indent: z.number().int().min(0).optional().describe("Nonnegative indentation level for the row label."),
   cols: z.array(z.union([
     z.string(),

@@ -256,7 +256,7 @@ function ganttRecords(ctx: RecordContext): InteractionRecord[] {
   return data.rows.flatMap(row => row.kind === 'cadence'
     ? row.events.map(event => makeRecord(ctx, { categoryId: row.id, segmentId: event.id },
       textValue(event.date, 'date'), { label: row.label }))
-    : row.items.map(item => ganttItemRecord(ctx, row.id, row.label, item)));
+    : row.items.map(item => ganttItemRecord(ctx, row.id, row.sublabel ? `${row.label}, ${row.sublabel}` : row.label, item)));
 }
 
 /**

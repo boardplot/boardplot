@@ -46,6 +46,7 @@ One form; its chart ID is `gantt`.
 | rows | array | yes | Task and cadence rows displayed in the supplied order. |
 | rows[].id (rows[] branch 1) | string | yes | Unique timeline row identity. |
 | rows[].label (rows[] branch 1) | string | yes | Visible timeline row name. |
+| rows[].sublabel (rows[] branch 1) | string |  | Second line under the row name, such as what the row measures. Printed in the label font and muted ink, on one line and never cut; the name band takes the wider of name and sublabel. On narrow canvases it follows the name on the row's name line. labels.activity: false hides it with the name. |
 | rows[].indent (rows[] branch 1) | integer |  | Nonnegative indentation level for the row label. |
 | rows[].cols (rows[] branch 1) | array |  | Metadata columns beside the row label, such as owner and status; up to three are displayed. A cell is text, or text with a tone. |
 | rows[].cols[].text (rows[] branch 1) | string | yes | Cell text, such as a status word. |
@@ -66,6 +67,7 @@ One form; its chart ID is `gantt`.
 | rows[].items[].anchor.offsetDays (rows[] branch 1) | integer |  | Signed number of days added to the target edge; defaults to zero. |
 | rows[].id (rows[] branch 2) | string | yes | Unique timeline row identity. |
 | rows[].label (rows[] branch 2) | string | yes | Visible timeline row name. |
+| rows[].sublabel (rows[] branch 2) | string |  | Second line under the row name, such as what the row measures. Printed in the label font and muted ink, on one line and never cut; the name band takes the wider of name and sublabel. On narrow canvases it follows the name on the row's name line. labels.activity: false hides it with the name. |
 | rows[].indent (rows[] branch 2) | integer |  | Nonnegative indentation level for the row label. |
 | rows[].cols (rows[] branch 2) | array |  | Metadata columns beside the row label, such as owner and status; up to three are displayed. A cell is text, or text with a tone. |
 | rows[].cols[].text (rows[] branch 2) | string | yes | Cell text, such as a status word. |
@@ -119,6 +121,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | right-edge-milestone-row | torture | Regression: last row with only a right-edge milestone keeps its activity label centered |
 | workstream-status-plan | example | Workstream status plan (weekly view, owners, due dates, and semantic status) |
 | metadata-column-headers | example | Three delivery rows with owner and due-date headers |
+| status-timeline | example | Status timeline (row sublabels, status-coloured spans, change events) |
 | torture-long-labels | torture | Torture: long names at a generous size read whole, never cut |
 | item-labels-off | torture | Rows and status remain when item labels are off |
 | five-nearby-milestones | torture | Five nearby milestones retain their names |

@@ -396,6 +396,9 @@ function bracketLabel(ctx: LabelCtx, rowId: string, place: ItemPlace): void {
   });
 }
 
+/** Air between a row name and its sublabel, in px. */
+const SUBLABEL_GAP = 2;
+
 /** Row label (left band) and its text columns. */
 function activityLabels(ctx: LabelCtx, place: RowPlace): void {
   const { row: r, index: i, cy } = place;
@@ -405,6 +408,24 @@ function activityLabels(ctx: LabelCtx, place: RowPlace): void {
   const rl = body.rowLabels[i]!;
   // Stacked: the name line above the row's lane.
   const nameCy = ctx.band.rowY[i]! + ctx.band.nameLineH / 2;
+  // Table form: name and sublabel centre together on the row.
+  const nameY = ctx.band.stacked ? nameCy - rl.h / 2 : cy - (rl.h + (rl.sub ? SUBLABEL_GAP + rl.sub.h : 0)) / 2;
+  const priority = PRIORITY.endpoint + (env.highlights.has(r.id) ? PRIORITY.highlightBonus : 0);
+  if (rl.sub) {
+    const rect = ctx.band.stacked
+      ? { x: body.inner.x + rl.indentPx + rl.w + stackedGap(env).name, y: nameCy - rl.sub.h / 2, w: rl.sub.w, h: rl.sub.h }
+      : { x: body.inner.x + rl.indentPx, y: nameY + rl.h + SUBLABEL_GAP, w: rl.sub.w, h: rl.sub.h };
+    ctx.requests.push({
+      id: `sublabel:${r.id}`,
+      kind: 'activity', typeRole: 'label',
+      owner: { categoryId: r.id },
+      text: rl.sub.text,
+      lines: [rl.sub.text],
+      font: label,
+      priority,
+      candidates: [{ slot: 'left', rect, penalty: 0 }],
+    });
+  }
   ctx.requests.push({
     id: `activity:${r.id}`,
     kind: 'activity', typeRole: 'label',
@@ -412,8 +433,8 @@ function activityLabels(ctx: LabelCtx, place: RowPlace): void {
     text: r.label,
     ...fittedLabel({ lines: rl.lines, w: rl.w, h: rl.h, font: rl.font, ...(rl.title ? { title: rl.title } : {}) }, rl.baseFont),
     font: rl.baseFont,
-    priority: PRIORITY.endpoint + (env.highlights.has(r.id) ? PRIORITY.highlightBonus : 0),
-    candidates: [{ slot: 'left', rect: { x: body.inner.x + rl.indentPx, y: (ctx.band.stacked ? nameCy : cy) - rl.h / 2, w: rl.w, h: rl.h }, penalty: 0 }],
+    priority,
+    candidates: [{ slot: 'left', rect: { x: body.inner.x + rl.indentPx, y: nameY, w: rl.w, h: rl.h }, penalty: 0 }],
   });
   if (ctx.band.stacked) {
     stackedCellLabels(ctx, place, nameCy);

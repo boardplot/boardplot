@@ -556,6 +556,81 @@ export const fixtures: Fixture<GanttData, GanttOptions>[] = [
       source: 'Illustrative delivery plan',
     },
   },
+  {
+    id: 'status-timeline',
+    title: 'Status timeline (row sublabels, status-coloured spans, change events)',
+    kind: 'example',
+    data: {
+      rows: [
+        {
+          id: 'tag',
+          label: 'Browser tag, shop pages',
+          sublabel: 'page view, landing view',
+          items: [
+            { id: 'tag-before', kind: 'bar', start: '2026-03-02', end: '2026-03-09', label: 'fired on every visit', colorRole: 'neutralLight', colorLabel: 'before' },
+            { id: 'tag-broken', kind: 'chevron', start: '2026-03-10', end: '2026-03-31', label: '−78% landing views per click; 1 in 6 visitors consent', colorRole: 'bad', colorLabel: 'broken' },
+          ],
+        },
+        {
+          id: 'purchase',
+          label: 'Browser purchase event',
+          sublabel: 'sent with the server API',
+          items: [
+            { id: 'purchase-before', kind: 'bar', start: '2026-03-02', end: '2026-03-17', label: 'c. 82% / 70% of orders', colorRole: 'neutralLight', colorLabel: 'before' },
+            { id: 'purchase-broken', kind: 'chevron', start: '2026-03-18', end: '2026-03-31', label: 'Near zero', colorRole: 'bad', colorLabel: 'broken' },
+          ],
+        },
+        {
+          id: 'checkout',
+          label: 'Checkout event stream',
+          sublabel: 'payment events per order',
+          items: [
+            { id: 'checkout-before', kind: 'bar', start: '2026-03-02', end: '2026-03-09', label: 'c. 95%', colorRole: 'neutralLight', colorLabel: 'before' },
+            { id: 'checkout-step1', kind: 'bar', start: '2026-03-10', end: '2026-03-17', label: 'c. 88%', colorRole: 'warn', colorLabel: 'degraded' },
+            { id: 'checkout-step2', kind: 'bar', start: '2026-03-18', end: '2026-03-23', label: 'c. 79%', colorRole: 'warn', colorLabel: 'degraded' },
+            { id: 'checkout-broken', kind: 'chevron', start: '2026-03-24', end: '2026-03-31', label: 'c. 64%', colorRole: 'bad', colorLabel: 'broken' },
+          ],
+        },
+        {
+          id: 'attribution',
+          label: 'Attribution model',
+          sublabel: 'orders with a web touchpoint',
+          items: [
+            { id: 'attribution-before', kind: 'bar', start: '2026-03-02', end: '2026-03-17', label: '84–89%', colorRole: 'neutralLight', colorLabel: 'before' },
+            { id: 'attribution-degraded', kind: 'chevron', start: '2026-03-18', end: '2026-03-31', label: '61–70%', colorRole: 'warn', colorLabel: 'degraded' },
+          ],
+        },
+        {
+          id: 'server',
+          label: 'Server event feed',
+          sublabel: 'via the tag gateway',
+          items: [
+            { id: 'server-intact', kind: 'chevron', start: '2026-03-02', end: '2026-03-31', label: 'Unchanged: all event types daily; purchases = 85% of web orders', colorRole: 'good', colorLabel: 'intact' },
+          ],
+        },
+        {
+          id: 'orders',
+          label: 'Orders',
+          sublabel: 'web shop, two regions',
+          items: [
+            { id: 'orders-intact', kind: 'chevron', start: '2026-03-02', end: '2026-03-31', label: 'No break: region A 95–120, region B 30–44 web orders per day', colorRole: 'good', colorLabel: 'intact' },
+          ],
+        },
+      ],
+    },
+    options: {
+      title: 'Three changes since 10 March: browser and checkout events stay broken, the server feed is intact',
+      subtitle: 'Status as of 31 March; arrow: still open',
+      legend: 'bottom',
+      source: 'Illustrative data',
+      size: { width: 1000 },
+    },
+    annotations: [
+      { id: 'change-1', kind: 'event', at: 'tag-broken', label: '1' },
+      { id: 'change-2', kind: 'event', at: 'purchase-broken', label: '2' },
+      { id: 'change-3', kind: 'event', at: 'checkout-broken', label: '3' },
+    ],
+  },
 ];
 
 // Long names at a generous size read whole. The rendered SVG has no
