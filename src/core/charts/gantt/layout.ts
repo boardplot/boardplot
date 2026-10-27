@@ -135,7 +135,10 @@ function labelNodes(env: GanttEnv, domain: GanttDomain, labels: PlacedLabel[]) {
             : label
           : label,
   );
-  return nodes.map((node) => node.t === 'text' && node.id.startsWith('label:sublabel:') ? { ...node, ink: { token: 'inkMuted' as const } } : node);
+  // A rule's label is muted like the rule it names.
+  const rules = new Set(domain.rows.flatMap((row) => row.items.filter((it) => it.kind === 'rule').map((it) => it.id)));
+  return nodes.map((node) => node.t === 'text' && (node.id.startsWith('label:sublabel:') || (node.part === 'item' && rules.has(node.owner.segmentId ?? '')))
+    ? { ...node, ink: { token: 'inkMuted' as const } } : node);
 }
 
 /** Phase 5: the scene in paint order, the sizing record, the axis ticks and the accessible description. */

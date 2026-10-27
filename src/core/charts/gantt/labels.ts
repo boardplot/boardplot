@@ -209,6 +209,28 @@ function crossingRules(rules: GanttBody['ruleClaims'], candidates: SlotCandidate
   return [...out, ...crossing];
 }
 
+/**
+ * A rule's label: one seat 2 px above its line, flush left. In the table
+ * form that is the middle of the bar box, where the bar names of its row
+ * sit. It may cross an event or today rule, which breaks around it.
+ * Without room it goes to the notes list.
+ */
+function ruleLabel(ctx: LabelCtx, place: ItemPlace): void {
+  const { it, rect, owner } = place;
+  const text = ganttItemLabel(it, ctx.env).text;
+  const tsize = ctx.env.measure(text, ctx.env.fonts.label);
+  ctx.requests.push({
+    id: `item:${it.rowId}:${it.id}`,
+    kind: 'item', typeRole: 'label',
+    owner,
+    text,
+    lines: [text],
+    font: ctx.env.fonts.label,
+    priority: PRIORITY.interior + Math.min(99, it.endDay - it.startDay) + bonus(ctx.env, it),
+    candidates: [{ slot: 'aboveRule', rect: { x: rect.x + 4, y: rect.y + rect.h - 4 - tsize.height, w: tsize.width, h: tsize.height }, penalty: 0, overRules: true }],
+  });
+}
+
 /** Milestone labels use their row bands before side seats and the shared lane. */
 function milestoneLabel(ctx: LabelCtx, row: RowPlace, place: ItemPlace): void {
   const { cy } = row;
@@ -518,6 +540,7 @@ export function planGanttLabels(
         if (itemsOn && domain.milestones.byId.has(it.id)) milestoneLabel(ctx, place, item);
       } else if (itemsOn && ganttItemLabel(it, env).text) {
         if (it.kind === 'bracket') bracketLabel(ctx, place.row.id, item);
+        else if (it.kind === 'rule') ruleLabel(ctx, item);
         else spanLabel(ctx, place, item);
       }
     }
