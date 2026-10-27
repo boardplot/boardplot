@@ -155,10 +155,11 @@ function spanLabel(ctx: LabelCtx, row: RowPlace, place: ItemPlace): void {
     ...(ctx.spanClearance ?? []).map(name => ({ ...name, x: name.x - 9, w: name.w + 18 })),
     ...otherMarks,
     ...ctx.body.ruleClaims.map(rule => ({ ...rect, x: rule.x - rule.halfWidth, w: 2 * rule.halfWidth }))];
-  // An arrow name outside its arrow must read as that arrow's name: no other mark or name sits between them.
+  // A name outside its mark must read as that mark's name: no other mark or name sits between them.
+  // This holds for an arrow retry and for every name the repair seats again across event or today rules.
   const nextToArrow = (seat: Rect) => {
     const [from, to] = seat.x >= rect.x + rect.w ? [rect.x + rect.w, seat.x] : [seat.x + seat.w, rect.x];
-    return !arrowRetry || ![...otherMarks, ...(ctx.spanClearance ?? [])].some(other =>
+    return !(arrowRetry || (ctx.crossRules && ctx.body.ruleClaims.length > 0)) || ![...otherMarks, ...(ctx.spanClearance ?? [])].some(other =>
       other.y < seat.y + seat.h && seat.y < other.y + other.h && other.x < to && other.x + other.w > from);
   };
   const past = (ctx.spanClearance ? seatsPastBlockers(backed.rect, 'x', ctx.body.bodyX, ctx.body.inner.x + ctx.body.inner.w, pastObstacles, 3) : [])
