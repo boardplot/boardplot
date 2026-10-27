@@ -44,6 +44,7 @@ import { autoDecimals } from '../../formatPrecision';
 import { authoredNotes, legendRequired, withAuthoredFootnotes, type InternalFootnoteOptions } from '../../frame';
 import { disclosureNote, keepShownNotes, rankKeyShown } from '../../notes';
 import { crowdedTailCut, TAIL_SHARE_PCT } from '../../paretoTail';
+import { emptyIdRecord } from '../../idRecords';
 
 interface ParetoItem {
   id: Id;
@@ -335,9 +336,9 @@ export function layoutPareto(
   }
 
   const order: Id[] = plotted.map((p) => p.id);
-  const values: Record<Id, number> = {};
-  const cumulative: Record<Id, number> = {};
-  const cumulativeShare: Record<Id, number> = {};
+  const values: Record<Id, number> = emptyIdRecord();
+  const cumulative: Record<Id, number> = emptyIdRecord();
+  const cumulativeShare: Record<Id, number> = emptyIdRecord();
   let running = 0;
   const cumSeries: number[] = [];
   for (const p of plotted) {
@@ -355,8 +356,8 @@ export function layoutPareto(
   //      CROSSES the threshold is INCLUDED — the "does the crossing item
   //      count?" ambiguity is a convention, so it is stated, not assumed. ----
   const populationOrder: Id[] = ranked.map((r) => r.id);
-  const populationShare: Record<Id, number> = {};
-  const populationValue: Record<Id, number> = {};
+  const populationShare: Record<Id, number> = emptyIdRecord();
+  const populationValue: Record<Id, number> = emptyIdRecord();
   let popRunning = 0;
   for (const r of ranked) {
     popRunning += r.value;

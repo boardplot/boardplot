@@ -41,6 +41,7 @@ import type { BumpDerived } from './layout';
 import type { LineAnomaly, LineDomain, LineEnv, LineVariant } from './model';
 import type { LineInterpolation, LineOptionTarget, LineOptions } from './types';
 import { maxOf, minOf, pushAll } from '../../arrays';
+import { emptyIdRecord } from '../../idRecords';
 
 /**
  * The nice domain already caps wasted domain on either side at 15%. If the plotted data
@@ -652,7 +653,7 @@ function stackAndEndpoints(cats: Category[], dataSeries: NormSer[], drawnSeries:
     });
   }
   // endpoints: the last non-null plotted value per drawn series
-  const endpoints: Record<Id, { categoryId: Id; value: number }> = {};
+  const endpoints: Record<Id, { categoryId: Id; value: number }> = emptyIdRecord();
   const lastIdxOf = new Map<Id, number>();
   drawnSeries.forEach((s) => {
     const row = pv[rowOf.get(s)!]!;

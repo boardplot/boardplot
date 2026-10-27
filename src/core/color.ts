@@ -46,7 +46,7 @@ export function compositeColor(color: string, background: string): string {
     const alpha = hex.length === 4 ? hex[3]!.repeat(2) : hex.slice(6);
     return mixColors(color, background, parseInt(alpha, 16) / 255);
   }
-  const alpha = /^rgba?\([^,]+,[^,]+,[^,]+,\s*([^)]+)\)$/i.exec(value)?.[1]?.trim();
+  const alpha = /^rgba?\([^,]+,[^,]+,[^,]+,([^)]+)\)$/i.exec(value)?.[1]?.trim();
   return alpha === undefined ? color
     : mixColors(color, background, alpha.endsWith('%') ? Number(alpha.slice(0, -1)) / 100 : Number(alpha));
 }

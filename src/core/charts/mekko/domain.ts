@@ -28,6 +28,7 @@ import type { LintWarning } from '../../types/scene';
 import { valueLineExtent } from '../../valueLineDomain';
 import type { MekkoDomain, MekkoEnv, NormSer } from './model';
 import { maxOf, minOf, pushAll } from '../../arrays';
+import { emptyIdRecord } from '../../idRecords';
 
 /** Resolve the options once: theme, palette, size, measurer and the number formats. */
 export function resolveMekkoEnv(options: MekkoOptions, warnings: LintWarning[]): MekkoEnv {
@@ -254,7 +255,7 @@ function percentValidity(st: ValueState, warnings: LintWarning[]): void {
 /** Totals, stack extents, weights and shares per column. */
 function mekkoStacks(st: ValueState, fns: ReturnType<typeof valueFns>, warnings: LintWarning[]) {
   const { plottedAt, absAt } = fns;
-  const columnTotals: Record<Id, number> = {};
+  const columnTotals: Record<Id, number> = emptyIdRecord();
   const posTop: number[] = [];
   const negBot: number[] = [];
   const anyByCat: boolean[] = [];
@@ -298,9 +299,9 @@ function mekkoStacks(st: ValueState, fns: ReturnType<typeof valueFns>, warnings:
       message: 'all column weights are zero — columns get equal widths',
     });
   }
-  const shares: Record<Id, Record<Id, number>> = {};
+  const shares: Record<Id, Record<Id, number>> = emptyIdRecord();
   st.cats.forEach((c, ci) => {
-    const row: Record<Id, number> = {};
+    const row: Record<Id, number> = emptyIdRecord();
     const totalAbs = columnTotals[c.id]!;
     for (const s of st.series) {
       if (st.mode === 'percent') {

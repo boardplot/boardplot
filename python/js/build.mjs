@@ -1,0 +1,135 @@
+/**
+ * Asset build for the boardplot Python package.
+ *
+ * Writes into python/src/boardplot/ (all of it gitignored):
+ *   _assets/engine.js     the V8 engine bundle (minified IIFE, global `Boardplot`)
+ *   _assets/runtime.js    the browser bundle of the notebook view (./build-browser.mjs)
+ *   _assets/widget.js     the notebook view's loader (./build-browser.mjs)
+ *   _assets/build.json    {version, identity, files}; Python and the loader refuse a bundle with another identity
+ *   _assets/licenses/     LICENSE, NOTICE.md and THIRD_PARTY_NOTICES.md (the code compiled into the
+ *                         bundles and the fonts behind the width tables)
+ *   _version.py           __version__ = the root package.json version
+ *
+ * Run from anywhere: `node python/js/build.mjs`. Every bundle gets the same
+ * identity, so the script always builds all of them.
+ */
+import { build } from 'esbuild';
+import { copyFileSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { gzipSync } from 'node:zlib';
+import { buildBrowser } from './build-browser.mjs';
+import { buildIdentity } from './identity.mjs';
+
+export { buildIdentity };
+import { bundledPackageNotices, fontNotices } from '../../scripts/third-party-notices.mjs';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const root = resolve(here, '../..');
+const pkgDir = resolve(root, 'python/src/boardplot');
+const assets = resolve(pkgDir, '_assets');
+
+/** Size limits: over the budget warns, over the hard limit fails. */
+const ENGINE_BUDGET = 5 * 1024 * 1024;
+const ENGINE_LIMIT = 8 * 1024 * 1024;
+
+const explorerShim = (name) => resolve(root, `scripts/explorer/shims/${name}.mjs`);
+const engineShim = (name) => resolve(here, `engine/shims/${name}.ts`);
+
+/**
+ * Node modules the render path imports are replaced by shims that throw a
+ * named error; any other Node module stops the build, so a new engine import
+ * fails here and not inside a user's Python process.
+ */
+const shims = {
+  name: 'boardplot-python-shims',
+  setup(builder) {
+    builder.onResolve({ filter: /^node:fs$/ }, () => ({ path: engineShim('fs') }));
+    builder.onResolve({ filter: /^node:path$/ }, () => ({ path: engineShim('path') }));
+    builder.onResolve({ filter: /^node:tty$/ }, () => ({ path: engineShim('tty') }));
+    builder.onResolve({ filter: /^node:util$/ }, () => ({ path: explorerShim('util') }));
+    builder.onResolve({ filter: /^node:crypto$/ }, () => ({ path: explorerShim('crypto') }));
+    builder.onResolve({ filter: /^\.\/raster$/ }, (args) => (args.importer.replaceAll('\\', '/').endsWith('/cli/render.ts') ? { path: engineShim('raster') } : undefined));
+    // Zod's classic entry configures English; its other locales never load.
+    builder.onResolve({ filter: /locales\/index\.js$/ }, (args) => (args.importer.replaceAll('\\', '/').includes('/zod/') ? { path: explorerShim('locales') } : undefined));
+    builder.onResolve({ filter: /^(node:)?(assert|buffer|child_process|events|module|os|perf_hooks|process|readline|stream|url|vm|worker_threads|zlib|http|https|net)$/ }, (args) => ({
+      errors: [{ text: `The Python engine has no shim for '${args.path}' (imported by ${args.importer}). Add one under python/js/engine/shims/ or keep the import out of the render path.` }],
+    }));
+  },
+};
+
+/** Build engine.js, LICENSE, NOTICE.md and _version.py for one identity. Returns the sizes and the build metadata. */
+export async function buildEngine(id) {
+  const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
+  const result = await build({
+    absWorkingDir: root,
+    entryPoints: [resolve(here, 'engine/entry.ts')],
+    bundle: true,
+    format: 'iife',
+    globalName: 'Boardplot',
+    platform: 'neutral',
+    mainFields: ['module', 'main'],
+    target: 'es2022',
+    minify: true,
+    write: false,
+    metafile: true,
+    legalComments: 'none',
+    logLevel: 'warning',
+    plugins: [shims],
+    define: {
+      'process.env.NODE_ENV': '"production"',
+      'process.env.BOARDPLOT_DEBUG_STACK': '"0"',
+      'process.env': '{}',
+      __BOARDPLOT_BUILD_VERSION__: JSON.stringify(id.version),
+      __BOARDPLOT_IDENTITY__: JSON.stringify(id),
+    },
+  });
+  const code = result.outputFiles[0].contents;
+  if (code.length > ENGINE_LIMIT) throw new Error(`engine.js has ${code.length} bytes, over the hard limit of ${ENGINE_LIMIT}`);
+  if (code.length > ENGINE_BUDGET) console.warn(`warning: engine.js has ${code.length} bytes, over the budget of ${ENGINE_BUDGET}`);
+
+  mkdirSync(resolve(assets, 'licenses'), { recursive: true });
+  writeFileSync(resolve(assets, 'engine.js'), code);
+  copyFileSync(resolve(root, 'LICENSE'), resolve(assets, 'licenses/LICENSE'));
+  copyFileSync(resolve(root, 'NOTICE.md'), resolve(assets, 'licenses/NOTICE.md'));
+  writeFileSync(resolve(pkgDir, '_version.py'), `# Generated by python/js/build.mjs from package.json. Do not edit.\n__version__ = "${pkg.version}"\n`);
+  return { bytes: code.length, gzipBytes: gzipSync(code).length, metafile: result.metafile };
+}
+
+/**
+ * THIRD_PARTY_NOTICES.md for every bundle in the wheel: the npm packages that
+ * contribute bytes to any of them (each listed once) and the fonts the width
+ * tables were measured from. NOTICE.md points to this file by name.
+ */
+export function writeNotices(metafiles) {
+  const outputs = {};
+  metafiles.forEach((metafile, index) => {
+    for (const [name, output] of Object.entries(metafile.outputs)) outputs[`${index}:${name}`] = output;
+  });
+  writeFileSync(resolve(assets, 'licenses/THIRD_PARTY_NOTICES.md'), '# Third-party notices\n\n' +
+    'Generated from the build metadata and the installed package versions.\n' +
+    'The software sections cover third-party code compiled into engine.js, runtime.js and widget.js.\n' +
+    'See NOTICE.md for data notices.\n\n' + bundledPackageNotices(root, { outputs }) + '\n' + fontNotices(root));
+}
+
+/** Write _assets/build.json after every bundle exists: the package version, the identity and each asset's size in bytes. */
+export function writeBuildJson(id) {
+  const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
+  const files = Object.fromEntries(readdirSync(assets).sort()
+    .filter((name) => name !== 'build.json' && statSync(resolve(assets, name)).isFile())
+    .map((name) => [name, statSync(resolve(assets, name)).size]));
+  writeFileSync(resolve(assets, 'build.json'), JSON.stringify({ version: pkg.version, identity: id, files }, null, 2) + '\n');
+}
+
+const invoked = process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
+if (invoked) {
+  const identity = buildIdentity();
+  // Start from an empty asset folder, so no file of an earlier build reaches the wheel.
+  rmSync(assets, { recursive: true, force: true });
+  const engine = await buildEngine(identity);
+  console.log(`engine.js: ${(engine.bytes / 1024).toFixed(0)} KB raw, ${(engine.gzipBytes / 1024).toFixed(0)} KB gzip`);
+  console.log(`identity: ${identity.version}, python sources ${identity.pythonSources}, frontend protocol ${identity.frontendProtocol}`);
+  const browser = await buildBrowser(identity);
+  writeNotices([engine.metafile, ...browser.map((entry) => entry.metafile)]);
+  writeBuildJson(identity);
+}

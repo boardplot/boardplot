@@ -165,10 +165,73 @@ jobs:
           overwrite: true
           retention-days: 1
 
+  # The Python package: build its JavaScript assets and the wheel, then test the installed wheel.
+  python:
+    name: Python package (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: '3.11'
+          - os: ubuntu-latest
+            python: '3.15'
+          - os: macos-latest
+            python: '3.13'
+          - os: windows-latest
+            python: '3.13'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build the Python assets
+        run: node python/js/build.mjs
+
+      - name: Typecheck python/js
+        run: npx --no-install tsc -p python/js/tsconfig.json --noEmit
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+
+      # The wheel installs into a clean environment, so the tests import it and not python/src.
+      - name: Build the wheel and install it into a clean environment
+        run: |
+          bin() { if [[ -d "$1/Scripts" ]]; then echo "$1/Scripts"; else echo "$1/bin"; fi; }
+          python -m venv "$RUNNER_TEMP/build-env"
+          "$(bin "$RUNNER_TEMP/build-env")/python" -m pip install --quiet build
+          "$(bin "$RUNNER_TEMP/build-env")/python" -m build --wheel --outdir "$RUNNER_TEMP/dist" python
+          python -m venv "$RUNNER_TEMP/test-env"
+          wheel=$(ls "$RUNNER_TEMP"/dist/boardplot-*.whl)
+          "$(bin "$RUNNER_TEMP/test-env")/python" -m pip install --quiet "$wheel" pytest pandas polars streamlit
+          echo "BOARDPLOT_WHEEL=$wheel" >> "$GITHUB_ENV"
+          echo "TEST_PYTHON=$(bin "$RUNNER_TEMP/test-env")/python" >> "$GITHUB_ENV"
+
+      - name: Test the installed wheel
+        working-directory: python
+        run: '"$TEST_PYTHON" -m pytest -q'
+
   # One check for the branch ruleset to require. It fails when any job above fails or is skipped.
   ci-result:
     name: CI result
-    needs: [checks, tests, scorecard]
+    needs: [checks, tests, scorecard, python]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 2

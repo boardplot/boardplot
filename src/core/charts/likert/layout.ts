@@ -69,6 +69,7 @@ import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { BAND_PAD } from '../../annotateParts';
 import { wrapText } from '../../text';
 import { maxOf, minOf, pushAll } from '../../arrays';
+import { emptyIdRecord } from '../../idRecords';
 
 /** One rung of the response scale, ordered most-negative -> most-positive. */
 export interface LikertScaleOption {
@@ -490,15 +491,15 @@ export function layoutLikert(
   const sideSum = (item: NormItem, indices: number[]) =>
     indices.reduce((a, i) => a + shareOf(item, i), 0);
 
-  const base: Record<Id, number> = {};
-  const shares: Record<Id, Record<Id, number>> = {};
-  const counts: Record<Id, Record<Id, number>> = {};
-  const pctNegative: Record<Id, number> = {};
-  const pctNeutral: Record<Id, number> = {};
-  const pctPositive: Record<Id, number> = {};
-  const net: Record<Id, number> = {};
-  const topBox: Record<Id, number> = {};
-  const bottomBox: Record<Id, number> = {};
+  const base: Record<Id, number> = emptyIdRecord();
+  const shares: Record<Id, Record<Id, number>> = emptyIdRecord();
+  const counts: Record<Id, Record<Id, number>> = emptyIdRecord();
+  const pctNegative: Record<Id, number> = emptyIdRecord();
+  const pctNeutral: Record<Id, number> = emptyIdRecord();
+  const pctPositive: Record<Id, number> = emptyIdRecord();
+  const net: Record<Id, number> = emptyIdRecord();
+  const topBox: Record<Id, number> = emptyIdRecord();
+  const bottomBox: Record<Id, number> = emptyIdRecord();
   for (const item of items) {
     if (item.base !== undefined) base[item.id] = item.base;
     shares[item.id] = Object.fromEntries(scale.map((option, i) => [option.id, shareOf(item, i)]));

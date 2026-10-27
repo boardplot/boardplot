@@ -165,7 +165,7 @@ export function parseFormatExample(example: string, keepWord = false): NumberFor
   if (!bodyMatch) {
     throw new NormalizeError('invalid-format', 'format', 'invalid-format-example: format examples must contain at least one digit', "write an example number as it should print, e.g. '1,234' or '12.5%'");
   }
-  const body = bodyMatch.text.replace(/[  ]+$/, ''); // trailing spaces belong to suffix
+  const body = bodyMatch.text.trimEnd(); // trailing spaces belong to suffix
   let before = s.slice(0, bodyMatch.index);
   let after = s.slice(bodyMatch.index + body.length);
   if (hasParens) {
@@ -177,7 +177,8 @@ export function parseFormatExample(example: string, keepWord = false): NumberFor
     const pairs = (text: string) => /^[^()]*(?:\([^()]*\)[^()]*)*$/.test(text);
     const accounting = open >= 0 && close >= 0 && !before.slice(open).includes(')') && !after.slice(0, close).includes('(');
     // Digits of a unit name ("CO2 (1.2)") are text, not a second number.
-    const outside = (before.slice(0, open) + after.slice(close + 1)).replace(/(?<=\p{L})[0-9]+|[0-9]+(?=\p{L})/gu, '');
+    const outside = (before.slice(0, open) + after.slice(close + 1)).replace(/[0-9]+/g, (run, at: number, text: string) =>
+      /\p{L}$/u.test(text.slice(Math.max(0, at - 2), at)) || /^\p{L}/u.test(text.slice(at + run.length, at + run.length + 2)) ? '' : run);
     if (accounting ? /[()0-9]/.test(outside) : !pairs(before) || !pairs(after)) {
       throw new NormalizeError('invalid-format', 'format', 'invalid-format-example: parentheses must enclose one example number and its units, or sit beside it as balanced text', "write an example number as it should print, e.g. '($1,234)' for negatives in parentheses or '1,234 (kg)' for a unit");
     }

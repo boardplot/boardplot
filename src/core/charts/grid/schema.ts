@@ -8,6 +8,7 @@ import { GRID_MAX_TRACKS } from './limits';
 import {
   addDuplicateIdIssues,
   baseOptionsSchema,
+  idRecord,
   refusedBaseOptions,
 } from '../../schema/shared';
 import {
@@ -111,8 +112,7 @@ const repeatTemplateSchema = z
       .union([
         z
           .strictObject({
-            bySlice: z
-              .record(z.string().describe('Exact repeat value used as the lookup key.'), z.unknown().describe('Data for one slice, validated by the template chart type.'))
+            bySlice: idRecord(z.string().describe('Exact repeat value used as the lookup key.'), z.unknown().describe('Data for one slice, validated by the template chart type.'))
               .describe('Exact slice lookup; every repeat value must have one chart-data entry.'),
           })
           .describe('Facet data keyed by repeat value.'),
@@ -177,18 +177,6 @@ const repeatGridSchema = z
         ctx.addIssue({ code: 'custom', path: ['repeat', 'values', index], message: `duplicate repeat value '${value}'` });
       }
       seen.add(value);
-      // z.record's parsed copy cannot carry an own '__proto__' key — plain
-      // assignment would rewire the prototype instead — so the slice vanishes
-      // between schema and layout even when the author genuinely owns it.
-      // Refuse the name honestly instead of claiming the slice is missing.
-      if (value === '__proto__') {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['repeat', 'values', index],
-          message: `repeat value '__proto__' is reserved (object prototype key) — rename the slice`,
-        });
-        return;
-      }
       if (by) {
         addFacetValueIssues(ctx, by, source, value, index);
         return;

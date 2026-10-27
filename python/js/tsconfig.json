@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "noEmit": true
+  },
+  "include": ["**/*.ts", "**/*.tsx", "../../src/core/fontMetrics/fontkit.d.ts"],
+  "exclude": ["node_modules"]
+}

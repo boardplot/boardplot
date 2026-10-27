@@ -75,6 +75,7 @@ import { seriesTextPaint } from '../../theme';
 import { defaultAnnotationId } from '../../types/annotations';
 import { disclosureNote } from '../../notes';
 import { maxOf, pushAll } from '../../arrays';
+import { emptyIdRecord } from '../../idRecords';
 
 export interface ButterflyMarks {
   /** Series-a bars (left pane), keyed by categoryId, top-to-bottom order. */
@@ -285,7 +286,7 @@ export function layoutButterfly(
     throw new NormalizeError('empty-data', 'categories', 'butterfly requires at least one category');
   }
 
-  const diffs: ButterflyDerived['diffs'] = {};
+  const diffs: ButterflyDerived['diffs'] = emptyIdRecord();
   for (const r of rows) diffs[r.id] = (r.b ?? 0) - (r.a ?? 0);
 
   // negatives are not meaningful on mirrored panes: clamp display to abs,

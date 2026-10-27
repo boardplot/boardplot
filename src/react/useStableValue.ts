@@ -59,7 +59,14 @@ function snapshot(value: unknown, previous?: unknown): unknown {
   // A primitive has a prototype that is not plain, so it returns here too.
   if (value == null || !isPlain(value)) return value;
   const prior = previous !== null && typeof previous === 'object' && isPlain(previous) ? previous as Record<string, unknown> : undefined;
-  const copy: Record<string, unknown> = Object.assign(Object.create(Object.getPrototypeOf(value)), value);
-  for (const key of Object.keys(value)) copy[key] = snapshot((value as Record<string, unknown>)[key], prior?.[key]);
+  const copy: Record<PropertyKey, unknown> = Object.create(Object.getPrototypeOf(value));
+  for (const key of Reflect.ownKeys(value)) {
+    if (!Object.prototype.propertyIsEnumerable.call(value, key)) continue;
+    const item = (value as Record<PropertyKey, unknown>)[key];
+    const kept = typeof key === 'string' ? snapshot(item, prior && Object.hasOwn(prior, key) ? prior[key] : undefined) : item;
+    // A data id named __proto__ is an own key: assigned, it would set the copy's prototype instead.
+    if (key === '__proto__') Object.defineProperty(copy, key, { value: kept, writable: true, enumerable: true, configurable: true });
+    else copy[key] = kept;
+  }
   return copy;
 }

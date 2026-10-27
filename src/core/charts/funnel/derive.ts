@@ -16,6 +16,7 @@ import type { LintWarning } from '../../types/scene';
 import type { Theme } from '../../types/theme';
 import type { FunnelDerived } from './layout';
 import { disclosureNote } from '../../notes';
+import { emptyIdRecord } from '../../idRecords';
 
 type Raster = { fmt: (v: number) => string; fmtPercent: (v: number) => string; forSeries: (series: { format?: string; unit?: string }, cellFormat?: string) => (v: number) => string };
 
@@ -90,8 +91,8 @@ export function deriveFunnel(
       return v;
     }),
   );
-  const stageTotals: Record<Id, number | null> = {};
-  const shownTotals: Record<Id, number | null> = {};
+  const stageTotals: Record<Id, number | null> = emptyIdRecord();
+  const shownTotals: Record<Id, number | null> = emptyIdRecord();
   // A stage holding a value below zero: the label prints the data's total, and no conversion is measured to or from it.
   const clampedStage = stages.map((_c, ci) => raw.some((row) => (row[ci] ?? 0) < 0));
   const known = stages.map((c, ci) => {

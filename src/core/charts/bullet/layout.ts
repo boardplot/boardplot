@@ -100,6 +100,7 @@ import type { TextMeasurer } from '../../text';
 import { autoDecimals } from '../../formatPrecision';
 import { composedTextRole } from '../../textRole';
 import { maxOf, minOf, pushAll } from '../../arrays';
+import { emptyIdRecord } from '../../idRecords';
 
 export interface BulletMarks {
   rows: {
@@ -535,7 +536,7 @@ export function layoutBullet(
   };
 
   // ---- derive: delta vs target ----
-  const deltaVsTarget: Record<Id, number> = {};
+  const deltaVsTarget: Record<Id, number> = emptyIdRecord();
   for (const row of rows) {
     if (row.value !== null && row.target !== null) {
       deltaVsTarget[row.id] = round2(row.value - row.target);

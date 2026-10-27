@@ -93,6 +93,7 @@ import { textScaleOf } from '../../typeFloors';
 import { disclosureNote, disclosuresShown } from '../../notes';
 import { omittedKey } from '../../seriesIdentity';
 import { maxOf, minOf, pushAll } from '../../arrays';
+import { emptyIdRecord } from '../../idRecords';
 
 export interface BarMarks {
   rows: { id: Id; rect: Rect; bars: { seriesId: Id; rect: Rect; nodeId: Id }[] }[];
@@ -447,7 +448,7 @@ function assembleBarGeometry(
   const paintWarningRules: PaintWarningRule[] = [];
   pushAll(warnings, rectSeriesAdjacentWarnings(nodes, (paint) => paintColor(theme, paint), 'horizontal', domain.highlights, theme, { rules: paintWarningRules, before: warnings.filter(warning => !['pie-ramp-crowded', 'likert-ramp-invisible', 'band-lightness-insufficient', 'series-adjacent-similar', 'highlight-reads-as-loss'].includes(warning.code)).length },
     (options as { [DEFER_ADJACENT]?: boolean })[DEFER_ADJACENT] !== true));
-  const totalsById: Record<Id, number> = {};
+  const totalsById: Record<Id, number> = emptyIdRecord();
   // Receipt value: the engine's raw answer (see receiptValue), not a rounded
   // one.
   // A row with no value has no total: omitted, not a certified 0.

@@ -13,7 +13,7 @@
  * one type a spec names, and a schema chunk registers nothing in the chart
  * registry. The first case asserts exactly that.
  */
-import { act, type ReactElement } from 'react';
+import { act, startTransition, Suspense, type ReactElement, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
@@ -21,6 +21,8 @@ import { getFixtures } from '../src/fixtures';
 
 /** The table chunk, refusable: table is the one type whose readiness is its component, not the registry. */
 const tableChunk = vi.hoisted(() => ({ missing: false }));
+/** The waffle engine chunk, held open until a test settles it. */
+const waffleEngine = vi.hoisted(() => ({ hold: undefined as Promise<unknown> | undefined, calls: 0 }));
 /** The funnel SCHEMA chunk, refusable, for the load that fails before any engine is asked for. */
 const funnelSchema = vi.hoisted(() => ({ missing: false }));
 vi.mock('../src/react/schemaLoaders', async (importOriginal) => {
@@ -31,7 +33,8 @@ vi.mock('../src/react/schemaLoaders', async (importOriginal) => {
 vi.mock('../src/react/chartLoaders', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/react/chartLoaders')>();
   return { chartLoaders: { ...actual.chartLoaders,
-    table: () => (tableChunk.missing ? Promise.reject(new Error('chunk 404')) : actual.chartLoaders.table!()) } };
+    table: () => (tableChunk.missing ? Promise.reject(new Error('chunk 404')) : actual.chartLoaders.table!()),
+    waffle: () => { waffleEngine.calls += 1; return waffleEngine.hold ?? actual.chartLoaders.waffle!(); } } };
 });
 
 import { BoardplotChart } from '../src/react/spec';
@@ -91,24 +94,30 @@ describe('BoardplotChart with engines on demand', { timeout: 60_000 }, () => {
     const host = document.createElement('div');
     document.body.append(host);
     let root: Root | undefined;
-    await act(async () => { root = createRoot(host); root.render(<BoardplotChart spec={demoSpec('table')} />); });
+    // A host that replaced its probe for the error card with onSpecError must hear a chunk that did not load, and its recovery.
+    const specError = vi.fn();
+    await act(async () => { root = createRoot(host); root.render(<BoardplotChart spec={demoSpec('table')} onSpecError={specError} />); });
     const deadline = Date.now() + 20_000;
     while (!host.querySelector('[data-bp-diagnostic-details]') && Date.now() < deadline) {
       await act(async () => { await new Promise((done) => { setTimeout(done, 10); }); });
     }
     const card = host.querySelector('[data-bp-spec-error]')!;
     expect(card.querySelector('[data-bp-error-code="chunk-load-failed"]') === null).toBe(false);
+    expect(specError).toHaveBeenCalledOnce();
+    expect(specError.mock.calls[0]![0]).toEqual([expect.objectContaining({ code: 'chunk-load-failed', message: expect.stringContaining('chunk 404') })]);
     expect(card.textContent).toContain("'table' chart engine");
     expect(card.textContent).toContain('chunk 404');
     expect(card.textContent).toContain('Reload the page');
 
     // The rejected load left no cache entry, so the next render tries again.
     tableChunk.missing = false;
-    await act(async () => { root!.render(<BoardplotChart spec={demoSpec('table')} />); });
+    await act(async () => { root!.render(<BoardplotChart spec={demoSpec('table')} onSpecError={specError} />); });
     while (!host.querySelector('.bp-table-grid') && Date.now() < deadline) {
       await act(async () => { await new Promise((done) => { setTimeout(done, 10); }); });
     }
     expect(host.querySelector('.bp-table-grid') === null).toBe(false);
+    expect(specError).toHaveBeenCalledTimes(2);
+    expect(specError).toHaveBeenLastCalledWith([]);
     expect(host.querySelector('[data-bp-spec-error]')).toBeNull();
     await act(async () => { root!.unmount(); });
     host.remove();
@@ -157,6 +166,40 @@ describe('BoardplotChart with engines on demand', { timeout: 60_000 }, () => {
     />);
 
     expect(viaSpec).toBe(viaEntry);
+  });
+
+  // A transition that suspends and never commits must not leave its onSpecError behind for a later chunk failure.
+  it('reports a chunk failure to the committed onSpecError, not to a suspended transition\'s', async () => {
+    let fail!: (reason: Error) => void;
+    waffleEngine.hold = new Promise((_, reject) => { fail = reject; });
+    const committed = vi.fn();
+    const suspended = vi.fn();
+    const never = new Promise<never>(() => {});
+    function Never(): ReactElement { throw never; }
+    const view = (onSpecError: typeof committed, suspend: boolean, children?: ReactNode) => <Suspense fallback="busy">
+      <BoardplotChart spec={demoSpec('waffle')} onSpecError={onSpecError} />{suspend && <Never />}{children}
+    </Suspense>;
+    const host = document.createElement('div');
+    document.body.append(host);
+    let root: Root | undefined;
+    await act(async () => { root = createRoot(host); root.render(view(committed, false)); });
+    const deadline = Date.now() + 20_000;
+    while (waffleEngine.calls === 0 && Date.now() < deadline) {
+      await act(async () => { await new Promise((done) => { setTimeout(done, 10); }); });
+    }
+    expect(waffleEngine.calls).toBeGreaterThan(0);
+    await act(async () => { startTransition(() => { root!.render(view(suspended, true)); }); });
+    expect(host.textContent).not.toContain('busy');
+    await act(async () => { fail(new Error('chunk 404')); });
+    while (!host.querySelector('[data-bp-spec-error]') && Date.now() < deadline) {
+      await act(async () => { await new Promise((done) => { setTimeout(done, 10); }); });
+    }
+    expect(committed).toHaveBeenCalledOnce();
+    expect(committed.mock.calls[0]![0]).toEqual([expect.objectContaining({ code: 'chunk-load-failed' })]);
+    expect(suspended).not.toHaveBeenCalled();
+    waffleEngine.hold = undefined;
+    await act(async () => { root!.unmount(); });
+    host.remove();
   });
 
   // The grid entry linked every chart core (about 0.8 MB gzip) for its panels. It now fetches the

@@ -36,6 +36,7 @@ import { applyCategoryViewport, liveWindowOptions, viewportMeanSpan } from '../.
 import type { ComboDomain, ComboEnv, NormSer } from './model';
 import { disclosuresShown } from '../../notes';
 import { maxOf } from '../../arrays';
+import { emptyIdRecord } from '../../idRecords';
 
 /** Resolve the options once: theme, palette, size, measurer and highlights. */
 export function resolveComboEnv(options: ComboOptions, warnings: LintWarning[]): ComboEnv {
@@ -225,7 +226,7 @@ export function primaryLineMean(
 }
 
 function comboStacks(cats: Category[], columnSeries: NormSer[]) {
-  const stackTotals: Record<Id, number> = {};
+  const stackTotals: Record<Id, number> = emptyIdRecord();
   const posTop: number[] = [];
   const negBot: number[] = [];
   const anyByCat: boolean[] = [];

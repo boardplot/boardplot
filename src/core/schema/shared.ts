@@ -32,6 +32,7 @@ import { parseISODate } from '../isoDate';
 import { parseTimeText } from '../isoTime';
 import { levenshtein } from '../spelling';
 import type { BaseOptions } from '../types/options';
+import { emptyIdRecord } from '../idRecords';
 
 const annotationIconNames = listIcons();
 const annotationIconSchema = z
@@ -48,6 +49,37 @@ const annotationIconSchema = z
 z.globalRegistry.add(annotationIconSchema, { enum: annotationIconNames, description: annotationIconSchema.description });
 
 export const idSchema = z.string().min(1).describe('Nonempty stable identifier used to match data, labels and annotation anchors.');
+
+// z.record skips an own `__proto__` key, so the key crosses the parse under a stand-in.
+const PROTO_KEY_STAND_IN = '__proto__\u200b';
+
+/**
+ * A record keyed by data ids (category, series, column, slice). Every id is a
+ * key, `__proto__` included, and the parsed record has no prototype: an id
+ * such as `constructor` that the record lacks reads as absent, not as the
+ * inherited function.
+ */
+export function idRecord<V extends z.ZodType>(key: z.ZodString, value: V) {
+  return z.preprocess((raw, ctx) => {
+    if (raw === null || typeof raw !== 'object' || Array.isArray(raw) || !Object.hasOwn(raw, '__proto__') || Object.hasOwn(raw, PROTO_KEY_STAND_IN)) return raw;
+    const renamed: Record<string, unknown> = emptyIdRecord();
+    for (const [name, item] of Object.entries(raw)) {
+      if (name !== '__proto__') { renamed[name] = item; continue; }
+      // Checked here, so an issue names the key as authored and not the stand-in.
+      const checked = value.safeParse(item);
+      if (checked.success) renamed[PROTO_KEY_STAND_IN] = item;
+      else for (const issue of checked.error.issues) ctx.addIssue({ ...issue, path: ['__proto__', ...issue.path] } as z.core.$ZodRawIssue);
+    }
+    return renamed;
+  }, z.record(key, value)).transform((parsed) => {
+    // z.record built a fresh object: drop its prototype in place, and copy only to put a stand-in back.
+    if (!Object.hasOwn(parsed, PROTO_KEY_STAND_IN)) return Object.setPrototypeOf(parsed, null) as Record<string, z.output<V>>;
+    const record: Record<string, z.output<V>> = emptyIdRecord();
+    for (const [name, item] of Object.entries(parsed)) record[name === PROTO_KEY_STAND_IN ? '__proto__' : name] = item;
+    return record;
+  // A preprocess reads as optional input; the record stays required unless the caller adds .optional().
+  }).nonoptional();
+}
 
 /**
  * A category date on a chart that spaces its axis by time. parseISODate reads
