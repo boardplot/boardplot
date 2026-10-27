@@ -53,6 +53,9 @@ export interface NormRow {
 
 export type GanttEventAnnotation = Extract<Annotation, { kind: 'event' }>;
 
+/** The air an event rule and the today line keep left and right of a label, in px; a rule nearer than that breaks around the label. */
+export const RULE_LABEL_GAP = { eventRule: 4, todayLine: 6 } as const;
+
 export interface GanttEvent {
   id: Id;
   day: number;
@@ -190,8 +193,8 @@ export interface GanttBody {
   laneEnabled: boolean;
   laneX: number;
   x: (day: number) => number;
-  /** Event and today rules a span label slides around. */
-  ruleClaims: { x: number; halfWidth: number }[];
+  /** Event and today rules a span label slides around; `gap` is the air the rule keeps beside a label it breaks for. */
+  ruleClaims: { x: number; halfWidth: number; gap: number }[];
   clusteredLabelY: Map<Id, number>;
 }
 

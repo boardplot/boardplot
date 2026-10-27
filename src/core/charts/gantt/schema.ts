@@ -92,7 +92,7 @@ export const ganttDataSchema = z
 
 export const ganttOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions('gantt')).safeExtend({
   labels: baseOptionsSchema.shape.labels.describe("False hides timeline item labels. Row names, metadata cells and column headers remain. Use labels.activity: false to hide those, or labels.item: false to hide only item labels. For milestones, labels.item: ['category'] prints the item name without its date; ['absolute'] or the legacy ['value'] prints only the date. Span items print the inclusive date range. Parts follow the supplied order. An empty requested part is named in a note."),
-  today: z.string().optional().describe("Authored ISO 8601 date for the dashed today marker; the system clock is not read. The marker, like an event rule, passes the period names of the calendar head with a gap."),
+  today: z.string().optional().describe("Authored ISO 8601 date for the dashed today marker; the system clock is not read. The marker, like an event rule, passes the period names of the calendar head with a gap. A bar, arrow or shade name with no seat clear of the marker and the event rules sits inside its mark across them, and the rules break over that mark."),
   elapsed: z.boolean().optional().describe("Tint the visible time before today; defaults to true when the today marker is displayed."),
   weekends: z.boolean().optional().describe("Shade Saturday and Sunday at week granularity; defaults to false."),
   rowTint: z.boolean().optional().describe("Apply alternating faint row backgrounds; defaults to false."),

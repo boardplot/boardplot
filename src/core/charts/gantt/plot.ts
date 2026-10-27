@@ -21,7 +21,7 @@ import type { GanttCell } from '../../types/data';
 import type { LintWarning, Paint } from '../../types/scene';
 import { GANTT_ROW_PITCH, MAX_COLS } from './domain';
 import { barSurfaces, cadenceRowPaint, milestonePaints } from './marks';
-import { laneTop, NO_LANE, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv, type GanttPaints, type MetadataColumns, type NormItem, type NormRow, type RowLabel } from './model';
+import { laneTop, NO_LANE, RULE_LABEL_GAP, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv, type GanttPaints, type MetadataColumns, type NormItem, type NormRow, type RowLabel } from './model';
 import { maxOf, minOf } from '../../arrays';
 
 /** The palest tint a wash swatch in the key takes, so a 12 px swatch reads as filled. */
@@ -481,8 +481,8 @@ export function ganttBody(
   const bodyW = Math.max(40, availableBodyW - (laneEnabled ? laneGap + laneLabelW : 0));
   const x = (day: number): number => bodyX + ((day - d0Day) / (d1Day - d0Day)) * bodyW;
   const ruleClaims = [
-    ...domain.events.map((event) => ({ x: x(event.ruleDay), halfWidth: 4 })), // text keeps 7 px off an event rule
-    ...(domain.todayDay === null ? [] : [{ x: x(domain.todayDay + 0.5), halfWidth: 1 }]),
+    ...domain.events.map((event) => ({ x: x(event.ruleDay), halfWidth: 4, gap: RULE_LABEL_GAP.eventRule })), // a slide seat keeps 7 px off an event rule
+    ...(domain.todayDay === null ? [] : [{ x: x(domain.todayDay + 0.5), halfWidth: 1, gap: RULE_LABEL_GAP.todayLine }]),
   ].sort((a, b) => a.x - b.x);
   // Where each clustered milestone label centres in the lane: spread over its rows.
   const clusteredLabelY = new Map<Id, number>();

@@ -20,7 +20,8 @@ it('gantt names each hidden arrow in one warning', () => {
     const geometry = layoutResolvedRequest(request);
     if (geometry.refused) throw new Error('gantt refused');
     expect(geometry.labels.find(label => label.owner.segmentId === 'c-chev')?.hidden).toBeTruthy();
-    expect(geometry.warnings.filter(warning => warning.message.includes(name))).toHaveLength(1);
+    // footnotes: false names the note it left off in its own lint; that is not a second arrow warning.
+    expect(geometry.warnings.filter(warning => warning.code !== 'footnotes-off' && warning.message.includes(name))).toHaveLength(1);
     expect(geometry.warnings.find(warning => warning.message.includes(name))?.code).toBe('gantt-arrow-label-hidden');
     const noted = geometry.warnings.find(warning => warning.code === 'values-in-note')?.detail?.values ?? [];
     for (const label of geometry.labels.filter(label => label.hidden && label.noted && label.owner.segmentId !== 'c-chev')) {
@@ -256,4 +257,22 @@ it('gantt draws an event rule at an item id on the item start edge, and through 
   expect(xs(node('ann:event:e:line'))[0]).toBeCloseTo(bar.rect.x, 1);
   const diamond = xs(node('mark:b:b1'));
   expect(xs(node('ann:event:m:line'))[0]).toBeCloseTo((Math.min(...diamond) + Math.max(...diamond)) / 2, 1);
+});
+
+// Event rules hid a long arrow name below 1,800 px; the name now draws and the rules break around it.
+it('gantt draws a long arrow name across two event rules, and no rule piece runs through it', () => {
+  const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'gantt', data: { rows: [
+    { id: 'a', label: 'A', items: [{ id: 'a1', kind: 'chevron', start: '2026-03-02', end: '2026-03-31', label: 'A long arrow name that runs across both change rules of this row' }] },
+    { id: 'b', label: 'B', items: [{ id: 'b1', kind: 'bar', start: '2026-03-02', end: '2026-03-12' }, { id: 'b2', kind: 'bar', start: '2026-03-13', end: '2026-03-20' }] }] },
+    options: { size: { width: 800 } },
+    annotations: [{ id: 'e1', kind: 'event', at: 'b2', label: 'One' }, { id: 'e2', kind: 'event', at: '2026-03-21', label: 'Two' }] }));
+  if (geometry.refused) throw new Error('gantt refused');
+  const label = geometry.labels.find(l => l.owner.segmentId === 'a1')!;
+  expect(label.hidden).toBeFalsy();
+  expect(geometry.warnings.map(w => w.code)).not.toContain('gantt-arrow-label-hidden');
+  const pieces = geometry.scene.filter(n => n.part === 'eventRule').flatMap(n => n.t === 'line' ? [[n.x1, n.y1, n.y2]]
+    : n.t === 'path' ? [...n.d.matchAll(/M(-?[\d.]+) (-?[\d.]+)L-?[\d.]+ (-?[\d.]+)/g)].map(m => [+m[1]!, +m[2]!, +m[3]!]) : []);
+  const { x, y, w, h } = label.rect;
+  expect(pieces.filter(([px]) => px! >= x && px! <= x + w).length).toBeGreaterThan(0);
+  expect(pieces.filter(([px, y1, y2]) => px! >= x && px! <= x + w && Math.max(y1!, y2!) > y && Math.min(y1!, y2!) < y + h)).toEqual([]);
 });

@@ -8,7 +8,7 @@ import { strokeToken, dashToken } from '../../theme';
  */
 
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
-import { PRIORITY, type LabelRequest, type SlotCandidate } from '../../label/solver';
+import { CROSSABLE_RULE_PART, PRIORITY, type LabelRequest, type SlotCandidate } from '../../label/solver';
 import type { Rect } from '../../geometry';
 import type { OwnerRef } from '../../types/cell';
 import type { PlacedAnnotation, SceneNode } from '../../types/scene';
@@ -54,16 +54,20 @@ export function ruleNodes(id: string, x: number, top: number, bottom: number, he
 /**
  * What a rule claims: the calendar head and the rows. Stacked, it claims the
  * head and each lane only: the name lines print across it, as the grid does,
- * so a row name or a status is never dropped for a rule.
+ * so a row name or a status is never dropped for a rule. The row part is
+ * crossable: a span name that has no seat clear of the rules may sit inside
+ * its own mark across it, and the rule breaks around the mark (layout's
+ * repair and gridAroundLabels). Every other label keeps it as an obstacle.
  */
 function claimRule(claims: OccupiedIndex, band: GanttBand, domain: GanttDomain, x: number, halfWidth: number, owner: OwnerRef): void {
-  const { headerTop, rowsBottom } = band;
+  const { headerTop, rowsTop, rowsBottom } = band;
   if (!band.stacked) {
-    claims.claim({ x: x - halfWidth, y: headerTop, w: 2 * halfWidth, h: rowsBottom - headerTop }, 'annotation', owner);
+    claims.claim({ x: x - halfWidth, y: headerTop, w: 2 * halfWidth, h: rowsTop - headerTop }, 'annotation', owner);
+    claims.claim({ x: x - halfWidth, y: rowsTop, w: 2 * halfWidth, h: rowsBottom - rowsTop }, 'annotation', owner, CROSSABLE_RULE_PART);
     return;
   }
   claims.claim({ x: x - halfWidth, y: headerTop, w: 2 * halfWidth, h: band.headerH }, 'annotation', owner);
-  domain.rows.forEach((_, i) => claims.claim({ x: x - halfWidth, y: laneTop(band, domain.rows, i), w: 2 * halfWidth, h: band.rowHs[i]! }, 'annotation', owner));
+  domain.rows.forEach((_, i) => claims.claim({ x: x - halfWidth, y: laneTop(band, domain.rows, i), w: 2 * halfWidth, h: band.rowHs[i]! }, 'annotation', owner, CROSSABLE_RULE_PART));
 }
 
 /** Labelled event rules: a dashed vertical per event, then its numbered badge or its label. */

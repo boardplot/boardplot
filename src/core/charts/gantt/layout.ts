@@ -54,7 +54,7 @@ import { resolveGanttDomain, resolveGanttEnv } from './domain';
 import { layoutGanttAnnotations, ruleNodes, type GanttAnnotationLayer } from './events';
 import { flagRowPitch, ganttSpanBlockers, planGanttLabels, planRowFlags } from './labels';
 import { fmtDay, ganttPaints, layoutGanttMarks, type GanttMarkGeometry } from './marks';
-import { NO_LANE, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv } from './model';
+import { NO_LANE, RULE_LABEL_GAP, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv } from './model';
 import { formatDate } from '../../dateFormat';
 import { ganttBody, ganttFrame, STACKED_LANE_FLOOR } from './plot';
 import { maxOf, minOf, pushAll } from '../../arrays';
@@ -165,8 +165,9 @@ function assembleGanttGeometry(input: {
     const span = spans.get(label.owner.segmentId ?? '');
     if (label.pinned || !span) return false;
     // Keep milestone flag selection unchanged: this retry uses a row with no milestones.
-    if (label.hidden) return label.hidden === 'collision' && span.item.it.kind === 'chevron'
-      && !span.row.items.some(item => item.it.kind === 'milestone');
+    // A span name that an event or today rule hid retries inside its mark, across the rule.
+    if (label.hidden) return label.hidden === 'collision' && ((span.item.it.kind === 'chevron'
+      && !span.row.items.some(item => item.it.kind === 'milestone')) || body.ruleClaims.length > 0);
     return ganttSpanBlockers(span.row, { id: span.item.it.id, rect: label.rect })
       .some(rect => rectsOverlap(label.rect, rect, 2)) || (!rectContains(span.item.rect, label.rect)
         && solved.placed.some(other => other !== label && !other.hidden && other.kind === 'item'
@@ -183,7 +184,7 @@ function assembleGanttGeometry(input: {
     }
     const kept = solved.placed.filter(label => !label.hidden && !unsafe.has(label.id));
     const leaders = kept.flatMap(label => label.leader ? leaderPieces(label.leader.d, 64) : []);
-    const requests = planGanttLabels(env, domain, band, body, input.geometry, ganttPaints(env, domain.rows), new Map(), input.flagRows, kept.map(label => label.rect))
+    const requests = planGanttLabels(env, domain, band, body, input.geometry, ganttPaints(env, domain.rows), new Map(), input.flagRows, kept.map(label => label.rect), true)
       .filter(request => unsafe.has(request.id)).map(request => ({ ...request,
         candidates: request.candidates.filter(candidate => !leaders.some(([a, b]) => segmentHitsRect(a, b, candidate.rect, 2))),
       }));
@@ -206,7 +207,7 @@ function assembleGanttGeometry(input: {
     if (label.hidden !== 'collision' || spans.get(label.owner.segmentId ?? '')?.item.it.kind !== 'chevron') continue;
     input.warnings.push({ code: 'gantt-arrow-label-hidden', severity: 'warn', owner: label.owner,
       message: `Arrow name '${label.text}' has no clear label seat at this size`,
-      suggest: 'increase chart width or height to draw the full arrow name' });
+      suggest: 'increase chart width or shorten the arrow name' });
   }
   const { rows, granularity, d0Day, d1Day, milestones } = domain;
   const n = rows.length;
@@ -224,7 +225,7 @@ function assembleGanttGeometry(input: {
       minWidth: band.stacked ? size.width - body.inner.w + Math.max(80, band.stackedLineW) : size.width - body.inner.w + body.minimumLabelBandW + 12 + colWs.reduce((sum, width) => sum + width, 0) + (colWs.length ? 4 : 0) + 80 + (laneLabelW && options.mode !== 'compact' ? body.laneGap + laneLabelW : 0),
     }),
     plot: body.plot,
-    scene: [...frame.nodes, ...gridAroundLabels([...input.geometry.nodes, ...input.annotated.nodes], solved.placed), ...labelNodes(env, domain, solved.placed)],
+    scene: [...frame.nodes, ...gridAroundLabels([...input.geometry.nodes, ...input.annotated.nodes], solved.placed, spans), ...labelNodes(env, domain, solved.placed)],
     labels: solved.placed,
     axes: [
       {
@@ -263,16 +264,23 @@ function assembleGanttGeometry(input: {
  * period names of the head (ruleNodes). The shared pass in markVisibility breaks only a line
  * that runs through the glyphs; a line within 2 px of a label's edge breaks here.
  */
-function gridAroundLabels(nodes: readonly SceneNode[], placed: SolveResult['placed']): SceneNode[] {
-  const rects = placed.filter((label) => !label.hidden).map((label) => label.rect);
-  if (rects.length === 0) return [...nodes];
+function gridAroundLabels(nodes: readonly SceneNode[], placed: SolveResult['placed'], spans: ReadonlyMap<string, { item: { rect: Rect } }>): SceneNode[] {
+  const labels = placed.filter((label) => !label.hidden);
+  if (labels.length === 0) return [...nodes];
+  const grid = labels.map((label) => label.rect);
+  // An event or today rule breaks over the whole mark a name sits in (a dash
+  // left above or below the text reads as a speck), else 2 px above and below the name.
+  const rules = labels.map((label) => {
+    const mark = spans.get(label.owner.segmentId ?? '')?.item.rect;
+    return mark && rectContains(mark, label.rect) ? { ...label.rect, y: mark.y, h: mark.h } : { ...label.rect, y: label.rect.y - 1, h: label.rect.h + 2 };
+  });
   return nodes.flatMap((node) => {
-    if (node.t !== 'line' || (node.part !== 'grid' && node.part !== 'todayLine') || node.x1 !== node.x2) return [node];
+    if (node.t !== 'line' || (node.part !== 'grid' && node.part !== 'todayLine' && node.part !== 'eventRule') || node.x1 !== node.x2) return [node];
     const { x1, y1, y2, id, t: _t, x2: _x2, ...style } = node;
     // The snapshot rule needs visible air beside a name, including after a
     // line-on-fill repaint. Grid rules keep their existing gap.
-    const gap = node.part === 'todayLine' ? 6 : 2;
-    const near = rects.filter((rect) => x1 >= rect.x - gap && x1 <= rect.x + rect.w + gap && rect.y < Math.max(y1, y2) && rect.y + rect.h > Math.min(y1, y2));
+    const gap = node.part === 'grid' ? 2 : RULE_LABEL_GAP[node.part];
+    const near = (node.part === 'grid' ? grid : rules).filter((rect) => x1 >= rect.x - gap && x1 <= rect.x + rect.w + gap && rect.y < Math.max(y1, y2) && rect.y + rect.h > Math.min(y1, y2));
     if (!near.length) return [node];
     const pieces = ruleNodes(id, x1, Math.min(y1, y2), Math.max(y1, y2), near.map(rect => ({ ...rect, x: rect.x - gap + 2, w: rect.w + 2 * (gap - 2) })), style);
     return node.part === 'grid' ? pieces : pieces.map((piece, index) => index ? { ...piece, id: `${id}:label:${index}` } : piece);

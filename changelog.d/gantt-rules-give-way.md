@@ -1,0 +1,4 @@
+### Changed / may need action
+
+- Gantt event rules and the today line give way to span names. A bar, arrow or shade name that has no seat clear of the rules now sits inside its own mark across them, and each crossed rule breaks over the full height of that mark. A seat clear of every rule still wins; each crossed rule adds 1 to a seat's penalty. Before, the rules blocked these names, which went to the notes list, so a long arrow name across two event rules was hidden below about 1,800 px. There is no option to bring the old behaviour back: it only ever hid labels. Milestone and bracket labels keep the rules as obstacles. The today line now keeps 2 px instead of 1 px above and below a label it breaks for (`torture-long-labels`).
+- `gantt-arrow-label-hidden` suggests "increase chart width or shorten the arrow name". Height never gave an arrow name room.
