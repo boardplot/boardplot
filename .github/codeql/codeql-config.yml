@@ -1,0 +1,6 @@
+name: Boardplot CodeQL config
+
+# Test code does not ship. Scripts stay scanned.
+paths-ignore:
+  - tests/**
+  - python/tests/**
