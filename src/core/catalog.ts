@@ -52,7 +52,7 @@ const CATALOG: Record<string, { summary: string; useCases: readonly string[] }> 
   sparkline: { summary: 'One series as a mini line', useCases: ['Trend inside a KPI card', 'Shape beside a table row', 'A strip of metrics on one board'] },
   status: { summary: 'Entity by period state matrix', useCases: ['Project status by period', 'RAG matrix', 'Milestone tracking'] },
   dimswitch: { summary: 'KPIs by one dimension and period, from sums', useCases: ['Weekly KPIs by channel', 'Channels by KPI with changes', 'Changes judged against the period before'] },
-  table: { summary: 'Management table with totals', useCases: ['Table with totals', 'P&L with variances', 'Ranked list with status chips'] },
+  table: { summary: 'Management table with totals; rows [label,id]', useCases: ['Table with totals', 'P&L with variances', 'Ranked list with status chips'] },
   tilemap: { summary: 'Equal-size region tiles', useCases: ['A value per state', 'Regions without area bias', 'Results by US state'] },
   treemap: { summary: 'Part of a whole as nested areas', useCases: ['Many parts of one total, in groups', 'A few items take most of the total'] },
   variance: { summary: 'Variance tier against PY, PL or FC', useCases: ['Actual against plan or PY', 'Variance in value and percent', 'Budget deviation by cost centre'] },

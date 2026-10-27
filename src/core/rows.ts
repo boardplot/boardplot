@@ -21,9 +21,29 @@ import { CHART_TYPE_OF, ROWS_SHAPES, type RowsShape } from './rowsTypes';
 
 const VALUE_KINDS = ['number', 'percent', 'fraction'] as const;
 const CATEGORY_ROLES = ['category', 'series', 'value', 'categoryLabel', 'seriesLabel', 'unit', 'date', 'state'] as const;
-const COLUMN_ROLES = [...CATEGORY_ROLES, 'label', 'type', 'x', 'y', 'size', 'group', 'source', 'target', 'sourceStage', 'targetStage'] as const;
+const COLUMN_ROLES = [...CATEGORY_ROLES, 'label', 'type', 'x', 'y', 'size', 'group', 'source', 'target', 'sourceStage', 'targetStage', 'id'] as const;
 type ColumnRole = (typeof COLUMN_ROLES)[number];
 type RowContract = Partial<Record<ColumnRole, string>>;
+
+/** The roles each rows shape reads; a shape the generator adds fails to compile until it is listed here. */
+const SHAPE_ROLES: Record<RowsShape, { required: readonly ColumnRole[]; roles: readonly ColumnRole[] }> = {
+  category: { required: ['category', 'series', 'value'], roles: CATEGORY_ROLES },
+  map: { required: ['category', 'value'], roles: ['category', 'value', 'state'] },
+  waterfall: { required: ['label', 'value'], roles: ['label', 'value', 'type'] },
+  scatter: { required: ['x', 'y'], roles: ['x', 'y', 'size', 'label', 'group'] },
+  flow: { required: ['source', 'target', 'value'], roles: ['source', 'target', 'value', 'sourceStage', 'targetStage'] },
+  table: { required: [], roles: ['label', 'id'] },
+};
+
+/**
+ * Shapes whose numbers arrive as plain numbers only. A table value column
+ * carries its own format, with percents in points, so a percent or fraction
+ * conversion would write cells the table does not take.
+ */
+const NUMBER_ONLY_SHAPES: readonly RowsShape[] = ['table'];
+
+/** Table column kinds that take their cells from the source field named like the column id. */
+const TABLE_INPUT_KINDS: ReadonlySet<unknown> = new Set(['value', 'text', 'status', 'date']);
 
 /** Where the rows come from: the argument a refusal points at, and the read that yields them. */
 export interface RowsSource {
@@ -38,6 +58,7 @@ export interface RowsSource {
   tilePack?: (id: TilePackId) => TilePack;
 }
 
+/** Generated data pointer, or a table cell rows[<row id>].cells[<column id>] (engine display path or finding owner) -> the row field it came from. */
 export type RowsPathMap = Map<string, { path: string; displayPath: string }>;
 
 export interface AdaptedRows {
@@ -56,11 +77,9 @@ function isRecord(value: unknown): value is Row {
 }
 
 function readColumns(columns: unknown, shape: RowsShape): { contract: RowContract; valueKind: (typeof VALUE_KINDS)[number] } {
-  const required: ColumnRole[] = shape === 'waterfall' ? ['label', 'value'] : shape === 'scatter' ? ['x', 'y']
-    : shape === 'flow' ? ['source', 'target', 'value'] : shape === 'map' ? ['category', 'value'] : ['category', 'series', 'value'];
-  const roles: readonly ColumnRole[] = shape === 'waterfall' ? ['label', 'value', 'type'] : shape === 'scatter' ? ['x', 'y', 'size', 'label', 'group']
-    : shape === 'flow' ? ['source', 'target', 'value', 'sourceStage', 'targetStage']
-    : shape === 'map' ? ['category', 'value', 'state'] : CATEGORY_ROLES;
+  const { required, roles } = SHAPE_ROLES[shape];
+  // Every table role is optional, so a table needs no columns argument.
+  if (columns === undefined && !required.length) columns = {};
   if (!isRecord(columns)) {
     throw new InputError('invalid-argument', `rows need columns: { ${required.join(', ')} } naming the source columns`, {
       path: '/columns', expected: { types: ['object'] }, suggest: `Pass columns with ${required.join(', ')} naming the source columns.`,
@@ -78,6 +97,14 @@ function readColumns(columns: unknown, shape: RowsShape): { contract: RowContrac
     throw new InputError('invalid-argument', 'sankey flows are plain numbers; valueKind must be number', {
       path: '/columns/valueKind', expected: { values: ['number'] }, fix: [{ op: 'remove', path: '/columns/valueKind' }],
       suggest: 'Remove valueKind. To show shares, keep the counts as values and set options.nodeValue to share.',
+    });
+  }
+  if (valueKind !== 'number' && NUMBER_ONLY_SHAPES.includes(shape)) {
+    throw new InputError('invalid-argument', `${shape} rows take valueKind number only`, {
+      path: '/columns/valueKind', expected: { values: ['number'] }, fix: [{ op: 'remove', path: '/columns/valueKind' }],
+      suggest: shape === 'table'
+        ? 'Set the format on the table column instead: a percent column is written in points, 12.5 with format 1.2% prints 12.5%.'
+        : 'Pass the observations as plain numbers and set the number format in the spec options.',
     });
   }
   const unknown = Object.keys(contract).find((key) => !(roles as readonly string[]).includes(key));
@@ -205,6 +232,205 @@ function adaptItemRows(
   };
 }
 
+/** Where row `index`'s field `column` sits in the arguments, and how a message names it. */
+function sourceField(rowsArgument: '/rows' | '/rowsFile', contract: RowContract, index: number, column: string): { path: string; displayPath: string } {
+  return { path: argumentPath(`rows[${index}].${column}`, rowsArgument, contract), displayPath: `${rowsArgument.slice(1)} row ${index + 1}.${column}` };
+}
+
+/** One JSON pointer segment. */
+const pointerSegment = (key: string) => key.replace(/~/g, '~0').replace(/\//g, '~1');
+
+/** A source row's own field: an absent `constructor` or `toString` is absent, not the inherited function. */
+const own = (row: Row, key: string): unknown => (Object.hasOwn(row, key) ? row[key] : undefined);
+
+/** A template row by id, with the spec path of the row and of its parent link (its parentId, or the child entry). */
+interface TableTemplateRow { row: Row; path: string; parentPath: string }
+
+/**
+ * The template's rows by id, nested children flattened to parentId, so a
+ * source row can take its authored fields. A repeated id and a child whose
+ * parentId names another row than its parent are refused here, at the spec
+ * path, as the native table refuses them: indexing would hide both.
+ */
+function tableTemplateRows(list: unknown): Map<string, TableTemplateRow> {
+  const rows = new Map<string, TableTemplateRow>();
+  const walk = (entries: unknown, path: string, parentId?: string) => {
+    if (!Array.isArray(entries)) return;
+    entries.forEach((entry, index) => {
+      if (!isRecord(entry) || typeof entry.id !== 'string') return;
+      const at = `${path}/${index}`;
+      if (rows.has(entry.id)) {
+        throw new InputError('duplicate-row-id', `spec data.rows: row id '${entry.id}' appears more than once`, {
+          path: `${at}/id`, suggest: 'Give each spec row its own id.',
+        });
+      }
+      const { children, ...row } = entry;
+      if (parentId !== undefined && row.parentId !== undefined && row.parentId !== parentId) {
+        throw new InputError('parent-conflict', `spec data.rows: row '${entry.id}' is nested under '${parentId}' but declares parentId '${String(row.parentId)}'`, {
+          path: `${at}/parentId`, suggest: 'Remove the parentId of the nested row, or move the row out of the children.',
+        });
+      }
+      rows.set(entry.id, {
+        row: parentId === undefined || row.parentId !== undefined ? row : { ...row, parentId },
+        path: at, parentPath: row.parentId !== undefined ? `${at}/parentId` : at,
+      });
+      walk(children, `${at}/children`, entry.id);
+    });
+  };
+  walk(list, '/spec/data/rows');
+  return rows;
+}
+
+/** The row ids a calc tree names: cross-row refs are the only objects in it with a row key. */
+function calcRowRefs(calc: unknown, found: string[] = []): string[] {
+  if (Array.isArray(calc)) calc.forEach((entry) => calcRowRefs(entry, found));
+  else if (isRecord(calc)) {
+    if (typeof calc.row === 'string') found.push(calc.row);
+    Object.values(calc).forEach((entry) => calcRowRefs(entry, found));
+  }
+  return found;
+}
+
+/**
+ * A drawn row's parent and every row a calc names must be drawn too. A spec
+ * row that no source row provides is not drawn, so a link to it is refused at
+ * the spec path that holds the link.
+ */
+function checkTableLinks(data: Row, drawn: Set<string>, templates: Map<string, TableTemplateRow>): void {
+  const advice = (id: string) => `Add a source row with the id '${id}', or remove the reference to it from the spec.`;
+  for (const id of drawn) {
+    const template = templates.get(id);
+    if (!template) continue;
+    const parentId = template.row.parentId;
+    if (typeof parentId === 'string' && !drawn.has(parentId)) {
+      throw new InputError('parent-missing', `spec data.rows: row '${id}' has the parent '${parentId}', which no source row provides`, {
+        path: template.parentPath, suggest: advice(parentId),
+      });
+    }
+    const missing = calcRowRefs(template.row.calc).find((ref) => !drawn.has(ref));
+    if (missing !== undefined) {
+      throw new InputError('calc-ref-missing', `spec data.rows: the calc of row '${id}' names row '${missing}', which no source row provides`, {
+        path: `${template.path}/calc`, suggest: advice(missing),
+      });
+    }
+  }
+  (Array.isArray(data.columns) ? data.columns : []).forEach((column, index) => {
+    const missing = isRecord(column) ? calcRowRefs(column.calc).find((ref) => !drawn.has(ref)) : undefined;
+    if (missing !== undefined) {
+      throw new InputError('calc-ref-missing', `spec data.columns: the calc of column '${String((column as Row).id)}' names row '${missing}', which no source row provides`, {
+        path: `/spec/data/columns/${index}/calc`, suggest: advice(missing),
+      });
+    }
+  });
+}
+
+/** The template's input columns, which take their cells from the source field named like the column id. */
+function tableInputColumns(data: Row): { id: string; kind: string; index: number }[] {
+  if (!Array.isArray(data.columns)) {
+    throw new InputError('invalid-argument', 'table rows need data.columns in the spec: the columns declare which source field fills each cell', {
+      path: '/spec/data/columns', expected: { types: ['array'] },
+      suggest: 'Write data.columns in the spec: one rowLabel column, and a value, text, status or date column whose id names each source field.',
+    });
+  }
+  return data.columns.flatMap((column, index) => (isRecord(column) && typeof column.id === 'string' && TABLE_INPUT_KINDS.has(column.kind)
+    ? [{ id: column.id, kind: column.kind as string, index }] : []));
+}
+
+/**
+ * One source row per table row. The template declares the columns: each input
+ * column reads the source field of its id, the label role fills the row label
+ * that the rowLabel column shows, and computed and encoding columns keep their
+ * definitions. A template row with the same id keeps its authored fields
+ * (kind, role, parentId, calc, format), so totals, hierarchy and formulas stay
+ * in the spec; template rows no source row names are not drawn.
+ */
+function adaptTableRows(
+  rows: Row[], contract: RowContract, data: Row, inputs: { id: string; kind: string; index: number }[],
+  decimalComma: boolean, rowsArgument: '/rows' | '/rowsFile',
+): { data: Row; pathMap: RowsPathMap; ignoredColumns: string[] } {
+  if (!rows.length) throw new InputError('rows-empty', 'rows contain no data row', { path: rowsArgument });
+  if (contract.label !== undefined && contract.label === contract.id) {
+    throw new InputError('invalid-contract', `column '${contract.id}' is named for more than one role`, { path: '/columns' });
+  }
+  const present = new Set(rows.flatMap(row => Object.keys(row)));
+  for (const [role, column] of Object.entries(contract)) {
+    if (!present.has(column)) throw new InputError('missing-column', `'${column}' is named in columns but no row provides it`, {
+      path: `/columns/${role}`, suggest: `Columns present: ${[...present].sort().join(', ')}.`,
+    });
+  }
+  for (const input of inputs) {
+    if (!present.has(input.id)) throw new InputError('missing-column', `table column '${input.id}' takes its cells from the source field '${input.id}', and no row provides it`, {
+      path: `/spec/data/columns/${input.index}/id`,
+      suggest: `Rename the column or the source field so they match, or remove the column. Columns present: ${[...present].sort().join(', ')}.`,
+    });
+  }
+  const pathMap: RowsPathMap = new Map();
+  const templates = tableTemplateRows(data.rows);
+  const seen = new Map<string, number>();
+  const entries = rows.map((row, index) => {
+    let id = `row-${index + 1}`;
+    if (contract.id !== undefined) {
+      const raw = own(row, contract.id);
+      const source = sourceField(rowsArgument, contract, index, contract.id);
+      if (typeof raw !== 'string' || !raw.trim()) {
+        throw new InputError('invalid-identity', `${source.displayPath}: a row id must be non-empty text, received ${JSON.stringify(raw ?? null)}`, {
+          ...source, received: receivedDescription(raw),
+        });
+      }
+      const first = seen.get(raw);
+      if (first !== undefined) {
+        throw new InputError('duplicate-id', `${source.displayPath}: row id '${raw}' repeats row ${first + 1}`, {
+          ...source, suggest: 'Give each row its own id, or leave out the id role so the rows are numbered row-1, row-2, ...',
+        });
+      }
+      seen.set(raw, index);
+      id = raw;
+      pathMap.set(`/data/rows/${index}/id`, source);
+    }
+    const cells: Row = {};
+    const cellSources: [string, { path: string; displayPath: string }][] = [];
+    for (const input of inputs) {
+      const raw = own(row, input.id);
+      const source = sourceField(rowsArgument, contract, index, input.id);
+      if (raw !== undefined && raw !== null && typeof raw !== 'number' && typeof raw !== 'string' && !isRecord(raw)) {
+        throw new InputError('invalid-value', `${source.displayPath}: a table cell takes a number, text, null or a cell object, not ${receivedDescription(raw)}`, {
+          ...source, received: receivedDescription(raw),
+          suggest: 'Write the value as text, such as "yes" or "no", or as a number.',
+        });
+      }
+      // An empty field is a missing value outside text columns: no number, status or date is empty text.
+      const cell = raw === undefined || (raw === '' && input.kind !== 'text') ? null : input.kind === 'value' ? valueCell(raw, 'number', decimalComma, `rows[${index}].${input.id}`) : raw;
+      // A value column takes numbers: text it cannot read as one is refused here, as category rows refuse it, not drawn as missing.
+      if (input.kind === 'value' && typeof cell === 'string') {
+        throw new InputError('invalid-value', `${source.displayPath}: '${cell}' is not a numeric cell`, {
+          ...source, received: receivedDescription(raw),
+          // A table takes no valueKind, so a percent sign is fixed in the column format, not with valueKind percent.
+          ...(WRITTEN_NUMBER.test(cell) ? { suggest: cell.includes('%')
+            ? `${plainNumberAdvice(cell.replace(/%/g, ''), 'number', decimalComma)} Drop the percent sign and give the column a percent format such as 1.2%: a table writes percents in points, 12 for 12%.`
+            : plainNumberAdvice(cell, 'number', decimalComma) } : {}),
+        });
+      }
+      // Defined, not assigned, so a __proto__ column keeps its value.
+      Object.defineProperty(cells, input.id, { value: cell, enumerable: true, writable: true, configurable: true });
+      pathMap.set(`/data/rows/${index}/cells/${pointerSegment(input.id)}`, source);
+      cellSources.push([input.id, source]);
+    }
+    const label = contract.label === undefined ? undefined : own(row, contract.label);
+    const labelled = label !== undefined && label !== null && label !== '';
+    if (labelled) pathMap.set(`/data/rows/${index}/label`, sourceField(rowsArgument, contract, index, contract.label!));
+    // The table engine names a refused cell rows[<row id>].cells[<column id>]; it points at the source field too.
+    for (const [column, source] of cellSources) pathMap.set(`rows[${id}].cells[${column}]`, source);
+    const template = templates.get(id)?.row;
+    return {
+      ...template, id, ...(labelled ? { label } : {}),
+      cells: { ...(isRecord(template?.cells) ? template.cells : {}), ...cells },
+    };
+  });
+  checkTableLinks(data, new Set(entries.map((entry) => entry.id)), templates);
+  const read = new Set([...inputs.map(input => input.id), ...Object.values(contract)]);
+  return { data: { ...data, rows: entries }, pathMap, ignoredColumns: [...present].filter(column => !read.has(column)).sort() };
+}
+
 /**
  * The spec with its data taken from the rows. A category or series the spec
  * already names keeps its other fields (label, colorRole, unit, format), so a
@@ -220,23 +446,27 @@ export function adaptRows(spec: unknown, columns: unknown, source: RowsSource): 
     });
   }
   const type = typeof spec.type === 'string' ? CHART_TYPE_OF.get(spec.type) : undefined;
-  const map = type === 'choropleth' || type === 'tilemap';
   if (type !== undefined && !ROWS_SHAPES.has(type)) {
     throw new InputError('rows-unsupported-type', `'${spec.type}' has no rows mapping`, {
       path: '/spec/type', expected: { values: [...ROWS_SHAPES.keys()].sort() },
       suggest: `Write the ${spec.type} data in the spec, or draw the rows with one of the listed types.`,
     });
   }
-  const shape = type === 'waterfall' || type === 'scatter' ? type : type === 'sankey' ? 'flow' : map ? 'map' : 'category';
+  const shape: RowsShape = (type === undefined ? undefined : ROWS_SHAPES.get(type)) ?? 'category';
+  const map = shape === 'map';
   const { contract: rowContract, valueKind } = readColumns(columns, shape);
   const rowsArgument = source.argument;
+  const template = isRecord(spec.data) ? spec.data : {};
+  const tableInputs = shape === 'table' ? tableInputColumns(template) : [];
   const loaded = source.load();
   if (!Array.isArray(loaded.rows) || !loaded.rows.every(isRecord)) {
     throw new InputError('invalid-rows', 'rows must be an array of objects', { path: rowsArgument });
   }
   const decimalComma = loaded.decimalComma === true;
-  if (shape === 'waterfall' || shape === 'scatter' || shape === 'flow') {
-    const adapted = adaptItemRows(shape, loaded.rows, rowContract, isRecord(spec.data) ? spec.data : {}, valueKind, decimalComma, rowsArgument);
+  if (shape === 'waterfall' || shape === 'scatter' || shape === 'flow' || shape === 'table') {
+    const adapted = shape === 'table'
+      ? adaptTableRows(loaded.rows, rowContract, template, tableInputs, decimalComma, rowsArgument)
+      : adaptItemRows(shape, loaded.rows, rowContract, template, valueKind, decimalComma, rowsArgument);
     return { spec: { ...spec, data: adapted.data }, pathMap: adapted.pathMap, rows: loaded.rows.length, ignoredColumns: adapted.ignoredColumns, states: [] };
   }
   const contract = rowContract as NamedColumnContract;
@@ -358,7 +588,7 @@ export function adaptRows(spec: unknown, columns: unknown, source: RowsSource): 
 }
 
 /** Return diagnostics at the rows the caller authored, after bare-spec path conversion. */
-export function rewriteRowsDiagnostics<T extends { path?: string; displayPath?: string; fix?: { path: string }[] }>(findings: T[], pathMap?: RowsPathMap): T[] {
+export function rewriteRowsDiagnostics<T extends { path?: string; displayPath?: string; fix?: { path: string }[]; owner?: unknown }>(findings: T[], pathMap?: RowsPathMap): T[] {
   const sourceFor = (path: string | undefined) => {
     for (let prefix = path; prefix; prefix = prefix.slice(0, prefix.lastIndexOf('/'))) {
       const source = pathMap?.get(prefix);
@@ -367,7 +597,11 @@ export function rewriteRowsDiagnostics<T extends { path?: string; displayPath?: 
     return undefined;
   };
   return findings.map(finding => {
-    const source = sourceFor(finding.path);
+    // A table finding names its cell by display path or by owner row and column, not by a data pointer.
+    const owner = isRecord(finding.owner) && typeof finding.owner.rowId === 'string' && typeof finding.owner.colId === 'string'
+      ? `rows[${finding.owner.rowId}].cells[${finding.owner.colId}]` : undefined;
+    const source = sourceFor(finding.path) ?? (finding.displayPath === undefined ? undefined : pathMap?.get(finding.displayPath))
+      ?? (owner === undefined ? undefined : pathMap?.get(owner));
     const fix = finding.fix?.map(operation => ({ ...operation, path: sourceFor(operation.path)?.path ?? operation.path }));
     return { ...finding, ...(source || {}), ...(fix ? { fix } : {}) };
   });
