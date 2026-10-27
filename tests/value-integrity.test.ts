@@ -25,6 +25,28 @@ describe('value integrity on the chart', () => {
     expect(texts('kpi', data, fixture.options as Record<string, unknown>)).toContain('eTest YoY');
   });
 
+  // A data id named like an Object.prototype member read ID-keyed records through the prototype: wrong numbers
+  // ('n.m.', '+n/a'), dropped labels, a lost table cell, or a refusal with a wrong cause.
+  it('draws data ids named __proto__ or constructor like any other id', () => {
+    const rename = (value: unknown, from: string, to: string): unknown => Array.isArray(value) ? value.map((item) => rename(item, from, to))
+      : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key === from ? to : key, rename(item, from, to)]))
+      : value === from ? to : value;
+    const cases = [
+      ['waterfall', 'ebit-bridge', 'fy21'], ['pareto', 'defect-causes', 'misprint'], ['pie', 'doughnut-device-revenue', 'mobile'],
+      ['funnel', 'lead-funnel', 'leads'], ['bullet', 'four-band-neutral-ladder', 'coverage'], ['box', 'cycle-time-by-team', 'platform'],
+      ['table', 'steering-monthly', 'actual'],
+    ];
+    for (const [type, fixtureId, dataId] of cases) {
+      const fixture = getFixtures(type!).find((item) => item.id === fixtureId)!;
+      // The control renames the id to a name of the same length, so both draw at the same text widths.
+      const drawn = (to: string) => texts(type!, rename(fixture.data, dataId!, to), rename(fixture.options ?? {}, dataId!, to) as Record<string, unknown>)
+        .map((text) => text.split(to).join(dataId!)).sort();
+      for (const [name, control] of [['__proto__', '__qroto__'], ['constructor', 'constructer']]) {
+        expect(drawn(name!), `${type} ${name}`).toEqual(drawn(control!));
+      }
+    }
+  });
+
   // A restating total that equals the sum of the siblings it can see read as complete when one sibling is missing.
   it('a total that equals a partial sibling sum prints marked partial, with or without disclosures', () => {
     const data: TableData = {

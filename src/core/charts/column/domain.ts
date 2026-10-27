@@ -47,6 +47,7 @@ import type { AnomalyColumnOptions } from './types';
 import { currentSmallValues } from '../../formatPrecision';
 import { disclosuresShown } from '../../notes';
 import { maxOf } from '../../arrays';
+import { emptyIdRecord } from '../../idRecords';
 
 /** What the options resolve to once: theme, palette, size, measurer, formatters. */
 function resolveColumnEnv(options: AnomalyColumnOptions, warnings: LintWarning[]): ColumnEnv {
@@ -408,7 +409,7 @@ function weightedTotal(cats: Category[], dataSeries: NormSer[], warnings: LintWa
     return undefined;
   }
   const n = groups.reduce((a, ci) => a + base(ci)!, 0);
-  const values: Record<Id, number> = {};
+  const values: Record<Id, number> = emptyIdRecord();
   for (const s of dataSeries) {
     const missing = groups.filter((ci) => s.vals[ci]!.v === null);
     if (missing.length > 0) {
@@ -564,15 +565,15 @@ function columnBasis(
   // and cagr anchors and the ref-zero test all read these, and the exhibit's
   // raster formatter rounds once at print time (as bar does). Rounding to two
   // decimals first printed 0.014 → 0.02 as "+100%" and took 0.004 for zero.
-  const stackTotals: Record<Id, number> = {};
+  const stackTotals: Record<Id, number> = emptyIdRecord();
   cats.forEach((c, ci) => {
     stackTotals[c.id] = dataSeries.reduce((a, s) => a + (absOf(s, ci) ?? 0), 0);
   });
   let percents: Record<Id, Record<Id, number>> | undefined;
   if (variant === 'stacked100') {
-    percents = {};
+    percents = emptyIdRecord();
     cats.forEach((c, ci) => {
-      const row: Record<Id, number> = {};
+      const row: Record<Id, number> = emptyIdRecord();
       for (const s of dataSeries) {
         const p = plottedOf(s, ci);
         if (p !== null) row[s.id] = p;

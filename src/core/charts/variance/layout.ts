@@ -105,6 +105,7 @@ import { withUnit } from '../../unitJoin';
 import { textScaleOf } from '../../typeFloors';
 import { disclosureNote } from '../../notes';
 import { maxOf, pushAll } from '../../arrays';
+import { emptyIdRecord } from '../../idRecords';
 
 export interface VarianceMarks {
   /** absolute: plain Δ bars; integrated: AC bars with `cap` carrying REF↔AC. */
@@ -316,10 +317,10 @@ export function layoutVariance(
     }
   });
   const derived: VarianceDerived = {
-    ac: {},
-    ref: {},
-    deltaAbs: {},
-    deltaPct: {},
+    ac: emptyIdRecord(),
+    ref: emptyIdRecord(),
+    deltaAbs: emptyIdRecord(),
+    deltaPct: emptyIdRecord(),
     tierName,
   };
   cats.forEach((c, ci) => {

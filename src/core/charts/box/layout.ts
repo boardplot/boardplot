@@ -70,6 +70,7 @@ import { composedTextRole } from '../../textRole';
 import { textScaleOf } from '../../typeFloors';
 import { disclosureNote } from '../../notes';
 import { maxOf, minOf, pushAll } from '../../arrays';
+import { emptyIdRecord } from '../../idRecords';
 
 const LABEL_GAP = 5;
 const CAT_BAND_GAP = 10;
@@ -202,7 +203,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   // out of the axis domain. Computed here so the count can be PRINTED, not just
   // warned about: a lint lives in the JSON, and the reader holding the slide
   // never sees the JSON.
-  const withheldBeyond: Record<string, number> = {};
+  const withheldBeyond: Record<string, number> = emptyIdRecord();
   let withheldTotal = 0;
   if (whiskerRule !== 'minmax' && !showOutliers) {
     for (const row of rows) {

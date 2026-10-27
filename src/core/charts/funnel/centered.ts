@@ -60,6 +60,7 @@ import { clampedNote, deriveFunnel, missingGlyph } from './derive';
 import { composedTextRole } from '../../textRole';
 import { disclosureNote } from '../../notes';
 import { maxOf, pushAll } from '../../arrays';
+import { emptyIdRecord } from '../../idRecords';
 
 const CVR_SPAN_HEADER = 'cvr:span-header';
 
@@ -418,7 +419,7 @@ export function layoutCenteredFunnel(
   /** A head stands on the bottom of the head block. */
   const headY = (h: number): number => inner.y + Math.max(0, headerReserve - 8 - h);
   const flushRight = (x: number, block: number, w: number): number => x + Math.max(0, block - colPad) - w;
-  const boundaryWidths: Record<Id, number> = {};
+  const boundaryWidths: Record<Id, number> = emptyIdRecord();
   stages.forEach((stage, categoryIndex) => {
     boundaryWidths[stage.id] = boundaryWidthFor(categoryIndex, funnelWidth);
   });

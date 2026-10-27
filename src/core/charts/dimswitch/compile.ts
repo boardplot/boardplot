@@ -12,6 +12,7 @@ import type { CellState, CellTone, ComputedCellRecord, TableCell, TableRow } fro
 import type { LintWarning } from '../../types/scene';
 import type { CompiledDimSwitch, DimSwitchData, DimSwitchExpression, DimSwitchMeasure, DimSwitchMember, DimSwitchOptions, DimSwitchPeriod, DimSwitchSums, DimSwitchComparisonKind, DimSwitchJudgeBase } from './types';
 import { maxOf } from '../../arrays';
+import { emptyIdRecord } from '../../idRecords';
 
 const key = (...parts: string[]) => JSON.stringify(parts);
 
@@ -421,7 +422,8 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   }
   const addMeasure = (m:DimSwitchMeasure,member:string,parentId:string|undefined,rung:number,label=m.label,kind:TableRow['kind']='measure') => {
     const id=dimswitchRowId(variant,member,m.id);
-    const cells:Record<string,TableCell>={}, changes:Record<string,TableCell>={range:null,pp:null,...(plan ? {pl:null} : {})}, effects:Record<string,TableCell>={range:null,pp:null,...(plan ? {pl:null} : {})};
+    // Keyed by period id too: a period named __proto__ keeps its cell.
+    const cells:Record<string,TableCell>=emptyIdRecord(), changes:Record<string,TableCell>=Object.setPrototypeOf({range:null,pp:null,...(plan ? {pl:null} : {})},null), effects:Record<string,TableCell>=Object.setPrototypeOf({range:null,pp:null,...(plan ? {pl:null} : {})},null);
     const values=new Map<string,Value>();
     const owner = isDriver(m) ? measures.get(driverOwner.get(m.id)!)! : undefined;
     const ownFormat = formatOf(m), effectFormat = signedFormat(formatOf(owner ?? m));

@@ -32,6 +32,7 @@ import { SLOPE_SIZING } from './slopeSizing';
 import type { SlopeDerived, SlopeMarks } from './layout';
 import { disclosureNote } from '../../notes';
 import { maxOf, minOf, pushAll } from '../../arrays';
+import { emptyIdRecord } from '../../idRecords';
 
 /** Per group, period 1 then period 2. */
 export interface DivergingGroup {
@@ -460,7 +461,7 @@ export function layoutDivergingSlope(
   pushAll(nodes, labelsToNodes(theme, solved.placed, (l) => fontById.get(l.id) ?? labelFont));
 
   // ---- derived and a11y ----
-  const changes: SlopeDerived['changes'] = {};
+  const changes: SlopeDerived['changes'] = emptyIdRecord();
   for (const p of panels) {
     const abs = p.g.positive[1] - p.g.positive[0];
     changes[p.s.id] = { abs: round2(abs), pct: p.g.positive[0] !== 0 ? round2((abs / p.g.positive[0]) * 100) : null };

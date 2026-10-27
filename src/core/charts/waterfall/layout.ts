@@ -88,6 +88,7 @@ import { disclosureNote } from '../../notes';
 import { bandSizing, NATURAL_BAND_STEP } from '../../sizing';
 import { floorValueLabel, printedValueLabel, valueLabelPlotFloor } from './bandFloor';
 import { maxOf, minOf, pushAll } from '../../arrays';
+import { emptyIdRecord } from '../../idRecords';
 
 export interface WaterfallMarks {
   bars: { id: Id; rect: Rect; segments: { id: Id; rect: Rect; nodeId: Id }[] }[];
@@ -834,20 +835,20 @@ function layoutWaterfallWithPad(
   // Two or more cases (data.cases) run one bridge each over the same steps;
   // their levels key by '<item>:<case>'.
   const bridges = cases.length > 0 ? caseItems.map(deriveBridge) : [deriveBridge(items)];
-  const levels: WaterfallDerived['levels'] = bridges.reduce<WaterfallDerived['levels']>((all, bridge) => Object.assign(all, bridge.levels), {});
-  const totals: WaterfallDerived['totals'] = bridges.reduce<WaterfallDerived['totals']>((all, bridge) => Object.assign(all, bridge.totals), {});
+  const levels: WaterfallDerived['levels'] = bridges.reduce<WaterfallDerived['levels']>((all, bridge) => Object.assign(all, bridge.levels), emptyIdRecord());
+  const totals: WaterfallDerived['totals'] = bridges.reduce<WaterfallDerived['totals']>((all, bridge) => Object.assign(all, bridge.totals), emptyIdRecord());
   const totalBasis: WaterfallDerived['totalBasis'] = bridges.reduce<WaterfallDerived['totalBasis']>((all, bridge, k) =>
     Object.assign(all, Object.fromEntries(Object.entries(bridge.totalBasis).map(([id, basis]) => [id, basis.authored && cases.length > 0
       ? { authored: true as const, ref: `${data.items[caseItems[k]!.findIndex((it) => it.id === id)]!.id}.values.${k}` }
-      : basis]))), {});
+      : basis]))), emptyIdRecord());
   const derivedTotalSegments = new Map(bridges.flatMap((bridge) => [...bridge.derivedTotalSegments]));
   const anchorLevel = bridges[0]!.anchorLevel;
 
   /** The running levels of one bridge: an item's start and end, totals, their receipts. `k` is the case. */
   function deriveBridge(items: NormItem[], k?: number) {
-    const levels: WaterfallDerived['levels'] = {};
-    const totals: WaterfallDerived['totals'] = {};
-    const totalBasis: WaterfallDerived['totalBasis'] = {};
+    const levels: WaterfallDerived['levels'] = emptyIdRecord();
+    const totals: WaterfallDerived['totals'] = emptyIdRecord();
+    const totalBasis: WaterfallDerived['totalBasis'] = emptyIdRecord();
     const derivedTotalSegments = new Map<Id, NormItem['segments']>();
 
     /** Exit level of an item through an anchor ('sum' | segmentId). */
@@ -904,7 +905,7 @@ function layoutWaterfallWithPad(
     let operands: number[] = [];
     /** The authored numbers `running` adds up, for the rounding a check value is allowed. */
     let summed: number[] = [];
-    const summedAt: Record<Id, number[]> = {};
+    const summedAt: Record<Id, number[]> = emptyIdRecord();
     let started = false;
     /**
      * The operand list whose sum IS `running`, maintained under the same four
@@ -1062,7 +1063,7 @@ function layoutWaterfallWithPad(
   // The running level only exposes an item's start and mathematical sum.
   // Preserve the complete segment traversal separately: mixed signs can pass
   // beyond both endpoints, and that painted truth must drive the domain.
-  const traversalExtrema: Record<Id, { min: number; max: number }> = {};
+  const traversalExtrema: Record<Id, { min: number; max: number }> = emptyIdRecord();
   const markPatterns = new Set<LegendItemInput['pattern']>();
   const segmentsFor = (it: NormItem): NormItem['segments'] => derivedTotalSegments.get(it.id) ??
     (it.type === 'delta' ? it.segments : [{ ...it.segments[0]!, value: totals[it.id]! }]);

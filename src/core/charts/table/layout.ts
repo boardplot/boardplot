@@ -63,6 +63,7 @@ import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { textScaleOf } from '../../typeFloors';
 import { currentSmallValues } from '../../formatPrecision';
 import { maxOf, minOf, pushAll } from '../../arrays';
+import { emptyIdRecord } from '../../idRecords';
 
 export interface TableMarks {
   table: Rect;
@@ -344,8 +345,9 @@ function deepCopy<T>(value: T, copies = new Map<object, unknown>()): T {
     return copy as T;
   }
   if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) return value;
+  // A null-prototype record (cells keyed by column id) stays one, so a column named __proto__ keeps its cell.
   const copy: Record<PropertyKey, unknown> = footerPlans.has(value as FrameGeometry)
-    ? copyFrame(value as FrameGeometry) as Record<PropertyKey, unknown> : {};
+    ? copyFrame(value as FrameGeometry) as Record<PropertyKey, unknown> : Object.getPrototypeOf(value) === null ? emptyIdRecord() : {};
   copies.set(value, copy);
   for (const key of Reflect.ownKeys(value)) copy[key] = deepCopy((value as Record<PropertyKey, unknown>)[key], copies);
   return copy as T;

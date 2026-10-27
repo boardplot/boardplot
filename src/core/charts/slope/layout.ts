@@ -84,6 +84,7 @@ import { markedLabel } from '../../footnoteMark';
 import { layoutDivergingSlope, type DivergingGroup, type DivergingPanelMark } from './diverging';
 import { textScaleOf } from '../../typeFloors';
 import { maxOf, pushAll } from '../../arrays';
+import { emptyIdRecord } from '../../idRecords';
 
 export interface SlopeMarks {
   series: {
@@ -284,7 +285,7 @@ export function layoutSlope(
       ...(options.locale?.language !== undefined ? { language: options.locale.language } : {}),
     });
   if (fold) ({ plotted: plottedSeries, listed: seriesNorm } = fold);
-  const changes: Record<Id, { abs: number; pct: number | null }> = {};
+  const changes: Record<Id, { abs: number; pct: number | null }> = emptyIdRecord();
   for (const s of plottedSeries) {
     const abs = s.b.v! - s.a.v!;
     changes[s.id] = {
