@@ -596,7 +596,7 @@ function layoutBarTableOnce(
   const sideW = compact ? fixedW + growthW : 0;
   if (compact) {
     numberTracks.forEach((track) => { track.right += plot.w - sideW; });
-    ({ labels: rowText, width: rowBandW } = fitRows(Math.max(MIN_COMPACT_LABEL, plot.w - sideW - LABEL_GAP), 2));
+    ({ labels: rowText } = fitRows(Math.max(MIN_COMPACT_LABEL, plot.w - sideW - LABEL_GAP), 2));
   }
   // What a panel takes beside its bars: the gap, then the end labels, or the share column and the bracket.
   const extras = panels.map((_, p) => PANEL_GAP + (cascade ? (showShare ? SHARE_GAP + shareWs[p]! : 0) + bracketWs[p]! : endReserves[p]!));

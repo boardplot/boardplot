@@ -49,6 +49,7 @@ def get_timeout() -> float:
             if value > 0:
                 return value
         except ValueError:
+            # An unreadable value falls back to the default timeout.
             pass
     return DEFAULT_TIMEOUT
 

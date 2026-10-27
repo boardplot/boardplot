@@ -210,7 +210,7 @@ const step = (grain: ZoomGrain): TimeStep => (grain.unit === 'quarter' ? { unit:
 /** A plain number, null for a missing reading, or undefined for a cell the zoom cannot combine (a scenario, a status). */
 function plain(cell: unknown): number | null | undefined {
   if (cell === null || typeof cell === 'number') return cell;
-  if (typeof cell === 'object' && cell !== null && Object.keys(cell).length === 1 && typeof (cell as { number?: unknown }).number === 'number') return (cell as { number: number }).number;
+  if (typeof cell === 'object' && Object.keys(cell).length === 1 && typeof (cell as { number?: unknown }).number === 'number') return (cell as { number: number }).number;
   return undefined;
 }
 

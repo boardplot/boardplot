@@ -262,13 +262,12 @@ function layoutTableLadder(authoredData: TableData, options: TableOptions, resol
   // Each rung is narrower than the one before, so where the narrowest misses the width every rung does.
   const narrowest = rung({ pad: Math.min(pad, 3), heads: 2 });
   if (narrowest.sizing !== undefined && !widthFits(narrowest)) return withWidthRepair(compactTable(authoredData, options, full, margin, Math.min(pad, 3), 2, resolved, sizingOnly, formatFits));
-  let last = full;
   const tried = new Set<string>(gutterHelps ? [] : [`${pad}`]);
   for (const step of [{ pad }, { pad: Math.min(pad, 6) }, { pad: Math.min(pad, 3) }, { pad: Math.min(pad, 3), heads: 2 }]) {
     const key = `${step.pad}${step.heads === undefined ? '' : `:${step.heads}`}`;
     if (tried.has(key)) continue;
     tried.add(key);
-    last = step.heads === undefined ? rung(step) : narrowest;
+    const last = step.heads === undefined ? rung(step) : narrowest;
     if (last.sizing === undefined || (widthFits(last) && heightFits(last))) {
       withFloor(last);
       last.warnings.push({ code: 'table-compact-fallback', severity: 'info', message: `The full table did not fit. ${step.pad === pad && step.heads === undefined ? '12 px side margins were' : `${step.pad} px cell air${step.heads === undefined ? '' : ', heads on two lines'} and 12 px side margins were`} used.` });

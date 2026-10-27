@@ -187,7 +187,7 @@ export function roundForDisplay(abs: number, decimals: number, automatic = false
   const places = nonzeroDecimals(abs, decimals);
   const text = roundHalfUp(abs, places);
   // Fixed decimals stop at 20. Smaller finite values still need a visible digit.
-  if (automatic && abs !== 0 && Number.isFinite(abs) && Number(text) === 0) {
+  if (Number(text) === 0) {
     return { text: abs.toExponential(0), decimals: 0, scientific: true };
   }
   return { text, decimals: places };

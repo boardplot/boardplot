@@ -680,7 +680,7 @@ export function layoutBullet(
   // The first row's target prints above it too; the rows reserve its air.
   let topAir = rows.length > 0 && targetPrints(rows[0]!) ? measure('0', targetFont).height + 2 : 0;
   let availH = plotHeightAfter(frameResult, size.height, plot0.h - axisH - 2 * inset - topAir);
-  let rowsH = Math.min(availH, rows.length * naturalRowH);
+  const rowsH = Math.min(availH, rows.length * naturalRowH);
   // A frame pressed under the minimum pitch is refused; its names are fitted
   // at that pitch, so the refusal reports the minimum width its fix keeps.
   const stepEst = Math.max(rowsH / rows.length, minimumPitch);
@@ -747,7 +747,6 @@ export function layoutBullet(
     catLines = cardNames.labels;
     catBandW = cardNames.width;
     naturalRowH = Math.max(naturalRowH, cardPitch);
-    rowsH = Math.min(availH, rows.length * naturalRowH);
   } else if (fixedHeight && cardNames) {
     ({ labels: catLines, width: catBandW } = fitted);
   }
@@ -820,7 +819,6 @@ export function layoutBullet(
     topAir = colPlan.colTopAir;
     availH = colPlan.colAvailH;
     naturalRowH = colPlan.colPitch;
-    rowsH = Math.min(availH, rows.length * naturalRowH);
   }
   // Read only where the columns show.
   const cp = colPlan as NonNullable<typeof colPlan>;
@@ -852,7 +850,6 @@ export function layoutBullet(
     rowAir = pitch - nameAir - rowBandH - tickAir;
     targetAir = 0;
     naturalRowH = pitch;
-    rowsH = Math.min(availH, rows.length * naturalRowH);
   }
   const rawBandPad = (options as { [BAND_PAD]?: number })[BAND_PAD] ?? 0;
   const bandPad = rawBandPad > 0 ? Math.max(0, Math.min(rawBandPad, Math.floor(availH - 10))) : 0;

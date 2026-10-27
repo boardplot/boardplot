@@ -284,7 +284,7 @@ export function auditGeometry(item, request, geometry, skipped = []) {
     const share = plot.h / canvasHeight;
     // The engine's own share rule (0.4 below 600 px for a 16:9 fill chart); the registry may
     // choose 0.5 when 0.4 hides a value, so 0.4 is the floor every such layout must keep.
-    const shareFloor = autoPlotShare(getChartDefinition(request.type), { ...options, target }, item.width, target);
+    const shareFloor = autoPlotShare(getChartDefinition(request.type), { ...options, target }, item.width);
     if (content && (content.exact || content.px < floor)) {
       // An exact content plot, or one under the floor, sets the plot height (sizing.ts autoHeightNeed).
       if (plot.h + 1 < content.px) add('S1', 'plot', `plot ${plot.h.toFixed(2)} px under its content plot height ${content.px.toFixed(2)} px (${target})`);
