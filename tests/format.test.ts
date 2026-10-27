@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import '../src/core/charts';
 import { tickFormatter } from '../src/core/axis';
+import { compositeColor } from '../src/core/color';
 import { layoutScatter } from '../src/core/charts/scatter/layout';
 import { formatAutomaticNumber as formatAutomaticNumberSync, formatNumber } from '../src/core/format';
 import { shareSetDecimals } from '../src/core/formatPrecision';
@@ -479,5 +480,21 @@ describe('the automatic number rule', () => {
     expect(formatAutomaticNumberSync(0.04, { decimals: 1, signed: true })).toBe('<+0.1');
     expect(formatWithSpec(0.04, { ...defaultFormatSpec(), automatic: true, decimals: 1, signed: true })).toBe('<+0.1');
     expect(formatWithSpec(-0.04, { ...defaultFormatSpec(), automatic: true, decimals: 1, signed: true })).toBe('>−0.1');
+  });
+
+  // A format or colour string of 50,000 characters took 1 to 2 seconds in these three parsers (time grew with the square of the length), and a chart parses its format about 16 times per render.
+  it('parses long malformed format and colour strings in linear time', () => {
+    const n = 50_000;
+    const cases: Array<[string, () => unknown]> = [
+      ['trailing spaces', () => parseFormatExample('1' + ' '.repeat(n) + '1')],
+      ['digits of a unit name', () => { try { parseFormatExample('(1)' + '0'.repeat(n) + '!'); } catch { /* the refusal is the expected result */ } }],
+      ['alpha with no closing parenthesis', () => compositeColor('rgba(0,0,0,' + ' '.repeat(n) + 'x', '#ffffff')],
+    ];
+    const slow = cases.filter(([, run]) => {
+      const start = performance.now();
+      run();
+      return performance.now() - start >= 250;
+    }).map(([name]) => name);
+    expect(slow).toEqual([]);
   });
 });
