@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useSyncExternalStore, type ComponentType, type KeyboardEvent, type MouseEvent, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useSyncExternalStore, type ComponentType, type KeyboardEvent, type MouseEvent, type ReactElement } from 'react';
 import type { InteractionRecord } from '../core/a11y/types';
 import type { ZoomOption } from './useZoom';
 import { chartLoaders } from './chartLoaders';
@@ -21,6 +21,7 @@ import type { ParsedChartSpec } from './specValidation';
 import { loadedSpecValidator, loadedTableChart, onHandover, publishSpecValidator, publishTableChart, type SpecValidator } from './specHandover';
 import { SpecErrorCard } from './SpecErrorCard';
 import { useSpecFrame } from './specFrame';
+import { useIsomorphicLayoutEffect } from './useIsomorphicLayoutEffect';
 import type { TableChartProps } from './TableChart';
 import type { ContainerSizeOptions } from './useContainerSize';
 import type { HoverOption, RenderHoverContent } from './useHover';
@@ -40,6 +41,14 @@ export interface BoardplotChartProps extends ContainerSizeOptions, RefusalProps,
   target?: RenderTarget;
   /** Canonical and observed display findings. */
   onWarnings?: (warnings: LintWarning[]) => void;
+  /**
+   * Called after commit with the findings `SpecErrorCard` shows: an invalid spec or setting, or a chunk
+   * that did not load. Once per distinct set. It is called once with `[]` when a later valid spec
+   * replaces the error card (its chart engine is ready, or its data is empty), without waiting for the
+   * chart to draw, because a valid spec can still wait for its container or refuse its size.
+   * Empty data stays on `onEmpty`, a layout refusal on `onRefused`.
+   */
+  onSpecError?: (errors: readonly DocumentFinding[]) => void;
   /** Label card and series highlight on pointer hover. Off by default. */
   hover?: HoverOption;
   /** Called with the series id when the reader clicks a series' line or area, its name label or its legend entry. SVG charts only. */
@@ -261,6 +270,31 @@ function chunkFailure(what: string, message: string): DocumentFinding[] {
   }];
 }
 
+/** What one BoardplotChart last told its host, shared by the card paths of BoardplotChart and SpecChart. */
+interface SpecErrorChannel { listener: { current?: (errors: readonly DocumentFinding[]) => void }; reported: { current: string } }
+
+const NO_ERRORS: readonly DocumentFinding[] = [];
+
+/**
+ * Tells the host about the findings this committed render shows: the card's findings, `NO_ERRORS`
+ * once a valid spec replaces the card (its engine is ready, or its data is empty), and nothing while
+ * a chunk loads. The findings come from the effect's own render. A set counts as reported only once
+ * a listener has taken it, so a host that adds `onSpecError` while the card shows still hears it.
+ * A set equal to the last one delivered is not sent again, so a host that sets state from the call
+ * does not loop, and StrictMode's second effect run finds the set already delivered. A first draw
+ * sends nothing.
+ */
+function useSpecErrorReport(channel: SpecErrorChannel, errors: readonly DocumentFinding[] | undefined, listening: boolean): void {
+  const key = errors === undefined ? undefined : JSON.stringify(errors);
+  useEffect(() => {
+    const listener = channel.listener.current;
+    if (key === undefined || channel.reported.current === key || !listener) return;
+    channel.reported.current = key;
+    listener(errors!);
+    // `errors` is left out of the list: it changes with `key`, and an equal set is no new report.
+  }, [channel, key, listening]);
+}
+
 function specResult<T>(validator: SpecValidator, read: () => T): { value?: T; errors?: readonly DocumentFinding[] } {
   try { return { value: read() }; }
   catch (error) {
@@ -296,6 +330,13 @@ function oneChart<T>(result: { value?: T; errors?: readonly DocumentFinding[] })
  */
 export function BoardplotChart(props: BoardplotChartProps): ReactElement {
   const { spec: authored, size, fit, fallbackSize, theme, target, hover, rows, columns, onRowsReading } = props;
+  const listener = useRef<SpecErrorChannel['listener']['current']>(undefined);
+  const reported = useRef(JSON.stringify(NO_ERRORS));
+  const channel = useMemo((): SpecErrorChannel => ({ listener, reported }), []);
+  // The committed callback only: a render that never commits (a suspended transition) must not
+  // replace it. Layout effects run before every passive effect of the commit, SpecChart's included.
+  useIsomorphicLayoutEffect(() => { listener.current = props.onSpecError; });
+  const listening = props.onSpecError !== undefined;
   // Rows fill the spec's data before validation, so the spec is judged as `boardplot_render` judges it with rows.
   const mapped = useRowsInput<unknown>(authored as { type?: unknown; data?: unknown } | undefined, { rows, columns, onRowsReading });
   const withRows = rows !== undefined || columns !== undefined;
@@ -316,23 +357,28 @@ export function BoardplotChart(props: BoardplotChartProps): ReactElement {
   }, [parse, validator, schemas.ready]);
   const settings = useMemo(() => validator && specResult(validator, () => validator.specSettings({ size, fit, fallbackSize, theme, target, hover })),
     [validator, size, fit, fallbackSize, theme, target, hover]);
-  if (mapped.failure !== undefined) return <SpecErrorCard errors={chunkFailure('rows chunk', mapped.failure)} {...frame} />;
-  if (mapped.refusal) return <SpecErrorCard errors={[mapped.refusal]} {...frame} />;
-  if (failure !== undefined) return <SpecErrorCard errors={chunkFailure('chart validation chunk', failure)} {...frame} />;
-  if (schemas.failure !== undefined) {
-    return <SpecErrorCard errors={chunkFailure(`'${schemas.failedType}' chart schema`, schemas.failure)} {...frame} />;
-  }
-  if (!parsed || !settings) return <LoadingPlaceholder {...frame} />;
-  const errors = settings.errors ?? (parsed.errors && mapped.rewrite ? mapped.rewrite([...parsed.errors]) : parsed.errors);
+  const errors = !parsed || !settings ? undefined
+    : settings.errors ?? (parsed.errors && mapped.rewrite ? mapped.rewrite([...parsed.errors]) : parsed.errors);
   // A spec that fails only on an empty data collection is an empty chart: the host hears onEmpty and no error card shows.
-  if (errors?.length && errors.every((error) => error.code === 'empty-data')) return <EmptyPlaceholder {...frame} onEmpty={props.onEmpty} />;
-  if (errors) return <SpecErrorCard errors={errors} {...frame} />;
-  return <DataTableContext.Provider value={dataTable}><SpecChart {...props} parsed={parsed.value!} rewriteWarnings={mapped.rewriteWarnings} /></DataTableContext.Provider>;
+  const empty = errors !== undefined && errors.length > 0 && errors.every((error) => error.code === 'empty-data');
+  const card = mapped.failure !== undefined ? chunkFailure('rows chunk', mapped.failure)
+    : mapped.refusal ? [mapped.refusal]
+    : failure !== undefined ? chunkFailure('chart validation chunk', failure)
+    : schemas.failure !== undefined ? chunkFailure(`'${schemas.failedType}' chart schema`, schemas.failure)
+    : empty ? undefined : errors;
+  // Nothing while a chunk loads or while SpecChart decides; it reports the engine's card and the drawn chart itself.
+  useSpecErrorReport(channel, card ?? (empty ? NO_ERRORS : undefined), listening);
+  if (card) return <SpecErrorCard errors={card} {...frame} />;
+  if (!parsed || !settings) return <LoadingPlaceholder {...frame} />;
+  if (empty) return <EmptyPlaceholder {...frame} onEmpty={props.onEmpty} />;
+  return <DataTableContext.Provider value={dataTable}><SpecChart {...props} parsed={parsed.value!} channel={channel} listening={listening} rewriteWarnings={mapped.rewriteWarnings} /></DataTableContext.Provider>;
 }
 
-function SpecChart({ parsed, spec: _spec, theme, size, target, onWarnings, prepared, rows: _rows, columns: _columns, onRowsReading: _onRowsReading, rewriteWarnings, onRowSelect, isRowSelectable, ...host }: BoardplotChartProps & { parsed: ParsedChartSpec; rewriteWarnings?: (warnings: LintWarning[]) => LintWarning[] }): ReactElement {
+function SpecChart({ parsed, channel, listening, spec: _spec, theme, size, target, onWarnings, onSpecError: _onSpecError, prepared, rows: _rows, columns: _columns, onRowsReading: _onRowsReading, rewriteWarnings, onRowSelect, isRowSelectable, ...host }: BoardplotChartProps & { parsed: ParsedChartSpec; channel: SpecErrorChannel; listening: boolean; rewriteWarnings?: (warnings: LintWarning[]) => LintWarning[] }): ReactElement {
   const { type, data, options = {} } = parsed.request;
   const { ready, failure } = useChartEngine(type);
+  const engineFailure = useMemo(() => (failure === undefined ? undefined : chunkFailure(`'${type}' chart engine`, failure)), [type, failure]);
+  useSpecErrorReport(channel, engineFailure ?? (ready ? NO_ERRORS : undefined), listening);
   // Chart-level annotations win over options.annotations, as in resolveChartRequest.
   const annotations = parsed.request.annotations ?? (options as { annotations?: Annotation[] }).annotations;
   const common = { ...options, ...(target === undefined ? {} : { target }), ...(theme === undefined ? {} : { theme }), ...(size === undefined ? {} : { size }) };
@@ -341,7 +387,7 @@ function SpecChart({ parsed, spec: _spec, theme, size, target, onWarnings, prepa
     const all = [...parsed.warnings, ...warnings];
     onWarnings(rewriteWarnings ? rewriteWarnings(all) : all);
   }), [onWarnings, parsed.warnings, rewriteWarnings]);
-  if (failure !== undefined) return <SpecErrorCard errors={chunkFailure(`'${type}' chart engine`, failure)} {...frame} />;
+  if (engineFailure) return <SpecErrorCard errors={engineFailure} {...frame} />;
   if (!ready) return <LoadingPlaceholder {...frame} />;
   // The row props reach the table alone: a generic chart would take them into its options.
   if (type === 'table') {

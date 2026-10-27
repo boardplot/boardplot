@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
-import { act } from 'react';
+import { act, StrictMode, useState } from 'react';
 import type { Root } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { BoardplotTheme } from '../src/react/BoardplotTheme';
 import { BoardplotChart } from '../src/react/spec';
+import { specFromRows } from '../src/rows';
 import { mount, settle } from './helpers/spec-chunks';
 import { boardplotSpecSettingsSchema } from '../src/core/schema/spec';
+import type { DocumentFinding } from '../src/core/doc/diagnostics';
 import fixture from './fixtures/spec-error-host.json';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -91,4 +93,66 @@ it('keeps schema defaults absent and accepts the hover setting', () => {
   expect(boardplotSpecSettingsSchema.parse({})).toEqual({});
   for (const hover of [true, false, { card: false }, { highlight: false }]) expect(boardplotSpecSettingsSchema.parse({ hover })).toEqual({ hover });
   expect(boardplotSpecSettingsSchema.safeParse({ hover: 'yes' }).success).toBe(false);
+});
+
+// A host that shows the findings from onSpecError (the notebook and Streamlit views) must hear each error set once, clear it on recovery, and not loop when it sets state.
+it('reports each error set once after commit, under StrictMode and host state, and [] when a later spec draws', async () => {
+  const calls: (readonly DocumentFinding[])[] = [];
+  let renders = 0;
+  function Host({ spec }: { spec: unknown }) {
+    const [shown, setShown] = useState<readonly DocumentFinding[]>([]);
+    renders += 1;
+    return <div data-shown={shown.length}><BoardplotChart spec={spec} onSpecError={(errors) => { calls.push(errors); setShown(errors); }} /></div>;
+  }
+  const view = (spec: unknown) => <StrictMode><Host spec={spec} /></StrictMode>;
+  root = await mount(view(fixture.spec), host);
+  expect(present('[data-bp-spec-error]')).toBe(true);
+  expect(calls).toHaveLength(1);
+  expect(calls[0]!.map(error => error.path)).toContain('/charts/0/data/series/0/values/0');
+  expect(host.querySelector('[data-shown]')!.getAttribute('data-shown')).toBe(String(calls[0]!.length));
+  const settled = renders;
+  // The same findings from a new spec object are not a new set.
+  await act(async () => { root!.render(view(structuredClone(fixture.spec))); });
+  await settle(host);
+  expect(calls).toHaveLength(1);
+  expect(renders - settled).toBeLessThan(5);
+  const valid = structuredClone(fixture.spec);
+  valid.charts[0]!.data.series[0]!.values = [24] as never;
+  await act(async () => { root!.render(view(valid)); });
+  await settle(host);
+  expect(present('svg')).toBe(true);
+  expect(calls).toHaveLength(2);
+  expect(calls[1]).toEqual([]);
+  await act(async () => { root!.render(view(structuredClone(valid))); });
+  await settle(host);
+  expect(calls).toHaveLength(2);
+});
+
+// A host that adds onSpecError while the card already shows must still hear the findings.
+it('reports the shown findings to an onSpecError added after the card appeared', async () => {
+  root = await mount(<BoardplotChart spec={fixture.spec} />, host);
+  expect(present('[data-bp-spec-error]')).toBe(true);
+  const specError = vi.fn();
+  await act(async () => { root!.render(<BoardplotChart spec={fixture.spec} onSpecError={specError} />); });
+  expect(specError).toHaveBeenCalledOnce();
+  expect(specError.mock.calls[0]![0].map((error: DocumentFinding) => error.path)).toContain('/charts/0/data/series/0/values/0');
+});
+
+// Rows that the rows mapper refuses show the error card, so a host that shows findings from onSpecError must hear that refusal too.
+it('reports a rows refusal to onSpecError once, with the source row in the path', async () => {
+  const columns = { category: 'month', series: 'channel', value: 'revenue' } as const;
+  const rows = [
+    { month: '2026-01', channel: 'Search', revenue: 120 },
+    { month: '2026-02', channel: 'Search', revenue: '1,234 $' },
+  ];
+  let thrown: { code: string; details: { path: string } } | undefined;
+  try { specFromRows({ type: 'column' }, { rows, columns }); } catch (error) { thrown = error as typeof thrown; }
+  vi.spyOn(console, 'error').mockImplementation(() => {});
+  const specError = vi.fn();
+  root = await mount(<BoardplotChart spec={{ type: 'column' }} rows={rows} columns={columns} onSpecError={specError} />, host);
+  expect(present('[data-bp-spec-error]')).toBe(true);
+  expect(specError).toHaveBeenCalledOnce();
+  const findings = specError.mock.calls[0]![0] as DocumentFinding[];
+  expect(findings.map((finding) => [finding.code, finding.path])).toEqual([[thrown!.code, thrown!.details.path]]);
+  expect(thrown!.details.path).toBe('/rows/1/revenue');
 });
