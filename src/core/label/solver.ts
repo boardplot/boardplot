@@ -137,7 +137,9 @@ export interface SlotCandidate {
    * not block this slot; a label placed across one gets a halo. For the one
    * seat that keeps a row of values on one reading line: a value floated
    * above the line, or into its bar, breaks that line for the one bar that
-   * reaches it.
+   * reaches it. A claim of part CROSSABLE_RULE_PART (a gantt event or
+   * today rule, which breaks around the label) does not block it either,
+   * and gives no halo.
    */
   overRules?: boolean;
   /** The seat lies on the key line, right of its entries: the legend's whole-row claim does not block it (the chart checked the entries). */
@@ -580,7 +582,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
         let sawLabel = false;
         const hard = anyHit(occupied, rect, padding, (o) => {
           if (o.kind === 'annotation' && selfAnn && o.owner.annotationId === selfAnn) return false;
-          if (overRules && o.part === 'referenceLine') return false;
+          if (overRules && (o.part === 'referenceLine' || o.part === CROSSABLE_RULE_PART)) return false;
           if (overLegend && o.kind === 'legend') return false;
           // A slot over columns lies wholly on one column or clear of them:
           // a label across a fill edge is half on the page and half on the
@@ -1073,6 +1075,8 @@ const LED_PENALTY = 100;
  * Penalty of a seat a chart offers only after every other (a line end past the plot's edge):
  * ownership keeps it behind the led seats too.
  */
+/** A rule claim an overRules seat may cross; the rule breaks around the label, so the label needs no halo. */
+export const CROSSABLE_RULE_PART = 'crossableRule';
 export const LAST_RESORT_PENALTY = 200;
 
 /**

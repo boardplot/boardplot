@@ -29,6 +29,8 @@ interface LabelCtx {
   keyed: ReadonlyMap<string, number>;
   flagRows: ReadonlySet<string>;
   spanClearance?: Rect[];
+  /** The repair pass: a span name may sit inside its mark across an event or today rule. */
+  crossRules?: boolean;
 }
 
 /** A name keeps clear of diamonds and the pointed part of every chevron. */
@@ -163,6 +165,9 @@ function spanLabel(ctx: LabelCtx, row: RowPlace, place: ItemPlace): void {
     .filter(nextToArrow)
     .map((rect, index): SlotCandidate => ({ ...backed, slot: `backedPast:${index + 1}`, rect, penalty: 4.5 + index * 0.1 }));
   const duration = it.endDay - it.startDay;
+  const seats = clearOfLeader((fits
+    ? [inside, ...insideShape, ...slideCandidates, insideStart, insideEnd, right, left, ...past, ...offCentre]
+    : [right, left, backed, ...past, ...offCentre]).filter(clearOfMarks));
   ctx.requests.push({
     id: `item:${it.rowId}:${it.id}`,
     kind: 'item', typeRole: 'label',
@@ -172,10 +177,35 @@ function spanLabel(ctx: LabelCtx, row: RowPlace, place: ItemPlace): void {
     font: fonts.label,
     // Keep the one span name before milestones compete for the row bands.
     priority: (rowMilestoneItems.length && offCentre.length ? PRIORITY.extreme + 1 : PRIORITY.interior) + Math.min(99, duration) + bonus(ctx.env, it),
-    candidates: clearOfLeader((fits
-      ? [inside, ...insideShape, ...slideCandidates, insideStart, insideEnd, right, left, ...past, ...offCentre]
-      : [right, left, backed, ...past, ...offCentre]).filter(clearOfMarks)),
+    candidates: ctx.crossRules ? crossingRules(ctx.body.ruleClaims, seats) : seats,
   });
+}
+
+/**
+ * In the repair pass a span name may sit inside its own mark across an event
+ * or today rule, which then breaks over the mark. Each crossed rule adds 1 to
+ * a seat's penalty, so a seat clear of every rule still wins at an equal
+ * penalty. Seats keep their order otherwise: a crossing seat moves behind the
+ * clear seats of a lower or equal penalty.
+ */
+function crossingRules(rules: GanttBody['ruleClaims'], candidates: SlotCandidate[]): SlotCandidate[] {
+  const crossed = (rect: Rect) => rules.filter(rule => rule.x >= rect.x - rule.gap && rule.x <= rect.x + rect.w + rule.gap).length;
+  const clear: SlotCandidate[] = [];
+  const crossing: SlotCandidate[] = [];
+  for (const candidate of candidates) {
+    // Only a seat inside the name's own mark crosses: the rule then breaks over the whole mark.
+    const n = candidate.insideFill === undefined ? 0 : crossed(candidate.rect);
+    if (n) crossing.push({ ...candidate, penalty: candidate.penalty + n, overRules: true });
+    else clear.push(candidate);
+  }
+  if (!crossing.length) return clear;
+  crossing.sort((a, b) => a.penalty - b.penalty);
+  const out: SlotCandidate[] = [];
+  for (const candidate of clear) {
+    while (crossing.length && crossing[0]!.penalty < candidate.penalty) out.push(crossing.shift()!);
+    out.push(candidate);
+  }
+  return [...out, ...crossing];
 }
 
 /** Milestone labels use their row bands before side seats and the shared lane. */
@@ -451,12 +481,13 @@ export function planGanttLabels(
   keyed: ReadonlyMap<string, number> = new Map(),
   flagRows: ReadonlySet<string> = new Set(),
   spanClearance?: Rect[],
+  crossRules = false,
 ): LabelRequest[] {
   const obstacles = [
     ...geometry.claims.snapshot().map((claim) => claim.rect),
     ...body.ruleClaims.map((rule) => ({ x: rule.x - rule.halfWidth, y: body.plot.y, w: 2 * rule.halfWidth, h: body.plot.h })),
   ];
-  const ctx: LabelCtx = { env, domain, band, body, paints, requests: env.labelOn('activity') ? [...body.columns.headerRequests] : [], obstacles, keyed, flagRows, spanClearance };
+  const ctx: LabelCtx = { env, domain, band, body, paints, requests: env.labelOn('activity') ? [...body.columns.headerRequests] : [], obstacles, keyed, flagRows, spanClearance, crossRules };
   const itemsOn = env.labelOn('item');
   for (const place of geometry.rows) {
     for (const item of place.items) {
