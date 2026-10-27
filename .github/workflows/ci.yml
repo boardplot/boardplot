@@ -27,6 +27,17 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Reject archives, source maps, decks and files over 1 MB
+        shell: bash
+        run: |
+          git ls-tree -r -l --full-tree HEAD | awk -F'\t' '{
+            split($1, meta, " "); size = meta[4] + 0; path = tolower($2)
+            if (path ~ /\.(zip|tgz|pptx|map)$/ || size > 1048576) {
+              print "::error file=" $2 "::" $2 " (" size " bytes): no zip, tgz, pptx, map or file over 1 MB in the repository"
+              bad = 1
+            }
+          } END { exit bad }'
+
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -57,6 +68,14 @@ jobs:
 
       - name: Check the diagnostic doc pointers and the skill's links
         run: node scripts/check-doc-anchors.mjs --zip "$RUNNER_TEMP/boardplot-build/boardplot-cowork.zip"
+
+      # The manual's links in the source tree, before docs:build re-roots them into the skill.
+      - name: Check documentation pointers and the manual's skill links
+        run: node scripts/check-doc-anchors.mjs --manual
+
+      # The manual's code blocks run against dist/. Build it from this commit, so they never run on an older build.
+      - name: Build the runtime for documentation examples
+        run: npx --no-install tsup
 
       - name: Run the code blocks of the manual against the build
         run: node scripts/check-manual.mjs
@@ -108,10 +127,48 @@ jobs:
           TEST_NODE: ${{ matrix.node }}
           TEST_SHARD: ${{ matrix.shard }}
 
+  # Twelve ARM jobs, each with one twelfth of the layout fixtures. The results go to an
+  # artifact for one day, so an intended geometry change can update the baseline from it.
+  scorecard:
+    name: Layout scorecard (${{ matrix.shard }}/12)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check layout scorecard outcomes
+        run: npm run check:scorecard -- --shard ${{ matrix.shard }}/12 --out "${{ runner.temp }}/scorecard-${{ matrix.shard }}"
+
+      - name: Save layout scorecard results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: scorecard-${{ github.event.pull_request.head.sha || github.sha }}-${{ matrix.shard }}
+          path: ${{ runner.temp }}/scorecard-${{ matrix.shard }}
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 1
+
   # One check for the branch ruleset to require. It fails when any job above fails or is skipped.
   ci-result:
     name: CI result
-    needs: [checks, tests]
+    needs: [checks, tests, scorecard]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
