@@ -23,6 +23,8 @@ import { DOCUMENT_SCHEMA_ID, DOCUMENT_SCHEMA_VERSION } from '../src/core/schema/
 import { getFixtures } from '../src/fixtures';
 import { adaptNamedColumns } from '../src/core/schema/namedColumns';
 import { unitConflict } from '../src/core/schema/units';
+import { flattenIssues } from '../src/core/schema/flattenIssues';
+import { ganttDataSchema } from '../src/core/charts/gantt/schema';
 
 function acceptance(input: unknown): boolean {
   try {
@@ -123,5 +125,16 @@ describe('declared units ', () => {
     expect(unitConflict([{ unit: '€ m' }, {}, { unit: '€m' }], '€m')).toBeUndefined();
     expect(unitConflict([{}, { unit: 'units' }, { unit: '%' }])).toEqual({ index: 2, unit: '%', against: 'units' });
     expect(unitConflict([{ unit: '%' }], '€m')).toEqual({ index: 0, unit: '%', against: '€m' });
+  });
+});
+
+// A gantt task row failed the row union, so the cadence branch's tag error ("expected 'cadence'")
+// and a doubled cols error buried the one real mistake.
+describe('tagged union issues', () => {
+  it('reports a task row with a bad item kind once, at the item, and accepts a cols cell without a tone', () => {
+    const result = ganttDataSchema.safeParse({ rows: [{ id: 'a', label: 'A', cols: [{ text: 'sub' }],
+      items: [{ id: 'x', kind: 'barr', start: '2026-03-02' }] }] });
+    expect(result.success).toBe(false);
+    expect(flattenIssues(result.error!.issues).map((issue) => issue.path.join('.'))).toEqual(['rows.0.items.0.kind']);
   });
 });

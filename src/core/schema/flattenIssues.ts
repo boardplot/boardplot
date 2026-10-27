@@ -25,8 +25,21 @@ import * as z from 'zod';
  * is what the caller needs. Otherwise the input was the wrong shape entirely
  * and the wrapper's own issues are kept. A branch whose only failure is an
  * extra key matched best of all and is reported first.
+ *
+ * A branch that failed on its own literal tag (a gantt row without
+ * `kind: 'cadence'`) is not the branch the author meant when another branch
+ * passed its tag and failed on a named field, so its issues are dropped. Identical issues (same path and
+ * message), as branches that share fields report them, are listed once.
  */
 export function flattenIssues(issues: readonly z.core.$ZodIssue[]): z.core.$ZodIssue[] {
+  const seen = new Set<string>();
+  return flattenUnions(issues).filter((issue) => {
+    const key = `${issue.path.join('\u0000')}\u0001${issue.message}`;
+    return seen.has(key) ? false : (seen.add(key), true);
+  });
+}
+
+function flattenUnions(issues: readonly z.core.$ZodIssue[]): z.core.$ZodIssue[] {
   const out: z.core.$ZodIssue[] = [];
   for (const issue of issues) {
     // A branch that failed on extra keys alone matched the shape: the extra key is the finding,
@@ -38,7 +51,10 @@ export function flattenIssues(issues: readonly z.core.$ZodIssue[]): z.core.$ZodI
       for (const inner of extrasOnly) out.push({ ...inner, path: [...issue.path, ...inner.path] } as z.core.$ZodIssue);
       continue;
     }
-    const nested = flattenIssues(issue.code === 'invalid_union' ? issue.errors.flat() : []);
+    const branches = issue.code === 'invalid_union' ? issue.errors : [];
+    // Only a branch that passed its tag and failed on a named field outranks a tagged one.
+    const untagged = branches.filter((branch) => !branch.some(tagIssue) && branch.some((inner) => inner.path.length > 0));
+    const nested = flattenUnions((untagged.length > 0 ? untagged : branches).flat());
     const withPath = nested.filter((inner) => inner.path.length > 0);
     const specific = (withPath.length > 0 ? withPath : nested.filter((inner) => inner.code === 'unrecognized_keys'))
       .filter((inner) => !missingIssue(inner));
@@ -53,6 +69,11 @@ export function flattenIssues(issues: readonly z.core.$ZodIssue[]): z.core.$ZodI
     }
   }
   return out;
+}
+
+/** A branch's own literal tag failed: `kind` expected exactly 'cadence'. */
+function tagIssue(issue: z.core.$ZodIssue): boolean {
+  return issue.code === 'invalid_value' && issue.path.length === 1 && issue.values.length === 1;
 }
 
 function missingIssue(issue: z.core.$ZodIssue): boolean {
