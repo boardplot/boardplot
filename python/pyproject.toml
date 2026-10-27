@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "boardplot"
+dynamic = ["version"]
+description = "Consulting-grade charts from DataFrames: Boardplot's engine in Python, with static SVG and an interactive notebook view."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["src/boardplot/_assets/licenses/*"]
+keywords = ["chart", "charts", "svg", "data-visualization", "business-charts", "jupyter", "dataframe"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Framework :: Jupyter",
+  "Topic :: Scientific/Engineering :: Visualization",
+]
+dependencies = [
+  "anywidget>=0.11",
+  "narwhals>=2",
+  # mini-racer ships wheels for these platforms only; elsewhere (Pyodide,
+  # 32-bit Linux, ppc64le, s390x) the install succeeds and charts raise
+  # EngineUnavailableError with the reason.
+  'mini-racer>=0.14.1; sys_platform == "darwin" or (sys_platform == "linux" and (platform_machine == "x86_64" or platform_machine == "aarch64")) or (sys_platform == "win32" and (platform_machine == "AMD64" or platform_machine == "ARM64"))',
+]
+
+[project.urls]
+Homepage = "https://github.com/boardplot/boardplot"
+Issues = "https://github.com/boardplot/boardplot/issues"
+
+# The version comes from src/boardplot/_version.py, which python/js/build.mjs writes from package.json.
+[tool.hatch.metadata.hooks.custom]
+path = "hatch_build.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/boardplot"]
+# The assets and _version.py are generated and gitignored; artifacts puts them into the wheel anyway.
+artifacts = ["src/boardplot/_assets/**", "src/boardplot/_version.py"]
+
+[tool.hatch.build.targets.wheel.hooks.custom]
+path = "hatch_build.py"
+
+[tool.hatch.build.targets.sdist]
+include = ["src/boardplot", "hatch_build.py", "README.md"]
+artifacts = ["src/boardplot/_assets/**", "src/boardplot/_version.py"]
+
+[tool.hatch.build.targets.sdist.hooks.custom]
+path = "hatch_build.py"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
