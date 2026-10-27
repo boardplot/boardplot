@@ -37,8 +37,8 @@ const rowBaseSchema = z.strictObject({
     z.string(),
     z.strictObject({
       text: z.string().describe("Cell text, such as a status word."),
-      tone: z.enum(['good', 'warn', 'bad', 'neutral']).describe("Status tone, drawn as a small filled marker in the tone's colour before the text. The row's bars and chevrons without a colorRole take the same colour, as do those of rows indented under it without a status, so the status column keys them."),
-    }).describe("A metadata cell carrying a status tone."),
+      tone: z.enum(['good', 'warn', 'bad', 'neutral']).optional().describe("Status tone; omitted, the cell is plain text. A tone is drawn as a small filled marker in the tone's colour before the text. The row's bars and chevrons without a colorRole take the same colour, as do those of rows indented under it without a status, so the status column keys them."),
+    }).describe("A metadata cell: text, optionally with a status tone."),
   ])).optional().describe("Metadata columns beside the row label, such as owner and status; up to three are displayed. A cell is text, or text with a tone."),
 });
 

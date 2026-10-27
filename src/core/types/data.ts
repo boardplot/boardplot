@@ -303,10 +303,10 @@ export interface GanttItem {
   scope?: 'row' | 'shared';
   anchor?: { toItemId: Id; edge: 'start' | 'end'; offsetDays?: number };
 }
-/** A metadata cell with a tone: a filled marker in the tone's colour before its text. */
+/** A metadata cell: text, with an optional tone drawn as a filled marker in the tone's colour before it. */
 export interface GanttCell {
   text: string;
-  tone: 'good' | 'warn' | 'bad' | 'neutral';
+  tone?: 'good' | 'warn' | 'bad' | 'neutral';
 }
 export interface GanttTaskRow {
   id: Id;
