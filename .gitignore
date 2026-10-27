@@ -41,3 +41,18 @@ artifacts/
 release/plugin/BUILD-MANIFEST.json
 release/plugin/boardplot-marketplace/plugins/boardplot/runtime/
 release/plugin/boardplot-marketplace/plugins/boardplot/THIRD_PARTY_NOTICES.md
+
+# --- Secrets: never commit these ---
+# Real values stay in local files or a secret manager. Keep a .env.example with variable names only.
+.env
+.env.*
+*.pem
+*.p12
+*.pfx
+*service-account*.json
+*service_account*.json
+client_secret*.json
+!.env.example
+!.env.sample
+!.env.template
+!.env.*.example

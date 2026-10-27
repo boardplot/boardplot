@@ -97,8 +97,8 @@ const absolutePath = (description: string) =>
 /** Rows as data, shared by render and measure. */
 const rowArguments = {
   rows: z.array(z.looseObject({})).optional()
-    .describe('A flat table that fills a bare spec. One row per category/series pair, waterfall item, scatter point, sankey link or map region. Keep data.pack for maps. Needs columns.'),
-  rowsFile: absolutePath('Absolute path of a local .json (an array of row objects) or .csv file (a header row) of at most 2 MB, read in place of rows so the numbers never pass through you. It must sit under a client root, the server working directory, the temp folder or a folder in BOARDPLOT_ROWS_ROOTS. A CSV separated by semicolons is detected from its header, and its values read a decimal comma as a decimal. Needs columns.').optional(),
+    .describe('A flat table that fills a bare spec. One row per category/series pair, waterfall item, scatter point, sankey link, map region, table row or histogram or box observation. Keep data.pack for maps and data.columns for tables. Needs columns, except for a table.'),
+  rowsFile: absolutePath('Absolute path of a local .json (an array of row objects) or .csv file (a header row) of at most 2 MB, read in place of rows so the numbers never pass through you. It must sit under a client root, the server working directory, the temp folder or a folder in BOARDPLOT_ROWS_ROOTS. A CSV separated by semicolons is detected from its header, and its values read a decimal comma as a decimal. Needs columns, except for a table.').optional(),
   columns: z.strictObject({
     category: z.string().optional(), series: z.string().optional(), value: z.string().optional(),
     categoryLabel: z.string().optional(), seriesLabel: z.string().optional(), unit: z.string().optional(),
@@ -106,8 +106,9 @@ const rowArguments = {
     label: z.string().optional(), type: z.string().optional().describe('Waterfall item type: delta (default), subtotal or total.'),
     x: z.string().optional(), y: z.string().optional(), size: z.string().optional(), group: z.string().optional(),
     source: z.string().optional(), target: z.string().optional(), sourceStage: z.string().optional(), targetStage: z.string().optional(),
+    id: z.string().optional().describe('Table row id column. Without it the rows are row-1, row-2, ... .'),
     valueKind: z.enum(['number', 'percent', 'fraction']).default('number'),
-  }).optional().describe("Source columns by chart type. Category charts require category,series,value; maps category,value. Waterfall: label,value; optional type (delta|subtotal|total). Scatter/bubble: x,y; optional size,label,group (legend series). Sankey: source,target,value; optional sourceStage,targetStage. Item/point ids are row-1,row-2,... . valueKind: number (default), percent (50 means 50%) or fraction (0.5 means 50%); applies to value or both x/y, never size."),
+  }).optional().describe("Source columns by chart type. Category charts require category,series,value; maps category,value. Waterfall: label,value; optional type (delta|subtotal|total). Scatter/bubble: x,y; optional size,label,group (legend series). Sankey: source,target,value; optional sourceStage,targetStage. Item/point ids are row-1,row-2,... . Table: optional label (row label) and id; spec data.columns declares the columns, and each value, text, status or date column reads the source field named like its id. Histogram: value. Box: category (group id), value; optional categoryLabel, date. A missing or non-numeric observation is refused. valueKind: number (default), percent (50 means 50%) or fraction (0.5 means 50%); applies to value or both x/y, never size; table, histogram and box take number only."),
 };
 
 /** What the reading, and measure, report about the rows a chart was drawn from. */

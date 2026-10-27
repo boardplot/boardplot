@@ -8,7 +8,6 @@ import { ColumnChart } from '../src/react/charts/column';
 import { LineChart } from '../src/react/charts/line';
 import { prepareChart } from '../src/react/prepare';
 import { BoardplotChart } from '../src/react/spec';
-import { TableChart } from '../src/react/charts/table';
 import { useExport } from '../src/react/export';
 import { specFromRows } from '../src/rows';
 import { mount, mountedMarkup } from './helpers/spec-chunks';
@@ -79,7 +78,7 @@ describe('rows and columns props', () => {
     // A missing spec without rows still draws its validation card, not the busy box for good.
     expect(await mountedMarkup(<BoardplotChart spec={undefined} />)).toContain('role="alert"');
     // A type without a rows mapping answers as boardplot_render does.
-    expect(await mountedMarkup(<TableChart data={{ columns: [], rows: [] }} rows={rows} columns={columns} />)).toContain('rows-unsupported-type');
+    expect(await mountedMarkup(<BoardplotChart spec={{ type: 'treemap' }} rows={rows} columns={columns} />)).toContain('rows-unsupported-type');
   });
 
   // The export link must print the chart the reader sees, so it has to lay out the mapped data, not the empty template.

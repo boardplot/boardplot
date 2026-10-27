@@ -186,7 +186,7 @@ Consulting-grade table: hierarchy with honest totals (derive/validate/source), t
 | columns[].encoding.type (columns[] branch 7) | string | yes | Per-row mini line or column over sourceColumns; null values leave gaps in source order. One of `'sparkline'`. |
 | columns[].encoding.kind (columns[] branch 7) | string |  | Shape. Default 'line'. 'column' is zero-anchored. One y-domain is shared across visible rows of this column. One of `'line'`, `'column'`. |
 | columns[].encoding.sourceColumns (columns[] branch 7) | array | yes | Ordered numeric source columns; they remain visible. The last observed source value is labelled from that cell's formatted text. Without a column width the track is 88 px or wider, so that label prints whole; a width fixes the track and cuts a longer label. |
-| rows | array | yes | Row hierarchy; totalPosition determines resolved display order. |
+| rows | array | yes | Row hierarchy; totalPosition determines resolved display order. Rows: optional label,id; each value, text, status or date column reads the source field named like its id. |
 | rows[].id | string | yes | Nonempty reference id. |
 | rows[].label | string |  | Visible name; defaults to id. |
 | rows[].parentId | string |  | Flat canonical hierarchy. Alternative: nested `children` sugar. |

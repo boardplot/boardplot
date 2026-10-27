@@ -25,7 +25,7 @@ const groupSchema = z
 
 export const boxDataSchema = z
   .object({
-    groups: z.array(groupSchema).min(1).describe('Observation groups whose quartiles and whiskers are computed by the engine.'),
+    groups: z.array(groupSchema).min(1).describe('Observation groups whose quartiles and whiskers are computed by the engine. Rows: category,value; optional categoryLabel,date.'),
   })
   .strict()
   .superRefine((data, ctx) => {
