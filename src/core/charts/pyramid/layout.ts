@@ -56,6 +56,7 @@ import { REFUSED_OPTIONS } from './refusals';
 import { authoredNotes, withAuthoredFootnotes } from '../../frame';
 import { disclosureNote, keepShownNotes } from '../../notes';
 import { maxOf } from '../../arrays';
+import { emptyIdRecord } from '../../idRecords';
 
 export type PyramidMarks = ButterflyMarks;
 
@@ -185,8 +186,8 @@ export function layoutPyramid(
   ];
 
   // ---- derive ----
-  const values: PyramidDerived['values'] = {};
-  const ratio: PyramidDerived['ratio'] = {};
+  const values: PyramidDerived['values'] = emptyIdRecord();
+  const ratio: PyramidDerived['ratio'] = emptyIdRecord();
   const totals: Record<Id, number> = { [groupIds[0]]: 0, [groupIds[1]]: 0 };
   bands.forEach((band, i) => {
     const a = counts[0][i]!;
@@ -210,7 +211,7 @@ export function layoutPyramid(
         "supply at least one positive count, or use basis: 'count'",
       );
     }
-    shares = {};
+    shares = emptyIdRecord() as NonNullable<PyramidDerived['shares']>;
     for (const band of bands) {
       shares[band.id] = {
         [groupIds[0]]: (values[band.id]![groupIds[0]]! / grandTotal) * 100,

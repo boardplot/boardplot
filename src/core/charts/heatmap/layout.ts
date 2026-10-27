@@ -70,6 +70,7 @@ import { DEFAULT_TARGET } from '../../target';
 import { disclosureNote } from '../../notes';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { headInk as tableHeadInk, plainInk } from '../table/headFace';
+import { emptyIdRecord } from '../../idRecords';
 
 export interface HeatmapMarks {
   cells: { seriesId: Id; categoryId: Id; rect: Rect; nodeId: Id; value: number | null }[];
@@ -339,9 +340,9 @@ export function layoutHeatmap(
   const pctMatrix = allValues.length > 0 && rows.every((r) => r.cells.every((c) => c.v === null || c.pct));
   const cap = scale === 'continuous' ? pctMatrix ? options.cap?.pct : options.cap?.abs : undefined;
   const valenceSpan = cap ?? Math.max(posMax, -negMin);
-  const rowMeans: Record<Id, number | null> = {};
+  const rowMeans: Record<Id, number | null> = emptyIdRecord();
   for (const r of rows) rowMeans[r.id] = rowMeanOf(r);
-  const colMeans: Record<Id, number | null> = {};
+  const colMeans: Record<Id, number | null> = emptyIdRecord();
   cols.forEach((c, ci) => (colMeans[c.id] = colMeanAt(ci)));
   // The data's own rows and columns, for the description: a turned matrix
   // draws the categories as rows but reads as the same table.

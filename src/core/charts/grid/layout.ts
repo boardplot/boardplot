@@ -82,6 +82,7 @@ import {
   type GridTrackScope,
 } from './normalize';
 import { maxOf, minOf, pushAll } from '../../arrays';
+import { emptyIdRecord } from '../../idRecords';
 
 export interface GridMarks extends ComposedGridMarks {
   panels: (ComposedGridMarks['panels'][number] & {
@@ -1177,7 +1178,7 @@ function layoutAuthoredGrid(
   try {
   let children = uniformizeLineEndpointIdentity(layoutChildren(baseChildSlots), baseChildSlots);
 
-  const sharedAnchors: Record<string, number> = {};
+  const sharedAnchors: Record<string, number> = emptyIdRecord();
   let columnBands = baseColumnBands;
   if (
     options.anchors?.categories === 'column' ||
@@ -2694,8 +2695,8 @@ function unionSharedYGroups(
   breaks: Record<string, { from: number; to: number }>;
   warnings: LintWarning[];
 } {
-  const domains: Record<string, [number, number]> = {};
-  const breaks: Record<string, { from: number; to: number }> = {};
+  const domains: Record<string, [number, number]> = emptyIdRecord();
+  const breaks: Record<string, { from: number; to: number }> = emptyIdRecord();
   const warnings: LintWarning[] = [];
   for (const [group, indexes] of groups) {
     if (indexes.length < 2) continue;

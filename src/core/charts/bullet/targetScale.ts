@@ -43,6 +43,7 @@ import type { Theme } from '../../types/theme';
 import { asColumnHeads, fitHead, headRequest } from './columnHead';
 import type { BulletDerived, BulletMarks } from './layout';
 import { maxOf, pushAll } from '../../arrays';
+import { emptyIdRecord } from '../../idRecords';
 
 /** A normalized row, as layoutBullet hands it over. */
 export interface TargetScaleRow {
@@ -622,7 +623,7 @@ export function layoutTargetScale(input: TargetScaleInput): Geometry<BulletMarks
   asColumnHeads(labelNodes);
   pushAll(nodes, labelNodes);
 
-  const shareById: Record<Id, number> = {};
+  const shareById: Record<Id, number> = emptyIdRecord();
   rows.forEach((row, index) => {
     const share = shares[index];
     if (share !== undefined) shareById[row.id] = Math.round(share * 100) / 100;

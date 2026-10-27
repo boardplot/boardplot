@@ -1,0 +1,11 @@
+# Streamlit component manifest, not the build configuration (that is python/pyproject.toml).
+# Streamlit scans installed packages for this file and serves asset_dir under the
+# component name "boardplot.chart"; boardplot._streamlit registers the component
+# with the glob "boardplot-*.js". python/js/build.mjs writes the asset folder.
+[project]
+name = "boardplot"
+dynamic = ["version"]
+
+[[tool.streamlit.component.components]]
+name = "chart"
+asset_dir = "_assets/streamlit"

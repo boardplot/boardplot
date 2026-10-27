@@ -2,7 +2,7 @@
 
 import * as z from 'zod';
 import { formatExample } from '../../schema/shared';
-import { addDuplicateIdIssues, baseOptionsSchema, colorRoleField, idSchema, refusedBaseOptions } from '../../schema/shared';
+import { addDuplicateIdIssues, baseOptionsSchema, colorRoleField, idRecord, idSchema, refusedBaseOptions } from '../../schema/shared';
 import type { BarTableData, BarTableOptions } from './types';
 
 // The states a table cell takes that make sense for a bar: n/a and n.m. print as the table prints them.
@@ -70,7 +70,7 @@ const panelSchema = z.strictObject({
   label: z.string().optional().describe('The measure, printed in the head as "label, unit".'),
   unit: z.string().optional().describe('Unit of this panel, such as $bn or %; printed in the head, never in the end labels.'),
   weight: z.number().positive().optional().describe('Share of the width left for the panels; default 1. A weight of 2 beside 1 gives the first panel two thirds.'),
-  values: z.record(idSchema, z.array(barValue)).describe('Segment id -> one value per row, in row order. Every segment in data.series appears, and every key is a segment id.'),
+  values: idRecord(idSchema, z.array(barValue)).describe('Segment id -> one value per row, in row order. Every segment in data.series appears, and every key is a segment id.'),
   ends: z.array(endSchema.nullable()).optional().describe(
     'Per row, in row order: a range for the row total, or null for none. A row with a range draws its segments to low, ' +
     'each keeping its share of the segments\' sum, then a light outlined extension from low to high, and prints "low–high" after it. ' +

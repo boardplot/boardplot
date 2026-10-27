@@ -273,26 +273,15 @@ describe('grid safeParse refusal hardening', () => {
     }
   });
 
-  it("refuses the reserved '__proto__' repeat value by name, even when owned", () => {
-    // z.record's parsed copy drops an own '__proto__' key, so a 'missing
-    // data slice' message would misstate data the author really wrote.
-    const bySlice = JSON.parse(`{"__proto__": ${JSON.stringify(someColumnData())}}`) as Record<string, unknown>;
-    expect(Object.hasOwn(bySlice, '__proto__')).toBe(true);
-    const result = gridDataSchema.safeParse({
-      repeat: { dimension: 'd', values: ['__proto__'] },
-      template: { type: 'column', data: { bySlice } },
-    });
-    if (result.success) throw new Error('grid must refuse the reserved slice name');
-    const issue = result.error.issues.find((candidate) => candidate.message.includes('reserved'));
-    expect(issue?.path).toEqual(['repeat', 'values', 0]);
-  });
-
   it('accepts a genuinely owned slice named like a prototype member', () => {
-    const result = gridDataSchema.safeParse({
-      repeat: { dimension: 'd', values: ['toString'] },
-      template: { type: 'column', data: { bySlice: { toString: someColumnData() } } },
-    });
-    expect(result.success).toBe(true);
+    for (const value of ['toString', '__proto__']) {
+      const bySlice = JSON.parse(`{${JSON.stringify(value)}: ${JSON.stringify(someColumnData())}}`) as Record<string, unknown>;
+      const result = gridDataSchema.safeParse({
+        repeat: { dimension: 'd', values: [value] },
+        template: { type: 'column', data: { bySlice } },
+      });
+      expect(result.success, value).toBe(true);
+    }
   });
 
   it('accepts valid text and legend slices in repeat templates', () => {

@@ -89,6 +89,7 @@ import { composedTextRole } from '../../textRole';
 import { textScaleOf } from '../../typeFloors';
 import { disclosureNote } from '../../notes';
 import { maxOf, minOf, pushAll } from '../../arrays';
+import { emptyIdRecord } from '../../idRecords';
 
 export interface DotMarks {
   rows: {
@@ -310,7 +311,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   // ---- derive: dumbbell gaps ----
   let gaps: Record<Id, number> | undefined;
   if (variant === 'dumbbell') {
-    gaps = {};
+    gaps = emptyIdRecord();
     cats.forEach((c, ci) => {
       const a = dataSeries[0]!.cells[ci]!.v;
       const b = dataSeries[1]!.cells[ci]!.v;

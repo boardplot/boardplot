@@ -10,7 +10,7 @@ import { prepareChart } from '../src/react/prepare';
 import { BoardplotTheme } from '../src/react/BoardplotTheme';
 import { BoardplotChart } from '../src/react/spec';
 import { parseChartSpec } from '../src/react/parseChartSpec';
-import { mountedMarkup, settle } from './helpers/spec-chunks';
+import { mount, mountedMarkup, settle } from './helpers/spec-chunks';
 import spec from './fixtures/spec-document.json';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -20,6 +20,7 @@ let host: HTMLDivElement;
 let root: Root | undefined;
 beforeEach(() => { host = document.createElement('div'); document.body.append(host); });
 afterEach(() => { if (root) act(() => root!.unmount()); root = undefined; host.remove(); vi.restoreAllMocks(); });
+const mountRoot = (element: Parameters<typeof mount>[0]) => mount(element, host);
 
 it('attaches a prepared SVG after hydration and switches provider paint without layout', async () => {
   const prepared = await prepareChart((await parseChartSpec(spec, 'regions')).request, { theme: 'standard' });
@@ -91,4 +92,42 @@ it('recovers from an explicit small frame and changes selected chart types', () 
   expect(host.querySelector('svg[data-bp-chart]')).toBeNull();
   expect(host.querySelector('.bp-table-grid')).not.toBeNull();
   expect(host.querySelector('.bp-table-grid')).not.toBeNull();
+});
+
+const rowTable = {
+  type: 'tbl',
+  data: {
+    columns: [{ id: 'name', kind: 'rowLabel' }, { id: 'value', kind: 'value', label: 'Volume' }],
+    rows: [{ id: 'a', label: 'A', cells: { value: 1 } }, { id: 'b', label: 'B', cells: { value: 2 } }, { id: 'c', label: 'C', cells: { value: 3 } }],
+  },
+  options: { title: 'Volume by row' },
+};
+
+// A typed host of the spec component (the notebook and Streamlit views) could not pass row picks: BoardplotChart did not declare them.
+it('passes table row picks by click and by key, within isRowSelectable, to the host', async () => {
+  const select = vi.fn();
+  root = await mountRoot(<BoardplotChart spec={rowTable} onRowSelect={select} isRowSelectable={(row) => row.id !== 'b'} />);
+  const cell = (row: string) => host.querySelector<HTMLElement>(`[data-row-id="${row}"] [data-bp-column="value"]`)!;
+  act(() => { cell('a').dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+  expect(select).toHaveBeenCalledTimes(1);
+  expect(select).toHaveBeenLastCalledWith('a', expect.objectContaining({ columnId: 'value', row: expect.objectContaining({ id: 'a' }) }));
+  act(() => { cell('b').dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+  expect(select).toHaveBeenCalledTimes(1);
+  expect(host.querySelector('[data-row-id="b"][data-bp-selectable]')).toBeNull();
+  act(() => cell('c').focus());
+  act(() => { document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); });
+  expect(select).toHaveBeenCalledTimes(2);
+  expect(select.mock.calls[1]![0]).toBe('c');
+  expect(select.mock.calls[1]![1]).toMatchObject({ columnId: 'value', event: expect.objectContaining({ type: 'keydown' }) });
+});
+
+// A generic chart takes unknown props into its layout options, so a row callback meant for a table must never reach one.
+it('keeps the row props away from a chart that is not a table', async () => {
+  await import('../src/react/charts/column');
+  const layout = vi.spyOn(getChart('column')!, 'layout');
+  root = await mountRoot(<BoardplotChart spec={only('regions')} onRowSelect={() => {}} isRowSelectable={() => true} />);
+  expect(host.querySelector('svg[data-bp-chart="column"]')).not.toBeNull();
+  expect(layout).toHaveBeenCalled();
+  for (const [, options] of layout.mock.calls) expect(Object.keys(options ?? {})).not.toEqual(expect.arrayContaining(['onRowSelect']));
+  for (const [, options] of layout.mock.calls) expect(Object.keys(options ?? {})).not.toEqual(expect.arrayContaining(['isRowSelectable']));
 });
