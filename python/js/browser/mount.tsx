@@ -9,6 +9,7 @@
 import { Component, useLayoutEffect, type ErrorInfo, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { BoardplotChart } from '../../../src/react/spec';
+import { withStory } from '../../../src/react/story';
 import type { InteractionRecord } from '../../../src/core/a11y/types';
 import type { Geometry, RefusedLayout } from '../../../src/core/types/scene';
 import type { ThemeRef } from '../../../src/core/types/theme';
@@ -54,6 +55,9 @@ export interface MountHandle {
   update(partial: Partial<MountOptions>): void;
   unmount(): void;
 }
+
+/** The engine draws `options.story`, so the interactive view must too. */
+const Chart = withStory(BoardplotChart);
 
 let linked = false;
 
@@ -380,7 +384,7 @@ export function mount(el: HTMLElement, initial: MountOptions): MountHandle {
       <>
         <Committed token={mine} onCommit={() => { committedSpec = mine; schedule(); }} />
         <Boundary key={generation} onError={(error) => { boundaryError = error instanceof Error ? error.message : String(error); schedule(); }}>
-          <BoardplotChart
+          <Chart
             spec={spec}
             size="container"
             idPrefix={idPrefix}

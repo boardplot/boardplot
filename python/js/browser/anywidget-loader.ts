@@ -71,6 +71,15 @@ async function render({ model, el, host, signal }: RenderProps): Promise<void> {
   const fail = (reason: string) => {
     showFallback(el, model.get('fallback_svg'), reason);
     sendStatus({ state: 'error', revision: revision(), detail: { message: reason } });
+    if (signal?.aborted) return;
+    // The static SVG belongs to the first spec: after a spec change it would show old numbers, so drop it.
+    const onRevision = () => {
+      const stale = `${reason} The chart changed after this view was drawn; run the cell again.`;
+      showFallback(el, '', stale);
+      sendStatus({ state: 'error', revision: revision(), detail: { message: stale } });
+    };
+    model.on('change:revision', onRevision);
+    signal?.addEventListener('abort', () => model.off('change:revision', onRevision), { once: true });
   };
 
   let runtime: RuntimeExports;
