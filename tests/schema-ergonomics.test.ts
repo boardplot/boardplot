@@ -154,4 +154,13 @@ describe('tagged union issues', () => {
     expect(flattenIssues(result.error!.issues).map((issue) => `${issue.path.join('.')}: ${issue.message}`))
       .toEqual(["rows.0.items.0.colorRole: a rule is always the quiet neutral; use kind 'bar' for a coloured span"]);
   });
+  // A long badge label would burst its circle; a badge on a column lane would be ignored silently.
+  it('refuses a gantt badge label over 3 characters and a badge on a column event', () => {
+    const issues = (type: string) => {
+      const result = (getChartSchemas(type)!.optionsSchema as z.ZodType).safeParse({ annotations: [{ kind: 'event', at: 'a', label: type === 'gantt' ? 'Live' : '1', labelPlacement: 'badge' }] });
+      return flattenIssues(result.error!.issues).map((issue) => `${issue.path.join('.')}: ${issue.message}`);
+    };
+    expect(issues('gantt')).toEqual(["annotations.0.label: a badge holds at most 3 characters; use labelPlacement 'top' for a longer label"]);
+    expect(issues('column')).toEqual(['annotations.0.labelPlacement: badge is a gantt event placement']);
+  });
 });

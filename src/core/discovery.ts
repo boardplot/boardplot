@@ -87,7 +87,7 @@ const ANNOTATION_OPTIONAL: Partial<Record<AnnotationKind, Record<string, Optiona
     items: { meaning: "{ label, detail? }[]. More changes on the same date, after this event's own label and detail. The lane and the key draw a compact +N after the title; the hover card, the SVG title and description, and the interaction records list every item in full.", types: LANE_TYPES },
     placement: { meaning: "auto | key, default options.events.placement. key numbers this event into the key below the plot.", types: LANE_TYPES },
     tone: 'neutral | bad | good, default the group tone, else neutral. Column, combo and line paint the glyph, the marker ring and the period bar in it; gantt paints a bad rule.',
-    labelPlacement: { meaning: 'top | inline, default top. inline sets the block beside its rule inside the plot.', types: ['line'] },
+    labelPlacement: { meaning: 'top | inline | badge, default top. inline (line) sets the block beside its rule inside the plot. badge (gantt) draws the label, at most 3 characters, in a filled circle at the top of its rule; badge events never go to the numbered key.', types: ['line', 'gantt'] },
   },
 };
 

@@ -51,10 +51,10 @@ import type { BaseOptionsFor, LabelKind, LabelContent } from '../../types/option
 import type { Geometry, LintWarning, PlacedLabel, SceneNode } from '../../types/scene';
 import { dateFromDay, dayNum } from './calendar';
 import { GANTT_ROW_PITCH, resolveGanttDomain, resolveGanttEnv } from './domain';
-import { layoutGanttAnnotations, ruleNodes, type GanttAnnotationLayer } from './events';
+import { badgeLevels, layoutGanttAnnotations, ruleNodes, type GanttAnnotationLayer } from './events';
 import { flagRowPitch, ganttSpanBlockers, planGanttLabels, planRowFlags } from './labels';
 import { fmtDay, ganttPaints, layoutGanttMarks, type GanttMarkGeometry } from './marks';
-import { NO_LANE, ROW_TEXT_PITCH, RULE_LABEL_GAP, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv } from './model';
+import { BADGE_LEVELS, NO_LANE, ROW_TEXT_PITCH, RULE_LABEL_GAP, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv } from './model';
 import { formatDate } from '../../dateFormat';
 import { ganttBody, ganttFrame, STACKED_LANE_FLOOR } from './plot';
 import { maxOf, minOf, pushAll } from '../../arrays';
@@ -122,8 +122,9 @@ function labelNodes(env: GanttEnv, domain: GanttDomain, labels: PlacedLabel[]) {
   const { strong, tick, headerMajor, label } = env.fonts;
   const rowIndent = new Map(domain.rows.map((r) => [r.id, r.indent]));
   // A row's sublabel prints muted under (or after) its name.
+  const badges = new Set(domain.events.filter((event) => event.badge).map((event) => `event:${event.id}`));
   const nodes = labelsToNodes(env.theme, labels, (l) =>
-    l.kind === 'valueLine'
+    l.kind === 'valueLine' || badges.has(l.id)
       ? strong
       : l.id.startsWith('event:')
         ? tick
@@ -137,8 +138,10 @@ function labelNodes(env: GanttEnv, domain: GanttDomain, labels: PlacedLabel[]) {
   );
   // A rule's label is muted like the rule it names.
   const rules = new Set(domain.rows.flatMap((row) => row.items.filter((it) => it.kind === 'rule').map((it) => it.id)));
-  return nodes.map((node) => node.t === 'text' && (node.id.startsWith('label:sublabel:') || (node.part === 'item' && rules.has(node.owner.segmentId ?? '')))
-    ? { ...node, ink: { token: 'inkMuted' as const } } : node);
+  // A badge label reads on its filled circle.
+  return nodes.map((node) => node.t !== 'text' ? node
+    : badges.has(node.id.replace(/^label:/, '')) ? { ...node, ink: { token: 'inkInverse' as const } }
+    : node.id.startsWith('label:sublabel:') || (node.part === 'item' && rules.has(node.owner.segmentId ?? '')) ? { ...node, ink: { token: 'inkMuted' as const } } : node);
 }
 
 /** Phase 5: the scene in paint order, the sizing record, the axis ticks and the accessible description. */
@@ -368,6 +371,11 @@ function layoutGanttPass(data: GanttData, options: GanttOptions = {}, keyed: Rea
       if (need > Math.max(GANTT_ROW_PITCH, known.get(id) ?? 0) + 0.5) grown.set(id, need);
     });
     if (grown.size > known.size) return layoutGanttPass(data, { ...options, [ROW_TEXT_PITCH]: grown } as GanttOptions, keyed, autoHeight, flags);
+  }
+  // Badges that crowd on the drawn timeline stack up: lay the chart out again with the strip they need.
+  const badgeLevelCount = 1 + Math.max(0, ...badgeLevels(env, domain, body.x).values());
+  if (badgeLevelCount > ((options as { [BADGE_LEVELS]?: number })[BADGE_LEVELS] ?? 1)) {
+    return layoutGanttPass(data, { ...options, [BADGE_LEVELS]: badgeLevelCount } as GanttOptions, keyed, autoHeight, flags);
   }
   const geometry = layoutGanttMarks(env, domain, band, body, paints);
   commitClaims(occupied, geometry.claims);

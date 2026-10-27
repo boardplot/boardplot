@@ -67,6 +67,8 @@ export interface GanttEvent {
   /** Gantt paints 'bad' and draws every other tone neutral. */
   tone?: EventTone;
   priority?: number;
+  /** labelPlacement 'badge': the label sits in a filled circle at the top of the rule, outside the numbered key. */
+  badge: boolean;
   annotation: GanttEventAnnotation;
 }
 
@@ -241,3 +243,5 @@ export function laneTop(band: GanttBand, rows: readonly NormRow[], index: number
 export const NO_LANE = Symbol('ganttNoLane');
 /** Internal option: per row id, the pitch its drawn name and sublabel need in the table form, once a pass has measured them. */
 export const ROW_TEXT_PITCH = Symbol('ganttRowTextPitch');
+/** Internal option: how many levels the event badges stack in, once a pass on the drawn timeline has planned them. */
+export const BADGE_LEVELS = Symbol('ganttBadgeLevels');

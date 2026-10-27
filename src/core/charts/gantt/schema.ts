@@ -114,5 +114,14 @@ export const ganttOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOption
         params: { refused: true },
       });
     }
+    // A badge circle holds a short mark such as a number; a longer label would burst it.
+    if (annotation.kind === 'event' && annotation.labelPlacement === 'badge' && [...String(annotation.label ?? '')].length > 3) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['annotations', index, 'label'],
+        message: "a badge holds at most 3 characters; use labelPlacement 'top' for a longer label",
+        params: { refused: true },
+      });
+    }
   });
 }) as unknown as z.ZodType<GanttOptions>;

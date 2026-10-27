@@ -4,6 +4,7 @@ import * as z from 'zod';
 import {
   colorRoleField,
   addCanvasBoundsIssues,
+  refuseBadgeEvents,
   addCategorySeriesIdIssues,
   addProjectedDashIssues,
   anomalyOptionSchema,
@@ -167,4 +168,4 @@ export const comboOptionsSchema = z
       .describe("Weight and ink of the reference tick, as on bar, read under referenceStyle 'tick' only: the dashed 'line' keeps its 1.25px and the 'marker' its dot."),
     events: eventOptionsSchema.optional(),
   })
-  .superRefine(addCanvasBoundsIssues) as unknown as z.ZodType<ComboOptions>;
+  .superRefine(addCanvasBoundsIssues).superRefine(refuseBadgeEvents) as unknown as z.ZodType<ComboOptions>;
