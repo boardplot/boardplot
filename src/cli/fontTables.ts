@@ -69,7 +69,8 @@ export interface FaceAdvanceSource {
 }
 
 /**
- * Advance widths in 1/1000 em for `codePoints`: 0 where the face has no glyph.
+ * Advance widths in 1/1000 em for `codePoints`: 0 where the face has no glyph
+ * or a negative advance.
  * The shaped advance (`layout` with tnum) comes first, the plain glyph advance
  * is the fallback when shaping a single code point throws (a few faces refuse
  * it for symbol ranges), so a whole file is never lost to one code point.
@@ -88,7 +89,9 @@ export function advanceWidths(
     } catch {
       advance = font.glyphForCodePoint(cp).advanceWidth;
     }
-    return Number.isFinite(advance) ? Math.round(advance * scale) : 0;
+    // Variation deltas are added after fontkit gives an ignorable glyph its zero advance, so its advance can go negative; the uint16
+    // encoding would wrap that to about 65 em. Text measurement gives default-ignorable code points no width whatever the table holds.
+    return Number.isFinite(advance) ? Math.max(0, Math.round(advance * scale)) : 0;
   });
 }
 
