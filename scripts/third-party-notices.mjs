@@ -43,7 +43,7 @@ function packageNotice(root, directory) {
 
 // The width tables were measured from these exact font versions, so their
 // licence texts are frozen here and do not follow later package updates.
-function fontNotices(root) {
+export function fontNotices(root) {
   return `## Font width tables\n\nThese notices cover the source fonts used to measure the bundled width tables.\nNo font file is included in the package.\n\n` +
     ['geist-5.3.0.md', 'liberation-sans-2.1.5.md', 'stixgeneral-1.1.0.md'].map(file =>
       readFileSync(join(root, 'scripts/third-party', file), 'utf8').trimEnd() + '\n').join('\n');
