@@ -10,7 +10,7 @@ import { fittedLabel } from '../../label/rowFit';
 import { namesOnly } from '../../markVisibility';
 import { PRIORITY, type LabelRequest, type SlotCandidate } from '../../label/solver';
 import type { DataRange } from '../../rangeRules';
-import type { CellMeta, Id } from '../../types/cell';
+import type { Id } from '../../types/cell';
 import type { LintWarning, Paint } from '../../types/scene';
 import type { FontSpec, TextMeasurer } from '../../text';
 import { SWATCH_RESERVE } from '../../label/emit';
@@ -19,7 +19,7 @@ import { totalLabelCandidates } from '../band/totals';
 import { rankValueLabels } from '../band/valueDensity';
 import { REFERENCE_MARKER_R } from '../band/ticks';
 import { restValueHiding, restValuesHidden } from '../../restLabels';
-import { textFor, toDateOnValues } from './domain';
+import { textFor, toDateOnValues, type BarTextCell } from './domain';
 import { toDateLabel } from '../../partialPeriod';
 import { chartString } from '../../strings';
 import { labelOn } from '../labelOn';
@@ -134,7 +134,7 @@ export function planBarLabels(domain: BarDomain, paints: BarPaints, area: BarAre
         // offered, and the solver drops it last.
         if (!labelOn(options, 'point') || (area.thinBars && si !== 0 && bonus(cat.id, s.id) === 0)) continue;
         if (chosen && !chosen.get(s.id)?.has(ci) && typeof cell.meta?.label !== 'string') continue;
-        const text = textFor(domain, v, cell.meta, undefined, s);
+        const text = textFor(domain, v, cell, undefined, s);
         if (!text) continue;
         // A highlighted value draws in the emphasis weight (label emit), so its seat and to-date head are set at it.
         const valueFont = bonus(cat.id, s.id) > 0 ? { ...pointFont, weight: emphasisWeight(domain.theme) } : pointFont;
@@ -177,7 +177,7 @@ export function planBarLabels(domain: BarDomain, paints: BarPaints, area: BarAre
       // only; it is not printed. An authored total100 is a known whole.
       // The value it would have carried is still lost on the canvas, so the note names it.
       if (variant === 'stacked100' && domain.incompleteRows.has(cat.id) && cat.total100 === undefined) {
-        const value = textFor(domain, v, cell.meta, undefined, s);
+        const value = textFor(domain, v, cell, undefined, s);
         // An n.m. or n/a row says so on the canvas already.
         if (value && !domain.nmRows[ci] && !domain.naRows[ci]) requests.push({
           id: `segment:${s.id}:${cat.id}`, kind: 'segment', owner, text: value, lines: [value], typeRole: 'label', font: labelFont,
@@ -185,7 +185,7 @@ export function planBarLabels(domain: BarDomain, paints: BarPaints, area: BarAre
         });
         continue;
       }
-      const text = textFor(domain, v, cell.meta, variant === 'stacked100' ? val : undefined, s, cat.id);
+      const text = textFor(domain, v, cell, variant === 'stacked100' ? val : undefined, s, cat.id);
       if (!text) continue;
       // The highlighted series' values print bold, as its fill stands out.
       const segmentFont = emphasizedSeries(domain, s) ? strongFont : labelFont;
@@ -396,8 +396,8 @@ function shareRowRequest(area: BarArea, seriesId: Id, catId: Id, ci: number, tex
 }
 
 /** A reference value as it prints beside its tick: the value, then the reference's name ("117 Prior year"). */
-export function referenceLabelText(domain: BarDomain, s: NormSeries, v: number, meta: CellMeta | null): string | null {
-  const value = textFor(domain, v, meta, undefined, s);
+export function referenceLabelText(domain: BarDomain, s: NormSeries, v: number, cell: BarTextCell): string | null {
+  const value = textFor(domain, v, cell, undefined, s);
   return value === null ? null : `${value} ${s.label}`;
 }
 
@@ -413,9 +413,9 @@ function referenceLabels(domain: BarDomain, area: BarArea): LabelRequest[] {
   const { tickFont, band, x, plot } = area;
   const requests: LabelRequest[] = [];
   for (const s of refSeries) cats.forEach((cat, ci) => {
-    const { v, meta } = s.cells[ci]!;
+    const { v } = s.cells[ci]!;
     if (v === null) return;
-    const text = referenceLabelText(domain, s, v, meta);
+    const text = referenceLabelText(domain, s, v, s.cells[ci]!);
     if (!text) return;
     const size = measure(text, tickFont);
     const cy = band.position(ci) + band.bandwidth / 2 - size.height / 2;

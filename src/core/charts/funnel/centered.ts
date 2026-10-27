@@ -56,7 +56,7 @@ import type {
   SceneNode,
 } from '../../types/scene';
 import type { FunnelDerived, FunnelMarks } from './layout';
-import { clampedNote, deriveFunnel, missingGlyph } from './derive';
+import { clampedNote, deriveFunnel, funnelValueFormats, missingGlyph } from './derive';
 import { composedTextRole } from '../../textRole';
 import { disclosureNote } from '../../notes';
 import { maxOf, pushAll } from '../../arrays';
@@ -220,11 +220,9 @@ export function layoutCenteredFunnel(
   const formats = stages.map((_, ci) => seriesRasterFormatter(options.format, plotted.length === 1 ? numbers.values[0]! : plotted.map((_, si) => numbers.values[si]![ci]), options.locale?.language, options.unit, options.target, undefined, true));
   // Totals and series without format metadata print through the shared raster (one decimal count, engine scale).
   const totalRaster = seriesRasterFormatter(options.format, Object.values(stageTotals), options.locale?.language, options.unit, options.target);
-  const totalFmt = totalRaster.fmt;
   // A whole count prints whole beside fractional values of its stage ("140", "1" beside "0.6"); an amount like 100.4 keeps its decimals.
   if (!options.format) for (const format of [...formats, totalRaster]) format.spec.wholeCounts = true;
-  const valueText = (si: number, ci: number, value: number): string =>
-    formats[ci]!.forSeries(plotted[si]!, cellMeta(cells[si]![ci]!)?.format)(value);
+  const { valueText, totalFmt } = funnelValueFormats(plotted, cells, formats, totalRaster);
 
 
   const firstTotal = stageTotals[stages[0]!.id] ?? null;

@@ -197,7 +197,7 @@ function outsideLabelWidths(domain: BarDomain, labelFont: FontSpec, strongFont: 
       dataSeries.forEach((s) => {
         const cell = s.cells[ci]!;
         if (cell.v === null) return;
-        const text = textFor(domain, cell.v, cell.meta, undefined, s);
+        const text = textFor(domain, cell.v, cell, undefined, s);
         if (!text) return;
         const w = measure(text, dataSeries.length > 1 || domain.highlights.has(cats[ci]!.id) || domain.highlights.has(s.id) ? boldFont : labelFont).width;
         if (cell.v >= 0) maxPosW = Math.max(maxPosW, w);
@@ -218,7 +218,7 @@ function outsideLabelWidths(domain: BarDomain, labelFont: FontSpec, strongFont: 
       const cell = s.cells[ci]!;
       const share = cell.v === null ? null : domain.shares[ci]?.[si];
       if (share == null || share <= 0 || share >= 8) return w;
-      const text = textFor(domain, cell.v!, cell.meta, share, s, cats[ci]!.id);
+      const text = textFor(domain, cell.v!, cell, share, s, cats[ci]!.id);
       return text ? w + measure(text, labelFont).width + SHARE_ROW_SWATCH + 6 : w;
     }, 0));
     maxPosW = Math.max(maxPosW, maxOf(rowW));
@@ -227,7 +227,7 @@ function outsideLabelWidths(domain: BarDomain, labelFont: FontSpec, strongFont: 
   if (variant !== 'stacked100' && labelOn(options, 'tick')) {
     const tickFont: FontSpec = { family: domain.theme.type.family, ...domain.theme.type.axis };
     const refW = Math.max(0, maxOf(domain.refSeries.flatMap((s) => s.cells.map((cell) => {
-      const text = cell.v === null ? null : referenceLabelText(domain, s, cell.v, cell.meta);
+      const text = cell.v === null ? null : referenceLabelText(domain, s, cell.v, cell);
       return text ? measure(text, tickFont).width : 0;
     }))));
     if (refW > 0) maxPosW += 10 + refW;
@@ -430,7 +430,7 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
     const valueFont: FontSpec = { ...(compact ? compactLabelFont : labelFont), weight: emphasisWeight(theme) };
     const inside = !labelOn(options, 'point') || dataSeries.every((s) => s.cells.every((cell) => {
       if (cell.v === null) return true;
-      const text = textFor(domain, cell.v, cell.meta, undefined, s);
+      const text = textFor(domain, cell.v, cell, undefined, s);
       if (!text) return true;
       const measured = measure(text, valueFont);
       const size = compact ? compactValueTextSize('horizontal', measured, valueFont.size) : measured;

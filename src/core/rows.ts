@@ -16,7 +16,7 @@ import { getGeoPack } from './geo/packs/registry';
 import type { GeoPackId } from './geo/types';
 import type { TilePack, TilePackId } from './geo/tiles/types';
 import { closestKey } from './schema/unknownKeyWords';
-import { cellValue } from './types/cell';
+import { cellValue, isNumberCell, isPctCell, type Cell } from './types/cell';
 import { CHART_TYPE_OF, ROWS_SHAPES, type RowsShape } from './rowsTypes';
 
 const VALUE_KINDS = ['number', 'percent', 'fraction'] as const;
@@ -274,6 +274,7 @@ export function adaptRows(spec: unknown, columns: unknown, source: RowsSource): 
       });
     }
   });
+  const bartable = type === 'bartable';
   const pathMap: RowsPathMap = new Map();
   const sourceField = (generated: string, row: number, column: string | undefined) => {
     if (!column || pathMap.has(generated)) return;
@@ -288,7 +289,10 @@ export function adaptRows(spec: unknown, columns: unknown, source: RowsSource): 
     rows.forEach((row, i) => {
       const category = categoryIndices.get(String(row[contract.category]))!;
       const series = seriesIndices.get(String(row[contract.series]))!;
-      const cell = `/data/series/${series}/values/${category}`;
+      // A bar table keys its one panel's values by segment id (bartablePanel).
+      const cell = bartable
+        ? `/data/panels/0/values/${adapted.data.series[series]!.id.replace(/~/g, '~0').replace(/\//g, '~1')}/${category}`
+        : `/data/series/${series}/values/${category}`;
       sourceField(cell, i, contract.value);
       sourceField(`${cell}/state`, i, contract.state ?? contract.value);
       sourceField(`/data/categories/${category}/id`, i, contract.category);
@@ -334,7 +338,8 @@ export function adaptRows(spec: unknown, columns: unknown, source: RowsSource): 
     spec: {
       ...spec,
       data: {
-        ...data,
+        // The rows replace every per-row list of a bar table template: its number columns (bartablePanel).
+        ...(bartable ? Object.fromEntries(Object.entries(data).filter(([key]) => key !== 'columns')) : data),
         ...(map ? { regions: adapted.data.categories.map((category, index) => {
           const state = adapted.states.find(entry => entry.categoryId === category.id)?.state;
           return { id: category.id, value: cellValue(adapted.data.series[0]!.values[index]!), ...(state ? { state } : {}) };
@@ -346,7 +351,9 @@ export function adaptRows(spec: unknown, columns: unknown, source: RowsSource): 
           if (!template) return { ...category, ...authored };
           return { ...template, id: category.id, ...authored, ...(named('date') && category.date !== undefined ? { date: category.date } : {}) };
         }),
-        series: adapted.data.series.map((entry) => ({ ...series.get(entry.id), ...entry })),
+        ...(bartable ? bartablePanel(data, adapted.data.series, series, contract.value, (generated) => pathMap.get(generated)) : {
+          series: adapted.data.series.map((entry) => ({ ...series.get(entry.id), ...entry })),
+        }),
         }),
       },
     },
@@ -354,6 +361,60 @@ export function adaptRows(spec: unknown, columns: unknown, source: RowsSource): 
     rows: rows.length,
     ignoredColumns: adapted.ignoredColumns,
     states: adapted.states,
+  };
+}
+
+/**
+ * A bar table from rows: the categories are its rows, the series its
+ * segments, and the value column fills one stacked-bar panel, keyed by
+ * segment id. The spec's first panel is the template (id, label, unit,
+ * weight, format, aggregate); its per-row `ends`, its other panels and the
+ * number `columns` cannot follow refilled rows and are dropped. The panel
+ * takes the series' one unit, else the template's, else '%' for percent
+ * cells, which a bar table reads as plain numbers. One panel adds its
+ * segments, so two units, or percent cells beside number cells, are refused
+ * at their row, and so is a cell that carries more than its number.
+ */
+function bartablePanel(
+  data: Row, adapted: { id: string; label?: string; unit?: string; values: readonly Cell[] }[], templates: Map<string, Row>,
+  valueColumn: string, sourceOf: (generated: string) => { path: string; displayPath: string } | undefined,
+): Row {
+  const [template] = Array.isArray(data.panels) ? data.panels.filter(isRecord) : [];
+  const { values: _values, ends: _ends, ...panel } = template ?? {};
+  const cellPath = (segment: string, row: number) => `/data/panels/0/values/${segment.replace(/~/g, '~0').replace(/\//g, '~1')}/${row}`;
+  const refuse = (generated: string, message: string, suggest: string): never => {
+    const source = sourceOf(generated);
+    throw new InputError('invalid-value', `${source ? `${source.displayPath}: ` : ''}${message}`, { ...(source ?? { path: '/rows' }), suggest });
+  };
+  const unitAt = adapted.findIndex((entry) => entry.unit !== undefined);
+  const otherUnit = adapted.findIndex((entry) => entry.unit !== undefined && entry.unit !== adapted[unitAt]!.unit);
+  if (otherUnit >= 0) {
+    refuse(`/data/series/${otherUnit}/unit`,
+      `unit '${adapted[otherUnit]!.unit}' beside '${adapted[unitAt]!.unit}': a bar table stacks every segment in one panel with one unit, so it would add values in different units`,
+      'Convert the values to one unit, or draw one bar table per unit.');
+  }
+  let firstKind: 'pct' | 'number' | undefined;
+  adapted.forEach((entry) => entry.values.forEach((cell, row) => {
+    if (cell === null || typeof cell !== 'object') return;
+    const extra = Object.keys(cell).filter((key) => key !== 'number' && key !== 'pct');
+    if (extra.length > 0) {
+      refuse(cellPath(entry.id, row), `a bar table cell holds a plain number; '${extra.join("', '")}' has no place in its panel and would be lost`,
+        'Send the value alone, and set the format on the spec\'s panel.');
+    }
+    const kind = isPctCell(cell) ? 'pct' : 'number';
+    firstKind ??= kind;
+    if (kind !== firstKind) {
+      refuse(cellPath(entry.id, row), 'percent and number values in one bar table: its one panel would add shares to amounts under one unit',
+        'Send every value as a number or every value as a percent.');
+    }
+  }));
+  const unit = unitAt >= 0 ? adapted[unitAt]!.unit : panel.unit ?? (firstKind === 'pct' ? '%' : undefined);
+  return {
+    series: adapted.map(({ values: _cells, unit: _unit, ...entry }) => ({ ...templates.get(entry.id), ...entry })),
+    panels: [{
+      id: valueColumn, ...panel, ...(unit !== undefined ? { unit } : {}),
+      values: Object.fromEntries(adapted.map((entry) => [entry.id, entry.values.map((cell) => (isPctCell(cell) || isNumberCell(cell) ? cellValue(cell) : cell))])),
+    }],
   };
 }
 

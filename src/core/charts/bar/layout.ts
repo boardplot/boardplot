@@ -476,7 +476,7 @@ function assembleBarGeometry(
     const s = dataSeries.length === 1 ? dataSeries[0]! : undefined;
     const cell = s?.cells[ci];
     if (!s || !cell || cell.v === null) return null;
-    return textFor(domain, cell.v, cell.meta, undefined, s) ?? displayFor(domain, cell.v, cell.meta, undefined, s);
+    return textFor(domain, cell.v, cell, undefined, s) ?? displayFor(domain, cell.v, cell, undefined, s);
   };
   // A category with no value at all has no total; the description says so
   // rather than read out a zero.

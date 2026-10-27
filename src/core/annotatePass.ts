@@ -70,6 +70,21 @@ export function percentLevels(series: readonly { vals: readonly { v: number | nu
 }
 
 /**
+ * Every plotted value is an authored percent cell ({ pct }) and no series or
+ * cell example sets a style: the value axis then prints '%' on its ticks, as
+ * the value labels do (fmtPercent). An options.format keeps winning there.
+ */
+export function percentCellsOnly(series: readonly { vals: readonly { v: number | null; isPct?: boolean; format?: string }[]; format?: string }[]): boolean {
+  let seen = false;
+  for (const source of series) for (const cell of source.vals) {
+    if (cell.v === null) continue;
+    seen = true;
+    if (!cell.isPct || cell.format || source.format) return false;
+  }
+  return seen;
+}
+
+/**
  * The arm drawers a chart calls from inside its own comparison hook. That
  * hook only ever runs while the pass is running, so the engine is here.
  */

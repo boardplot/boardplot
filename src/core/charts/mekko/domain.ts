@@ -366,6 +366,14 @@ export function resolveMekkoDomain(data: ChartData, env: MekkoEnv, warnings: Lin
   const incomplete = new Set(st.mode === 'bar' ? [] : st.cats
     .filter((_, ci) => isIncomplete(st.series.map((s) => s.vals[ci]!.v)))
     .map((c) => c.id));
+  // A percent column of authored shares with no amount beside them (no
+  // total100, no number cell) has no known whole: its total is unknown, not 0.
+  const wholeUnknown = new Set(st.mode !== 'percent' ? [] : st.cats
+    .filter((c, ci) => {
+      const { basis, nm, direct } = compositionBasis(st.series.map((s) => s.vals[ci]!), c.total100);
+      return direct && !nm && basis <= 0;
+    })
+    .map((c) => c.id));
 
   // rounding 'sum-consistent': the computed shares of each complete column
   // print so they add up to 100%. Authored percents and total100 are the author's.
@@ -431,6 +439,7 @@ export function resolveMekkoDomain(data: ChartData, env: MekkoEnv, warnings: Lin
     nm: st.nm,
     na: st.na,
     incomplete,
+    wholeUnknown,
     order,
     ...stacks,
     dLo,

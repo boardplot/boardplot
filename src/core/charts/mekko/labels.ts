@@ -264,7 +264,7 @@ function totalLabel(ctx: LabelCtx, ci: number, visibleCol: boolean, edges: { top
   // sum of its parts; the word says so (North: 30 up, -6 down, net 24).
   const net = Boolean(text) && mode === 'unit' && domain.posTop[ci]! > 0 && domain.negBot[ci]! < 0;
   if (net) text = chartString(env.options, 'netValue', { v1: text });
-  if (!text || !visibleCol || domain.invalidAt(ci) || domain.incomplete.has(c.id) || (mode !== 'bar' && domain.unknownTotals.has(c.id))) return;
+  if (!text || !visibleCol || domain.invalidAt(ci) || domain.incomplete.has(c.id) || domain.wholeUnknown.has(c.id) || (mode !== 'bar' && domain.unknownTotals.has(c.id))) return;
   const tsize = env.measure(text, area.strongFont);
   // A negative total hangs under its column, in unit mode as in bar mode.
   const negative = mode === 'bar' ? barV !== null && barV < 0 : mode === 'unit' && domain.columnTotals[c.id]! < 0;
@@ -426,7 +426,7 @@ export function planMekkoLabels(
   domain.cats.forEach((c, ci) => {
     const visibleCol = colW(area, ci) >= 0.5 && domain.anyByCat[ci]!;
     const edges = { top: y(Math.max(domain.posTop[ci]!, 0)), bot: Math.max(y0, y(Math.min(0, domain.negBot[ci]!))) };
-    const printsTotal = visibleCol && !domain.invalidAt(ci) && !domain.incomplete.has(c.id);
+    const printsTotal = visibleCol && !domain.invalidAt(ci) && !domain.incomplete.has(c.id) && !domain.wholeUnknown.has(c.id);
     if (area.showTotals) totalLabel(ctx, ci, visibleCol, edges, printsTotal && !unitNamed ? totalsUnit : undefined);
     unitNamed ||= area.showTotals && printsTotal;
     if (area.showCats) categoryLabel(ctx, ci, visibleCol, edges);

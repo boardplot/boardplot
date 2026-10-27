@@ -166,15 +166,16 @@ function mekkoDescription(env: MekkoEnv, domain: MekkoDomain): string {
     return chartString(env.options, 'mekkoValidDesc', { v1: modeName, v2: domain.validCount, v3: series.length }) +
       widthText +
       chartString(env.options, 'mekkoInvalidDesc', { v1: cats
-        .flatMap((c, ci) => (domain.invalidAt(ci) ? [] : [`${c.label ?? c.id} ${columnTotalText(env, domain, ci)}`]))
+        .flatMap((c, ci) => (domain.invalidAt(ci) || domain.wholeUnknown.has(c.id) ? [] : [`${c.label ?? c.id} ${columnTotalText(env, domain, ci)}`]))
         .join(', ') || 'none', v2: cats
         .filter((_, ci) => domain.invalidAt(ci))
         .map((c) => `${c.label ?? c.id} (${nm.has(c.id) ? 'n.m.' : 'n/a'})`)
         .join(', ') });
   }
+  const totals = cats.flatMap((c, ci) => (domain.wholeUnknown.has(c.id) ? [] : [`${c.label ?? c.id} ${columnTotalText(env, domain, ci)}`]));
   return chartString(env.options, 'mekkoDesc', { v1: modeName, v2: cats.length, v3: series.length }) +
     widthText +
-    chartString(env.options, 'totalsSentence', { v1: cats.map((c, ci) => `${c.label ?? c.id} ${columnTotalText(env, domain, ci)}`).join(', ') });
+    (totals.length > 0 ? chartString(env.options, 'totalsSentence', { v1: totals.join(', ') }) : '.');
 }
 
 /** Phase 5: the scene in paint order, the x axis, the derived record, the description and the paint lint. */
@@ -216,9 +217,9 @@ function assembleMekkoGeometry(input: {
   const paintWarningRules: PaintWarningRule[] = [];
   pushAll(warnings, rectSeriesAdjacentWarnings(nodes, input.paints.css, 'vertical', env.highlights, env.theme, { rules: paintWarningRules, before: warnings.filter(warning => !['pie-ramp-crowded', 'likert-ramp-invisible', 'band-lightness-insufficient', 'series-adjacent-similar', 'highlight-reads-as-loss'].includes(warning.code)).length }));
   const catTickMaxLines = catPlan.maxLines;
-  // A column with no value, or with shares only, has no total: omitted, not a certified 0.
+  // A column with no value, with shares only, or with shares of an unknown whole has no total: omitted, not a certified 0.
   const printedTotals: Record<Id, number> = Object.fromEntries(domain.cats.flatMap((c, ci) =>
-    (domain.series.some((s) => s.vals[ci]!.v !== null) && !domain.unknownTotals.has(c.id) ? [[c.id, domain.columnTotals[c.id]!]] : [])));
+    (domain.series.some((s) => s.vals[ci]!.v !== null) && !domain.unknownTotals.has(c.id) && !domain.wholeUnknown.has(c.id) ? [[c.id, domain.columnTotals[c.id]!]] : [])));
   return {
     type: 'mekko',
     size: env.size,

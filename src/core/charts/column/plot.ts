@@ -11,6 +11,7 @@ import { BAND_PAD, VALUE_LINE_RESERVE } from '../../annotateParts';
 import { axisTitleAllowed, measureValueAxisWidth, planValueAxisTitle, valueAxisTitleBand, valueAxisTitleText, valueAxisUnit } from '../../axis';
 import { longDayMonths, type dateTickRow } from '../../calendarLabels';
 import { formatAutomaticPercent, notApplicableGlyph } from '../../format';
+import { percentCellsOnly } from '../../annotatePass';
 import {
   frameTextOptions,
   fixedPlotChrome,
@@ -560,8 +561,10 @@ export function columnPlotArea(
   warnings: LintWarning[],
 ): ColumnArea {
   const { options, theme, size, measure, variant, va, fmt, valueSpec, cats, dLo, dHi } = domain;
-  const axisFmt = variant === 'stacked100' ? (v: number) => formatAutomaticPercent(v, 0, false, options.locale?.language) : fmt;
-  const axisSpec = variant === 'stacked100' ? undefined : valueSpec.spec;
+  // Percent cells print '%' on the ticks as on the value labels (fmtPercent).
+  const percentAxis = variant !== 'stacked100' && percentCellsOnly(domain.dataSeries);
+  const axisFmt = variant === 'stacked100' ? (v: number) => formatAutomaticPercent(v, 0, false, options.locale?.language) : percentAxis ? valueSpec.fmtPercent : fmt;
+  const axisSpec = variant === 'stacked100' ? undefined : percentAxis ? valueSpec.percentSpec : valueSpec.spec;
   const valueAxisReserve = va.show
     ? measureValueAxisWidth([dLo, dHi], axisFmt, theme, measure, 5, axisSpec)
     : 0;

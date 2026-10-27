@@ -75,7 +75,7 @@ function barRow(
       nodeId, rect, start, end, fill: paint, pattern, outline, owner,
       ...(halves?.neg === s.id ? { claimOwner: { seriesId: halves.pos, categoryId: cat.id } } : {}),
       part: grouped ? 'bar' : 'segment',
-      displayValue: displayFor(domain, v, cell.meta, variant === 'stacked100' ? val : undefined, s, cat.id),
+      displayValue: displayFor(domain, v, cell, variant === 'stacked100' ? val : undefined, s, cat.id),
     });
     rowBars.push({ seriesId: s.id, rect, nodeId });
     const range = plotRange(ci, si);
@@ -90,7 +90,8 @@ function barRow(
   });
   // reference series → vertical tick per row (referenceStyle tick|line|marker)
   (variant !== 'stacked100' ? refSeries : []).forEach((rs) => {
-    const { v, meta } = rs.cells[ci]!;
+    const refCell = rs.cells[ci]!;
+    const { v } = refCell;
     if (v === null) return;
     const rx = x(v);
     const nodeId = `ref:${cat.id}:${rs.id}`;
@@ -102,7 +103,7 @@ function barRow(
     out.refTarget.push({
       id: nodeId,
       owner,
-      display: { value: displayFor(domain, v, meta, undefined, rs) },
+      display: { value: displayFor(domain, v, refCell, undefined, rs) },
       ...(referenceStyle === 'marker' ? {
         t: 'circle',
         cx: rx,

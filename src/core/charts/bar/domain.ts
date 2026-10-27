@@ -1,5 +1,5 @@
 import { applyAxisBounds } from '../../scale';
-import { percentLevels } from '../../annotatePass';
+import { percentCellsOnly, percentLevels } from '../../annotatePass';
 /**
  * Standard bar phase 1, domain: the options resolved once, the series
  * normalised, sorted and cut to topN, the plotted values, stacks and shares,
@@ -76,19 +76,25 @@ export function partialNamedOnValues(domain: BarDomain): boolean {
     || domain.dataSeries.every((s) => (s.cells[ci]?.v ?? null) === null));
 }
 
-export function textFor(domain: BarDomain, v: number, meta: CellMeta | null, pctVal?: number, s?: NormSeries, categoryId?: string): string | null {
+/** A cell as the label texts read it: its metadata and the normalised percent flag. */
+export type BarTextCell = { meta: CellMeta | null; isPct?: boolean };
+
+export function textFor(domain: BarDomain, v: number, cell: BarTextCell, pctVal?: number, s?: NormSeries, categoryId?: string): string | null {
+  const { meta } = cell;
   if (meta?.label === false) return null;
-  const base = displayFor(domain, v, meta, pctVal, s, categoryId);
+  const base = displayFor(domain, v, cell, pctVal, s, categoryId);
   return typeof meta?.label === 'string' ? meta.label.replace(/\$\{value\}/g, base) : base;
 }
 
 /** A share prints its sum-consistent text where rounding set one (`categoryId` and `s` name it). */
-export function displayFor(domain: BarDomain, v: number, meta: CellMeta | null, pctVal?: number, s?: NormSeries, categoryId?: string): string {
+export function displayFor(domain: BarDomain, v: number, cell: BarTextCell, pctVal?: number, s?: NormSeries, categoryId?: string): string {
+  const { meta } = cell;
   return pctVal !== undefined
     ? (s && categoryId !== undefined ? domain.shareTexts.get(`${categoryId}\0${s.id}`) : undefined) ?? formatShare(pctVal, domain.options.locale?.language)
     : meta?.format
       ? formatterFromExample(meta.format, domain.options.locale?.language)(v)
-      : (s ? domain.valueSpec.forSeries(s) : domain.fmt)(v);
+      // A percent cell, and a Rest built from percent cells, keep their '%', as on column.
+      : (cell.isPct && !s?.format ? domain.valueSpec.fmtPercent : s ? domain.valueSpec.forSeries(s) : domain.fmt)(v);
 }
 
 export function valueLineValue(a: Annotation & { kind: 'valueLine' }, meanValue: number | undefined): number | undefined {
@@ -566,7 +572,9 @@ export function resolveBarDomain(data: ChartData, options: BarOptions, warnings:
     grandTotalsOn,
     partsAdd,
     ...(partsAdd ? {} : { meanMissing: NO_STACK_MEAN }),
-    axisFmt: variant === 'stacked100' ? { format: (v: number) => formatAutomaticPercent(v, 0, false, options.locale?.language) } : { format: valueSpec.fmt, formatSpec: valueSpec.spec },
+    axisFmt: variant === 'stacked100' ? { format: (v: number) => formatAutomaticPercent(v, 0, false, options.locale?.language) }
+      : percentCellsOnly(dataSeries.map((series) => ({ vals: series.cells.map((cell) => ({ ...cell, format: cell.meta?.format })), format: series.format })))
+        ? { format: valueSpec.fmtPercent, formatSpec: valueSpec.percentSpec } : { format: valueSpec.fmt, formatSpec: valueSpec.spec },
     cats, dataSeries, refSeries, valueSpec, fmt: valueSpec.fmt, totalFmt: stackTotalFormatter(variant, valueSpec.spec, valueSpec.fmt), statFmt, uniformScenario,
     /**
      * A category highlight on one series makes the named bars the

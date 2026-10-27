@@ -74,7 +74,7 @@ import type {
 } from '../../types/scene';
 import { layoutCenteredFunnel, rampFunnelPaint, shadeStage } from './centered';
 import { funnelComparisonLayout } from './comparisons';
-import { clampedNote, deriveFunnel, missingGlyph } from './derive';
+import { clampedNote, deriveFunnel, funnelValueFormats, missingGlyph } from './derive';
 import { INSIDE_MIN_H, INSIDE_MIN_W } from '../band/labels';
 import { barWidthForOutsideValues, OUTSIDE_GAP, outsideStart, outsideWidth } from './outsideValues';
 import { belowCalloutCandidates, dropCallout, fitText, type FittedText, LABEL_PAD, laneY, LANE_PAD, lineHeight, rowGapFraction, type DropCallout } from './rowsText';
@@ -198,11 +198,9 @@ export function layoutFunnel(
   const formats = stages.map((_, ci) => seriesRasterFormatter(options.format, plotted.length === 1 ? values[0]! : plotted.map((_, si) => values[si]![ci]), options.locale?.language, options.unit, options.target, undefined, true));
   // Totals and series without format metadata print through the shared raster (one decimal count, engine scale).
   const totalRaster = seriesRasterFormatter(options.format, Object.values(stageTotals), options.locale?.language, options.unit, options.target);
-  const totalFmt = totalRaster.fmt;
   // A whole count prints whole beside fractional values of its stage ("140", "1" beside "0.6"); an amount like 100.4 keeps its decimals.
   if (!options.format) for (const format of [...formats, totalRaster]) format.spec.wholeCounts = true;
-  const valueText = (si: number, ci: number, value: number): string =>
-    formats[ci]!.forSeries(plotted[si]!, cellMeta(cells[si]![ci]!)?.format)(value);
+  const { valueText, totalFmt } = funnelValueFormats(plotted, cells, formats, totalRaster);
   const cellText = (si: number, ci: number, value: number): string | null => {
     const label = cellMeta(cells[si]![ci]!)?.label;
     return label === false ? null : typeof label === 'string' ? label.replace(/\$\{value\}/g, valueText(si, ci, value)) : valueText(si, ci, value);
