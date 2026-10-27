@@ -306,3 +306,22 @@ it('gantt badges keep every marker label, take no height without annotation labe
   const sameDay = Array.from({ length: 10 }, (_, i) => event('2026-01-10', String(i + 1), true));
   expect(layout(sameDay, { annotation: false }).sizing?.naturalHeight).toBe(layout([]).sizing?.naturalHeight);
 });
+
+// A data span must end at the last item end or today, not at a week edge, or arrows stop short of the edge.
+it('gantt calendar span data runs from the first item to the later of the last end and today', () => {
+  const data = { rows: [{ id: 'a', label: 'A', items: [{ id: 'x', kind: 'bar' as const, start: '2026-03-04', end: '2026-03-18' }] }] };
+  const span = (options: object) => {
+    const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'gantt', data, options: { size: { width: 600 }, ...options } }));
+    if (geometry.refused) throw new Error('gantt refused');
+    return (geometry.derived as { span: { start: string; end: string } }).span;
+  };
+  expect(span({})).toEqual({ start: '2026-03-02', end: '2026-03-22' });
+  expect(span({ calendar: { span: 'data' } })).toEqual({ start: '2026-03-04', end: '2026-03-18' });
+  expect(span({ calendar: { span: 'data' }, today: '2026-03-25' })).toEqual({ start: '2026-03-04', end: '2026-03-25' });
+  // A data span starts on a Wednesday here: the first weekend band starts on Saturday 7 March, 3 of its 15 days in.
+  const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'gantt', data, options: { size: { width: 600 }, calendar: { span: 'data' }, weekends: true } }));
+  if (geometry.refused) throw new Error('gantt refused');
+  const edges = ['grid:edge:0', 'grid:edge:1'].map(id => geometry.scene.find(n => n.id === id)!).map(n => (n as { x1: number }).x1);
+  const weekend = geometry.scene.find(n => n.part === 'weekend') as { rect: { x: number } };
+  expect(weekend.rect.x).toBeCloseTo(edges[0]! + (3 / 15) * (edges[1]! - edges[0]!), 1);
+});

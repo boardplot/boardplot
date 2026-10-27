@@ -180,11 +180,31 @@ function ganttCalendar(items: NormItem[], cadenceDays: number[], options: GanttO
     minDay = Math.min(minDay, day);
     maxDay = Math.max(maxDay, day + 1);
   }
-  const spanDays = maxDay - minDay;
+  const todayParsed = options.today === undefined ? null : parseISODate(options.today);
+  if (options.today !== undefined && !todayParsed) throw new NormalizeError('invalid-date', 'options.today', `invalid ISO date '${options.today}'`);
+  // A data span ends where the data or today does, so an arrow tip meets the edge.
+  // A marker on the first or last day keeps one day of room, so its diamond stays inside the body.
+  const dataSpan = options.calendar?.span === 'data';
+  const todayEnd = todayParsed && dayNum(todayParsed) >= minDay ? dayNum(todayParsed) + 1 : -Infinity;
+  const markerDays = [...items.filter((it) => it.kind === 'milestone').map((it) => it.startDay), ...cadenceDays];
+  const dataStart = markerDays.includes(minDay) ? minDay - 1 : minDay;
+  const dataEnd = Math.max(markerDays.includes(maxDay - 1) ? maxDay + 1 : maxDay, todayEnd);
+  // The head's scale follows the span it draws.
+  const spanDays = dataSpan ? dataEnd - dataStart : maxDay - minDay;
   const granularity: GanttGranularity = spanDays > 548 ? 'quarters' : spanDays >= 90 ? 'months' : 'weeks';
-  const tier = TIERS[granularity];
-  const d0Day = dayNum(floorTo(tier.minor, dateFromDay(minDay)));
-  const d1Day = dayNum(ceilTo(tier.minor, dateFromDay(maxDay)));
+  const startDay = options.calendar?.weeks === 'startDay';
+  if (startDay && granularity !== 'weeks') {
+    warnings.push({
+      code: 'calendar-weeks-ignored',
+      severity: 'info',
+      message: `calendar.weeks 'startDay' names week cells; this chart's head shows ${granularity}, so it is ignored`,
+      suggest: 'remove calendar.weeks, or shorten the span to under 90 days',
+    });
+  }
+  // A start-day head names each week by the day it starts on, under the month tier.
+  const tier = startDay && granularity === 'weeks' ? { ...TIERS.weeks, minorFmts: ['d'] } : TIERS[granularity];
+  const d0Day = dataSpan ? dataStart : dayNum(floorTo(tier.minor, dateFromDay(minDay)));
+  const d1Day = dataSpan ? dataEnd : dayNum(ceilTo(tier.minor, dateFromDay(maxDay)));
 
   if (options.weekends && granularity !== 'weeks') {
     warnings.push({
@@ -195,10 +215,8 @@ function ganttCalendar(items: NormItem[], cadenceDays: number[], options: GanttO
   }
 
   let todayDay: number | null = null;
-  if (options.today !== undefined) {
-    const td = parseISODate(options.today);
-    if (!td) throw new NormalizeError('invalid-date', 'options.today', `invalid ISO date '${options.today}'`);
-    const dn = dayNum(td);
+  if (todayParsed) {
+    const dn = dayNum(todayParsed);
     if (dn < d0Day || dn >= d1Day) {
       warnings.push({
         code: 'today-out-of-range',

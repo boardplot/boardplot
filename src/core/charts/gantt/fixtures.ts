@@ -622,6 +622,7 @@ export const fixtures: Fixture<GanttData, GanttOptions>[] = [
     options: {
       title: 'Three changes since 10 March: browser and checkout events stay broken, the server feed is intact',
       subtitle: 'Status as of 31 March; arrow: still open',
+      calendar: { weeks: 'startDay', span: 'data' },
       legend: 'bottom',
       source: 'Illustrative data',
       size: { width: 1000 },

@@ -15,7 +15,7 @@ import type { FontSpec } from '../../text';
 import { strokeToken, markRolePaint, markRoleToken, paintColor, semanticPalettePaint, surfaceFloorPaint } from '../../theme';
 import type { Id, OwnerRef } from '../../types/cell';
 import type { Paint, PlacedAnnotation, SceneNode } from '../../types/scene';
-import { dateFromDay, dayNum, nextOf, type Unit } from './calendar';
+import { dateFromDay, dayNum, floorTo, nextOf, type Unit } from './calendar';
 import { fmtPathNumber as f2 } from '../../curve';
 import { GANTT_ROW_PITCH } from './domain';
 import type { GanttMarks } from './layout';
@@ -187,13 +187,15 @@ function backgroundLayers(ctx: MarkCtx, domain: GanttDomain): { elapsed: PlacedA
     });
     elapsed.push({ id: 'elapsed', kind: 'band', computedText: chartString(env.options, 'elapsed'), nodeIds: [nodeId] });
   }
-  // Weekend bands (week granularity only; domain starts Monday). Same wash as
+  // Weekend bands (week granularity only; counted from the Monday on or before the span start, which a data span need not be). Same wash as
   // the zebra: a full-strength weekend band is the same hex as a `shade` item
   // crossing it, which would hide the item.
   if (options.weekends && domain.granularity === 'weeks') {
     let wk = 0;
-    for (let day = d0Day + 5; day < d1Day; day += 7) {
-      const to = Math.min(day + 2, d1Day);
+    for (let saturday = dayNum(floorTo('week', dateFromDay(d0Day))) + 5; saturday < d1Day; saturday += 7) {
+      const day = Math.max(saturday, d0Day);
+      const to = Math.min(saturday + 2, d1Day);
+      if (to <= day) continue;
       nodes.push({
         t: 'rect',
         id: `weekend:${wk++}`,
@@ -243,9 +245,9 @@ function backgroundLayers(ctx: MarkCtx, domain: GanttDomain): { elapsed: PlacedA
 function headerRow(
   ctx: MarkCtx,
   domain: GanttDomain,
-  tierRow: { kindTag: 'major' | 'minor'; unit: Unit; starts: Date[]; y: number; font: FontSpec; fmts: string[]; ink: Paint },
+  tierRow: { kindTag: 'major' | 'minor'; unit: Unit; starts: Date[]; y: number; font: FontSpec; fmts: string[]; ink: Paint; startDay?: boolean },
 ): void {
-  const { kindTag, unit, starts, y, font, fmts, ink } = tierRow;
+  const { kindTag, unit, starts, y, font, fmts, ink, startDay } = tierRow;
   const { d0Day, d1Day } = domain;
   const { x } = ctx.body;
   const { headerRowH } = ctx.band;
@@ -298,10 +300,12 @@ function headerRow(
   starts.forEach((s, i) => {
     const cell = cells[i]!;
     ctx.nodes.push({ t: 'rect', id: `header:${kindTag}:${i}`, rect: cell, fill: { token: 'background' }, stroke: { token: 'grid' }, strokeWidth: strokeToken(ctx.env.theme, 'hair'), owner: {}, part: 'headerCell' });
-    const text = cellFmts.map((f) => formatDate(s, f, lang)).find((candidate) => fits(candidate, i));
+    // A start-day cell names the day it starts on, a clipped first cell the chart's first day, flush left.
+    const named = startDay ? dateFromDay(Math.max(dayNum(s), d0Day)) : s;
+    const text = cellFmts.map((f) => formatDate(named, f, lang)).find((candidate) => fits(candidate, i));
     if (text !== undefined) {
       const { width: tw, height: th } = sized(text);
-      const name = { x: cell.x + cell.w / 2 - tw / 2, y: cell.y + (headerRowH - th) / 2, w: tw, h: th };
+      const name = { x: startDay ? cell.x + 6 : cell.x + cell.w / 2 - tw / 2, y: cell.y + (headerRowH - th) / 2, w: tw, h: th };
       ctx.headNames.push(name);
       ctx.nodes.push({ t: 'text', typeRole: 'axis', id: `header:${kindTag}:${i}:text`, x: name.x, y: name.y, lines: [text], align: 'start', font, ink, owner: {}, part: 'scale' });
     }
@@ -315,7 +319,7 @@ function calendarGrid(ctx: MarkCtx, domain: GanttDomain): void {
   const { x, bodyX, bodyW } = body;
   const { rowsTop, rowsBottom, headerTop } = band;
   headerRow(ctx, domain, { kindTag: 'major', unit: tier.major, starts: majorStarts, y: headerTop, font: env.fonts.headerMajor, fmts: tier.majorFmts, ink: { token: 'ink' } });
-  headerRow(ctx, domain, { kindTag: 'minor', unit: tier.minor, starts: minorStarts, y: headerTop + band.headerRowH, font: env.fonts.tick, fmts: tier.minorFmts, ink: { token: 'inkMuted' } });
+  headerRow(ctx, domain, { kindTag: 'minor', unit: tier.minor, starts: minorStarts, y: headerTop + band.headerRowH, font: env.fonts.tick, fmts: tier.minorFmts, ink: { token: 'inkMuted' }, startDay: tier.minorFmts[0] === 'd' });
   ctx.claims.claim({ x: bodyX, y: headerTop, w: bodyW, h: band.headerH }, 'axis', {});
   const majorDays = new Set(majorStarts.map(dayNum));
   const gridLine = (id: string, d: number, dash?: number[]): SceneNode =>
