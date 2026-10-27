@@ -78,6 +78,20 @@ const EAST_ASIAN_WIDE =
 /** A cluster drawn as an emoji: emoji presentation by default, or asked for with U+FE0F. One em. */
 const EMOJI_RE = /\p{Emoji_Presentation}|\uFE0F/u;
 /**
+ * Default-ignorable code points (soft hyphen, zero-width space and joiners,
+ * word joiner, BOM) draw with no width. A font table can still hold an
+ * advance for one, even a wrapped one (65,519 units for a soft hyphen in one
+ * variable face), so a cluster whose base is one measures zero. The Hangul
+ * fillers and the shorthand format controls stay: browsers draw them as
+ * spacing glyphs, the exceptions HarfBuzz makes (hb-unicode.hh).
+ */
+const DEFAULT_IGNORABLE = /\p{Default_Ignorable_Code_Point}/u;
+const SPACING_IGNORABLES = new Set([0x115f, 0x1160, 0x3164, 0xffa0, 0x1bca0, 0x1bca1, 0x1bca2, 0x1bca3]);
+function drawsNoWidth(codePoint: number): boolean {
+  if (codePoint < 0xad) return false;
+  return !SPACING_IGNORABLES.has(codePoint) && DEFAULT_IGNORABLE.test(String.fromCodePoint(codePoint));
+}
+/**
  * Characters that join the one before them into one drawn cluster: combining
  * marks (variation selectors are marks too), ZWJ, skin-tone modifiers and
  * tag characters.
@@ -168,10 +182,13 @@ export function estimateTextWidthForFace(text: string, font: FontSpec, face: Fac
   const boldFactor = font.weight >= 600 ? 1.06 : 1;
   const figure = font.tabular === true && face !== undefined ? widestDigit(face) : 0;
   let units = 0;
+  let drawn = 0;
   // One advance per drawn cluster: its base character's, or one em for an emoji.
   const clusters = graphemes(s);
   for (const cluster of clusters) {
     const base = cluster.codePointAt(0)!;
+    if (drawsNoWidth(base)) continue;
+    drawn++;
     if (EMOJI_RE.test(cluster)) {
       units += 1;
       continue;
@@ -179,7 +196,7 @@ export function estimateTextWidthForFace(text: string, font: FontSpec, face: Fac
     const advance = figure > 0 && base >= 0x30 && base <= 0x39 ? figure : face?.advance(base);
     units += advance !== undefined ? advance / 1000 : classUnits(String.fromCodePoint(base)) * boldFactor;
   }
-  const tracking = font.letterSpacing ? font.letterSpacing * Math.max(0, clusters.length - 1) : 0;
+  const tracking = font.letterSpacing ? font.letterSpacing * Math.max(0, drawn - 1) : 0;
   return units * font.size * (face ? WIDTH_SAFETY : 1) + tracking;
 }
 
@@ -356,9 +373,13 @@ export function wrapText(
   return !plain.truncated || prefix(plain.lines) > prefix(joined.lines) ? plain : joined;
 }
 
-/** The words `wrapText` breaks between. Keeps non-breaking spaces inside a token (note entries and number groups). */
+/**
+ * The words `wrapText` breaks between. Keeps non-breaking spaces inside a
+ * token (note entries and number groups), and a BOM, which JavaScript counts
+ * as white space but draws as a zero-width no-break character.
+ */
 function wordsOf(text: string): string[] {
-  return String(text).split(/[^\S\u00a0\u202f]+/).filter(Boolean);
+  return String(text).split(/[^\S\u00a0\u202f\ufeff]+/).filter(Boolean);
 }
 
 function wrapWords(

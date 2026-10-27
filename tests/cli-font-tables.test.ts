@@ -10,13 +10,13 @@ import { join } from 'node:path';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import '../src/core/charts';
 import { main } from '../src/cli/main';
-import { buildFontTables, loadFontReader, serializeFontTables } from '../src/cli/fontTables';
+import { advanceWidths, buildFontTables, loadFontReader, serializeFontTables } from '../src/cli/fontTables';
 import { callTool } from '../src/mcp/server';
 import { validateTheme } from '../src/core/themeRules';
 import { resolveTheme } from '../src/core/theme';
 import { createMetricTablesMeasurer } from '../src/core/fontMetrics/injected';
-import { parseFontMetricTables } from '../src/core/fontMetrics/tableDocument';
-import { defaultMeasurer } from '../src/core/text';
+import { codePointsOf, encodeWidths, parseFontMetricTables } from '../src/core/fontMetrics/tableDocument';
+import { defaultMeasurer, wrapText } from '../src/core/text';
 
 beforeAll(loadFontReader);
 
@@ -166,5 +166,34 @@ describe('host font tables on the CLI and the MCP server', () => {
     expect(fileOnly('1,234', spec(bundledStack)).width).not.toBe(defaultMeasurer('1,234', spec(bundledStack)).width);
     // No tabled family anywhere: the character-class model.
     expect(withFallback('1,234', spec("'Other Sans', sans-serif")).width).toBe(defaultMeasurer('1,234', spec("'Other Sans', sans-serif")).width);
+  });
+
+  // This test prevents an invisible soft hyphen from making a label wider than the chart.
+  it('measures default-ignorable code points at zero width and never writes a negative advance', () => {
+    const dir = workDir();
+    const tables = parseFontMetricTables(JSON.parse(readFileSync(hostTables(dir), 'utf8')));
+    const codePoints = codePointsOf(tables.codePointRanges, tables.extraCodePoints);
+    // A table built before the clamp: the soft hyphen's negative advance wrapped to 65,519 units.
+    const wrapped = codePoints.map(() => 500);
+    wrapped[codePoints.indexOf(0xad)] = 65519;
+    const broken = { ...tables, faces: tables.faces.map((face) => ({ ...face, widths: encodeWidths(wrapped) })) };
+    const font = (family: string) => ({ family, size: 13, weight: 400 });
+    const hidden = 'Re\u00ADve\u200Bnue\u2060\uFEFF';
+    for (const [measure, family] of [
+      [createMetricTablesMeasurer(broken), `'${FAMILY}', sans-serif`],
+      [defaultMeasurer, 'Helvetica, Arial, sans-serif'],
+      [defaultMeasurer, "'Other Sans', sans-serif"],
+    ] as const) {
+      expect(measure(hidden, font(family)).width).toBe(measure('Revenue', font(family)).width);
+      expect(measure(hidden, { ...font(family), letterSpacing: 1 }).width).toBe(measure('Revenue', { ...font(family), letterSpacing: 1 }).width);
+      // A soft hyphen that a combining mark joins is still an invisible cluster.
+      expect(measure('Re\u00AD\u0301venue', font(family)).width).toBe(measure('Revenue', font(family)).width);
+      // The Hangul fillers draw as spacing glyphs, as in the browser.
+      for (const filler of ['\u115F', '\u1160', '\u3164', '\uFFA0']) expect(measure(`A${filler}B`, font(family)).width).toBeGreaterThan(measure('AB', font(family)).width);
+    }
+    // A BOM inside a word is neither a space nor a break.
+    expect(wrapText('A\uFEFFB', font('Helvetica, Arial, sans-serif'), 1000).lines).toEqual(['A\uFEFFB']);
+    const source = { hasGlyphForCodePoint: () => true, glyphForCodePoint: () => ({ advanceWidth: -17 }), layout: () => ({ advanceWidth: -17 }) };
+    expect(advanceWidths(source, [0xad], 1)).toEqual([0]);
   });
 });
