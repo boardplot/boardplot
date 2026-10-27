@@ -23,7 +23,7 @@ import { comboDrawsSecondaryAxis } from './charts/combo/domain';
 const CATALOG: Record<string, { summary: string; useCases: readonly string[] }> = {
   bar: { summary: 'Horizontal bars per item', useCases: ['Ranking items', 'Tornado or football-field ranges', 'Values with long category names'] },
   bartable: { summary: 'Table rows with stacked bars, one panel per measure', useCases: ['One measure per row as a stacked bar beside number columns: one panel', 'The same split in two units side by side, $bn and % of EBITDA: two panels', 'Impact ranges by sector with a Total row', 'Share of a total over 2 to 4 periods, such as category revenue share by year: cascade'] },
-  box: { summary: 'Box plots of raw observations', useCases: ['Spread per group', 'Outliers by team or region', 'Response times by service'] },
+  box: { summary: 'Box plots of raw observations; rows category,value[,categoryLabel,date]', useCases: ['Spread per group', 'Outliers by team or region', 'Response times by service'] },
   bullet: { summary: 'KPI rows with bands and target', useCases: ['KPIs against target', 'Plan attainment per unit', 'Scorecard of several metrics'] },
   butterfly: { summary: 'Two mirrored bar panes', useCases: ['Two measures per category', 'Before and after by segment', 'Imports and exports by country'] },
   choropleth: { summary: 'Region map coloured by value', useCases: ['A value per country or state', 'Regional penetration', 'Growth rate by region'] },
@@ -37,7 +37,7 @@ const CATALOG: Record<string, { summary: string; useCases: readonly string[] }> 
   gantt: { summary: 'Timeline with spans and events', useCases: ['Project plan with milestones', 'Rollout by workstream', 'Campaign calendar'] },
   grid: { summary: 'Facets and metric stacks on one category axis', useCases: ['Small multiples per region', 'Actuals with a variance tier', 'Metric stacks with computed readouts'] },
   heatmap: { summary: 'Row by column matrix', useCases: ['A value by row and column', 'Harvey-ball scoring', 'Sales by weekday and hour'] },
-  histogram: { summary: 'Equal-width bins of raw values', useCases: ['Order value distribution', 'Spread of lead times', 'Deal size distribution'] },
+  histogram: { summary: 'Equal-width bins of raw values; rows value', useCases: ['Order value distribution', 'Spread of lead times', 'Deal size distribution'] },
   kpi: { summary: 'Single-metric card', useCases: ['Headline metric with trend', 'Metric against PY and plan', 'Dashboard tile'] },
   likert: { summary: 'Diverging bars for survey scales', useCases: ['Agreement by statement', 'Net sentiment per question', 'Employee survey results'] },
   line: { summary: 'Lines and areas over time', useCases: ['Trend over time', 'Actual against forecast', 'Indexed growth of several series'] },

@@ -33,7 +33,7 @@ One form; its chart ID is `histogram`.
 
 | Path | Type | Required | Meaning |
 |---|---|---|---|
-| observations | array | yes | Raw observations, at least four. Pre-binned counts and edges are rejected: bins the engine cannot recompute cannot be checked. |
+| observations | array | yes | Raw observations, at least four. Pre-binned counts and edges are rejected: bins the engine cannot recompute cannot be checked. Rows: value. |
 
 ## Options
 

@@ -37,7 +37,7 @@ One form; its chart ID is `box`.
 
 | Path | Type | Required | Meaning |
 |---|---|---|---|
-| groups | array | yes | Observation groups whose quartiles and whiskers are computed by the engine. |
+| groups | array | yes | Observation groups whose quartiles and whiskers are computed by the engine. Rows: category,value; optional categoryLabel,date. |
 | groups[].id | string | yes | Nonempty stable identifier used to match data, labels and annotation anchors. |
 | groups[].label | string |  | Visible group name; defaults to the group id. |
 | groups[].date | string |  | ISO observation date for CAGR between group snapshots; requires a positive date interval. |

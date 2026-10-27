@@ -46,7 +46,7 @@ const esbuild = require('esbuild');
 
 const DATA_TYPES = '../../core/types/data';
 /** Types whose rows fill a data shape of their own; src/core/rows.ts has one adapter per shape. */
-const OWN_ROWS_SHAPES = ['waterfall', 'scatter', 'table'];
+const OWN_ROWS_SHAPES = ['waterfall', 'scatter', 'table', 'histogram', 'box'];
 const OPTION_TYPES = '../../core/types/options';
 
 /**

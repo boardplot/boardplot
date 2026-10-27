@@ -40,8 +40,8 @@ Every chart is one spec, `{ "type", "data", "options", "annotations", "theme" }`
 - [choropleth](docs/reference/choropleth.md): Region map coloured by value
 - [butterfly](docs/reference/butterfly.md): Two mirrored bar panes
 - [likert](docs/reference/likert.md): Diverging bars for survey scales
-- [histogram](docs/reference/histogram.md): Equal-width bins of raw values
-- [box](docs/reference/box.md): Box plots of raw observations
+- [histogram](docs/reference/histogram.md): Equal-width bins of raw values; rows value
+- [box](docs/reference/box.md): Box plots of raw observations; rows category,value[,categoryLabel,date]
 - [waffle](docs/reference/waffle.md): Share of a whole as a grid of cells
 - [pyramid](docs/reference/pyramid.md): Mirrored bands on one scale
 - [diagram](docs/reference/diagram.md): Node and edge diagrams

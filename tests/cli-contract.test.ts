@@ -255,9 +255,73 @@ describe('rows mappings', () => {
       .toMatchObject([{ code: 'duplicate-id', path: '/rowsFile', message: expect.stringContaining('rowsFile row 2.code') }]);
   });
 
+  // Histogram and box rows must draw what the same spec draws with authored observations, from JSON and both CSV separators, through CLI, MCP and measure, with box groups in first-appearance order.
+  for (const type of ['histogram', 'box'] as const) it(`${type} rows render like authored observations through CLI and MCP`, () => {
+    const fixture = rowMappings[type];
+    const dir = tdir();
+    const columns = Object.entries(fixture.columns).map(([role, column]) => `${role}=${column}`).join(',');
+    const files = [writeDoc(dir, 'rows.json', fixture.rows), join(dir, 'comma.csv'), join(dir, 'semicolon.csv')];
+    writeFileSync(files[1]!, rowsCsv(fixture.rows, ','));
+    writeFileSync(files[2]!, rowsCsv(fixture.rows, ';'));
+    for (const alias of type === 'histogram' ? ['histogram', 'distribution', 'frequency'] : ['box', 'boxplot', 'box-and-whisker']) {
+      const spec = { ...fixture.spec, type: alias };
+      const native = { ...spec, data: fixture.data };
+      const authored = render({ spec: native, return: ['svg'] });
+      expect(authored.body.ok, JSON.stringify(authored.body.errors)).toBe(true);
+      for (const file of files) {
+        const cli = envelope(runCli(['render', writeDoc(dir, 'spec.json', spec), '--rows', file, '--columns', columns, '--return', 'svg,reading']));
+        expect(cli.ok, JSON.stringify(cli.errors)).toBe(true);
+        expect(cli.svg).toBe(authored.body.svg);
+        expect(cli.reading?.data).toMatchObject({ rows: fixture.rows.length, ignoredColumns: ['unused'] });
+      }
+      const mcp = JSON.parse(callTool('boardplot_render', { spec, rows: fixture.rows, columns: fixture.columns, return: ['svg'] }).text);
+      expect(mcp.svg).toBe(authored.body.svg);
+      const { data, ...measured } = JSON.parse(callTool('boardplot_measure', { spec, rows: fixture.rows, columns: fixture.columns }).text);
+      expect(data).toMatchObject({ rows: fixture.rows.length });
+      expect(measured).toEqual(JSON.parse(callTool('boardplot_measure', { spec: native }).text));
+      const { data: cliData, ...cliMeasured } = measure({ spec, rows: fixture.rows, columns: fixture.columns }).body as Record<string, unknown>;
+      expect(cliData).toMatchObject({ rows: fixture.rows.length });
+      expect(cliMeasured).toEqual(measure({ spec: native }).body);
+    }
+  });
+
+  // A missing or malformed observation must refuse at its source row and field, never drop out of the bins or quartiles in silence; box groups must refuse two labels or dates.
+  it('refuses histogram and box observations at the source row and field', () => {
+    for (const type of ['histogram', 'box'] as const) {
+      const { spec, rows, columns } = rowMappings[type];
+      const refusal = (args: Record<string, unknown>) => JSON.parse(callTool('boardplot_render', { spec, rows, columns, ...args }).text).errors[0];
+      const withDays = (days: unknown) => rows.map((row, index) => (index === 2 ? { ...row, days } : row));
+      expect(refusal({ rows: withDays(null) })).toMatchObject({ code: 'missing-value', path: '/rows/2/days' });
+      expect(refusal({ rows: withDays(' ') })).toMatchObject({ code: 'missing-value', path: '/rows/2/days' });
+      expect(refusal({ rows: withDays('n/a') })).toMatchObject({ code: 'invalid-value', path: '/rows/2/days' });
+      expect(refusal({ rows: rows.map(({ days, ...row }, index) => (index === 2 ? row : { ...row, days })) })).toMatchObject({ code: 'missing-value', path: '/rows/2/days' });
+      expect(refusal({ columns: { ...columns, value: 'minutes' } })).toMatchObject({ code: 'missing-column', path: '/columns/value' });
+      expect(refusal({ columns: { ...columns, valueKind: 'fraction' } })).toMatchObject({ code: 'invalid-argument', path: '/columns/valueKind' });
+      let thrown: unknown;
+      try { specFromRows(spec, { rows: withDays(Infinity), columns }); } catch (error) { thrown = error; }
+      expect(thrown).toMatchObject({ code: 'invalid-value', details: { path: '/rows/2/days' } });
+    }
+    expect(JSON.parse(callTool('boardplot_render', { spec: { type: 'histogram' }, rows: [{ days: 1 }, { days: 2 }, { days: 3 }], columns: { value: 'days' } }).text).ok).toBe(false);
+    const { spec, rows, columns } = rowMappings.box;
+    const refusal = (changed: Record<string, unknown>) => JSON.parse(callTool('boardplot_render', { spec, rows: rows.map((row, index) => (index === 4 ? { ...row, ...changed } : row)), columns }).text).errors[0];
+    expect(refusal({ name: 'West region' })).toMatchObject({ code: 'ambiguous-mapping', path: '/rows/4/name' });
+    const dated = rows.map((row, index) => ({ ...row, month: index === 4 ? '2026-02-01' : '2026-01-01' }));
+    expect(JSON.parse(callTool('boardplot_render', { spec, rows: dated, columns: { ...columns, date: 'month' } }).text).errors[0]).toMatchObject({ code: 'ambiguous-mapping', path: '/rows/4/month' });
+    expect(refusal({ team: '' })).toMatchObject({ code: 'invalid-identity', path: '/rows/4/team' });
+    // A group label that is not text is a wrong value, not a second label for the group.
+    expect(refusal({ name: 7 })).toMatchObject({ code: 'invalid-value', path: '/rows/4/name' });
+    // Rows input must not hide the refusal the native box gives for a repeated spec group id.
+    expect(JSON.parse(callTool('boardplot_render', { spec: { ...spec, data: { groups: [{ id: 'East' }, { id: 'East', label: 'East again' }] } }, rows, columns }).text).errors[0])
+      .toMatchObject({ code: 'invalid-data', path: '/spec/data/groups/1/id' });
+    const dir = tdir();
+    writeFileSync(join(dir, 'rows.csv'), rowsCsv(rows.map((row, index) => (index === 4 ? { ...row, days: null } : row)), ';'));
+    expect(envelope(runCli(['render', writeDoc(dir, 'spec.json', spec), '--rows', join(dir, 'rows.csv'), '--columns', 'category=team,value=days'])).errors)
+      .toMatchObject([{ code: 'missing-value', path: '/rowsFile', message: expect.stringContaining('rowsFile row 5.days') }]);
+  });
+
   it('refuses unsupported rows before checking category columns', () => {
     const dir = tdir();
-    const spec = { type: 'histogram' };
+    const spec = { type: 'kpi' };
     const rows = [{ item: 'One', delta: 12 }];
     const cli = envelope(runCli(['render', writeDoc(dir, 'spec.json', spec), '--rows', writeDoc(dir, 'rows.json', rows), '--columns', 'category=item,value=delta']));
     expect(cli.errors).toMatchObject([{ code: 'rows-unsupported-type', path: '/spec/type' }]);
