@@ -22,6 +22,8 @@ from typing import Any
 import anywidget
 import traitlets
 
+from ._chart import _check_callback
+
 _ASSETS = Path(__file__).parent / "_assets"
 _STATES = ("loading", "ready", "refused", "error")
 
@@ -134,6 +136,7 @@ class BoardplotWidget(anywidget.AnyWidget):
 
     def on_click(self, callback: ClickCallback, *, remove: bool = False) -> None:
         """Call ``callback(record)`` with Boardplot's interaction record on every record click."""
+        _check_callback(callback)
         if remove:
             self._click_callbacks = [c for c in self._click_callbacks if c != callback]
         else:

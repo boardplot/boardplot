@@ -4,8 +4,14 @@
  *   runtime.js  the full browser bundle (React, BoardplotChart, every chart type,
  *               the geo packs), the anywidget runtime widget's module
  *   widget.js   the chart widget's loader, a few KB
+ *   streamlit/boardplot-<hash>.js
+ *               the Streamlit Components v2 entry (full bundle). The content
+ *               hash in the name lets browsers cache it; boardplot/pyproject.toml
+ *               names the folder as the component's asset_dir, and Python
+ *               finds the one file with the glob `boardplot-*.js` (build.mjs
+ *               empties _assets/ first, so older builds are gone).
  *
- * Both are ESM, minified, one file per entry, with no extra chunks and no source
+ * All are ESM, minified, one file per entry, with no extra chunks and no source
  * maps. Each carries the build identity, so the loader can refuse a runtime from
  * another build.
  *
@@ -13,6 +19,7 @@
  * the engine bundle, then writes build.json. The identity covers every source
  * under python/js/, so a change here needs the full build: `node python/js/build.mjs`.
  */
+import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,9 +34,11 @@ export const ASSETS = resolve(repo, 'python', 'src', 'boardplot', '_assets');
 const ENTRY_BUDGET = 4.5 * 1024 * 1024;
 const ENTRY_LIMIT = 6 * 1024 * 1024;
 
+/** `hashed`: the file name gets the content hash. */
 const ENTRIES = [
   { entry: join(here, 'browser', 'anywidget-runtime.ts'), out: 'runtime.js' },
   { entry: join(here, 'browser', 'anywidget-loader.ts'), out: 'widget.js' },
+  { entry: join(here, 'browser', 'streamlit.ts'), out: 'streamlit/boardplot-[hash].js', hashed: true },
 ];
 
 /**
@@ -42,7 +51,7 @@ export async function buildBrowser(identity) {
   }
   mkdirSync(ASSETS, { recursive: true });
   const results = [];
-  for (const { entry, out } of ENTRIES) {
+  for (const { entry, out, hashed } of ENTRIES) {
     const result = await build({
       absWorkingDir: repo,
       entryPoints: [entry],
@@ -67,7 +76,9 @@ export async function buildBrowser(identity) {
     const bytes = result.outputFiles[0].contents;
     if (bytes.length > ENTRY_LIMIT) throw new Error(`${out} has ${bytes.length} bytes, over the hard limit of ${ENTRY_LIMIT}`);
     if (bytes.length > ENTRY_BUDGET) console.warn(`warning: ${out} has ${bytes.length} bytes, over the budget of ${ENTRY_BUDGET}`);
-    const file = join(ASSETS, out);
+    const name = hashed ? out.replace('[hash]', createHash('sha256').update(bytes).digest('hex').slice(0, 16)) : out;
+    const file = join(ASSETS, name);
+    mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, bytes);
     results.push({ file, bytes: bytes.length, gzip: gzipSync(bytes).length, metafile: result.metafile });
   }

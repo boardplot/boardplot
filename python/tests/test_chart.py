@@ -142,3 +142,109 @@ while True:
     result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=120)
     assert "child: engine-forked" in result.stdout, result.stdout + result.stderr
     assert "parent: child exit 0" in result.stdout, result.stdout + result.stderr
+
+
+# A numpy scalar, NaN or a byte order mark in a spec escaped as a bare TypeError, ValueError or OSError with no path.
+def test_spec_values_are_json_ready_or_refused_with_their_path():
+    import numpy as np
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        spec = {**COLUMN, "data": {**COLUMN["data"], "series": [{"id": "revenue", "values": [np.int64(84), np.float64(91.5), 97]}]}}
+        assert bp.Chart.from_spec(spec).spec["data"]["series"][0]["values"][:2] == [84, 91.5]
+        assert bp.Chart.from_spec("\ufeff" + json.dumps(COLUMN)).svg.startswith("<svg")
+    nan = {**COLUMN, "data": {**COLUMN["data"], "series": [{"id": "revenue", "values": [84, float("nan"), 97]}]}}
+    with pytest.raises(bp.InputError) as caught:
+        bp.Chart.from_spec(nan)
+    assert caught.value.path == "/data/series/0/values/1" and caught.value.suggest
+
+
+# A caller that catches RefusalError for sizes the engine refuses missed a size below 100 px, which raised SpecError.
+def test_size_below_the_engine_floor_raises_refusal_error_with_the_minimum():
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        chart = bp.Chart.from_spec(COLUMN)
+    with pytest.raises(bp.RefusalError) as caught:
+        chart.to_svg(width=40, height=40)
+    assert caught.value.minimum == (280, 180)
+
+
+# A non-callable click handler was accepted and failed only when a reader clicked.
+def test_on_click_refuses_a_value_that_cannot_be_called():
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        chart = bp.Chart.from_spec(COLUMN)
+    with pytest.raises(bp.InputError):
+        chart.on_click("not callable")
+
+
+# theme=42 was reported as "unknown theme 'undefined'", a value the caller never passed.
+def test_theme_of_the_wrong_type_names_the_argument():
+    with pytest.raises(bp.InputError) as caught:
+        bp.chart(ROWS, "bar", category="region", value="revenue", title="East leads revenue", theme=42)
+    assert caught.value.path == "/theme" and "42" in str(caught.value)
+
+
+# Changing a warning from chart.warnings changed the warnings of a Chart documented as immutable.
+def test_warnings_are_copies():
+    rows = [{"c": c, "v": v} for c, v in [("Elm", 18), ("Aster", 34), ("Birch", 11), ("Dune", 25), ("Cedar", 12)]]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        chart = bp.chart(rows, "bar", category="c", value="v", title="Aster has the largest share")
+    chart.warnings[0].code = "changed"
+    assert chart.warnings[0].code != "changed"
+
+
+# A Python caller was told to call boardplot_list, an MCP tool that Python does not have.
+def test_suggestions_name_the_python_discovery_call():
+    with pytest.raises(bp.SpecError) as caught:
+        bp.chart(ROWS, "nonsense", category="region", value="revenue")
+    assert "bp.list_charts()" in caught.value.suggest and "boardplot_list" not in caught.value.suggest
+
+
+# A numpy longdouble converts to another numpy scalar, and the spec check recursed until RecursionError.
+def test_numpy_scalar_without_a_python_value_is_refused_with_its_path():
+    import numpy as np
+
+    spec = {**COLUMN, "data": {**COLUMN["data"], "series": [{"id": "revenue", "values": [84, np.longdouble("91.5"), 97]}]}}
+    with pytest.raises(bp.InputError) as caught:
+        bp.Chart.from_spec(spec)
+    assert caught.value.path == "/data/series/0/values/1"
+
+
+# A one-chart document drawn below the size floor raised SpecError, while a bare chart raised RefusalError.
+def test_document_below_the_size_floor_raises_refusal_error():
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        chart = bp.Chart.from_spec({"version": 1, "charts": [{**COLUMN, "name": "revenue"}]})
+    with pytest.raises(bp.RefusalError) as caught:
+        chart.to_svg(width=40, height=40)
+    assert caught.value.minimum == (280, 180)
+
+
+# The height floor (24 px) was taken as 100 px, so a sparkline 10 px high named a minimum taller than it needs.
+def test_height_below_the_floor_names_the_real_minimum():
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        chart = bp.Chart.from_spec({"type": "sparkline", "data": bp.describe("sparkline")["example"]["data"]})
+    with pytest.raises(bp.RefusalError) as caught:
+        chart.to_svg(width=176, height=10)
+    assert caught.value.minimum == (176, 24)
+
+
+# A chart redrawn at its minimum size lost the states its rows carried (reading["data"]).
+def test_size_retry_keeps_the_rows_reading():
+    rows = [{"c": "A", "v": 10}, {"c": "B", "v": None, "st": "suppressed"}]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        chart = bp.chart(rows, "column", category="c", value="v", state="st", title="B has no published value",
+                         options={"size": {"width": 100, "height": 100}})
+    assert chart.size == (280, 180)
+    assert chart.reading["data"]["states"][0]["state"] == "suppressed"
+
+
+# The tool-name rewrite also changed the caller's own quoted input, so the error misquoted it.
+def test_tool_name_rewrite_keeps_quoted_input():
+    with pytest.raises(bp.SpecError) as caught:
+        bp.chart(ROWS, "boardplot_list", category="region", value="revenue")
+    assert "'boardplot_list'" in caught.value.message and caught.value.suggest.startswith("Call bp.list_charts()")
