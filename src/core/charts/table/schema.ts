@@ -265,7 +265,7 @@ const baseTableDataSchema = z
       .optional()
       .describe('Column toggle groups. Every member must exist, belong to one toggle, and stay inside one columnGroup.'),
     columns: z.array(columnSchema).min(1).describe('Display order; exactly one rowLabel column.'),
-    rows: z.array(rowSchema).min(1).describe('Row hierarchy; totalPosition determines resolved display order.'),
+    rows: z.array(rowSchema).min(1).describe('Row hierarchy; totalPosition determines resolved display order. Rows: optional label,id; each value, text, status or date column reads the source field named like its id.'),
     levelNouns: z
       .array(
         z.strictObject({
