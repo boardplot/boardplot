@@ -34,7 +34,7 @@ describe('value integrity on the chart', () => {
     const cases = [
       ['waterfall', 'ebit-bridge', 'fy21'], ['pareto', 'defect-causes', 'misprint'], ['pie', 'doughnut-device-revenue', 'mobile'],
       ['funnel', 'lead-funnel', 'leads'], ['bullet', 'four-band-neutral-ladder', 'coverage'], ['box', 'cycle-time-by-team', 'platform'],
-      ['table', 'steering-monthly', 'actual'],
+      ['table', 'steering-monthly', 'actual'], ['dimswitch', 'statement-plain', 'orders'],
     ];
     for (const [type, fixtureId, dataId] of cases) {
       const fixture = getFixtures(type!).find((item) => item.id === fixtureId)!;

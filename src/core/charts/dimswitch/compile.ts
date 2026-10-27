@@ -292,7 +292,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   const exprOf = (m: DimSwitchMeasure) => valueOf(m.id);
   for (const m of data.measures) exprOf(m);
 
-  const facts = new Map(data.facts.map(f=>[key(f.memberId,f.periodId),{...f,sums:{...f.sums},...(f.ref ? {ref:{...f.ref}} : {})}]));
+  const facts = new Map(data.facts.map(f=>[key(f.memberId,f.periodId),{...f,sums:Object.setPrototypeOf({...f.sums},null) as DimSwitchSums,...(f.ref ? {ref:Object.setPrototypeOf({...f.ref},null) as DimSwitchSums} : {})}]));
   const statementFields = new Set(data.measures.filter(inStatement).flatMap(m => fields(exprOf(m))));
   const roots = data.measures.filter(m=>!m.parentId && placeOf(m) === undefined && !(options.splits && m.splitOf));
   const records: ComputedCellRecord[] = [];
@@ -302,7 +302,8 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
       if(!children.length) return;
       for(const period of data.periods) {
         const existing=facts.get(key(member,period.id));
-        const next={memberId:member,periodId:period.id,sums:{} as DimSwitchSums,ref:{} as DimSwitchSums};
+        // Keyed by field id: a field named __proto__ keeps its sum.
+        const next={memberId:member,periodId:period.id,sums:emptyIdRecord() as DimSwitchSums,ref:emptyIdRecord() as DimSwitchSums};
         for(const window of ['sums','ref'] as const) {
           const fieldSet=new Set(children.flatMap(child=>Object.keys(facts.get(key(child.id,period.id))?.[window] ?? {})));
           for(const field of fieldSet) {
