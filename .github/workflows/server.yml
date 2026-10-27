@@ -1,0 +1,50 @@
+name: Server
+
+# The hosted server prototype in server/ is its own package, never published: the root
+# typecheck and the root tests do not cover it. This workflow runs its checks
+# when a change touches server/ or what the server bundles: the engine in src/,
+# the build identity script and the root dependencies.
+on:
+  push:
+    branches: [main]
+    paths: ['server/**', 'src/**', 'scripts/build-identity.mjs', 'package.json', 'package-lock.json', '.github/workflows/server.yml']
+  pull_request:
+    paths: ['server/**', 'src/**', 'scripts/build-identity.mjs', 'package.json', 'package-lock.json', '.github/workflows/server.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: boardplot-server-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  server:
+    name: Server typecheck and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      - name: Install root dependencies (the server bundles the engine from src/)
+        run: npm ci
+
+      - name: Install server dependencies
+        working-directory: server
+        run: npm ci
+
+      - name: Server typecheck
+        working-directory: server
+        run: npm run typecheck
+
+      - name: Server tests (build first)
+        working-directory: server
+        run: npm test

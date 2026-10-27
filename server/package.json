@@ -1,0 +1,23 @@
+{
+  "name": "boardplot-server",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Hosted Boardplot MCP server prototype: Streamable HTTP, stateless, with an MCP Apps chart view. Never published.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "node dist/index.mjs",
+    "typecheck": "node ../node_modules/typescript-7/bin/tsc -p tsconfig.json",
+    "test": "node build.mjs && node ../node_modules/vitest/vitest.mjs run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/client": "2.4.0",
+    "@modelcontextprotocol/core": "2.4.0",
+    "@modelcontextprotocol/ext-apps": "2.0.3",
+    "@modelcontextprotocol/node": "2.1.2",
+    "@modelcontextprotocol/server": "2.4.0",
+    "@resvg/resvg-js": "2.6.2",
+    "zod": "4.6.7"
+  }
+}

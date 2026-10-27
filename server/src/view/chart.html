@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Boardplot chart</title>
+<style>/*CSS*/</style>
+</head>
+<body>
+<div id="bp-root">
+  <div id="bp-bar" role="toolbar" aria-label="Chart actions">
+    <button id="bp-add" type="button" hidden>Add to slides</button>
+    <button id="bp-png" type="button" hidden>Download PNG</button>
+    <button id="bp-svg" type="button" hidden>Download SVG</button>
+    <button id="bp-copy" type="button" hidden>Copy image</button>
+    <button id="bp-theme" type="button" hidden>Light / dark</button>
+    <button id="bp-full" type="button" hidden aria-label="Full screen">⤢</button>
+    <button id="bp-exit" type="button" hidden>Close</button>
+  </div>
+  <div id="bp-chart" tabindex="0" aria-label="Chart. Use the arrow keys to read each value."></div>
+  <div id="bp-tip" role="status" hidden></div>
+  <div id="bp-note" hidden><span id="bp-note-text"></span> <button id="bp-note-full" type="button" hidden>Open full screen</button></div>
+  <div id="bp-status" role="status" hidden></div>
+  <div id="bp-save" hidden>
+    <figure><img id="bp-save-png" alt="Chart as PNG"><figcaption id="bp-save-png-label">PNG</figcaption></figure>
+    <figure><img id="bp-save-svg" alt="Chart as SVG"><figcaption>SVG</figcaption></figure>
+  </div>
+</div>
+<script>/*JS*/</script>
+</body>
+</html>
