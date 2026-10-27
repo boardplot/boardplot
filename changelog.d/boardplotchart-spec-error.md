@@ -1,0 +1,3 @@
+### Added
+
+- React: `onSpecError(errors)` on `BoardplotChart`. It is called after commit with the findings `SpecErrorCard` shows, for an invalid spec or setting and for a chunk that did not load (`chunk-load-failed`), so a host no longer looks for the card in the page. It is called once per distinct set of findings: a rerender with the same findings, a host that sets state from the call, and StrictMode's repeated effects call it no second time. It is called once with `[]` when a later valid spec replaces the error card (its chart engine is ready, or its data is empty), without waiting for the chart to draw, because a valid spec can still wait for its container or refuse its size. Empty data stays on `onEmpty`, and a layout refusal on `onRefused`.
