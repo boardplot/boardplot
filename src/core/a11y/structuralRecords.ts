@@ -253,10 +253,14 @@ function ganttItemRecord(ctx: RecordContext, rowId: string, rowLabel: string, it
 
 function ganttRecords(ctx: RecordContext): InteractionRecord[] {
   const data = ctx.request.data as GanttData;
-  return data.rows.flatMap(row => row.kind === 'cadence'
-    ? row.events.map(event => makeRecord(ctx, { categoryId: row.id, segmentId: event.id },
-      textValue(event.date, 'date'), { label: row.label }))
-    : row.items.map(item => ganttItemRecord(ctx, row.id, row.label, item)));
+  return data.rows.flatMap(row => {
+    // The record names the row as drawn: its name and, collapsed as the chart prints it, its sublabel.
+    const sublabel = row.sublabel?.trim().split(/\s+/).join(' ');
+    const name = sublabel ? `${row.label}, ${sublabel}` : row.label;
+    return row.kind === 'cadence'
+      ? row.events.map(event => makeRecord(ctx, { categoryId: row.id, segmentId: event.id }, textValue(event.date, 'date'), { label: name }))
+      : row.items.map(item => ganttItemRecord(ctx, row.id, name, item));
+  });
 }
 
 /**

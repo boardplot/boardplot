@@ -21,7 +21,7 @@ import type { GanttCell } from '../../types/data';
 import type { LintWarning, Paint } from '../../types/scene';
 import { GANTT_ROW_PITCH, MAX_COLS } from './domain';
 import { barSurfaces, cadenceRowPaint, milestonePaints } from './marks';
-import { laneTop, NO_LANE, RULE_LABEL_GAP, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv, type GanttPaints, type MetadataColumns, type NormItem, type NormRow, type RowLabel } from './model';
+import { laneTop, NO_LANE, ROW_TEXT_PITCH, RULE_LABEL_GAP, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv, type GanttPaints, type MetadataColumns, type NormItem, type NormRow, type RowLabel } from './model';
 import { maxOf, minOf } from '../../arrays';
 
 /** The palest tint a wash swatch in the key takes, so a 12 px swatch reads as filled. */
@@ -75,8 +75,10 @@ function stackedLineWidth(env: GanttEnv, domain: GanttDomain, plotW: number): nu
   const { options, fonts, measure } = env;
   const rows = domain.rows.filter((row) => !row.shared);
   const fontOf = (r: NormRow): FontSpec => (r.indent === 0 ? fonts.strong : fonts.label);
-  const nameW = (r: NormRow) => Math.min(r.indent, 6) * INDENT_PX + measure(r.label.trim().split(/\s+/).join(' '), fontOf(r)).width;
   const gap = stackedGap(env);
+  // The sublabel follows the name on its name line, after the name gap.
+  const nameW = (r: NormRow) => Math.min(r.indent, 6) * INDENT_PX + measure(r.label.trim().split(/\s+/).join(' '), fontOf(r)).width
+    + (r.sublabel ? gap.name + measure(r.sublabel, fonts.label).width : 0);
   const lineW = Math.max(0, maxOf(rows.map((row) => {
     const cells = stackedCells(env, row);
     return nameW(row) + (cells.length ? gap.name + cells.reduce((sum, cell) => sum + cell.w, 0) + (cells.length - 1) * gap.cell : 0);
@@ -314,7 +316,9 @@ export function ganttFrame(
   // A milestone cluster can only make a lane taller.
   const lanePitch = stacked ? (domain.milestones.clusterRowH > GANTT_ROW_PITCH ? domain.milestones.clusterRowH : STACKED_LANE_PITCH) : domain.milestones.clusterRowH;
   // A row with stacked milestone flags takes the height its flags need; the others keep the common pitch.
-  const pitches = domain.rows.map((row) => Math.max(lanePitch, domain.milestones.flagPitch.get(row.id) ?? 0));
+  // A wrapped name with a sublabel can need more than the common pitch: that row grows.
+  const textPitch = stacked ? undefined : (env.options as { [ROW_TEXT_PITCH]?: ReadonlyMap<string, number> })[ROW_TEXT_PITCH];
+  const pitches = domain.rows.map((row) => Math.max(lanePitch, domain.milestones.flagPitch.get(row.id) ?? 0, textPitch?.get(row.id) ?? 0));
   const extra = pitches.reduce((sum, pitch) => sum + pitch - lanePitch, 0);
   // A short canvas squeezes every row by the same factor.
   const squeeze = Math.min(1, Math.max(6 * n, bodyH - named * nameLineH) / (n * lanePitch + extra));
@@ -329,8 +333,8 @@ export function ganttFrame(
   return { frame, claims, band };
 }
 
-/** The narrowest complete two-line name; a word is never split or cut. */
-function completeRowName(row: NormRow, font: FontSpec, measure: TextMeasurer): RowLabel {
+/** The narrowest complete two-line name; a word is never split or cut. The sublabel is one line in the label font. */
+function completeRowName(row: NormRow, font: FontSpec, measure: TextMeasurer, subFont: FontSpec): RowLabel {
   const words = row.label.trim().split(/\s+/).filter(Boolean);
   let lines = [words.join(' ')];
   let width = measure(lines[0]!, font).width;
@@ -340,7 +344,8 @@ function completeRowName(row: NormRow, font: FontSpec, measure: TextMeasurer): R
     if (needed < width) { width = needed; lines = pair; }
   }
   return { lines, w: width, h: (lines.length - 1) * font.size * (font.lineHeight ?? 1.2) + font.size,
-    indentPx: Math.min(row.indent, 6) * INDENT_PX, font, baseFont: font };
+    indentPx: Math.min(row.indent, 6) * INDENT_PX, font, baseFont: font,
+    ...(row.sublabel ? { sub: { text: row.sublabel, w: measure(row.sublabel, subFont).width, h: subFont.size } } : {}) };
 }
 
 function planMetadataColumns(
@@ -445,13 +450,16 @@ export function ganttBody(
   const laneLabelW = milestones.laneLabelW;
   const measuredColumns = planColumns(0).colWs;
   const rowFontOf = (r: NormRow): FontSpec => (r.indent === 0 ? fonts.strong : fonts.label);
-  const completeNames = rows.map(row => completeRowName(row, rowFontOf(row), measure));
-  const minimumLabelBandW = Math.max(0, maxOf(completeNames.filter((_, i) => !rows[i]!.shared).map(name => name.indentPx + name.w)));
+  const completeNames = rows.map(row => completeRowName(row, rowFontOf(row), measure, fonts.label));
+  // The name band holds the wider of the name and its sublabel, which is never wrapped or cut.
+  const bandW = (name: RowLabel) => name.indentPx + Math.max(name.w, name.sub?.w ?? 0);
+  const minimumLabelBandW = Math.max(0, maxOf(completeNames.filter((_, i) => !rows[i]!.shared).map(bandW)));
   const minimumTimeline = 80;
   const laneReserve = laneLabelW && env.options.mode !== 'compact' ? 12 + laneLabelW : 0;
   const availableNames = plot0.w - 12 - measuredColumns.reduce((sum, width) => sum + width, 0)
     - (measuredColumns.length ? 4 : 0) - minimumTimeline - laneReserve;
-  const naturalNames = Math.max(0, maxOf(rows.filter(row => !row.shared).map(row => Math.min(row.indent, 6) * INDENT_PX + measure(row.label, rowFontOf(row)).width)));
+  const naturalNames = Math.max(0, maxOf(rows.filter(row => !row.shared).map(row => Math.min(row.indent, 6) * INDENT_PX
+    + Math.max(measure(row.label, rowFontOf(row)).width, row.sublabel ? measure(row.sublabel, fonts.label).width : 0))));
   const nameBudget = Math.max(minimumLabelBandW, Math.min(naturalNames, plot0.w * 0.3, availableNames));
   const rowLabels = band.stacked ? completeNames.map((name, i) => {
     const text = rows[i]!.label.trim().split(/\s+/).join(' ');
@@ -461,7 +469,7 @@ export function ganttBody(
     const width = measure(text, name.font).width;
     return width + name.indentPx <= nameBudget ? { ...name, lines: [text], w: width, h: name.font.size } : name;
   });
-  const labelBandW = Math.max(0, maxOf(rowLabels.filter((_, i) => !rows[i]!.shared).map(name => name.indentPx + name.w)));
+  const labelBandW = Math.max(0, maxOf(rowLabels.filter((_, i) => !rows[i]!.shared).map(bandW)));
   // Stacked: names and cells sit on the rows' name lines, and the timeline takes the full plot width.
   const columns = band.stacked ? stackedColumns(env, rows, band, plot0.x + plot0.w) : planColumns(plot0.x + labelBandW + 12);
   const colCount = columns.colWs.length;

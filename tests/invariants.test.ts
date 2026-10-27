@@ -10,6 +10,7 @@ import { getFixtures } from '../src/fixtures';
 import { fixtureTags } from '../src/fixtures/registry';
 import { rectContains, rectHitsConvexPolygon, rectsOverlap, segmentHitsRect } from '../src/core/geometry';
 import type { OccupiedClaim } from '../src/core/label/occupied';
+import { CROSSABLE_RULE_PART } from '../src/core/label/solver';
 import { isColumnPart, isOwnMark } from '../src/core/label/solver';
 import { aspectDocLints } from '../src/core/lint/aspect';
 import { lineIntegrityDocLints } from '../src/core/lint/lineIntegrity';
@@ -201,6 +202,10 @@ function assertGeometry(type: string, geometry: Geometry, theme: Theme, fixtureI
   const occupied: OccupiedClaim[] = geometry.debug.occupied.filter(
     (entry) => entry.kind === 'mark' || entry.kind === 'annotation',
   );
+  // The drawn pieces of gantt event and today rules, as vertical segments [x, y1, y2].
+  const rulePieces = geometry.scene.flatMap((node) => node.part !== 'eventRule' && node.part !== 'todayLine' ? []
+    : node.t === 'line' ? [[node.x1, node.y1, node.y2] as const]
+    : node.t === 'path' ? [...node.d.matchAll(/M(-?[\d.]+) (-?[\d.]+)L-?[\d.]+ (-?[\d.]+)/g)].map((m) => [+m[1]!, +m[2]!, +m[3]!] as const) : []);
   for (const label of visible) {
     const overlap = occupied.find(item => {
       // Map-region bounding boxes overlap oceans and neighbouring countries.
@@ -217,6 +222,12 @@ function assertGeometry(type: string, geometry: Geometry, theme: Theme, fixtureI
         legacyOwnMark(label, item)
       ) return false;
       if (item.kind === 'annotation' && label.owner.annotationId === item.owner.annotationId) return false;
+      // A gantt span or rule name may sit across an event or today rule (the crossableRule claim part):
+      // the rule breaks around it. Only that part is exempt, and only while no drawn rule piece crosses the label.
+      if (item.part === CROSSABLE_RULE_PART && label.kind === 'item') {
+        const { x, y, w, h } = label.rect;
+        return rulePieces.some(([px, y1, y2]) => px >= x && px <= x + w && Math.max(y1, y2) > y && Math.min(y1, y2) < y + h);
+      }
       // A value that keeps its seat across a reference line does so on a halo (SlotCandidate.overRules),
       // and so does a scatter name across a trend or Pareto line (the solver's trendLine rule).
       if ((item.part === 'referenceLine' || item.part === 'trendLine') && label.halo === true) return false;

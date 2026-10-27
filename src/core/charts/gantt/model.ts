@@ -38,6 +38,8 @@ export interface NormItem {
 export interface NormRow {
   id: Id;
   label: string;
+  /** The muted second line under the name, whitespace collapsed; absent when empty. */
+  sublabel?: string;
   kind: 'task' | 'cadence';
   indent: number;
   cols: { text: string; tone?: GanttCell['tone'] }[];
@@ -163,6 +165,8 @@ export interface RowLabel {
   lines: string[];
   w: number;
   h: number;
+  /** The sublabel's one line and its width; the name band takes the wider of name and sublabel. */
+  sub?: { text: string; w: number; h: number };
   indentPx: number;
   font: FontSpec;
   baseFont: FontSpec;
@@ -235,3 +239,5 @@ export function laneTop(band: GanttBand, rows: readonly NormRow[], index: number
 
 /** Internal option: lay the chart out without the milestone lane (layout.ts gives an unused lane back to the timeline). */
 export const NO_LANE = Symbol('ganttNoLane');
+/** Internal option: per row id, the pitch its drawn name and sublabel need in the table form, once a pass has measured them. */
+export const ROW_TEXT_PITCH = Symbol('ganttRowTextPitch');

@@ -667,6 +667,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | right-edge-milestone-row | gantt | torture | Regression: last row with only a right-edge milestone keeps its activity label centered |
 | workstream-status-plan | gantt | example | Workstream status plan (weekly view, owners, due dates, and semantic status) |
 | metadata-column-headers | gantt | example | Three delivery rows with owner and due-date headers |
+| status-timeline | gantt | example | Status timeline (row sublabels, status-coloured spans, change events) |
 | torture-long-labels | gantt | torture | Torture: long names at a generous size read whole, never cut |
 | item-labels-off | gantt | torture | Rows and status remain when item labels are off |
 | five-nearby-milestones | gantt | torture | Five nearby milestones retain their names |

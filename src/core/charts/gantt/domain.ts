@@ -140,9 +140,11 @@ function normalizeRows(data: GanttData, warnings: LintWarning[]): { rows: NormRo
             colorRole: raw.colorRole,
           }
         : undefined;
+    const sublabel = raw.sublabel?.trim().split(/\s+/).join(' ');
     return {
       id: raw.id,
       label: raw.label ?? raw.id,
+      ...(sublabel ? { sublabel } : {}),
       kind: raw.kind ?? 'task',
       indent: Math.max(0, raw.indent ?? 0),
       cols,

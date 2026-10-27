@@ -311,6 +311,8 @@ export interface GanttCell {
 export interface GanttTaskRow {
   id: Id;
   label: string;
+  /** Second, muted line under the row name, such as what the row measures. */
+  sublabel?: string;
   kind?: 'task';
   indent?: number;
   cols?: (string | GanttCell)[];
@@ -319,6 +321,8 @@ export interface GanttTaskRow {
 export interface GanttCadenceRow {
   id: Id;
   label: string;
+  /** Second, muted line under the row name. */
+  sublabel?: string;
   kind: 'cadence';
   indent?: number;
   cols?: (string | GanttCell)[];
