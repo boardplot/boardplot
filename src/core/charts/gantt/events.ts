@@ -11,10 +11,10 @@ import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { CROSSABLE_RULE_PART, PRIORITY, type LabelRequest, type SlotCandidate } from '../../label/solver';
 import type { Rect } from '../../geometry';
 import type { OwnerRef } from '../../types/cell';
-import type { PlacedAnnotation, SceneNode } from '../../types/scene';
+import type { Paint, PlacedAnnotation, SceneNode } from '../../types/scene';
 import { dayNum } from './calendar';
 import { fmtDay } from './marks';
-import { laneTop, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv } from './model';
+import { BADGE_LEVELS, laneTop, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv } from './model';
 import { composedTextRole } from '../../textRole';
 import { authoredFootnoteCount } from '../../frame';
 import { pushAll } from '../../arrays';
@@ -70,18 +70,70 @@ function claimRule(claims: OccupiedIndex, band: GanttBand, domain: GanttDomain, 
   domain.rows.forEach((_, i) => claims.claim({ x: x - halfWidth, y: laneTop(band, domain.rows, i), w: 2 * halfWidth, h: band.rowHs[i]! }, 'annotation', owner, CROSSABLE_RULE_PART));
 }
 
-/** Labelled event rules: a dashed vertical per event, then its numbered badge or its label. */
+/** The common radius of the filled event badges: room for the widest badge label, at least 9 px. */
+export function badgeRadius(env: GanttEnv, domain: GanttDomain): number {
+  return Math.max(9, ...domain.events.filter((event) => event.badge).map((event) => env.measure(event.label, env.fonts.strong).width / 2 + 4));
+}
+
+/** A badge's circle fill; its label ink is decided against it in each theme. */
+export function badgeFill(event: GanttDomain['events'][number]): Paint {
+  return { token: event.tone === 'bad' ? 'bad' : 'ink' };
+}
+
+/**
+ * The marker band right over the calendar head: ordinary event labels or
+ * numbered rings, else the today label; 0 without either. Badges stack in
+ * their own strip above it, so a badge never takes a seat a marker draws in without badges.
+ */
+export function markerBand(domain: GanttDomain, markerLabelH: number): number {
+  if (domain.events.some((event) => !event.badge)) return domain.eventBadgeMode ? markerLabelH + 8 : 2 * markerLabelH + 8;
+  return domain.todayDay !== null ? markerLabelH + 6 : 0;
+}
+
+/** Badge levels by event id: a badge closer than 2r + 4 px to one already on a level moves up one level. None without annotation labels. */
+export function badgeLevels(env: GanttEnv, domain: GanttDomain, x: (day: number) => number): Map<string, number> {
+  const levels = new Map<string, number>();
+  if (!env.labelOn('annotation')) return levels;
+  const pitch = 2 * badgeRadius(env, domain) + 4;
+  const xs: number[][] = [];
+  for (const event of domain.events.filter((e) => e.badge).sort((a, b) => a.ruleDay - b.ruleDay)) {
+    const ex = x(event.ruleDay);
+    let level = 0;
+    while (xs[level]?.some((other) => Math.abs(other - ex) < pitch)) level++;
+    (xs[level] ??= []).push(ex);
+    levels.set(event.id, level);
+  }
+  return levels;
+}
+
+/** The strip the badges need over the marker band, in px; 0 without badges or without annotation labels (no badge is drawn). */
+export function badgeStrip(env: GanttEnv, domain: GanttDomain): number {
+  if (!env.labelOn('annotation') || !domain.events.some((event) => event.badge)) return 0;
+  const r = badgeRadius(env, domain);
+  const levels = (env.options as { [BADGE_LEVELS]?: number })[BADGE_LEVELS] ?? 1;
+  return 2 * r + 8 + (levels - 1) * (2 * r + 4);
+}
+
+/** Labelled event rules: a dashed vertical per event, then its badge, its numbered ring or its label. */
 function eventRules(env: GanttEnv, domain: GanttDomain, band: GanttBand, body: GanttBody, layer: GanttAnnotationLayer, headNames: readonly Rect[]): void {
   const { headerTop, rowsBottom, markerLabelH } = band;
   const { labelOn, measure } = env;
   const { tick } = env.fonts;
   const { nodes, claims, requests } = layer;
   // Badge n is footnote n: the author's notes take the first numbers.
-  const badgeNo = (i: number): number => i + 1 + authoredFootnoteCount(env.options);
-  domain.events.forEach((event, i) => {
+  const keyed = domain.events.filter((event) => !event.badge);
+  const badgeNo = (event: GanttDomain['events'][number]): number => keyed.indexOf(event) + 1 + authoredFootnoteCount(env.options);
+  const r = badgeRadius(env, domain);
+  const levels = badgeLevels(env, domain, body.x);
+  // Badges paint over every rule: a stacked badge's rule passes behind a lower badge.
+  const badges: SceneNode[] = [];
+  domain.events.forEach((event) => {
     const ex = body.x(event.ruleDay);
     const owner: OwnerRef = { annotationId: event.id };
-    const rule = ruleNodes(`ann:event:${event.id}:line`, ex, headerTop, rowsBottom, headNames, {
+    // A badge sits over the head; its rule starts 2 px under the circle.
+    const badgeCy = headerTop - markerBand(domain, markerLabelH) - 2 - r - (levels.get(event.id) ?? 0) * (2 * r + 4);
+    const drawsBadge = event.badge && labelOn('annotation');
+    const rule = ruleNodes(`ann:event:${event.id}:line`, ex, drawsBadge ? badgeCy + r + 2 : headerTop, rowsBottom, headNames, {
       stroke: { token: event.tone === 'bad' ? 'bad' : 'leader' },
       width: strokeToken(env.theme, 'rule'),
       dash: dashToken(env.theme, 'reference'),
@@ -93,7 +145,34 @@ function eventRules(env: GanttEnv, domain: GanttDomain, band: GanttBand, body: G
     claimRule(claims, band, domain, ex, 1.5, owner);
 
     const labelId = `event:${event.id}`;
-    if (domain.eventBadgeMode) {
+    // Without annotation labels a badge would be an empty circle: the rule alone stays.
+    if (event.badge) {
+      if (drawsBadge) {
+        const badgeId = `ann:event:${event.id}:badge`;
+        badges.push({
+          t: 'circle', id: badgeId, cx: ex, cy: badgeCy, r,
+          fill: badgeFill(event),
+          owner,
+          part: 'eventBadge',
+        });
+        nodeIds.push(badgeId);
+        claims.claim({ x: ex - r - 1, y: badgeCy - r - 1, w: 2 * (r + 1), h: 2 * (r + 1) }, 'annotation', owner);
+        // A stacked badge's rule runs down past the lower level to the head; only a badge label may sit on it.
+        if (badgeCy + r + 2 < headerTop) claims.claim({ x: ex - 1.5, y: badgeCy + r + 2, w: 3, h: headerTop - badgeCy - r - 2 }, 'annotation', owner, CROSSABLE_RULE_PART);
+        const { strong } = env.fonts;
+        const tsize = measure(event.label, strong);
+        requests.push({
+          id: labelId,
+          kind: 'annotation', typeRole: 'label', role: 'note',
+          owner,
+          text: event.label,
+          lines: [event.label],
+          font: strong,
+          priority: event.priority ?? PRIORITY.valueLine,
+          candidates: [{ slot: 'badge', rect: { x: ex - tsize.width / 2, y: badgeCy - tsize.height / 2, w: tsize.width, h: tsize.height }, penalty: 0, overRules: true }],
+        });
+      }
+    } else if (domain.eventBadgeMode) {
       const r = 7;
       const badgeCy = headerTop - markerLabelH / 2 - 2;
       const badgeId = `ann:event:${event.id}:badge`;
@@ -111,7 +190,7 @@ function eventRules(env: GanttEnv, domain: GanttDomain, band: GanttBand, body: G
       nodeIds.push(badgeId);
       claims.claim({ x: ex - r - 1, y: badgeCy - r - 1, w: 2 * (r + 1), h: 2 * (r + 1) }, 'annotation', owner);
       if (labelOn('annotation')) {
-        const text = String(badgeNo(i));
+        const text = String(badgeNo(event));
         const tsize = measure(text, tick);
         requests.push({
           id: labelId,
@@ -128,7 +207,7 @@ function eventRules(env: GanttEnv, domain: GanttDomain, band: GanttBand, body: G
       }
     } else if (labelOn('annotation')) {
       const tsize = measure(event.label, tick);
-      const top = headerTop - band.markerStrip + 2;
+      const top = headerTop - markerBand(domain, markerLabelH) + 2;
       const labelRowH = markerLabelH + 2;
       const candidates: SlotCandidate[] = [];
       for (const row of [0, 1]) {
@@ -154,11 +233,12 @@ function eventRules(env: GanttEnv, domain: GanttDomain, band: GanttBand, body: G
       // The record says what the badge says: both count on from the
       // author's own notes, which the frame numbers first. A
       // record that kept its own count read as an authored override.
-      computedText: domain.eventBadgeMode ? `${badgeNo(i)} — ${event.label}` : event.label,
+      computedText: domain.eventBadgeMode && !event.badge ? `${badgeNo(event)} — ${event.label}` : event.label,
       nodeIds,
       labelId: labelOn('annotation') ? labelId : undefined,
     });
   });
+  pushAll(nodes, badges);
 }
 
 /** Phase 4: event rules, then the today line (dashed ink vertical, label on top), with claims and label requests. */

@@ -513,6 +513,16 @@ export const sizeSchema = z.union([
  * here: exactly one of `at` and `date`, ISO dates, a period that ends after
  * it starts, and the enumerations spelled out.
  */
+/** Column and combo: a badge is gantt's event placement, and the lane would ignore it. */
+export function refuseBadgeEvents(options: { annotations?: readonly unknown[] }, ctx: z.RefinementCtx): void {
+  (options.annotations ?? []).forEach((annotation, index) => {
+    const event = annotation as { kind?: unknown; labelPlacement?: unknown };
+    if (event.kind === 'event' && event.labelPlacement === 'badge') {
+      ctx.addIssue({ code: 'custom', path: ['annotations', index, 'labelPlacement'], message: 'badge is a gantt event placement', params: { refused: true } });
+    }
+  });
+}
+
 function addEventIssues(event: Record<string, unknown>, ctx: z.RefinementCtx, timeX = false): void {
   const has = (key: string) => Object.hasOwn(event, key) && event[key] !== undefined;
   const issue = (path: string, message: string) => ctx.addIssue({ code: 'custom', path: [path], message });

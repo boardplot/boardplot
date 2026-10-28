@@ -145,8 +145,12 @@ export type Annotation<X extends string | number = Id> =
       tone?: EventTone;
       /** 'key' sends this event to the numbered key; 'auto' (default) lets the lane decide. */
       placement?: 'auto' | 'key';
-      /** Line charts: 'inline' sets the block beside the rule inside the plot. */
-      labelPlacement?: 'top' | 'inline';
+      /**
+       * Line charts: 'inline' sets the block beside the rule inside the plot.
+       * Gantt: 'badge' draws the label, at most 3 characters, in a filled
+       * circle at the top of the rule, with no footnote key.
+       */
+      labelPlacement?: 'top' | 'inline' | 'badge';
     });
 
 /**

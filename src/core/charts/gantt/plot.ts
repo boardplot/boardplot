@@ -21,6 +21,7 @@ import type { GanttCell } from '../../types/data';
 import type { LintWarning, Paint } from '../../types/scene';
 import { GANTT_ROW_PITCH, MAX_COLS } from './domain';
 import { barSurfaces, cadenceRowPaint, milestonePaints } from './marks';
+import { badgeStrip, markerBand } from './events';
 import { laneTop, NO_LANE, ROW_TEXT_PITCH, RULE_LABEL_GAP, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv, type GanttPaints, type MetadataColumns, type NormItem, type NormRow, type RowLabel } from './model';
 import { maxOf, minOf } from '../../arrays';
 
@@ -291,14 +292,7 @@ export function ganttFrame(
   const headerRowH = measure('Q1 2026', fonts.headerMajor).height + 6;
   const headerH = 2 * headerRowH;
   const markerLabelH = Math.max(measure(chartString(env.options, 'today'), fonts.strong).height, measure(chartString(env.options, 'eventName'), fonts.tick).height);
-  const markerStrip =
-    domain.events.length > 0
-      ? domain.eventBadgeMode
-        ? markerLabelH + 8
-        : 2 * markerLabelH + 8
-      : domain.todayDay !== null
-        ? markerLabelH + 6
-        : 0;
+  const markerStrip = markerBand(domain, markerLabelH) + badgeStrip(env, domain);
   const headerTop = plot0.y + markerStrip;
   const lineW = stackedLineWidth(env, domain, plot0.w);
   // A fixed height keeps the table form when the stacked rows, at their floor, would not fit it.

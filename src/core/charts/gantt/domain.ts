@@ -271,6 +271,7 @@ function resolveGanttEvents(
       label: annotation.label,
       tone: annotation.tone,
       priority: annotation.priority,
+      badge: annotation.labelPlacement === 'badge',
       annotation,
     });
   });
@@ -428,9 +429,9 @@ export function resolveGanttDomain(data: GanttData, env: GanttEnv, warnings: Lin
     majorStarts: boundariesOf(calendar.tier.major, calendar.d0Day, calendar.d1Day),
     minorStarts: boundariesOf(calendar.tier.minor, calendar.d0Day, calendar.d1Day),
     events,
-    eventBadgeMode: events.length > 3,
-    // Above three events the labels move to numbered footnotes.
-    eventFootnotes: events.length > 3 ? events.map((event) => event.label) : [],
+    // Above three events the labels move to numbered footnotes. Badge events print their own label and never count.
+    eventBadgeMode: events.filter((event) => !event.badge).length > 3,
+    eventFootnotes: events.filter((event) => !event.badge).length > 3 ? events.filter((event) => !event.badge).map((event) => event.label) : [],
     itemLabelNotes: env.labelOn('item') ? rows.flatMap(row => row.items.flatMap(item =>
       ganttItemLabel(item, env).missing.map(part => `${item.id} (${row.label}): requested ${part} label is empty.`))) : [],
     milestones: planMilestones(rows, env, calendar.d0Day, calendar.d1Day),

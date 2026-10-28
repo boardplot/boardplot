@@ -20,6 +20,7 @@ import {
   partialCategorySchema,
   refusedBaseOptions,
   refuseUnstackedShares,
+  refuseBadgeEvents,
   categoryDateSchema,
   valueKindSchema,
   scenarioField,
@@ -201,5 +202,5 @@ export const columnOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptio
   events: eventOptionsSchema.optional(),
   window: bandWindowOptionsSchema.optional(),
   viewDomain: z.object({ x: z.tuple([idSchema, idSchema]).describe('Inclusive category ids bounding the visible x axis.') }).optional().describe('Zoom the visible categories. Means, the average marker and anomaly rules keep every source period. A mean\'s Ø label names the periods it covers where the plot draws fewer, \'Ø 40.4 (Jan 25–Dec 26)\'. Refused with a category sort or topN, which break the period order.'),
-}).superRefine(refuseUnstackedShares) as unknown as z.ZodType<ColumnOptions>;
+}).superRefine(refuseUnstackedShares).superRefine(refuseBadgeEvents) as unknown as z.ZodType<ColumnOptions>;
 

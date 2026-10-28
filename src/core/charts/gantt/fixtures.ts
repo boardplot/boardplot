@@ -627,9 +627,9 @@ export const fixtures: Fixture<GanttData, GanttOptions>[] = [
       size: { width: 1000 },
     },
     annotations: [
-      { id: 'change-1', kind: 'event', at: 'tag-broken', label: '1' },
-      { id: 'change-2', kind: 'event', at: 'purchase-broken', label: '2' },
-      { id: 'change-3', kind: 'event', at: 'checkout-broken', label: '3' },
+      { id: 'change-1', kind: 'event', at: 'tag-broken', label: '1', labelPlacement: 'badge' },
+      { id: 'change-2', kind: 'event', at: 'purchase-broken', label: '2', labelPlacement: 'badge' },
+      { id: 'change-3', kind: 'event', at: 'checkout-broken', label: '3', labelPlacement: 'badge' },
     ],
   },
 ];

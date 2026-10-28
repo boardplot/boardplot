@@ -98,7 +98,7 @@ An annotation anchor is a category or item id string, or an object with category
 
 | Kind | Purpose | Required | Anchors | Optional fields | Notes |
 |---|---|---|---|---|---|
-| event | Places a dated event in the lane above the plot as a block with a pole to the data, or, when it does not fit, as a numbered marker with an entry in the event key below the plot; periods draw a thin bar. | at, label | at: AnchorRef | tone: neutral \| bad \| good, default the group tone, else neutral. Column, combo and line paint the glyph, the marker ring and the period bar in it; gantt paints a bad rule. | An ISO date or a schedule item id positions the rule. Above three events the labels move to numbered footnotes. |
+| event | Places a dated event in the lane above the plot as a block with a pole to the data, or, when it does not fit, as a numbered marker with an entry in the event key below the plot; periods draw a thin bar. | at, label | at: AnchorRef | tone: neutral \| bad \| good, default the group tone, else neutral. Column, combo and line paint the glyph, the marker ring and the period bar in it; gantt paints a bad rule. labelPlacement: top \| inline \| badge, default top. inline (line) sets the block beside its rule inside the plot. badge (gantt) draws the label, at most 3 characters, in a filled circle at the top of its rule; badge events never go to the numbered key. | An ISO date or a schedule item id positions the rule. Above three events the labels move to numbered footnotes. |
 
 ## Sizing
 
