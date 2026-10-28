@@ -75,6 +75,13 @@ export interface GanttOptions extends Omit<BaseOptionsFor<'gantt'>, 'labels'> {
   rowTint?: boolean;
   /** Headers for the existing cols positions, up to three. Extra headers without a column are ignored. */
   colHeaders?: string[];
+  /** Calendar head and span. */
+  calendar?: {
+    /** 'isoWeek' (default): week cells read "W11". 'startDay': the day of the month each week cell starts on. Week granularity only. */
+    weeks?: 'isoWeek' | 'startDay';
+    /** 'periods' (default): whole calendar periods. 'data': from the first item to the later of the last item end and today. */
+    span?: 'periods' | 'data';
+  };
 }
 
 /** Minor calendar unit of the header (major is derived from it). */
@@ -240,7 +247,7 @@ function assembleGanttGeometry(input: {
       {
         axis: 'x',
         ticks: domain.minorStarts.map((s) => ({
-          at: formatDate(s, 'yyyy-MM-dd'),
+          at: formatDate(dateFromDay(Math.max(dayNum(s), d0Day)), 'yyyy-MM-dd'),
           pos: body.x(Math.max(dayNum(s), d0Day)),
         })),
       },

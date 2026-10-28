@@ -88,6 +88,9 @@ One form; its chart ID is `gantt`.
 | elapsed | boolean |  |  | Tint the visible time before today; defaults to true when the today marker is displayed. |
 | weekends | boolean |  |  | Shade Saturday and Sunday at week granularity; defaults to false. |
 | rowTint | boolean |  |  | Apply alternating faint row backgrounds; defaults to false. |
+| calendar | object |  |  | Calendar head and span. The defaults keep the ISO week head over whole periods. |
+| calendar.weeks | string | `'isoWeek'`, `'startDay'` |  | Week cell names. 'isoWeek' (default): ISO week numbers such as 'W11'. 'startDay': the day of the month each week cell starts on ('9'), flush left in its cell under the month tier, so the number reads as the day the week starts; a clipped first or last cell names the day it starts on. Week granularity only; elsewhere it is ignored with the info lint calendar-weeks-ignored. |
+| calendar.span | string | `'periods'`, `'data'` |  | Timeline span. 'periods' (default): whole calendar periods of the head's finer tier. 'data': from the first item or cadence day to the later of the last item end and options.today, so the arrows end at the edge. A milestone or cadence marker on the first or last day keeps room for its radius inside the edge. Event annotations and a today before the first item do not extend the span; they are left out with event-out-of-range or today-out-of-range. |
 | colHeaders | array |  |  | Positional headers for up to three existing metadata columns. Omitted or empty entries have no header; entries without a displayed column are ignored. |
 
 Plus the [shared options](options.md). This type does not accept `detailFields`, `categoryLabels`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `topN`, `hatchStrength`, `colorblindSafe`, `rounding`.

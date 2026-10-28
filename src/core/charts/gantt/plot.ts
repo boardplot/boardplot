@@ -481,7 +481,12 @@ export function ganttBody(
     });
   }
   const bodyW = Math.max(40, availableBodyW - (laneEnabled ? laneGap + laneLabelW : 0));
-  const x = (day: number): number => bodyX + ((day - d0Day) / (d1Day - d0Day)) * bodyW;
+  // An edge marker's room in days follows from the body width: r px at that edge.
+  const { start: rL, end: rR } = domain.edgeR;
+  const dayW = (bodyW - rL - rR) / (d1Day - d0Day);
+  const dayFrom = d0Day - rL / dayW;
+  const dayTo = d1Day + rR / dayW;
+  const x = rL || rR ? (day: number): number => bodyX + (day - dayFrom) * dayW : (day: number): number => bodyX + ((day - d0Day) / (d1Day - d0Day)) * bodyW;
   const ruleClaims = [
     ...domain.events.map((event) => ({ x: x(event.ruleDay), halfWidth: 4, gap: RULE_LABEL_GAP.eventRule })), // a slide seat keeps 7 px off an event rule
     ...(domain.todayDay === null ? [] : [{ x: x(domain.todayDay + 0.5), halfWidth: 1, gap: RULE_LABEL_GAP.todayLine }]),
@@ -516,6 +521,8 @@ export function ganttBody(
     laneEnabled,
     laneX: bodyX + bodyW + laneGap,
     x,
+    dayFrom,
+    dayTo,
     ruleClaims,
     clusteredLabelY,
   };
