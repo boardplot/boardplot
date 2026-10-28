@@ -183,12 +183,16 @@ function ganttCalendar(items: NormItem[], cadenceDays: number[], options: GanttO
   const todayParsed = options.today === undefined ? null : parseISODate(options.today);
   if (options.today !== undefined && !todayParsed) throw new NormalizeError('invalid-date', 'options.today', `invalid ISO date '${options.today}'`);
   // A data span ends where the data or today does, so an arrow tip meets the edge.
-  // A marker on the first or last day keeps one day of room, so its diamond stays inside the body.
+  // A marker on the first or last day keeps room for its largest radius
+  // (diamond 8 px, cadence 6 px): the body scale insets that edge in pixels.
   const dataSpan = options.calendar?.span === 'data';
   const todayEnd = todayParsed && dayNum(todayParsed) >= minDay ? dayNum(todayParsed) + 1 : -Infinity;
-  const markerDays = [...items.filter((it) => it.kind === 'milestone').map((it) => it.startDay), ...cadenceDays];
-  const dataStart = markerDays.includes(minDay) ? minDay - 1 : minDay;
-  const dataEnd = Math.max(markerDays.includes(maxDay - 1) ? maxDay + 1 : maxDay, todayEnd);
+  const dataStart = minDay;
+  const dataEnd = Math.max(maxDay, todayEnd);
+  const edgeRadius = (day: number): number => !dataSpan ? 0
+    : items.some((it) => it.kind === 'milestone' && it.startDay === day) ? 8
+    : cadenceDays.includes(day) ? 6 : 0;
+  const edgeR = { start: edgeRadius(dataStart), end: edgeRadius(dataEnd - 1) };
   // The head's scale follows the span it draws.
   const spanDays = dataSpan ? dataEnd - dataStart : maxDay - minDay;
   const granularity: GanttGranularity = spanDays > 548 ? 'quarters' : spanDays >= 90 ? 'months' : 'weeks';
@@ -234,7 +238,7 @@ function ganttCalendar(items: NormItem[], cadenceDays: number[], options: GanttO
       message: 'elapsed shading requires a visible options.today boundary — tint suppressed',
     });
   }
-  return { granularity, tier, d0Day, d1Day, todayDay };
+  return { granularity, tier, d0Day, d1Day, edgeR, todayDay };
 }
 
 /** Authored event markers: a date or a schedule item id, inside the chart span. */

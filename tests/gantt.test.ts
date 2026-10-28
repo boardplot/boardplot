@@ -324,4 +324,11 @@ it('gantt calendar span data runs from the first item to the later of the last e
   const edges = ['grid:edge:0', 'grid:edge:1'].map(id => geometry.scene.find(n => n.id === id)!).map(n => (n as { x1: number }).x1);
   const weekend = geometry.scene.find(n => n.part === 'weekend') as { rect: { x: number } };
   expect(weekend.rect.x).toBeCloseTo(edges[0]! + (3 / 15) * (edges[1]! - edges[0]!), 1);
+  // Edge milestones two years apart at 600 px: each diamond stays inside the body, not a day's few pixels.
+  const long = { rows: [{ id: 'a', label: 'A', items: [{ id: 'm1', kind: 'milestone' as const, start: '2026-01-15' }, { id: 'm2', kind: 'milestone' as const, start: '2028-01-15' }] }] };
+  const wide = layoutResolvedRequest(resolveChartRequest({ type: 'gantt', data: long, options: { size: { width: 600 }, calendar: { span: 'data' } } }));
+  if (wide.refused) throw new Error('gantt refused');
+  const xs = wide.scene.flatMap(n => n.t === 'path' && n.part === 'milestone' ? n.d.match(/-?[\d.]+/g)!.map(Number).filter((_, i) => i % 2 === 0) : []);
+  expect(Math.min(...xs)).toBeGreaterThanOrEqual(wide.plot.x);
+  expect(Math.max(...xs)).toBeLessThanOrEqual(wide.plot.x + wide.plot.w);
 });

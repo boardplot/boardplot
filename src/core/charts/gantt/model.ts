@@ -119,6 +119,8 @@ export interface GanttDomain {
   tier: Tier;
   d0Day: number;
   d1Day: number;
+  /** Pixels the body scale keeps beside the first and last day for a marker drawn there (a data span only). */
+  edgeR: { start: number; end: number };
   majorStarts: Date[];
   minorStarts: Date[];
   todayDay: number | null;
@@ -199,6 +201,9 @@ export interface GanttBody {
   laneEnabled: boolean;
   laneX: number;
   x: (day: number) => number;
+  /** The days at the body's left and right edges: the span, plus the room `edgeR` keeps, in days. */
+  dayFrom: number;
+  dayTo: number;
   /** Event and today rules a span label slides around; `gap` is the air the rule keeps beside a label it breaks for. */
   ruleClaims: { x: number; halfWidth: number; gap: number }[];
   clusteredLabelY: Map<Id, number>;

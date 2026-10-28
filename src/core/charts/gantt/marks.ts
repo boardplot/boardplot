@@ -149,7 +149,7 @@ function separatedFill(ctx: MarkCtx, authored: Paint, rowId: Id) {
 function backgroundLayers(ctx: MarkCtx, domain: GanttDomain): { elapsed: PlacedAnnotation[]; shades: Map<Id, { nodeId: Id; rect: Rect }> } {
   const { env, band, body, nodes } = ctx;
   const { options, surface } = env;
-  const { rows, todayDay, d0Day, d1Day } = domain;
+  const { rows, todayDay, d0Day } = domain;
   const { rowsTop, rowsBottom } = band;
   const { x, bodyX, bodyW } = body;
   const elapsed: PlacedAnnotation[] = [];
@@ -192,9 +192,9 @@ function backgroundLayers(ctx: MarkCtx, domain: GanttDomain): { elapsed: PlacedA
   // crossing it, which would hide the item.
   if (options.weekends && domain.granularity === 'weeks') {
     let wk = 0;
-    for (let saturday = dayNum(floorTo('week', dateFromDay(d0Day))) + 5; saturday < d1Day; saturday += 7) {
-      const day = Math.max(saturday, d0Day);
-      const to = Math.min(saturday + 2, d1Day);
+    for (let saturday = dayNum(floorTo('week', dateFromDay(d0Day))) + 5; saturday < body.dayTo; saturday += 7) {
+      const day = Math.max(saturday, body.dayFrom);
+      const to = Math.min(saturday + 2, body.dayTo);
       if (to <= day) continue;
       nodes.push({
         t: 'rect',
@@ -253,8 +253,8 @@ function headerRow(
   const { headerRowH } = ctx.band;
   const lang = ctx.env.lang;
   const cells = starts.map((s, i): Rect => {
-    const a = Math.max(dayNum(s), d0Day);
-    const b = Math.min(i + 1 < starts.length ? dayNum(starts[i + 1]!) : d1Day, d1Day);
+    const a = Math.max(dayNum(s), ctx.body.dayFrom);
+    const b = Math.min(i + 1 < starts.length ? dayNum(starts[i + 1]!) : ctx.body.dayTo, ctx.body.dayTo);
     return { x: x(a), y, w: x(b) - x(a), h: headerRowH };
   });
   // Header cell strings repeat across the vote and the emit loop; measure is
@@ -337,7 +337,7 @@ function calendarGrid(ctx: MarkCtx, domain: GanttDomain): void {
     nodes.push(gridLine(`grid:minor:${gseq++}`, d, [2, 3]));
   }
   // domain edges close the body frame
-  ([d0Day, d1Day] as const).forEach((d, i) => nodes.push(gridLine(`grid:edge:${i}`, d)));
+  ([body.dayFrom, body.dayTo] as const).forEach((d, i) => nodes.push(gridLine(`grid:edge:${i}`, d)));
 }
 
 /**
