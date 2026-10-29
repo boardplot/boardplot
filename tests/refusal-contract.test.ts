@@ -163,7 +163,8 @@ describe('refusal contract', () => {
       visit(optionSchema(type), []);
       for (const { path, node, shapes } of targets) {
         const options: Record<string, unknown> = {};
-        setAt(options, path, shapes ? true : 'not-a-listed-value');
+        // A number, not true: true was once a valid bartable cascade and now draws as its variant.
+        setAt(options, path, shapes ? 1 : 'not-a-listed-value');
         const message = cliErrors(type, options).find((error) => error.path === `/options/${path.join('/')}`)?.message.replace(`options.${path.join('.')}: `, '') ?? 'no error';
         const where = `${type} ${path.join('.')}: ${message}`;
         if (!shapes) {

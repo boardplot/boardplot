@@ -1,7 +1,7 @@
 /** The opening steps most chart layouts share: the theme at the chart's width, the palette, the break warning. */
 
 import { resolveSize } from '../normalize/shared';
-import { panelTypeClass, resolvePalette, resolveTheme, themeForWidth } from '../theme';
+import { paletteWarning, panelTypeClass, resolvePalette, resolveTheme, themeForWidth } from '../theme';
 import type { BaseOptions } from '../types/options';
 import type { LintWarning } from '../types/scene';
 import type { Theme } from '../types/theme';
@@ -13,7 +13,7 @@ export function chartTheme(options: Pick<BaseOptions, 'theme' | 'size'>): Theme 
 
 /** The palette ramp; a palette the theme cannot use warns. */
 export function chartPalette(theme: Theme, palette: string | undefined, warnings: LintWarning[]): ReturnType<typeof resolvePalette> {
-  return resolvePalette(theme, palette, (code, message) => warnings.push({ code, severity: 'warn', message }));
+  return resolvePalette(theme, palette, (code, message) => warnings.push(paletteWarning(code, message)));
 }
 
 /**

@@ -33,6 +33,17 @@ it('resets toggles on a variant change and keeps them across Changes',()=>{
  expect(reasons).toEqual(['collapsed','variant']);
  act(()=>root.unmount());host.remove();
 });
+// A dimswitch saved with the retired order 'authored' must draw in the sheet order, not crash the compile.
+it('draws a retired order value as its successor and reports it',()=>{
+ const host=document.createElement('div');const root=createRoot(host);
+ const warnings:{code:string;fix?:unknown}[][]=[];
+ act(()=>root.render(<DimSwitchChart data={exampleData} variant="by-measure" depth={1} {...{order:'authored'} as object} onWarnings={w=>warnings.push(w)}/>));
+ const sheet=compileDimSwitch(exampleData,{variant:'by-measure',depth:1,order:'sheet'});
+ const expected=visibleRows(resolveTable(sheet.data,sheet.options).table,collapsedByDefault(resolveTable(sheet.data,sheet.options).table));
+ expect(Array.from(host.querySelectorAll('[data-bp-rowgroup="body"] [role="row"]')).map(row=>row.getAttribute('data-row-id'))).toEqual(expected.map(row=>row.id));
+ expect(warnings.at(-1)).toContainEqual(expect.objectContaining({code:'option-deprecated',fix:[{op:'test',path:'/options/order',value:'authored'},{op:'replace',path:'/options/order',value:'sheet'}]}));
+ act(()=>root.unmount());
+});
 describe('dimswitch React defaults',()=>{
  it.each(['by-measure','by-member'] as const)('keeps %s depth changes equal to the static compiler',variant=>{
   const host=document.createElement('div');const root=createRoot(host);

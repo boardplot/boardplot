@@ -12,6 +12,7 @@
 import type { LayoutResult, LintWarning } from '../types/scene';
 import { legendDrawsNothing, schemaRefusedKeys } from './capability';
 import type { OptionKeyCheck } from './unknownKeys';
+import { retireChartSettings } from '../retired';
 
 /** Every reason a laid-out chart is refused: the layout's own error lints. */
 export function chartRefusals(warnings: readonly LintWarning[]): LintWarning[] {
@@ -93,6 +94,9 @@ function refusedKey(path: readonly string[], message: string): RefusalFinding {
  * next, as the CLI sweeps them only after the schema parse passed.
  */
 export function optionRefusals(options: Record<string, unknown>, type: string, checkKeys?: OptionKeyCheck, providerStrings?: Record<string, unknown>): RefusalFinding[] {
+  // A retired setting draws, and the layout request warns about it (retired.ts); it is never refused here.
+  options = retireChartSettings(type, { options }).chart.options;
+  if (providerStrings) providerStrings = retireChartSettings(type, { options: { strings: providerStrings } }).chart.options.strings;
   const found: RefusalFinding[] = [];
   const refused = schemaRefusedKeys(type);
   for (const key of refused.options) {

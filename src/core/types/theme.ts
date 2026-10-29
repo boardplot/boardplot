@@ -671,8 +671,10 @@ export interface ThemeTable {
    * grid. The ladder then steps weight and indent only.
    */
   rows?: { lineHeight?: number; pad?: number };
-  /** Weights by row kind. Member and measure rows default to regular weight on leaves and emphasis on parents. Subtotals and results default to emphasis. `emphasis` is that weight for totals, subtotals, results and parents (default the `type.emphasis` weight). `change` is accepted and ignored with a removal warning; the next release refuses it. */
-  weights?: { emphasis?: number; member?: number; measure?: number; subtotal?: number; result?: number; figures?: { member?: number; measure?: number; subtotal?: number; result?: number }; block?: number; change?: number };
+  /** Weights by row kind. Member and measure rows default to regular weight on leaves and emphasis on parents. Subtotals and results default to emphasis. `emphasis` is that weight for totals, subtotals, results and parents (default the `type.emphasis` weight). */
+  weights?: { emphasis?: number; member?: number; measure?: number; subtotal?: number; result?: number; figures?: { member?: number; measure?: number; subtotal?: number; result?: number }; block?: number;
+    /** @deprecated Retired: ignored, and warns `option-deprecated` with a fix that removes it. */
+    change?: number };
   /**
    * Table text paints. Absent: the text ink for head, subLabel, label, child
    * and figure; `secondary` for qualifier, operator, driver and toggle.

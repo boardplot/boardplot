@@ -241,7 +241,7 @@ SVG `id` attributes and their references use a hash of the drawing, locale and r
 
 ### Gantt and grid formats
 
-Gantt and ordinary grid compositions have no numeric value labels of their own. Metric stacks set mark precision with panel `decimals` and `divisor`. A chart-level `format` is accepted and warns in this release. It will be refused in the next release. Set each numeric grid panel's `options.format` instead. Gantt uses calendar date options.
+Gantt and ordinary grid compositions have no numeric value labels of their own. Metric stacks set mark precision with panel `decimals` and `divisor`. A chart-level `format` is accepted, ignored and warns. Set each numeric grid panel's `options.format` instead. Gantt uses calendar date options.
 
 ### Metric stack
 

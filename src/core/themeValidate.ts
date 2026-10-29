@@ -7,24 +7,26 @@ import { parseThemeShape, unknownThemeKeyRepair } from './themeShape';
 import { NormalizeError } from './normalize/shared';
 import { themeColors } from './themeColors';
 import { colorVariableWarnings } from './colorVariables';
+import { retiredThemeKeyWarning, withoutRetiredThemeKeys } from './retired';
 
 export * from './themeRules';
 export * from './themeFields';
 
 /**
  * Parse + register-ready: throws on schema errors, returns theme + lints. The
- * refusal is an `invalid-theme` NormalizeError; an unknown key, such as the
- * retired space.barGap, carries the suggest and remove patch the spec surfaces
- * give, rooted at the theme file.
+ * refusal is an `invalid-theme` NormalizeError; an unknown key carries the
+ * suggest and remove patch the spec surfaces give, rooted at the theme file.
+ * A retired key, such as space.barGap, is dropped and warns with that patch.
  */
 export function parseThemeJson(raw: unknown): { theme: Theme; warnings: LintWarning[] } {
-  const { issues, theme: value } = parseThemeShape(stripGuide(raw));
+  const retired = withoutRetiredThemeKeys(stripGuide(raw));
+  const { issues, theme: value } = parseThemeShape(retired.theme);
   if (issues.length) {
     const repair = unknownThemeKeyRepair(issues, '');
     throw new NormalizeError('invalid-theme', 'theme', `theme schema errors:\n${issues.map((issue) => `  ${issue}`).join('\n')}`, repair?.suggest ?? 'Use each field type and accepted value named in the theme schema errors.', repair?.fix);
   }
   const theme = themeColors(value as Theme);
-  return { theme, warnings: [...colorVariableWarnings(undefined, value, ['theme']), ...validateTheme(theme)] };
+  return { theme, warnings: [...retired.found.map(dotted => retiredThemeKeyWarning(dotted, [])), ...colorVariableWarnings(undefined, value, ['theme']), ...validateTheme(theme)] };
 }
 
 /** Scaffold/docs use a top-level `_guide` block — ignore it structurally. */

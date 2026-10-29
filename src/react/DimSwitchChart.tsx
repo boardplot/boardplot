@@ -9,6 +9,7 @@ import { TableFloorRequestContext } from './TableChart';
 import { linkedBinding, rebindable } from './linkedBinding';
 import type { DeferredName } from '../core/deferred';
 import { optionRefusals } from '../core/schema/refusals';
+import { retireChartSettings } from '../core/retired';
 import { LayoutRefusal } from './SizePlaceholder';
 import { freezeValue, useStableValue } from './useStableValue';
 import { useRowsGate } from './rowsGate';
@@ -44,7 +45,10 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
   const [initial] = useState(()=>({variant:defaultVariant,depth:defaultDepth,splits:defaultSplits}));
   const variant=controlledVariant ?? initial.variant, depth=controlledDepth ?? initial.depth, splits=controlledSplits ?? initial.splits;
   const stableData=useStableValue(data);
-  const stableOptions=useStableValue(options);
+  const authoredOptions=useStableValue(options);
+  // A retired setting is compiled as its successor (or dropped) and reported with the compile warnings.
+  const retired=useMemo(()=>retireChartSettings('dimswitch',{options:authoredOptions}),[authoredOptions]);
+  const stableOptions=retired.chart.options;
   const floorRequest=useStableValue({type:'dimswitch',data:stableData,options:{...stableOptions,variant,depth,splits,inlineVisibility}});
   // The grid reads values, not the computed-cell records the static audit trail carries.
   const compiled=useMemo(()=>{const result=compileDimSwitch(stableData,{...stableOptions,variant,depth:1,splits},{records:false});freezeValue(result.data);return result;},[stableData,stableOptions,variant,splits]);
@@ -89,12 +93,12 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
   const wantsWarnings=onWarnings!==undefined;
   useEffect(()=>{
     if(!wantsWarnings || tableWarnings===undefined) return;
-    const all=[...compiled.warnings,...dimSwitchTableWarnings(tableWarnings)];
+    const all=[...retired.warnings,...compiled.warnings,...dimSwitchTableWarnings(tableWarnings)];
     const key=JSON.stringify(all);
     if(reported.current===key) return;
     reported.current=key;
     warningsCallback.current?.(all);
-  },[wantsWarnings,compiled.warnings,tableWarnings]);
+  },[wantsWarnings,retired.warnings,compiled.warnings,tableWarnings]);
   if(refusals.length) return <LayoutRefusal refusals={refusals} theme={options.theme} options={{...options,size:size==='container'?fallbackSize:size}}/>;
   return <TableFloorRequestContext.Provider value={tableRequest}><Table {...compiled.options} exporter={exporter} data={compiled.data} collapsed={collapsed} onCollapsedChange={toggle}
    defaultColumnVisibility={defaultColumnVisibility} onColumnVisibilityChange={onColumnVisibilityChange} sortable={sortable} defaultSort={defaultSort} onSortChange={onSortChange} rootsHidden={rootsHidden}

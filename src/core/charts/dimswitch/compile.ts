@@ -641,9 +641,8 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   for (const id of options.expansion?.expanded ?? []) collapsed.delete(id);
   for (const id of options.expansion?.collapsed ?? []) collapsed.add(id);
   const {variant:_v,depth:_d,splits:_sp,order:_o,show:_sh,thresholds:_t,minimumSample:_m,expansion:_e,widths,...tableOptions}=options;
-  // A cohort density is a fixed one-line row; a dimswitch cell holds two lines.
-  const density: string | undefined = options.density;
-  if (density === 'cohort' || density === 'cohort-small') throw new NormalizeError('invalid-data', 'options.density', `dimswitch density '${density}' is refused: a dimswitch cell holds a value and a change line, and the cohort densities are fixed one-line rows. Use 'compact'.`, "set options.density to 'compact'");
+  // A cohort density is a fixed one-line row and a dimswitch cell holds two lines: it is retired here and ignored (retired.ts).
+  if ((tableOptions.density as string | undefined)?.startsWith('cohort')) delete tableOptions.density;
   const width={label:widths?.label ?? 320,range:widths?.range ?? 110,change:widths?.change ?? 92,period:widths?.period ?? 94};
   // The card form: value tracks as wide as their content, the label track at most 140 px (its labels wrap).
   const fixed=(w:number)=>form.card ? {} : {width:w};

@@ -138,10 +138,10 @@ export function layoutGrid(
   options = resolveCanvasOptions(options);
   assertTrackLimits(options);
   const metricStack = isMetricStackData(data);
-  // Keep the retiring option accepted for this release on every layout.
+  // A retired option stays accepted on every layout.
   const formatWarnings: LintWarning[] = options.format === undefined ? [] : [{
     code: 'format-unused', severity: 'warn', field: ['options', 'format'],
-    message: "Grid-level options.format is ignored in this release and will be refused in the next release",
+    message: "Grid-level options.format is ignored",
     suggest: metricStack
       ? 'Set decimals and divisor on each metric stack panel; remove the grid-level format.'
       : 'Set format on each numeric panel in data.panels[].options.format; remove the grid-level format.',

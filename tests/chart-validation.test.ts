@@ -135,8 +135,11 @@ describe('actionable input refusals', () => {
 
   // The old table preset name must point to variant rather than the unrelated theme field.
   it('points a table preset to variant', () => {
-    const [error] = errors({ type: 'table', data: { columns: [{ id: 'name', kind: 'rowLabel' }], rows: [{ id: 'r', cells: { name: 'A' } }] }, options: { preset: 'steering' } });
-    expect(error).toMatchObject({ path: '/options/preset', suggest: expect.stringContaining('variant') });
+    const { body } = render({ spec: { type: 'table', data: { columns: [{ id: 'name', kind: 'rowLabel' }], rows: [{ id: 'r', cells: { name: 'A' } }] }, options: { preset: 'steering' } } });
+    expect(body.errors ?? []).toEqual([]);
+    expect(body.warnings).toContainEqual(expect.objectContaining({ code: 'option-deprecated', path: '/options/preset', fix: [
+      { op: 'remove', path: '/options/preset' }, { op: 'add', path: '/options/variant', value: 'steering' },
+    ] }));
   });
 
   // A malformed union cell needs one error describing valid shapes, not missing fields from every branch.
