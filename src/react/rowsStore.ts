@@ -56,17 +56,27 @@ export function publishRowsModule(module: RowsModule): void {
  * One load at a time. A rejected load is tried again on the next render, and
  * a failure redraws only when its message is new, so a chunk that is not
  * deployed settles on the failure card instead of retrying in a loop.
+ *
+ * It publishes the chunk's export rather than trusting the chunk's own
+ * module-scope call: a host bundler that reads the chunk as side-effect-free
+ * (Rolldown in a Vite 8 build) empties it, and an import that publishes
+ * nothing would leave the chart on the busy placeholder.
  */
 export function loadRowsModule(): void {
   if (held || loading) return;
   loading = true;
-  void import('./rowsModule').then(() => { loading = false; }, (reason: unknown) => {
+  const fail = (reason: unknown) => {
     loading = false;
     const message = reason instanceof Error ? reason.message : String(reason);
     if (failure === message) return;
     failure = message;
     notify();
-  });
+  };
+  void import('./rowsModule').then((module) => {
+    loading = false;
+    if (module.rowsModule) publishRowsModule(module.rowsModule);
+    else fail(new Error('the rows chunk loaded without the rows transform'));
+  }, fail);
 }
 
 export const loadedModule = () => held;
