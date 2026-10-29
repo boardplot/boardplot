@@ -1,0 +1,7 @@
+{ "type": "variance",
+  "data": { "series": [
+      { "id": "Q3 FY26", "label": "Q3 FY26" },
+      { "id": "Q3 FY25", "label": "Q3 FY25", "role": "reference", "scenario": "PY" } ] },
+  "options": { "variant": "integrated", "variance": { "of": "Q3 FY26", "vs": "Q3 FY25" },
+    "subtitle": { "measure": "Revenue by region", "period": "Q3", "scenarios": ["AC", "PY"] },
+    "unit": "€m" } }

@@ -1,0 +1,101 @@
+{
+  "type": "mekko",
+  "data": {
+    "categories": [
+      {
+        "id": "dach",
+        "label": "DACH"
+      },
+      {
+        "id": "france",
+        "label": "France"
+      },
+      {
+        "id": "uki",
+        "label": "UK & I"
+      },
+      {
+        "id": "nordics",
+        "label": "Nordics"
+      },
+      {
+        "id": "iberia",
+        "label": "Iberia"
+      },
+      {
+        "id": "benelux",
+        "label": "Benelux"
+      }
+    ],
+    "series": [
+      {
+        "id": "alder",
+        "label": "Alder",
+        "colorRole": "highlight",
+        "unit": "€m",
+        "values": [
+          72,
+          24,
+          22,
+          48,
+          12,
+          16
+        ]
+      },
+      {
+        "id": "fjellmark",
+        "label": "Fjellmark",
+        "unit": "€m",
+        "values": [
+          100,
+          70,
+          50,
+          60,
+          20,
+          20
+        ],
+        "colorRole": "neutral"
+      },
+      {
+        "id": "summit",
+        "label": "Summit Co.",
+        "unit": "€m",
+        "values": [
+          90,
+          90,
+          80,
+          20,
+          30,
+          20
+        ],
+        "colorRole": "neutralLight"
+      },
+      {
+        "id": "others",
+        "label": "Others",
+        "colorRole": "others",
+        "unit": "€m",
+        "values": [
+          158,
+          116,
+          108,
+          52,
+          58,
+          44
+        ]
+      }
+    ]
+  },
+  "options": {
+    "variant": "stacked100",
+    "ridge": "alder",
+    "highlight": "alder",
+    "subtitle": {
+      "measure": "Outdoor equipment market by region",
+      "period": "FY25"
+    },
+    "unit": "% of market",
+    "rounding": "sum-consistent",
+    "source": "Market sizing from trade association data; team analysis"
+  }
+}

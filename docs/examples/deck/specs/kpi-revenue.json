@@ -1,0 +1,39 @@
+{
+  "type": "kpi",
+  "data": {
+    "label": "Revenue, Q3",
+    "value": 59600000,
+    "format": "€1.1M",
+    "compare": [
+      {
+        "vs": 54700000,
+        "label": "vs PY",
+        "mode": "both"
+      },
+      {
+        "vs": 58800000,
+        "label": "vs Plan",
+        "mode": "both"
+      }
+    ],
+    "spark": {
+      "kind": "line",
+      "values": [
+        51200000,
+        54700000,
+        55900000,
+        50200000,
+        55100000,
+        59600000
+      ],
+      "labels": [
+        "Q2 FY25",
+        "Q3",
+        "Q4",
+        "Q1 FY26",
+        "Q2",
+        "Q3"
+      ]
+    }
+  }
+}

@@ -1,0 +1,125 @@
+{
+  "name": "channel-table",
+  "type": "table",
+  "data": {
+    "columnGroups": [
+      {
+        "id": "wow",
+        "label": "Week on week",
+        "columns": [
+          "tw",
+          "lw",
+          "wow"
+        ]
+      },
+      {
+        "id": "yoy",
+        "label": "Year on year",
+        "columns": [
+          "ly",
+          "yoy"
+        ]
+      },
+      {
+        "id": "plan",
+        "label": "Plan",
+        "columns": [
+          "plan",
+          "vsplan"
+        ]
+      }
+    ],
+    "columns": [
+      {
+        "id": "channel",
+        "kind": "rowLabel",
+        "label": "€k"
+      },
+      {
+        "id": "tw",
+        "kind": "value",
+        "label": "This week",
+        "format": "1,234"
+      },
+      {
+        "id": "lw",
+        "kind": "value",
+        "label": "Last week",
+        "format": "1,234"
+      },
+      {
+        "id": "wow",
+        "kind": "computed",
+        "label": "Change",
+        "calc": {
+          "op": "percentDelta",
+          "a": "tw",
+          "b": "lw"
+        },
+        "format": "+1%",
+        "polarity": "higherIsBetter"
+      },
+      {
+        "id": "ly",
+        "kind": "value",
+        "label": "Last year",
+        "format": "1,234"
+      },
+      {
+        "id": "yoy",
+        "kind": "computed",
+        "label": "Change",
+        "calc": {
+          "op": "percentDelta",
+          "a": "tw",
+          "b": "ly"
+        },
+        "format": "+1%",
+        "polarity": "higherIsBetter"
+      },
+      {
+        "id": "plan",
+        "kind": "value",
+        "label": "Plan",
+        "format": "1,234"
+      },
+      {
+        "id": "vsplan",
+        "kind": "computed",
+        "label": "vs Plan",
+        "calc": {
+          "op": "percentDelta",
+          "a": "tw",
+          "b": "plan"
+        },
+        "format": "+1%",
+        "polarity": "higherIsBetter"
+      }
+    ],
+    "rows": []
+  },
+  "options": {
+    "title": "Revenue by channel, last full week",
+    "signs": "signed",
+    "judgements": "all",
+    "density": "compact",
+    "source": "Order data warehouse, weekly export",
+    "theme": {
+      "preset": "standard",
+      "overrides": {
+        "color": {
+          "highlight": "#2251FF",
+          "total": "#051C2C",
+          "series": [
+            "#051C2C",
+            "#2251FF",
+            "#00A9F4",
+            "#8FA2B6",
+            "#3C96B4",
+            "#AFC3FF"
+          ]
+        }
+      }
+    }
+  }
+}

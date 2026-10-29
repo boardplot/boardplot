@@ -1,0 +1,39 @@
+{
+  "type": "kpi",
+  "data": {
+    "label": "Gross margin, Q3",
+    "value": 51.2,
+    "format": "1.1%",
+    "compare": [
+      {
+        "vs": 52.5,
+        "label": "vs PY",
+        "mode": "absolute"
+      },
+      {
+        "vs": 52.0,
+        "label": "vs Plan",
+        "mode": "absolute"
+      }
+    ],
+    "spark": {
+      "kind": "line",
+      "values": [
+        52.6,
+        52.5,
+        52.3,
+        52.0,
+        51.6,
+        51.2
+      ],
+      "labels": [
+        "Q2 FY25",
+        "Q3",
+        "Q4",
+        "Q1 FY26",
+        "Q2",
+        "Q3"
+      ]
+    }
+  }
+}

@@ -1,0 +1,13 @@
+region,scenario,revenue_keur
+DACH,AC,1555
+DACH,PY,1390
+Nordics,AC,950
+Nordics,PY,900
+Benelux,AC,685
+Benelux,PY,665
+UK,AC,635
+UK,PY,610
+Iberia,AC,470
+Iberia,PY,390
+France,AC,405
+France,PY,418

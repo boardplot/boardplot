@@ -27,6 +27,7 @@ tests/artifacts/
 
 # Local build and review output (gallery, harness pages, package copies)
 artifacts/
+docs/examples/recurring-report/out/
 .boardplot-package-manifest
 # scripts/check-manual.mjs imports the manual's code blocks from here and removes it
 .check-manual-*/
@@ -36,6 +37,8 @@ artifacts/
 *.tgz
 *.zip
 *.pptx
+# The example decks are results for readers, not build output.
+!docs/examples/deck/*.pptx
 *.map
 /THIRD_PARTY_NOTICES.md
 release/plugin/BUILD-MANIFEST.json

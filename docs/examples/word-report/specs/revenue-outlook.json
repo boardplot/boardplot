@@ -1,0 +1,113 @@
+{
+  "type": "column",
+  "data": {
+    "categories": [
+      {
+        "id": "jan",
+        "label": "Jan"
+      },
+      {
+        "id": "feb",
+        "label": "Feb"
+      },
+      {
+        "id": "mar",
+        "label": "Mar"
+      },
+      {
+        "id": "apr",
+        "label": "Apr"
+      },
+      {
+        "id": "may",
+        "label": "May"
+      },
+      {
+        "id": "jun",
+        "label": "Jun"
+      },
+      {
+        "id": "jul",
+        "label": "Jul"
+      },
+      {
+        "id": "aug",
+        "label": "Aug"
+      },
+      {
+        "id": "sep",
+        "label": "Sep"
+      },
+      {
+        "id": "oct",
+        "label": "Oct"
+      },
+      {
+        "id": "nov",
+        "label": "Nov"
+      },
+      {
+        "id": "dec",
+        "label": "Dec"
+      }
+    ],
+    "series": [
+      {
+        "id": "rev",
+        "label": "Revenue",
+        "colorRole": "total",
+        "values": [
+          15.9,
+          15.8,
+          18.5,
+          17.9,
+          18.3,
+          18.9,
+          19.4,
+          19.0,
+          21.2,
+          {
+            "number": 20.4,
+            "scenario": "FC",
+            "range": {
+              "low": 19.1,
+              "high": 21.6,
+              "mid": 20.4
+            }
+          },
+          {
+            "number": 22.8,
+            "scenario": "FC",
+            "range": {
+              "low": 21.0,
+              "high": 24.9,
+              "mid": 22.8
+            }
+          },
+          {
+            "number": 26.5,
+            "scenario": "FC",
+            "range": {
+              "low": 23.8,
+              "high": 29.4,
+              "mid": 26.5
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "options": {
+    "subtitle": {
+      "measure": "Revenue by month",
+      "period": "2026",
+      "scenarios": [
+        "AC",
+        "FC"
+      ]
+    },
+    "unit": "€m",
+    "format": "1.1",
+    "source": "Alder Outdoor management accounts; Q4 forecast of 30 September, bars show the forecast range"
+  }
+}

@@ -2,7 +2,7 @@
 
 This page shows how to get finished results from an AI agent such as Claude Code or Codex with Boardplot: a slide deck, an analysis page, a React dashboard, a Word report or a weekly report. Install Boardplot once, then name it in the prompt. The agent writes the chart specs, draws the charts with the Boardplot tools and puts them into the result.
 
-Each use case has the same parts: what you get, example prompts to copy, what the agent does, tips for better results, and the limits. The [manual](manual.md) explains the spec, the tools and every option.
+Each use case has the same parts: what you get, example prompts to copy, what the agent does, tips for better results, and the limits. Each use case also links a worked example in [examples](https://github.com/boardplot/boardplot/tree/main/docs/examples): the data, the specs, the finished file and the script that builds it, all with invented data. The [manual](manual.md) explains the spec, the tools and every option.
 
 ## Install
 
@@ -65,6 +65,12 @@ The PNG has 2 pixels per layout pixel, the default `scale`, and records 192 dpi.
 - Google Slides does not insert SVG files. Use PNG there.
 - A PNG draws with the fonts installed on the machine that renders. For a brand font, see [Custom fonts](FONTS.md).
 
+**Worked example:** [docs/examples/deck](https://github.com/boardplot/boardplot/tree/main/docs/examples/deck) has an eight-slide board deck, `quarterly-review.pptx`, in a consulting layout: action titles, KPI tiles, a price-volume-mix bridge, CAGR labels, IBCS variance charts, a market map and a P&L table with computed variances. Each chart fills its slot beside editable takeaways. The revise case turns `board-update-before.pptx`, with native PowerPoint charts, into `board-update-after.pptx`: the same data drawn by Boardplot, in the same boxes, with the slide text unchanged.
+
+![Eight slides of the board deck](https://raw.githubusercontent.com/boardplot/boardplot/main/docs/examples/deck/preview/deck-overview.png)
+
+![A slide with native PowerPoint charts and the same slide with Boardplot charts](https://raw.githubusercontent.com/boardplot/boardplot/main/docs/examples/deck/preview/board-update-before-after.png)
+
 ## Analysis page or Claude artifact
 
 **You get:** an analysis written as an HTML page, such as a Claude artifact or a report page, with the charts in the page.
@@ -96,6 +102,10 @@ Write a one-page HTML report on last month's marketing spend from exports/spend.
 
 - The SVG is a static image: no hover cards or filters. Those need the React components.
 - The SVG names the theme's font stack and embeds no font. The preset themes use system fonts. A brand web font must be loaded by the page.
+
+**Worked example:** [docs/examples/analysis-page](https://github.com/boardplot/boardplot/tree/main/docs/examples/analysis-page) has `index.html`, a gross margin review with a margin bridge, a category table with bars and a price-volume scatter with quadrants. Its headline, key numbers and findings take their numbers from the data and the `reading` of each render.
+
+![Margin review page with key numbers, three exhibits and next steps](https://raw.githubusercontent.com/boardplot/boardplot/main/docs/examples/analysis-page/preview/page.png)
 
 ## React dashboard
 
@@ -133,6 +143,10 @@ The [React reference](reference/react.md) has each part: [per-type components](r
 - A parent that takes its width from its content keeps the chart at its fallback width. See [container sizing](reference/react.md#container-sizing).
 - A strict content security policy needs a style nonce. See [content security policy](reference/react.md#content-security-policy).
 
+**Worked example:** [docs/examples/react-dashboard](https://github.com/boardplot/boardplot/tree/main/docs/examples/react-dashboard) is a weekly trading dashboard in Vite and React: KPI tiles with sparklines, a channel KPI table that switches between two views, a region variance that compares with last year or plan, two weekly charts on one shared scale (`ScaleGroup`) and PNG and CSV export on each card. Run `npm install` and `npm run dev` in that folder.
+
+![Trading dashboard with KPI tiles, a channel KPI table, a region variance chart and two weekly line charts](https://raw.githubusercontent.com/boardplot/boardplot/main/docs/examples/react-dashboard/preview/dashboard.png)
+
 ## Word or PDF report
 
 **You get:** a Word document or PDF with print-quality charts.
@@ -159,6 +173,10 @@ Turn this analysis into a PDF report on A4. Use Boardplot for all charts, 300 dp
 - The charts are pictures. Colleagues cannot edit their data in Word.
 - A PNG draws with the fonts installed on the machine that renders.
 
+**Worked example:** [docs/examples/word-report](https://github.com/boardplot/boardplot/tree/main/docs/examples/word-report) has a three-page monthly management report, `report.docx`, and its PDF export, `report.pdf`: an executive summary, a P&L table with computed variances, monthly revenue with a forecast range, a price-volume-mix bridge and an EBIT bridge to budget, as print charts at 160 mm and 300 dpi.
+
+![Three pages of the monthly management report](https://raw.githubusercontent.com/boardplot/boardplot/main/docs/examples/word-report/preview/pages.png)
+
 ## Recurring report
 
 **You get:** the same report every week or month, such as a weekly business review, with charts from the latest query export.
@@ -183,11 +201,12 @@ boardplot render weekly-orders.json --rows exports/orders.csv \
   --format png --out "out/$(date +%F)" --quiet
 ```
 
-It writes `out/<date>/weekly-orders.png` and prints `{"ok":true,"outputs":[...]}` with the file path. The CLI exits 1 when it refuses the input, for example a renamed column (`missing-column`), and 2 for an internal error. Let the job fail on a non-zero exit.
+It writes `out/<date>/weekly-orders.png`, named after the template's `name`, and prints `{"ok":true,"outputs":[...]}` with the file path. The CLI exits 1 when it refuses the input, for example a renamed column (`missing-column`), and 2 for an internal error. Let the job fail on a non-zero exit.
 
 **Tips:**
 
 - Keep the templates in the repository. Each run then draws the same charts with new data.
+- Give every template a `name`. It names the output file. Without it each chart writes `chart.png`, and with `--overwrite` the next chart replaces it.
 - Name every series with its label in the template. A series that only the rows name prints its raw id.
 - Write each run to a dated folder, or pass `--overwrite`. A taken file name otherwise gets `-2`.
 
@@ -196,3 +215,7 @@ It writes `out/<date>/weekly-orders.png` and prints `{"ok":true,"outputs":[...]}
 - The MCP server reads `rowsFile` only from its allowed folders: the client's roots, its working directory, the system temp folder and the folders in `BOARDPLOT_ROWS_ROOTS`. Other paths are refused with `rows-outside-roots`.
 - PNG needs `@resvg/resvg-js`, an optional dependency, or Chrome. On a Linux server, install one of the fonts the manual lists, or the render returns only the SVG with the warning `raster-fonts-missing`. See [Getting a chart with MCP](manual.md#getting-a-chart-with-mcp).
 - A CSV with grouping marks in numbers, such as `1.234,5`, is refused. Export plain numbers.
+
+**Worked example:** [docs/examples/recurring-report](https://github.com/boardplot/boardplot/tree/main/docs/examples/recurring-report) is a weekly business review. `render.sh`, the CLI script for a scheduled job, draws three templates from three warehouse exports, including a table that computes the week-on-week, year-on-year and plan changes, and writes one page to send.
+
+![Weekly business review with revenue by week, a channel table and a region variance](https://raw.githubusercontent.com/boardplot/boardplot/main/docs/examples/recurring-report/preview/review.png)
