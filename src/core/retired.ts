@@ -6,7 +6,7 @@
  * it. Only a key that never existed is refused.
  */
 
-import { toJsonPointer } from './diagnostics/jsonPatch';
+import { addWhereAbsent, toJsonPointer } from './diagnostics/jsonPatch';
 import type { LintWarning } from './types/scene';
 
 type Scalar = string | number | boolean;
@@ -138,21 +138,23 @@ export function retireChartSettings<C extends { options?: unknown; data?: unknow
 ): { chart: C; warnings: LintWarning[] } {
   const warnings: LintWarning[] = [];
   let next: unknown = chart;
-  // A grid's explicit panels are charts of their own type.
+  // A grid's explicit panels and its repeat template are charts of their own type.
   const panels = type === 'grid' ? readAt(chart, ['data', 'panels']) : undefined;
-  if (Array.isArray(panels)) {
-    panels.forEach((panel, index) => {
-      const panelType = isRecord(panel) && typeof panel.type === 'string' ? canonical(panel.type) : undefined;
-      if (panelType === undefined) return;
-      const retired = retireChartSettings(panelType, panel as { options?: unknown; data?: unknown }, canonical);
-      if (!retired.warnings.length) return;
-      const at = ['data', 'panels', index];
-      next = setAt(next, at, retired.chart);
-      for (const warning of retired.warnings) {
-        warnings.push({ ...warning, field: [...at, ...warning.field!],
-          fix: warning.fix!.map(operation => ({ ...operation, path: toJsonPointer(at) + operation.path })) });
-      }
-    });
+  const nested: (string | number)[][] = [
+    ...(Array.isArray(panels) ? panels.map((_, index) => ['data', 'panels', index]) : []),
+    ...(type === 'grid' && isRecord(readAt(chart, ['data', 'template'])) ? [['data', 'template']] : []),
+  ];
+  for (const at of nested) {
+    const panel = readAt(chart, at);
+    const panelType = isRecord(panel) && typeof panel.type === 'string' ? canonical(panel.type) : undefined;
+    if (panelType === undefined) continue;
+    const retired = retireChartSettings(panelType, panel as { options?: unknown; data?: unknown }, canonical);
+    if (!retired.warnings.length) continue;
+    next = setAt(next, at, retired.chart);
+    for (const warning of retired.warnings) {
+      warnings.push({ ...warning, field: [...at, ...warning.field!],
+        fix: warning.fix!.map(operation => ({ ...operation, path: toJsonPointer(at) + operation.path })) });
+    }
   }
   for (const entry of RETIRED_SETTINGS) {
     if (entry.types && !entry.types.includes(type)) continue;
@@ -180,12 +182,14 @@ export function retireChartSettings<C extends { options?: unknown; data?: unknow
           suggest: `Set ${dotted} to ${quoted(successor)}.`,
           fix: [{ op: 'test', path, value }, { op: 'replace', path, value: successor }] });
       } else {
-        next = setAt(setAt(next, at, undefined), target, successor);
+        const without = setAt(next, at, undefined);
+        next = setAt(without, target, successor);
         const now = `${entry.to}${entry.values ? ` ${quoted(successor)}` : ''}`;
         warnings.push({ code: 'option-deprecated', severity: 'warn', field: at,
           message: `${what} is renamed ${now}.`,
           suggest: `Replace ${dotted} with ${entry.to}: ${JSON.stringify(successor)}.`,
-          fix: [{ op: 'remove', path }, { op: 'add', path: toJsonPointer(target), value: successor }] });
+          // The add lands at the deepest parent the spec has, carrying the missing objects.
+          fix: [{ op: 'remove', path }, ...addWhereAbsent(without, [{ op: 'replace', path: toJsonPointer(target), value: successor }])] });
       }
     }
   }

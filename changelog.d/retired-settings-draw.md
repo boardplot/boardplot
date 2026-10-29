@@ -8,5 +8,5 @@
   - Value renames: line `variant: 'stackedArea'` and `'area100'` draw as `'stacked-area'` and `'stacked100-area'`. Dimswitch `order: 'authored'` and treemap `order: 'data'` draw as `'sheet'`. Choropleth `pack: 'de-laender'` draws as `'de-states'`.
   - Options, ignored: `strings.highlight` (in the React theme provider's strings it is ignored without a warning), `target: 'legacy'`, dimswitch `preset` and `density: 'cohort'` and `'cohort-small'`, line and combo `lineLabels` and `endpointLabelDefault` (use `seriesLabels` and `valueLabels`), column, line and combo `eventLegendFootnotes`, line, combo and grid `hover`, pareto `ruler`, pvm `effectOrder`, grid `gap`, `gutterWidth`, `showMaturing` and `totalPanel`.
   - Data fields, ignored: category `total100` on dot, butterfly, slope, variance, pie, heatmap and funnel; category `gapAfter` and `breakAfter` on those types and mekko; series `direction` on line, combo, slope and butterfly; series `role` on butterfly and heatmap; series `fill` on pie and heatmap; diagram port `priority`.
-  - The same applies inside the panels of a grid.
+  - The same applies inside the panels and the repeat template of a grid.
 - Gantt and grid-level `options.format` stay accepted and ignored with their `format-unused` warning. The warning no longer says that the next release refuses them.

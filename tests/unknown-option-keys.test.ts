@@ -22,6 +22,7 @@ import { getChartDefinition, listCharts } from '../src/core/registry';
 import { LABEL_KINDS } from '../src/core/schema/capability';
 import { wordUnknownKeys } from '../src/core/schema/unknownKeyWords';
 import type { OptionKeyTree } from '../src/core/schema/unknownKeys';
+import { patchApplies, type JsonPatchOperation } from '../src/core/diagnostics/jsonPatch';
 
 const INVENTED = 'zzInvented';
 const NAMES_A_KEY = /^(Rename '[^']+' to '[^']+'\.|Remove '[^']+'; this key is not supported here\.)$/;
@@ -181,6 +182,23 @@ describe('unknown option keys are refused on every type', () => {
     }
     const typo = { ...spec, options: { ...spec.options, presett: 'plain' } };
     expect(cliErrors(typo).errors).toContainEqual(expect.objectContaining({ code: 'unknown-option', path: '/options/presett' }));
+  });
+  // A retired-setting fix that does not apply (an add under a missing parent) leaves an agent with no way to clean the spec.
+  it('gives every retired setting a fix that applies, also under a missing parent and in a repeat template', () => {
+    const combo = getFixtures('combo').find(fixture => fixture.id === 'margin-line-own-scale')!;
+    const grid = getFixtures('grid').find(fixture => fixture.id === 'repeat-regions')!;
+    const template = (grid.data as { template: { options?: object } }).template;
+    const specs = [
+      { type: 'combo', data: combo.data, options: { ...combo.options, labels: { growth: true } } },
+      { type: 'grid', data: { ...grid.data as object, template: { ...template, options: { ...template.options, strings: { highlight: 'Old' } } } }, options: grid.options },
+    ];
+    for (const spec of specs) {
+      const result = JSON.parse(callTool('boardplot_render', { spec }).text) as { ok: boolean; warnings: { code: string; fix?: JsonPatchOperation[] }[] };
+      expect(result.ok, spec.type).toBe(true);
+      const retired = result.warnings.filter(warning => warning.code === 'option-deprecated');
+      expect(retired, spec.type).toHaveLength(1);
+      for (const warning of retired) expect(patchApplies(spec, warning.fix!), JSON.stringify(warning.fix)).toBe(true);
+    }
   });
   // showValues: true answered "Rename to labels", and labels: true is refused too, so an agent looped.
   it('renames only when the near option takes the authored value', () => {
