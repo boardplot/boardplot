@@ -567,34 +567,45 @@ function planLane(events: LaneEvent[], axis: LaneAxis, count: number, rows: numb
   const inline: Block[] = [];
   const poleAt = new Set<number>();
   const order = [...events].sort((a, b) => b.priority - a.priority || byTime(a, b));
+  const clashes = (others: Placed[], { block, row, side }: Placed): boolean => {
+    const x = axis.x(block.ev.ci);
+    const [x0, x1] = extent({ block, side }, x);
+    if (x0 < bounds[0] || x1 > bounds[1]) return true;
+    return others.some((p) => {
+      const px = axis.x(p.block.ev.ci);
+      const [p0, p1] = extent(p, px);
+      if (p.row === row) return x0 < p1 + GUTTER && x1 + GUTTER > p0;
+      if (p.row > row) return px > x0 - 6 && px < x1 + 6;
+      return x > p0 - 6 && x < p1 + 6;
+    });
+  };
+  const slot = (others: Placed[], block: Block): Placed | undefined => {
+    for (let row = 0; row < rows; row++) {
+      for (const side of ['right', 'left'] as const) if (!clashes(others, { block, row, side })) return { block, row, side };
+    }
+    return undefined;
+  };
   for (const ev of order) {
-    const x = axis.x(ev.ci);
     const block = ev.placement === 'key' || (ev.placement === 'auto' && (rows === 0 || poleAt.has(ev.ci))) ? null : measureBlock(ev, maxW, f, measure);
     if (block && ev.placement === 'inline') {
       inline.push(block);
       continue;
     }
-    let done = false;
-    for (let row = 0; block && row < rows && !done; row++) {
-      for (const side of ['right', 'left'] as const) {
-        const [x0, x1] = extent({ block, side }, x);
-        if (x0 < bounds[0] || x1 > bounds[1]) continue;
-        const clash = placed.some((p) => {
-          const px = axis.x(p.block.ev.ci);
-          const [p0, p1] = extent(p, px);
-          if (p.row === row) return x0 < p1 + GUTTER && x1 + GUTTER > p0;
-          if (p.row > row) return px > x0 - 6 && px < x1 + 6;
-          return x > p0 - 6 && x < p1 + 6;
-        });
-        if (!clash) {
-          placed.push({ block, row, side });
-          poleAt.add(ev.ci);
-          done = true;
-          break;
-        }
-      }
+    let spot = block ? slot(placed, block) : undefined;
+    // A block that fits nowhere may fit once one placed block turns to the other side of its pole.
+    // ponytail: one turn only; a full search over sides would find more fits at a combinatorial cost.
+    for (const [i, p] of placed.entries()) {
+      if (!block || spot) break;
+      const turned: Placed = { ...p, side: p.side === 'right' ? 'left' : 'right' };
+      const others = placed.filter((_, j) => j !== i);
+      if (clashes(others, turned)) continue;
+      spot = slot([...others, turned], block);
+      if (spot) placed[i] = turned;
     }
-    if (!done) keyed.push(ev);
+    if (spot) {
+      placed.push(spot);
+      poleAt.add(ev.ci);
+    } else keyed.push(ev);
   }
   keyed.sort(byTime);
   const keyOff = noKey ? keyed.splice(0) : [];
