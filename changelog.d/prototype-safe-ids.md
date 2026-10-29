@@ -1,3 +1,0 @@
-### Fixed
-
-- Data ids named like `Object.prototype` members (`__proto__`, `constructor`, `toString`, `hasOwnProperty`, `valueOf`) draw like any other id. Before, a category, series, stage, slice or column with such an id printed wrong values (`n.m.`, `+n/a`, a missing table cell, "on target" instead of the real gap), dropped box ticks and labels, or refused with a wrong cause (waterfall `label-collision`, pie `invalid-size`, pareto `invalid-number`). Keyed values such as table `cells`, bartable `values`, pie `explode`, dimswitch `sums` and grid `bySlice` now keep a `__proto__` key, and a grid repeat value `__proto__` is no longer refused. Detail keys still refuse `__proto__`.
