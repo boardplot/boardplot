@@ -652,7 +652,9 @@ export function placeEndpointLabels(input: {
       if (cluster && anchors[index]!.y - anchors[cluster[cluster.length - 1]!]!.y < input.endLabels[index]!.h + 5) cluster.push(index);
       else clusters.push([index]);
     }
-    const joinEvery = input.joinEvery === true && input.bounded !== undefined;
+    // One form at the last category: once a bounded name takes its value, every name there does, and the
+    // bounded fallback then moves all values back to their points together.
+    const joinEvery = input.bounded !== undefined && (input.joinEvery === true || input.valuesAtEnd !== undefined && clusters.some((members) => members.length >= 2));
     for (const cluster of clusters.filter((members) => joinEvery || members.length >= (input.bounded ? 2 : 3))) {
       const fits: Id[] = [];
       for (const index of cluster) {

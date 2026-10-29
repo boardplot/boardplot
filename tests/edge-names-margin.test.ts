@@ -97,4 +97,18 @@ describe('line end names under legend none', () => {
     expect(codes).not.toContain('unknown-label-pin');
     expect(body.svg).toContain('data-id="label:series:s0"');
   });
+
+  // Two ends that crowd took their values into their names, while a third line apart printed its value over its
+  // point and its name alone in the column: two labels for one series, two forms in one chart.
+  it('give every name at the last category its value once one name takes it', () => {
+    const series = [
+      { id: 'spend', label: 'Ad spend', values: [3400, 2863, 2769, 2708] },
+      { id: 'ids', label: 'Click ids', values: [3100, 2918, 2823, 2741] },
+      { id: 'clicks', label: 'Outbound clicks', values: [2800, 2062, 2096, 2182] },
+    ];
+    const svg = (render({ spec: { type: 'line', data: { categories: ['d1', 'd2', 'd3', 'd4'].map((id) => ({ id })), series },
+      options: { title: 'Clicks', size: { width: 960 } } }, return: ['svg'] }).body as { svg: string }).svg;
+    expect(svg).not.toContain('data-id="label:point:clicks:d4"');
+    expect(svg).toMatch(/data-id="label:series:clicks"[^>]*><tspan>Outbound clicks <\/tspan><tspan>2,182</);
+  });
 });
