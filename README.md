@@ -189,6 +189,7 @@ Each chart type has its own entry, such as `boardplot/react/column`. `BoardplotC
 ## Documentation
 
 - [Gallery](docs/gallery.md): one drawn example of each chart type, with its spec
+- [Use cases](docs/use-cases.md): get a chart into slides, Word, a wiki page, a dashboard, a scheduled report or an agent's report
 - [The manual](docs/manual.md): the spec, the MCP tools, the CLI, React, sizing, errors and themes
 - [Chart reference](docs/reference/): one page per chart type, plus options, themes, React and fixtures
 - [llms.txt](llms.txt): an index of the manual and the reference for language models

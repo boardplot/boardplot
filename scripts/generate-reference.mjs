@@ -385,7 +385,7 @@ function llmsIndex(list) {
   return ['# Boardplot', '',
     '> Boardplot draws consulting-grade charts as deterministic SVG and as React components. An AI agent drives it through six MCP tools, a JSON-in JSON-out CLI or React code.', '',
     'Every chart is one spec, `{ "type", "data", "options", "annotations", "theme" }`, of which `type` and `data` are required. The MCP tools are `boardplot_list`, `boardplot_describe`, `boardplot_render`, `boardplot_measure`, `boardplot_fixtures` and `boardplot_feedback`; the CLI verbs of the same names take the same JSON. Render and measure read a query result from a local JSON or CSV file through `rowsFile` and `columns`, so its numbers never pass through the model; `boardplot_describe` with `path` answers one field.', '',
-    '## Start here', '', '- [Manual](docs/manual.md): the spec, the tools, the CLI, React, targets and sizing, errors and themes', '',
+    '## Start here', '', '- [Manual](docs/manual.md): the spec, the tools, the CLI, React, targets and sizing, errors and themes', '- [Use cases](docs/use-cases.md): deliver a chart to slides, Word, a wiki page, a React dashboard, a scheduled report or an agent-written report', '',
     '## Chart references', '', ...summaries, '',
     '## Optional', '',
     '- [Shared options](docs/reference/options.md): options every type accepts, the value cell and annotation anchors',

@@ -66,6 +66,7 @@ const REQUIRED_PLUGIN_FILES = [
   'runtime/docs/manual.md',
   'runtime/docs/FONTS.md',
   'runtime/docs/TELEMETRY.md',
+  'runtime/docs/use-cases.md',
   'runtime/THIRD_PARTY_NOTICES.md',
   'runtime/llms.txt',
   'runtime/node_modules/zod/package.json',

@@ -7,6 +7,7 @@ Every chart is one spec, `{ "type", "data", "options", "annotations", "theme" }`
 ## Start here
 
 - [Manual](docs/manual.md): the spec, the tools, the CLI, React, targets and sizing, errors and themes
+- [Use cases](docs/use-cases.md): deliver a chart to slides, Word, a wiki page, a React dashboard, a scheduled report or an agent-written report
 
 ## Chart references
 
