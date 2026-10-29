@@ -1,6 +1,6 @@
 {
   "name": "boardplot",
-  "version": "0.53.0",
+  "version": "0.54.0",
   "description": "Consulting-grade charts for AI agents and React: one JSON spec gives a deterministic SVG, PNG or React chart.",
   "mcpName": "io.github.boardplot/boardplot",
   "type": "module",

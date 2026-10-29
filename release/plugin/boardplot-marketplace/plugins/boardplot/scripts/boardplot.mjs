@@ -19,7 +19,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 // The exact package this plugin version runs. scripts/plugin-version.mjs in
 // the Boardplot repository writes it from package.json; do not edit by hand.
-const PACKAGE = 'boardplot@0.53.0';
+const PACKAGE = 'boardplot@0.54.0';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const [mode, ...rest] = process.argv.slice(2);
