@@ -502,11 +502,13 @@ function colourCheckWarnings(theme: Theme, usage?: ThemeUsage): LintWarning[] {
     }
   }
 
-  // 6. The accent never borrows the loss hue.
+  // 6. The accent never borrows the loss hue. A grey (chroma under one OKLab
+  // JND, 0.02) has no hue to borrow, so it skips the RGB fallback.
   const readsAsBad = (value: string): boolean => {
     if (readsAsLoss(value)) return true;
     const hue = oklchHueDistance(value, c.bad);
-    return hue !== null ? hue < PALETTE_ADJACENT_HUE_FLOOR : rgbDistance(value, c.bad) < 90;
+    if (hue !== null) return hue < PALETTE_ADJACENT_HUE_FLOOR;
+    return oklabLc(value)!.C >= 0.02 && rgbDistance(value, c.bad) < 90;
   };
   for (const [key, value] of own([
     ['highlight', c.highlight], ['focus', c.focus],

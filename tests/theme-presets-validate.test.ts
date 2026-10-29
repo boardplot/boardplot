@@ -134,6 +134,15 @@ describe('every shipped theme preset passes its own validator', () => {
     expect(rampOrder({})).toEqual([]);
   });
 
+  // A brand's neutral grey beside its red-brown bad was flagged as reading as loss, although a grey has no hue to borrow.
+  it('lets a grey sit near a muted bad and still flags a muted warm accent there', () => {
+    const base = resolveTheme('boardroom');
+    const loss = (neutralMark: string) => validateTheme({ ...base, color: { ...base.color, bad: '#A05A4B', neutralMark } })
+      .filter((warning) => warning.code === 'accent-reads-as-loss').map((warning) => warning.message);
+    expect(loss('#787978')).toEqual([]);
+    expect(loss('#8C6A62')).toHaveLength(1);
+  });
+
   it('every warning is declared, and every declared count is exact', () => {
     const mismatches: string[] = [];
     for (const name of PRESETS) {
