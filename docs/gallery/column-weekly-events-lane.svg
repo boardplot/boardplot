@@ -21,18 +21,11 @@
 <text data-id="frame:eventKey:16" data-part="eventKey" data-bp-role="note" x="288.67" y="501.09" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="288.67" dy="0">$4.1k in first 30 days</tspan></text>
 <circle data-id="frame:eventKey:17" data-part="eventKey" cx="503.75" cy="472.04" r="9.75" fill="#FFFFFF" stroke="#0C7B4C" stroke-width="1.5"/>
 <text data-id="frame:eventKey:18" data-part="eventKey" data-bp-role="value" x="503.75" y="476.24" text-anchor="middle" font-size="12" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="503.75" dy="0">3</tspan></text>
-<text data-id="frame:eventKey:19" data-part="eventKey" data-bp-role="note" x="557.50" y="476.59" text-anchor="end" font-size="12" font-weight="400" fill="#4E6070"><tspan x="557.50" dy="0">3 Aug</tspan></text>
-<circle data-id="frame:eventKey:20" data-part="eventKey" cx="570.30" cy="472.39" r="4.13" fill="#0C7B4C"/>
-<text data-id="frame:eventKey:21" data-part="eventKey" data-bp-role="note" x="580.17" y="476.59" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="580.17" dy="0">Launch</tspan></text>
-<text data-id="frame:eventKey:22" data-part="eventKey" data-bp-role="note" x="628.17" y="476.59" text-anchor="start" font-size="13" font-weight="700" fill="#0D2A43"><title>3 Aug 2026, Launch: Breeze Cap - $1.6k in first 30 days</title><tspan x="628.17" dy="0">Breeze Cap</tspan></text>
-<text data-id="frame:eventKey:23" data-part="eventKey" data-bp-role="note" x="706.17" y="476.59" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="706.17" dy="0">$1.6k in first 30 days</tspan></text>
-<circle data-id="frame:eventKey:24" data-part="eventKey" cx="503.75" cy="496.54" r="9.75" fill="#FFFFFF" stroke="#0C7B4C" stroke-width="1.5"/>
-<text data-id="frame:eventKey:25" data-part="eventKey" data-bp-role="value" x="503.75" y="500.74" text-anchor="middle" font-size="12" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="503.75" dy="0">4</tspan></text>
-<text data-id="frame:eventKey:26" data-part="eventKey" data-bp-role="note" x="557.50" y="501.09" text-anchor="end" font-size="12" font-weight="400" fill="#4E6070"><tspan x="557.50" dy="0">26 Aug</tspan></text>
-<circle data-id="frame:eventKey:27" data-part="eventKey" cx="570.30" cy="496.89" r="4.13" fill="#0C7B4C"/>
-<text data-id="frame:eventKey:28" data-part="eventKey" data-bp-role="note" x="580.17" y="501.09" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="580.17" dy="0">Launch</tspan></text>
-<text data-id="frame:eventKey:29" data-part="eventKey" data-bp-role="note" x="628.17" y="501.09" text-anchor="start" font-size="13" font-weight="700" fill="#0D2A43"><title>26 Aug 2026, Launch: Alpine Fleece - $0.9k in first 30 days</title><tspan x="628.17" dy="0">Alpine Fleece</tspan></text>
-<text data-id="frame:eventKey:30" data-part="eventKey" data-bp-role="note" x="719.67" y="501.09" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="719.67" dy="0">$0.9k in first 30 days</tspan></text>
+<text data-id="frame:eventKey:19" data-part="eventKey" data-bp-role="note" x="550.50" y="476.59" text-anchor="end" font-size="12" font-weight="400" fill="#4E6070"><tspan x="550.50" dy="0">3 Aug</tspan></text>
+<circle data-id="frame:eventKey:20" data-part="eventKey" cx="563.30" cy="472.39" r="4.13" fill="#0C7B4C"/>
+<text data-id="frame:eventKey:21" data-part="eventKey" data-bp-role="note" x="573.17" y="476.59" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="573.17" dy="0">Launch</tspan></text>
+<text data-id="frame:eventKey:22" data-part="eventKey" data-bp-role="note" x="621.17" y="476.59" text-anchor="start" font-size="13" font-weight="700" fill="#0D2A43"><title>3 Aug 2026, Launch: Breeze Cap - $1.6k in first 30 days</title><tspan x="621.17" dy="0">Breeze Cap</tspan></text>
+<text data-id="frame:eventKey:23" data-part="eventKey" data-bp-role="note" x="699.17" y="476.59" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="699.17" dy="0">$1.6k in first 30 days</tspan></text>
 <line data-id="axis:baseline" data-part="baseline" x1="16" y1="411.50" x2="944" y2="411.50" stroke="#0D2A43" stroke-width="1"/>
 <rect data-id="mark:rev:w27" data-part="bar" x="35.23" y="241.19" width="39.47" height="170.31" fill="#12395E"/>
 <rect data-id="mark:rev:w28" data-part="bar" x="106.07" y="259.57" width="39.47" height="151.93" fill="#12395E"/>
@@ -81,10 +74,15 @@
 <text data-id="label:event:oos-runner" data-part="annotation" data-bp-role="note" x="58.96" y="102.24" text-anchor="start" font-size="13" font-weight="700" fill="#0D2A43"><title>29 Jun 2026, Out of stock: 2 top products - Trail Runner Pro (2 sizes), Summit Jacket · 24–38 days out · ~$5.1k at risk</title><tspan x="58.96" dy="0">2 top products</tspan></text>
 <text data-id="label:event:oos-runner:detail" data-part="annotation" data-bp-role="note" x="58.96" y="116.96" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="58.96" dy="0">Trail Runner Pro (2 sizes), Summit Jacket</tspan><tspan x="58.96" dy="15.60">24–38 days out · ~$5.1k at risk</tspan></text>
 <line data-id="ann:oos-tote:pole" data-part="eventPole" x1="480" y1="76.20" x2="480" y2="232.18" stroke="#97A6B4" stroke-width="1"/>
-<path data-id="ann:oos-tote:glyph" data-part="eventGlyph" d="M484 78.09L493.6 78.09L488.8 86.09Z" fill="#C13743" stroke-linejoin="round"/>
-<text data-id="label:event:oos-tote:header" data-part="annotation" data-bp-role="note" x="498.67" y="85.76" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan>Out of stock</tspan><tspan> · 10 Aug</tspan></text>
-<text data-id="label:event:oos-tote" data-part="annotation" data-bp-role="note" x="484" y="102.24" text-anchor="start" font-size="13" font-weight="700" fill="#0D2A43"><title>10 Aug 2026, Out of stock: Canvas Tote Large - 42 days out · ~$2.0k at risk</title><tspan x="484" dy="0">Canvas Tote Large</tspan></text>
-<text data-id="label:event:oos-tote:detail" data-part="annotation" data-bp-role="note" x="484" y="116.96" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="484" dy="0">42 days out · ~$2.0k at risk</tspan></text>
+<path data-id="ann:oos-tote:glyph" data-part="eventGlyph" d="M346.83 78.09L356.43 78.09L351.63 86.09Z" fill="#C13743" stroke-linejoin="round"/>
+<text data-id="label:event:oos-tote:header" data-part="annotation" data-bp-role="note" x="476" y="85.76" text-anchor="end" font-size="12" font-weight="400" fill="#4E6070"><tspan>Out of stock</tspan><tspan> · 10 Aug</tspan></text>
+<text data-id="label:event:oos-tote" data-part="annotation" data-bp-role="note" x="476" y="102.24" text-anchor="end" font-size="13" font-weight="700" fill="#0D2A43"><title>10 Aug 2026, Out of stock: Canvas Tote Large - 42 days out · ~$2.0k at risk</title><tspan x="476" dy="0">Canvas Tote Large</tspan></text>
+<text data-id="label:event:oos-tote:detail" data-part="annotation" data-bp-role="note" x="476" y="116.96" text-anchor="end" font-size="12" font-weight="400" fill="#4E6070"><tspan x="476" dy="0">42 days out · ~$2.0k at risk</tspan></text>
+<line data-id="ann:launch-fleece:pole" data-part="eventPole" x1="621.68" y1="76.20" x2="621.68" y2="219.84" stroke="#97A6B4" stroke-width="1"/>
+<circle data-id="ann:launch-fleece:glyph" data-part="eventGlyph" cx="630.48" cy="81.56" r="4.13" fill="#0C7B4C"/>
+<text data-id="label:event:launch-fleece:header" data-part="annotation" data-bp-role="note" x="640.35" y="85.76" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan>Launch</tspan><tspan> · 26 Aug</tspan></text>
+<text data-id="label:event:launch-fleece" data-part="annotation" data-bp-role="note" x="625.68" y="102.24" text-anchor="start" font-size="13" font-weight="700" fill="#0D2A43"><title>26 Aug 2026, Launch: Alpine Fleece - $0.9k in first 30 days</title><tspan x="625.68" dy="0">Alpine Fleece</tspan></text>
+<text data-id="label:event:launch-fleece:detail" data-part="annotation" data-bp-role="note" x="625.68" y="116.96" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="625.68" dy="0">$0.9k in first 30 days</tspan></text>
 <line data-id="ann:launch-shell:pole" data-part="eventPole" x1="763.36" y1="76.20" x2="763.36" y2="195.43" stroke="#97A6B4" stroke-width="1"/>
 <circle data-id="ann:launch-shell:glyph" data-part="eventGlyph" cx="772.16" cy="81.56" r="4.13" fill="#0C7B4C"/>
 <text data-id="label:event:launch-shell:header" data-part="annotation" data-bp-role="note" x="782.03" y="85.76" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan>Launch</tspan><tspan> · 7 Sep</tspan></text>
@@ -99,9 +97,6 @@
 <line data-id="ann:launch-cap:pole" data-part="eventPole" x1="409.16" y1="178.10" x2="409.16" y2="221.76" stroke="#97A6B4" stroke-width="1"/>
 <circle data-id="ann:launch-cap:marker" data-part="eventMarker" cx="409.16" cy="168.35" r="9.75" fill="#FFFFFF" stroke="#0C7B4C" stroke-width="1.5"><title>3 Aug 2026, Launch: Breeze Cap - $1.6k in first 30 days</title></circle>
 <text data-id="label:event:launch-cap" data-part="annotation" data-bp-role="value" x="409.16" y="172.55" text-anchor="middle" font-size="12" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="409.16" dy="0">3</tspan></text>
-<line data-id="ann:launch-fleece:pole" data-part="eventPole" x1="621.68" y1="178.10" x2="621.68" y2="219.84" stroke="#97A6B4" stroke-width="1"/>
-<circle data-id="ann:launch-fleece:marker" data-part="eventMarker" cx="621.68" cy="168.35" r="9.75" fill="#FFFFFF" stroke="#0C7B4C" stroke-width="1.5"><title>26 Aug 2026, Launch: Alpine Fleece - $0.9k in first 30 days</title></circle>
-<text data-id="label:event:launch-fleece" data-part="annotation" data-bp-role="value" x="621.68" y="172.55" text-anchor="middle" font-size="12" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="621.68" dy="0">4</tspan></text>
 <line data-id="ann:oos-runner:period" data-part="eventPeriod" x1="19.54" y1="146.60" x2="404.10" y2="146.60" stroke="#C13743" stroke-width="1"/>
 <line data-id="ann:oos-runner:period:start" data-part="eventPeriod" x1="19.54" y1="143.60" x2="19.54" y2="149.60" stroke="#C13743" stroke-width="1"/>
 <line data-id="ann:oos-runner:period:end" data-part="eventPeriod" x1="404.10" y1="143.60" x2="404.10" y2="149.60" stroke="#C13743" stroke-width="1"/>
