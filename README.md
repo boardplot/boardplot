@@ -32,28 +32,28 @@ This stacked column chart is one JSON spec drawn by `boardplot render`; the vari
 Each chart links to its spec in the gallery. Companies, products, sources and numbers in the examples are invented.
 
 <a href="docs/gallery.md#bar"><picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/gallery/bar-margin-by-brand-dark.svg">
-  <img src="docs/gallery/bar-margin-by-brand.svg" alt="Bar chart: margin per unit by brand against the average and a 30 EUR target, with our brand highlighted">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/gallery/readme-bar-margin-by-brand-dark.svg">
+  <img src="docs/gallery/readme-bar-margin-by-brand.svg" width="840" alt="Bar chart: margin per unit by brand against the average and a 30 EUR target, with our brand highlighted">
 </picture></a>
 
 <a href="docs/gallery.md#line"><picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/gallery/line-multiline-arr-endpoint-cagr-dark.svg">
-  <img src="docs/gallery/line-multiline-arr-endpoint-cagr.svg" alt="Line chart: cloud ARR grows 31.5% a year and overtakes licence revenue, with a growth bracket and a forecast year">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/gallery/readme-line-multiline-arr-endpoint-cagr-dark.svg">
+  <img src="docs/gallery/readme-line-multiline-arr-endpoint-cagr.svg" width="840" alt="Line chart: cloud ARR grows 31.5% a year and overtakes licence revenue, with a growth bracket and a forecast year">
 </picture></a>
 
 <a href="docs/gallery.md#dimswitch"><picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/gallery/dimswitch-statement-channels-dark.svg">
-  <img src="docs/gallery/dimswitch-statement-channels.svg" alt="Dimension-switch table: a contribution-margin statement per order over four weeks, with week-over-week changes and the two sales channels under the total">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/gallery/readme-dimswitch-statement-channels-dark.svg">
+  <img src="docs/gallery/readme-dimswitch-statement-channels.svg" width="840" alt="Dimension-switch table: a contribution-margin statement per order over four weeks, with week-over-week changes and the two sales channels under the total">
 </picture></a>
 
 <a href="docs/gallery.md#table"><picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/gallery/table-management-report-compact-dark.svg">
-  <img src="docs/gallery/table-management-report-compact.svg" alt="Management table: revenue by segment for month-to-date and closed year-to-date, with changes against last year and plan">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/gallery/readme-table-management-report-compact-dark.svg">
+  <img src="docs/gallery/readme-table-management-report-compact.svg" width="840" alt="Management table: revenue by segment for month-to-date and closed year-to-date, with changes against last year and plan">
 </picture></a>
 
 <a href="docs/gallery.md#waterfall"><picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/gallery/waterfall-build-down-dark.svg">
-  <img src="docs/gallery/waterfall-build-down.svg" alt="Waterfall chart: a P&amp;L build-down from revenue of 100 through COGS, wages, operating costs and D&amp;A to EBIT of 16.0, then tax to net income of 11.8">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/gallery/readme-waterfall-build-down-dark.svg">
+  <img src="docs/gallery/readme-waterfall-build-down.svg" width="840" alt="Waterfall chart: a P&amp;L build-down from revenue of 100 through COGS, wages, operating costs and D&amp;A to EBIT of 16.0, then tax to net income of 11.8">
 </picture></a>
 
 ## Quick start

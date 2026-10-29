@@ -33,9 +33,16 @@ export const GALLERY_GROUPS = [
   ['Surveys and maps', [['choropleth', 'eu-inflation-values'], ['likert', 'employee-engagement-5pt'], ['tilemap', 'europe-tile-grid']]],
 ];
 
-/** The README examples under the column hero, in TYPE_ORDER after column; each also gets a dark version for GitHub's dark mode. */
+/**
+ * The README examples under the column hero, in TYPE_ORDER after column, drawn at
+ * HERO_WIDTH in docs/gallery/readme-<type>-<id>.svg and a dark version for GitHub's dark mode.
+ * One width gives every README chart the same column width and the same text size.
+ * A third entry patches options for that width: the dimswitch fixture pins 66 px week
+ * columns to fit its 720 px default, and at HERO_WIDTH they take the default 94 px.
+ */
 export const README_EXAMPLES = [['bar', 'margin-by-brand'], ['line', 'multiline-arr-endpoint-cagr'],
-  ['dimswitch', 'statement-channels'], ['table', 'management-report-compact'], ['waterfall', 'build-down']];
+  ['dimswitch', 'statement-channels', { widths: { period: 94 } }], ['table', 'management-report-compact'],
+  ['waterfall', 'build-down']];
 
 /** The README hero: one chart of the most common type at about the width GitHub shows a README, drawn light and dark. */
 export const HERO = ['column', 'integrated-stacked-variance'];
@@ -66,7 +73,7 @@ function drawn(spec, width) {
 
 const title = (found) => found.spec.options?.title ?? found.useCase;
 
-const file = (type, id, dark = false) => `gallery/${type}-${id}${dark ? '-dark' : ''}.svg`;
+const file = (type, id) => `gallery/${type}-${id}.svg`;
 /** The spec in the dark preset; a pinned theme keeps its overrides, except colours tuned for a light preset. */
 function darkened(spec) {
   const pin = spec.options?.theme;
@@ -104,11 +111,20 @@ export function galleryFiles({ list, counts, summary, specJson, slug }) {
   for (const [, picks] of GALLERY_GROUPS) {
     for (const [type, id] of picks) files.set(`docs/${file(type, id)}`, `${drawn(fixture(type, id).spec)}\n`);
   }
-  // The hero is drawn at HERO_WIDTH, so a size preset pinned for a slide (its height for another width) gives way to the height the engine picks.
-  const hero = structuredClone(fixture(...HERO).spec);
-  delete hero.options.size;
+  // README charts are drawn at HERO_WIDTH, so a size preset pinned for a slide (its height for another width) gives way to the height the engine picks.
+  const readme = (type, id, patch = {}) => {
+    const spec = structuredClone(fixture(type, id).spec);
+    delete spec.options?.size;
+    for (const [key, value] of Object.entries(patch)) spec.options[key] = { ...spec.options[key], ...value };
+    return spec;
+  };
+  const hero = readme(...HERO);
   files.set('docs/gallery/hero-light.svg', `${drawn(hero, HERO_WIDTH)}\n`);
   files.set('docs/gallery/hero-dark.svg', `${drawn(darkened(hero), HERO_WIDTH)}\n`);
-  for (const [type, id] of README_EXAMPLES) files.set(`docs/${file(type, id, true)}`, `${drawn(darkened(fixture(type, id).spec))}\n`);
+  for (const [type, id, patch] of README_EXAMPLES) {
+    const spec = readme(type, id, patch);
+    files.set(`docs/gallery/readme-${type}-${id}.svg`, `${drawn(spec, HERO_WIDTH)}\n`);
+    files.set(`docs/gallery/readme-${type}-${id}-dark.svg`, `${drawn(darkened(spec), HERO_WIDTH)}\n`);
+  }
   return files;
 }
