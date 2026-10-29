@@ -788,7 +788,7 @@ The target replaces the type sizes of a preset; a size that `overrides` names st
 
 A theme key that Boardplot removed is refused with `invalid-theme-override` or `invalid-theme`, a suggest and a patch that removes it. `type.eyebrow.case` is removed: KPI eyebrows and waffle panel labels print names as written, so write capitals in the name to keep them. If the theme widened `type.eyebrow.tracking` for capitals, set `type.eyebrow.tracking` back or remove it. Absent means no letter-spacing, and a name in mixed case reads too wide with capital tracking.
 
-An override can give `color.series` one or two colours. These colours come first. The remaining slots come from the preset, with colours that repeat an authored colour skipped. An override with three or more colours keeps its own ramp and overflow policy. A full theme needs at least three colours.
+An override can give `color.series` one or two colours. These colours come first. The remaining slots come from the preset, with colours that repeat an authored colour skipped. An override with three or more colours keeps its own ramp and overflow policy. A full theme needs at least one colour. It draws a two-series chart in exactly its two colours, and series past the end of its ramp follow `color.seriesOverflow`.
 
 ### Design system colours
 

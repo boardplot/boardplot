@@ -30,6 +30,13 @@ describe('theme shape', () => {
     expect(() => resolveTheme({ preset: 'boardroom', overrides: { color: { series: [] } } })).toThrow(/color.series/);
     expect(() => resolveTheme({ preset: 'boardroom', overrides: { color: { series: [42] } } } as never)).toThrow(/color.series/);
   });
+  // A brand theme with two series colours for a two-series chart must draw, not be refused.
+  it('accepts a full theme with two series colours, from a file and as a spec object', () => {
+    const theme = { ...clone(themes.boardroom), name: 'two-colours' } as Record<string, any>;
+    theme.color.series = ['#0B5FA5', '#8C3B26'];
+    expect(parseThemeJson(theme).theme.color.series).toEqual(['#0B5FA5', '#8C3B26']);
+    expect(checkThemeShape(theme)).toEqual([]);
+  });
   // Authored key and note sizes must survive the frame's default font caps, including sizes shared by the target tables.
   it('draws the authored secondary and footnote sizes in the key and notes', () => {
     const chart = getChartDefinition('column')!;
