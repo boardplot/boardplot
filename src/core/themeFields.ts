@@ -64,7 +64,7 @@ const THEME_FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze
   'color.reference':
     'The rails of a slope chart, the two verticals the values are read against. Absent means color.axis. Held to 3:1 on the background once set (contrast-reference).',
   'color.background': 'Chart canvas background. Tint stages mix toward this color, so it must be a real surface color.',
-  'color.series': 'Categorical ramp, index 0 first. A preset override with one or two colours fills the remaining slots from the preset, skipping colours already authored. A complete theme needs at least three entries. Index 0 also bases the sequential ramps (tints of series 1).',
+  'color.series': 'Categorical ramp, index 0 first. A preset override with one or two colours fills the remaining slots from the preset, skipping colours already authored. A complete theme needs at least one entry; series past the end of the ramp follow color.seriesOverflow. Index 0 also bases the sequential ramps (tints of series 1).',
   'color.seriesOverflow':
     "What a series index beyond the ramp does: 'repeatLast' reuses the last entry, 'cycle' restarts the ramp. Default 'repeatLast'.",
   'color.casePair': 'Tornado low/high fills. Absent resolves to neutralLight/series 1.',

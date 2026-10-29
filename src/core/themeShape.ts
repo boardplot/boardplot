@@ -96,7 +96,7 @@ export const THEME_SHAPE: ShapeNode = object({
     neutral: color, neutralLight: color, neutralMark: optColor, highlight: color, focus: optColor, spark: optColor,
     total: color, others: color, ink: color, inkInverse: color, inkMuted: color, inkMeta: optColor,
     axis: color, grid: color, rule: optColor, reference: optColor, leader: color, background: color,
-    series: { kind: 'array', item: color, min: 3 },
+    series: { kind: 'array', item: color, min: 1 },
     casePair: opt({ kind: 'tuple', items: [color, color] }),
     stack: opt({ kind: 'array', item: color, min: 2 }),
     seriesOverflow: optOneOf('repeatLast', 'cycle'),
