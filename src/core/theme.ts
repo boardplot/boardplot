@@ -35,7 +35,7 @@ import { themeColors } from './themeColors';
  * asks for them at the moment it has one; this is the chunk they arrive in
  * (see `core/deferred` and `core/themeShapeRules`).
  */
-registerDeferredLoader('theme-rules', () => import('./themeShapeRules'));
+registerDeferredLoader('theme-rules', () => import('./themeShapeRules').then((module) => module.linkThemeShapeRules()));
 
 type SurfaceWithAnchorTint = NonNullable<Theme['surface']> & { anchorTint?: number; bandTint?: number };
 

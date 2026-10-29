@@ -14,8 +14,7 @@
  * bare import is not enough in the published package: the publish lands in a
  * shared `dist/chunk-*.js`, and a host bundler drops a bare import of a chunk
  * that package.json does not list as side-effectful. The call is a value
- * dependency no bundler drops. Importing the module still publishes, for the
- * deferred loader and for tests.
+ * dependency no bundler drops, and the deferred loader calls it too.
  */
 
 import { publishDeferred } from './deferred';

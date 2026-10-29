@@ -662,6 +662,56 @@ function checkRowsEntry(installRoot, packageRoot) {
 }
 
 /**
+ * A Vite production build of a per-type entry draws the three charts that
+ * fetch a chunk: one with rows, one with an annotation, one with a patched
+ * theme. Rolldown drops a chunk body whose only effect is a module-scope
+ * call when `sideEffects` does not list it, and a chart then stays on the
+ * busy placeholder (0.52.5: rows never drew). Node and esbuild run every
+ * chunk body, so no other check here sees it.
+ */
+function checkViteDeferredChunks(installRoot) {
+  const consumer = join(installRoot, 'vite-deferred-consumer.mjs');
+  writeFileSync(consumer,
+    `import { createElement } from 'react';\n` +
+    `import { LineChart } from 'boardplot/react/line';\n` +
+    `const data = { categories: ['2022', '2023', '2024'], series: [{ id: 'revenue', name: 'Revenue', values: [10, 12, 15] }] };\n` +
+    `export const charts = {\n` +
+    `  rows: createElement(LineChart, { rows: [{ year: '2022', channel: 'Search', revenue: 10 }, { year: '2023', channel: 'Search', revenue: 12 }], columns: { category: 'year', series: 'channel', value: 'revenue' } }),\n` +
+    `  annotate: createElement(LineChart, { data, annotations: [{ kind: 'cagr' }] }),\n` +
+    `  'theme-rules': createElement(LineChart, { data, theme: { preset: 'boardroom', overrides: { color: { ink: '#1A2B3C' } } } }),\n` +
+    `};\n` +
+    `export { createRoot } from 'react-dom/client';\n`);
+  const viteBuild = join(installRoot, 'deferred-vite.mjs');
+  writeFileSync(viteBuild,
+    `import { build } from ${JSON.stringify(import.meta.resolve('vite'))};\n` +
+    `await build({ root: ${JSON.stringify(installRoot)}, configFile: false, logLevel: 'silent', define: { 'process.env.NODE_ENV': '"production"' }, ` +
+    `build: { outDir: 'deferred-vite', emptyOutDir: true, minify: false, lib: { entry: ${JSON.stringify(consumer)}, formats: ['es'], fileName: () => 'app.mjs' } } });\n`);
+  run(process.execPath, [viteBuild], { cwd: installRoot });
+  const probe = join(installRoot, 'deferred-vite-mount.mjs');
+  writeFileSync(probe,
+    `import { JSDOM } from ${JSON.stringify(import.meta.resolve('jsdom'))};\n` +
+    `const dom = new JSDOM('<!doctype html><body></body>', { pretendToBeVisual: true });\n` +
+    `Object.assign(globalThis, { window: dom.window, document: dom.window.document, Node: dom.window.Node, Element: dom.window.Element, HTMLElement: dom.window.HTMLElement });\n` +
+    `const { charts, createRoot } = await import('./deferred-vite/app.mjs');\n` +
+    `const stuck = [];\n` +
+    `for (const [name, chart] of Object.entries(charts)) {\n` +
+    `  const host = document.body.appendChild(document.createElement('div'));\n` +
+    `  createRoot(host).render(chart);\n` +
+    `  const deadline = Date.now() + 10000;\n` +
+    `  while (!host.querySelector('svg') || host.querySelector('[data-bp-loading]')) {\n` +
+    `    const card = host.querySelector('[data-bp-load-failed], [data-bp-spec-error], [data-bp-refused]');\n` +
+    `    if (card || Date.now() > deadline) { stuck.push(name + (card ? ' (error card)' : ' (busy placeholder after 10 s)')); break; }\n` +
+    `    await new Promise((resolve) => setTimeout(resolve, 20));\n` +
+    `  }\n` +
+    `}\n` +
+    `process.stdout.write(JSON.stringify(stuck), () => process.exit(0));\n`);
+  const stuck = JSON.parse(run(process.execPath, [probe], { cwd: installRoot, timeout: 60_000 }));
+  if (stuck.length) return [`a Vite production build of boardplot/react/line does not draw the chart that fetches: ${stuck.join(', ')}`];
+  console.log('Vite production build of boardplot/react/line draws charts with rows, an annotation and a patched theme');
+  return [];
+}
+
+/**
  * A theme registered through `boardplot/theme` is the theme a per-type
  * entry resolves by name: both entries read one registry, the shared chunk
  * tsup splits out. The brand background proves the chart drew with it.
@@ -1038,6 +1088,7 @@ try {
     ...checkLightEntries(installedPackageRoot),
     ...checkFontsEntry(),
     ...checkRowsEntry(installRoot, installedPackageRoot),
+    ...checkViteDeferredChunks(installRoot),
   ];
 
   const documentPath = join(scratch, 'waterfall.json');

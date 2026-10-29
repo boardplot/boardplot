@@ -84,7 +84,12 @@ function notify(): void {
   for (const redraw of [...waiting]) redraw();
 }
 
-/** Called at module scope by the accessor that knows which chunk carries the module. */
+/**
+ * Called at module scope by the accessor that knows which chunk carries the
+ * module. `load` publishes through the chunk's export, such as
+ * `import('./annotateEngine').then((module) => module.linkAnnotateEngine())`:
+ * a host bundler may empty a chunk whose only effect is a module-scope call.
+ */
 export function registerDeferredLoader(name: keyof DeferredCoreModules, load: () => Promise<unknown>): void {
   if (!loaders.has(name)) loaders.set(name, load);
 }
@@ -150,16 +155,19 @@ export function loadDeferred(name: DeferredName): void {
   const load = loaders.get(name);
   if (!load) return;
   loading.add(name);
-  void load().then(() => {
-    loading.delete(name);
-    failures.delete(name);
-  }, (reason: unknown) => {
+  const fail = (reason: unknown) => {
     loading.delete(name);
     const message = reason instanceof Error ? reason.message : String(reason);
     const first = failures.get(name) !== message;
     failures.set(name, message);
     if (first) notify();
-  });
+  };
+  void load().then(() => {
+    // A load that publishes nothing would leave the chart on the busy placeholder.
+    if (!held.has(name)) { fail(new Error(`the '${name}' chunk loaded without publishing its module`)); return; }
+    loading.delete(name);
+    failures.delete(name);
+  }, fail);
 }
 
 /**

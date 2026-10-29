@@ -28,7 +28,7 @@ import type { EmittedLane, LaneSettleInput, SettledLane } from './eventLane';
 import type { FrameResult } from './frame';
 import { parseFormatExample, specUnitKind } from './formatSpec';
 
-registerDeferredLoader('annotate', () => import('./annotateEngine'));
+registerDeferredLoader('annotate', () => import('./annotateEngine').then((module) => module.linkAnnotateEngine()));
 
 /**
  * The annotation placement pass. Identical in signature and result to
