@@ -325,7 +325,7 @@ function layoutGanttPass(data: GanttData, options: GanttOptions = {}, keyed: Rea
   const warnings: LintWarning[] = [];
   if (options.format !== undefined) warnings.push({
     code: 'format-unused', severity: 'warn', field: ['options', 'format'],
-    message: "'gantt' has no value labels of its own; options.format is ignored in this release and will be refused in the next release",
+    message: "'gantt' has no value labels of its own; options.format is ignored",
     suggest: 'Remove options.format. Gantt formats calendar dates through its date options.', fix: [{ op: 'remove', path: '/options/format' }],
   });
   const env = resolveGanttEnv(options, warnings);

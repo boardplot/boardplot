@@ -285,7 +285,6 @@ Defaults are the `standard` preset.
 | table.weights.subtotal | number |  |  |  | Subtotal label weight. Default table.weights.emphasis. |
 | table.weights.result | number |  |  |  | Result label weight. Default table.weights.emphasis. |
 | table.weights.block | number |  |  |  | Strong block-column figure weight. Default table.weights.emphasis. |
-| table.weights.change | number |  |  |  | Deprecated: accepted and ignored in this release; refused in the next. Remove this key. An authored key warns option-deprecated with removal guidance. |
 | table.weights.figures | object |  |  |  | Figure weights per presentation kind. |
 | table.weights.figures.member | number |  |  |  | Member figure weight. Default 400 on a leaf and table.weights.emphasis on a parent. |
 | table.weights.figures.measure | number |  |  |  | Measure figure weight. Default 400 on a leaf and table.weights.emphasis on a parent. |
@@ -352,7 +351,7 @@ Defaults are the `standard` preset.
 | good-bad-similar | good and bad are nearly identical |
 | family-outside-metric-class | warning: the leading family of a type stack is not Inter, Geist, Helvetica, Helvetica Neue, Arial or a metric clone, so text can render wider than measured; pass tables built by `boardplot fonts build`, see docs/FONTS.md |
 
-An unknown key, such as the retired `space.barGap`, comes with a suggest that names it and a JSON Patch that removes it. The CLI, the MCP tools, React and `parseThemeJson` from `boardplot/validate` give the same suggest and patch; `parseThemeJson` throws it as an `invalid-theme` error whose patch paths start at the theme file.
+A retired key, such as `space.barGap`, is accepted for good: the theme draws without it and warns `option-deprecated` with a JSON Patch that removes it. A retired preset name, such as `ibcs`, draws as its successor and warns with a patch that rewrites it. An unknown key that never existed is refused with a suggest that names it and a JSON Patch that removes it. The CLI, the MCP tools, React and `parseThemeJson` from `boardplot/validate` give the same warnings, suggests and patches; `parseThemeJson` throws a refusal as an `invalid-theme` error whose patch paths start at the theme file.
 
 A resolved theme is FROZEN, all the way down. `resolveTheme`, the `theme` on a resolved request and the one a React component reads are the same deeply frozen object, so a write to one throws where it is written instead of changing a theme the engine has already judged and cached. A variant is a new object: spread the resolved theme, or pass `overrides` and let the engine merge and check them.
 

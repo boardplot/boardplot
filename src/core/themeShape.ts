@@ -178,7 +178,7 @@ export const THEME_SHAPE: ShapeNode = object({
     dataGap: optOneOf('word', 'glyph'),
     rows: opt(object({ lineHeight: tableFace.lineHeight, pad: optNum(0, 16) })),
     weights: opt(object({
-      emphasis: optWeight, subtotal: optWeight, result: optWeight, block: optWeight, change: optWeight,
+      emphasis: optWeight, subtotal: optWeight, result: optWeight, block: optWeight,
       figures: opt(object(each(['member', 'measure', 'subtotal', 'result'] as const, () => optWeight))),
       member: optWeight, measure: optWeight,
     })),
@@ -301,16 +301,10 @@ export function semanticErasureWarnings(theme: Theme): LintWarning[] {
   });
 }
 
-/** What a removed key's author still has to change once the key is gone. */
-const REMOVED_KEY_NOTES: Readonly<Record<string, string>> = {
-  'type.eyebrow.case': 'KPI eyebrows and waffle panel labels now print names as written; to keep capitals, write them in the name. '
-    + 'Where the theme widened type.eyebrow.tracking for capitals, set type.eyebrow.tracking back or remove it: absent means no letter-spacing, and a name in mixed case reads too wide with capital tracking.',
-};
-
 /**
- * The way out of a shape refusal that names unknown keys, such as
- * space.barGap: the keys to remove, and a remove patch per key under
- * `root`. Undefined when the shape check named no unknown key.
+ * The way out of a shape refusal that names unknown keys: the keys to
+ * remove, and a remove patch per key under `root`. Undefined when the shape
+ * check named no unknown key. A retired key never gets here (retired.ts).
  */
 export function unknownThemeKeyRepair(issues: readonly string[], root: string): { suggest: string; fix: JsonPatchOperation[] } | undefined {
   // The parent path is ours and dotted; the key is the author's and may hold
@@ -330,8 +324,7 @@ export function unknownThemeKeyRepair(issues: readonly string[], root: string): 
       ? [`${segments.slice(0, -1).join('.') || 'theme'} accepts ${Object.keys(node.props).join(', ')}.`] : [];
   });
   return {
-    suggest: [`Remove ${keys.map((segments) => segments.join('.')).join(', ')}; the theme takes no such key.`, ...new Set(accepted),
-      ...keys.flatMap((segments) => REMOVED_KEY_NOTES[segments.join('.')] ?? [])].join(' '),
+    suggest: [`Remove ${keys.map((segments) => segments.join('.')).join(', ')}; the theme takes no such key.`, ...new Set(accepted)].join(' '),
     fix: keys.map((segments) => ({ op: 'remove', path: root + toJsonPointer(segments) })),
   };
 }

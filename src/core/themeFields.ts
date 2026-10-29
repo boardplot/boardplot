@@ -262,7 +262,6 @@ const THEME_FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze
   'table.weights.figures.subtotal': 'Subtotal figure weight. Default table.weights.emphasis.',
   'table.weights.figures.result': 'Result figure weight. Default table.weights.emphasis.',
   'table.weights.block': 'Strong block-column figure weight. Default table.weights.emphasis.',
-  'table.weights.change': 'Deprecated: accepted and ignored in this release; refused in the next. Remove this key. An authored key warns option-deprecated with removal guidance.',
   'table.ruleWidths': 'Table rule widths in px.',
   'table.ruleWidths.head': 'Head rule width in px. Default 1.',
   'table.ruleWidths.row': 'Row rule width in px, in table.ruleInk. Default 1 in every preset; absent in a custom theme, the hair stroke (0.75).',

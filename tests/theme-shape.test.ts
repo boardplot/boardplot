@@ -5,7 +5,8 @@ import { parseThemeJson, validateTheme } from '../src/core/themeValidate';
 import '../src/core/themeShapeRules';
 import { parseJsonPointer } from '../src/core/diagnostics/jsonPatch';
 import { checkThemeShape, unknownThemeKeyRepair } from '../src/core/themeShape';
-import { getChartDefinition } from '../src/index';
+import { getChartDefinition, measure } from '../src/index';
+import { getFixtures } from '../src/fixtures';
 import { requireGeometry } from '../src/core/sizing';
 
 const clone = (value: unknown): Record<string, unknown> => JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
@@ -104,6 +105,19 @@ describe('theme shape', () => {
 });
 
 describe('unknown-key repair', () => {
+  // A brand theme saved when the theme export still wrote space.barGap must keep drawing; a typo must still refuse.
+  it('draws a theme with a retired key and warns with its remove patch, on files, objects and overrides', () => {
+    const valid = clone(themes.boardroom);
+    const saved = { ...valid, space: { ...valid.space as object, barGap: 4 } };
+    const parsed = parseThemeJson(saved);
+    expect(parsed.theme).toEqual(parseThemeJson(valid).theme);
+    expect(parsed.warnings).toContainEqual(expect.objectContaining({ code: 'option-deprecated', fix: [{ op: 'remove', path: '/space/barGap' }] }));
+    const bar = getFixtures('bar')[0]!;
+    const result = measure({ type: 'bar', data: bar.data, options: { ...bar.options, theme: { preset: 'boardroom', overrides: { space: { barGap: 4 } } } } });
+    expect(result.warnings).toContainEqual(expect.objectContaining({ code: 'option-deprecated', fix: [{ op: 'remove', path: '/options/theme/overrides/space/barGap' }] }));
+    expect(() => parseThemeJson({ ...valid, space: { ...valid.space as object, barGapp: 4 } })).toThrow(/barGapp/);
+  });
+
   it('keeps a flattened key as one escaped pointer segment', () => {
     expect(unknownThemeKeyRepair(['space: Unrecognized key: "a.b/c~d"'], '/theme')?.fix)
       .toEqual([{ op: 'remove', path: '/theme/space/a.b~1c~0d' }]);

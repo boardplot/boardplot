@@ -143,8 +143,8 @@ describe('unknown option keys are refused on every type', () => {
 
   it('names the real place of a moved key instead of the nearest key', () => {
     const fixture = getFixtures('combo')[0]!;
-    const spec = { type: 'combo', data: fixture.data, options: { ...fixture.options, labels: { growth: true } } };
-    const moved = (finding: Finding) => finding.code === 'unknown-option' && finding.suggest === "Remove 'growth' here and set options.dualAxis.growth instead.";
+    const spec = { type: 'combo', data: fixture.data, options: { ...fixture.options, width: 600 } };
+    const moved = (finding: Finding) => finding.code === 'unknown-option' && finding.suggest === "Remove 'width' here and set options.size.width instead.";
     expect(cliErrors(spec).errors.some(moved), 'CLI').toBe(true);
     expect(reactErrors(spec).some(moved), 'React spec path').toBe(true);
     // The per-type React entry words its key walk with the type's tree.
@@ -156,6 +156,31 @@ describe('unknown option keys are refused on every type', () => {
     // A type without dualAxis keeps the nearest-key hint.
     expect(wordUnknownKeys([{ path: ['labels', 'growth'], node: labels }], { labels })[0]!.suggest)
       .toBe("Remove 'growth'; this key is not supported here.");
+  });
+  // A spec saved before a rename must keep drawing; a typo beside the retired names must still refuse.
+  it('draws a renamed preset and option value as their successors with a rewrite fix, and still refuses a typo', () => {
+    const fixture = getFixtures('table')[0]!;
+    const { variant: _variant, ...options } = fixture.options as Record<string, unknown>;
+    const spec = { type: 'table', data: fixture.data, options: { ...options, preset: 'plain', theme: 'ibcs' } };
+    const path = join(directory, 'retired.json');
+    writeFileSync(path, JSON.stringify(spec));
+    const output: string[] = [];
+    const log = vi.spyOn(console, 'log').mockImplementation((...args) => output.push(args.join(' ')));
+    const code = main(['render', path, '--format', 'svg', '--out', join(directory, 'retired')]);
+    log.mockRestore();
+    const mcp = JSON.parse(callTool('boardplot_render', { spec }).text) as { ok: boolean; warnings: (Finding & { fix?: unknown })[] };
+    const cli = JSON.parse(output.join('\n').slice(output.join('\n').indexOf('{'))) as typeof mcp;
+    expect(code, 'CLI').toBe(0);
+    expect(reactErrors(spec), 'React spec path').toEqual([]);
+    for (const result of [cli, mcp]) {
+      expect(result.ok).toBe(true);
+      expect(result.warnings).toContainEqual(expect.objectContaining({ code: 'option-deprecated',
+        fix: [{ op: 'remove', path: '/options/preset' }, { op: 'add', path: '/options/variant', value: 'hierarchy' }] }));
+      expect(result.warnings).toContainEqual(expect.objectContaining({ code: 'option-deprecated',
+        fix: [{ op: 'test', path: '/options/theme', value: 'ibcs' }, { op: 'replace', path: '/options/theme', value: 'notation' }] }));
+    }
+    const typo = { ...spec, options: { ...spec.options, presett: 'plain' } };
+    expect(cliErrors(typo).errors).toContainEqual(expect.objectContaining({ code: 'unknown-option', path: '/options/presett' }));
   });
   // showValues: true answered "Rename to labels", and labels: true is refused too, so an agent looped.
   it('renames only when the near option takes the authored value', () => {

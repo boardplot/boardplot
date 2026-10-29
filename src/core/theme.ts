@@ -27,6 +27,7 @@ import type { DeepPartial, Scenario } from './types/cell';
 import type { HatchCue, HatchLook, LintWarning, Paint, PaintToken, SceneNode, ThemePaintSource } from './types/scene';
 import type { DashRole, StrokeRole, Theme, ThemeRef, ThemeTable, TypeRoleName } from './types/theme';
 import { adoptedTheme } from './themeStore';
+import { RETIRED_PALETTES, RETIRED_PRESETS, RETIRED_THEME_KEYS, retiredThemeKeyWarning, withoutRetiredThemeKeys } from './retired';
 import { themeColors } from './themeColors';
 
 /**
@@ -768,8 +769,13 @@ function scaledTextTheme(theme: Theme, textScale: number, target: RenderTarget):
   return scaled;
 }
 
+/** The registered name a preset name draws as: a retired preset name draws as its successor. */
+function currentPreset(name: string): string {
+  return !Object.hasOwn(themes, name) && Object.hasOwn(RETIRED_PRESETS, name) ? RETIRED_PRESETS[name]!.to : name;
+}
+
 function targetTheme(ref: ThemeRef | undefined, target: RenderTarget): Theme {
-  const preset = typeof ref === 'string' ? ref : ref?.preset ?? 'boardroom';
+  const preset = currentPreset(typeof ref === 'string' ? ref : ref?.preset ?? 'boardroom');
   // A registered/uploaded complete theme owns its sizes. Internal resolved themes
   // also travel as full overrides and must not receive the target table twice.
   if (!PRESET_NAMES.has(preset) || (typeof ref === 'object' && ref.overrides && ownThemes.has(ref.overrides))) {
@@ -786,29 +792,43 @@ function targetTheme(ref: ThemeRef | undefined, target: RenderTarget): Theme {
 /** Carries the removal warnings of the authored request through the wrapped theme reference to the layout. */
 export const REMOVED_NAMES = Symbol('removedNames');
 
-/** The deprecation warning for `table.weights.change` in one chart's authored theme. */
+/** The `option-deprecated` warnings for the retired preset name and theme keys of one chart's authored theme. */
 export function removedNameWarnings(options: { theme?: unknown; palette?: unknown } | undefined): LintWarning[] {
   const warnings: LintWarning[] = [];
   const ref = options?.theme;
   // Our own wrapped reference (see REMOVED_NAMES): the layout that wrapped it already reported.
   if (ref !== null && typeof ref === 'object' && ownThemes.has((ref as { overrides?: object }).overrides ?? {})) return warnings;
-  const preset = typeof ref === 'string' ? ref : ref !== null && typeof ref === 'object' ? (ref as { preset?: unknown }).preset : undefined;
-  const base = typeof preset === 'string' ? (Object.hasOwn(themes, preset) ? themes[preset] : adoptedTheme(preset)) : undefined;
-  const change = ref && typeof ref === 'object' ? (ref as Exclude<ThemeRef, string>).overrides?.table?.weights?.change : undefined;
-  if (change !== undefined || base?.table?.weights?.change !== undefined) {
-    const authored = change !== undefined && base?.table?.weights?.change === undefined;
+  const authored = typeof ref === 'string' ? ref : ref !== null && typeof ref === 'object' ? (ref as { preset?: unknown }).preset : undefined;
+  if (typeof authored !== 'string') return warnings;
+  const preset = currentPreset(authored);
+  if (preset !== authored) {
+    const field = typeof ref === 'string' ? ['options', 'theme'] : ['options', 'theme', 'preset'];
+    const path = `/${field.join('/')}`;
     warnings.push({
-      code: 'option-deprecated', severity: 'warn',
-      message: 'table.weights.change is ignored and is refused from the next release.',
-      ...(authored ? {
-        suggest: 'Remove theme.overrides.table.weights.change.',
-        field: ['options', 'theme', 'overrides', 'table', 'weights', 'change'],
-        fix: [{ op: 'remove' as const, path: '/options/theme/overrides/table/weights/change' }],
-      } : {
-        suggest: `Remove table.weights.change from the '${preset}' theme definition and authored overrides.`,
-        field: ['options', 'theme'],
-      }),
+      code: 'option-deprecated', severity: 'warn', field,
+      message: RETIRED_PRESETS[authored]!.same
+        ? `Theme preset '${authored}' is renamed '${preset}'.`
+        : `Theme preset '${authored}' is retired and draws as '${preset}'.`,
+      suggest: `Set the theme preset to '${preset}'.`,
+      fix: [{ op: 'test', path, value: authored }, { op: 'replace', path, value: preset }],
     });
+  }
+  const base = Object.hasOwn(themes, preset) ? themes[preset] : adoptedTheme(preset);
+  const overrides = ref && typeof ref === 'object' ? (ref as Exclude<ThemeRef, string>).overrides : undefined;
+  const has = (theme: unknown, dotted: string) => dotted.split('.').reduce<unknown>((node, key) =>
+    node !== null && typeof node === 'object' && Object.hasOwn(node, key) ? (node as Record<string, unknown>)[key] : undefined, theme) !== undefined;
+  for (const dotted of Object.keys(RETIRED_THEME_KEYS)) {
+    const inOverrides = has(overrides, dotted);
+    const inBase = has(base, dotted);
+    if (inOverrides && !inBase) warnings.push(retiredThemeKeyWarning(dotted, ['options', 'theme', 'overrides']));
+    // Removing the override would leave the key in the registered theme: the advice names its definition.
+    else if (inBase) {
+      warnings.push({
+        code: 'option-deprecated', severity: 'warn', field: ['options', 'theme'],
+        message: `Theme key ${dotted} is retired and ignored.`,
+        suggest: `Remove ${dotted} from the '${preset}' theme definition${inOverrides ? ' and authored overrides' : ''}. ${RETIRED_THEME_KEYS[dotted]}`,
+      });
+    }
   }
   return warnings;
 }
@@ -817,7 +837,7 @@ export function resolveTheme(ref?: ThemeRef): Theme {
   // The shipped default is the boardroom design family. A document that wants
   // the standard family pins `theme: 'standard'` explicitly.
   if (!ref) return own(roadshowFamilyThemes.boardroom);
-  const presetName = typeof ref === 'string' ? ref : ref.preset;
+  const presetName = typeof ref === 'string' ? currentPreset(ref) : typeof ref.preset === 'string' ? currentPreset(ref.preset) : ref.preset;
   // A registered theme, else one a spec brought along (core/themeStore). Own
   // keys only: a name is data, never a path to Object.prototype; a non-string
   // name matches neither.
@@ -938,7 +958,8 @@ function checkedOverride(base: Theme, overrides: DeepPartial<Theme>, presetName:
     }
     overrides = { ...overrides, color: { ...overrides.color, series: ramp } };
   }
-  const merged = mergeDeep(base, familyFollows(base, authoredSizesHold(base, overrides)));
+  // A retired key, authored or in a registered base, is ignored; removedNameWarnings reports it.
+  const merged = withoutRetiredThemeKeys(mergeDeep(base, familyFollows(base, authoredSizesHold(base, overrides)))).theme;
   const rules = requireDeferred('theme-rules');
   const issues = rules.checkThemeShape(merged);
   if (issues.length > 0) {
@@ -2180,6 +2201,13 @@ export function paintColor(theme: Theme, paint: Paint): string {
  * `series` ramp and report a warning through `warn` so charts surface an
  * `unknown-palette` lint instead of silently recoloring.
  */
+/** A palette warning; a retired palette name carries the patch that removes it. */
+export function paletteWarning(code: string, message: string): LintWarning {
+  return code === 'option-deprecated'
+    ? { code, severity: 'warn', message, field: ['options', 'palette'], suggest: 'Remove options.palette.', fix: [{ op: 'remove', path: '/options/palette' }] }
+    : { code, severity: 'warn', message };
+}
+
 export function resolvePalette(
   theme: Theme,
   name: string | undefined,
@@ -2187,6 +2215,10 @@ export function resolvePalette(
 ): string[] | undefined {
   if (!name) return undefined;
   const ramp = theme.color.palettes?.[name];
+  if (!ramp && RETIRED_PALETTES.has(name)) {
+    warn?.('option-deprecated', `palette '${name}' is retired and ignored; the theme's own series draw.`);
+    return undefined;
+  }
   if (!ramp) {
     warn?.(
       'unknown-palette',
@@ -2205,7 +2237,7 @@ export function resolveSemanticPaletteTheme(
 ): Theme {
   if (name === undefined) return theme;
   const ramp = resolvePalette(theme, name, (code, message) => {
-    warnings.push({ code, severity: 'warn', message });
+    warnings.push(paletteWarning(code, message));
   });
   if (!ramp) return theme;
   const primary = seriesColor(theme, 0, ramp);

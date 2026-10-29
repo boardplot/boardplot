@@ -23,6 +23,7 @@ import type { GridMarks } from './grid/layoutGrid';
 import type { InteractionScope } from './a11y/types';
 import { addWhereAbsent } from './diagnostics/jsonPatch';
 import { timeAnnotationAnchors } from './timeAxis';
+import { retireChartSettings } from './retired';
 
 /** Chart-specific options can replace these three shared fields. */
 export type RequestOptions = Omit<BaseOptions, 'labels' | 'legend' | 'mode'> & {
@@ -184,6 +185,9 @@ export function resolveChartRequest<D, O extends object>(
 ): ResolvedChartRequest<D, O & RequestOptions> {
   const def = getChart(input.type);
   if (!def) throw new NormalizeError('unknown-type', 'type', `unknown chart type '${input.type}'`);
+  // A caller that skipped validation (a per-type React entry) still draws a retired setting as validation does.
+  const retired = retireChartSettings(def.type, input, (name) => getChart(name)?.type);
+  input = retired.chart;
   const inheritedLocale = typeof context.locale === 'string' ? { language: context.locale } : context.locale;
   const options = Object.assign(Object.create(null) as O & RequestOptions, def.defaults, {
     ...(context.theme === undefined ? {} : { theme: context.theme }),
@@ -237,7 +241,7 @@ export function resolveChartRequest<D, O extends object>(
   const fontMetrics = options.measure ?? defaultMeasurer;
   options.measure = fontMetrics;
   const data = prepared(def, input.data, options) as D;
-  const inputWarnings = [...requestInputWarnings(def.type, def.type === 'grid' ? data : input.data, options),
+  const inputWarnings = [...retired.warnings, ...requestInputWarnings(def.type, def.type === 'grid' ? data : input.data, options),
     ...colorVariableWarnings(input.data, options.theme)];
   return {
     ...(inputWarnings.length ? { inputWarnings } : {}),

@@ -22,6 +22,7 @@ import { checkThemeShape, unknownThemeKeyRepair } from '../themeShape';
 import type { Theme, ThemeRef } from '../types/theme';
 import type { LintWarning } from '../types/scene';
 import { linkThemeShapeRules } from '../themeShapeRules';
+import { retiredThemeKeyWarning, withoutRetiredThemeKeys } from '../retired';
 
 // Links the theme checks `resolveTheme` runs over a patched theme, so a spec
 // with `theme.overrides` validates synchronously in every entry that holds
@@ -43,6 +44,9 @@ export function adoptThemeObject(
   theme: Record<string, unknown>,
   judge: (theme: Theme) => LintWarning[] = () => [],
 ): AdoptedTheme {
+  const retired = withoutRetiredThemeKeys(theme);
+  theme = retired.theme;
+  const retiredWarnings = retired.found.map(dotted => retiredThemeKeyWarning(dotted, ['theme']));
   const issues = checkThemeShape(theme);
   if (issues.length) {
     const repair = unknownThemeKeyRepair(issues, '/theme');
@@ -66,7 +70,7 @@ export function adoptThemeObject(
   // resolves to it when the tokens match and is refused when they differ.
   if (Object.hasOwn(themes, candidate.name)) {
     if (canonicalJson(themes[candidate.name]) === tokens) {
-      return { ok: true, name: candidate.name, ref: candidate.name, warnings: findings.filter((finding) => finding.severity !== 'error') };
+      return { ok: true, name: candidate.name, ref: candidate.name, warnings: [...retiredWarnings, ...findings.filter((finding) => finding.severity !== 'error')] };
     }
     return {
       ok: false, code: 'theme-name-reserved', message: `'${candidate.name}' is a registered theme and these tokens differ from it`,
@@ -77,7 +81,7 @@ export function adoptThemeObject(
   adoptTheme({ ...candidate, name });
   // The request carries every token: the store is only a lookup cache, and
   // resolveTheme falls back to these tokens when the cache has evicted the name.
-  return { ok: true, name, ref: { preset: name, overrides: candidate }, warnings: findings.filter((finding) => finding.severity !== 'error') };
+  return { ok: true, name, ref: { preset: name, overrides: candidate }, warnings: [...retiredWarnings, ...findings.filter((finding) => finding.severity !== 'error')] };
 }
 
 /** A 53-bit string hash (cyrb53), hex: an identity for theme tokens, not a security measure. */
