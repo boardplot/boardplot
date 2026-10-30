@@ -155,6 +155,29 @@ describe('composition warning taxonomy', () => {
 });
 
 describe('line and mekko fail closed visibly', () => {
+  // A bar mekko's heights are rates, so a folded Others column printed 12.5% and 18.9% as a false 31.4.
+  it('folds bar mekko rates into their width-weighted mean', () => {
+    const draw = (values: unknown[], widthSeriesId?: string) => {
+      const request = resolveChartRequest({ type: 'mekko', data: {
+        categories: ['a', 'b', 'c', 'd'].map((id) => ({ id })),
+        series: [{ id: 'size', role: 'reference', values: [40, 90, 60, 20] }, { id: 'rate', values }],
+      }, options: { variant: 'bar', topN: { n: 2, rest: true }, ...(widthSeriesId ? { widthSeriesId } : {}), size: { width: 960, height: 540 } } } as never);
+      const geometry = requireGeometry(layoutResolvedRequest(request));
+      const record = interactionRecords({ request, geometry, scope: request.scope, claims: [] }).find((r) => r.target.owner?.categoryId === 'others')!;
+      return { geometry, record, total: geometry.labels.find((label) => label.id === 'total:others')?.text };
+    };
+    const rates = [{ pct: 10 }, { pct: 3 }, { pct: 6 }, { pct: 20 }];
+    const weighted = draw(rates, 'size');
+    expect(weighted.total).toBe('13%');
+    expect(weighted.geometry.a11y.desc).toContain('Others 13%');
+    expect(weighted.record.value.unit).toBe('%');
+    expect(weighted.record.value.raw).toBeCloseTo(40 / 3);
+    expect(draw([10, 3, 6, 20], 'size').record.value.raw).toBeCloseTo(40 / 3);
+    // Without a width series the columns are equal, and plain heights stay amounts.
+    expect(draw(rates).record.value.raw).toBe(13);
+    expect(draw([10, 3, 6, 20]).record.value.raw).toBe(26);
+  });
+
   // Mekko Others must convert percent cells to amounts and keep the present width values when one width is missing.
   it('pools equivalent Mekko amounts, percents and fractions through their category bases', () => {
     const bases = [5000, 1000, 100];

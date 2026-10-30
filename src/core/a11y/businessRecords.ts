@@ -6,7 +6,7 @@ import { SPARKLINE_RING_RADIUS, kpiSparkSeries, lastObservedIndex, sparklinePoin
 import type { FunnelMarks, FunnelDerived } from '../charts/funnel/layout';
 import type { PieMarks, PieDerived } from '../charts/pie/layout';
 import type { MekkoMarks, MekkoDerived } from '../charts/mekko/layout';
-import { poolMekkoAmounts } from '../charts/topN';
+import { poolMekkoCell } from '../charts/topN';
 import type { ParetoMarks, ParetoData, ParetoDerived } from '../charts/pareto/layout';
 import type { PvmData, PvmDerived } from '../charts/pvm/types';
 import type { PyramidMarks } from '../charts/pyramid/layout';
@@ -295,7 +295,7 @@ function mekko(ctx: RecordContext): InteractionRecord[] {
   const geo = geometry<MekkoMarks, MekkoDerived>(ctx);
   const options = ctx.request.options as MekkoOptions;
   const variant = options.variant ?? 'stacked100';
-  const mode = variant === 'stacked' && options.valueAxis?.percent ? 'percent' : { stacked100: 'percent', stacked: 'unit', bar: 'bar' }[variant];
+  const mode = variant === 'stacked' && options.valueAxis?.percent ? 'percent' : ({ stacked100: 'percent', stacked: 'unit', bar: 'bar' } as const)[variant];
   const activeSeries = source.series.filter(series => series.role !== 'reference' && series.id !== options.widthSeriesId);
   const plottedSeries = mode === 'bar' ? activeSeries.slice(0, 1) : activeSeries;
   const shown = new Set(geo.marks.columns.map(column => column.categoryId));
@@ -304,17 +304,25 @@ function mekko(ctx: RecordContext): InteractionRecord[] {
     const raw = source.cell(category.id, series.id).raw;
     return sum + (!source.isPercent(category.id, series.id) && typeof raw === 'number' ? raw : 0);
   }, 0));
-  const pooled = new Map(plottedSeries.map(series => [series.id, poolMekkoAmounts(pooledCategories.map((category, i) => {
+  // The drawing's column weights: the width series, one column each, or the column's sum.
+  const widthSeries = source.series.some(series => series.id === options.widthSeriesId);
+  const weightOf = (category: { id: string }): number => mode === 'bar' && !widthSeries ? 1
+    : Math.max(0, (widthSeries ? [options.widthSeriesId!] : plottedSeries.map(series => series.id)).reduce((sum, id) => {
+      const raw = source.cell(category.id, id).raw;
+      return sum + (typeof raw === 'number' ? raw : 0);
+    }, 0));
+  const pooledCells = new Map(plottedSeries.map(series => [series.id, poolMekkoCell(pooledCategories.map((category, i) => {
     const raw = source.cell(category.id, series.id).raw;
-    return { v: typeof raw === 'number' ? raw : null, isPct: source.isPercent(category.id, series.id), basis: bases[i]! };
-  }), mode === 'percent')]));
+    return { v: typeof raw === 'number' ? raw : null, isPct: source.isPercent(category.id, series.id), basis: bases[i]!, weight: weightOf(category) };
+  }), mode, widthSeries)]));
+  const pooled = new Map([...pooledCells].map(([id, cell]) => [id, cell.v]));
   const pooledBasis = mode === 'percent' && pooledCategories.some(category => category.total100 !== undefined)
     ? bases.reduce((sum, basis) => sum + basis, 0) : undefined;
   return geo.marks.columns.flatMap(column => column.segments.map(segment => {
     const category = source.categories.find(category => category.id === column.categoryId);
     const members = pooledCategories.map(category => ({ categoryId: category.id, seriesId: segment.seriesId }));
     const series = source.series.find(series => series.id === segment.seriesId);
-    const value = category ? source.cell(column.categoryId, segment.seriesId) : derivedValue(pooled.get(segment.seriesId), series?.unit ?? ctx.request.options.unit, series?.format ?? ctx.request.options.format);
+    const value = category ? source.cell(column.categoryId, segment.seriesId) : derivedValue(pooled.get(segment.seriesId), pooledCells.get(segment.seriesId)?.isPct ? '%' : series?.unit ?? ctx.request.options.unit, series?.format ?? ctx.request.options.format);
     const columnLabel = category?.label ?? ctx.request.options.topN?.restLabel ?? ctx.request.options.strings?.others ?? 'Others';
     const seriesLabel = series?.label ?? segment.seriesId;
     // The cell's card names its column and its series.

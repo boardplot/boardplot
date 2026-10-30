@@ -218,7 +218,7 @@ Every chart type accepts these options unless its own page names them as not acc
 | sort.segments | string | `'sheet'`, `'asc'`, `'desc'`, `'reverse'` |  | Segment order: sheet preserves authored order, reverse reverses it, asc and desc use the chart segment ranking value. |
 | topN | object |  |  | Chart-specific Top-N selection and rest aggregation; omission retains all categories. On a choropleth world map, topN.n picks the n regions it labels, largest absolute value first; other maps label every region. |
 | topN.n | integer |  |  | Maximum number of individually retained categories after chart-specific ranking. |
-| topN.rest | boolean |  |  | Aggregate remaining categories into a rest bucket by default; false omits them where supported. Pareto retains the bucket to preserve its population. |
+| topN.rest | boolean |  |  | Aggregate remaining categories into a rest bucket by default; false omits them where supported. On a bar mekko the rest bucket is the width-weighted mean of its rates. Pareto retains the bucket to preserve its population. |
 | topN.restLabel | string |  |  | Authored rest-bucket name; ordinary charts default to Others and Pareto to Rest. |
 | topN.showRestCount | boolean |  |  | Append the number of aggregated categories; ordinary charts default to false, while Pareto always discloses the count. |
 | topN.threshold | number |  |  | Bar-chart minimum absolute category total after the rank cut; not a universal Top-N threshold. Pareto warns that it ignores this field. |
