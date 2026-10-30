@@ -91,6 +91,14 @@ describe('note rules', () => {
     expect(noteLine('Lead', ['a', 'b'], { notes: { maxListed: 0 } })).toEqual(['Lead: 2 items.']);
   });
 
+  // A heatmap callout on a printed cell lost its ${value} and the words before it with no word to the author.
+  it('says so when a callout leaves ${value} to the mark that prints it', () => {
+    const geo = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'heatmap', data: { categories: ['a', 'b'], series: [{ id: 's', label: 'S', values: [1.5, -2.8] }] },
+      options: { size: { width: 480 } }, annotations: [{ kind: 'callout', id: 'c1', at: { categoryId: 'b', seriesId: 's' }, text: 'Low in B: ${value}' }] } as never)));
+    expect(geo.labels.find((label) => label.id === 'annotation:c1')?.text).toBe('b: Low in B');
+    expect(geo.warnings.find((warning) => warning.code === 'annotation-value-on-mark')?.message).toContain('−2.8');
+  });
+
   it('a callout that prints ${value} is the label of its point: the note does not name the point', () => {
     const geo = requireGeometry(layoutResolvedRequest(twoLines([{ kind: 'callout', id: 'c1', at: { categoryId: 'd0', seriesId: 'b' }, text: 'Start ${value}' }])));
     expect(geo.labels.find((label) => label.id === 'annotation:c1')?.text).toBe('Start 1,020');
