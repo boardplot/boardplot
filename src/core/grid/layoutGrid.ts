@@ -90,9 +90,10 @@ export function tierWeights(panels: { type?: string; options?: object }[]): numb
 
 /** A panel caption wrapped to its width, with the box it fills. */
 export function measuredCaption(text: string, font: FontSpec, width: number, measure: TextMeasurer) {
-  const lines = wrapText(text, font, width, Number.MAX_SAFE_INTEGER, measure).lines;
+  const { lines, truncated } = wrapText(text, font, width, Number.MAX_SAFE_INTEGER, measure);
   const sizes = lines.map(line => measure(line, font));
-  return { lines, width: Math.max(...sizes.map(size => size.width)),
+  // A word wider than the width is cut; `title` keeps the whole text for the warning and the reading.
+  return { lines, ...(truncated ? { title: text } : {}), width: Math.max(...sizes.map(size => size.width)),
     height: Math.max(...sizes.map(size => size.height)) + (lines.length - 1) * font.size * (font.lineHeight ?? 1.2) };
 }
 
@@ -523,7 +524,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
         ['tier:detail', child.tierDetail, detailSize, detail, PRIORITY.valueLine],
       ] as const) {
         if (text && size && rect) requests.push({ id, kind: 'axisTitle', typeRole: 'axis', owner: {}, text,
-          lines: size.lines, font, priority, candidates: candidates(rect) });
+          lines: size.lines, ...(size.title ? { title: size.title } : {}), font, priority, candidates: candidates(rect) });
       }
       const solved = solveLabels(requests, occupied, {
         density: 'full',
@@ -752,6 +753,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
         x: moved.rect.x,
         y: moved.rect.y,
         lines: moved.lines,
+        ...(moved.title ? { title: moved.title } : {}),
         align: 'start',
         font: tier!.font,
         ink: moved.ink,

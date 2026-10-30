@@ -423,4 +423,14 @@ describe('tier captions wrap to the panel width', () => {
     expect(caption?.lines.join(' ')).toBe('A caption that runs far past the width of this narrow card');
     expect(grid.labels.filter((label) => label.hidden && label.id.includes('tier:'))).toEqual([]);
   });
+  // A word wider than the panel is cut, so the chart has to say so and keep the whole text.
+  it('reports a caption cut inside one long word', () => {
+    const word = 'Pneumonoultramicroscopicsilicovolcanoconiosis'.repeat(2);
+    const grid = getChart('grid')!.layout({ panels: ['north', 'south'].map((id) => ({ id, type: 'column', title: id, caption: word, data: {
+      categories: [{ id: 'q1', label: 'Q1' }, { id: 'q2', label: 'Q2' }],
+      series: [{ id: 's', label: 'Orders', values: [10, 12] }] } })) },
+    { size: { width: 300 }, sharedAxis: 'category', title: 'Orders hold', target: 'report' }) as Geometry;
+    expect((grid.scene.find((n) => n.id === 'north/tier:detail') as { title?: string } | undefined)?.title).toBe(word);
+    expect(grid.warnings.map((warning) => warning.code)).toContain('labels-truncated');
+  });
 });

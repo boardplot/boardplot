@@ -502,11 +502,11 @@ function panelCaptionBand(panel: GridPanelSpec, theme: ReturnType<typeof resolve
     if (!value) continue;
     const width = Math.max(1, slot.w - numeric(margin.left, sides.left) - numeric(margin.right, sides.right));
     const text = measuredCaption(value, font, width, measure);
-    const { lines } = text;
+    const { lines, title } = text;
     const id = `panel:${panel.id}:${part === 'panelCaption' ? 'caption' : 'title'}`;
     const rect = { x, y, w: text.width, h: text.height };
     const occupied = createOccupiedIndex(rect);
-    const solved = solveLabels([{ id, kind: 'annotation', typeRole: 'axis', owner: {}, text: value, lines, font,
+    const solved = solveLabels([{ id, kind: 'annotation', typeRole: 'axis', owner: {}, text: value, lines, ...(title ? { title } : {}), font,
       priority: PRIORITY.total, candidates: [{ slot: 'panelCaption', rect, penalty: 0 }], role: 'note' }], occupied, {
       density: 'full', pins: {}, measure, plot: rect, canvas: rect,
       darkInk: theme.color.ink, lightInk: theme.color.inkInverse, labelPad: 0,
