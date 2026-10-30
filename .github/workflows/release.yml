@@ -1,8 +1,12 @@
 name: Release
 
 # A tag that starts with v starts this workflow. It builds and tests the tagged commit,
-# waits for a maintainer to approve the environment "npm-publish", publishes the tested
-# package to npm and attaches the plugin zips to the GitHub release.
+# waits for a maintainer to approve the environment "npm-publish", stages the tested
+# package on npm and attaches the plugin zips to the GitHub release.
+#
+# A staged version stays hidden until a maintainer approves it with npm 2FA, on npmjs.com
+# (package page, Staged Packages) or with `npm stage approve <stage-id>`. The job log
+# prints the stage id. A stolen GitHub login alone cannot put a version on npm.
 #
 # npm trusted publishing (OIDC): no npm token is stored anywhere. Set up once on npmjs.com,
 # package Settings, Trusted publishing, GitHub Actions:
@@ -10,8 +14,8 @@ name: Release
 #   Repository:           boardplot
 #   Workflow filename:    release.yml
 #   Environment name:     npm-publish
-#   Allowed actions:      npm publish (tick it; "npm stage publish" is always allowed)
-# Docs: https://docs.npmjs.com/trusted-publishers
+#   Allowed actions:      leave "npm publish" unticked; "npm stage publish" is always allowed
+# Docs: https://docs.npmjs.com/trusted-publishers, https://docs.npmjs.com/staged-publishing
 on:
   push:
     tags: ["v*"]
@@ -127,7 +131,7 @@ jobs:
           TEST_SHARD: ${{ matrix.shard }}
 
   publish:
-    name: Publish to npm
+    name: Stage on npm
     needs: [package, tests]
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -146,11 +150,11 @@ jobs:
         with:
           node-version: 24
 
-      # Trusted publishing needs npm 11.5.1 or newer and Node 22.14 or newer.
+      # Staged publishing needs npm 11.15.0 or newer and Node 22.14 or newer.
       - name: Check the npm version
         run: |
           npm --version
-          node -e 'const [a,b,c]=process.argv[1].split(".").map(Number); if (a<11||(a===11&&(b<5||(b===5&&c<1)))) { console.error("npm "+process.argv[1]+" is older than 11.5.1"); process.exit(1) }' "$(npm --version)"
+          node -e 'const [a,b]=process.argv[1].split(".").map(Number); if (a<11||(a===11&&b<15)) { console.error("npm "+process.argv[1]+" is older than 11.15.0"); process.exit(1) }' "$(npm --version)"
 
       - name: Get the tested release files
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -177,7 +181,7 @@ jobs:
             exit 1
           fi
 
-      - name: Publish the tested package with provenance
+      - name: Stage the tested package with provenance
         shell: bash
         run: |
           tarball="$(ls "$RUNNER_TEMP"/boardplot-release/boardplot-*.tgz)"
@@ -186,7 +190,7 @@ jobs:
           if [[ "$GITHUB_REF_NAME" == *-* ]]; then
             tag_args+=(--tag next)
           fi
-          npm publish "$tarball" --provenance --access public "${tag_args[@]}"
+          npm stage publish "$tarball" --provenance --access public "${tag_args[@]}"
 
   github-release:
     name: GitHub release
