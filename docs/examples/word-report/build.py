@@ -104,7 +104,7 @@ pvm["options"]["title"] = (f"Q3 revenue grew €{effects['pvm:delta']:.1f}m: vol
 pvm_png, _ = render("pvm", pvm, height="85mm")
 
 bridge_png, bridge = render("ebit-bridge", spec("ebit-bridge"), "ebit-bridge.csv", "label=step,value=eur_k,type=kind", height="85mm")
-steps = {r["step"]: float(r["eur_k"]) for r in csv.DictReader(open(HERE / "data" / "ebit-bridge.csv")) if r["eur_k"]}
+steps = {r["step"]: float(r["eur_k"]) for r in csv.DictReader((HERE / "data" / "ebit-bridge.csv").read_text().splitlines()) if r["eur_k"]}
 ebit_actual = next(d["value"] for d in bridge["derived"] if d["claimId"].startswith("wf:total"))
 assert ebit_actual / 1000 == ebit["mac"], "the bridge and the P&L disagree"
 

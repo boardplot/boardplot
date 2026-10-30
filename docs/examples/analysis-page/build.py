@@ -32,10 +32,10 @@ bridge_svg, bridge = render("margin-bridge", "margin-bridge.csv", "label=driver,
 category_svg, _ = render("category-margin")
 scatter_svg, _ = render("price-volume")
 
-steps = list(csv.DictReader(open(HERE / "data" / "margin-bridge.csv")))
+steps = list(csv.DictReader((HERE / "data" / "margin-bridge.csv").read_text().splitlines()))
 start, end = float(steps[0]["points"]), claim(bridge, "wf:total:row-7")
 effects = {s["driver"]: float(s["points"]) for s in steps if s["kind"] == "delta"}
-cats = {c["category"]: c for c in csv.DictReader(open(HERE / "data" / "categories.csv"))}
+cats = {c["category"]: c for c in csv.DictReader((HERE / "data" / "categories.csv").read_text().splitlines())}
 revenue = sum(float(c["revenue_q3_eurm"]) for c in cats.values())
 apparel = cats["Apparel"]
 apparel_drop = float(apparel["gross_margin_pct"]) - float(apparel["gross_margin_py_pct"])

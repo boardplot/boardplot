@@ -202,7 +202,7 @@ def quarterly_review():
 
 def board_update_before():
     """The deck to revise: a typical slide with two default PowerPoint charts."""
-    regions = list(csv.DictReader(open(HERE / "data" / "region-revenue.csv")))
+    regions = list(csv.DictReader((HERE / "data" / "region-revenue.csv").read_text().splitlines()))
     names = list(dict.fromkeys(r["region"] for r in regions))
     value = {(r["region"], r["scenario"]): float(r["revenue_eurm"]) for r in regions}
 
