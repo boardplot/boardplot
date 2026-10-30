@@ -126,3 +126,20 @@ it('draws a combo area behind the columns, with the shadings read through it', (
   expect(parts.filter((part) => part === 'bandEdge')).toHaveLength(2);
   expect(parts.filter((part) => part === 'columnGap')).toHaveLength(6);
 });
+
+// A primary max between two ticks left the left axis short of it and off the rows of the right axis.
+it('runs the rows of a dual axis up to the authored primary max', () => {
+  const geometry = requireGeometry(layoutCombo({
+    categories: ['q1', 'q2', 'q3'].map((id) => ({ id })),
+    series: [
+      { id: 'sales', label: 'Sales', kind: 'column', values: [150, 180, 190] },
+      { id: 'visits', label: 'Visits', kind: 'line', axis: 'secondary', values: [15, 18, 21] },
+    ],
+  }, {
+    size: { width: 720, height: 404 }, title: 'Sales and visits',
+    valueAxis: { max: 240 }, secondaryAxis: { acknowledge: true, domain: [0, 24] },
+  }));
+  const ticks = (axis: string) => geometry.scene.flatMap((node) => node.t === 'text' && node.id.startsWith(`axis:${axis}:tick:`) ? [{ text: node.lines[0], y: node.y }] : []);
+  expect(ticks('y').map((tick) => tick.text)).toEqual(['0', '60', '120', '180', '240']);
+  expect(ticks('y2').map((tick) => tick.y)).toEqual(ticks('y').map((tick) => tick.y));
+});
