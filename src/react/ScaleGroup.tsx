@@ -20,7 +20,8 @@
  * through `react/scaleGroupContext`, which holds no layout code.
  */
 
-import { useMemo, type ReactElement, type ReactNode } from 'react';
+import { useMemo, useSyncExternalStore, type ReactElement, type ReactNode } from 'react';
+import { chartRegistryRevision, onChartRegistered } from '../core/registry';
 import {
   resolveSharedScale,
   sharedScaleValueAxis,
@@ -40,10 +41,14 @@ export interface ScaleGroupProps {
 export { useScaleGroupPlan } from './scaleGroupContext';
 export type { ScaleGroupRef } from './scaleGroupContext';
 
+const serverRevision = () => 0;
+
 export function ScaleGroup({ group, members, children }: ScaleGroupProps): ReactElement {
   // By content: a members list written inline is a new array on every render.
   const stableMembers = useStableValue(members);
-  const plan = useMemo(() => resolveSharedScale(group, stableMembers), [group, stableMembers]);
+  // A BoardplotChart member fetches its chart type after this first plan.
+  const registered = useSyncExternalStore(onChartRegistered, chartRegistryRevision, serverRevision);
+  const plan = useMemo(() => resolveSharedScale(group, stableMembers), [group, stableMembers, registered]);
   const value = useMemo((): ScaleGroupContextValue => {
     const valueAxisByMember = new Map<string, Record<string, unknown>>();
     for (const member of plan.members) {
