@@ -6,7 +6,7 @@ The scripts call the `boardplot` CLI, which draws the same charts as the MCP too
 
 | Example | Use case | Result |
 |---|---|---|
-| [deck](deck/) | PowerPoint or Keynote deck | `quarterly-review.pptx`, an eight-slide board deck. `board-update-before.pptx` and `board-update-after.pptx`, a deck whose native charts are replaced by Boardplot charts. |
+| [deck](deck/) | PowerPoint or Keynote deck | `build.py` writes `quarterly-review.pptx`, an eight-slide board deck, and `board-update-before.pptx` and `board-update-after.pptx`, a deck whose native charts are replaced by Boardplot charts. The repository holds no `.pptx` files, so the previews show the decks. |
 | [analysis-page](analysis-page/) | Analysis page or Claude artifact | `index.html`, a margin review with three inline SVG exhibits. |
 | [react-dashboard](react-dashboard/) | React dashboard | A Vite and React trading dashboard with filters, a switchable KPI table, a shared scale and export. |
 | [word-report](word-report/) | Word or PDF report | `report.docx` and `report.pdf`, a three-page monthly management report. |

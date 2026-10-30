@@ -65,7 +65,7 @@ The PNG has 2 pixels per layout pixel, the default `scale`, and records 192 dpi.
 - Google Slides does not insert SVG files. Use PNG there.
 - A PNG draws with the fonts installed on the machine that renders. For a brand font, see [Custom fonts](FONTS.md).
 
-**Worked example:** [docs/examples/deck](https://github.com/boardplot/boardplot/tree/main/docs/examples/deck) has an eight-slide board deck, `quarterly-review.pptx`, in a consulting layout: action titles, KPI tiles, a price-volume-mix bridge, CAGR labels, IBCS variance charts, a market map and a P&L table with computed variances. Each chart fills its slot beside editable takeaways. The revise case turns `board-update-before.pptx`, with native PowerPoint charts, into `board-update-after.pptx`: the same data drawn by Boardplot, in the same boxes, with the slide text unchanged.
+**Worked example:** [docs/examples/deck](https://github.com/boardplot/boardplot/tree/main/docs/examples/deck) builds an eight-slide board deck, `quarterly-review.pptx`, in a consulting layout: action titles, KPI tiles, a price-volume-mix bridge, CAGR labels, IBCS variance charts, a market map and a P&L table with computed variances. Each chart fills its slot beside editable takeaways. The revise case turns `board-update-before.pptx`, with native PowerPoint charts, into `board-update-after.pptx`: the same data drawn by Boardplot, in the same boxes, with the slide text unchanged.
 
 ![Eight slides of the board deck](https://raw.githubusercontent.com/boardplot/boardplot/main/docs/examples/deck/preview/deck-overview.png)
 

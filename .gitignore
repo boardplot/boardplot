@@ -37,8 +37,6 @@ docs/examples/recurring-report/out/
 *.tgz
 *.zip
 *.pptx
-# The example decks are results for readers, not build output.
-!docs/examples/deck/*.pptx
 *.map
 /THIRD_PARTY_NOTICES.md
 release/plugin/BUILD-MANIFEST.json
