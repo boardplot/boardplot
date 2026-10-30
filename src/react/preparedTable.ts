@@ -100,10 +100,16 @@ export function prepareTableRender(request: ResolvedChartRequest<TableData, Tabl
   // values too; a snapshot without them fitted nothing.
   const fitColumn = (column: ResolvedTable['columns'][number]): boolean => request.options.fitFormats === true
     && column.width !== undefined && (column.kind === 'value' || column.kind === 'computed');
+  // An arrow picks its glyph and its key entry from the raw change, and a
+  // sparkline draws the raw values of its source columns.
   const rawColumns = new Set(table.columns.filter(column => column.kind === 'status'
     || column.cellEncoding?.type === 'inCellBar'
     || column.cellEncoding?.type === 'heat'
+    || column.cellEncoding?.type === 'arrow'
     || fitColumn(column)).map(column => column.id));
+  for (const column of table.columns) {
+    if (column.encoding?.type === 'sparkline') column.encoding.sourceColumns.forEach(id => rawColumns.add(id));
+  }
   return {
     kind: 'table', engineRev: ENGINE_REV, requestKey, warnings,
     presentation: tablePresentation(request, table),
