@@ -1,0 +1,55 @@
+{
+  "name": "region-variance",
+  "type": "variance",
+  "data": {
+    "series": [
+      {
+        "id": "AC",
+        "label": "This week",
+        "colorRole": "total"
+      },
+      {
+        "id": "PY",
+        "label": "Last year",
+        "role": "reference",
+        "scenario": "PY"
+      }
+    ]
+  },
+  "options": {
+    "variant": "integrated",
+    "variance": {
+      "of": "AC",
+      "vs": "PY"
+    },
+    "title": "Revenue by region against last year",
+    "subtitle": {
+      "measure": "Revenue",
+      "period": "last full week",
+      "scenarios": [
+        "AC",
+        "PY"
+      ]
+    },
+    "unit": "€k",
+    "format": "1,234",
+    "source": "Order data warehouse, weekly export",
+    "theme": {
+      "preset": "standard",
+      "overrides": {
+        "color": {
+          "highlight": "#2251FF",
+          "total": "#051C2C",
+          "series": [
+            "#051C2C",
+            "#2251FF",
+            "#00A9F4",
+            "#8FA2B6",
+            "#3C96B4",
+            "#AFC3FF"
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "preset": "standard",
+  "overrides": {
+    "color": {
+      "highlight": "#2251FF",
+      "total": "#051C2C",
+      "series": ["#051C2C", "#2251FF", "#00A9F4", "#8FA2B6", "#3C96B4", "#AFC3FF"]
+    }
+  }
+}

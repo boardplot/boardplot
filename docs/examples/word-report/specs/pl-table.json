@@ -1,0 +1,254 @@
+{
+  "type": "table",
+  "data": {
+    "columnGroups": [
+      {
+        "id": "sep",
+        "label": "September",
+        "columns": [
+          "mac",
+          "mpy",
+          "mvpy",
+          "mbu",
+          "mvbu"
+        ]
+      },
+      {
+        "id": "ytd",
+        "label": "Year to date",
+        "columns": [
+          "ytdac",
+          "ytdpy",
+          "ytdvpy"
+        ]
+      }
+    ],
+    "columns": [
+      {
+        "id": "line",
+        "kind": "rowLabel",
+        "label": "€m"
+      },
+      {
+        "id": "mac",
+        "kind": "value",
+        "label": "AC",
+        "format": "1,234.1"
+      },
+      {
+        "id": "mpy",
+        "kind": "value",
+        "label": "PY",
+        "format": "1,234.1"
+      },
+      {
+        "id": "mvpy",
+        "kind": "computed",
+        "label": "vs PY",
+        "calc": {
+          "op": "percentDelta",
+          "a": "mac",
+          "b": "mpy"
+        },
+        "format": "+1%"
+      },
+      {
+        "id": "mbu",
+        "kind": "value",
+        "label": "Budget",
+        "format": "1,234.1"
+      },
+      {
+        "id": "mvbu",
+        "kind": "computed",
+        "label": "vs Bud",
+        "calc": {
+          "op": "percentDelta",
+          "a": "mac",
+          "b": "mbu"
+        },
+        "format": "+1%"
+      },
+      {
+        "id": "ytdac",
+        "kind": "value",
+        "label": "AC",
+        "format": "1,234.1"
+      },
+      {
+        "id": "ytdpy",
+        "kind": "value",
+        "label": "PY",
+        "format": "1,234.1"
+      },
+      {
+        "id": "ytdvpy",
+        "kind": "computed",
+        "label": "vs PY",
+        "calc": {
+          "op": "percentDelta",
+          "a": "ytdac",
+          "b": "ytdpy"
+        },
+        "format": "+1%"
+      }
+    ],
+    "rows": [
+      {
+        "id": "revenue",
+        "label": "Revenue",
+        "kind": "subtotal",
+        "children": [
+          {
+            "id": "online",
+            "label": "Online",
+            "cells": {
+              "mac": 7.4,
+              "mpy": 5.8,
+              "mbu": 7.0,
+              "ytdac": 55.1,
+              "ytdpy": 44.2
+            }
+          },
+          {
+            "id": "wholesale",
+            "label": "Wholesale",
+            "cells": {
+              "mac": 5.3,
+              "mpy": 5.1,
+              "mbu": 5.4,
+              "ytdac": 41.8,
+              "ytdpy": 40.6
+            }
+          },
+          {
+            "id": "stores",
+            "label": "Own stores",
+            "cells": {
+              "mac": 8.5,
+              "mpy": 8.4,
+              "mbu": 8.5,
+              "ytdac": 68.0,
+              "ytdpy": 68.9
+            }
+          }
+        ]
+      },
+      {
+        "id": "cogs",
+        "label": "Cost of sales",
+        "kind": "subtotal",
+        "sign": -1,
+        "polarity": "lowerIsBetter",
+        "children": [
+          {
+            "id": "product",
+            "label": "Product cost",
+            "polarity": "lowerIsBetter",
+            "cells": {
+              "mac": 8.9,
+              "mpy": 7.7,
+              "mbu": 8.6,
+              "ytdac": 68.9,
+              "ytdpy": 63.0
+            }
+          },
+          {
+            "id": "freight",
+            "label": "Freight and duties",
+            "polarity": "lowerIsBetter",
+            "cells": {
+              "mac": 1.4,
+              "mpy": 1.3,
+              "mbu": 1.4,
+              "ytdac": 11.3,
+              "ytdpy": 10.4
+            }
+          }
+        ]
+      },
+      {
+        "id": "gm",
+        "label": "Gross margin",
+        "kind": "result",
+        "cells": {
+          "mac": 10.9,
+          "mpy": 10.3,
+          "mbu": 10.9,
+          "ytdac": 84.7,
+          "ytdpy": 80.3
+        }
+      },
+      {
+        "id": "opex",
+        "label": "Operating expenses",
+        "kind": "subtotal",
+        "sign": -1,
+        "polarity": "lowerIsBetter",
+        "children": [
+          {
+            "id": "marketing",
+            "label": "Marketing",
+            "polarity": "lowerIsBetter",
+            "cells": {
+              "mac": 2.5,
+              "mpy": 2.0,
+              "mbu": 2.2,
+              "ytdac": 18.4,
+              "ytdpy": 15.9
+            }
+          },
+          {
+            "id": "staff",
+            "label": "Staff",
+            "polarity": "lowerIsBetter",
+            "cells": {
+              "mac": 3.8,
+              "mpy": 3.7,
+              "mbu": 3.8,
+              "ytdac": 33.4,
+              "ytdpy": 32.1
+            }
+          },
+          {
+            "id": "other",
+            "label": "Rent and other",
+            "polarity": "lowerIsBetter",
+            "cells": {
+              "mac": 1.9,
+              "mpy": 2.1,
+              "mbu": 1.9,
+              "ytdac": 16.9,
+              "ytdpy": 18.0
+            }
+          }
+        ]
+      },
+      {
+        "id": "ebit",
+        "label": "EBIT",
+        "kind": "result",
+        "final": true,
+        "cells": {
+          "mac": 2.7,
+          "mpy": 2.5,
+          "mbu": 3.0,
+          "ytdac": 16.0,
+          "ytdpy": 14.3
+        }
+      }
+    ]
+  },
+  "options": {
+    "signs": "signed",
+    "judgements": "all",
+    "source": "Alder Outdoor management accounts",
+    "density": "compact",
+    "title": "EBIT missed the September budget by €0.3m: marketing ran €0.3m over",
+    "subtitle": {
+      "company": "Alder Outdoor",
+      "measure": "Profit and loss",
+      "period": "September and January–September 2026"
+    }
+  }
+}

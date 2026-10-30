@@ -1,0 +1,18 @@
+{ "type": "status",
+  "data": {
+    "rows": [ { "id": "pricing", "label": "Pricing and promotions" }, { "id": "assortment", "label": "Assortment cut" },
+      { "id": "online", "label": "Online platform" }, { "id": "stores", "label": "Store network" },
+      { "id": "sourcing", "label": "Sourcing in Asia" }, { "id": "logistics", "label": "Central warehouse" } ],
+    "columns": [ { "id": "design", "label": "Design" }, { "id": "pilot", "label": "Pilot" }, { "id": "rollout", "label": "Roll-out" }, { "id": "run", "label": "Run" } ],
+    "cells": [
+      { "row": "pricing", "col": "design", "state": "green" }, { "row": "pricing", "col": "pilot", "state": "green" }, { "row": "pricing", "col": "rollout", "state": "amber" },
+      { "row": "assortment", "col": "design", "state": "green" }, { "row": "assortment", "col": "pilot", "state": "green" }, { "row": "assortment", "col": "rollout", "state": "green" }, { "row": "assortment", "col": "run", "state": "green" },
+      { "row": "online", "col": "design", "state": "green" }, { "row": "online", "col": "pilot", "state": "green" }, { "row": "online", "col": "rollout", "state": "green" },
+      { "row": "stores", "col": "design", "state": "green" }, { "row": "stores", "col": "pilot", "state": "amber" },
+      { "row": "sourcing", "col": "design", "state": "amber" }, { "row": "sourcing", "col": "pilot", "state": "red" },
+      { "row": "logistics", "col": "design", "state": "green" }, { "row": "logistics", "col": "pilot", "state": "red" } ] },
+  "options": {
+    "states": [ { "id": "green", "label": "On track", "tone": "good" }, { "id": "amber", "label": "At risk", "tone": "warn", "pattern": "hatch45" }, { "id": "red", "label": "Off track", "tone": "bad" } ],
+    "colorblindSafe": true,
+    "subtitle": { "measure": "Delivery status by workstream and stage", "period": "September 2026" },
+    "source": "Programme office, status of 30 September 2026" } }

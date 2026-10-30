@@ -1,0 +1,249 @@
+{
+  "type": "table",
+  "data": {
+    "columnGroups": [
+      {
+        "id": "q3",
+        "label": "Q3",
+        "columns": [
+          "q3ac",
+          "q3py",
+          "q3vpy",
+          "q3pl",
+          "q3vpl"
+        ]
+      },
+      {
+        "id": "ytd",
+        "label": "Year to date",
+        "columns": [
+          "ytdac",
+          "ytdpy",
+          "ytdvpy"
+        ]
+      }
+    ],
+    "columns": [
+      {
+        "id": "line",
+        "kind": "rowLabel",
+        "label": "€m"
+      },
+      {
+        "id": "q3ac",
+        "kind": "value",
+        "label": "AC",
+        "format": "1,234.1"
+      },
+      {
+        "id": "q3py",
+        "kind": "value",
+        "label": "PY",
+        "format": "1,234.1"
+      },
+      {
+        "id": "q3vpy",
+        "kind": "computed",
+        "label": "vs PY",
+        "calc": {
+          "op": "percentDelta",
+          "a": "q3ac",
+          "b": "q3py"
+        },
+        "format": "+1%"
+      },
+      {
+        "id": "q3pl",
+        "kind": "value",
+        "label": "Plan",
+        "format": "1,234.1"
+      },
+      {
+        "id": "q3vpl",
+        "kind": "computed",
+        "label": "vs Plan",
+        "calc": {
+          "op": "percentDelta",
+          "a": "q3ac",
+          "b": "q3pl"
+        },
+        "format": "+1%"
+      },
+      {
+        "id": "ytdac",
+        "kind": "value",
+        "label": "AC",
+        "format": "1,234.1"
+      },
+      {
+        "id": "ytdpy",
+        "kind": "value",
+        "label": "PY",
+        "format": "1,234.1"
+      },
+      {
+        "id": "ytdvpy",
+        "kind": "computed",
+        "label": "vs PY",
+        "calc": {
+          "op": "percentDelta",
+          "a": "ytdac",
+          "b": "ytdpy"
+        },
+        "format": "+1%"
+      }
+    ],
+    "rows": [
+      {
+        "id": "revenue",
+        "label": "Revenue",
+        "kind": "subtotal",
+        "children": [
+          {
+            "id": "online",
+            "label": "Online",
+            "cells": {
+              "q3ac": 20.3,
+              "q3py": 16.0,
+              "q3pl": 19.4,
+              "ytdac": 55.1,
+              "ytdpy": 44.2
+            }
+          },
+          {
+            "id": "wholesale",
+            "label": "Wholesale",
+            "cells": {
+              "q3ac": 15.1,
+              "q3py": 14.6,
+              "q3pl": 15.3,
+              "ytdac": 41.8,
+              "ytdpy": 40.6
+            }
+          },
+          {
+            "id": "stores",
+            "label": "Own stores",
+            "cells": {
+              "q3ac": 24.2,
+              "q3py": 24.1,
+              "q3pl": 24.1,
+              "ytdac": 68.0,
+              "ytdpy": 68.9
+            }
+          }
+        ]
+      },
+      {
+        "id": "cogs",
+        "label": "Cost of sales",
+        "kind": "subtotal",
+        "sign": -1,
+        "polarity": "lowerIsBetter",
+        "children": [
+          {
+            "id": "product",
+            "label": "Product cost",
+            "polarity": "lowerIsBetter",
+            "cells": {
+              "q3ac": 25.1,
+              "q3py": 22.4,
+              "q3pl": 24.3,
+              "ytdac": 68.9,
+              "ytdpy": 63.0
+            }
+          },
+          {
+            "id": "freight",
+            "label": "Freight and duties",
+            "polarity": "lowerIsBetter",
+            "cells": {
+              "q3ac": 4.0,
+              "q3py": 3.6,
+              "q3pl": 3.9,
+              "ytdac": 11.3,
+              "ytdpy": 10.4
+            }
+          }
+        ]
+      },
+      {
+        "id": "gm",
+        "label": "Gross margin",
+        "kind": "result",
+        "cells": {
+          "q3ac": 30.5,
+          "q3py": 28.7,
+          "q3pl": 30.6,
+          "ytdac": 84.7,
+          "ytdpy": 80.3
+        }
+      },
+      {
+        "id": "opex",
+        "label": "Operating expenses",
+        "kind": "subtotal",
+        "sign": -1,
+        "polarity": "lowerIsBetter",
+        "children": [
+          {
+            "id": "marketing",
+            "label": "Marketing",
+            "polarity": "lowerIsBetter",
+            "cells": {
+              "q3ac": 6.9,
+              "q3py": 5.6,
+              "q3pl": 6.2,
+              "ytdac": 18.4,
+              "ytdpy": 15.9
+            }
+          },
+          {
+            "id": "staff",
+            "label": "Staff",
+            "polarity": "lowerIsBetter",
+            "cells": {
+              "q3ac": 11.2,
+              "q3py": 10.8,
+              "q3pl": 11.3,
+              "ytdac": 33.4,
+              "ytdpy": 32.1
+            }
+          },
+          {
+            "id": "other",
+            "label": "Rent and other",
+            "polarity": "lowerIsBetter",
+            "cells": {
+              "q3ac": 5.6,
+              "q3py": 6.2,
+              "q3pl": 5.7,
+              "ytdac": 16.9,
+              "ytdpy": 18.0
+            }
+          }
+        ]
+      },
+      {
+        "id": "ebit",
+        "label": "EBIT",
+        "kind": "result",
+        "final": true,
+        "cells": {
+          "q3ac": 6.8,
+          "q3py": 6.1,
+          "q3pl": 7.4,
+          "ytdac": 16.0,
+          "ytdpy": 14.3
+        }
+      }
+    ]
+  },
+  "options": {
+    "signs": "signed",
+    "judgements": "all",
+    "source": "Alder Outdoor management accounts",
+    "density": "compact",
+    "textScale": 0.88
+  }
+}

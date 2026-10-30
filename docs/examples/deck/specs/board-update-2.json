@@ -1,0 +1,5 @@
+{ "type": "pie",
+  "data": {},
+  "options": { "doughnut": 0.55, "format": "1.1",
+    "subtitle": { "measure": "Revenue by channel", "period": "Q3 FY26" },
+    "unit": "€m" } }

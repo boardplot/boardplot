@@ -1,0 +1,101 @@
+{
+  "type": "pvm",
+  "data": {
+    "quantityUnit": "units",
+    "items": [
+      {
+        "id": "tents",
+        "label": "Tents",
+        "prior": {
+          "qty": 42000,
+          "revenue": 12600
+        },
+        "current": {
+          "qty": 44000,
+          "revenue": 14080
+        }
+      },
+      {
+        "id": "backpacks",
+        "label": "Backpacks",
+        "prior": {
+          "qty": 95000,
+          "revenue": 9500
+        },
+        "current": {
+          "qty": 104000,
+          "revenue": 10920
+        }
+      },
+      {
+        "id": "apparel",
+        "label": "Apparel",
+        "prior": {
+          "qty": 310000,
+          "revenue": 15500
+        },
+        "current": {
+          "qty": 298000,
+          "revenue": 14900
+        }
+      },
+      {
+        "id": "footwear",
+        "label": "Footwear",
+        "prior": {
+          "qty": 120000,
+          "revenue": 10800
+        },
+        "current": {
+          "qty": 131000,
+          "revenue": 12445
+        }
+      },
+      {
+        "id": "accessories",
+        "label": "Accessories",
+        "prior": {
+          "qty": 260000,
+          "revenue": 5200
+        },
+        "current": {
+          "qty": 300000,
+          "revenue": 5700
+        }
+      },
+      {
+        "id": "bikepacks",
+        "label": "Bike packs",
+        "prior": {
+          "qty": 0,
+          "revenue": 0
+        },
+        "current": {
+          "qty": 22000,
+          "revenue": 1540
+        }
+      },
+      {
+        "id": "climbing",
+        "label": "Climbing hardware",
+        "prior": {
+          "qty": 18000,
+          "revenue": 1080
+        },
+        "current": {
+          "qty": 0,
+          "revenue": 0
+        }
+      }
+    ]
+  },
+  "options": {
+    "subtitle": {
+      "measure": "Revenue bridge",
+      "period": "Q3 FY25 → Q3 FY26"
+    },
+    "unit": "€k",
+    "source": "Alder Outdoor order book; units and revenue per category, price derived",
+    "methodNote": true
+  }
+}

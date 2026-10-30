@@ -1,0 +1,70 @@
+{
+  "type": "scatter",
+  "data": {
+    "points": [
+      {
+        "id": "tents",
+        "label": "Tents",
+        "x": 6.7,
+        "y": 4.8,
+        "size": 14.08
+      },
+      {
+        "id": "backpacks",
+        "label": "Backpacks",
+        "x": 5.0,
+        "y": 9.5,
+        "size": 10.92
+      },
+      {
+        "id": "apparel",
+        "label": "Apparel",
+        "x": -1.5,
+        "y": -3.9,
+        "size": 14.9
+      },
+      {
+        "id": "footwear",
+        "label": "Footwear",
+        "x": 5.6,
+        "y": 9.2,
+        "size": 12.45
+      },
+      {
+        "id": "accessories",
+        "label": "Accessories",
+        "x": -5.0,
+        "y": 15.4,
+        "size": 5.7
+      }
+    ]
+  },
+  "options": {
+    "title": "Price rises held volume in three categories; apparel was discounted and still lost volume",
+    "subtitle": {
+      "measure": "Price change vs volume change by category",
+      "period": "Q3 FY26 vs Q3 FY25"
+    },
+    "unit": "%",
+    "axisTitles": {
+      "x": "Price change, %",
+      "y": "Volume change, %"
+    },
+    "sizeLegend": {
+      "label": "Revenue Q3, €m"
+    },
+    "quadrants": {
+      "x": 0,
+      "y": 0,
+      "labels": {
+        "tl": "Volume bought with price",
+        "tr": "Price and volume up",
+        "bl": "Both down",
+        "br": "Price up, volume down"
+      },
+      "tint": "alternating",
+      "captionPlacement": "corner"
+    },
+    "source": "Alder Outdoor order book; bubble area = Q3 revenue"
+  }
+}

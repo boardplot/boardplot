@@ -1,0 +1,17 @@
+{
+  "type": "waterfall",
+  "data": {},
+  "options": {
+    "title": "Price added 1.6 points, but costs, promotions and mix took 2.9",
+    "subtitle": {
+      "measure": "Gross margin bridge",
+      "period": "Q3 FY25 → Q3 FY26"
+    },
+    "unit": "% of revenue",
+    "format": "1.1",
+    "source": "Alder Outdoor management accounts; margin effects at Q3 FY26 revenue",
+    "valueAxis": {
+      "break": "auto"
+    }
+  }
+}

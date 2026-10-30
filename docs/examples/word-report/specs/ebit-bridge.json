@@ -1,0 +1,17 @@
+{
+  "type": "waterfall",
+  "data": {},
+  "options": {
+    "title": "Higher revenue made up for the lower margin rate; the marketing overspend is the whole miss",
+    "subtitle": {
+      "measure": "EBIT, budget to actual",
+      "period": "September 2026"
+    },
+    "unit": "€k",
+    "format": "1,234",
+    "source": "Alder Outdoor management accounts",
+    "valueAxis": {
+      "break": "auto"
+    }
+  }
+}

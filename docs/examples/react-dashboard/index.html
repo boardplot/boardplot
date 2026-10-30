@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Weekly trading dashboard</title>
+    <style>
+      :root { --navy: #051C2C; --blue: #2251FF; --grey: #5F6B7A; --rule: #D0D7E1; --bg: #F0F3F7; }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--navy); font: 14px/1.5 -apple-system, "Helvetica Neue", Arial, sans-serif; }
+      .bar { background: var(--navy); color: #fff; display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center; padding: 14px 24px; }
+      .bar b { font-weight: 700; }
+      .bar label { display: flex; gap: 10px; align-items: center; color: #AFC3FF; font-size: 13px; }
+      main { max-width: 1440px; margin: 0 auto; padding: 20px 24px 40px; display: grid; gap: 16px; }
+      .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 16px; }
+      .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); gap: 16px; }
+      .row.wide { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); align-items: start; }
+      @media (max-width: 1100px) { .row.wide { grid-template-columns: 1fr; } }
+      .card { background: #fff; border-top: 3px solid var(--navy); padding: 12px 16px 16px; min-width: 0; }
+      .card.kpi { border-top-color: var(--blue); }
+      .card header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--grey); }
+      .tools { display: flex; gap: 4px; }
+      .tools button { font: inherit; letter-spacing: .04em; color: var(--blue); background: none; border: 1px solid var(--rule); padding: 2px 8px; cursor: pointer; }
+      .controls { margin-bottom: 8px; }
+      .toggle { display: inline-flex; border: 1px solid var(--rule); }
+      .bar .toggle { border-color: rgba(255,255,255,.35); }
+      .toggle button { font: inherit; font-size: 13px; background: none; border: 0; padding: 4px 12px; cursor: pointer; color: inherit; }
+      .bar .toggle button { color: #fff; }
+      .toggle button[aria-pressed="true"] { background: var(--blue); color: #fff; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

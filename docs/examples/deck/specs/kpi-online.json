@@ -1,0 +1,19 @@
+{
+  "type": "kpi",
+  "data": {
+    "label": "Online share of revenue",
+    "value": 34.1,
+    "format": "1.1%",
+    "compare": [
+      {
+        "vs": 29.3,
+        "label": "vs PY",
+        "mode": "absolute"
+      }
+    ],
+    "attainment": {
+      "vs": 35,
+      "label": "of FY26 target"
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{ "type": "column",
+  "data": { "series": [
+      { "id": "Own stores", "label": "Own stores" },
+      { "id": "Wholesale", "label": "Wholesale" },
+      { "id": "Online", "label": "Online", "colorRole": "highlight" } ] },
+  "options": {
+    "variant": "stacked", "connectors": true,
+    "seriesLabels": { "at": "right-edge", "cagr": { "from": "FY21", "to": "FY25" } },
+    "subtitle": { "measure": "Revenue by channel", "period": "FY21–FY25" },
+    "unit": "€m", "source": "Alder Outdoor annual accounts" } }

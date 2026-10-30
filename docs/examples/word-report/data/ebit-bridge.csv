@@ -1,0 +1,6 @@
+step,eur_k,kind
+EBIT budget,3000,total
+Revenue above budget,150,delta
+Lower margin rate,-150,delta
+Marketing over budget,-300,delta
+EBIT actual,,total

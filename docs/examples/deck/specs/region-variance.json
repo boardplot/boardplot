@@ -1,0 +1,7 @@
+{ "type": "variance",
+  "data": { "series": [
+      { "id": "AC", "label": "Q3 FY26" },
+      { "id": "PY", "label": "Q3 FY25", "role": "reference", "scenario": "PY" } ] },
+  "options": { "variant": "integrated", "variance": { "of": "AC", "vs": "PY" },
+    "subtitle": { "measure": "Revenue by region", "period": "Q3", "scenarios": ["AC", "PY"] },
+    "unit": "€m", "source": "Alder Outdoor management accounts" } }
