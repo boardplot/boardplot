@@ -3,7 +3,7 @@
  * count, or from two category labels that name a year. Its own module, so a
  * chart that only parses dates does not load the label grammar.
  */
-import { parseISODate } from './isoDate';
+import { parseISODate, utcDate } from './isoDate';
 
 /**
  * The point in years a category label names: "2024" and "FY2024" give 2024,
@@ -65,7 +65,7 @@ export function yearSpan(from?: string, to?: string): number | null {
   const b = parseISODate(to);
   if (!a || !b) return null;
   const day = (d: Date): number => {
-    const monthEnd = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+    const monthEnd = utcDate(d.getUTCFullYear(), d.getUTCMonth() + 1, 0).getUTCDate();
     return d.getUTCDate() === monthEnd ? 30 : Math.min(d.getUTCDate(), 30);
   };
   const days =

@@ -1,3 +1,10 @@
+/** A UTC date. setUTCFullYear, not Date.UTC, which reads years 0–99 as 1900–1999. */
+export function utcDate(year: number, month: number, day = 1): Date {
+  const date = new Date(0);
+  date.setUTCFullYear(year, month, day);
+  return date;
+}
+
 /** Parse ISO dates (yyyy-mm-dd) without timezone surprises. */
 export function parseISODate(s: string): Date | null {
   if (typeof s !== 'string') return null;
