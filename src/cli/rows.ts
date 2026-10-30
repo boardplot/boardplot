@@ -55,10 +55,34 @@ function csvDelimiter(body: string): ',' | ';' {
 }
 
 /**
+ * A repeated header gets a free `.1`, `.2` suffix, so every column stays
+ * readable and the first keeps the name. A blank header stays as it is: no
+ * role can name it.
+ */
+function uniqueHeaders(header: string[]): { names: string[]; repeats: { name: string; renamed: string }[] } {
+  const taken = new Set(header);
+  const seen = new Set<string>();
+  const repeats: { name: string; renamed: string }[] = [];
+  const names = header.map((name) => {
+    if (!name.trim() || !seen.has(name)) {
+      seen.add(name);
+      return name;
+    }
+    let suffix = 1;
+    while (taken.has(`${name}.${suffix}`)) suffix++;
+    const renamed = `${name}.${suffix}`;
+    taken.add(renamed);
+    repeats.push({ name, renamed });
+    return renamed;
+  });
+  return { names, repeats };
+}
+
+/**
  * RFC 4180 CSV: a header row, quoted fields with "" for a quote, CRLF or LF.
  * The separator is a comma or, detected from the header, a semicolon.
  */
-function parseCsv(text: string): { rows: Row[]; delimiter: ',' | ';' } {
+function parseCsv(text: string): { rows: Row[]; delimiter: ',' | ';'; repeats: { name: string; renamed: string }[] } {
   const records: string[][] = [];
   let record: string[] = [];
   let field = '';
@@ -96,18 +120,45 @@ function parseCsv(text: string): { rows: Row[]; delimiter: ',' | ';' } {
   if (record.length) records.push(record);
   const [header, ...lines] = records;
   if (!header) throw new InputError('invalid-rows', 'the CSV has no header row', { path: '/rowsFile' });
+  const { names, repeats } = uniqueHeaders(header);
   return {
     delimiter,
+    repeats,
     rows: lines.map((line, index) => {
       if (line.length !== header.length) {
         throw new InputError('invalid-rows', `CSV row ${index + 1} has ${line.length} fields, the header has ${header.length}`, { path: '/rowsFile' });
       }
-      return Object.fromEntries(header.map((name, column) => [name, line[column]]));
+      return Object.fromEntries(names.map((name, column) => [name, line[column]]));
     }),
   };
 }
 
-function readRowsFile(path: unknown): { rows: unknown; bytes: Buffer; source: string; decimalComma?: boolean } {
+/** A rows finding that does not stop the chart. */
+interface RowsWarning {
+  code: string;
+  severity: 'warn';
+  message: string;
+  path: string;
+  suggest: string;
+}
+
+function repeatedHeaderWarning({ name, renamed }: { name: string; renamed: string }): RowsWarning {
+  return {
+    code: 'rows-header-repeated', severity: 'warn', path: '/rowsFile',
+    message: `the CSV header '${name}' repeats: '${name}' reads the first of these columns, and the next reads as '${renamed}'`,
+    suggest: `Rename the repeated header in the file, or name '${renamed}' in columns to draw that column.`,
+  };
+}
+
+interface LoadedRows {
+  rows: unknown;
+  bytes?: Buffer;
+  source: string;
+  decimalComma?: boolean;
+  warnings?: RowsWarning[];
+}
+
+function readRowsFile(path: unknown): LoadedRows {
   if (typeof path !== 'string' || !isAbsolute(path)) {
     throw new InputError('invalid-argument', 'rowsFile must be an absolute path', {
       path: '/rowsFile', expected: { condition: 'an absolute path to a .json or .csv file' }, suggest: 'Pass the absolute path of the file.',
@@ -135,8 +186,8 @@ function readRowsFile(path: unknown): { rows: unknown; bytes: Buffer; source: st
   const bytes = readFileSync(real);
   const text = bytes.toString('utf8');
   if (kind === '.csv') {
-    const { rows, delimiter } = parseCsv(text);
-    return { rows, bytes, source: path, decimalComma: delimiter === ';' };
+    const { rows, delimiter, repeats } = parseCsv(text);
+    return { rows, bytes, source: path, decimalComma: delimiter === ';', warnings: repeats.map(repeatedHeaderWarning) };
   }
   try {
     // A Windows editor may lead the file with a byte order mark; JSON.parse does not skip it.
@@ -147,7 +198,7 @@ function readRowsFile(path: unknown): { rows: unknown; bytes: Buffer; source: st
 }
 
 /** The spec with its data taken from the rows, or the spec as sent when no rows are given. */
-export function applyRows(spec: unknown, input: RowsInput): { spec: unknown; data?: RowsReading; pathMap?: RowsPathMap } {
+export function applyRows(spec: unknown, input: RowsInput): { spec: unknown; data?: RowsReading; pathMap?: RowsPathMap; warnings?: RowsWarning[] } {
   if (input.rows === undefined && input.rowsFile === undefined && input.columns === undefined) return { spec };
   if (input.rows !== undefined && input.rowsFile !== undefined) {
     throw new InputError('invalid-argument', 'pass rows or rowsFile, not both', { path: '/rowsFile', fix: [{ op: 'remove', path: '/rowsFile' }] });
@@ -155,7 +206,7 @@ export function applyRows(spec: unknown, input: RowsInput): { spec: unknown; dat
   if (input.rows === undefined && input.rowsFile === undefined) {
     throw new InputError('invalid-argument', 'columns maps rows, and no rows or rowsFile was given', { path: '/columns', suggest: 'Pass rows inline or rowsFile with the path of a .json or .csv file.' });
   }
-  let loaded: { rows: unknown; bytes?: Buffer; source: string; decimalComma?: boolean } | undefined;
+  let loaded: LoadedRows | undefined;
   const adapted = adaptRows(spec, input.columns, {
     argument: input.rows !== undefined ? '/rows' : '/rowsFile',
     load: () => (loaded = input.rows !== undefined ? { rows: input.rows, source: 'inline' } : readRowsFile(input.rowsFile)),
@@ -164,6 +215,7 @@ export function applyRows(spec: unknown, input: RowsInput): { spec: unknown; dat
   return {
     spec: adapted.spec,
     pathMap: adapted.pathMap,
+    warnings: loaded!.warnings,
     data: {
       rows: adapted.rows,
       sha256: sha256(loaded!.bytes ?? canonicalJson(loaded!.rows)),

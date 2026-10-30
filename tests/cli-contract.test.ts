@@ -708,6 +708,14 @@ describe('render and measure on the command line', () => {
     expect(rowsError('month,segment,revenue\n')).toMatchObject({ code: 'rows-empty', path: '/rowsFile' });
   });
 
+  // A repeated header kept only its last column, so the chart drew the wrong numbers without a word.
+  it('keeps both columns of a repeated CSV header and warns', () => {
+    const first = rowsRender('month,segment,revenue,revenue\nJan,A,10,99\n');
+    expect(first.warnings).toContainEqual(expect.objectContaining({ code: 'rows-header-repeated', path: '/rowsFile', message: expect.stringContaining("'revenue.1'") }));
+    expect(first.svg).toContain('>10<');
+    expect(first.svg).not.toContain('>99<');
+  });
+
   it('quotes a formatted number in a CSV and asks for a plain number', () => {
     expect(rowsError('month,segment,revenue\nJan,A,"1,234.5"\n')).toMatchObject({
       code: 'invalid-value', message: expect.stringContaining('"1,234.5" is a number written as text'), received: { type: 'string', value: '1,234.5' },
