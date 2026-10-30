@@ -98,6 +98,12 @@ export function arrowHeadPath(tip: Point, angleRad: number, size = 6): string {
   return `M${fmt(tip.x)} ${fmt(tip.y)}L${fmt(p1.x)} ${fmt(p1.y)}L${fmt(p2.x)} ${fmt(p2.y)}Z`;
 }
 
+/** An ellipse as a closed path; the scene has no ellipse node. */
+export function ovalPath(centre: Point, rx: number, ry: number): string {
+  const arc = (x: number) => `A${fmt(rx)} ${fmt(ry)} 0 1 0 ${fmt(x)} ${fmt(centre.y)}`;
+  return `M${fmt(centre.x - rx)} ${fmt(centre.y)}${arc(centre.x + rx)}${arc(centre.x - rx)}Z`;
+}
+
 /**
  * Deterministic pattern id so identical patterns dedupe within a document.
  * Every value that changes the tile is part of the id: two themes with

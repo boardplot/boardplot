@@ -640,7 +640,7 @@ function addCalloutHeadIssues(annotation: Record<string, unknown>, ctx: z.Refine
  */
 const ANNOTATION_FIELDS: Record<string, readonly string[]> = {
   diff: ['from', 'to', 'mode', 'placement', 'caption'],
-  cagr: ['from', 'to', 'suffix', 'period'],
+  cagr: ['from', 'to', 'suffix', 'period', 'shape'],
   delta: ['at', 'vs', 'placement', 'caption'],
   abs: ['at'],
   note: ['at', 'icon', 'status'],
@@ -726,6 +726,7 @@ const existingAnnotationSchema = (timeX = false) => z
     priority: z.number().optional().describe('Annotation label priority during collision resolution.'),
     icon: annotationIconSchema.optional().describe('Registered icon for note or callout annotations; cannot be combined with status.'),
     status: z.enum(['good', 'bad', 'warn', 'info']).optional().describe('Semantic status glyph for a note or callout; cannot be combined with icon.'),
+    shape: z.enum(['bracket', 'arrow']).optional().describe("A cagr's form: 'bracket', the default, runs over the marks, and 'arrow' is one straight arrow with the rate in an oval on it."),
   })
   .catchall(z.unknown().describe('Kind-specific annotation field, such as at, from or to; the annotation pass validates anchors and other requirements.'))
   .superRefine((annotation, ctx) => {

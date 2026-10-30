@@ -7,7 +7,7 @@ import { emphasisWeight, strokeToken, dashToken } from './theme';
 
 import type { Point, Rect } from './geometry';
 import { PRIORITY, type LabelRequest } from './label/solver';
-import { arrowHeadPath, arrowShaftEnd } from './svgPath';
+import { arrowHeadPath, arrowShaftEnd, ovalPath } from './svgPath';
 import { computedTextRole } from './textRole';
 import type { OccupiedIndex } from './label/occupied';
 import type { Id, OwnerRef } from './types/cell';
@@ -43,6 +43,13 @@ const INSET_GAP = 6;
 const INSET_MIN_LEG = 4;
 /** Bar inset: the arrow of a gap stops this far from the shorter bar's end. */
 const INSET_TIP_GAP = 4;
+/** A straight growth arrow's head, larger than a bracket's: it closes a long slanted line. */
+const STRAIGHT_ARROW_HEAD = 10;
+/** A straight arrow is tested for clear air every this many px; a probe covers 6. */
+const STRAIGHT_ARROW_PROBE = 4;
+/** The oval's half axes over the rate's size, so the corners of the text stay inside it. */
+const OVAL_RX = 0.72;
+const OVAL_RY = 1;
 
 /** Parts of a computed comparison text, so a bar can style its lead apart from its number. */
 interface ComparisonParts {
@@ -110,6 +117,24 @@ function claimArrowHead(occupied: OccupiedIndex, annId: Id, x: number, y: number
   occupied.claim({ x: x - 5, y: y - 5, w: 10, h: 10 }, 'annotation', { annotationId: annId }, 'arrowHead');
 }
 
+/**
+ * A slanted line claims its own strip, not the box around it, so the marks
+ * under it keep their labels. It follows the data, so it is no 'arm': the
+ * headroom lint reads an arm as furniture pinned to the top of the plot.
+ */
+function claimSlantedLine(occupied: OccupiedIndex, annId: Id, p: Point, q: Point): void {
+  const length = Math.hypot(q.x - p.x, q.y - p.y) || 1;
+  const nx = ((q.y - p.y) / length) * 3;
+  const ny = ((p.x - q.x) / length) * 3;
+  occupied.claim(
+    { x: Math.min(p.x, q.x) - 3, y: Math.min(p.y, q.y) - 3, w: Math.abs(q.x - p.x) + 6, h: Math.abs(q.y - p.y) + 6 },
+    'annotation',
+    { annotationId: annId },
+    'slantedArrow',
+    [{ x: p.x + nx, y: p.y + ny }, { x: q.x + nx, y: q.y + ny }, { x: q.x - nx, y: q.y - ny }, { x: p.x - nx, y: p.y - ny }],
+  );
+}
+
 function measureArmLabel(input: { theme: Theme; measure: TextMeasurer }, text: string) {
   const font = { family: input.theme.type.family, ...input.theme.type.label, weight: emphasisWeight(input.theme) };
   return { font, tsize: input.measure(text, font) };
@@ -123,6 +148,17 @@ function laneTop(occupied: OccupiedIndex, plotY: number, x: number, anchorY: num
     if (x >= r.x - 3 && x <= r.x + r.w + 3 && r.y < anchorY) top = Math.min(top, r.y);
   }
   return top;
+}
+
+/** The horizontal twin of laneTop: the right edge of what stands in a bar's lane. */
+function laneRight(occupied: OccupiedIndex, plotRight: number, y: number, anchorX: number, anchorOwner: OwnerRef): number {
+  let right = anchorX;
+  for (const o of occupied.snapshot()) {
+    const r = o.rect;
+    if (ownAnchorMark(o.owner, o.kind, o.part, anchorOwner) || (o.kind !== 'label' && r.x >= plotRight)) continue;
+    if (y >= r.y - 3 && y <= r.y + r.h + 3 && r.x + r.w > anchorX) right = Math.max(right, r.x + r.w);
+  }
+  return right;
 }
 
 /**
@@ -337,6 +373,98 @@ function drawLiftedCagrArm(
 }
 
 /**
+ * The growth arrow: one straight line from over the
+ * first anchor to over the last, the rate in an oval on its middle. The line
+ * lifts away from the plot until it clears what stands under it; at the edge of
+ * the plot an end stops and the line flattens. Where no line clears the chart
+ * this reports the room it lacks, so a chart that can grow its band makes it,
+ * and returns false: the bracket draws, and says why.
+ */
+function drawStraightCagrArrow(
+  pass: ArmDrawPass,
+  a: AnchorResolution,
+  b: AnchorResolution,
+  text: string,
+  annId: Id,
+  computed: string,
+  derivation?: AnnotationDerivation,
+): boolean {
+  const { input, nodes, nid } = pass;
+  const horizontal = input.valueAxis === 'horizontal';
+  const giveWay = (reason: string): false => {
+    pass.warn?.('cagr-arrow-no-room', `cagr '${annId}': ${reason}, so it draws as a bracket`, "keep shape 'arrow' for a span with room over its marks, or leave it out for the bracket");
+    return false;
+  };
+  // A line from over the column would read as the growth of the whole stack.
+  if (!horizontal && (buried(input.occupied, a) || buried(input.occupied, b))) return giveWay('an anchor sits under another series');
+  if (a.row) a = { ...a, y: a.row.y + a.row.h / 2 };
+  if (b.row) b = { ...b, y: b.row.y + b.row.h / 2 };
+  const { font, tsize } = measureArmLabel(input, text);
+  const plotRight = input.plot.x + input.plot.w;
+  // A top legend claims labels too. The line stays in the plot, so it starts below them.
+  const ceiling = Math.max(input.laneCeiling ?? -Infinity, input.plot.y);
+  const clearOf = (anchor: AnchorResolution, gap: number): Point => horizontal
+    ? { x: laneRight(input.occupied, plotRight, anchor.y, anchor.x, anchor.owner) + gap, y: anchor.y }
+    : { x: anchor.x, y: laneTop(input.occupied, input.plot.y, anchor.x, anchor.y, anchor.owner, ceiling) - gap };
+  const from = clearOf(a, ARM_START_GAP);
+  const to = clearOf(b, ARM_END_GAP);
+  const lifted = (p: Point, by: number): Point => horizontal ? { x: p.x + by, y: p.y } : { x: p.x, y: p.y - by };
+  const edge = horizontal ? plotRight - 3 : input.cagrLabelOnArm === true
+    ? Math.max(input.plot.y + tsize.height / 2 + 2, (input.bandCeiling ?? input.plot.y) + ON_ARM_TOP)
+    : input.plot.y + tsize.height + 6;
+  const within = (p: Point): Point => horizontal ? { x: Math.min(p.x, edge), y: p.y } : { x: p.x, y: Math.max(p.y, edge) };
+  const middle = (p: Point, q: Point): Point => ({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 });
+  const rx = tsize.width * OVAL_RX;
+  const ry = tsize.height * OVAL_RY;
+  const ovalRect = (centre: Point): Rect => ({ x: centre.x - rx, y: centre.y - ry, w: rx * 2, h: ry * 2 });
+  // A value line spans the plot, so crossing it is unavoidable.
+  const free = (rect: Rect) => !input.occupied.hits(rect, 2, (claim) => claim.part === 'referenceLine');
+  const open = (p: Point, q: Point): boolean => {
+    const steps = Math.ceil(Math.hypot(q.x - p.x, q.y - p.y) / STRAIGHT_ARROW_PROBE);
+    for (let i = 0; i <= steps; i++) {
+      const t = steps === 0 ? 0 : i / steps;
+      if (!free({ x: p.x + (q.x - p.x) * t - 1, y: p.y + (q.y - p.y) * t - 1, w: 2, h: 2 })) return false;
+    }
+    return free(ovalRect(middle(p, q)));
+  };
+  // Each end stops at the plot edge, so the slope flattens before the line leaves the plot.
+  let route: [Point, Point] | undefined;
+  for (let i = 0; i < MAX_LIFTS && !route; i++) {
+    const p = within(lifted(from, i * ARM_STEP));
+    const q = within(lifted(to, i * ARM_STEP));
+    if (open(p, q)) route = [p, q];
+  }
+  if (!route) {
+    pass.addLegDeficit(ry * 2);
+    return giveWay('no straight line clears the marks');
+  }
+  const [p, q] = route;
+  // The oval sits on the middle of the line and hides what lies under it, the head included.
+  if (Math.hypot(q.x - p.x, q.y - p.y) / 2 < rx + STRAIGHT_ARROW_HEAD) return giveWay('the span is too short for the oval');
+  const width = strokeToken(input.theme, 'rule');
+  const angle = Math.atan2(q.y - p.y, q.x - p.x);
+  const shaftEnd = arrowShaftEnd(STRAIGHT_ARROW_HEAD, width);
+  const centre = middle(p, q);
+  const owner = { annotationId: annId };
+  const lineId = nid('arm');
+  const headId = nid('arrowHead');
+  const ovalId = nid('oval');
+  nodes.push({
+    t: 'line', id: lineId, x1: p.x, y1: p.y, x2: q.x - Math.cos(angle) * shaftEnd, y2: q.y - Math.sin(angle) * shaftEnd,
+    stroke: { token: 'ink' }, width, owner, part: 'arm',
+  });
+  nodes.push({ t: 'path', id: headId, d: arrowHeadPath(q, angle, STRAIGHT_ARROW_HEAD), fill: { token: 'ink' }, owner, part: 'arrowHead' });
+  nodes.push({ t: 'path', id: ovalId, d: ovalPath(centre, rx, ry), fill: { token: 'background' }, stroke: { token: 'ink' }, width, owner, part: 'oval' });
+  claimSlantedLine(input.occupied, annId, p, q);
+  claimArrowHead(input.occupied, annId, q.x, q.y);
+  input.occupied.claim(ovalRect(centre), 'annotation', owner, 'oval');
+  pushCagrPlacement(pass, annId, text, computed, font, [
+    { slot: 'onArm', rect: { x: centre.x - tsize.width / 2, y: centre.y - tsize.height / 2, w: tsize.width, h: tsize.height }, penalty: 0, overRules: true },
+  ], [lineId, headId, ovalId], derivation);
+  return true;
+}
+
+/**
  * Bar inset: the series name in the label's regular weight and muted ink over
  * the bold rate, both flush right against the arm, between the bars it spans.
  * A label with no free seat there stands right of the arm.
@@ -415,17 +543,8 @@ function drawShiftedCagrArm(
   const spanY0 = topAnchor.y;
   const spanY1 = botAnchor.y;
   const plotRight = input.plot.x + input.plot.w;
-  const clearOfLane = (y: number, anchorX: number, anchorOwner: OwnerRef): number => {
-    let right = anchorX;
-    for (const o of input.occupied.snapshot()) {
-      const r = o.rect;
-      if (ownAnchorMark(o.owner, o.kind, o.part, anchorOwner) || (o.kind !== 'label' && r.x >= plotRight)) continue;
-      if (y >= r.y - 3 && y <= r.y + r.h + 3 && r.x + r.w > anchorX) right = Math.max(right, r.x + r.w);
-    }
-    return right;
-  };
-  const startX = clearOfLane(spanY0, topAnchor.x, topAnchor.owner);
-  const endX = clearOfLane(spanY1, botAnchor.x, botAnchor.owner);
+  const startX = laneRight(input.occupied, plotRight, spanY0, topAnchor.x, topAnchor.owner);
+  const endX = laneRight(input.occupied, plotRight, spanY1, botAnchor.x, botAnchor.owner);
   const fromX = a.y <= b.y ? startX : endX;
   const toX = a.y <= b.y ? endX : startX;
   // Inset: the arm stands just right of the bars, and its label inside it.
@@ -799,11 +918,14 @@ export function drawCagrArm(
   computed: string,
   derivation?: AnnotationDerivation,
   parts?: ComparisonParts,
+  shape?: 'bracket' | 'arrow',
 ): void {
   if (pass.input.comparisonLayout) {
+    if (shape === 'arrow') pass.warn?.('cagr-arrow-no-room', `cagr '${annId}': this chart lays out its comparisons itself, so it keeps its own form`);
     pass.input.comparisonLayout.draw(pass, a, b, text, annId, 'cagr', computed, derivation);
     return;
   }
+  if (shape === 'arrow' && drawStraightCagrArrow(pass, a, b, text, annId, computed, derivation)) return;
   if (pass.input.valueAxis === 'horizontal') {
     drawShiftedCagrArm(pass, a, b, text, annId, computed, derivation, parts);
     return;

@@ -657,7 +657,7 @@ export function withSegmentSeams(
 }
 
 /** The drawing parts of an annotation that only mean something next to their label. */
-const ANNOTATION_DRAWING_PARTS = new Set(['arm', 'arrowHead', 'bracket', 'diffArrow', 'leader', 'indicator100']);
+const ANNOTATION_DRAWING_PARTS = new Set(['arm', 'arrowHead', 'bracket', 'diffArrow', 'leader', 'indicator100', 'oval']);
 
 /**
  * An annotation whose every label the solver hid draws no arrow, bracket or

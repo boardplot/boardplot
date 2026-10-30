@@ -41,8 +41,10 @@ export type Annotation<X extends string | number = Id> =
       from?: AnchorRef<X>; // default: first total (waterfall) / first category
       to?: AnchorRef<X>; // default: last total / last category
       suffix?: string; // default 'p.a.'
-      /** Print the period before the rate ("2014–2019: +5.8% p.a."); default true when the chart carries several CAGRs. */
+      /** Print the period before the rate ("2014–2019: +5.8% p.a."); default true when the chart carries several CAGRs, except on an 'arrow'. */
       period?: boolean;
+      /** 'bracket' (default) runs over the marks; 'arrow' is one straight arrow with the rate in an oval on it. */
+      shape?: 'bracket' | 'arrow';
     })
   | (AnnotationBase & { kind: 'delta'; at: AnchorRef<X>; vs: AnchorRef<X> | number } & GapPlacement)
   | (AnnotationBase & { kind: 'abs'; at: AnchorRef<X> }) // true-value flag (outlier marker)

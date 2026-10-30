@@ -37,6 +37,13 @@ it('refuses an empty value-line range caption through the schema', () => {
   });
 });
 
+// A misspelt shape or a shape on another kind must fail at its field instead of drawing the default form.
+it('takes shape on a cagr only', () => {
+  expect(errors(column({ kind: 'cagr', shape: 'arrow' }))).toEqual([]);
+  expect(errors(column({ kind: 'cagr', shape: 'wedge' }))[0]).toMatchObject({ path: '/annotations/0/shape' });
+  expect(errors(column({ kind: 'note', at: 'y21', text: 'x', shape: 'arrow' }))[0]).toMatchObject({ path: '/annotations/0/shape' });
+});
+
 describe('annotation fields', () => {
   // A category label used as an anchor must identify the failed fields and the IDs that the caller can use.
   it('names unmatched band anchors and valid category ids', () => {
