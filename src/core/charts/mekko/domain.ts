@@ -5,7 +5,7 @@
  */
 
 import { compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning } from '../band/stacks';
-import { mekkoAmount, poolMekkoAmounts, restLabel, restSum, topNCut } from '../topN';
+import { mekkoAmount, poolMekkoCell, restLabel, restSum, topNCut } from '../topN';
 import { cellFields, normalizeCategorySeries } from '../categorySeries';
 import { breakUnsupported, chartPalette, chartTheme } from '../chartEnv';
 import { defaultMeasurer } from '../../text';
@@ -208,14 +208,14 @@ function reorderCategories(
   while (st.cats.some((c) => c.id === othersId)) othersId = `_${othersId}`;
   const bases = dropIdx.map(basisAt);
   const othersVals = seriesNorm.map((s) => s === st.widthSer
-    ? restSum(dropIdx.map((i) => s.vals[i]!.v))
-    : poolMekkoAmounts(dropIdx.map((i, k) => ({ ...s.vals[i]!, basis: bases[k]! })), st.mode === 'percent'));
+    ? { v: restSum(dropIdx.map((i) => s.vals[i]!.v)), isPct: false }
+    : poolMekkoCell(dropIdx.map((i, k) => ({ ...s.vals[i]!, basis: bases[k]!, weight: weightAt(i) })), st.mode, st.widthSer !== null));
   const total100 = st.mode === 'percent' && dropIdx.some((i) => st.cats[i]!.total100 !== undefined)
     ? bases.reduce((sum, basis) => sum + basis, 0) : undefined;
   applyOrder(keptIdx);
   st.cats = [...st.cats, { id: othersId, label: restLabel(topN, options.strings, dropIdx.length), ...(total100 === undefined ? {} : { total100 }) }];
   seriesNorm.forEach((s, k) => {
-    s.vals = [...s.vals, { v: othersVals[k]!, isPct: false }];
+    s.vals = [...s.vals, othersVals[k]!];
   });
   return othersId;
 }
