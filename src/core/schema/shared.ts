@@ -620,10 +620,10 @@ export const eventOptionsSchema = z
 function addCalloutHeadIssues(annotation: Record<string, unknown>, ctx: z.RefinementCtx): void {
   for (const field of ['headline', 'arrow'] as const) {
     if (!Object.hasOwn(annotation, field)) continue;
-    const value = annotation[field];
+    const given = annotation[field];
     if (annotation.kind !== 'callout') {
       ctx.addIssue({ code: 'custom', path: [field], message: `${field} belongs to a callout; a ${String(annotation.kind)} draws none` });
-    } else if (field === 'headline' ? typeof value !== 'string' || value.trim() === '' : typeof value !== 'boolean') {
+    } else if (field === 'headline' ? typeof given !== 'string' || given.trim() === '' : typeof given !== 'boolean') {
       ctx.addIssue({ code: 'custom', path: [field], message: field === 'headline' ? "a callout headline is non-empty text, such as '${value}'" : 'a callout arrow is true or false' });
     }
   }
