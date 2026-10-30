@@ -319,3 +319,23 @@ describe('edge inputs that draw', () => {
     expect(body({ type: 'bullet', data: fixture.data, options: { ...fixture.options, bandFraction: 1 } })).toMatchObject({ ok: true });
   });
 });
+
+describe('label content parts', () => {
+  // A part no chart reads passed validation and the chart drew no labels, with no word why.
+  it('draws the number for value, drops a part no chart reads, and names the four parts', () => {
+    const spec = (point: string[]) => ({ type: 'column', data: {
+      categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }],
+      series: [{ id: 's', label: 'Sales', values: [10, 20] }] },
+      options: { title: 'Sales by group', labels: { point } } });
+    const draw = (point: string[]) => render({ spec: spec(point), return: ['svg'] }).body;
+    const named = draw(['value']);
+    const printsValues = (svg: unknown) => ['>10<', '>20<'].every(text => String(svg).includes(text));
+    expect(printsValues(named.svg)).toBe(true);
+    expect(named.warnings).toContainEqual(expect.objectContaining({ code: 'option-deprecated',
+      message: "options.labels.point has 'value', which is not a label part. The parts are absolute, percent, category and series.",
+      fix: [{ op: 'test', path: '/options/labels/point', value: ['value'] }, { op: 'replace', path: '/options/labels/point', value: ['absolute'] }] }));
+    const unread = draw(['bogus']);
+    expect(printsValues(unread.svg)).toBe(true);
+    expect(unread.warnings).toContainEqual(expect.objectContaining({ fix: [{ op: 'remove', path: '/options/labels/point' }] }));
+  });
+});
