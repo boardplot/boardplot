@@ -556,6 +556,8 @@ function renderSvgInternal(
 
 /** Public rendering never rounds data-driven colors. */
 export function renderSvg(geometry: Geometry, theme: Theme, opts: RenderSvgOptions = {}): string {
+  // A plain-JS caller gets the argument's name, not a TypeError from deep in the paint code.
+  if (!theme) throw new TypeError('renderSvg: theme is required; pass the theme the geometry was laid out with, such as request.theme');
   return renderSvgInternal(geometry, theme, opts);
 }
 

@@ -42,4 +42,9 @@ describe('SVG XML contract', () => {
     const doc = new window.DOMParser().parseFromString(svg, 'image/svg+xml');
     expect(doc.querySelector('[data-bp-category-label]')?.getAttribute('data-bp-category-label')).toBe(label);
   });
+
+  // A plain-JS caller who left out the theme got a TypeError about `color` that did not name the argument.
+  it('names the theme when renderSvg is called without it', () => {
+    expect(() => (renderSvg as (geometry: unknown) => string)({ width: 100, height: 100, nodes: [] })).toThrow('theme is required');
+  });
 });
