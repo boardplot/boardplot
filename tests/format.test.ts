@@ -356,6 +356,14 @@ describe('the automatic number rule', () => {
     categories: values.map((_, i) => `C${i}`), series: [{ id: 's', label: 'S', values }],
   } });
 
+  // A format example of 1.234 read as a thousands group printed 0.512 as 1, and a German group example must keep grouping.
+  it('reads 1.234 by the chart: three decimals on small fractions, a group on large or whole values', async () => {
+    const labels = async (values: number[], format: string) => (await texts(bar(values, { format }), 'label:')).filter((text) => /^\d/.test(text)).sort();
+    expect(await labels([0.512, 1.25, 2.5], '1.234')).toEqual(['0.512', '1.250', '2.500']);
+    expect(await labels([1200, 3400], '1.234')).toEqual(['1,200', '3,400']);
+    expect(resolveChartRequest(bar([0.512, 1200], { format: '1.234' }) as never).inputWarnings?.[0]).toMatchObject({ code: 'format-reads-as-group', message: expect.stringContaining('0.512 prints 1') });
+  });
+
   // A column of small values printed two different values as one text (0.0123 and 0.0051 both as 0.01).
   it('gives a column one precision from its largest value, two significant digits below 1', async () => {
     expect(await texts(table([0.0123, 0.0341, 0.0051]), 'cell:')).toEqual(['0.012', '0.034', '0.005']);

@@ -1,4 +1,5 @@
 import { prepareFractionAnnotations, percentScaleWarnings } from './normalize/fraction';
+import { readFormatExamples } from './formatSpec';
 import { colorVariableWarnings } from './colorVariables';
 import { shownNoteKinds } from './notes';
 import { getChart } from './registry';
@@ -189,7 +190,7 @@ export function resolveChartRequest<D, O extends object>(
   const retired = retireChartSettings(def.type, input, (name) => getChart(name)?.type);
   input = retired.chart;
   const inheritedLocale = typeof context.locale === 'string' ? { language: context.locale } : context.locale;
-  const options = Object.assign(Object.create(null) as O & RequestOptions, def.defaults, {
+  const authoredOptions = Object.assign(Object.create(null) as O & RequestOptions, def.defaults, {
     ...(context.theme === undefined ? {} : { theme: context.theme }),
     ...(inheritedLocale ? { locale: inheritedLocale } : {}),
     ...Object.fromEntries(Object.entries(input.options ?? {}).filter(([, value]) => value !== undefined)),
@@ -201,6 +202,8 @@ export function resolveChartRequest<D, O extends object>(
     ...(input.annotations === undefined ? {} : { annotations: input.annotations }),
     ...(input.fontMetrics === undefined ? {} : { measure: input.fontMetrics === 'bundled' ? defaultMeasurer : input.fontMetrics }),
   });
+  const read = readFormatExamples(input.data, authoredOptions);
+  const options = read.options;
   if (def.type === 'line' && (options as { xAxis?: { type?: string } }).xAxis?.type === 'time' && options.annotations) {
     // Records and hover cards read this request too, before the layout resolves its own anchors.
     options.annotations = options.annotations.map(annotation => timeAnnotationAnchors(annotation) as Annotation);
@@ -240,8 +243,8 @@ export function resolveChartRequest<D, O extends object>(
   else options.strings = strings;
   const fontMetrics = options.measure ?? defaultMeasurer;
   options.measure = fontMetrics;
-  const data = prepared(def, input.data, options) as D;
-  const inputWarnings = [...retired.warnings, ...requestInputWarnings(def.type, def.type === 'grid' ? data : input.data, options),
+  const data = prepared(def, read.data, options) as D;
+  const inputWarnings = [...retired.warnings, ...read.warnings, ...requestInputWarnings(def.type, def.type === 'grid' ? data : input.data, options),
     ...colorVariableWarnings(input.data, options.theme)];
   return {
     ...(inputWarnings.length ? { inputWarnings } : {}),

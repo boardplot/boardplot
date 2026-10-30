@@ -223,6 +223,8 @@ Without an authored format, each table column and each chart series gets one pre
 
 A `k`, `M` or `B` after the digits of a format example scales the value: `"$1.2M"` prints 2,456,000 as `$2.5M`, and `"1.2k"` prints 1,250 as `1.3k`.
 
+An example with one dot before three digits, such as `"1.234"`, can be a thousands group or three decimals. The chart's numbers decide. Where every number is below 1000 and one has a fraction, it means three decimals: 0.512 prints `0.512`. Otherwise it is a group: 1,200 prints `1,200`, and where a small number loses its fraction beside large ones, the warning `format-reads-as-group` names it. `"0.000"` always means three decimals, and `"1,234"` always means a group.
+
 ### Shares that add up
 
 An authored `options.format` fixes its decimals, including trailing zeroes. Series formats and cell formats override it. Without an authored format, precision follows the data. On a percent mekko, a percent example formats shares; absolute column totals keep a number format. Their unit comes from `series[].unit` when every data series declares the same unit. `options.unit` names the shares and never labels those absolute totals.
