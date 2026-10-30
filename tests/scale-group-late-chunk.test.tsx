@@ -17,9 +17,9 @@ afterEach(() => { act(() => { root.unmount(); }); });
 // No chart core is linked in this file. BoardplotChart fetched its chunk after ScaleGroup planned,
 // so the group refused every member for good and each chart kept its own scale, unwarned.
 it('plans again when a member chart type arrives in its own chunk', async () => {
-  let refused: string[] = [];
+  const plans: string[][] = [];
   function Receipt() {
-    refused = (useScaleGroupPlan('fy25')?.refusals ?? []).map((refusal) => refusal.code);
+    plans.push((useScaleGroupPlan('fy25')?.refusals ?? []).map((refusal) => refusal.code));
     return null;
   }
   await act(async () => {
@@ -32,9 +32,9 @@ it('plans again when a member chart type arrives in its own chunk', async () => 
       </ScaleGroup>,
     );
   });
-  expect(refused).toContain('scale-group-unknown-type');
   await settle(host);
-  expect(refused).toEqual([]);
+  expect(plans[0]).toContain('scale-group-unknown-type');
+  expect(plans.at(-1)).toEqual([]);
   const tallest = host.innerHTML.split('</svg>').slice(0, -1).map((svg) =>
     Math.max(...[...svg.matchAll(/<rect[^>]*data-part="bar"[^>]*>/g)].map((bar) => Number(/height="([\d.]+)"/.exec(bar[0])![1]))));
   expect(tallest[0]! / 60).toBeCloseTo(tallest[1]! / 80, 2);
