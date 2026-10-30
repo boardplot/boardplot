@@ -361,6 +361,10 @@ describe('the automatic number rule', () => {
     const labels = async (values: number[], format: string) => (await texts(bar(values, { format }), 'label:')).filter((text) => /^\d/.test(text)).sort();
     expect(await labels([0.512, 1.25, 2.5], '1.234')).toEqual(['0.512', '1.250', '2.500']);
     expect(await labels([1200, 3400], '1.234')).toEqual(['1,200', '3,400']);
+    // A text column named format holds words, and an object used twice reads the same in both places.
+    const cell = { v: 0.512, format: '1.234' };
+    expect(await texts({ type: 'table', data: { columns: [{ id: 'label', kind: 'rowLabel', label: 'Item' }, { id: 'format', kind: 'text', label: 'Code' }, { id: 'a', kind: 'value', label: 'A' }, { id: 'b', kind: 'value', label: 'B' }],
+      rows: [{ id: 'r0', label: 'Row', cells: { format: '1.234', a: cell, b: cell } }] } }, 'cell:')).toEqual(['Row', '1.234', '0.512', '0.512']);
     expect(resolveChartRequest(bar([0.512, 1200], { format: '1.234' }) as never).inputWarnings?.[0]).toMatchObject({ code: 'format-reads-as-group', message: expect.stringContaining('0.512 prints 1') });
   });
 

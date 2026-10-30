@@ -296,18 +296,22 @@ function isPlainTree(node: unknown): node is Record<string, unknown> {
 }
 
 /** `node` with each format example passed through `change`, the same object where nothing changed. */
-function mapExamples<T>(node: T, change: (example: string) => string, seen = new Set<unknown>(), example = false): T {
-  if (!isPlainTree(node) || seen.has(node)) return node;
-  seen.add(node);
+function mapExamples<T>(node: T, change: (example: string) => string, seen = new Map<unknown, unknown>(), keys: 'format' | 'all' | 'none' = 'format'): T {
+  if (!isPlainTree(node)) return node;
+  if (seen.has(node)) return seen.get(node) as T;
+  seen.set(node, node);
   let changed: Record<string, unknown> | undefined;
   for (const key of Object.keys(node)) {
     const child = node[key];
-    const next = typeof child === 'string' ? (example || key === 'format' ? change(child) : child)
-      : mapExamples(child, change, seen, key === 'axisFormat');
+    const example = keys === 'all' || (keys === 'format' && key === 'format');
+    // `cells` is keyed by column id, so a text column named format holds no example; a cell object's own format does.
+    const next = typeof child === 'string' ? (example ? change(child) : child)
+      : mapExamples(child, change, seen, key === 'axisFormat' ? 'all' : key === 'cells' ? 'none' : 'format');
     if (next === child) continue;
     changed ??= Array.isArray(node) ? [...node] as unknown as Record<string, unknown> : Object.assign(Object.create(Object.getPrototypeOf(node) as object | null) as object, node) as Record<string, unknown>;
     changed[key] = next;
   }
+  seen.set(node, changed ?? node);
   return (changed ?? node) as T;
 }
 
