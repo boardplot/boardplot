@@ -234,15 +234,6 @@ function stripMagnitude(text: string, spec: NumberFormatSpec): string {
 /** Float noise from magnitude math (bn-scale): a gap this small between two figures is no disagreement. */
 const floatNoise = (a: number, b: number): number => 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
 
-/**
- * A column head's label as both surfaces print and measure it: in
- * capitals, unless the theme's `table.head.case` is 'asis'. The affix after
- * it stays as written.
- */
-export function columnHeadLabel(label: string, theme: Pick<Theme, 'table'>): string {
-  return theme.table?.head?.case === 'asis' ? label : label.toUpperCase();
-}
-
 export function columnHeaderAffix(column: {
   scenario?: string;
   unitLabel?: string;
