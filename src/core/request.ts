@@ -546,16 +546,29 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
   // so the size a refusal names draws too. Find the first whole pixel that draws.
   const staticMinWidth = def === undefined ? 0 : declaredSizing(def, request.options).minWidth;
   if (!request.fixed.height && (!result.refused || sizeRepair) && sizing.minWidth > staticMinWidth) {
+    // The same floor rule as probeAt: a table draws below its natural width on its ladder.
+    const widthOnly = (width: number): LayoutResult => layoutAt.probe({ ...request.options, ...floorOptions, size: { width }, [WIDTH_PROBE]: request.type });
     const fullAt = (width: number): LayoutResult | undefined => {
-      // The same floor rule as probeAt: a table draws below its natural width on its ladder.
-      const options = { ...request.options, ...floorOptions, size: { width }, [WIDTH_PROBE]: request.type };
-      const probe = layoutAt.probe(options);
+      const probe = widthOnly(width);
       return !isRefused(probe) && (probe as Geometry).mode !== 'compact' ? probe : undefined;
     };
     let drawn = fullAt(sizing.minWidth - 1);
+    // Width acceptance can change with labels. Keep a verified accepted upper end.
+    let [lo, hi] = [staticMinWidth - 1, sizing.minWidth - 1];
+    // A pinned pair can draw at a width where a width-only request refuses, because that takes
+    // its own height. Follow the widths the refusals name up to one that draws, then search down.
+    if (!drawn && !fullAt(sizing.minWidth)) {
+      let width = sizing.minWidth;
+      for (let pass = 0; !drawn && pass < 8; pass++) {
+        const probe = widthOnly(width);
+        if (!isRefused(probe) || probe.warnings[0]?.code !== 'size-below-floor' || !probe.sizing || probe.sizing.minWidth <= width) break;
+        lo = width;
+        width = Math.ceil(probe.sizing.minWidth);
+        hi = width;
+        drawn = fullAt(width);
+      }
+    }
     if (drawn) {
-      // Width acceptance can change with labels. Keep a verified accepted upper end.
-      let [lo, hi] = [staticMinWidth - 1, sizing.minWidth - 1];
       while (hi - lo > 1) {
         const mid = Math.floor((lo + hi) / 2);
         const probe = fullAt(mid);
