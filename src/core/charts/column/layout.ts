@@ -515,8 +515,12 @@ function assembleColumnGeometry(
       ...annotated.placed,
       ...(lane?.placed ?? []),
       // Series CAGR records, for the rates the edge or the key prints.
-      ...[...domain.seriesCagr.values()].map((entry) => entry.placed).filter((placed) => allLabels.some((label) => label.id === placed.labelId) ||
-        area.frame.legend?.items.some((item) => placed.labelId === `seriesEdge:${item.id}`)),
+      ...[...domain.seriesCagr.values()].flatMap(({ placed }) => {
+        const edge = allLabels.find((label) => label.id === placed.labelId);
+        if (edge && !edge.hidden) return [placed];
+        const key = area.frame.legend?.items.find((item) => placed.labelId === `seriesEdge:${item.id}`);
+        return key ? [{ ...placed, labelId: key.labelId, labelNodeId: key.labelId }] : edge ? [placed] : [];
+      }),
     ],
     legend: area.frame.legend,
     frame: area.frame.frame,

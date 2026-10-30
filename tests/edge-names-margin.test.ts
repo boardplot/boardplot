@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { getFixtures } from '../src/fixtures';
 import { render } from '../src/cli/render';
+import { claimsForChart } from '../src/core/claims';
+import { layoutColumn } from '../src/core/charts/column/layout';
 import type { LintWarning } from '../src/core/types/scene';
 
 // A stacked column chart names four layers at the right edge (invented data).
@@ -35,6 +37,10 @@ describe('right-edge series names', () => {
     const request = { type: 'column', data: fixture.data, options: { ...fixture.options, legend: 'top' } };
     const { svg } = render({ spec: request, return: ['svg'] }).body as { svg: string };
     expect(svg).toContain('>Product B +10.1% p.a.<');
+    const geometry = layoutColumn(request.data as never, request.options as never);
+    const claim = claimsForChart('column', geometry).find((item) => item.id.includes('seriesCagr:b'))!;
+    const node = geometry.scene.find((item) => item.id === claim.nodeId);
+    expect(node?.t === 'text' ? node.lines.join(' ') : undefined).toBe('Product B +10.1% p.a.');
   });
 });
 
