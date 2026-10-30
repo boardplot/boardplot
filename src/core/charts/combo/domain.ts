@@ -325,7 +325,7 @@ function primaryDomain(options: ComboOptions, gate: Gate, extent: { lo: number; 
     // bound between two ticks moves the rows, it is not left above them. A Pareto total
     // is not a bound the reader asked to see; its round ticks stay.
     const step = pinnedStep(dLo, dHi, pticks.length - 1);
-    pticks = Array.from({ length: Math.round((dHi - dLo) / step) + 1 }, (_, i) => roundTick(dLo + step * i));
+    pticks = Array.from({ length: Math.round((dHi - dLo) / step) + 1 }, (_, i) => Number((dLo + step * i).toPrecision(12)));
   }
   return { dLo, dHi, pticks };
 }
