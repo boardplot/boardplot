@@ -187,6 +187,20 @@ export interface ChartSchemas<D = unknown, O extends ChartOptions = BaseOptions>
 
 const registry = new Map<string, RegisteredChart<any, any, any, any>>();
 const aliasIndex = new Map<string, string>();
+const registryWaiting = new Set<() => void>();
+let registryRevision = 0;
+
+/** Runs when a chart type registers. A plan made before its chunk arrived runs again. */
+export function onChartRegistered(redraw: () => void): () => void {
+  registryWaiting.add(redraw);
+  return () => { registryWaiting.delete(redraw); };
+}
+
+/** The store snapshot: a number that changes when a chart type registers. */
+export function chartRegistryRevision(): number {
+  return registryRevision;
+}
+
 /**
  * The engine-free index beside the chart registry. `BoardplotChart` fills it
  * from the schema chunk of the type a spec names, before — often long before
@@ -732,6 +746,8 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
   for (const alias of aliases) {
     aliasIndex.set(alias, def.type);
   }
+  registryRevision += 1;
+  for (const redraw of registryWaiting) redraw();
 }
 
 /**
