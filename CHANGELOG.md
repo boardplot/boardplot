@@ -2,6 +2,33 @@
 
 Boardplot is in 0.x: options and output can change between minor versions. Each release lists its changes here.
 
+## 0.54.0
+
+### Added
+
+- The docs page `docs/use-cases.md` shows how to use Boardplot with an AI agent such as Claude Code or Codex: install and check, then one section each for a PowerPoint or Keynote deck, an analysis page or Claude artifact, a React dashboard, a Word or PDF report and a recurring report. Each section gives example prompts, what the agent does with the Boardplot tools or components, tips and limits. The README, the manual, `llms.txt`, the npm package and the offline plugin ZIP link or carry it, and the chart skill says what to do for each destination.
+
+### Changed / may need action
+
+- A spec or theme that uses a setting Boardplot once accepted draws again. A renamed setting draws as its successor, and a removed one is ignored. Both warn `option-deprecated` with a JSON Patch that rewrites or removes it, on the CLI, the MCP tools, React, `parseThemeJson` from `boardplot/validate`, theme objects and theme overrides. Before, each of these settings was refused and the chart did not draw. A key that never existed is still refused. These settings draw again:
+  - Theme keys, ignored: `space.barGap`, `type.eyebrow.case`, `chrome`, `motion.update`, `motion.exit`. `table.weights.change` keeps drawing and now stays accepted for good.
+  - Theme presets: `ibcs` draws as `notation` and `ibcs-dark` as `notation-dark`. `consulting` and `legacy-glass` draw as `boardroom`.
+  - Palettes `garnet` and `heritage`: the theme's own series draw, as before. The warning is now `option-deprecated` with a fix that removes `options.palette`, in place of `unknown-palette`.
+  - Option renames: waterfall `orient`, funnel `layout`, heatmap `glyph`, cohort `exhibitStyle`, diagram `preset`, waffle `fillMode` and treemap `shape` draw as `variant`. Variance `variance.mode` draws as `variant`. Mekko `mode: 'percent'`, `'unit'` and `'bar'` draw as `variant: 'stacked100'`, `'stacked'` and `'bar'`. Table `preset` draws as `variant`, and `preset: 'plain'` as `variant: 'hierarchy'`. Dimswitch `structure: 'byMeasure'` and `'byMember'` draw as `variant: 'by-measure'` and `'by-member'`. Bartable `cascade: true` draws as `variant: 'cascade'`, and `panelScale: 'own'` and `'shared'` as `sharedScale: false` and `true`. Grid `share: 'categories'` and `'none'` draw as `sharedAxis: 'category'` and `'none'`. Combo `labels.growth` draws as `dualAxis.growth`.
+  - Value renames: line `variant: 'stackedArea'` and `'area100'` draw as `'stacked-area'` and `'stacked100-area'`. Dimswitch `order: 'authored'` and treemap `order: 'data'` draw as `'sheet'`. Choropleth `pack: 'de-laender'` draws as `'de-states'`.
+  - Options, ignored: `strings.highlight` (in the React theme provider's strings it is ignored without a warning), `target: 'legacy'`, dimswitch `preset` and `density: 'cohort'` and `'cohort-small'`, line and combo `lineLabels` and `endpointLabelDefault` (use `seriesLabels` and `valueLabels`), column, line and combo `eventLegendFootnotes`, line, combo and grid `hover`, pareto `ruler`, pvm `effectOrder`, grid `gap`, `gutterWidth`, `showMaturing` and `totalPanel`.
+  - Data fields, ignored: category `total100` on dot, butterfly, slope, variance, pie, heatmap and funnel; category `gapAfter` and `breakAfter` on those types and mekko; series `direction` on line, combo, slope and butterfly; series `role` on butterfly and heatmap; series `fill` on pie and heatmap; diagram port `priority`.
+  - The same applies inside the panels and the repeat template of a grid.
+- Gantt and grid-level `options.format` stay accepted and ignored with their `format-unused` warning. The warning no longer says that the next release refuses them.
+
+### Fixed
+
+- A React chart that gets `rows` draws in a Vite 8 production build. Before, it stayed on the busy placeholder: Rolldown wrote the rows chunk as an empty file, because the chunk published the rows transform only through a module-scope call and `sideEffects` did not list it. The rows chunk, the annotation engine and the patched-theme checks now load through the exports of their chunk, which no bundler drops. A chunk that loads and still publishes nothing shows the load-failure card instead of the busy placeholder. No golden changes.
+- Line end labels at the last category use one form. Before, two lines that ended close together printed "Name value" in the label column, while a line that ended apart printed its value over its endpoint and its name alone in the column, so the reader saw two labels for that one series. Now, once one end label takes its value, every end label at the last category does. When the joined labels do not fit, all of them fall back together, as before: values at their points, names in the column. Lines that end before the last category, area and stacked variants, fans and bump charts are unchanged. Ten line goldens change (both themes): `multiline-highlight-fade`, `ordered-ramp-rest-apart`, `peer-regions-ramp`, `regions-ramp-target`, `shared-trajectory-milestones-1` to `-3`, `shared-trajectory-review-1` and `-2`, `trajectory-highlights`.
+- A neutral grey in a theme no longer warns `accent-reads-as-loss`. Before, a grey `neutralMark`, `highlight`, `focus`, `total` or first series near a muted red-brown `bad` colour warned, because a grey has no OKLCH hue and the check fell back to RGB distance under 90. A colour with OKLCH chroma under 0.02 now counts as grey and skips that fallback. A muted warm accent near a muted `bad` still warns. No golden changes.
+- A full theme whose `color.series` has one or two colours draws. Before, it was refused with `invalid-theme` ("expected array to have >=3 items"), so a brand theme for a two-series chart had to add an unused third colour. A series past the end of the ramp follows `color.seriesOverflow`, as before. No golden changes.
+- The event lane of line, column and combo charts fits more events as text blocks. Before, an event whose pole grazed the end of an earlier block fell back to a numbered marker with a key entry, even when the lane had a free row. The lane now turns one placed block to the other side of its pole when that frees room for the next event. Golden changes: `column/weekly-events-lane` and `combo/weekly-events-lane` (both variants) draw the 26 Aug launch in the lane instead of key entry 4, and the 10 Aug block turns left of its pole.
+
 ## 0.53.0
 
 ### Added
