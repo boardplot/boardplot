@@ -28,6 +28,14 @@ describe('right-edge series names', () => {
       expect(['Dec 25', 'Mar 26', 'Jun 26', 'Aug 26'].filter((name) => !svg.includes(`>${name}<`)), `margin ${right}`).toEqual([]);
     }
   });
+
+  // A key took over from edge names that did not fit, and the series CAGRs went with them, unwarned.
+  it('leave their CAGR to the key when the key names the series', () => {
+    const fixture = getFixtures('column').find((f) => f.id === 'stacked-series-cagr')!;
+    const request = { type: 'column', data: fixture.data, options: { ...fixture.options, legend: 'top' } };
+    const { svg } = render({ spec: request, return: ['svg'] }).body as { svg: string };
+    expect(svg).toContain('>Product B +10.1% p.a.<');
+  });
 });
 
 describe('line end names under legend none', () => {

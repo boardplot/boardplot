@@ -38,7 +38,7 @@ import { canvasMargin, panelTypeClass, emphasisWeight, strokeToken, dashToken, s
 import type { Id } from '../../types/cell';
 import type { LegendOptions } from '../../types/options';
 import type { LintWarning } from '../../types/scene';
-import { edgeNameFont, edgeNamesReplaceKey, kindSetting, partialNamedOnValues, pyTickKeyed, rightEdgeSeriesLabels, RIGHT_EDGE_GAP, shareTextOf } from './domain';
+import { edgeNameFont, edgeNamesReplaceKey, KEY_EDGE_SERIES, kindSetting, partialNamedOnValues, pyTickKeyed, rightEdgeSeriesLabels, RIGHT_EDGE_GAP, shareTextOf } from './domain';
 import { ANOMALY_FLAG_GAP, ANOMALY_FLAG_H, TICK_LABEL_RESERVE, PY_TICK_LEAD, type ColumnArea, type ColumnDomain, type NormSer } from './model';
 import { seriesPattern, signWord, type ColumnLegendPaints } from './paints';
 import { signPaint } from '../band/sign';
@@ -93,6 +93,8 @@ function uniformCellLook(domain: ColumnDomain, paints: ColumnLegendPaints, s: No
 function columnLegendItems(domain: ColumnDomain, paints: ColumnLegendPaints): LegendItemInput[] {
   const { dataSeries, refSeries, variant, refStyle, anomaly, corridorShown, statFmt } = domain;
   const legendUsesSeriesIdentity = domain.uniformScenario.size > 0;
+  // A series whose name the edge cannot be trusted to print keeps its CAGR in the key.
+  const edgePrinted = new Set((domain.options as { [KEY_EDGE_SERIES]?: true })[KEY_EDGE_SERIES] ? [] : rightEdgeSeriesLabels(domain).map((series) => series.id));
   // A sign-coloured series has no single swatch: one key in the series'
   // identity colour would be a legend that lies about the encoding it is
   // explaining. It gets the two keys it actually
@@ -112,7 +114,7 @@ function columnLegendItems(domain: ColumnDomain, paints: ColumnLegendPaints): Le
       ].filter((_, index) => s.vals.some(v => v.v !== null && (index === 0 ? v.v > 0 : v.v < 0))))
     : dataSeries.map((s, i) => ({
         id: s.id,
-        label: s.label,
+        label: edgePrinted.has(s.id) ? s.label : domain.seriesCagr.get(s.id)?.text ?? s.label,
         paint: legendUsesSeriesIdentity ? paints.identity(s, i) : paints.base(s, i),
         pattern: legendUsesSeriesIdentity ? undefined : seriesPattern(s),
         // A series whose every drawn column looks the same is keyed in that look, hatch included.

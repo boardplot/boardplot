@@ -514,8 +514,9 @@ function assembleColumnGeometry(
       ...integratedAnnotations,
       ...annotated.placed,
       ...(lane?.placed ?? []),
-      // Series CAGR records, for the names that were laid out.
-      ...[...domain.seriesCagr.values()].map((entry) => entry.placed).filter((placed) => allLabels.some((label) => label.id === placed.labelId)),
+      // Series CAGR records, for the rates the edge or the key prints.
+      ...[...domain.seriesCagr.values()].map((entry) => entry.placed).filter((placed) => allLabels.some((label) => label.id === placed.labelId) ||
+        area.frame.legend?.items.some((item) => placed.labelId === `seriesEdge:${item.id}`)),
     ],
     legend: area.frame.legend,
     frame: area.frame.frame,
