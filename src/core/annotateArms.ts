@@ -439,6 +439,8 @@ function drawStraightCagrArrow(
     return giveWay('no straight line clears the marks');
   }
   const [p, q] = route;
+  // The oval sits on the middle of the line and hides what lies under it, the head included.
+  if (Math.hypot(q.x - p.x, q.y - p.y) / 2 < rx + STRAIGHT_ARROW_HEAD) return giveWay('the span is too short for the oval');
   const width = strokeToken(input.theme, 'rule');
   const angle = Math.atan2(q.y - p.y, q.x - p.x);
   const shaftEnd = arrowShaftEnd(STRAIGHT_ARROW_HEAD, width);
@@ -457,7 +459,7 @@ function drawStraightCagrArrow(
   claimArrowHead(input.occupied, annId, q.x, q.y);
   input.occupied.claim(ovalRect(centre), 'annotation', owner, 'oval');
   pushCagrPlacement(pass, annId, text, computed, font, [
-    { slot: 'onArm', rect: { x: centre.x - tsize.width / 2, y: centre.y - tsize.height / 2, w: tsize.width, h: tsize.height }, penalty: 0 },
+    { slot: 'onArm', rect: { x: centre.x - tsize.width / 2, y: centre.y - tsize.height / 2, w: tsize.width, h: tsize.height }, penalty: 0, overRules: true },
   ], [lineId, headId, ovalId], derivation);
   return true;
 }

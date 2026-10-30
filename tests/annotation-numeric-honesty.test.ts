@@ -356,6 +356,25 @@ it('prints the rate alone on each of several cagr arrows unless period asks for 
   expect(texts({ period: true })[0]).toBe('2021–2022: +20.0% p.a.');
 });
 
+// An oval wider than the span would hide the whole arrow, head included, so the bracket must show the span.
+it('draws a cagr too short for its oval as a bracket and says so', () => {
+  const categories = Array.from({ length: 12 }, (_, i) => ({ id: `y${i}`, label: `${2010 + i}`, date: `${2010 + i}-12-31` }));
+  const data = { categories, series: [{ id: 'a', label: 'A', values: categories.map((_, i) => 100 + i) }] };
+  const geometry = layoutColumn(data, { size: { width: 480 }, annotations: [{ kind: 'cagr', from: 'y3', to: 'y4', shape: 'arrow' }] } as never);
+  expect(codes(geometry)).toContain('cagr-arrow-no-room');
+});
+
+// A value line under the oval must not cost the chart its rate: the solver dropped the seat and the whole arrow with it.
+it('keeps the rate of a cagr arrow when a value line crosses its oval', () => {
+  const data = {
+    categories: ['2021', '2022', '2023', '2024'].map((label) => ({ id: `y${label}`, label, date: `${label}-12-31` })),
+    series: [{ id: 'a', label: 'A', values: [100, 120, 140, 160] }],
+  };
+  const geometry = layoutBar(data, { annotations: [{ kind: 'valueLine', value: 170, label: 'Plan' }, { kind: 'cagr', shape: 'arrow' }] } as never);
+  expect(codes(geometry)).not.toContain('cagr-arrow-no-room');
+  expect(renderSvg(geometry as never, resolveTheme())).toContain('+17.0% p.a.');
+});
+
 // An arrow from over an inner layer would read as the growth of the whole stack, so the bracket keeps the rate on that layer.
 it('draws a cagr on an inner stack layer as a bracket and says so', () => {
   const data = {
