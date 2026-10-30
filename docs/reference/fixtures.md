@@ -29,6 +29,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | stacked-dashed-connectors | column.stacked | example | Stacked columns with dashed series connectors |
 | stacked100-share-shift-connectors | column.stacked100 | example | Stacked 100% columns with share-boundary connectors |
 | stacked-revenue-cagr | column.stacked | example | Stacked column time series with CAGR arrow and grand totals |
+| stacked-revenue-cagr-arrow | column.stacked | example | Stacked column time series with a straight CAGR arrow |
 | stacked100-shares-sum | column.stacked100 | torture | Torture: 100% stacked shares that add up to 100% in every column |
 | stacked100-energy-mix | column.stacked100 | example | Stacked 100% column with absolute totals and 100% indicator |
 | clustered-brand-gap | column.grouped | example | Clustered columns with value axis, gridlines, and diff arrow |

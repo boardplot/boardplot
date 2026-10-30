@@ -38,7 +38,7 @@ Every chart is one JSON object, the spec.
 - `type` names the chart type. `boardplot_list` returns all of them with their aliases.
 - `data` has the shape of that type. `boardplot_describe` lists its fields.
 - `options` is optional. It holds the title, subtitle, unit, source, axes and labels, plus the options of the type. `options.target` names the medium the chart is read in and `options.size` its slot; see [Sizing](#sizing). The subtitle prints the unit after its measure ("Revenue in $m"); a unit that neither the subtitle, an axis title nor a value label prints gets the warning `unit-not-shown`.
-- `annotations` is optional. An annotation attaches a callout, note, difference arrow, CAGR arrow or value line to a data id, and the engine computes the number it prints.
+- `annotations` is optional. An annotation attaches a callout, note, difference arrow, CAGR arrow or value line to a data id, and the engine computes the number it prints. A `cagr` draws a bracket over the marks. With `shape: "arrow"` it draws one straight arrow with the rate in an oval on it, and falls back to the bracket with the warning `cagr-arrow-no-room` where no straight line clears the chart.
 - `theme` is optional. It takes a preset name or a theme object; see [Themes](#themes).
 
 A field the type does not list is an error. `boardplot_render`, `boardplot_measure`, the CLI and the React component `BoardplotChart` all take this spec.

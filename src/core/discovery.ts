@@ -54,7 +54,8 @@ const ANNOTATION_OPTIONAL: Partial<Record<AnnotationKind, Record<string, Optiona
   delta: GAP_BRACKET_FIELDS,
   cagr: {
     suffix: "string, default 'p.a.'. Text after the rate.",
-    period: "boolean. Print the period before the rate from the anchors' category labels, '2014–2019: +5.8% p.a.'. Default true when the chart carries two or more CAGRs, so nested brackets are told apart by their text, false otherwise.",
+    period: "boolean. Print the period before the rate from the anchors' category labels, '2014–2019: +5.8% p.a.'. Default true when the chart carries two or more CAGRs, so nested brackets are told apart by their text, false otherwise. An arrow's ends show its span, so an arrow prints the rate alone unless period is true.",
+    shape: "bracket | arrow, default bracket. arrow draws one straight arrow over the marks with the rate in an oval on it, lifted until it clears them. Where no straight line clears the chart, a stack's inner layer is the anchor or the chart lays comparisons out itself, it draws the bracket and warns cagr-arrow-no-room.",
   },
   callout: {
     preferSide: 'left | right | above | below. Side the solver tries first; the label keeps a leader when it moves.',

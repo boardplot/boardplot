@@ -344,6 +344,29 @@ describe('yearSpan — the date math nothing covered', () => {
   });
 });
 
+// The ends of an arrow show its span, so years in the oval only widen it and cover more of the line.
+it('prints the rate alone on each of several cagr arrows unless period asks for the years', () => {
+  const data = {
+    categories: [{ id: 'y1', label: '2021', date: '2021-12-31' }, { id: 'y2', label: '2022', date: '2022-12-31' }, { id: 'y3', label: '2024', date: '2024-12-31' }],
+    series: [{ id: 'a', label: 'A', values: [100, 120, 160] }],
+  };
+  const texts = (extra: object) => layoutColumn(data, { annotations: [{ kind: 'cagr', shape: 'arrow', to: 'y2', ...extra }, { kind: 'cagr', shape: 'arrow' }] } as never)
+    .annotations.filter((ann) => ann.kind === 'cagr').map((ann) => ann.computedText);
+  expect(texts({})).toEqual(['+20.0% p.a.', '+17.0% p.a.']);
+  expect(texts({ period: true })[0]).toBe('2021–2022: +20.0% p.a.');
+});
+
+// An arrow from over an inner layer would read as the growth of the whole stack, so the bracket keeps the rate on that layer.
+it('draws a cagr on an inner stack layer as a bracket and says so', () => {
+  const data = {
+    categories: [{ id: 'y1', label: '2021', date: '2021-12-31' }, { id: 'y2', label: '2024', date: '2024-12-31' }],
+    series: [{ id: 'a', label: 'A', values: [40, 50] }, { id: 'b', label: 'B', values: [30, 45] }],
+  };
+  const geometry = layoutColumn(data, { variant: 'stacked', annotations: [{ kind: 'cagr', from: { categoryId: 'y1', seriesId: 'a' }, to: { categoryId: 'y2', seriesId: 'a' }, shape: 'arrow' }] } as never);
+  expect(codes(geometry)).toContain('cagr-arrow-no-room');
+  expect(annOf(geometry, 'cagr')?.computedText).toContain('p.a.');
+});
+
 describe('a cagr without a usable span must not assert a per-annum rate', () => {
   const fixture = waterfallFixtures.find((item) => item.id === 'ebit-bridge')!;
   // The fixture totals are labelled FY21 and FY24. Since the label-year

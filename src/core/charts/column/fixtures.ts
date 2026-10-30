@@ -714,6 +714,35 @@ export const fixtures: Fixture<RangeChartData, AnomalyColumnOptions>[] = [
     annotations: [{ kind: 'cagr' }],
   },
   {
+    id: 'stacked-revenue-cagr-arrow',
+    title: 'Stacked column time series with a straight CAGR arrow',
+    kind: 'example',
+    data: {
+      categories: [
+        { id: 'fy19', label: 'FY19', date: '2019-12-31' },
+        { id: 'fy20', label: 'FY20', date: '2020-12-31' },
+        { id: 'fy21', label: 'FY21', date: '2021-12-31' },
+        { id: 'fy22', label: 'FY22', date: '2022-12-31' },
+        { id: 'fy23', label: 'FY23', date: '2023-12-31' },
+        { id: 'fy24', label: 'FY24', date: '2024-12-31' },
+      ],
+      series: [
+        { id: 'software', label: 'Software', values: [58, 72, 89, 104, 126, 148] },
+        { id: 'services', label: 'Services', values: [34, 38, 41, 47, 52, 58] },
+        { id: 'hardware', label: 'Hardware', values: [51, 48, 44, 41, 38, 34] },
+      ],
+    },
+    options: {
+      variant: 'stacked',
+      title: 'Revenue compounds at 11% p.a. as software extends its lead over hardware',
+      subtitle: { company: 'Nurthwold Group', measure: 'Revenue', period: 'FY19–FY24' },
+      unit: '$m',
+      source: 'Nurthwold annual reports',
+      seriesLabels: { at: 'right-edge' },
+    },
+    annotations: [{ kind: 'cagr', shape: 'arrow' }],
+  },
+  {
     id: 'stacked100-shares-sum',
     title: 'Torture: 100% stacked shares that add up to 100% in every column',
     kind: 'torture',

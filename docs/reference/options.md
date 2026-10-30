@@ -255,6 +255,7 @@ Every chart type accepts these options unless its own page names them as not acc
 | annotations[].priority (annotations[] branch 1) | number |  |  | Annotation label priority during collision resolution. |
 | annotations[].icon (annotations[] branch 1) | string | `'alert'`, `'calendar'`, `'check'`, `'conversation'`, `'document'`, `'flag'`, `'gear'`, `'lightbulb'`, `'people'`, `'star'`, `'target'`, `'workflow'` |  | Registered icon for note or callout annotations; cannot be combined with status. |
 | annotations[].status (annotations[] branch 1) | string | `'good'`, `'bad'`, `'warn'`, `'info'` |  | Semantic status glyph for a note or callout; cannot be combined with icon. |
+| annotations[].shape (annotations[] branch 1) | string | `'bracket'`, `'arrow'` |  | A cagr's form: 'bracket', the default, runs over the marks, and 'arrow' is one straight arrow with the rate in an oval on it. |
 | annotations[].kind (annotations[] branch 2) | string | `'band'` |  | Era band spanning inclusive category ids, or a value-axis plan corridor, tolerance band or attainment fill. |
 | annotations[].id (annotations[] branch 2) | string |  |  | Stable band annotation identity; omission generates an id from kind and authored order. |
 | annotations[].text (annotations[] branch 2) | string |  |  | Shared annotation text override; band captions use label. |

@@ -708,7 +708,8 @@ function placeCagr(s: AnnotationScope, ann: Extract<Annotation, { kind: 'cagr' }
   // A rate read off one series of several says whose it is. Its
   // period leads when asked for, and by default when the chart carries
   // several CAGRs, so nested brackets are told apart by their text.
-  const periodOn = ann.period ?? (input.comparisonLayout?.namesSpan === true || input.annotations.filter((other) => other.kind === 'cagr').length > 1);
+  // An arrow's ends show its span, so its oval keeps to the rate.
+  const periodOn = ann.period ?? (input.comparisonLayout?.namesSpan === true || (ann.shape !== 'arrow' && input.annotations.filter((other) => other.kind === 'cagr').length > 1));
   const lead = spanLead(s, a, b, periodOn);
   const label = authored(s, 'cagr', !lead ? rateText : `${lead} ${rateText}`, ann.text, rateText);
   // The computed text keeps its parts, so a bar can set the series name over the rate.
@@ -726,7 +727,7 @@ function placeCagr(s: AnnotationScope, ann: Extract<Annotation, { kind: 'cagr' }
       { ref: 'years', value: years, state: `${a.date ?? a.label} → ${b.date ?? b.label}` },
     ],
     raw: rate,
-  }, parts);
+  }, parts, ann.shape);
 }
 
 /**
