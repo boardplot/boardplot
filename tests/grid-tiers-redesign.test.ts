@@ -408,3 +408,19 @@ describe('facet reflow on a phone card', () => {
     expect(titleColumns(layout({ size: { width: 320, height: 900 } }))).toBe(2);
   });
 });
+
+describe('tier captions wrap to the panel width', () => {
+  // A caption wider than a narrow canvas found no seat and was left out of the chart.
+  it('prints a long caption on two lines instead of dropping it', () => {
+    const panel = (id: string, caption: string) => ({ id, type: 'column', title: id, caption, data: {
+      categories: [{ id: 'q1', label: 'Q1' }, { id: 'q2', label: 'Q2' }],
+      series: [{ id: 's', label: 'Orders', values: [10, 12] }] } });
+    const grid = getChart('grid')!.layout({
+      panels: [panel('north', 'A caption that runs far past the width of this narrow card'), panel('south', 'Short note')],
+    }, { size: { width: 300 }, sharedAxis: 'category', title: 'Orders hold', target: 'report' }) as Geometry;
+    const caption = grid.scene.find((n) => n.id === 'north/tier:detail') as { lines: string[] } | undefined;
+    expect(caption?.lines.length).toBe(2);
+    expect(caption?.lines.join(' ')).toBe('A caption that runs far past the width of this narrow card');
+    expect(grid.labels.filter((label) => label.hidden && label.id.includes('tier:'))).toEqual([]);
+  });
+});

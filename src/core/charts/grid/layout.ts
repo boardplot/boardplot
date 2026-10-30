@@ -19,6 +19,7 @@ import {
   SCALE_GROUP_MEMBERS,
   facetHeadedGaps,
   gridShare,
+  measuredCaption,
   bottomUpTierOrder,
   tierWeights,
   sharedCategoryLabelOwner,
@@ -44,7 +45,7 @@ import { GridChildRefusal, gridRowHeights, gridSizing, hasKpiFigure, layoutChild
 import { KPI_HOST_TEXT, KPI_VALUE_SIZE } from '../../typeFloors';
 import { LEFT_OUT_OF_NOTE, panelNoteTexts, stringsIn } from '../../frame';
 import { autoPlotPx, CARD_CLASS_WIDTH, CARD_MIN_WIDTH, chartSizing, DIGIT_SEAT, heightOmitted, type DigitSeated, NARROW_SHARE_WIDTH, stackedColumnPlotPx } from '../../sizing';
-import { defaultMeasurer, wrapText, type FontSpec, type TextMeasurer } from '../../text';
+import { defaultMeasurer, type FontSpec, type TextMeasurer } from '../../text';
 import {
   canvasMargin,
   panelTypeClass,
@@ -483,13 +484,6 @@ function orderPanels(
  */
 function gridTypeClass(options: GridLayoutOptions): TypeWidthClass {
   return panelTypeClass(options) ?? typeWidthClass(resolveSize(options.size).width);
-}
-
-function measuredCaption(text: string, font: FontSpec, width: number, measure: TextMeasurer) {
-  const lines = wrapText(text, font, width, Number.MAX_SAFE_INTEGER, measure).lines;
-  const sizes = lines.map(line => measure(line, font));
-  return { lines, width: Math.max(...sizes.map(size => size.width)),
-    height: Math.max(...sizes.map(size => size.height)) + (lines.length - 1) * font.size * (font.lineHeight ?? 1.2) };
 }
 
 function panelCaptionBand(panel: GridPanelSpec, theme: ReturnType<typeof resolveTheme>, measure: TextMeasurer,
