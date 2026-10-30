@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { getFixtures } from '../src/fixtures';
 import { render } from '../src/cli/render';
+import { claimsForChart } from '../src/core/claims';
+import { layoutColumn } from '../src/core/charts/column/layout';
 import type { LintWarning } from '../src/core/types/scene';
 
 // A stacked column chart names four layers at the right edge (invented data).
@@ -27,6 +29,18 @@ describe('right-edge series names', () => {
       const svg = (render({ spec: spec(right), return: ['svg'] }).body as { svg: string }).svg;
       expect(['Dec 25', 'Mar 26', 'Jun 26', 'Aug 26'].filter((name) => !svg.includes(`>${name}<`)), `margin ${right}`).toEqual([]);
     }
+  });
+
+  // A key took over from edge names that did not fit, and the series CAGRs went with them, unwarned.
+  it('leave their CAGR to the key when the key names the series', () => {
+    const fixture = getFixtures('column').find((f) => f.id === 'stacked-series-cagr')!;
+    const request = { type: 'column', data: fixture.data, options: { ...fixture.options, legend: 'top' } };
+    const { svg } = render({ spec: request, return: ['svg'] }).body as { svg: string };
+    expect(svg).toContain('>Product B +10.1% p.a.<');
+    const geometry = layoutColumn(request.data as never, request.options as never);
+    const claim = claimsForChart('column', geometry).find((item) => item.id.includes('seriesCagr:b'))!;
+    const node = geometry.scene.find((item) => item.id === claim.nodeId);
+    expect(node?.t === 'text' ? node.lines.join(' ') : undefined).toBe('Product B +10.1% p.a.');
   });
 });
 

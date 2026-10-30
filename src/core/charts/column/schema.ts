@@ -183,7 +183,7 @@ export const columnOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptio
           }).describe('Over a chosen span, or with a chosen format.'),
         ])
         .optional()
-        .describe("Series CAGR: each name carries its series' compound annual growth rate over the span, 'Product B +10.1% p.a.', with a claim record per series. The years come from the categories' ISO dates or year-bearing labels; a series with a missing value, a start at or below zero or a negative end prints its name alone and warns; an end of zero reads -100%."),
+        .describe("Series CAGR: each name carries its series' compound annual growth rate over the span, 'Product B +10.1% p.a.', with a claim record per series. A key that names the series in place of the edge carries the rate. The years come from the categories' ISO dates or year-bearing labels; a series with a missing value, a start at or below zero or a negative end prints its name alone and warns; an end of zero reads -100%."),
     })
     .optional()
     .describe('Name the stacked series once, at the right edge of the LAST column or the left edge of the FIRST, instead of in a legend: the layers of a cohort chart are read off their own bars. Stacked variants only; a grouped chart keeps its legend.'),
