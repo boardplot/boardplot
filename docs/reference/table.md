@@ -170,7 +170,7 @@ Consulting-grade table: hierarchy with honest totals (derive/validate/source), t
 | columns[].band (columns[] branch 6) | boolean |  | Column band ground. Neighbouring banded columns read as one block and the first of the run takes the left hairline, so a block inside a column group needs no group of its own. Paint only. |
 | columns[].fitFormat (columns[] branch 6) | false |  | false: options.fitFormats leaves this column's format as authored. One of `false`. |
 | columns[].noteLine (columns[] branch 6) | boolean |  | Notes below figures. They use the inline step in muted ink. Default false keeps the note inline after the figure, where a 90 px block track cuts it off; a steering block column says sum under its year-to-date figure. The note takes the first line slot whose change line holds no value in that cell, and where every line holds one, or the row prints none, the row grows by one inline line. |
-| columns[].kind (columns[] branch 6) | string | yes | Kind. One of `'date'`. |
+| columns[].kind (columns[] branch 6) | string | yes | Date cell: an ISO date (YYYY-MM-DD) or { v: date } (other text refuses: date-invalid; numbers draw the missing dash and warn: date-value-number). One of `'date'`. |
 | columns[].format (columns[] branch 6) | string |  | Date format example. Examples: '30 Sep 2026', 'Sep-26', '2026-09-30'. |
 | columns[].id (columns[] branch 7) | string | yes | Nonempty reference id. |
 | columns[].label (columns[] branch 7) | string |  | Visible name; defaults to id. |
