@@ -5,7 +5,7 @@
  */
 
 import { compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning } from '../band/stacks';
-import { mekkoAmount, poolMekkoCell, restLabel, restSum, topNCut } from '../topN';
+import { mekkoAmount, poolMekkoCell, restDetailsWarning, restLabel, restSum, topNCut } from '../topN';
 import { cellFields, normalizeCategorySeries } from '../categorySeries';
 import { breakUnsupported, chartPalette, chartTheme } from '../chartEnv';
 import { defaultMeasurer } from '../../text';
@@ -327,6 +327,8 @@ export function resolveMekkoDomain(data: ChartData, env: MekkoEnv, warnings: Lin
   const fns = valueFns(st);
   const allCats = st.cats;
   const othersId = reorderCategories(st, seriesNorm, options, fns.weightAt, fns.basisAt);
+  const lostDetails = othersId === null ? undefined : restDetailsWarning(data, new Set(st.cats.map((c) => c.id)));
+  if (lostDetails) warnings.push(lostDetails);
   const othersMembers = othersId === null ? [] : allCats.filter((c) => !st.cats.some((kept) => kept.id === c.id)).map((c) => c.label ?? c.id);
   percentValidity(st, warnings);
 

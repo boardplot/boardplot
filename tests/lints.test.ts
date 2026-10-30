@@ -890,3 +890,24 @@ describe('optional lint source paths', () => {
       .toBe('/charts/0/data/template/data/bySlice/a~1b~0c');
   });
 });
+
+// The details of a cell folded into Others left the hover card with no word to the author.
+describe('details-topn-omitted', () => {
+  const data = {
+    categories: [{ id: 'a', label: 'Alpha' }, { id: 'b', label: 'Beta' }, { id: 'c', label: 'Gamma' }],
+    series: [{ id: 's', values: [{ number: 20 }, { number: 10, details: { deals: 5 } }, { number: 5 }] }],
+  };
+  const warning = (type: string, topN: unknown) => (render({ spec: { type, data, options: { topN } } }).body.warnings as { code: string; message: string }[])
+    .find(({ code }) => code === 'details-topn-omitted');
+
+  it('names the details butterfly folds into Others', () => {
+    const series = [data.series[0]!, { id: 't', values: [1, 2, 3] }];
+    const { warnings } = render({ spec: { type: 'butterfly', data: { ...data, series }, options: { a: 's', b: 't', topN: { n: 1, rest: true } } } }).body as { warnings: { code: string; message: string }[] };
+    expect(warnings.find(({ code }) => code === 'details-topn-omitted')?.message).toContain('details of Beta were dropped (deals)');
+  });
+
+  for (const type of ['pie', 'bar', 'column', 'mekko']) it(`names the details ${type} folds into Others`, () => {
+    expect(warning(type, { n: 1, rest: true })?.message).toContain('details of Beta were dropped (deals)');
+    expect(warning(type, { n: 2, rest: true })).toBeUndefined();
+  });
+});
