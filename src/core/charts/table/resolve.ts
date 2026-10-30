@@ -963,6 +963,13 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
       }
     }
   }
+  // A head or a row label names a unit only when every figure under it prints
+  // in that unit. A cell's own format that names another one ("€900" under
+  // "$") leaves the unit in the cells.
+  const cellNamesOtherUnit = (rowId: Id, colId: Id, spec: NumberFormatSpec): boolean => {
+    const own = cellSpecs.get(rowId)?.get(colId);
+    return own !== undefined && typeof rawState.get(rowId)?.get(colId)?.raw === 'number' && unitOfSpec(own) !== unitOfSpec(spec);
+  };
   /**
    * The unit a row-formatted money row hoists out of its cells and onto its
    * own label: every cell of the row said "11,300.0k" where the row
@@ -975,7 +982,8 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     for (const [rowId, spec] of rowSpecs) {
       if (rowById.get(rowId)?.scale === 'money' || rowById.get(rowId)?.scale === 'perUnit'
         || rowById.get(rowId)?.calc !== undefined
-        || !scales(sourceRows.get(rowId)?.format ?? '1,234')) continue;
+        || !scales(sourceRows.get(rowId)?.format ?? '1,234')
+        || valueCols.some((col) => cellNamesOtherUnit(rowId, col.id, spec))) continue;
       const unit = unitOfSpec(spec);
       if (unit !== null) hoistedRowUnits.set(rowId, unit);
     }
@@ -1050,7 +1058,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
   const lettersInCells = new Set<Id>();
   for (const col of [...valueCols, ...computedCols]) {
     const spec = specs.get(col.id)!;
-    if (!rowFormattedColumns.has(col.id) && rollsOff(col.id, spec)) lettersInCells.add(col.id);
+    if (!rowFormattedColumns.has(col.id) && (rollsOff(col.id, spec) || flat.some((row) => cellNamesOtherUnit(row.id, col.id, spec)))) lettersInCells.add(col.id);
     unitByCol.set(col.id, rowFormattedColumns.has(col.id) || lettersInCells.has(col.id) ? null : unitOfSpec(spec));
   }
   const headerUnitFor = (id: Id): string | null => unitByCol.get(id) ?? (rowFormattedColumns.has(id) ? headUnit ?? null : null);

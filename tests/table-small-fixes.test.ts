@@ -1026,3 +1026,22 @@ it('a pinned cell in a groundless total row keeps the page under it', () => {
   expect(clear).toBeGreaterThanOrEqual(0);
   expect(pinned).toBeGreaterThan(clear);
 });
+
+// A head or a row label took its unit from the column or the row and ignored a cell's own format: "$" stood over euro cells.
+it('leaves the unit in the cells when a cell format names another one', () => {
+  const columns: TableData['columns'] = [{ id: 'l', kind: 'rowLabel', label: 'Item' }, { id: 'v', kind: 'value', label: 'Revenue', format: '$1,234' }];
+  const byColumn = resolveTable({ columns, rows: [
+    { id: 'a', label: 'US', cells: { v: 1200 } },
+    { id: 'b', label: 'DE', cells: { v: { v: 900, format: '€1,234' } } },
+  ] }, { subtitle: 'By market' }).table;
+  expect(byColumn.columns.find((c) => c.id === 'v')!.unitLabel).toBeUndefined();
+  expect(byColumn.unit).toBeUndefined();
+  expect(byColumn.rows.map((r) => r.cells.v!.displayed)).toEqual(['$1,200', '€900']);
+
+  const byRow = resolveTable({ columns: [columns[0]!, { id: 'v', kind: 'value', label: 'Q1' }, { id: 'w', kind: 'value', label: 'Q2' }], rows: [
+    { id: 'a', label: 'Net sales', format: '$1,234', cells: { v: 12000, w: { v: 9000, format: '€1,234k' } } },
+  ] }, { magnitude: 'thousand' }).table;
+  expect(byRow.rows[0]!.unitAffix).toBeUndefined();
+  expect(byRow.rows[0]!.cells.v!.displayed).toMatch(/^\$/);
+  expect(byRow.rows[0]!.cells.w!.displayed).toMatch(/^€/);
+});
