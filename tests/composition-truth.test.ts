@@ -176,6 +176,12 @@ describe('line and mekko fail closed visibly', () => {
     // Without a width series the columns are equal, and plain heights stay amounts.
     expect(draw(rates).record.value.raw).toBe(13);
     expect(draw([10, 3, 6, 20]).record.value.raw).toBe(26);
+    // A stacked column without a width series is as wide as its sum: a fold keeps the summed width.
+    const stacked = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'mekko', data: {
+      categories: ['a', 'b', 'c'].map((id) => ({ id })),
+      series: [{ id: 's1', values: [{ pct: 80 }, { pct: 20 }, { pct: 10 }] }, { id: 's2', values: [{ pct: 20 }, { pct: 80 }, { pct: 90 }] }],
+    }, options: { variant: 'stacked', topN: { n: 1, rest: true }, size: { width: 960, height: 540 } } } as never)));
+    expect(stacked.derived).toMatchObject({ columnTotals: { others: 200 } });
   });
 
   // Mekko Others must convert percent cells to amounts and keep the present width values when one width is missing.

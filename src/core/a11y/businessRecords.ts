@@ -304,16 +304,15 @@ function mekko(ctx: RecordContext): InteractionRecord[] {
     const raw = source.cell(category.id, series.id).raw;
     return sum + (!source.isPercent(category.id, series.id) && typeof raw === 'number' ? raw : 0);
   }, 0));
-  // The drawing's column weights: the width series, one column each, or the column's sum.
+  // The drawing's weights where a fold takes a mean: the width series, else equal columns.
   const widthSeries = source.series.some(series => series.id === options.widthSeriesId);
-  const weightOf = (category: { id: string }): number => mode === 'bar' && !widthSeries ? 1
-    : Math.max(0, (widthSeries ? [options.widthSeriesId!] : plottedSeries.map(series => series.id)).reduce((sum, id) => {
-      const raw = source.cell(category.id, id).raw;
-      return sum + (typeof raw === 'number' ? raw : 0);
-    }, 0));
+  const pooledWeights = pooledCategories.map(category => {
+    const raw = widthSeries ? source.cell(category.id, options.widthSeriesId!).raw : 1;
+    return typeof raw === 'number' ? Math.max(0, raw) : 0;
+  });
   const pooledCells = new Map(plottedSeries.map(series => [series.id, poolMekkoCell(pooledCategories.map((category, i) => {
     const raw = source.cell(category.id, series.id).raw;
-    return { v: typeof raw === 'number' ? raw : null, isPct: source.isPercent(category.id, series.id), basis: bases[i]!, weight: weightOf(category) };
+    return { v: typeof raw === 'number' ? raw : null, isPct: source.isPercent(category.id, series.id), basis: bases[i]!, weight: pooledWeights[i]! };
   }), mode, widthSeries)]));
   const pooled = new Map([...pooledCells].map(([id, cell]) => [id, cell.v]));
   const pooledBasis = mode === 'percent' && pooledCategories.some(category => category.total100 !== undefined)
