@@ -251,15 +251,15 @@ describe('refusal contract', () => {
       const categories = Array.from({ length }, (_, i) => `c${i}`);
       return { categories, series: Array.from({ length: count }, (_, k) => ({ id: `s${k}`, values: categories.map((_, i) => (i * (k + 1)) % 97) })) };
     };
-    // 300 by 700 costs 280,000 (under the point budget) but still aborted with a heap error, so categories times series times series is bounded too.
-    for (const data of [wide(1_000, 300), wide(100, 2_000), wide(300, 700), wide(200, 1_000)]) {
+    // 401 by 500 costs 250,000 (under the point budget) but its 100.25 million of categories times series times series is over the cap that stops the heap abort (300 by 700 aborted at 280,000 points).
+    for (const data of [wide(1_000, 300), wide(100, 2_000), wide(401, 500)]) {
       for (const variant of ['line', 'stacked-area'] as const) {
         const { body } = render({ spec: { type: 'line', data, options: { variant } } });
         expect((body.errors as Finding[]).map(({ code, path }) => ({ code, path }))).toEqual([{ code: 'too-many-items', path: '/data/series' }]);
       }
     }
-    expect(render({ spec: { type: 'line', data: wide(1_000, 300), options: { window: { last: 100 } } } }).body.errors ?? []).toEqual([]);
-    expect(render({ spec: { type: 'line', data: wide(300, 700), options: { window: { last: 100 } } } }).body.errors ?? []).toEqual([]);
+    expect(render({ spec: { type: 'line', data: wide(1_000, 300), options: { window: { last: 10 } } } }).body.errors ?? []).toEqual([]);
+    expect(render({ spec: { type: 'line', data: wide(401, 500), options: { window: { last: 5 } } } }).body.errors ?? []).toEqual([]);
   });
 
   // A combo of 10 categories by 1,000 series did not finish in 150 s with only 10,000 points, and 1,000 by 101 ran out of memory; it must refuse at once, and a window.last that draws less must still draw.
