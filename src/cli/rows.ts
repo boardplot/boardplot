@@ -132,8 +132,11 @@ interface LoadedRows {
  */
 function decodeRows(bytes: Buffer): { text: string; warnings: RowsWarning[] } {
   const text = bytes.toString('utf8');
-  for (let at = text.indexOf('\uFFFD'); at >= 0; at = text.indexOf('\uFFFD', at + 1)) {
-    const offset = Buffer.byteLength(text.slice(0, at));
+  let offset = 0;
+  let from = 0;
+  for (let at = text.indexOf('\uFFFD'); at >= 0; from = at, at = text.indexOf('\uFFFD', at + 1)) {
+    // Count only the text since the last hit, so a file with many real U+FFFD stays linear.
+    offset += Buffer.byteLength(text.slice(from, at));
     if (bytes.subarray(offset, offset + 3).equals(Buffer.from([0xef, 0xbf, 0xbd]))) continue;
     return {
       text,
