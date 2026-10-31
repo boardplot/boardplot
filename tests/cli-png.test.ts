@@ -72,6 +72,14 @@ describe('render --format png', () => {
     expect(JSON.parse(tooLarge.log.join('\n')).errors[0]).toMatchObject({ code: 'invalid-argument', path: '/scale' });
   });
 
+  // A 1000000 x 1000000 px canvas made resvg abort the whole process, and the MCP server with it.
+  it('refuses a PNG above the pixel limit before any rasterizer runs', () => {
+    const doc = docWithColumn();
+    const huge = runCli(['render', doc, '--format', 'png', '--width', '1000000', '--height', '1000000', '--out', join(doc, '..', 'out')]);
+    expect(huge.code).toBe(1);
+    expect(JSON.parse(huge.log.join('\n')).errors[0]).toMatchObject({ code: 'png-too-large', path: '/format' });
+  });
+
   it.skipIf(!resvg)('rasterises through resvg at the chart size times the scale', () => {
     const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 200"><rect width="300" height="200" fill="#10529E"/><text x="10" y="40" font-size="20">Revenue</text></svg>';
     const png = rasterize([{ svg, size: { width: 300, height: 200 }, fontFamily: "'Helvetica Neue', Arial, sans-serif" }], 2, 'resvg').pngs![0]!;
