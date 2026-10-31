@@ -17,7 +17,7 @@ export const kpiDataSchema = z.strictObject({
       vs: z.number().finite().describe("Reference value subtracted from the main metric."),
       scenario: scenarioField('Code of the comparison baseline; a baseline with its own name, such as a month, goes in compare[].label instead.'),
       direction: comparisonDirectionSchema.optional().describe("Whether an increase from the reference is favorable. neutral prints ordinary ink without a judgment; omission keeps higherIsBetter."),
-      mode: z.enum(['absolute', 'relative', 'both']).optional().describe("Display absolute change, relative change, or both. Defaults to relative. A zero or negative vs shows the absolute change with a ref-nonpositive warning; under a percent format the absolute change prints in pp."),
+      mode: z.enum(['absolute', 'relative', 'both']).optional().describe("Display absolute change, relative change, or both. Defaults to relative; under a percent format it defaults to absolute, which prints in pp. A zero or negative vs shows the absolute change with a ref-nonpositive warning, and a value on the other side of zero from vs shows it with a sign-change warning."),
     })
     .optional().describe("Single scenario comparison; cannot be combined with compare."),
   compare: z
@@ -26,7 +26,7 @@ export const kpiDataSchema = z.strictObject({
         vs: z.number().finite().describe("Reference value for this named comparison."),
         label: z.string().trim().min(1).describe("Visible name of this comparison baseline."),
         direction: comparisonDirectionSchema.optional().describe("Whether an increase from this reference is favorable. neutral prints ordinary ink without a judgment; omission keeps higherIsBetter."),
-        mode: z.enum(['absolute', 'relative', 'both']).optional().describe("Display absolute change, relative change, or both. Defaults to both. A zero or negative vs shows the absolute change with a ref-nonpositive warning; under a percent format the absolute change prints in pp."),
+        mode: z.enum(['absolute', 'relative', 'both']).optional().describe("Display absolute change, relative change, or both. Defaults to both; under a percent format it defaults to absolute, which prints in pp. A zero or negative vs shows the absolute change with a ref-nonpositive warning, and a value on the other side of zero from vs shows it with a sign-change warning."),
       }),
     )
     .max(2)

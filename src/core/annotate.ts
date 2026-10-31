@@ -205,6 +205,12 @@ export interface AnnotatePassInput {
    */
   cagrLabelOnArm?: boolean;
   theme: Theme;
+  /**
+   * The weight the text of an arrow callout and the body under a headline prints
+   * in, for a chart whose `theme` is the emphasis-weight theme (`emphasisLabelTheme`):
+   * those two print plain while every other callout prints bold. Absent, `theme.type.label.weight`.
+   */
+  plainLabelWeight?: number;
   measure: TextMeasurer;
   format?: string; // chart-level format-by-example
   /** Derived differences may have another unit, such as percentage points. */
@@ -1388,8 +1394,10 @@ function calloutLabel(
 ): void {
   const { input, id: annId } = s;
   const at = calloutAttachment(anchor, kind, glyph);
-  const font = { family: input.theme.type.family, ...input.theme.type.label };
   const head = kind === 'callout' ? (ann as { headline?: string; arrow?: boolean }) : {};
+  const base = { family: input.theme.type.family, ...input.theme.type.label };
+  // An arrow callout and the body under a headline print plain, whatever weight the other callouts print in.
+  const font = (head.arrow === true && !glyph) || head.headline !== undefined ? { ...base, weight: input.plainLabelWeight ?? base.weight } : base;
   const rowWidth = input.gridCallouts?.rows.get(annId)?.w ?? input.gridCallouts?.widths?.get(annId);
   const headSourceLines = head.headline?.split('\n').length ?? 0;
   let headlineLines = 0;

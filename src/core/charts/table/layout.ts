@@ -32,7 +32,6 @@ import {
   resolveSemanticPaletteTheme,
   resolveSurface,
   semanticPalettePaint,
-  tableEmphasis,
   strokeToken,
 } from '../../theme';
 import type { Theme } from '../../types/theme';
@@ -44,7 +43,7 @@ import { tableCellKey, tableCellNodeId } from './cellKey';
 import { isCohortDensity, levelLadder } from './ladder';
 import { presetLanguage } from './presets';
 import {
-  CHIP_PAD_X, HINT_GAP, INDENT_BASE, MARK_SIZE, kindFont,
+  CHIP_PAD_X, HINT_GAP, INDENT_BASE, MARK_SIZE, kindFont, strongColumnFont,
   HEADING_CUT_MIN as CUT_MIN, SECTION_CHIP_GAP as BADGE_GAP,
   ENGINE_NOTES, LABEL_WRAP_FLOOR, SOFT_LABEL_CAP, INLINE_LABEL_INDENT, cellPadX as trackCellPadX, figureFont, inlineFont as ladderInlineFont, changeLineFont, changeLineFitFont,
   rowFont as ladderRowFont, tableFonts,
@@ -1863,8 +1862,8 @@ function layoutTableOnce(authoredData: TableData, options: LayoutOptions, initia
       ? row.kind === 'driver' ? kindFont(fonts.body, 'driver', false, theme) : fonts.body
       : isTotal && cell.kind !== 'rowLabel' && usesTotalFace(row.kind)
         ? fonts.totalValue
-        : col.emphasis === 'strong' && !cell.deEmphasized && row.kind !== 'subtotal' && row.kind !== 'result'
-          ? { ...font, weight: theme.table?.weights?.block ?? tableEmphasis(theme) }
+        : col.emphasis === 'strong'
+          ? strongColumnFont(font, col, cell, row.kind, theme)
           : col.emphasis === 'muted' && isCohortDensity(density)
             ? { ...font, weight: fonts.body.weight }
             : font;

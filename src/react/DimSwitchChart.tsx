@@ -16,7 +16,7 @@ import { useRowsGate } from './rowsGate';
 
 export interface DimSwitchView { variant: DimSwitchVariant; depth: number; splits: boolean; collapsed: string[] }
 export type DimSwitchViewReason = 'variant' | 'depth' | 'splits' | 'collapsed';
-export type DimSwitchChartProps = Omit<TableChartProps, 'data' | 'collapsed' | 'defaultCollapsed' | 'onCollapsedChange' | 'onExpansionChange' | 'expansion' | 'variant'> & Omit<DimSwitchOptions, 'size'> & {
+export type DimSwitchChartProps = Omit<TableChartProps, 'data' | 'collapsed' | 'defaultCollapsed' | 'onCollapsedChange' | 'onExpansionChange' | 'expansion' | 'variant' | 'prepared'> & Omit<DimSwitchOptions, 'size'> & {
  data: DimSwitchData;
  variant?: DimSwitchVariant;
  defaultVariant?: DimSwitchVariant;
@@ -35,7 +35,8 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
  const Table = linked === undefined ? TableChart : linkedBinding(TableChart, linked);
  function DimSwitchChart(props: DimSwitchChartProps): ReactElement {
   // Rows answer before the compile: a dimswitch has no data while the rows chunk loads or after it refuses them.
-  const {rows,columns,onRowsReading,...chart}=props;
+  // A frozen table snapshot cannot match a table compiled from the variant, depth and splits, so a `prepared` prop from untyped code is dropped and the chart draws from data.
+  const {rows,columns,onRowsReading,prepared:_prepared,...chart}=props as DimSwitchChartProps & {prepared?:unknown};
   const gate=useRowsGate({type:'dimswitch',data:chart.data},{rows,columns,onRowsReading},chart);
   return gate.element ?? <DrawnDimSwitch {...chart} data={gate.data!}/>;
  }

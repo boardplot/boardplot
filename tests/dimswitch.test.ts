@@ -361,3 +361,14 @@ it('compiles each form once across layouts at other sizes', () => {
   expect(first.size.width).toBe(900);
   expect(compileDimSwitch).not.toHaveBeenCalled();
 });
+
+// A multiple of a negative base (revenue over a negative order count) printed a plain ratio with no word that it is arithmetic, not n.m.
+it('warns once per measure when a ratio divides by a negative sum', () => {
+  const flip=(sums:DimSwitchSums|undefined)=>sums && {...sums,orders:-Math.abs(sums.orders!)};
+  const data:DimSwitchData={...exampleData,
+    facts:exampleData.facts.map(fact=>({...fact,sums:flip(fact.sums)!,...(fact.ref ? {ref:flip(fact.ref)} : {})})),
+    measures:[...exampleData.measures,{id:'neg',label:'Revenue per order',value:{op:'div',a:{field:'rev'},b:{field:'orders'}}}]};
+  const found=resolveDimSwitch(data).compileWarnings.filter(w=>w.code==='ratio-negative-base');
+  expect(found.map(w=>w.severity)).toEqual(['info']);
+  expect(found[0]!.message).toContain("Measure 'neg'");
+});

@@ -6,6 +6,9 @@ import { cellMeta, cellValue, isDateCell, isPctCell, type Cell, type OwnerRef } 
 import type { Geometry, PlacedAnnotation, SceneNode } from '../types/scene';
 import type { InteractionRecord, InteractionScope, InteractionTarget, InteractionValue } from './types';
 import { DERIVED_PERCENT_FORMAT, percentExample } from './valueText';
+import type { NamedColumnState } from '../schema/namedColumns';
+import { chartString } from '../strings/a11y-statisticsRecords';
+import type { BaseOptions } from '../types/options';
 
 export interface RecordContext {
   request: ResolvedChartRequest;
@@ -63,6 +66,12 @@ export function derivedPercent(raw: number | null | undefined, unit: '%' | 'frac
 export function textValue(raw: string | null | undefined, kind: 'text' | 'date' = 'text'): InteractionValue {
   return { kind, raw: raw ?? null, state: raw == null ? 'missing' : 'value',
     ...(raw == null ? { reason: 'No observation' } : {}) };
+}
+
+/** A value with no number because its row says why: withheld, not meaningful or not applicable. */
+export function statedValue(value: InteractionValue, state: NamedColumnState, options: Pick<BaseOptions, 'locale' | 'strings'>): InteractionValue {
+  return { ...value, raw: null, state,
+    reason: chartString(options, state === 'suppressed' ? 'valueWithheld' : state === 'nm' ? 'notMeaningful' : 'notApplicableName') };
 }
 
 export function cellRecordValue(cell: Cell, unit?: string, format?: string): InteractionValue {

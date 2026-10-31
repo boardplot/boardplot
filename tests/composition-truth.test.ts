@@ -345,6 +345,32 @@ describe('line and mekko fail closed visibly', () => {
       expectSharesInRange(negative, `${type} negative direct shares`);
     }
   });
+  // A 100% column stack of percent cells has no absolute basis; its segments printed no share at all.
+  it('prints the share of each percent cell on a 100% column stack', () => {
+    const shares: ChartData = {
+      categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }],
+      series: [
+        { id: 's1', label: 'S1', values: [{ pct: 40 }, { pct: 30 }] },
+        { id: 's2', label: 'S2', values: [{ pct: 60 }, { pct: 70 }] },
+      ],
+    };
+    const texts = layoutComposition('column', shares).scene
+      .flatMap((node) => (node.t === 'text' ? [(node.lines ?? []).join(' ')] : []));
+    for (const share of ['40%', '30%', '60%', '70%']) expect(texts).toContain(share);
+  });
+
+  // Percent cells rounded alone printed 25 + 4 + 10 + 37 + 25 = 101% in one column.
+  it('prints percent-cell shares that add to 100% on a 100% column stack', () => {
+    const cells = [24.8, 3.8, 9.8, 36.8, 24.8];
+    const shares: ChartData = {
+      categories: [{ id: 'a', label: 'A' }],
+      series: cells.map((pct, i) => ({ id: `s${i}`, label: `S${i}`, values: [{ pct }] })),
+    };
+    const printed = layoutComposition('column', shares, { labelDensity: 'full' }).scene
+      .flatMap((node) => (node.t === 'text' && node.id.startsWith('label:segment:') ? percentageValues((node.lines ?? []).join(' ')) : []));
+    expect(printed).toHaveLength(5);
+    expect(printed.reduce((sum, share) => sum + share, 0)).toBe(100);
+  });
 });
 
 describe('composition share invariant', () => {

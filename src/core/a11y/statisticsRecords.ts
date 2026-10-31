@@ -9,7 +9,7 @@ import type { TilemapMarks } from '../charts/tilemap/types';
 import type { ScatterData } from '../types/data';
 import type { OwnerRef } from '../types/cell';
 import { normalizeCell, normalizeScenario } from '../normalize/shared';
-import { cellRecordValue, derivedPercent, makeRecord, numericValue, textValue, withoutResidue, type RecordContext } from './recordsShared';
+import { cellRecordValue, derivedPercent, makeRecord, numericValue, statedValue, textValue, withoutResidue, type RecordContext } from './recordsShared';
 import { DERIVED_PERCENT_FORMAT, displayedValueText } from './valueText';
 import { intervalText } from '../format';
 import type { InteractionRecord, InteractionValue } from './types';
@@ -229,12 +229,8 @@ function mapRecords(ctx: RecordContext): InteractionRecord[] {
   const marks = ctx.geometry.marks as unknown as ChoroplethMarks | TilemapMarks;
   const { unit, format } = ctx.request.options;
   const records = marks.regions.map(mark => {
-    const value = numericValue(mark.value, unit, format);
-    if (mark.state === 'suppressed' || mark.state === 'nm' || mark.state === 'na') {
-      value.raw = null;
-      value.state = mark.state;
-      value.reason = mark.state === 'suppressed' ? chartString(ctx.request.options, 'valueWithheld') : mark.state === 'nm' ? chartString(ctx.request.options, 'notMeaningful') : chartString(ctx.request.options, 'notApplicableName');
-    }
+    const plain = numericValue(mark.value, unit, format);
+    const value = mark.state === 'suppressed' || mark.state === 'nm' || mark.state === 'na' ? statedValue(plain, mark.state, ctx.request.options) : plain;
     return makeRecord(ctx, { categoryId: mark.id }, value, {
       // The region's name, never its code.
       label: mark.name, ...('rect' in mark ? { anchor: mark.rect } : {}),
