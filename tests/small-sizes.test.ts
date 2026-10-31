@@ -802,3 +802,23 @@ it('draws compact on the default slide canvas as it does on the same size writte
   expect(slide.size).toEqual(draw({ target: 'slide', size: { width: 888, height: 396, unit: 'pt' } }).size);
   expect(draw({ target: 'slide', belowMinimum: 'refuse' }).errors[0].code).toBe('size-below-floor');
 });
+
+// A column of 20 long names at 320 px kept three names and listed the other 17 as redundant, so no fallback saw the loss.
+it('draws a column whose names cannot fit or rotate as bars, or lists the names it drops', () => {
+  const names = ['Automotive OEM', 'Automotive suppliers', 'Chemicals', 'Consumer goods', 'Energy utilities', 'Financial services', 'Food and beverage', 'Healthcare providers', 'Industrial machinery', 'Insurance',
+    'Logistics', 'Media', 'Oil and gas', 'Pharmaceuticals', 'Retail', 'Software', 'Telecommunications', 'Transport', 'Utilities', 'Wholesale'];
+  const data = { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [{ id: 's', label: 'Margin', values: names.map((_, i) => 8 + ((i * 7) % 23)) }] };
+  const spec = (size: { width: number; height?: number }) => ({ type: 'column', data, options: { title: 'Margin by sector', unit: '%', size } });
+  const hiddenNames = (geometry: Geometry) => geometry.labels.filter(label => label.kind === 'category' && label.hidden).map(label => label.hidden);
+  const stepped = layoutResolvedRequest(resolveChartRequest(spec({ width: 320 }))) as Geometry;
+  expect(stepped.type).toBe('bar');
+  expect(stepped.warnings.map(w => w.code)).toContain('column-stepped-to-bar');
+  expect(hiddenNames(stepped)).toEqual([]);
+  // The records read the drawn bars: one per name.
+  expect((render({ spec: spec({ width: 320 }) }).body as any).reading.values.total).toBe(20);
+  // A pinned height that the rows do not fit keeps the column, and its dropped names are a loss, not redundant.
+  const kept = layoutResolvedRequest(resolveChartRequest(spec({ width: 320, height: 443 }))) as Geometry;
+  expect(kept.type).toBe('column');
+  expect(hiddenNames(kept).length).toBeGreaterThan(0);
+  expect(new Set(hiddenNames(kept))).toEqual(new Set(['density']));
+});

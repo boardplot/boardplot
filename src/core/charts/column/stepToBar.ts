@@ -1,0 +1,43 @@
+/**
+ * A column chart whose category names cannot fit under the columns, and cannot
+ * rotate either, draws as horizontal bars: a bar row has the room for a name.
+ * The step is made only when the bar draws every name at the size asked for and
+ * nothing the author set is column-only; else the column stays, and the names
+ * it leaves out are listed as omissions (labels.ts).
+ */
+
+import { fitsSize, SIZE_TOLERANCE } from '../../sizing';
+import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
+import { panelTypeClass } from '../../theme';
+import type { ChartData } from '../../types/data';
+import type { BarOptions } from '../../types/options';
+import type { Geometry } from '../../types/scene';
+import { layoutBar } from '../bar/layout';
+import type { ColumnDerived, ColumnMarks } from './layout';
+import type { AnomalyColumnOptions } from './types';
+
+/** Settings that bar has no counterpart for. */
+const COLUMN_ONLY = ['anomaly', 'ratioTier', 'events', 'seriesRamp', 'othersShade', 'seriesLabels', 'shareLabels', 'window', 'viewDomain', 'categoryLabels', 'ribbons'] as const;
+
+export function stepToBar(
+  data: ChartData,
+  options: AnomalyColumnOptions,
+  column: Geometry<ColumnMarks, ColumnDerived>,
+): Geometry<ColumnMarks, ColumnDerived> | undefined {
+  const lost = column.labels.filter((label) => label.kind === 'category' && label.hidden === 'density');
+  if (lost.length === 0 || panelTypeClass(options) !== undefined) return undefined;
+  if (COLUMN_ONLY.some((key) => options[key] !== undefined) || options.annotations?.some((annotation) => annotation.kind === 'event')) return undefined;
+  const bar = layoutBar(data, options as BarOptions);
+  // An open height is the bar's to choose: the fit step after the layout gives its rows their height.
+  // A pinned height must already hold every row with its name.
+  const pinned = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === true;
+  const fits = bar.sizing !== undefined && (pinned ? fitsSize(bar.size, bar.sizing) : bar.size.width + SIZE_TOLERANCE >= bar.sizing.minWidth);
+  if (bar.refused || !fits || (pinned && bar.labels.some((label) => label.kind === 'category' && label.hidden))) return undefined;
+  bar.warnings.push({
+    code: 'column-stepped-to-bar',
+    severity: 'info',
+    message: `${lost.length} of ${data.categories.length} category names do not fit under the columns at ${Math.round(column.size.width)}px and cannot rotate, so the chart is drawn as horizontal bars`,
+    suggest: `Set the chart type to bar, or widen the canvas to keep columns.`,
+  });
+  return bar as unknown as Geometry<ColumnMarks, ColumnDerived>;
+}

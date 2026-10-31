@@ -546,6 +546,7 @@ function categoryRequests(domain: ColumnDomain, area: ColumnArea, requests: Labe
   const categoryLabelGap = anomaly ? 4 : 6;
   const catX = catPlan.x;
   const keep = catPlan.keep;
+  const namesLost = !dateTicks && catPlan.warnings.some((w) => w.code === 'category-stride' && w.severity === 'warn');
   const rotated = catPlan.rotation !== 0;
   // One row under the lowest column and the value hanging under it.
   // A negative column's name stays in that row, as every other name does,
@@ -571,7 +572,8 @@ function categoryRequests(domain: ColumnDomain, area: ColumnArea, requests: Labe
       typeRole: catPlan.typeRole, font: c.role === 'total' ? boldFont : catPlan.font,
       priority: PRIORITY.endpoint,
       // A stride-hidden date label is the row's decision (one info lint), not a loss.
-      redundant: !keep[ci],
+      // A name a nominal row leaves out did not fit: the reader lost it.
+      ...(keep[ci] ? {} : namesLost && (c.label ?? c.id).trim() !== '' ? { redundant: true, suppressedAs: 'density' as const } : { redundant: true }),
       ...(rotated ? { rotate: catPlan.rotation === 90 ? -90 : -45 } : {}),
       candidates: catPlan.rotation === 90
         ? [{ slot: 'below', rect: verticalNameRect(band.center(ci), area.catRowY, info.w, catPlan.font), penalty: 0 }]
@@ -717,7 +719,7 @@ export function planColumnLabels(
       kind: 'grandTotal',
       ...namesOnly(variant === 'stacked100' ? gtContent : gtContent?.filter((part) => part !== 'percent'), undefined),
       ...(net ? { role: 'category' as const } : {}),
-      ...(skipped ? { redundant: true, suppressedAs: 'density' as const, owed: true as const } : {}),
+      ...(skipped ? { redundant: true, suppressedAs: 'density' as const } : {}),
       ...(!net && !words && valueAlone && linked.has(`grandTotal:${c.id}`) ? { printedIn: linked.get(`grandTotal:${c.id}`) } : {}),
       owner: { categoryId: c.id },
       text,

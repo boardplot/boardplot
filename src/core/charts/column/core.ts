@@ -8,6 +8,7 @@ import { prepareRangeData } from '../../rangeRules';
 import type { ChartCore } from '../../registry';
 import type { ChartData } from '../../types/data';
 import type { ColumnOptions } from '../../types/options';
+import { stepToBar } from './stepToBar';
 import { layoutColumn, type ColumnDerived, type ColumnMarks } from './layout';
 
 export const columnCore: ChartCore<
@@ -21,7 +22,11 @@ export const columnCore: ChartCore<
   title: 'Column',
   summary:
     'Grouped, stacked, or 100%-stacked vertical bars; stacked columns can integrate an external PY tick and derived growth',
-  layout: (data, options) => withEventsDescribed(layoutColumn(prepareFractionData(data), options), options),
+  layout: (data, options) => {
+    const prepared = prepareFractionData(data);
+    const column = layoutColumn(prepared, options);
+    return withEventsDescribed(stepToBar(prepared, options ?? {}, column) ?? column, options);
+  },
   categoryLabels: (categories, language) => calendarCategories(categories, language, true),
   defaults: { variant: 'grouped', referenceStyle: 'tick' },
   annotationKinds: ['cagr', 'diff', 'delta', 'note', 'callout', 'valueLine', 'indicator100', 'abs', 'event', 'band'],
