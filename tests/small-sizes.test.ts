@@ -37,9 +37,10 @@ it('renders a short scatter without extra layouts for plot-height advice', () =>
   const result = layoutResolvedRequest(resolveChartRequest(request));
   expect(result.warnings.some(w => w.code === 'plot-under-floor')).toBe(true);
   expect(scatterCalls.count).toBe(1);
-  const warning = result.warnings.find(w => w.code === 'plot-under-floor')!;
-  expect(warning.fix).toBeDefined();
-  const repaired = render({ spec: applyRepair(request, warning.fix) }).body as any;
+  // The layout draws and estimates a height: a patch that was not drawn is left to measure.
+  expect(result.warnings.find(w => w.code === 'plot-under-floor')!.fix).toBeUndefined();
+  const verified = measure(request).warnings.find(w => w.code === 'plot-under-floor')!;
+  const repaired = render({ spec: applyRepair(request, verified.fix) }).body as any;
   expect(repaired.ok).toBe(true);
   expect(repaired.warnings.some((w: any) => w.code === 'plot-under-floor')).toBe(false);
 });
@@ -110,7 +111,8 @@ it('verifies the complete frame at the height offered for a short plot', () => {
   for (const [type, id] of [['scatter', 'option-info-grid'], ['pareto', 'revenue-concentration']]) {
     const fixture = getFixtures(type!).find(f => f.id === id)!;
     const request = { type: type!, data: fixture.data, options: { ...fixture.options, size: { width: 400, height: 300 } } };
-    for (const result of [measure(request), getChart(type!)!.layout(request.data, request.options)]) {
+    expect(getChart(type!)!.layout(request.data, request.options).warnings.find(w => w.code === 'plot-under-floor')!.fix).toBeUndefined();
+    for (const result of [measure(request)]) {
       const warning = result.warnings.find(w => w.code === 'plot-under-floor')!;
       expect(warning).toBeDefined();
       expect(warning.fix).toBeDefined();
@@ -252,11 +254,11 @@ describe('below the minimum', () => {
     expect(short.refused).toBeUndefined();
     expect(short.size.height).toBe(200);
     const estimate = short.warnings.find((warning) => warning.code === 'plot-under-floor')!;
-    expect(estimate.fix).toBeDefined();
+    expect(estimate.fix).toBeUndefined();
     expect(estimate.message).toContain('estimated height');
     expect(estimate.suggest).toContain('measure');
     const request = { type: 'line', data: fixture.data, options: { ...fixture.options, size: { width: 480, height: 200 } } };
-    const repaired = render({ spec: applyRepair(request, estimate.fix) }).body as any;
+    const repaired = render({ spec: applyRepair(request, measure(request).warnings.find((warning) => warning.code === 'plot-under-floor')!.fix) }).body as any;
     expect(repaired.ok).toBe(true);
     expect(repaired.warnings.some((warning: any) => warning.code === 'plot-under-floor')).toBe(false);
     const tiny = at(480, 150);
@@ -729,6 +731,31 @@ describe('size advice', () => {
       }
       expect(seen.size, `${name}: measure advice still going after 6 patches`).toBeLessThan(6);
     }
+  });
+
+  // Prevents the layout of a card (what React reports) from naming an estimated plot-floor height that refuses:
+  // a heatmap at 414 px drew with an estimate of 518 px, and 518 px needs 566 px.
+  it('reports the plot-floor estimate of a drawn layout with no patch', () => {
+    const found = getFixtures('heatmap').find(f => f.id === 'survey-journey-long-names')!;
+    const drawn = layoutResolvedRequest(resolveChartRequest({ type: 'heatmap', data: found.data, options: { ...found.options, size: { width: 480, height: 414 } } } as never));
+    expect(drawn.refused).toBeUndefined();
+    const floor = drawn.warnings.find(w => w.code === 'plot-under-floor')!;
+    expect(floor.message).toContain('estimated height');
+    expect(floor.fix).toBeUndefined();
+  });
+
+  // Prevents a wider-size patch of a drawn table from refusing: the wider frame draws the rows at their regular
+  // spacing and needs more height than the authored height, so the patch must name that height.
+  it('names a table-overflow patch whose frame draws', () => {
+    const found = getFixtures('table').find(f => f.id === 'cohort-heat-relative')!;
+    const spec = { type: 'table', data: found.data, options: { ...found.options, size: { width: 1048, height: 379 } } };
+    const drawn = render({ spec }).body as any;
+    expect(drawn.ok).toBe(true);
+    const overflow = drawn.warnings.find((warning: any) => warning.code === 'table-overflow');
+    expect(overflow.fix).toBeDefined();
+    const after = render({ spec: applyRepair(spec, overflow.fix) }).body as any;
+    expect(after.ok).toBe(true);
+    expect(after.warnings.map((warning: any) => warning.code)).not.toContain('table-overflow');
   });
 });
 

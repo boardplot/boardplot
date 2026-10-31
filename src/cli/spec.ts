@@ -471,20 +471,8 @@ function resolveRequest(doc: BoardplotDoc, chart: DocChart, envelope: DocumentEn
 /** What the CLI render adds to the serializer: the id scope and a transparent canvas. */
 interface SvgWriteOptions { idScope?: string; background?: false }
 
-/** The warnings that carry a height patch when a layout or lint names one. */
+/** The warnings that name a height. A render gives them no patch: only a drawn height is a patch, and `measure` draws it. */
 const SIZE_PATCH_CODES: ReadonlySet<string> = new Set(['aspect-cap', 'height-off-ladder', 'plot-under-floor', 'plot-under-min']);
-const SIZE_ADVICE = 'Call measure for a verified size, widen the chart, or leave the height out.';
-
-/**
- * A chart that draws reports its size warnings with no height patch: render has not drawn the height a patch
- * would name, and a patch that was not drawn can start a loop or end in a refusal. `measure` names a drawn height.
- * This is the one place the warnings of a drawn chart leave without one. The message stays.
- */
-function withoutSizePatch(warning: LintWarning): LintWarning {
-  if (!SIZE_PATCH_CODES.has(warning.code) || !warning.fix?.some(op => op.op !== 'test' && op.path.endsWith('/options/size'))) return warning;
-  const { fix: _patch, ...rest } = warning;
-  return { ...rest, suggest: SIZE_ADVICE };
-}
 
 function drawn(doc: BoardplotDoc, chart: DocChart, envelope: DocumentEnvelope, write: SvgWriteOptions = {}, target?: RenderTarget, verify?: HeightVerifier) {
   const resolved = resolveRequest(doc, chart, envelope, target);
@@ -536,7 +524,7 @@ function judged(
   // draws the error card there, with the same message.
   const refusals = chartRefusals(warnings);
   if (reportWarnings) {
-    pushAll(envelope.warnings, collapseLabelHiddenWarnings(geo, warnings.filter((warning) => warning.severity !== 'error').map(withoutSizePatch)));
+    pushAll(envelope.warnings, collapseLabelHiddenWarnings(geo, warnings.filter((warning) => warning.severity !== 'error')));
   }
   for (const refusal of refusals) {
     envelope.errors.push({
