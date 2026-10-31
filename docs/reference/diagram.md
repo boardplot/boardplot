@@ -51,7 +51,7 @@ Deterministic node-edge diagrams with seven consulting presets, obstacle-aware r
 |---|---|---|---|
 | nodes | array | yes | One to 80 uniquely identified diagram nodes. |
 | nodes[].id | string | yes | Trimmed identifier of at most 80 Unicode code points; control characters and the auto: prefix are reserved. |
-| nodes[].kind | string | yes | Semantic node kind used by the selected variant. One of `'entity'`, `'issue'`, `'driver'`, `'step'`, `'painPoint'`, `'vision'`, `'objective'`, `'initiative'`, `'enabler'`, `'foundation'`, `'milestone'`, `'callout'`. |
+| nodes[].kind | string | yes | Semantic node kind. Each variant reads: hierarchy 'entity'; issue-tree 'issue' or 'driver'; linear-process and circular-process 'step'; customer-journey 'painPoint'; roadmap 'milestone'. Another kind is refused with invalid-diagram-kind. strategy-house does not check the kind. One of `'entity'`, `'issue'`, `'driver'`, `'step'`, `'painPoint'`, `'vision'`, `'objective'`, `'initiative'`, `'enabler'`, `'foundation'`, `'milestone'`, `'callout'`. |
 | nodes[].shape | object | yes | Node outline or icon-only shape. |
 | nodes[].shape.kind (nodes[].shape branch 1) | string | yes | Select the rectangle node shape. One of `'rectangle'`. |
 | nodes[].shape.kind (nodes[].shape branch 2) | string | yes | Select the roundedRect node shape. One of `'roundedRect'`. |

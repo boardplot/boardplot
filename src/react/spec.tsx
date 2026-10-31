@@ -27,7 +27,6 @@ import type { ContainerSizeOptions } from './useContainerSize';
 import type { HoverOption, RenderHoverContent } from './useHover';
 import { DataTableContext } from './hover/HoverSurface';
 import type { ExportLink } from './exportLink';
-import * as dataTable from './hover/dataTable';
 import { useRowsInput, type RowsProps } from './rowsInput';
 export type { ParsedChartSpec, BoardplotSpecSettings } from './specValidation';
 export type { HoverContentContext, HoverOption, RenderHoverContent } from './useHover';
@@ -175,6 +174,26 @@ function useSpecValidator(): { validator?: SpecValidator; failure?: string } {
     }));
   });
   return { validator, failure };
+}
+
+type DataTableModule = typeof import('./hover/dataTable');
+const DATA_TABLE = 'data-table';
+let dataTableModule: DataTableModule | undefined;
+const noFailure = () => false;
+
+/**
+ * The accessible data table's module, loaded only for a spec that asks for the table. The chart waits
+ * for it, so the table is in the first client render, as before. Charts without the table never link it.
+ * A load that failed ends the wait: the chart draws, and the chart component retries the table itself.
+ */
+function useDataTable(wanted: boolean): { module?: DataTableModule; waiting: boolean } {
+  const module = useSyncExternalStore(subscribe, () => dataTableModule, nothingLoaded);
+  const failed = useSyncExternalStore(subscribe, () => failures.has(DATA_TABLE), noFailure);
+  useEffect(() => {
+    if (!wanted || module || failed) return;
+    load(DATA_TABLE, () => import('./hover/dataTable').then(loaded => { dataTableModule = loaded; }));
+  });
+  return { module, waiting: wanted && !module && !failed };
 }
 
 const NO_TYPES: readonly string[] = [];
@@ -357,6 +376,7 @@ export function BoardplotChart(props: BoardplotChartProps): ReactElement {
   }, [parse, validator, schemas.ready]);
   const settings = useMemo(() => validator && specResult(validator, () => validator.specSettings({ size, fit, fallbackSize, theme, target, hover })),
     [validator, size, fit, fallbackSize, theme, target, hover]);
+  const dataTable = useDataTable(Boolean(parsed?.value?.request.options?.a11y?.table));
   const errors = !parsed || !settings ? undefined
     : settings.errors ?? (parsed.errors && mapped.rewrite ? mapped.rewrite([...parsed.errors]) : parsed.errors);
   // A spec that fails only on an empty data collection is an empty chart: the host hears onEmpty and no error card shows.
@@ -371,7 +391,8 @@ export function BoardplotChart(props: BoardplotChartProps): ReactElement {
   if (card) return <SpecErrorCard errors={card} {...frame} />;
   if (!parsed || !settings) return <LoadingPlaceholder {...frame} />;
   if (empty) return <EmptyPlaceholder {...frame} onEmpty={props.onEmpty} />;
-  return <DataTableContext.Provider value={dataTable}><SpecChart {...props} parsed={parsed.value!} channel={channel} listening={listening} rewriteWarnings={mapped.rewriteWarnings} /></DataTableContext.Provider>;
+  if (dataTable.waiting) return <LoadingPlaceholder {...frame} />;
+  return <DataTableContext.Provider value={dataTable.module}><SpecChart {...props} parsed={parsed.value!} channel={channel} listening={listening} rewriteWarnings={mapped.rewriteWarnings} /></DataTableContext.Provider>;
 }
 
 function SpecChart({ parsed, channel, listening, spec: _spec, theme, size, target, onWarnings, onSpecError: _onSpecError, prepared, rows: _rows, columns: _columns, onRowsReading: _onRowsReading, rewriteWarnings, onRowSelect, isRowSelectable, ...host }: BoardplotChartProps & { parsed: ParsedChartSpec; channel: SpecErrorChannel; listening: boolean; rewriteWarnings?: (warnings: LintWarning[]) => LintWarning[] }): ReactElement {
