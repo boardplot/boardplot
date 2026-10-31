@@ -363,8 +363,7 @@ it('gantt calendar head keeps four-digit years and leaves a clipped edge year em
   expect(svg).not.toMatch(/>2[0-9]</);
 });
 
-// Two-line row names need more than the 40 px pitch, so every second name of a 12-row plan lost its seat on a pinned slide canvas.
-it('gantt keeps every wrapped row name on a pinned canvas', () => {
+const processRows = () => {
   const plan: [string, string, string, string?][] = [['Teaser and process letter drafted', '2026-11-02', '2026-11-13'], ['NDAs signed by 40 invited parties', '2026-11-09', '2026-11-20'],
     ['Information memorandum (IM) issued', '2026-11-16', '2026-11-27'], ['First-round non-binding bids', '2026-11-30', '2026-12-11'],
     ['Shortlist and Gate 1 decision', '2026-12-14', '2026-12-18', 'Gate 1'], ['Management presentations', '2027-01-04', '2027-01-15'],
@@ -374,10 +373,30 @@ it('gantt keeps every wrapped row name on a pinned canvas', () => {
   const rows = plan.map(([label, start, end, gate], i) => ({ id: `r${i}`, label, items: [{ id: `b${i}`, kind: 'bar', start, end },
     ...(gate ? [{ id: `g${i}`, kind: 'milestone', start: end, label: gate, scope: 'shared' }] : [])] }));
   rows.push({ id: 'sign', label: 'Signing', items: [{ id: 'signing', kind: 'milestone', start: '2027-02-05' }] } as never);
+  return rows;
+};
+
+// Two-line row names need more than the 40 px pitch, so every second name of a 12-row plan lost its seat on a pinned slide canvas.
+it('gantt keeps every wrapped row name on a pinned canvas', () => {
+  const rows = processRows();
   const reading = render({ spec: { type: 'gantt', data: { rows },
     options: { title: 'The process runs 14 weeks from teaser to signing, with two gates', subtitle: { measure: 'Sell-side process' }, today: '2026-12-07',
       calendar: { weeks: 'isoWeek', span: 'data' }, source: 'Invented dates', target: 'slide', size: { width: 432, height: 630, unit: 'pt' } } }, return: ['reading'] }).body.reading as { omissions: { labelId: string }[] };
   expect(reading.omissions.filter(omission => omission.labelId.startsWith('activity:'))).toEqual([]);
+});
+
+// A row pinned at exactly its text floor left a gap of 1.9999999999 px to the next name, under the solver's 2 px, so a pinned canvas at or above the declared minimum height hid a name.
+it('gantt keeps every wrapped row name from the declared minimum height upward', () => {
+  const rows = processRows();
+  for (const width of [888, 1000]) {
+    for (let height = 700; height <= 840; height++) {
+      const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'gantt', data: { rows },
+        options: { title: 'The process runs 14 weeks from teaser to signing, with two gates', subtitle: { measure: 'Sell-side process' }, today: '2026-12-07',
+          calendar: { weeks: 'isoWeek', span: 'data' }, source: 'Invented dates', target: 'slide', size: { width, height, unit: 'px' } } }));
+      if (geometry.refused || height < geometry.sizing!.minHeight) continue;
+      expect(geometry.labels.filter(label => label.hidden && label.id.startsWith('activity:')).map(label => `${width}x${height} ${label.id}`)).toEqual([]);
+    }
+  }
 });
 
 // A wrapped name needs its height plus one label gap to keep its seat, so the declared minimum height counts one gap per row, not two.
