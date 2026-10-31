@@ -90,7 +90,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | items[].date | string |  | ISO 8601 date associated with this bridge item. |
 | items[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). Scenario for this bridge item and its default segment styling. |
 | items[].direction | string |  | Under 'lowerIsBetter' a rise paints bad and a fall good (options.signColor). One of `'higherIsBetter'`, `'lowerIsBetter'`. |
-| items[].toBaseline | boolean |  | Start this item at zero and reset the accumulated contribution list. |
+| items[].toBaseline | boolean |  | Start this delta at zero and reset the accumulated contribution list. A subtotal draws the sum of the deltas since the last total or baseline subtotal, from zero; the running level carries on. |
 | items[].values | cell[] |  | With data.cases: one value per case, in case order, in place of value — the signed delta of each case, or a total's opening or check value. |
 | connectors | array |  | Authored connections between item levels; omission uses the default sequence. |
 | connectors[].from | string | yes | Source waterfall item id. |

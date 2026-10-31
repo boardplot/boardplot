@@ -13,7 +13,7 @@ import { formatAuthoredPercent, formatShare } from '../../format';
 import { formatStatWithSpec, seriesRasterFormatter } from '../../formatSpec';
 import { anomalyCorridor, anomalyModel, refuseAnomalySpec } from '../column/anomaly';
 import { isIncomplete, warnIncompleteComposition, warnShareRoundingDrift } from '../../dataGaps';
-import { round2 } from '../../geometry';
+import { cleanFloat } from '../../geometry';
 import { roundWholes } from '../../shareRounding';
 import { parseISODate } from '../../isoDate';
 import { fitLineTrends, trendTimeline } from './trend';
@@ -449,7 +449,7 @@ function applyRebase(options: LineOptions, variant: LineVariant, cats: Category[
     } else {
       for (let ci = 0; ci < row.length; ci++) {
         const v = row[ci]!;
-        row[ci] = v === null ? null : round2((v / base) * 100);
+        row[ci] = v === null ? null : cleanFloat((v / base) * 100);
       }
     }
   }

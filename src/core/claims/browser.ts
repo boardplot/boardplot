@@ -420,6 +420,8 @@ function claimLabelIds(type: string, geo: Geometry<object, object>): Map<string,
   return ids;
 }
 
+const QUOTIENT_OPS: ReadonlySet<string> = new Set(['cohort-retention@1', 'cohort-average@1', 'funnel-conversion@1', 'pareto-cumshare@1', 'pareto-vital-few-share@1', 'percentOf@1', 'ratio@1', 'share@1']);
+
 /**
  * A derived value without float residue: 12 significant digits at the
  * scale of its largest operand, so a PVM residual of 5.7e-14 beside effects in
@@ -430,7 +432,8 @@ function withoutResidue(claim: ClaimRecordV1): ClaimRecordV1 {
   const raw = claim.output.raw;
   if (claim.kind === 'observed' || claim.kind === 'authored' || raw === null || !Number.isFinite(raw) || raw === 0) return claim;
   let scale = Math.abs(raw);
-  for (const input of claim.inputs) {
+  // A quotient leaves its operands' scale: 1 of 100,000,000 is a true 1e-8, not residue.
+  for (const input of QUOTIENT_OPS.has(claim.op) ? [] : claim.inputs) {
     if (input.value !== null && Number.isFinite(input.value)) scale = Math.max(scale, Math.abs(input.value));
   }
   const digits = 12 - (Math.floor(Math.log10(scale)) - Math.floor(Math.log10(Math.abs(raw))));
@@ -998,12 +1001,6 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
       // operands of every delta were already in `derived` (`ac` and `ref`, the
       // two bars the reader compares by eye) and neither reached the receipt:
       // 84 claims across 8 fixtures, every one of them `inputs: []`.
-      //
-      // The rounding is part of the op, not a tolerance: `variance-delta@1` is
-      // defined as round2(ac − ref), because that is what the engine files and
-      // what the exhibit prints. Recording the unrounded operands and an op
-      // that ignores the rounding would need a fudge factor at verify time,
-      // and a fudge factor is where a real defect hides.
       const derived = geo.derived as {
         ac: Record<string, number | null>;
         ref: Record<string, number | null>;
@@ -1019,14 +1016,14 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
           id: `var:abs:${id}`,
           ...(geo.scene.some(node => node.id === `nm:${id}`) ? { nodeId: `nm:${id}` } : {}),
           kind: 'derived' as const,
-          op: 'variance-delta@1',
+          op: 'difference@1',
           inputs: operands(id),
           output: { raw, state: raw === null ? 'missing' : 'value', displayed: '' },
         })),
         ...Object.entries(derived.deltaPct).map(([id, raw]) => ({
           id: `var:pct:${id}`,
           kind: 'derived' as const,
-          op: 'variance-delta-pct@1',
+          op: 'percentDelta@1',
           inputs: operands(id),
           output: { raw, state: raw === null ? 'missing' : 'value', displayed: '' },
         })),

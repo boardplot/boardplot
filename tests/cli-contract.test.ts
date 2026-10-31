@@ -839,6 +839,12 @@ it('warns for undeclared fraction-sized percent series and keeps declared fracti
   expect(suspect(draw([{ pct: 0.27 }, { pct: 0.33 }, { pct: 0.37 }]))).toHaveLength(1);
   expect(suspect(draw([0.27, 0.33, 0.37].map(number => ({ number, label: `${number * 100}%` })), {}, '12%'))).toHaveLength(1);
   expect(suspect(draw([0.27, 0.33, 0.37]))).toHaveLength(0);
+  // A target of 0.05 on fraction bars of 4% printed 'Target 0.05%' beside them with no warning.
+  const line = (value: number, valueKind?: 'fraction') => render({ spec: { type: 'bar', data: { valueKind: 'fraction', categories: ['a', 'b'], series: [{ id: 'rate', values: [0.04, 0.07] }] },
+    options: { annotations: [{ kind: 'valueLine', value, label: 'Target', ...(valueKind ? { valueKind } : {}) }] } } }).body;
+  expect(suspect(line(0.05))).toMatchObject([{ message: expect.stringContaining('beside values up to 7%'), fix: [{ op: 'add', path: '/options/annotations/0/valueKind', value: 'fraction' }] }]);
+  expect(suspect(line(0.05, 'fraction'))).toHaveLength(0);
+  expect(suspect(line(5))).toHaveLength(0);
   for (const values of [[0.2, 0.3], [{ number: 0.2, label: '20%' }, { number: 0.3, label: '30%' }]]) {
     const sparkline = (fraction: boolean) => render({ spec: { type: 'sparkline', data: { values, ...(fraction ? { valueKind: 'fraction' } : {}) }, options: { format: '0%' } } }).body;
     expect(sparkline(false).ok).toBe(true);

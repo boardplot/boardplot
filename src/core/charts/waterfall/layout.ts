@@ -110,7 +110,8 @@ export type TotalBasis =
   | { authored: false; inputs: { ref: Id; value: number }[] };
 
 export interface WaterfallDerived {
-  levels: Record<Id, { start: number; end: number; min?: number; max?: number }>;
+  /** `balance` is set on a subtotal drawn from the baseline (`toBaseline`): the running level that carries on past its block sum. */
+  levels: Record<Id, { start: number; end: number; min?: number; max?: number; balance?: number }>;
   totals: Record<Id, number>;
   /** One entry per key of `totals` — the operands the receipt has to carry. */
   totalBasis: Record<Id, TotalBasis>;
@@ -873,7 +874,7 @@ function layoutWaterfallWithPad(
       const it = items.find((x) => x.id === itemId);
       const lvl = levels[itemId];
       if (!it || !lvl) return null;
-      if (!anchor || anchor === 'sum') return it.type === 'delta' ? lvl.end : totals[itemId]!;
+      if (!anchor || anchor === 'sum') return it.type === 'delta' ? lvl.end : lvl.balance ?? totals[itemId]!;
       let cum = lvl.start;
       for (const seg of it.segments) {
         cum += seg.value;
@@ -885,7 +886,7 @@ function layoutWaterfallWithPad(
         message: `connector anchor '${anchor}' is not a segment of '${itemId}' — using sum`,
         owner: { categoryId: itemId },
       });
-      return it.type === 'delta' ? lvl.end : totals[itemId]!;
+      return it.type === 'delta' ? lvl.end : lvl.balance ?? totals[itemId]!;
     };
 
     /** Where an item's authored value sits: `value`, or a case's slot in `values`. */
@@ -903,6 +904,11 @@ function layoutWaterfallWithPad(
       if (hiddenAfter.has(open.id)) return null;
       for (const next of items.slice(items.indexOf(open) + 1)) {
         if (connectorInto.has(next.id)) return null;
+        // A subtotal drawn from the baseline leaves the running sum alone, and its check value is only its block sum.
+        if (next.type === 'subtotal' && next.toBaseline) {
+          if (hiddenAfter.has(next.id)) return null;
+          continue;
+        }
         if (next.type !== 'delta') {
           if (next.checkValue === null) return null;
           const value = compensatedSum([next.checkValue, ...deltas.map((delta) => -delta)]);
@@ -931,6 +937,8 @@ function layoutWaterfallWithPad(
      * `sum(contributions.map(c => c.value)) === running`, asserted below.
      */
     let contributions: { ref: Id; value: number }[] = [];
+    /** The deltas since the last baseline: what a subtotal drawn `toBaseline` adds up. */
+    let block: { ref: Id; value: number; segments: number[] }[] = [];
     let compositionEligible = true;
     let hasSegmentedDelta = false;
     // Each series keeps its raw steps, so its total and the segment sum use the
@@ -956,6 +964,7 @@ function layoutWaterfallWithPad(
         compositionEligible = false;
         hasSegmentedDelta = false;
         composition = new Map();
+        block = [];
       }
       if (it.type === 'total' || it.type === 'subtotal') {
         // A leading total opens the bridge at its authored value. Without one it
@@ -975,28 +984,34 @@ function layoutWaterfallWithPad(
             owner: { categoryId: it.id },
           });
         }
-        const value = wasStarted ? running : (opening ?? 0);
+        // A subtotal with toBaseline prints the deltas since the last baseline; the running balance carries on.
+        const blockSum = it.type === 'subtotal' && it.toBaseline && wasStarted;
+        const value = blockSum ? compensatedSum(block.map((c) => c.value)) : wasStarted ? running : (opening ?? 0);
         if (!started) {
           running = value;
           // A backward opening is the next total's authored value less plain deltas.
           summed = [it.checkValue ?? backwardOpenings.get(it.id)?.inputs[0]!.value ?? 0];
         }
-        levels[it.id] = { start: 0, end: value };
+        levels[it.id] = blockSum ? { start: 0, end: value, balance: running } : { start: 0, end: value };
         totals[it.id] = value;
         // An opening total anchors the chart at a number the DOCUMENT supplied.
         // Nothing was summed, so nothing can be re-summed, and calling it derived
         // would be a claim the engine cannot support.
         const derivedOpening = wasStarted ? undefined : backwardOpenings.get(it.id);
-        totalBasis[it.id] = wasStarted
+        totalBasis[it.id] = blockSum
+          ? { authored: false, inputs: block.map(({ ref, value }) => ({ ref, value })) }
+          : wasStarted
           ? { authored: false, inputs: contributions.map((c) => ({ ...c })) }
           : derivedOpening
             ? { authored: false, inputs: derivedOpening.inputs }
             : { authored: true, ref: `${it.id}.value` };
         // Collapse the span: the next total's receipt reads "this total, plus the
         // deltas since" rather than replaying the whole chart.
-        contributions = [{ ref: it.id, value }];
-        operands = [value];
-        const totalCheck = started && it.checkValue !== null ? checkAgainstSum(it.checkValue, value, summed) : undefined;
+        if (!blockSum) {
+          contributions = [{ ref: it.id, value }];
+          operands = [value];
+        }
+        const totalCheck = started && it.checkValue !== null ? checkAgainstSum(it.checkValue, value, blockSum ? block.flatMap((c) => c.segments) : summed) : undefined;
         if (totalCheck?.withinRounding) discloseRoundedCheck(it, k, totalCheck.printed, 'checkTotalNote');
         const totalMismatch = totalCheck && !totalCheck.withinRounding ? totalCheck.printed : undefined;
         if (totalMismatch) {
@@ -1007,6 +1022,7 @@ function layoutWaterfallWithPad(
             owner: { categoryId: it.id },
           });
         }
+        if (it.type === 'total' || blockSum) block = [];
         if (!wasStarted && Math.abs(value) > 1e-9) compositionEligible = false;
         if (it.type === 'total' && wasStarted && compositionEligible && hasSegmentedDelta) {
           const seriesTotals = [...segmentCatalog.values()].map((identity) => ({
@@ -1050,8 +1066,12 @@ function layoutWaterfallWithPad(
         levels[it.id] = { start, end };
         running = end;
         summed = [...(it.toBaseline ? [] : summed), ...segmentValues];
-        if (it.toBaseline) contributions = [];
+        if (it.toBaseline) {
+          contributions = [];
+          block = [];
+        }
         contributions.push({ ref: it.id, value: sum });
+        block.push({ ref: it.id, value: sum, segments: segmentValues });
         if (it.authoredSegments && compositionEligible) {
           hasSegmentedDelta = true;
           for (const seg of it.segments) {
@@ -1069,6 +1089,7 @@ function layoutWaterfallWithPad(
         summed = [];
         started = false;
         contributions = [];
+        block = [];
         compositionEligible = true;
         hasSegmentedDelta = false;
         composition = new Map();
@@ -1642,8 +1663,14 @@ function layoutWaterfallWithPad(
 
     // connector to next item (explicit connectors handled after the loop)
     // A case's line to its next bar would cross the other case's bar: case bars draw none.
-    if (caseIndex === undefined && i < items.length - 1 && !hiddenAfter.has(it.id) && !connectorInto.has(items[i + 1]!.id)) {
-      const next = items[i + 1]!;
+    // A subtotal drawn from the baseline stands apart from the balance: the line skips over it.
+    const apart = (item: NormItem) => levels[item.id]?.balance !== undefined;
+    // A hidden break on such a subtotal starts a new sum after it, so no line reaches past it.
+    let nextIndex = i + 1;
+    while (nextIndex < items.length && apart(items[nextIndex]!) && !hiddenAfter.has(items[nextIndex]!.id)) nextIndex++;
+    if (nextIndex >= items.length || apart(items[nextIndex]!)) nextIndex = -1;
+    if (caseIndex === undefined && !apart(it) && nextIndex > 0 && !hiddenAfter.has(it.id) && !connectorInto.has(items[nextIndex]!.id)) {
+      const next = items[nextIndex]!;
       const level = it.type === 'delta' ? lvl.end : totals[it.id]!;
       const cy = y(level);
       const nodeId = `connector:${it.id}:${next.id}`;
@@ -1654,7 +1681,7 @@ function layoutWaterfallWithPad(
         // coordinates, once per orientation — see its doc comment.
         x1: bx + bw,
         y1: cy,
-        x2: band.position(i + 1),
+        x2: band.position(nextIndex),
         y2: cy,
         stroke: connectorStroke,
         width: strokeToken(theme, 'rule'),
@@ -1668,7 +1695,7 @@ function layoutWaterfallWithPad(
       // level had the connector striking through its digits. The empty owner
       // blocks the connector's own category too; its labels belong on the
       // bar, not on the bridge line.
-      occupied.claim(connectorClaim(bx + bw, band.position(i + 1), cy), 'mark', {}, 'connector');
+      occupied.claim(connectorClaim(bx + bw, band.position(nextIndex), cy), 'mark', {}, 'connector');
       marks.connectors.push({ from: it.id, to: next.id, nodeId });
     }
 
