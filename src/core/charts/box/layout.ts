@@ -68,6 +68,8 @@ import { autoDecimals } from '../../formatPrecision';
 import { annotateBox } from './annotations';
 import { composedTextRole } from '../../textRole';
 import { textScaleOf } from '../../typeFloors';
+import { DEFAULT_TARGET } from '../../target';
+import { asColumnHeads, columnHeadFont, fitHead, HEAD_PREFIX, headRequest } from '../bullet/columnHead';
 import { disclosureNote } from '../../notes';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
@@ -518,6 +520,18 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
     const rawH = plot0.h - topPad - axisH;
     frameResult.frame.plotMinHeight = Math.max(frameResult.frame.plotMinHeight ?? 0, size.height + (frameResult.deficit ?? 0) - rawH + rows.length * (2 * lineH + 4));
   }
+  // DENSE ROWS. A row too low to hold its median over the box (label height + 19 px) would push
+  // the median to a whisker end or beside a dot, where it reads as that mark's value. Such rows print
+  // every median right-aligned in one column beside n, under the head Median.
+  const denseRows = availH / rows.length < valueLabelH + MEDIAN_OFFSET + MEDIAN_CLEAR + 8;
+  const medianRows = rows.filter((row) => row.median !== null && row.state !== 'points');
+  const medianCol = denseRows && labelOn('point') && options.boxValues !== 'all' && medianRows.length > 0;
+  const headFont = columnHeadFont(theme, options.target ?? DEFAULT_TARGET, textScaleOf(options));
+  const medianBodyW = medianCol ? maxOf(medianRows.map((row) => measure(fmtMedian(row.median!), labelFont).width)) : 0;
+  const medianHead = medianCol ? fitHead('Median', headFont, medianBodyW, measure, { target: options.target ?? DEFAULT_TARGET, textScale: textScaleOf(options) }) : undefined;
+  const medianColRight = plot0.x + plot0.w - nBandTotal;
+  const medianColTotal = medianHead ? Math.max(medianHead.w, medianBodyW) + N_BAND_GAP : 0;
+  nBandTotal += medianColTotal;
   // The parked value takes the room of its label at the plot's right end.
   // It reads in the tick row, as a tick: the axis format.
   const parkLabel = parked === undefined ? '' : axisFmt(parked);
@@ -525,7 +539,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
 
   // A box chart is a row form. Its narrowest canvas holds the name column, the n column,
   // the bracket room and a value run of 80 px, beside the chrome around the plot.
-  const sizingFor = (room: number) => bandSizing('box', size, plot0.w, NATURAL_BAND_STEP, catBandTotal + nFloorTotal + room + parkRoom + MIN_VALUE_RUN);
+  const sizingFor = (room: number) => bandSizing('box', size, plot0.w, NATURAL_BAND_STEP, catBandTotal + nFloorTotal + medianColTotal + room + parkRoom + MIN_VALUE_RUN);
 
   const plot: Rect = {
     x: plot0.x + catBandTotal,
@@ -1079,6 +1093,8 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
         text,
         lines,
         ...(lines.length > 1 ? { align: 'end' as const } : {}),
+        // Dense rows touch line box to line box, as the median column beside them does.
+        ...(denseRows ? { pad: 0 } : {}),
         font: tickFont,
         priority: PRIORITY.valueLine,
         candidates: [
@@ -1101,7 +1117,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
     if (labelOn('point') && row.median !== null && row.state !== 'points') {
       // The first figure names the statistic, as a first tick names its unit:
       // a bare number above a box reads as anything from a mean to a total.
-      const text = `${index === firstMedianRow ? 'Median ' : ''}${fmtMedian(row.median)}`;
+      const text = `${index === firstMedianRow && !medianCol ? 'Median ' : ''}${fmtMedian(row.median)}`;
       const textSize = measure(text, labelFont);
       const medianX = x(row.median);
       // EVERY candidate clears this row's OWN dots.
@@ -1124,7 +1140,12 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
         lines: [text],
         font: labelFont,
         priority: PRIORITY.endpoint,
-        candidates: [
+        ...(medianCol ? { pad: 0 } : {}),
+        candidates: medianCol ? [{
+          slot: 'medianColumn',
+          rect: { x: medianColRight - textSize.width, y: rowCenter - textSize.height / 2, w: textSize.width, h: textSize.height },
+          penalty: 0,
+        }] : [
           {
             slot: 'aboveMedian',
             rect: {
@@ -1170,6 +1191,10 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
     }
   });
 
+  if (medianHead) {
+    const headH = measure('0', headFont).height;
+    labelRequests.push(headRequest('median', 0, medianHead, medianColRight, plot.y - headH - 2, headH, false));
+  }
   const solveCtx: SolveCtx = labelCtx(theme, size, options, {
     measure,
     plot,
@@ -1185,9 +1210,11 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   const solved = solveLabels(labelRequests, occupied, solveCtx);
   applyValueAxisTitleInk(solved.placed);
   // The n under a row name is muted furniture, as the tick figures are.
-  if (nUnder) for (const label of solved.placed) if (label.id.startsWith('boxN:')) label.ink = { token: 'inkMuted' };
+  for (const label of solved.placed) if (nUnder && label.id.startsWith('boxN:') || label.id.startsWith(HEAD_PREFIX)) label.ink = { token: 'inkMuted' };
   pushAll(warnings, solved.warnings);
-  pushAll(nodes, labelsToNodes(theme, solved.placed, (label) => (label.kind === 'point' ? labelFont : nUnder && label.id.startsWith('boxN:') ? nFont : tickFont)));
+  const labelNodes = labelsToNodes(theme, solved.placed, (label) => (label.kind === 'point' ? labelFont : label.id.startsWith(HEAD_PREFIX) ? headFont : nUnder && label.id.startsWith('boxN:') ? nFont : tickFont));
+  asColumnHeads(labelNodes);
+  pushAll(nodes, labelNodes);
 
   // A dodge that ran out of band is the one case where two dots still touch.
   // Severity follows the label solver's own convention (`label-hidden` is warn
