@@ -55,10 +55,34 @@ function csvDelimiter(body: string): ',' | ';' {
 }
 
 /**
+ * A repeated header gets a free `.1`, `.2` suffix, so every column stays
+ * readable and the first keeps the name. A blank header stays as it is: no
+ * role can name it.
+ */
+function uniqueHeaders(header: string[]): { names: string[]; repeats: { name: string; renamed: string }[] } {
+  const taken = new Set(header);
+  const seen = new Set<string>();
+  const repeats: { name: string; renamed: string }[] = [];
+  const names = header.map((name) => {
+    if (!name.trim() || !seen.has(name)) {
+      seen.add(name);
+      return name;
+    }
+    let suffix = 1;
+    while (taken.has(`${name}.${suffix}`)) suffix++;
+    const renamed = `${name}.${suffix}`;
+    taken.add(renamed);
+    repeats.push({ name, renamed });
+    return renamed;
+  });
+  return { names, repeats };
+}
+
+/**
  * RFC 4180 CSV: a header row, quoted fields with "" for a quote, CRLF or LF.
  * The separator is a comma or, detected from the header, a semicolon.
  */
-function parseCsv(text: string): { rows: Row[]; delimiter: ',' | ';' } {
+function parseCsv(text: string): { rows: Row[]; delimiter: ',' | ';'; repeats: { name: string; renamed: string }[] } {
   const records: string[][] = [];
   let record: string[] = [];
   let field = '';
@@ -96,13 +120,15 @@ function parseCsv(text: string): { rows: Row[]; delimiter: ',' | ';' } {
   if (record.length) records.push(record);
   const [header, ...lines] = records;
   if (!header) throw new InputError('invalid-rows', 'the CSV has no header row', { path: '/rowsFile' });
+  const { names, repeats } = uniqueHeaders(header);
   return {
     delimiter,
+    repeats,
     rows: lines.map((line, index) => {
       if (line.length !== header.length) {
         throw new InputError('invalid-rows', `CSV row ${index + 1} has ${line.length} fields, the header has ${header.length}`, { path: '/rowsFile' });
       }
-      return Object.fromEntries(header.map((name, column) => [name, line[column]]));
+      return Object.fromEntries(names.map((name, column) => [name, line[column]]));
     }),
   };
 }
@@ -114,6 +140,14 @@ interface RowsWarning {
   message: string;
   path: string;
   suggest: string;
+}
+
+function repeatedHeaderWarning({ name, renamed }: { name: string; renamed: string }): RowsWarning {
+  return {
+    code: 'rows-header-repeated', severity: 'warn', path: '/rowsFile',
+    message: `the CSV header '${name}' repeats: '${name}' reads the first of these columns, and the next reads as '${renamed}'`,
+    suggest: `Rename the repeated header in the file, or name '${renamed}' in columns to draw that column.`,
+  };
 }
 
 interface LoadedRows {
@@ -178,8 +212,8 @@ function readRowsFile(path: unknown): LoadedRows {
   const bytes = readFileSync(real);
   const { text, warnings } = decodeRows(bytes);
   if (kind === '.csv') {
-    const { rows, delimiter } = parseCsv(text);
-    return { rows, bytes, source: path, decimalComma: delimiter === ';', warnings };
+    const { rows, delimiter, repeats } = parseCsv(text);
+    return { rows, bytes, source: path, decimalComma: delimiter === ';', warnings: [...warnings, ...repeats.map(repeatedHeaderWarning)] };
   }
   try {
     // A Windows editor may lead the file with a byte order mark; JSON.parse does not skip it.

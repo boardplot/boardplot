@@ -519,7 +519,7 @@ export function censusCase(type, fixture, width, localeName, measured) {
         const raw = claim.output.raw * dataScale;
         const signed = type === 'dimswitch' || (cell && rowSign(data.rows ?? [], cell[1]) === -1);
         const shareCell = cell && (data.columns ?? []).find((column) => column.id === cell[2])?.calc?.op === 'share';
-        const ok = found.some((token) => says(token, raw) || (signed && says(token, -raw)) || (token.pct === '%' && says(token, raw, 100)) || (!token.letter && says(token, raw, 1 / dataScale))
+        const ok = found.some((token) => says(token, raw) || (signed && says(token, -raw)) || ((token.pct === '%' || type === 'cohort') && says(token, raw, 100)) || (!token.letter && says(token, raw, 1 / dataScale))
           || (!token.letter && says(token, raw, 1 / contextScale))
           || (shareCell && says({ ...token, half: token.half * 3 }, raw, token.pct === '%' ? 1 : 0.01)));
         if (!ok) {

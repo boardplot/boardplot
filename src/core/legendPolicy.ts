@@ -268,10 +268,12 @@ function layoutWithKeys<D, O extends ChartOptions, M extends object, DV extends 
   const requested = options?.legend === 'auto';
   const baselineOptions = requested ? { ...options, legend: undefined } as O : options;
   const baseline = fitBaseline(baselineOptions);
-  // the grid core keeps its required key under legend 'none'
-  // (gridRequiredKey in grid/gridKey.ts), so that code stays out of the other React entries.
-  if (!baseline.refused && options?.legend === 'none' && definition.requiredKey && panelTypeClass(options) === undefined) {
-    return definition.requiredKey(baseline, data, options, fitCandidate);
+  // the grid core keeps its required key under legend 'none' and, unless the theme keys
+  // automatically, with no legend set (gridRequiredKey in grid/gridKey.ts), so that code
+  // stays out of the other React entries.
+  if (!baseline.refused && definition.requiredKey && panelTypeClass(options) === undefined
+    && (options?.legend === 'none' || (options?.legend === undefined && resolveTheme(options?.theme).legend?.auto !== true))) {
+    return definition.requiredKey(baseline, data, options ?? {} as O, fitCandidate);
   }
   if (baseline.refused || (!requested &&
     (options?.legend !== undefined || panelTypeClass(options) !== undefined ||

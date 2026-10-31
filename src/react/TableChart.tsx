@@ -37,7 +37,9 @@ import { publishTableChart } from './specHandover';
 import { registeredType } from './chartEntry';
 import { tableCore } from '../core/charts/table/core';
 import { tableCellNodeId } from '../core/charts/table/cellKey';
-import { columnHeadLabel, columnHeaderAffix, resolveTable } from '../core/charts/table/resolve';
+import { fieldHeadText } from '../core/charts/table/headFace';
+import { groupHeadingLabel } from '../core/charts/table/groupHeading';
+import { columnHeaderAffix, resolveTable } from '../core/charts/table/resolve';
 import {
   cellDrawsTabular,
   collapsedByDefault,
@@ -2086,7 +2088,7 @@ function TableHead({
         aria-label={group.heading === false ? group.label : undefined}
       >
         {group.heading === false ? null : (
-          <span>{group.label}{group.note === undefined ? null : <span className="bp-group-note"> · {group.note}</span>}</span>
+          <span>{groupHeadingLabel(group.label)}{group.note === undefined ? null : <span className="bp-group-note"> · {group.note}</span>}</span>
         )}
       </div>,
     );
@@ -2161,7 +2163,7 @@ function TableHead({
  * written ("SPEND ($k)").
  */
 function headText(column: ResolvedColumn, theme: Pick<Theme, 'table'> | undefined): string {
-  return `${columnHeadLabel(column.label, theme ?? {})}${columnHeaderAffix(column)}`;
+  return `${fieldHeadText(column.label, theme ?? {})}${columnHeaderAffix(column)}`;
 }
 
 /** The pin offset and the explicit track a head cell carries, or nothing. */

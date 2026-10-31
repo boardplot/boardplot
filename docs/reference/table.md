@@ -170,7 +170,7 @@ Consulting-grade table: hierarchy with honest totals (derive/validate/source), t
 | columns[].band (columns[] branch 6) | boolean |  | Column band ground. Neighbouring banded columns read as one block and the first of the run takes the left hairline, so a block inside a column group needs no group of its own. Paint only. |
 | columns[].fitFormat (columns[] branch 6) | false |  | false: options.fitFormats leaves this column's format as authored. One of `false`. |
 | columns[].noteLine (columns[] branch 6) | boolean |  | Notes below figures. They use the inline step in muted ink. Default false keeps the note inline after the figure, where a 90 px block track cuts it off; a steering block column says sum under its year-to-date figure. The note takes the first line slot whose change line holds no value in that cell, and where every line holds one, or the row prints none, the row grows by one inline line. |
-| columns[].kind (columns[] branch 6) | string | yes | Kind. One of `'date'`. |
+| columns[].kind (columns[] branch 6) | string | yes | Date cell: an ISO date (YYYY-MM-DD) or { v: date } (other text refuses: date-invalid; numbers draw the missing dash and warn: date-value-number). One of `'date'`. |
 | columns[].format (columns[] branch 6) | string |  | Date format example. Examples: '30 Sep 2026', 'Sep-26', '2026-09-30'. |
 | columns[].id (columns[] branch 7) | string | yes | Nonempty reference id. |
 | columns[].label (columns[] branch 7) | string |  | Visible name; defaults to id. |
@@ -475,7 +475,7 @@ Four row fields make the statement:
 
 Every colour, weight and rule of a table is a theme key, so the client decides the look. `table.inks` sets the inks of the heads, sub-labels, labels, child labels, figures, qualifiers, operators, drivers and fold toggles; for grey absolute numbers set `table.inks.figure`. `table.weights` sets the label weights of members, measures, subtotals and results, their figure weights in `figures`, the Range and vs prior block in `block`, and the change lines in `change`. `table.ruleWidths.head`, `table.resultRule`, `table.finalRule`, `table.driver.italic`, `table.qualifier`, `table.section.case`, `table.toggle`, `table.operator.width` and `table.grounds.subtotal` and `.total` set the rest. Every key has a default that keeps the drawing of 0.24.
 
-`tableLooks.sheet` from `boardplot` is a ready look: the report sheet with filled judgement cells, a 2 px head rule, grey subtotal grounds, bold results with a double closing rule and italic drivers. Use it as `theme: { "preset": "boardroom", "overrides": tableLooks.sheet }` and change any key on top of it. It is an option; no table takes it by default. Column heads print in capitals by default; `table.head.case: "asis"` keeps them as written ($k).
+`tableLooks.sheet` from `boardplot` is a ready look: the report sheet with filled judgement cells, a 2 px head rule, grey subtotal grounds, bold results with a double closing rule and italic drivers. Use it as `theme: { "preset": "boardroom", "overrides": tableLooks.sheet }` and change any key on top of it. It is an option; no table takes it by default. Column heads print in capitals by default, and the text after the last comma stays as written (`Power,mW` prints `POWER,mW`); `table.head.case: "asis"` keeps the whole head as written ($k).
 
 ```json
 {

@@ -1,5 +1,5 @@
 import { fmtPathNumber as pf } from '../../curve';
-import { DEFAULT_REST_MIN, DEFAULT_TOP_N, restLabel, restSum, topNCut } from '../topN';
+import { DEFAULT_REST_MIN, DEFAULT_TOP_N, restDetailsWarning, restLabel, restSum, topNCut } from '../topN';
 import { chartPalette, chartTheme } from '../chartEnv';
 import { chartString } from '../../strings/pie';
 import { structureCount } from '../../structureCounts';
@@ -405,6 +405,8 @@ function layoutPiePass(
       let othersId: Id = 'others';
       while (slices.some((s) => s.cat.id === othersId)) othersId = `_${othersId}`;
       slices = [...kept, { cat: { id: othersId, label: restLabel(topN, options.strings, dropped.length) }, v: restSum(dropped.map((s) => s.v)), isOthers: true }];
+      const lostDetails = restDetailsWarning({ categories: data.categories, series: [ser] }, new Set(kept.map((s) => s.cat.id)));
+      if (lostDetails) warnings.push(lostDetails);
     }
   }
 

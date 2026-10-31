@@ -552,9 +552,11 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
       // "Where does 60% come from" has exactly one honest answer: the two
       // counts it was divided from. The displayed string is read back off the
       // cell node so the receipt quotes what the READER sees, never a second
-      // rounding of the same ratio.
+      // rounding of the same ratio. An exhibit cell prints through a label
+      // that names its claim, and bindClaimLabels reads that text.
       const derived = geo.derived as CohortDerived;
       const displayed = new Map<string, string>();
+      const cellNodes = new Set(geo.scene.map((node) => node.id));
       for (const node of geo.scene) {
         const value = node.display && 'value' in node.display ? node.display.value : undefined;
         if (node.part === 'cell' && value !== undefined) displayed.set(node.id, value);
@@ -581,7 +583,7 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
               state: ratio === null ? missingCohortRate(row, t, derived.basis) ? 'missing' : 'n.m.' : 'value',
               displayed: displayed.get(nodeId) ?? '',
             },
-            nodeId,
+            ...(cellNodes.has(nodeId) ? { nodeId } : {}),
           });
         }
       }

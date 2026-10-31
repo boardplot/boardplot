@@ -141,7 +141,7 @@ const columnSchema = z
     }),
     z.strictObject({
       ...columnBase,
-      kind: z.literal('date').describe('Kind.'),
+      kind: z.literal('date').describe('Date cell: an ISO date (YYYY-MM-DD) or { v: date } (other text refuses: date-invalid; numbers draw the missing dash and warn: date-value-number).'),
       format: z.string().optional()
         .describe("Date format example. Examples: '30 Sep 2026', 'Sep-26', '2026-09-30'."),
     }),
