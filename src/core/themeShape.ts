@@ -159,7 +159,7 @@ export const THEME_SHAPE: ShapeNode = object({
     anchorTint: optNum(0.85, 0.99), bandTint: optNum(0, 1), gapTint: optNum(0.5, 0.95),
     ribbonAlpha: optNum(0.15, 0.6), ribbonSheetAlpha: optNum(0.05, 0.6),
     heatSteps: opt({ kind: 'array', item: num(0, 1), min: 1 }),
-    chipRadius: optNum(0, 6), sparkWash: flag,
+    chipRadius: optNum(0, 6), sparkWash: flag, sparkAreaBase: optOneOf('zero', 'min'),
     panelShadow: opt(grammar(SHADOW_MAX_LENGTH, SHADOW_PATTERN, SHADOW_GRAMMAR)),
   })),
   stroke: opt(object(each(['seam', 'hair', 'rule', 'mark', 'data', 'focus', 'casing'] as const, () => optNum(0.25, 12)))),

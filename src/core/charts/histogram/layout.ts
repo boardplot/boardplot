@@ -53,7 +53,7 @@ import {
 import { defaultMeasurer, type FontSpec } from '../../text';
 import { resolveTheme, themeForWidth, panelTypeClass, strokeToken } from '../../theme';
 import { createOccupiedIndex } from '../../label/occupied';
-import { labelCtx, solveLabels, PRIORITY, type LabelRequest } from '../../label/solver';
+import { labelCtx, solveLabels, PRIORITY, SERIES_VALUE_GAP, type LabelRequest } from '../../label/solver';
 import { labelsToNodes } from '../../label/emit';
 import { NormalizeError, resolveSize } from '../../normalize/shared';
 import { iqr as interquartileRange, quantileType7, sortAscending } from '../../stats';
@@ -354,21 +354,24 @@ export function layoutHistogram(
   const shareDecimals = shareFormat.decimals;
   const frequencyFormat = options.valueAxis?.percent ? `0${shareDecimals > 0 ? defaultFormatSpec(options.locale?.language).decimalSep + '0'.repeat(shareDecimals) : ''}%` : countFormat;
 
-  const delegateData: ChartData = {
+  // The tallest bin, first of a tie: the one count that stays when the others give way.
+  const peak = counts.indexOf(maxOf(counts));
+  const countData = (peakOnly: boolean): ChartData => ({
     categories: counts.map((_, index) => ({ id: binId(index), label: binLabels[index]! })),
     series: [
       {
         id: 'count',
         ...(options.valueAxis?.percent ? { format: frequencyFormat } : {}),
         label: chartString(options, 'observations'),
-        values: counts.map((count) => {
+        values: counts.map((count, index) => {
           const value = options.valueAxis?.percent ? count / n * 100 : count;
-          return sparseLabels && count === 0 ? { number: 0, label: false }
+          return (sparseLabels && count === 0) || (peakOnly && index !== peak) ? { number: value, label: false }
             : options.valueAxis?.percent ? { number: value, label: shareFormat.format(value) } : value;
         }),
       },
     ],
-  } as ChartData;
+  } as ChartData);
+  let delegateData = countData(false);
 
   /**
    * Explicit passthrough, never a spread of the caller's options: a spread
@@ -540,6 +543,38 @@ export function layoutHistogram(
     const withoutAxisOptions = delegateOptions(false, tail);
     const withoutAxis = layoutColumn(delegateData, withoutAxisOptions, true);
     if (allValuesLabelled(withoutAxis)) { columnOptions = withoutAxisOptions; column = withoutAxis; frequencyAxisShown = false; }
+  }
+  /**
+   * A count wider than its bin (with the gap two neighbouring values keep)
+   * that lost its own seat at its bar (lifted onto a leader, hidden by a
+   * neighbour, or moved to the note) no longer fits. Then the frequency
+   * axis carries the scale, only the tallest bin keeps its count, empty
+   * bins print nothing and the tail callouts go too. A count displaced on
+   * a wide bin (by a tail callout, say) keeps its seating, and so does a
+   * chart with at most twelve filled bins: its few counts and callouts are
+   * the exhibit (a far outlier), and its empty bins already print nothing. An authored
+   * labelDensity 'full' keeps every count on its seat or leader. A count the
+   * density gate drops on purpose ('minimal') has not lost a seat. A hidden
+   * axis keeps them too, since nothing else would carry the scale.
+   */
+  const NATURAL_SEATS: ReadonlySet<string> = new Set(['outsideTop', 'outsideBottom', 'insideEnd']);
+  const bars = column.marks.bars;
+  const binStep = bars.length > 1 ? Math.abs(bars[1]!.rect.x - bars[0]!.rect.x) : Infinity;
+  const countsDisplaced = options.labels !== false && options.labels?.point !== false && options.labelDensity !== 'full'
+    && options.valueAxis?.show !== false && filled > POINT_LABEL_MAX_BINS && column.labels.some((label) => label.kind === 'point' && label.hidden !== 'redundant' && label.hidden !== 'density'
+      && counts[Number(label.owner.categoryId?.slice(3))]! > 0 && label.rect.w + SERIES_VALUE_GAP > binStep
+      && (label.hidden !== undefined || label.leader !== undefined || !NATURAL_SEATS.has(label.slot)));
+  if (countsDisplaced) {
+    delegateData = countData(true);
+    // One count is left: no density gate may drop it.
+    columnOptions = { ...delegateOptions(true), labelDensity: 'full' };
+    column = layoutColumn(delegateData, columnOptions, true);
+    warnings.push({
+      code: 'histogram-counts-peak-only',
+      severity: 'info',
+      message: `the bin counts do not fit over their ${k} bars, so only the tallest bin prints its count (${maxOf(counts)}) and the frequency axis carries the scale`,
+      suggest: "use fewer bins or a wider canvas to print every count, or set labelDensity: 'full' to seat every count, on leaders where needed",
+    });
   }
   frequencyAxisShown = column.axes.some((axis) => axis.axis === 'y');
 

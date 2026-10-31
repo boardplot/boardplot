@@ -352,6 +352,30 @@ fixtures.push({
 });
 
 /**
+ * An area spark from the series minimum: `surface.sparkAreaBase: 'min'`
+ * keeps the min-max range under the wash, the look before area sparks
+ * started at zero.
+ */
+fixtures.push({
+  id: 'spark-area-from-min',
+  title: 'An area spark whose scale and wash start at the series minimum',
+  kind: 'example',
+  tags: ['feature:theme'],
+  data: {
+    label: 'ARR',
+    value: 182_400_000,
+    format: '$1.2M',
+    delta: { vs: 165_200_000, scenario: 'PY' },
+    spark: { kind: 'area', values: [121_400_000, 130_200_000, 138_900_000, 150_700_000, 165_200_000, 182_400_000] },
+  },
+  options: {
+    theme: { preset: 'standard', overrides: { surface: { sparkAreaBase: 'min' } } },
+    title: 'ARR is 10% up on the year',
+    source: 'Illustrative data',
+  },
+});
+
+/**
  * The house eyebrow: 11 / 14 at 500, tracked 0.14 em, as authored
  * and the tertiary ink; the comparisons as toned text with no leading caret.
  */
