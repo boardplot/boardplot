@@ -655,6 +655,25 @@ describe('size advice', () => {
       expect(seen.size, `${start.type} advice still going after 6 fixes`).toBeLessThan(6);
     }
   });
+
+  // Prevents the size advice from dropping a fix that draws clean: a content height that is only a preference
+  // once the height is authored, and a plot-floor estimate above the aspect cap, must not take the cap-height fix away.
+  it.each([
+    ['choropleth', 'single-region-data', 480, 400, 361],
+    ['diagram', 'operating-cycle', 480, 263, 270],
+    ['column', 'forecast-ci-column', 480, 270, 361],
+  ])('keeps a fix that draws clean for %s %s at %ix%i', (type, id, width, height, expected) => {
+    const fixture = getFixtures(type as any).find(f => f.id === id)!;
+    const spec = { type, data: fixture.data, options: { ...fixture.options, size: { width, height } } };
+    const body = render({ spec }).body as any;
+    const finding = [...(body.errors ?? []), ...(body.warnings ?? [])].find((item: any) => item.fix?.some((op: any) => op.path === '/options/size'));
+    expect(finding, `${type} ${id} has no size fix`).toBeDefined();
+    const fixed = applyRepair(spec, finding.fix);
+    expect(fixed.options.size.height).toBe(expected);
+    const after = render({ spec: fixed }).body as any;
+    expect(after.ok).toBe(true);
+    expect([...(after.errors ?? []), ...(after.warnings ?? [])].filter((item: any) => item.fix?.some((op: any) => op.path === '/options/size'))).toEqual([]);
+  });
 });
 
 describe('textScale under 1', () => {

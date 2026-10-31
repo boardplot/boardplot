@@ -39,15 +39,16 @@ function legalSteps(cls: AspectClass): { name: LadderStepName; ratio: number }[]
   return ASPECT_LADDER.filter((s) => (cls === 'strip' ? true : s.ratio <= ASPECT_CAPS.flatNonStrip));
 }
 
-/** Smallest legal ladder height ≥ `minHeight` at this width, or null. */
+/** Smallest legal ladder height ≥ `minHeight` at this width that `fits`, or null. */
 function nextStepUp(
   width: number,
   minHeight: number,
   cls: AspectClass,
+  fits?: (size: Size) => boolean,
 ): { name: LadderStepName; height: number } | null {
   for (const { name, ratio } of legalSteps(cls)) {
     const height = Math.round(width / ratio);
-    if (height >= minHeight) return { name, height };
+    if (height >= minHeight && (!fits || fits({ width, height }))) return { name, height };
   }
   return null;
 }
@@ -60,16 +61,11 @@ function planned(warning: LintWarning, width: number): number {
 }
 
 /**
- * The height a size fix may not go under: the chart's own minimum, the content height of a
- * content-fit chart, and the height a layout `plot-under-floor` fix already names at this width.
+ * The height a size fix may not go under: the chart's own minimum. The natural height of a content-fit chart
+ * is a preference once the height is authored, and the height of a layout `plot-under-floor` fix is an estimate.
  */
-function heightFloor(width: number, geo: { sizing?: { fit?: 'fill' | 'content'; minHeight?: number; naturalHeight?: number }; warnings?: LintWarning[] }): number {
-  const named = geo.warnings?.find((w) => w.code === 'plot-under-floor' && w.fix);
-  return Math.max(
-    geo.sizing?.minHeight ?? 0,
-    geo.sizing?.fit === 'content' ? geo.sizing.naturalHeight ?? 0 : 0,
-    named ? planned(named, width) : 0,
-  );
+function heightFloor(geo: { sizing?: { minHeight?: number } }): number {
+  return geo.sizing?.minHeight ?? 0;
 }
 
 /**
@@ -88,6 +84,7 @@ export function aspectDocLints(
   type: string,
   options: Record<string, unknown> | undefined,
   geo: { size: Size; plot: Rect; marks?: unknown; warnings?: LintWarning[]; sizing?: { fit?: 'fill' | 'content'; minHeight?: number; naturalHeight?: number } },
+  fits?: (size: Size) => boolean,
 ): LintWarning[] {
   const cls = aspectClassFor(type, options, geo.marks);
   if (!cls) return []; // unregistered type — nothing to judge against
@@ -112,7 +109,12 @@ export function aspectDocLints(
   const flatCapRatio = cls === 'strip' ? ASPECT_CAPS.flatAbsolute : ASPECT_CAPS.flatNonStrip;
   const flatMinHeight = Math.round(width / flatCapRatio);
   const tallMaxHeight = Math.round(width / ASPECT_CAPS.tall);
-  const minHeight = heightFloor(width, geo);
+  const minHeight = heightFloor(geo);
+  // A height fix is offered only at a size that draws with no further size fix. The caller's probe says so;
+  // without one the size is trusted.
+  const sizeFix = (h: number) => (fits && !fits({ width, height: h })
+    ? undefined
+    : [{ op: 'replace' as const, path: '/options/size', value: { width, height: h } }]);
   // Content can raise an automatic height above every ladder step. Neither
   // aspect lint should ask the caller to undo that required height.
   const automaticTall = height > tallMaxHeight && heightOmitted(options?.size);
@@ -130,24 +132,31 @@ export function aspectDocLints(
       fix: [{ op: 'replace', path: '/options/size', value: { width, height: flatMinHeight } }],
     });
   } else if (!rowDriven && !automaticTall && height > tallMaxHeight * (1 + LADDER_TOLERANCE)) {
-    const canLower = tallMaxHeight >= minHeight;
+    const lower = tallMaxHeight >= minHeight ? sizeFix(tallMaxHeight) : undefined;
     warnings.push({
       code: 'aspect-cap',
       severity: 'warn',
       message: `'${type}' canvas ${canvas} is ${ratio.toFixed(2)}:1, taller than the ${ASPECT_CAPS.tall.toFixed(2)}:1 limit. Only charts whose height comes from their row count go above it. At width ${width} the height has to be at most ${tallMaxHeight}px.`,
-      suggest: canLower ? `Lower the height to ${tallMaxHeight}px.` : 'Shorten the chart content or use a wider canvas.',
+      suggest: lower ? `Lower the height to ${tallMaxHeight}px.` : 'Shorten the chart content or use a wider canvas.',
       field: ['options', 'size'],
-      ...(canLower ? { fix: [{ op: 'replace' as const, path: '/options/size', value: { width, height: tallMaxHeight } }] } : {}),
+      ...(lower ? { fix: lower } : {}),
     });
   }
 
-  // The layout's plot-floor fix is the one fix made without this cap. When its height is taller than the cap allows,
-  // applying it only trades one warning for the other, so the fix goes and the advice names both limits.
+  // The layout's plot-floor fix is an estimate made without this cap. When it is taller than the cap allows,
+  // applying it only trades one warning for the other. The fix then goes to the cap height when that size draws
+  // clean. A canvas already at the cap, or a cap height that still needs more, keeps no fix and the advice names both limits.
   const floorWarning = geo.warnings?.find((w) => w.code === 'plot-under-floor' && w.fix);
   const floorHeight = floorWarning ? planned(floorWarning, width) : 0;
   if (floorWarning && !rowDriven && floorHeight > tallMaxHeight * (1 + LADDER_TOLERANCE)) {
-    delete floorWarning.fix;
-    floorWarning.suggest = `Widen the chart or leave the height out. At width ${width} the chart needs ${floorHeight}px and the aspect cap allows at most ${tallMaxHeight}px.`;
+    const lower = height < tallMaxHeight * (1 - LADDER_TOLERANCE) ? sizeFix(tallMaxHeight) : undefined;
+    if (lower) {
+      floorWarning.fix = lower;
+      floorWarning.suggest = `Give the chart ${tallMaxHeight}px of height, the most the aspect cap allows at width ${width}. The estimate is ${floorHeight}px, so check it with measure, or widen the chart.`;
+    } else {
+      delete floorWarning.fix;
+      floorWarning.suggest = `Widen the chart or leave the height out. At width ${width} the estimate is ${floorHeight}px and the aspect cap allows at most ${tallMaxHeight}px.`;
+    }
   }
 
   // ---- height-off-ladder / info variant -----------------------------------
@@ -163,7 +172,7 @@ export function aspectDocLints(
       });
     } else {
       // The nearest step may sit under the height the chart needs: the smallest legal step above it is the fix.
-      const snap = nearest.height >= minHeight ? nearest : nextStepUp(width, minHeight, cls);
+      const snap = nearest.height >= minHeight && (!fits || fits({ width, height: nearest.height })) ? nearest : nextStepUp(width, minHeight, cls, fits);
       warnings.push({
         code: 'height-off-ladder',
         severity: 'warn',

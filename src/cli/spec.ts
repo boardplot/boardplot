@@ -21,6 +21,7 @@ import { ownedDocumentCopy } from '../core/doc/docExpand';
 import { resolveTheme, resolvedPaintToken, seriesColorIndex } from '../core/theme';
 import { sceneThemeBindings } from '../core/repaintGeometry';
 import type { GridMarks } from '../core/grid/layoutGrid';
+import type { Size } from '../core/geometry';
 import { validateTheme, type ThemeUsage } from '../core/themeRules';
 import { activeFontTables } from './activeFontTables';
 import { renderSvg, XmlCharError } from '../core/svg/renderSvg';
@@ -415,11 +416,11 @@ function panelUnitLints(data: unknown, geo: Geometry, base: (string | number)[] 
 }
 
 /** The document-boundary norm lints: warnings about proportions and embed legibility. */
-function normLints(type: string, options: Record<string, unknown>, geo: Geometry, data?: unknown): LintWarning[] {
+function normLints(type: string, options: Record<string, unknown>, geo: Geometry, data?: unknown, fits?: (size: Size) => boolean): LintWarning[] {
   // Each family stands down behind any refusal already on the geometry, so a
   // refused chart gets one trace naming the real cause. They run here,
   // not inside layout, because grid panels lay out on slot-sized canvases.
-  const found = [...aspectDocLints(type, options, geo as never)];
+  const found = [...aspectDocLints(type, options, geo as never, fits)];
   pushAll(geo.warnings, found);
   const rest = [
     ...spaceDocLints(type, options, geo as never),
@@ -471,10 +472,21 @@ function resolveRequest(doc: BoardplotDoc, chart: DocChart, envelope: DocumentEn
 /** What the CLI render adds to the serializer: the id scope and a transparent canvas. */
 interface SvgWriteOptions { idScope?: string; background?: false }
 
-function drawn(doc: BoardplotDoc, chart: DocChart, envelope: DocumentEnvelope, write: SvgWriteOptions = {}, target?: RenderTarget) {
+/** The size codes that tell a probed height still needs a size fix. */
+const PROBE_REJECTS: ReadonlySet<string> = new Set(['plot-under-floor', 'size-below-floor', 'aspect-cap', 'height-off-ladder']);
+
+function drawn(doc: BoardplotDoc, chart: DocChart, envelope: DocumentEnvelope, write: SvgWriteOptions = {}, target?: RenderTarget, probing = false) {
   const resolved = resolveRequest(doc, chart, envelope, target);
   if (!resolved) return null;
-  return judged(chart, resolved, requireGeometry(layoutResolvedRequest(resolved.request)) as Geometry, envelope, true, write);
+  // A size fix of the aspect lints is checked by drawing the chart at that size. The probe offers no further fixes.
+  const fits = probing ? undefined : (size: Size) => {
+    const scratch: DocumentEnvelope = { ok: true, errors: [], warnings: [] };
+    try {
+      return drawn(doc, { ...chart, options: { ...chart.options, size } }, scratch, {}, target, true) !== null
+        && scratch.errors.length === 0 && !scratch.warnings.some(w => PROBE_REJECTS.has(w.code) && w.severity !== 'info');
+    } catch { return false; }
+  };
+  return judged(chart, resolved, requireGeometry(layoutResolvedRequest(resolved.request)) as Geometry, envelope, true, write, fits);
 }
 
 /**
@@ -491,6 +503,7 @@ function judged(
   envelope: DocumentEnvelope,
   reportWarnings: boolean,
   write: SvgWriteOptions = {},
+  fits?: (size: Size) => boolean,
 ) {
   const def = validated.definition;
   const options = request.options as Record<string, unknown>;
@@ -515,7 +528,7 @@ function judged(
         });
     return null;
   }
-  const warnings = normLints(def.type, options, geo, validated.data);
+  const warnings = normLints(def.type, options, geo, validated.data, fits);
   // The refusal path React shares (core/schema/refusals): what refuses here
   // draws the error card there, with the same message.
   const refusals = chartRefusals(warnings);
