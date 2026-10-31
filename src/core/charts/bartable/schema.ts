@@ -62,7 +62,7 @@ const columnSchema = z.strictObject({
   label: z.string().optional().describe('Column head, right-aligned over the numbers; wraps to two lines.'),
   values: z.array(z.union([z.number().finite(), z.null(), cellState])).describe("One number per row, in row order; null prints the missing glyph, { state } n/a or n.m."),
   format: formatExample.optional().describe('Format by example, such as 1,234 or 12.5%.'),
-  aggregate: z.enum(['sum', 'none']).optional().describe("What the Total row prints: 'sum' (default) adds the column, 'none' leaves the cell empty for numbers that do not add up, such as averages or rates."),
+  aggregate: z.enum(['sum', 'none']).optional().describe("What the Total row prints: 'sum' (default) adds the column, 'none' leaves the cell empty for numbers that do not add up, such as averages or rates. The default is 'none' where the column format is a percentage, percentage points or a multiple; an explicit 'sum' there warns aggregate-non-additive."),
 });
 
 const panelSchema = z.strictObject({
@@ -78,7 +78,7 @@ const panelSchema = z.strictObject({
     'A row without a range draws and prints its sum. The Total row adds the ranges, counting a row without one at its sum at both ends.',
   ),
   format: formatExample.optional().describe('Format by example for the end labels and the total; falls back to options.format.'),
-  aggregate: z.enum(['sum', 'none']).optional().describe("What the Total row prints for this panel: 'sum' (default) adds the rows, or their ranges when a row has one; 'none' leaves it empty. Use 'none' for shares, rates or averages, such as a % of each row's own base, whose sum means nothing."),
+  aggregate: z.enum(['sum', 'none']).optional().describe("What the Total row prints for this panel: 'sum' (default) adds the rows, or their ranges when a row has one; 'none' leaves it empty. The default is 'none' where the panel format (or options.format) is a percentage, percentage points or a multiple, or the unit is '%', except under variant 'cascade'; an explicit 'sum' there warns aggregate-non-additive. Use 'none' for shares, rates or averages, such as a % of each row's own base, whose sum means nothing."),
 });
 
 export const bartableDataSchema = z
