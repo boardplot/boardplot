@@ -1194,6 +1194,26 @@ it('keeps three lifted decimals as decimals when fitFormats writes the cell form
   expect(cell!.lines.join('')).toBe('$0.003M');
 });
 
+// A margin on a credit-note row with negative revenue printed 11.8% for -2 over -17 with no word that it is arithmetic, while percentDelta prints n.m. off a negative base.
+it('warns once per computed column when a ratio divides by a negative cell, and keeps the number', () => {
+  const data: TableData = {
+    columns: [{ id: 'l', kind: 'rowLabel', label: 'Line' }, { id: 'rev', kind: 'value' }, { id: 'ebit', kind: 'value' },
+      { id: 'm', kind: 'computed', calc: { op: 'mul', a: { op: 'div', a: { ref: 'ebit' }, b: { ref: 'rev' } }, b: { lit: 100 } }, format: '1.0%' },
+      { id: 'h', kind: 'computed', calc: { op: 'div', a: { ref: 'ebit' }, b: { lit: -2 } }, format: '1.0' }],
+    rows: [
+      { id: 'a', label: 'Normal line', cells: { rev: 100, ebit: 20 } },
+      { id: 'b', label: 'Credit notes', cells: { rev: -17, ebit: -2 } },
+      { id: 'c', label: 'Returns', cells: { rev: -5, ebit: -1 } },
+    ],
+  };
+  const resolved = resolveTable(data);
+  const found = resolved.warnings.filter((w) => w.code === 'ratio-negative-base');
+  expect(found).toHaveLength(1);
+  expect(found[0]).toMatchObject({ severity: 'info', owner: { rowId: 'b', colId: 'm' } });
+  expect(found[0]!.message).toContain('1 more');
+  expect(resolved.computedCells.find((r) => r.rowId === 'b' && r.colId === 'm')).toMatchObject({ displayed: '11.8%', state: 'value' });
+});
+
 // A margin row (gp / rev * 100) in a delta column printed the ratio of the changes (30.0%) and not the change of the margins (10.0%).
 it('prints the change of a nonlinear row calc in a delta or sub column, and keeps a linear one', () => {
   const data: TableData = {

@@ -832,6 +832,16 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
   });
   if (calcNotes.nearZero) autoFootnotes.add(options.strings?.nearZeroChange ?? localeStrings(options.locale?.language).nearZeroChange);
   if (calcNotes.mixedCoverage) autoFootnotes.add(options.strings?.mixedCoverage ?? localeStrings(options.locale?.language).mixedCoverage);
+  // A ratio off a negative base prints as plain arithmetic, so a reader sees -2 / -17 as 11.8%. The number stays; the lint says it is not n.m.
+  for (const { scope, rowId, colId, cells } of calcNotes.negativeBase) {
+    const more = cells > 1 ? ` and ${cells - 1} more` : '';
+    warnings.push({
+      code: 'ratio-negative-base',
+      severity: 'info',
+      message: `${scope === 'column' ? `column '${colId}' in row '${rowId}'` : `row '${rowId}' in column '${colId}'`}${more} divides by a negative number, so the ratio prints as plain arithmetic; a percentDelta calc prints n.m. off a negative base`,
+      owner: { rowId, colId },
+    });
+  }
 
   // ---- display specs: from data + options ONLY (before any width solving) ----
   const locale = localeDefaults(options.locale);
@@ -2518,6 +2528,14 @@ function walkRowCalc(calc: Calc, owner: Id, rowIds: Set<Id>, calcRows: Set<Id>, 
   return reads;
 }
 
+interface NegativeBase {
+  scope: 'column' | 'row';
+  rowId: Id;
+  colId: Id;
+  /** How many cells of the column calc, or of the row calc, divide by a negative cell. */
+  cells: number;
+}
+
 function evaluateTableCalcs(
   flat: FlatRow[],
   valueCols: Extract<TableColumn, { kind: 'value' }>[],
@@ -2529,7 +2547,15 @@ function evaluateTableCalcs(
   colById: Map<Id, TableColumn>,
   noPrevious: 'na' | 'missing' = 'na',
   contributionSign: (id: Id) => number = () => 1,
-): { nearZero: boolean; mixedCoverage: boolean } {
+): { nearZero: boolean; mixedCoverage: boolean; negativeBase: NegativeBase[] } {
+  /** The first cell of each column calc and each row calc that divides by a negative cell. */
+  const negativeBase = new Map<string, NegativeBase>();
+  const noteNegativeBase = (scope: 'column' | 'row', rowId: Id, colId: Id): void => {
+    const key = `${scope}:${scope === 'column' ? colId : rowId}`;
+    const seen = negativeBase.get(key);
+    if (seen) seen.cells += 1;
+    else negativeBase.set(key, { scope, rowId, colId, cells: 1 });
+  };
   /** Whether a percent change printed n.m. for a near-zero base, so the table adds its note. */
   let nearZero = false;
   /** Whether a figure printed n.m. because its operands sum different rows. */
@@ -2567,6 +2593,7 @@ function evaluateTableCalcs(
       }
       states.set(col.id, { raw: res.raw, state: res.state, ...partialFrom(res, row.id, states) });
       if (res.nearZero) nearZero = true;
+      if (res.negativeBase && res.state === 'value') noteNegativeBase('column', row.id, col.id);
       pushCalcRecord(records, row.id, col.id, res);
     }
   }
@@ -2615,10 +2642,11 @@ function evaluateTableCalcs(
       }
       states.set(col.id, { raw: res.raw, state: res.state, ...partialFrom(res, row.id, read) });
       if (res.nearZero) nearZero = true;
+      if (res.negativeBase && res.state === 'value') noteNegativeBase('row', row.id, col.id);
       pushCalcRecord(records, row.id, col.id, res);
     }
   }
-  return { nearZero, mixedCoverage };
+  return { nearZero, mixedCoverage, negativeBase: [...negativeBase.values()] };
 }
 
 /** A column calc that is the change between two cells: delta, or sub of two column references. */
@@ -2687,6 +2715,8 @@ interface CalcOutcome {
   state: CellState;
   op: string;
   inputs: { rowId: Id; colId: Id; value: number }[];
+  /** A ratio of a value that divides by a negative cell and prints as plain arithmetic. */
+  negativeBase?: true;
   /** A percent change printed n.m. because its base is near zero. */
   nearZero?: true;
 }
@@ -2729,6 +2759,7 @@ function evalCalc(
   /** Canonical text of the sub-expression last evaluated by `evalNode`. */
   let expr = '';
   let nearZero = false;
+  let negativeBase = false;
   const emit = (text: string): void => {
     expr = text;
   };
@@ -2779,6 +2810,8 @@ function evalCalc(
         if (node.op === 'sub') return a - b;
         if (node.op === 'mul') return a * b;
         if (b === 0) return a === 0 ? 'na' : 'nm';
+        // A literal divisor is the author's own constant, not a base that went negative.
+        if (b < 0 && !('lit' in node.b)) negativeBase = true;
         return a / b;
       }
       case 'delta': {
@@ -2845,7 +2878,7 @@ function evalCalc(
   const result = evalNode(calc);
   const op = 'ref' in calc ? `ref(${expr})` : 'lit' in calc ? `lit(${expr})` : expr;
   if (isState(result)) return { raw: null, state: result, op, inputs, ...(nearZero && result === 'nm' ? { nearZero: true as const } : {}) };
-  return { raw: result, state: 'value', op, inputs };
+  return { raw: result, state: 'value', op, inputs, ...(negativeBase ? { negativeBase: true as const } : {}) };
 }
 
 export { datePatternFromExample, MINUS };

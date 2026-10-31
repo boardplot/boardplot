@@ -105,7 +105,7 @@ Consulting-grade table: hierarchy with honest totals (derive/validate/source), t
 | columns[].calc.ref.col (columns[] branch 3; columns[].calc branch 1) | string |  | Column id. Omitted means the column being evaluated. |
 | columns[].calc.ref.previous (columns[] branch 3; columns[].calc branch 1) | true |  | Prior member in this group. The first member is n/a. One of `true`. |
 | columns[].calc.lit (columns[] branch 3; columns[].calc branch 2) | number | yes | Constant in source units. |
-| columns[].calc.op (columns[] branch 3; columns[].calc branch 3) | string | yes | Arithmetic on a and b. One of `'add'`, `'sub'`, `'mul'`, `'div'`. |
+| columns[].calc.op (columns[] branch 3; columns[].calc branch 3) | string | yes | Arithmetic on a and b. x/0 prints n.m., 0/0 prints n/a. A division by a negative cell is plain arithmetic and warns 'ratio-negative-base' (info); percentDelta prints n.m. there. One of `'add'`, `'sub'`, `'mul'`, `'div'`. |
 | columns[].calc.a (columns[] branch 3; columns[].calc branch 3) | object | yes | Cell or expression. |
 | columns[].calc.b (columns[] branch 3; columns[].calc branch 3) | object | yes | Cell or expression. |
 | columns[].calc.op (columns[] branch 3; columns[].calc branch 4) | string | yes | Absolute value. One of `'abs'`. |
@@ -204,7 +204,7 @@ Consulting-grade table: hierarchy with honest totals (derive/validate/source), t
 | rows[].calc.ref.col (rows[].calc branch 1) | string |  | Column id. Omitted means the column being evaluated. |
 | rows[].calc.ref.previous (rows[].calc branch 1) | true |  | Prior member in this group. The first member is n/a. One of `true`. |
 | rows[].calc.lit (rows[].calc branch 2) | number | yes | Constant in source units. |
-| rows[].calc.op (rows[].calc branch 3) | string | yes | Arithmetic on a and b. One of `'add'`, `'sub'`, `'mul'`, `'div'`. |
+| rows[].calc.op (rows[].calc branch 3) | string | yes | Arithmetic on a and b. x/0 prints n.m., 0/0 prints n/a. A division by a negative cell is plain arithmetic and warns 'ratio-negative-base' (info); percentDelta prints n.m. there. One of `'add'`, `'sub'`, `'mul'`, `'div'`. |
 | rows[].calc.a (rows[].calc branch 3) | object | yes | Cell or expression. |
 | rows[].calc.b (rows[].calc branch 3) | object | yes | Cell or expression. |
 | rows[].calc.op (rows[].calc branch 4) | string | yes | Absolute value. One of `'abs'`. |
