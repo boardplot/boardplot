@@ -364,6 +364,9 @@ function rowFont(row: LabelCardRow, theme: Theme): FontSpec {
     row.kind === 'title' || row.pointed || (row.kind === 'value' && row.value === undefined) ? 600 : 400);
 }
 
+/** Cost per CSS pixel of card area outside the chart frame. A filled mark costs 10. */
+const OUTSIDE_CHART_WEIGHT = 1;
+
 interface CardSlot extends SlotCandidate { side?: CardSide; fits?: boolean; phase?: number }
 interface CardSlots extends Array<CardSlot> { expand?: () => CardSlot[] }
 
@@ -412,9 +415,13 @@ export function tableCardSlots(target: Rect, boundary: Rect, width: number, heig
   return besideSlots(target, width, height, boundary, { ...input, slots: 'table' });
 }
 
-/** Cost orders a phase. Only when every seat fails may hard overlap win. */
+/**
+ * Cost orders a phase. Only when every seat fails may hard overlap win. A
+ * seat is safe only when it is clear of `forbidden` and of the pointer. A
+ * direct seat, which wins before cost is compared, must also pass `clear`.
+ */
 export function selectCardSlot(candidates: CardSlots, forbidden: readonly Rect[], cost: (slot: CardSlot) => number,
-  pointer?: Point): CardSlot {
+  pointer?: Point, clear?: (slot: CardSlot) => boolean): CardSlot {
   type Score = { slot: CardSlot; overlap: number; cost: number; safe: boolean };
   const scores = new Map<string, Score>();
   const score = (slot: CardSlot): Score => {
@@ -424,7 +431,7 @@ export function selectCardSlot(candidates: CardSlots, forbidden: readonly Rect[]
     if (cached) return { ...cached, slot };
     const overlap = activeCoverCost(slot.rect, forbidden);
     const result = { slot, overlap, cost: cost(slot), safe: slot.fits !== false && overlap === 0
-      && !(pointer && rectContains(slot.rect, { ...pointer, w: 0, h: 0 }, 0)) };
+      && !(pointer && rectContains(slot.rect, { ...pointer, w: 0, h: 0 }, 0)) && !(slot.phase! < 2 && clear?.(slot) === false) };
     scores.set(key, result);
     return result;
   };
@@ -668,14 +675,19 @@ export function placeLabelCard(input: LabelCardInput, width: number, height: num
   const candidates: CardSlot[] = target ? input.slots === 'table'
     ? tableCardSlots(target, frame, width, height, input) : besideSlots(target, width, height, frame, input) : frameSlots(frame, width, height);
   const covered = (rect: Rect) => cardCoverCost(rect, input.occupied, input.slots === 'table');
+  // The card explains the marks, so a direct seat over a filled mark does not win before cost is compared.
+  const coversFilledMark = (rect: Rect) => input.occupied.some(item => item.kind === 'mark' && item.filled !== false && overlapArea(rect, item.rect) > 0);
+  // The viewport bounds the card and the chart frame is only a preference: area outside the frame costs less than covering a mark.
+  const chart = input.chart ?? input.canvas;
+  const outsideChart = (rect: Rect) => input.slots === 'table' ? 0 : (rect.w * rect.h - overlapArea(rect, chart)) * OUTSIDE_CHART_WEIGHT;
   const exclusion = target ? { ...target, w: target.w || 0.001, h: target.h || 0.001 } : undefined;
   const forbidden = [...(exclusion ? [exclusion] : []), ...(input.slots === 'table' ? [] : input.forbidden ?? [])];
   const pointer = input.slots === 'table' && !input.pointer && target ? target
     : { ...(input.pointer ?? rectCenter(target ?? frame)), w: 0, h: 0 };
-  const cost = (slot: CardSlot) => Math.round((covered(slot.rect) + activeCoverCost(slot.rect, input.forbidden)
+  const cost = (slot: CardSlot) => Math.round((covered(slot.rect) + outsideChart(slot.rect) + activeCoverCost(slot.rect, input.forbidden)
     + (coversPointer(slot.rect) ? slot.rect.w * slot.rect.h * 1000 : 0) + boxGap(slot.rect, pointer)
     + (slot.side === input.previousSide ? 0 : 8)) * 1000) / 1000;
-  const selected = selectCardSlot(candidates, forbidden, cost, input.pointer);
+  const selected = selectCardSlot(candidates, forbidden, cost, input.pointer, input.slots === 'table' ? undefined : slot => !coversFilledMark(slot.rect));
   const rect = selected.rect;
   const placement = covered(rect) > 0 || activeCoverCost(rect, forbidden) > 0 || activeCoverCost(rect, input.forbidden) > 0 ? 'overlay' : target ? 'beside' : 'frame';
   // Cost and side memory own the card seat. A second box solver would undo

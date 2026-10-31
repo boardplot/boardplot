@@ -181,12 +181,13 @@ export function useHover(input: { request: ResolvedChartRequest; geometry: Rende
     if (engine && model) setSelection(engine.hoverSelection(model, request, event, view, selection, custom));
   };
   /**
-   * A host card stays while the pointer travels to it: inside the corridor
+   * A card stays while the pointer travels to it: inside the corridor
    * from the point the record was picked to the card, and getting closer.
    * A pointer that rests there for 250 ms is hit-tested again.
    */
   const towardCard = (event: PointerEvent<HTMLElement>): boolean => {
-    const box = custom && engine && selection.ids.length ? card.current?.getBoundingClientRect() : undefined;
+    const shown = engine && selection.ids.length ? card.current?.getBoundingClientRect() : undefined;
+    const box = shown && shown.width > 0 && shown.height > 0 ? shown : undefined;
     const at = { x: event.clientX, y: event.clientY };
     const distance = box ? Math.hypot(Math.max(box.left - at.x, 0, at.x - box.right), Math.max(box.top - at.y, 0, at.y - box.bottom)) : Infinity;
     const { from } = corridor.current;
@@ -283,7 +284,6 @@ export function useHover(input: { request: ResolvedChartRequest; geometry: Rende
     onPointerLeave: (event: PointerEvent<HTMLElement>) => {
       if (event.pointerType === 'touch') return;
       clearTimer('rest');
-      if (!custom) { close(); return; }
       // A card that holds the focus stays; else the pointer has 150 ms to cross a gap into the card.
       if (card.current?.contains(card.current.ownerDocument.activeElement)) return;
       clearTimer('close');

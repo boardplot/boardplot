@@ -60,7 +60,7 @@ export function HoverSurface({ geometry, request, prepared, hover, table, respon
     {keys && <RecordKeys geometry={geometry} responsive={responsive} cursor={cursor} describedBy={custom ? contentId : undefined} />}
     {engine && custom && <engine.CustomCard input={view.cardInput!} theme={view.cardTheme!} origin={origin} label={active!.label}
       contentId={contentId} locale={request.locale?.language} cardRef={cardRef}>{content}</engine.CustomCard>}
-    {engine && !renderHoverContent && view.card && origin && <engine.ChartCard layout={view.card} theme={view.cardTheme!} origin={origin} />}
+    {engine && !renderHoverContent && view.card && origin && <engine.ChartCard layout={view.card} theme={view.cardTheme!} origin={origin} cardRef={cardRef} />}
     {dataTable && table && <dataTable.DataTable request={request} geometry={geometry} prepared={prepared} mode={table} />}
   </div>;
 }

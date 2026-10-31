@@ -9,7 +9,7 @@ export const hoverSchema = z.union([
       z.literal(false).describe('false draws no card.'),
       z.literal('label').describe('The label card: the hovered record\'s own facts.'),
       z.literal('sparkline').describe('Table only: the row drawn across its column group, the hovered point ringed, with the cell\'s change lines beside its value.'),
-    ]).optional().describe('Label card with the hovered record\'s own facts, placed beside the mark by the label solver and always inside the chart\'s own frame. Default \'label\'. On a table, \'sparkline\' draws the row across its column group instead and no card where the group holds fewer than three numbers.'),
+    ]).optional().describe('Label card with the hovered record\'s own facts, placed beside the mark by the label solver, inside the browser viewport. It may extend beyond the chart frame and never changes the page layout. Default \'label\'. On a table, \'sparkline\' draws the row across its column group instead and no card where the group holds fewer than three numbers.'),
     highlight: z.boolean().optional().describe('Dim the other series and outline the hovered marks; on a table, wash the row of the hovered cell instead. Default true.'),
   }).describe('Turn the card or the highlight off separately.'),
 ]).describe('Pointer hover: a label card and a highlight of the hovered series. Nothing else is interactive. The server render is the static chart.');
