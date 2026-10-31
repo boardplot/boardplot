@@ -263,7 +263,10 @@ export function formatExampleProblem(example: string): { message: string; replac
 }
 
 /** A number run; a leading separator counts when a digit follows and no letter precedes (".5", not "Fr.5"). */
-const NUMBER_RUN = /(?:(?<!\p{L})[.,](?=[0-9]))?[0-9][0-9.,'  ]*/u;
+/** The spaces a format example groups digits with: space, no-break space, narrow no-break space (what `Intl` prints for fr-FR) and thin space. */
+const GROUP_SPACES = ' \u00a0\u202f\u2009';
+
+const NUMBER_RUN = new RegExp(`(?:(?<!\\p{L})[.,](?=[0-9]))?[0-9][0-9.,'${GROUP_SPACES}]*`, 'u');
 
 /**
  * The example's number. Digits after a letter belong to a unit name
@@ -293,7 +296,7 @@ function numericBody(s: string): { index: number; text: string } | null {
 }
 
 function analyzeBody(body: string, spec: NumberFormatSpec): void {
-  const seps = body.match(/[.,'  ]/g) ?? [];
+  const seps = body.match(new RegExp(`[.,'${GROUP_SPACES}]`, 'g')) ?? [];
   if (seps.length === 0) {
     spec.decimals = 0;
     return;
@@ -328,12 +331,12 @@ function analyzeBody(body: string, spec: NumberFormatSpec): void {
   // Space/prime, repeated separators and three trailing digits imply grouping,
   // except after a zero or empty integer part: "0.125" and ".125" are decimals.
   const fractionOnly = /^0?$/.test(body.slice(0, lastIdx));
-  if (ch === ' ' || ch === ' ' || ch === "'" || seps.length > 1 || (digitsAfterLast === 3 && !fractionOnly)) asThousands(ch);
+  if (GROUP_SPACES.includes(ch) || ch === "'" || seps.length > 1 || (digitsAfterLast === 3 && !fractionOnly)) asThousands(ch);
   else asDecimal(ch);
 }
 
 function normalizeSep(ch: string): NumberFormatSpec['thousandsSep'] {
-  if (ch === ' ') return ' ';
+  if (GROUP_SPACES.includes(ch)) return ' ';
   return ch as NumberFormatSpec['thousandsSep'];
 }
 
