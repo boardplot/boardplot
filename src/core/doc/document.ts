@@ -6,7 +6,7 @@ import { documentSchemaHint, documentSchemaHintWarning } from '../schema/documen
 import { flattenIssues } from '../schema/flattenIssues';
 import type { LintWarning } from '../types/scene';
 import type { ThemeRef } from '../types/theme';
-import { optionsTake, validateChartInput } from './chartValidation';
+import { optionsTake } from './chartValidation';
 import { DocExpansionError, expandDoc, missingChartName, ownedDocumentCopy } from './docExpand';
 import { completeDiagnostic, rememberDiagnosticSource, sourceSchemaDiagnostic, type DocumentFinding } from './diagnostics';
 import { toJsonPointer } from '../diagnostics/jsonPatch';
@@ -158,18 +158,11 @@ function unknownField(
 /** Chart furniture an author often puts at the top level; options takes each of these as a string. */
 const MOVABLE_KEYS = ['title', 'subtitle', 'unit', 'source'] as const;
 
-/** Whether a spec, once its stray keys are gone, is accepted: it parses and its chart passes the chart schemas. */
-function schemaAccepts(candidate: Record<string, unknown>): boolean {
-  try {
-    const { doc } = parseDocumentInput(candidate);
-    const scratch: DocumentEnvelope = { ok: true, errors: [], warnings: [] };
-    return doc.charts.every(chart => validateChartInput(doc, chart, scratch) !== null) && scratch.errors.length === 0;
-  } catch {
-    return false;
-  }
-}
-
-/** Reads a spec the way the caller will: `accepts` says whether a spec with no stray key is accepted. Without it, only the schemas judge. */
+/**
+ * Reads a spec the way the caller will: `accepts` says whether a spec with no
+ * stray key is accepted, which only a caller that lays charts out can know.
+ * Without it, no root key moves into options and each is removed.
+ */
 export interface ParseHooks {
   accepts?: (candidate: Record<string, unknown>) => boolean;
 }
@@ -285,7 +278,7 @@ function bareFieldErrors(spec: Record<string, unknown>, accepts: (candidate: Rec
  * points them back into the bare spec.
  */
 export function parseDocumentInput(input: unknown, hooks: ParseHooks = {}): DocumentParseResult {
-  const accepts = hooks.accepts ?? schemaAccepts;
+  const accepts = hooks.accepts ?? (() => false);
   if (isBareChart(input)) {
     const unknown = bareFieldErrors(input, accepts);
     if (unknown.length) throw new DocumentSchemaError(unknown.map((finding) => ({ ...finding, path: `/charts/0${finding.path}`,

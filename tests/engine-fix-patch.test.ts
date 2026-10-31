@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import '../src/core/charts';
 import { render } from '../src/cli/render';
 import { getFixtures } from '../src/fixtures';
+import { beginSpecParse } from '../src/react/specValidation';
 
 type Op = { op: 'add' | 'replace' | 'test' | 'remove'; path: string; value?: unknown };
 
@@ -124,6 +125,19 @@ describe('root key fixes', () => {
       const fixed = applyPatch(spec, refused.errors.flatMap((error: any) => error.fix));
       expect(fixed.options).toMatchObject({ source: 'Finance' });
       expect(fixed.options).not.toHaveProperty('unit');
+      expect(render({ spec: fixed, format: 'svg' }).body).toMatchObject({ ok: true });
+    }
+  });
+
+  // The React parse cannot lay a chart out, so its move fix left a chart that was refused again (a share pyramid with a unit, a compact chart with a title); it removes the key.
+  it('removes a root key where the caller cannot lay the moved chart out', () => {
+    for (const [type, id, extra] of [['pyramid', 'workforce-tenure-gender', { unit: 'U' }], ['kpi', 'note-and-compact', { title: 'Revenue' }]] as const) {
+      const spec = { ...fixtureSpec(type, id), ...extra };
+      let errors: any[] = [];
+      try { beginSpecParse(spec).finish(); } catch (error: any) { errors = error.errors; }
+      expect(errors.length).toBeGreaterThan(0);
+      const fixed = applyPatch(spec, errors.flatMap((error: any) => error.fix));
+      expect(Object.keys(extra).every((key) => !(key in fixed))).toBe(true);
       expect(render({ spec: fixed, format: 'svg' }).body).toMatchObject({ ok: true });
     }
   });
