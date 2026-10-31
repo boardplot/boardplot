@@ -308,4 +308,20 @@ describe('chart layout edge cases', () => {
     expect(ids).not.toContain('axis:y:title');
     expect(geometry.warnings.map((w: { code: string }) => w.code)).toContain('axis-title-dropped');
   });
+
+  // The y arrows are drawn from the plot centre toward Higher and Lower also when no y axis title is set.
+  it('a tall qualitative scatter without a y title keeps both y arrows', () => {
+    const points = [[4, 3], [2, 5], [3, 5], [5, 2]].map(([x, y], i) => ({ id: `p${i}`, label: `Case ${i}`, x, y }));
+    const request = {
+      type: 'scatter',
+      data: { points },
+      options: { size: { width: 400, height: 300, unit: 'pt' }, title: 'T', qualitativeAxes: true, axisTitles: { x: 'Ease' } },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+    const ids = geometry.scene.map((node: { id?: string }) => String(node.id));
+    expect(ids).not.toContain('axis:y:title');
+    expect(ids).toContain('axis:y:arrow-high');
+    expect(ids).toContain('axis:y:arrow-low');
+  });
 });

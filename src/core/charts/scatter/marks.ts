@@ -367,9 +367,10 @@ function qualitativeAxes(env: ScatterEnv, area: ScatterPlotArea, nodes: SceneNod
       field: ['options', 'axisTitles', 'y'],
     });
   }
-  if (column.lines.length && titleFits) {
+  if (titleFits) {
+    // Without a y title the arrows still run from the centre toward the two ends.
     const titleY = plot.y + plot.h / 2 - titleH / 2;
-    text('axis:y:title', colX, titleY, column.lines, 'middle', bold);
+    if (column.lines.length) text('axis:y:title', colX, titleY, column.lines, 'middle', bold);
     const toTop = arrow(env.theme, env.va.reverse ? 'axis:y:arrow-low' : 'axis:y:arrow-high', colX, titleY - gap, colX, plot.y + tickH + gap);
     const toBottom = arrow(env.theme, env.va.reverse ? 'axis:y:arrow-high' : 'axis:y:arrow-low', colX, titleY + titleH + gap, colX, plot.y + plot.h - tickH - gap);
     nodes.push(...toTop, ...toBottom);
