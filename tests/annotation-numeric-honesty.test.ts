@@ -831,3 +831,15 @@ it('prints a magnitude the same on every surface', async () => {
     expect(labelCardContent(record, request.locale?.language).rows.map(row => row.text)).toContain(format === undefined ? '2.500.000.000' : text);
   }
 });
+
+// A line at 20 named 'Improve from -20' or 'Top 120' printed no value of its own, so it read as a line at -20 or 120.
+it('adds a reference line value unless the name holds that same number', () => {
+  const text = (value: number, label: string) => requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'line',
+    data: { categories: ['a', 'b'], series: [{ id: 's', label: 'S', values: [5, 40] }] },
+    options: { annotations: [{ kind: 'valueLine', value, label }] } } as never))).labels.find(entry => entry.kind === 'valueLine')?.text;
+  expect(text(20, 'Improve from -20')).toBe('Improve from -20: 20');
+  expect(text(20, 'Top 120')).toBe('Top 120: 20');
+  expect(text(20, 'Target 20')).toBe('Target 20');
+  expect(text(20, 'FY-20')).toBe('FY-20');
+  expect(text(-20, 'Floor -20')).toBe('Floor -20');
+});
