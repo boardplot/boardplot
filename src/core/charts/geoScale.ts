@@ -12,7 +12,7 @@ import { structureCount } from '../structureCounts';
  */
 
 import type { LegendItemInput } from '../frame';
-import { NAMED_COLUMN_STATES, type NamedColumnState } from '../schema/namedColumns';
+import { NAMED_COLUMN_STATES, NAMED_STATE_PATTERN, type NamedColumnState } from '../schema/namedColumns';
 import { colorblindPaint, semanticPalettePaint } from '../theme';
 import type { Direction } from '../types/cell';
 import type { LintWarning, Paint } from '../types/scene';
@@ -437,12 +437,6 @@ export function ingestGeoRegions(
   return { valuesById, statesById };
 }
 
-/** Named map states share one pattern, key and description model. */
-const GEO_STATES = {
-  suppressed: { label: 'Suppressed', reading: 'suppressed', pattern: 'crosshatch' },
-  nm: { label: 'Not meaningful', reading: 'not meaningful', pattern: 'horizontal' },
-  na: { label: 'Not applicable', reading: 'not applicable', pattern: 'vertical' },
-} as const;
 function normalizeGeoRegionState(value: number | null, state: unknown, index: number): NamedColumnState | undefined {
   if (state === undefined) return undefined;
   if (!(NAMED_COLUMN_STATES as readonly unknown[]).includes(state)) {
@@ -451,7 +445,7 @@ function normalizeGeoRegionState(value: number | null, state: unknown, index: nu
   if (value !== null) throw new NormalizeError('state-with-value', `regions[${index}].state`, 'a region state requires value null');
   return state as NamedColumnState;
 }
-export const geoStatePattern = (state: NamedColumnState) => GEO_STATES[state].pattern;
+export const geoStatePattern = (state: NamedColumnState) => NAMED_STATE_PATTERN[state];
 export const geoStateLabel = (state: NamedColumnState, options?: Pick<import('../types/options').BaseOptions, 'locale' | 'strings'>) => chartString(options, { suppressed: 'suppressed', nm: 'notMeaningful', na: 'notApplicableName' }[state] as 'suppressed' | 'notMeaningful' | 'notApplicableName');
 export function geoStateLegend(states: Iterable<NamedColumnState>, options?: Pick<import('../types/options').BaseOptions, 'locale' | 'strings'>): LegendItemInput[] {
   const present = new Set(states);
