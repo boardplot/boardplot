@@ -904,6 +904,11 @@ function layoutWaterfallWithPad(
       if (hiddenAfter.has(open.id)) return null;
       for (const next of items.slice(items.indexOf(open) + 1)) {
         if (connectorInto.has(next.id)) return null;
+        // A subtotal drawn from the baseline leaves the running sum alone, and its check value is only its block sum.
+        if (next.type === 'subtotal' && next.toBaseline) {
+          if (hiddenAfter.has(next.id)) return null;
+          continue;
+        }
         if (next.type !== 'delta') {
           if (next.checkValue === null) return null;
           const value = compensatedSum([next.checkValue, ...deltas.map((delta) => -delta)]);
@@ -933,7 +938,7 @@ function layoutWaterfallWithPad(
      */
     let contributions: { ref: Id; value: number }[] = [];
     /** The deltas since the last baseline: what a subtotal drawn `toBaseline` adds up. */
-    let block: { ref: Id; value: number }[] = [];
+    let block: { ref: Id; value: number; segments: number[] }[] = [];
     let compositionEligible = true;
     let hasSegmentedDelta = false;
     // Each series keeps its raw steps, so its total and the segment sum use the
@@ -994,7 +999,7 @@ function layoutWaterfallWithPad(
         // would be a claim the engine cannot support.
         const derivedOpening = wasStarted ? undefined : backwardOpenings.get(it.id);
         totalBasis[it.id] = blockSum
-          ? { authored: false, inputs: block.map((c) => ({ ...c })) }
+          ? { authored: false, inputs: block.map(({ ref, value }) => ({ ref, value })) }
           : wasStarted
           ? { authored: false, inputs: contributions.map((c) => ({ ...c })) }
           : derivedOpening
@@ -1006,7 +1011,7 @@ function layoutWaterfallWithPad(
           contributions = [{ ref: it.id, value }];
           operands = [value];
         }
-        const totalCheck = started && it.checkValue !== null ? checkAgainstSum(it.checkValue, value, blockSum ? block.map((c) => c.value) : summed) : undefined;
+        const totalCheck = started && it.checkValue !== null ? checkAgainstSum(it.checkValue, value, blockSum ? block.flatMap((c) => c.segments) : summed) : undefined;
         if (totalCheck?.withinRounding) discloseRoundedCheck(it, k, totalCheck.printed, 'checkTotalNote');
         const totalMismatch = totalCheck && !totalCheck.withinRounding ? totalCheck.printed : undefined;
         if (totalMismatch) {
@@ -1066,7 +1071,7 @@ function layoutWaterfallWithPad(
           block = [];
         }
         contributions.push({ ref: it.id, value: sum });
-        block.push({ ref: it.id, value: sum });
+        block.push({ ref: it.id, value: sum, segments: segmentValues });
         if (it.authoredSegments && compositionEligible) {
           hasSegmentedDelta = true;
           for (const seg of it.segments) {
@@ -1660,7 +1665,10 @@ function layoutWaterfallWithPad(
     // A case's line to its next bar would cross the other case's bar: case bars draw none.
     // A subtotal drawn from the baseline stands apart from the balance: the line skips over it.
     const apart = (item: NormItem) => levels[item.id]?.balance !== undefined;
-    const nextIndex = items.findIndex((item, n) => n > i && !apart(item));
+    // A hidden break on such a subtotal starts a new sum after it, so no line reaches past it.
+    let nextIndex = i + 1;
+    while (nextIndex < items.length && apart(items[nextIndex]!) && !hiddenAfter.has(items[nextIndex]!.id)) nextIndex++;
+    if (nextIndex >= items.length || apart(items[nextIndex]!)) nextIndex = -1;
     if (caseIndex === undefined && !apart(it) && nextIndex > 0 && !hiddenAfter.has(it.id) && !connectorInto.has(items[nextIndex]!.id)) {
       const next = items[nextIndex]!;
       const level = it.type === 'delta' ? lvl.end : totals[it.id]!;

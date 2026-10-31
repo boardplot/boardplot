@@ -220,6 +220,33 @@ describe('a subtotal with toBaseline', () => {
   });
 });
 
+describe('a subtotal with toBaseline beside checks, hidden breaks and segments', () => {
+  type G = Geometry<{ connectors: { from: string; to: string }[] }, { totals: Record<string, number>; levels: Record<string, { start: number; end: number }> }>;
+  const run = (data: object) => def.layout(def.normalize(data) as never, {} as never) as unknown as G;
+  const codes = (g: G) => g.warnings.filter((w) => ['check-value-rounded', 'derived-mismatch'].includes(w.code)).map((w) => w.code);
+
+  // A baseline subtotal's check value is its block sum, so the backward opening read it as a running balance and drew 0 and 10 for 100 and 110.
+  it('solves an omitted opening past it, not from its block sum', () => {
+    const g = run({ items: [{ id: 'o', type: 'total' }, { id: 'a', value: 10 }, { id: 's', type: 'subtotal', toBaseline: true, value: 10 }, { id: 'e', type: 'total', value: 110 }] });
+    expect([g.derived.totals.o, g.derived.totals.s, g.derived.totals.e]).toEqual([100, 10, 110]);
+  });
+
+  // The default connector skipped a baseline subtotal that carries a hidden break, and drew a line into a step that starts a new sum at zero.
+  it('draws no connector across its hidden break', () => {
+    const g = run({
+      items: [{ id: 'o', type: 'total', value: 100 }, { id: 'a', value: 10 }, { id: 's', type: 'subtotal', toBaseline: true }, { id: 'b', value: 5 }],
+      connectors: [{ from: 's', to: 'b', hidden: true }],
+    });
+    expect([g.derived.levels.b!.start, g.marks.connectors.filter((c) => c.to === 'b')]).toEqual([0, []]);
+  });
+
+  // The block's steps were checked as their summed values, so segments of 0.25 and 0.75 gave a tolerance of 0.5 and a check of 1.4 passed as rounding.
+  it('checks its value against the authored segments of the block', () => {
+    const g = run({ items: [{ id: 'o', type: 'total', value: 0 }, { id: 'a', segments: [{ id: 'x', value: 0.25 }, { id: 'y', value: 0.75 }] }, { id: 's', type: 'subtotal', toBaseline: true, value: 1.4 }] });
+    expect(codes(g)).toEqual(['derived-mismatch']);
+  });
+});
+
 describe('two cases in one bridge', () => {
   it('runs each case its own levels side by side in every step, keys the cases and draws no connectors', () => {
     const waterfall = getChartDefinition('waterfall')!;
