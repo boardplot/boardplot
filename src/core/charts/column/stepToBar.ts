@@ -31,8 +31,8 @@ const SAME_OPTIONS = new Set([
   'variant', 'referenceStyle', 'netLine', 'labels', 'strings', 'valueAxis', 'annotations',
   'measure', 'sizeFloor', 'authoredFootnotes', 'footnotesOff',
 ]);
-/** The wording keys a bar prints as a column does. */
-const SAME_STRINGS = new Set(['net', 'average', 'others', 'toDate', 'hiddenLabels', 'valuesNotOnColumns', 'aboveZero', 'belowZero', 'knownPartsTotals']);
+/** The wording keys a bar prints as a column does. moreListed ends a capped note, and a React chart with hover sets it itself. */
+const SAME_STRINGS = new Set(['net', 'average', 'others', 'toDate', 'hiddenLabels', 'valuesNotOnColumns', 'aboveZero', 'belowZero', 'knownPartsTotals', 'moreListed']);
 const SAME_VALUE_AXIS = new Set(['show', 'min', 'includeZero']);
 const SAME_LABELS = new Set(['restSeries']);
 const SAME_ANNOTATIONS = new Set(['note', 'callout', 'diff', 'delta', 'cagr', 'band', 'valueLine']);
@@ -74,6 +74,10 @@ export function stepToBar(
   const names = column.labels.filter((label) => label.kind === 'category');
   const lost = names.filter((label) => label.hidden === 'density');
   if (lost.length === 0 || panelTypeClass(options) !== undefined) return undefined;
+  // A pinned width never draws at another width. A layout at a wider width is the size search pricing
+  // a refusal of the pinned one, and its chart is not drawn, so no bar is laid out for it.
+  const asked = (options as TargetSizeOptions)[TARGET_SIZE];
+  if (asked?.fixed.width === true && Math.abs(column.size.width - asked.sizePx.width) > SIZE_TOLERANCE) return undefined;
   // A setting a bar draws differently, or drops, keeps the column: the request decides before any bar is laid out.
   if (!barDrawsAlike(data, options)) return undefined;
   // An open height is the bar's to choose: the fit step after the layout gives its rows their height.

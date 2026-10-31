@@ -864,6 +864,16 @@ it('draws a column whose names cannot fit or rotate as bars, or lists the names 
   expect(hiddenNames(tall)).toEqual([]);
 });
 
+// A width pinned below the floor refuses, and the size search laid out a bar for every probe at the floor width, which the refusal never drew.
+it('lays out no bar for the probes that price a refusal at a pinned width', () => {
+  const names = Array.from({ length: 20 }, (_, i) => `Sector number ${i + 1} of the survey`);
+  const data = { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [{ id: 's', label: 'Margin', values: names.map((_, i) => 8 + ((i * 7) % 23)) }] };
+  barLayoutCalls.count = 0;
+  const refused = layoutResolvedRequest(resolveChartRequest({ type: 'column', data, options: { title: 'Margin by sector', unit: '%', size: { width: 240 } } } as never)) as Geometry;
+  expect(refused.refused).toBe(true);
+  expect(barLayoutCalls.count).toBe(0);
+});
+
 // A pinned height between the row floor and the bar's real minimum laid out a bar before the column kept its place, which slowed those columns.
 it('does not lay out a bar for a pinned height the bar rows and frame cannot fit', () => {
   const names = ['Automotive OEM', 'Automotive suppliers', 'Chemicals', 'Consumer goods', 'Energy utilities', 'Financial services', 'Food and beverage', 'Healthcare providers', 'Industrial machinery', 'Insurance',
