@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { NormalizeError } from '../../src/core/normalize/shared';
 import { MINUS } from '../../src/core/format';
-import { exampleSpec, formatNonzeroWithSpec, formatterFromExample, formatWithSpec, parseFormatExample, seriesRasterFormatter } from '../../src/core/formatSpec';
+import { exampleSpec, formatNonzeroWithSpec, formatterFromExample, formatWithSpec, parseFormatExample, seriesRasterFormatter, unitOfSpec } from '../../src/core/formatSpec';
 
 describe('parseFormatExample', () => {
   it('"+1,234" → forced sign, comma grouping', () => {
@@ -240,6 +240,8 @@ it('prints no bare B or T on a German or French chart without an authored word',
   expect(seriesRasterFormatter(undefined, [2.5e9], 'en', undefined, 'report').fmt(2.5e9)).toBe('2.5B');
   // One German axis reads "500 Mio." under "1,0 Mrd.", not "500M".
   expect(seriesRasterFormatter(undefined, [2.5e9, 5e8], 'de', undefined, 'report').fmt(5e8)).toBe('500 Mio.');
+  // A table header unit keeps the short form's space: "$ Mio.", not "$Mio.".
+  expect(unitOfSpec({ ...parseFormatExample('$1.0M'), magnitudeWord: undefined, locale: 'de' })).toBe('$ Mio.');
   expect(formatWithSpec(2.5e9, { ...parseFormatExample('1,0 Mio.'), locale: 'de' })).toBe('2,5 Mrd.');
 });
 

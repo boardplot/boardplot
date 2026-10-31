@@ -483,7 +483,11 @@ export function sameScale(a: Iterable<number | null | undefined>, b: Iterable<nu
  */
 export function unitOfSpec(spec: NumberFormatSpec): string | null {
   if (spec.suffix.includes('%') || specUnitKind(spec) === 'pp') return null;
-  const unit = `${spec.prefix.trim()}${magnitudeText(spec, spec.magnitude).trim()}${spec.suffix.trim()}`;
+  const magnitude = magnitudeText(spec, spec.magnitude);
+  // A local short form keeps its space beside a sign: "$ Mio.", not "$Mio.".
+  const unit = !spec.magnitudeWord && /^\s/.test(magnitude)
+    ? [spec.prefix.trim(), magnitude.trim(), spec.suffix.trim()].filter(Boolean).join(' ')
+    : `${spec.prefix.trim()}${magnitude.trim()}${spec.suffix.trim()}`;
   return unit.length > 0 ? unit : null;
 }
 
