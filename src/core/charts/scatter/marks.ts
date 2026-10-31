@@ -14,7 +14,7 @@ import { layoutValueAxis } from '../../axis';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import type { Id } from '../../types/cell';
 import type { MarkerShape } from '../../types/data';
-import type { AxisGeometry, Paint, SceneDisplay, SceneNode } from '../../types/scene';
+import type { AxisGeometry, LintWarning, Paint, SceneDisplay, SceneNode } from '../../types/scene';
 import { clampStateOf } from './clamp';
 import { fitLogTicks, logSpecFormat } from './logAxis';
 import { fmtPathNumber as fmtN } from '../../curve';
@@ -168,13 +168,13 @@ function pointMarkNode(theme: Theme, input: {
 }
 
 /** Both value axes, their titles and the frame lines (position encoding needs a frame). */
-function scatterAxes(env: ScatterEnv, domain: ScatterDomain, area: ScatterPlotArea, nodes: SceneNode[], claims: OccupiedIndex): AxisGeometry[] {
+function scatterAxes(env: ScatterEnv, domain: ScatterDomain, area: ScatterPlotArea, nodes: SceneNode[], claims: OccupiedIndex, warnings: LintWarning[]): AxisGeometry[] {
   const { theme, measure, axisFmt, va } = env;
   const { plot, x, y, axisTitles, fonts } = area;
   const axes: AxisGeometry[] = [];
   if (!area.showAxes) return axes;
   if (area.qualitative) {
-    qualitativeAxes(env, area, nodes, claims);
+    qualitativeAxes(env, area, nodes, claims, warnings);
     return axes;
   }
   // A log axis prints the densest 1-2-5 tick set whose labels fit (fitLogTicks).
@@ -323,7 +323,7 @@ const ARROW_HEAD = 7;
  * end; the y column prints the high end at the top, the title in the middle
  * and the low end at the bottom, with the arrows between them.
  */
-function qualitativeAxes(env: ScatterEnv, area: ScatterPlotArea, nodes: SceneNode[], claims: OccupiedIndex): void {
+function qualitativeAxes(env: ScatterEnv, area: ScatterPlotArea, nodes: SceneNode[], claims: OccupiedIndex, warnings: LintWarning[]): void {
   const { measure } = env;
   const { plot, fonts, axisTitles } = area;
   const column = qualitativeColumn(env, fonts, area.inner.w);
@@ -353,14 +353,27 @@ function qualitativeAxes(env: ScatterEnv, area: ScatterPlotArea, nodes: SceneNod
   // A reversed value axis puts the low end at the top; the ends and arrows follow the scale (x is never reversed).
   const topY = plot.y, bottomY = plot.y + plot.h - tickH;
   const [highY, lowY] = env.va.reverse ? [bottomY, topY] : [topY, bottomY];
-  text('axis:y:high', colX, highY, [column.high], 'middle', fonts.tick);
-  text('axis:y:low', colX, lowY, [column.low], 'middle', fonts.tick);
+  // A column too short for its title and arrows keeps the two ends; one too short for two ends keeps the higher end.
   const titleH = column.lines.length * lineH(bold);
-  const titleY = plot.y + plot.h / 2 - titleH / 2;
-  if (column.lines.length) text('axis:y:title', colX, titleY, column.lines, 'middle', bold);
-  const toTop = arrow(env.theme, env.va.reverse ? 'axis:y:arrow-low' : 'axis:y:arrow-high', colX, titleY - gap, colX, plot.y + tickH + gap);
-  const toBottom = arrow(env.theme, env.va.reverse ? 'axis:y:arrow-high' : 'axis:y:arrow-low', colX, titleY + titleH + gap, colX, plot.y + plot.h - tickH - gap);
-  nodes.push(...toTop, ...toBottom);
+  const titleFits = plot.h > titleH + 2 * (tickH + 2 * gap);
+  text('axis:y:high', colX, highY, [column.high], 'middle', fonts.tick);
+  if (plot.h >= 2 * tickH) text('axis:y:low', colX, lowY, [column.low], 'middle', fonts.tick);
+  if (column.lines.length && !titleFits) {
+    warnings.push({
+      code: 'axis-title-dropped',
+      severity: 'warn',
+      message: `the y axis title '${axisTitles.y}' is not drawn: the plot is ${Math.round(plot.h)} px high, too short for the title between its two ends`,
+      suggest: 'Raise the canvas height, or shorten the y axis title.',
+      field: ['options', 'axisTitles', 'y'],
+    });
+  }
+  if (column.lines.length && titleFits) {
+    const titleY = plot.y + plot.h / 2 - titleH / 2;
+    text('axis:y:title', colX, titleY, column.lines, 'middle', bold);
+    const toTop = arrow(env.theme, env.va.reverse ? 'axis:y:arrow-low' : 'axis:y:arrow-high', colX, titleY - gap, colX, plot.y + tickH + gap);
+    const toBottom = arrow(env.theme, env.va.reverse ? 'axis:y:arrow-high' : 'axis:y:arrow-low', colX, titleY + titleH + gap, colX, plot.y + plot.h - tickH - gap);
+    nodes.push(...toTop, ...toBottom);
+  }
   const frameLine = (id: string, x1: number, y1: number, x2: number, y2: number): SceneNode =>
     ({ t: 'line', id, x1, y1, x2, y2, stroke: { token: 'axis' }, width: strokeToken(env.theme, 'rule'), owner: {}, part: 'axisLine' });
   // The plot is a box: a direction has no zero to stand on.
@@ -625,13 +638,14 @@ export function layoutScatterMarks(
   domain: ScatterDomain,
   area: ScatterPlotArea,
   paints: ScatterPaints,
+  warnings: LintWarning[],
 ): ScatterMarkGeometry {
   const { plot } = area;
   const q = domain.quadrants.derived;
   const nodes: SceneNode[] = [];
   const claims = createOccupiedIndex({ x: 0, y: 0, w: env.size.width, h: env.size.height });
   const zones = layoutScatterZones(env, domain, area, nodes, claims);
-  const axes = scatterAxes(env, domain, area, nodes, claims);
+  const axes = scatterAxes(env, domain, area, nodes, claims, warnings);
   const cutTicks = boldCutTicks(env, domain, axes, nodes);
   const split = {
     x: q ? Math.min(Math.max(area.x(q.x), plot.x), plot.x + plot.w) : 0,
