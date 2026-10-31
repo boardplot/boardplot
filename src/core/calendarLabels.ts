@@ -13,7 +13,7 @@
 import { DATE_TICK_STRIDES, dateTickKeep, dateTickKeepCalendar, dateTickOrdinals, type DateTickInterval } from './dateFormat';
 import { dateNames } from './dateNames';
 import { wordLanguage } from './numberMarks';
-import { parseISODate } from './isoDate';
+import { parseISODate, utcDate } from './isoDate';
 import type { Category } from './types/data';
 
 type CalendarUnit = 'day' | 'week' | 'month' | 'quarter' | 'year';
@@ -43,38 +43,31 @@ const MONTH = /^(\d{4})-(0[1-9]|1[0-2])$/;
 const WEEK = /^(\d{4})-W(0[1-9]|[1-4]\d|5[0-3])$/;
 const QUARTER = /^(\d{4})-Q([1-4])$/;
 
-/** setUTCFullYear, not Date.UTC, which reads years 0–99 as 1900–1999. */
-const utc = (year: number, month: number, day = 1) => {
-  const date = new Date(0);
-  date.setUTCFullYear(year, month, day);
-  return date;
-};
-
 /** ISO 8601 week and week-year: the week holding the year's first Thursday is week 1. */
 function isoWeek(date: Date): { week: number; weekYear: number } {
-  const thursday = utc(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 3 - ((date.getUTCDay() + 6) % 7));
+  const thursday = utcDate(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 3 - ((date.getUTCDay() + 6) % 7));
   const weekYear = thursday.getUTCFullYear();
-  return { week: 1 + Math.floor((thursday.getTime() - utc(weekYear, 0, 1).getTime()) / 604800000), weekYear };
+  return { week: 1 + Math.floor((thursday.getTime() - utcDate(weekYear, 0, 1).getTime()) / 604800000), weekYear };
 }
 
 function pointOf(text: string): Point | undefined {
   const day = parseISODate(text);
   if (day) return { unit: 'day', date: day };
   const month = MONTH.exec(text);
-  if (month) return { unit: 'month', date: utc(+month[1]!, +month[2]! - 1) };
+  if (month) return { unit: 'month', date: utcDate(+month[1]!, +month[2]! - 1) };
   const quarter = QUARTER.exec(text);
-  if (quarter) return { unit: 'quarter', date: utc(+quarter[1]!, (+quarter[2]! - 1) * 3) };
+  if (quarter) return { unit: 'quarter', date: utcDate(+quarter[1]!, (+quarter[2]! - 1) * 3) };
   const week = WEEK.exec(text);
   if (!week) return undefined;
   // Monday of the week: week 1 holds 4 January.
-  const jan4 = utc(+week[1]!, 0, 4);
-  const date = utc(+week[1]!, 0, 4 - ((jan4.getUTCDay() + 6) % 7) + (+week[2]! - 1) * 7);
+  const jan4 = utcDate(+week[1]!, 0, 4);
+  const date = utcDate(+week[1]!, 0, 4 - ((jan4.getUTCDay() + 6) % 7) + (+week[2]! - 1) * 7);
   const iso = isoWeek(date);
   return iso.weekYear === +week[1]! && iso.week === +week[2]! ? { unit: 'week', date, ...iso } : undefined;
 }
 
 const monthIndex = (date: Date) => date.getUTCFullYear() * 12 + date.getUTCMonth();
-const isMonthEnd = (date: Date) => utc(date.getUTCFullYear(), date.getUTCMonth() + 1, 0).getUTCDate() === date.getUTCDate();
+const isMonthEnd = (date: Date) => utcDate(date.getUTCFullYear(), date.getUTCMonth() + 1, 0).getUTCDate() === date.getUTCDate();
 
 /** Day dates that all sit on month starts (or all on month ends) at whole-month steps read as months, quarters or years. */
 export function dayUnit(dates: readonly Date[]): CalendarUnit {

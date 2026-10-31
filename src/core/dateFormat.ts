@@ -10,7 +10,7 @@
  */
 
 import { dateNames } from './dateNames';
-import { parseISODate } from './isoDate';
+import { parseISODate, utcDate } from './isoDate';
 
 // parseISODate lives in its own module so that a chart whose layout only
 // parses dates does not pull the display formatter into its React bundle.
@@ -18,10 +18,10 @@ import { parseISODate } from './isoDate';
 export { parseISODate };
 
 function isoWeek(date: Date): number {
-  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const d = utcDate(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
   const dayNum = d.getUTCDay() || 7;
   d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const yearStart = utcDate(d.getUTCFullYear(), 0, 1);
   return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
 }
 

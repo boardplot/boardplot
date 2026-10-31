@@ -1,12 +1,13 @@
 /** Pure calendar helpers for the gantt layout. Day numbers are UTC-based, DST-proof. */
 
+import { utcDate } from '../../isoDate';
 import type { GanttGranularity } from './layout';
 
 const DAY_MS = 86400000;
 export type Unit = 'week' | 'month' | 'quarter' | 'year';
 
 export function dayNum(d: Date): number {
-  return Math.round(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) / DAY_MS);
+  return Math.round(utcDate(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()).getTime() / DAY_MS);
 }
 export function dateFromDay(n: number): Date {
   return new Date(n * DAY_MS);
@@ -15,26 +16,26 @@ export function floorTo(unit: Unit, d: Date): Date {
   switch (unit) {
     case 'week': {
       const dow = (d.getUTCDay() + 6) % 7; // ISO: Monday = 0
-      return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - dow));
+      return utcDate(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - dow);
     }
     case 'month':
-      return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+      return utcDate(d.getUTCFullYear(), d.getUTCMonth(), 1);
     case 'quarter':
-      return new Date(Date.UTC(d.getUTCFullYear(), Math.floor(d.getUTCMonth() / 3) * 3, 1));
+      return utcDate(d.getUTCFullYear(), Math.floor(d.getUTCMonth() / 3) * 3, 1);
     case 'year':
-      return new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+      return utcDate(d.getUTCFullYear(), 0, 1);
   }
 }
 export function nextOf(unit: Unit, d: Date): Date {
   switch (unit) {
     case 'week':
-      return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 7));
+      return utcDate(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 7);
     case 'month':
-      return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1));
+      return utcDate(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
     case 'quarter':
-      return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 3, 1));
+      return utcDate(d.getUTCFullYear(), d.getUTCMonth() + 3, 1);
     case 'year':
-      return new Date(Date.UTC(d.getUTCFullYear() + 1, 0, 1));
+      return utcDate(d.getUTCFullYear() + 1, 0, 1);
   }
 }
 export function ceilTo(unit: Unit, d: Date): Date {
