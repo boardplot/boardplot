@@ -212,6 +212,16 @@ describe('value integrity on the chart', () => {
     expect(printed).not.toContain('0');
   });
 
+  // A whole-number format printed the column totals 0.4 and 0.2 as a false 0 over their columns.
+  it('a mekko column total under a whole-number format stays off 0', () => {
+    const data = { categories: [{ id: 'A' }, { id: 'B' }], series: [{ id: 'v', values: [0.28, 0.14] }, { id: 'w', values: [0.12, 0.06] }] };
+    const printed = texts('mekko', data, { format: '1,234' });
+    expect(printed).toEqual(expect.arrayContaining(['0.4', '0.2']));
+    expect(printed).not.toContain('0');
+    // A total the format can show keeps the authored digits.
+    expect(texts('mekko', { ...data, series: [{ id: 'v', values: [1200.4, 14] }] }, { format: '1,234' })).toContain('1,200');
+  });
+
   // A centered funnel and a bar Rest built from percent cells still printed bare numbers ("70", "30") after the main paths kept their '%'.
   it('a centered funnel and a bar Rest of percent cells keep their percent sign', () => {
     const data = { categories: [{ id: 'B' }, { id: 'A' }], series: [{ id: 'v', values: [{ pct: 30 }, { pct: 70 }] }] };

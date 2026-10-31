@@ -851,6 +851,15 @@ function placeNote(s: AnnotationScope, ann: Extract<Annotation, { kind: 'callout
     ? ann.text!.replace(/[\s:\u2013\u2014-]*\$\{value\}/g, '').replace(/[ \t]{2,}/g, ' ').trim()
     : (ann.text ?? '').replace(/\$\{value\}/g, value);
   const glyph = calloutGlyphOf(s, ann);
+  if (repeats) {
+    s.warnings.push({
+      code: 'annotation-value-on-mark',
+      severity: 'info',
+      message: `${ann.kind} '${s.id}': the mark already prints ${value}, so \${value} and the words that led into it are left out of the text`,
+      owner: { annotationId: s.id },
+      suggest: 'keep it, as the number stands at the mark, or drop ${value} from the text to set the wording yourself',
+    });
+  }
   if (repeats && !text && !glyph) return;
   // A headline is the first line, over the text: "${value}" over the words.
   const headline = ann.kind === 'callout' && ann.headline !== undefined ? ann.headline.replace(/\$\{value\}/g, value) : undefined;

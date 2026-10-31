@@ -20,6 +20,7 @@ import {
   parseFormatExample as parseExample,
   effectiveScale,
   roundedNumber,
+  nonAdditiveSpec,
   specUnitKind,
   unitOfSpec,
   MAGNITUDE_DIVISOR,
@@ -30,6 +31,7 @@ import { NormalizeError, resolveHighlight, resolveSubtitle } from '../../normali
 import { resolveTheme } from '../../theme';
 import { localeStrings } from '../../strings';
 import type { Theme } from '../../types/theme';
+import { closestKey } from '../../schema/unknownKeyWords';
 import { tableCellKey } from './cellKey';
 import { isCohortDensity } from './ladder';
 import { presetLanguage } from './presets';
@@ -234,15 +236,6 @@ function stripMagnitude(text: string, spec: NumberFormatSpec): string {
 /** Float noise from magnitude math (bn-scale): a gap this small between two figures is no disagreement. */
 const floatNoise = (a: number, b: number): number => 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
 
-/**
- * A column head's label as both surfaces print and measure it: in
- * capitals, unless the theme's `table.head.case` is 'asis'. The affix after
- * it stays as written.
- */
-export function columnHeadLabel(label: string, theme: Pick<Theme, 'table'>): string {
-  return theme.table?.head?.case === 'asis' ? label : label.toUpperCase();
-}
-
 export function columnHeaderAffix(column: {
   scenario?: string;
   unitLabel?: string;
@@ -327,6 +320,53 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
       });
     }
   });
+  // A cell key that names a column almost, but not quite, draws nothing: the number vanishes without a word.
+  // A key far from every column, or beside a column the row also fills, is data the author left out of the columns on purpose, so it stays quiet.
+  // One warning per key keeps the response small on a wide row set.
+  const columnIds = data.columns.map((column) => column.id);
+  const columnIdSet = new Set(columnIds);
+  // closestKey depends on the key alone, so each distinct key is measured once, not once per row.
+  const nearColumn = new Map<string, string | undefined>();
+  const unknownKeys = new Map<string, { row: TableData['rows'][number]; rowPath: (string | number)[]; near: string; rows: number }>();
+  const checkCellKeys = (rows: TableData['rows'], path: (string | number)[]): void => {
+    rows.forEach((row, index) => {
+      const rowPath = [...path, index];
+      for (const key of Object.keys(row.cells ?? {})) {
+        if (columnIdSet.has(key)) continue;
+        if (!nearColumn.has(key)) {
+          const nearest = closestKey(key, columnIds);
+          nearColumn.set(key, nearest?.near ? nearest.key : undefined);
+        }
+        const near = nearColumn.get(key);
+        // The near column holds a cell in this row too: the key is another column, left out on purpose.
+        if (near === undefined || Object.hasOwn(row.cells!, near)) continue;
+        const seen = unknownKeys.get(key);
+        if (seen) seen.rows += 1;
+        else unknownKeys.set(key, { row, rowPath, near, rows: 1 });
+      }
+      if (row.children) checkCellKeys(row.children, [...rowPath, 'children']);
+    });
+  };
+  // The authored rows: a fitted resolution rewrites cell formats, which the repair patch must not test.
+  checkCellKeys(magnitudeSource.rows, []);
+  for (const [key, { row, rowPath, near, rows }] of unknownKeys) {
+    const cells = row.cells!;
+    warnings.push({
+      code: 'cell-column-unknown',
+      severity: 'warn',
+      message: `cell '${key}' in row '${row.id}'${rows > 1 ? ` and ${rows - 1} more` : ''} names no column, so its value is not drawn; did you mean '${near}'?`,
+      owner: { rowId: row.id },
+      field: ['data', 'rows', ...rowPath, 'cells', key],
+      suggest: `Rename the cell key to '${near}'.`,
+      // A patch for the first row only would leave the others; a key in several rows gets the suggestion alone.
+      ...(rows > 1 ? {} : {
+        fix: [
+          { op: 'test', path: `/data/rows/${rowPath.join('/')}/cells`, value: cells },
+          { op: 'replace', path: `/data/rows/${rowPath.join('/')}/cells`, value: Object.fromEntries(Object.entries(cells).map(([name, value]) => [name === key ? near : name, value])) },
+        ],
+      }),
+    });
+  }
   const records: ComputedCellRecord[] = [];
   const autoFootnotes = new Set<string>();
   /** Row labels whose changes took a tone, by the direction that judged them. */
@@ -488,11 +528,8 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
    * 'none' unless the author asks for a sum, and an authored sum there is
    * warned once per column.
    */
-  const nonAdditiveFormat = (format: string | undefined): boolean => {
-    if (!format) return false;
-    const spec = parseFormatExample(format);
-    return specUnitKind(spec) !== 'number' || /^[x\u00d7]$/i.test(spec.suffix.trim());
-  };
+  // The table's cached parse feeds the shared predicate: it runs for every summand cell.
+  const nonAdditiveFormat = (format: string | undefined): boolean => !!format && nonAdditiveSpec(parseFormatExample(format));
   // A cell's own format counts where it sits: a pp change among summands does not add either.
   const formatAt = (row: FlatRow, colId: Id): string | undefined => cellFormat(row.cells[colId]) ?? row.format;
   // Decimals are no unit: "$1.2m" and "$1.23m" add, "$1.2m" and "$500k" do not.
@@ -1650,7 +1687,17 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
         return { ...base, raw: v, state: 'value', displayed: labels?.[v] ?? v, tone: judgementTone(tone, obj?.strong) };
       }
       case 'date': {
-        const v = typeof authored === 'string' ? authored : typeof obj?.v === 'string' ? obj.v : null;
+        const given = typeof authored === 'number' ? authored : obj?.v;
+        const v = typeof authored === 'string' ? authored : typeof given === 'string' ? given : null;
+        // A number is no date. It keeps the missing dash it drew, and says so.
+        if (typeof given === 'number') {
+          warnings.push({
+            code: 'date-value-number',
+            severity: 'warn',
+            message: `date cell rows[${row.id}].cells[${col.id}] holds the number ${given} and draws the missing dash; write an ISO date (YYYY-MM-DD), or use a value or text column.`,
+            owner: { rowId: row.id, colId: col.id },
+          });
+        }
         if (v === null) return { ...base, displayed: missingGlyph };
         const d = parseISODate(v);
         if (!d) {

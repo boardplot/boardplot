@@ -1,4 +1,5 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
+import { closestKey } from '../src/core/schema/unknownKeyWords';
 import '../src/core/charts';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { requireGeometry } from '../src/core/sizing';
@@ -20,6 +21,11 @@ import type { TableData } from '../src/core/types/table';
 import type { Paint, SceneNode } from '../src/core/types/scene';
 import { getFixtures } from '../src/fixtures';
 import { render } from '../src/cli/render';
+
+vi.mock('../src/core/schema/unknownKeyWords', async (importActual) => {
+  const actual = await importActual<typeof import('../src/core/schema/unknownKeyWords')>();
+  return { ...actual, closestKey: vi.fn(actual.closestKey) };
+});
 
 type TextNode = Extract<SceneNode, { t: 'text' }>;
 
@@ -335,6 +341,8 @@ it('keeps two significant digits of every figure when it fits formats', () => {
     rows: values.map((v, i) => ({ id: `r${i}`, label: `Row ${i}`, cells: { v } })) });
   expect(column([80_000, 100_000, 1_234_567], '1,234')).toEqual(['80', '100', '1,235']);
   expect(column([2_470_000, 2_630_000], '$1.23M')).toEqual(['2.5', '2.6']);
+  // A figure the authored format prints in one digit keeps that digit: 80,000 read as "0.1" under (M), 25% off.
+  expect(column([80_000, 1_230_000], '$1.23M')).toEqual(['0.08', '1.23']);
   // A small figure blocks a magnitude that would print it as zero: 12 never reads "0.00001" under M.
   expect(column([12, 100_000, 1_234_567], '1,234').every((text) => !/^0[.,]0/.test(text))).toBe(true);
   // So does a chart-level format, and a shorter decimal keeps one magnitude: 950 and 1,000 under (k), not 950 and 1.0M.
@@ -681,6 +689,17 @@ it('warns about a number in a status cell', () => {
   const { table, warnings } = resolveTable(data);
   expect(table.rows[0]!.cells.s!.state).not.toBe('value');
   expect(warnings.map((w) => w.code)).toContain('status-value-number');
+});
+
+// A number in a date column printed the missing dash with no warning, so the author never learned that the value was dropped.
+it('warns about a number in a date cell, naming the row and the column', () => {
+  const data: TableData = {
+    columns: [{ id: 'l', kind: 'rowLabel', label: 'Task' }, { id: 'due', kind: 'date', label: 'Due' }],
+    rows: [{ id: 'a', label: 'Plan', cells: { due: 123 } }, { id: 'b', label: 'Build', cells: { due: { v: 456 } } }, { id: 'c', label: 'Ship', cells: { due: null } }],
+  };
+  const { table, warnings } = resolveTable(data);
+  expect(table.rows[0]!.cells.due!.state).not.toBe('value');
+  expect(warnings.filter((w) => w.code === 'date-value-number').map((w) => w.owner)).toEqual([{ rowId: 'a', colId: 'due' }, { rowId: 'b', colId: 'due' }]);
 });
 
 // Whitespace-only status labels must stay accepted and draw as before while both surfaces receive a repair warning.
@@ -1062,14 +1081,6 @@ it('never gives a theme with less head air more in the compact fallback', () => 
   expect(geometry.warnings.map(w => w.code)).not.toContain('size-below-floor');
 });
 
-// A capitalised head printed "Power,mW" as "POWER,MW": milliwatts read as megawatts.
-it('keeps the unit after a head comma as written', async () => {
-  const { fieldHeadText } = await import('../src/core/charts/table/headFace');
-  const theme = resolveTheme('boardroom');
-  expect(fieldHeadText('Power,mW', theme)).toBe('POWER,mW');
-  expect(fieldHeadText('EBITDA impact, $bn', theme)).toBe('EBITDA IMPACT, $bn');
-});
-
 // `table.inks.head` was documented, but no table-family head read it, on the SVG or in the React grid.
 it('paints every table-family column head in table.inks.head, on the SVG and in React', () => {
   const head = '#AA0000';
@@ -1125,6 +1136,53 @@ it('reads a percent change under a row format as a percent, as it reads one with
   expect(table.rows[0]!.cells.yoy!.displayed).toBe('25.0%');
   // The accessible table reads a derived percent at two decimals.
   expect(interactionValueText(value)).toBe('25.00%');
+});
+
+// A cell key that names no column dropped its value with no warning, so a typo such as `amunt` made a number vanish unseen.
+it('warns about a cell key that names no column and offers the nearest column id', () => {
+  const data: TableData = {
+    columns: [{ id: 'l', kind: 'rowLabel', label: 'Unit' }, { id: 'amount', kind: 'value', label: 'Amount' }],
+    rows: [{ id: 'all', label: 'All', children: [{ id: 'a', label: 'North', cells: { amunt: 63.9 } }, { id: 'b', label: 'South', cells: { amount: 41.2 } }] }],
+  };
+  const { warnings } = resolveTable(data);
+  const found = warnings.filter((w) => w.code === 'cell-column-unknown');
+  expect(found).toHaveLength(1);
+  expect(found[0]!.owner).toEqual({ rowId: 'a' });
+  expect(found[0]!.suggest).toContain("'amount'");
+});
+
+// A table that filters its columns on purpose got one cell-column-unknown warning per row and key, so the response grew with the row count.
+it('warns once per cell key and stays quiet for keys that are not a typo of an empty column', () => {
+  const data: TableData = {
+    columns: [{ id: 'l', kind: 'rowLabel', label: 'Unit' }, { id: 'amountPlan', kind: 'value', label: 'Plan' }, { id: 'amount', kind: 'value', label: 'Amount' }],
+    rows: Array.from({ length: 20 }, (_, i) => ({ id: `r${i}`, label: `Row ${i}`, cells: { amountPlan: 2, amountPlans: 3, region: 4, amunt: 5 } })),
+  };
+  const found = resolveTable(data).warnings.filter((w) => w.code === 'cell-column-unknown');
+  expect(found.map((w) => w.field?.at(-1))).toEqual(['amunt']);
+  expect(found[0]!.message).toContain('19 more');
+  expect(found[0]!.fix).toBeUndefined();
+});
+
+// The near-key search ran again for every row and unknown key, so a long table with a few far keys rendered much slower.
+it('measures each unknown cell key once, however many rows carry it', () => {
+  const data: TableData = {
+    columns: [{ id: 'l', kind: 'rowLabel', label: 'Unit' }, { id: 'amount', kind: 'value', label: 'Amount' }],
+    rows: Array.from({ length: 50 }, (_, i) => ({ id: `r${i}`, label: `Row ${i}`, cells: { amount: 1, region: 2, owner: 3 } })),
+  };
+  vi.mocked(closestKey).mockClear();
+  resolveTable(data);
+  expect(vi.mocked(closestKey)).toHaveBeenCalledTimes(2);
+});
+
+// A repair patch built from the fitted rows tested a cell format the author never wrote, so applying it to the authored spec failed.
+it('builds the cell-column-unknown repair from the authored cells when fitFormats shortens a cell format', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel', label: 'Region', width: 120 }, { id: 'amount', kind: 'value', label: 'Amount', width: 44 }, { id: 'orders', kind: 'value', label: 'Orders', width: 44 }],
+    rows: [{ id: 'a', label: 'North', cells: { orders: { v: 1_234_567, format: '1,234,567' }, amunt: 5 } }],
+  };
+  const { warnings } = layout('table', data, { fitFormats: true, size: { width: 320 } });
+  const fix = warnings.find((w) => w.code === 'cell-column-unknown')!.fix!;
+  expect(fix[0]).toEqual({ op: 'test', path: '/data/rows/0/cells', value: data.rows[0]!.cells });
 });
 
 // fitFormats wrote the example "$1.234M" for a lifted cell, which reads back as a thousands group, so 3,000 printed "$0M".

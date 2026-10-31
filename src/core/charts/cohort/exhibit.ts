@@ -684,10 +684,12 @@ function buildExhibit(
     insidePaint?: Paint,
     fitted?: FittedText,
     align?: 'middle' | 'end',
+    claimId?: Id,
   ) => {
     requests.push({
       id,
       kind,
+      ...(claimId ? { claimId } : {}),
       typeRole: kind === 'axisTitle' || id.startsWith('cohort-header-range:') ? 'axis' : 'label',
       owner,
       text,
@@ -871,6 +873,9 @@ function buildExhibit(
         { seriesId: row.id, categoryId: `t${period}` },
         row.kind === 'total' ? 'total' : 'point',
         paint,
+        undefined,
+        undefined,
+        row.kind === 'total' ? undefined : `cohort:${row.id}:t${period}`,
       );
     });
   });
