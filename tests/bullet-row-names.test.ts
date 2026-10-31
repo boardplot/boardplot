@@ -69,19 +69,22 @@ describe("bullet band names on the rows (bandKey 'row')", () => {
     for (const step of steps(lightness(keyed, resolveTheme(full)))) expect(step).toBeGreaterThanOrEqual(0.12);
   });
 
-  // Full red and green bands made an on-plan corridor read as an alarm.
-  it('washes toned bands and attainment toward the page, bad lighter than good', () => {
-    const theme = resolveTheme(undefined);
-    const fill = (geometry: Geometry, id: string) => paintColor(theme, bandRect(geometry, id).fill!);
-    const corridor = getFixtures('bullet').find((fixture) => fixture.id === 'two-sided-spend')!;
-    const spend = layoutResolvedRequest(resolveChartRequest({ type: 'bullet', data: corridor.data, options: corridor.options }));
-    if (spend.refused) throw new Error('refused');
-    expect([fill(spend, 'band:spend:0'), fill(spend, 'band:spend:1')]).toEqual(['#f8d8d8', '#b2e0cd']);
-    const plan = getFixtures('bullet').find((fixture) => fixture.id === 'attainment-shading')!;
-    const shaded = layoutResolvedRequest(resolveChartRequest({ type: 'bullet', data: plan.data, options: plan.options, annotations: plan.annotations }));
-    if (shaded.refused) throw new Error('refused');
-    const washes = shaded.scene.filter((node) => node.t === 'rect' && node.part === 'attainment').map((node) => node.t === 'rect' ? paintColor(theme, node.fill!) : '');
-    expect(washes.sort()).toEqual(['#b2e0cd', '#f8d8d8']);
+  // Full red and green bands made an on-plan corridor read as an alarm; the wash is decided in the theme the scene is painted in.
+  it('washes toned bands and attainment toward the page, and a full-fill theme repaints them full', () => {
+    const light = resolveTheme(undefined);
+    const full = resolveTheme({ preset: 'boardroom', overrides: { marks: { bulletBandFill: 'full' } } });
+    const draw = (id: string) => {
+      const fixture = getFixtures('bullet').find((f) => f.id === id)!;
+      const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'bullet', data: fixture.data, options: fixture.options, annotations: fixture.annotations }));
+      if (geometry.refused) throw new Error('refused');
+      return geometry;
+    };
+    const spend = draw('two-sided-spend');
+    const [bad, good] = [bandRect(spend, 'band:spend:0').fill!, bandRect(spend, 'band:spend:1').fill!];
+    expect(oklabLightness(paintColor(light, bad))!).toBeGreaterThan(oklabLightness(paintColor(light, good))!);
+    expect([paintColor(full, bad), paintColor(full, good)]).toEqual([full.color.badFill ?? full.color.bad, full.color.goodFill ?? full.color.good]);
+    const washes = draw('attainment-shading').scene.flatMap((node) => node.t === 'rect' && node.part === 'attainment' ? [node.fill!] : []);
+    expect(washes.map((fill) => paintColor(full, fill)).sort()).toEqual([full.color.badFill ?? full.color.bad, full.color.goodFill ?? full.color.good].sort());
   });
 
   // The rows no longer show which mark is the actual and which the target.
