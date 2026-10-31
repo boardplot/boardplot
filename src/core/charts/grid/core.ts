@@ -4,9 +4,8 @@ import { isMetricStackData, normalizeMetricStack, type MetricStackData } from '.
 
 import type { ChartCore } from '../../registry';
 import { gridRequiredKey } from '../../grid/gridKey';
-import { compactStacks, layoutGrid, type GridDerived, type GridMarks } from './layout';
+import { compactStacks, layoutGrid, normalizeGridWithTheme, type GridDerived, type GridMarks } from './layout';
 import {
-  normalizeGridData,
   type ExplicitGridData,
   type GridInput,
   type GridLayoutOptions
@@ -14,7 +13,7 @@ import {
 
 // Keep stack preparation in the lazy grid core, outside shared a11y imports.
 function normalizeGridInput(raw: unknown, options?: GridLayoutOptions): ExplicitGridData | MetricStackData {
-  return isMetricStackData(raw) ? normalizeMetricStack(raw) : normalizeGridData(raw, options);
+  return isMetricStackData(raw) ? normalizeMetricStack(raw) : normalizeGridWithTheme(raw, options ?? {});
 }
 
 export const gridCore: ChartCore<GridInput, GridLayoutOptions, GridMarks, GridDerived> = {

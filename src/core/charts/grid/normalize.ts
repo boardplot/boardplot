@@ -156,7 +156,14 @@ export function parseGridLegendPanelData(raw: unknown): GridLegendPanelData {
   return raw as GridLegendPanelData;
 }
 
-export function normalizeGridData(raw: unknown, options?: Pick<GridLayoutOptions, 'palette'>): ExplicitGridData {
+/** What the lock of a written-out grid needs to know about the render: the grid palette, and how many colours the theme's series ramp has. */
+export interface GridNormalizeOptions {
+  palette?: GridLayoutOptions['palette'];
+  /** Read only when the lock would apply. Absent means the ramp length is unknown and the lock is not capped. */
+  seriesRampLength?: () => number;
+}
+
+export function normalizeGridData(raw: unknown, options?: GridNormalizeOptions): ExplicitGridData {
   // Pre-parse ownership check, on the RAW document: zod's required-key
   // presence test reads `key in input`, so a branch key visible only through
   // the prototype chain would let the parse consume inherited data — with a
@@ -186,7 +193,7 @@ export function normalizeGridData(raw: unknown, options?: Pick<GridLayoutOptions
   // parsed object owning 'panels' can only have come from the explicit branch.
   if (Object.hasOwn(input, 'panels')) {
     const explicit = input as ExplicitGridData;
-    const panels = lockWrittenOutPanels(explicit.panels, options?.palette);
+    const panels = lockWrittenOutPanels(explicit.panels, options?.palette, options?.seriesRampLength);
     // The lock builds ordinary objects, so the owned copy runs again, as for the repeat branch below.
     return panels === explicit.panels ? explicit : ownedDocumentCopy({ ...explicit, panels });
   }
@@ -367,11 +374,16 @@ function stylesOwnSeries(panel: GridPanelSpec, gridPalette: unknown): boolean {
 
 /**
  * Locks the colours of a written-out grid by series id, over the panels that
- * do not colour their series themselves. Returns the same array when nothing changes.
+ * do not colour their series themselves. Returns the same array when nothing
+ * changes, and when the grid has more distinct series than the theme has
+ * colours: the panels then keep their own positional colours.
  */
-function lockWrittenOutPanels(panels: GridPanelSpec[], gridPalette: unknown): GridPanelSpec[] {
+function lockWrittenOutPanels(panels: GridPanelSpec[], gridPalette: unknown, rampLength?: () => number): GridPanelSpec[] {
   const plain = panels.filter((panel) => !stylesOwnSeries(panel, gridPalette));
   if (!seriesIdsDisagree(plain)) return panels;
+  // A role past the end of the ramp repeats the last colour, which would draw
+  // several series of one panel alike where each panel's own colours kept them apart.
+  if (rampLength && new Set(plain.flatMap(panelSeriesIds)).size > rampLength()) return panels;
   const locked = lockPaletteBySeriesId(plain, false);
   const lockedQueue = [...locked];
   return panels.map((panel) => (stylesOwnSeries(panel, gridPalette) ? panel : (lockedQueue.shift() ?? panel)));

@@ -223,3 +223,18 @@ it('returns null-prototype panels after locking a written-out grid', () => {
   expect(Object.getPrototypeOf(first!.data)).toBeNull();
   expect(Object.getPrototypeOf((first!.data as { series: object[] }).series[0])).toBeNull();
 });
+
+// A role past the end of the theme's ramp repeats the last colour, so locking a grid with more series than colours drew several series of one panel alike.
+it('keeps the panel colours of a written-out grid with more series than the ramp has colours', () => {
+  const ids = Array.from({ length: 12 }, (_, i) => `s${i}`);
+  const panel = (id: string, column: number, list: string[]) => ({
+    id, type: 'column', row: 0, column, options: { variant: 'stacked' },
+    data: { categories: [{ id: 'a' }, { id: 'b' }], series: list.map((sid, k) => ({ id: sid, label: sid, values: [5 + k, 6 + k] })) },
+  });
+  const request = resolveChartRequest({ type: 'grid', options: { columns: 2 }, data: { panels: [panel('p1', 0, ids), panel('p2', 1, [...ids].reverse())] } });
+  const colours = new Set<string>();
+  for (const node of requireGeometry(layoutResolvedRequest(request)).scene) {
+    if (node.t === 'rect' && node.part === 'segment' && node.owner?.seriesId && node.fill && node.id.startsWith('p1/')) colours.add(paintColor(request.theme, node.fill));
+  }
+  expect(colours.size).toBe(12);
+});

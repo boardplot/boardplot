@@ -77,6 +77,7 @@ import {
   normalizeGridData,
   parseGridLegendPanelData,
   parseGridTextPanelData,
+  type ExplicitGridData,
   type GridInput,
   type GridLayoutOptions,
   type GridPanelSpec,
@@ -132,6 +133,11 @@ function assertTrackLimits(options: GridLayoutOptions, panels: readonly GridPane
   });
 }
 
+/** Normalizes grid data with the ramp length of the theme the grid renders in. */
+export function normalizeGridWithTheme(data: unknown, options: GridLayoutOptions): ExplicitGridData {
+  return normalizeGridData(data, { palette: options.palette, seriesRampLength: () => resolveTheme(options.theme).color.series.length });
+}
+
 export function layoutGrid(
   data: GridInput,
   options: GridLayoutOptions = {},
@@ -156,7 +162,7 @@ export function layoutGrid(
     return withWarnings(layoutMetricStack(data, options), formatWarnings);
   }
   if (options.stack) stackError('data', 'Metric stack mode needs shared categories and measures');
-  const normalized = normalizeGridData(data, options);
+  const normalized = normalizeGridWithTheme(data, options);
   requireChartCores(normalized.panels.map((panel) => panel.type), (type) => getChart(type) !== undefined);
   assertTrackLimits(options, normalized.panels);
   normalized.panels = normalized.panels.map((panel) => panel.options
