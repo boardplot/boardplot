@@ -24,7 +24,7 @@ import { percentLevels, runAnnotatePass } from '../../annotatePass';
 import { spread1DResult, sweepHide, warnSpreadOverflow } from '../../collide';
 import { formatAuthoredPercent, formatAutomaticNumber, formatAutomaticPercent } from '../../format';
 import { formatterFromExample, seriesRasterFormatter } from '../../formatSpec';
-import { clamp, round2, type Rect } from '../../geometry';
+import { clamp, cleanFloat, type Rect } from '../../geometry';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelsToNodes } from '../../label/emit';
 import {
@@ -289,8 +289,8 @@ export function layoutSlope(
   for (const s of plottedSeries) {
     const abs = s.b.v! - s.a.v!;
     changes[s.id] = {
-      abs: round2(abs),
-      pct: s.a.v! !== 0 ? round2((abs / Math.abs(s.a.v!)) * 100) : null,
+      abs: cleanFloat(abs),
+      pct: s.a.v! !== 0 ? cleanFloat((abs / Math.abs(s.a.v!)) * 100) : null,
     };
   }
   const byChange = (dir: 1 | -1): Id | undefined => {

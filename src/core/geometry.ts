@@ -239,6 +239,16 @@ export function round2(v: number): number {
 }
 
 /**
+ * A value or difference kept for printing, a verdict or a reading: twelve
+ * significant digits clear float noise (0.1 + 0.2) and keep every digit a
+ * format may print. Never `round2` such a number: the format then rounds an
+ * already rounded value, and a gap of 0.004 reads as 0.
+ */
+export function cleanFloat(v: number): number {
+  return Number(v.toPrecision(12));
+}
+
+/**
  * Axis-aligned padding a stroke of `width` adds around a segment running
  * (dx, dy) — how far its ink reaches beyond the segment's own bounding box.
  *

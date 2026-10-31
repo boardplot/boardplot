@@ -300,3 +300,20 @@ it('numbers linear-process steps in drawn order, with and without order', () => 
     expect(badges.map((label: any) => label.text)).toEqual(nodes.map((_, index) => String(index + 1)));
   }
 });
+
+// Layout stored round2 of a value or difference and the format rounded that again: a gap of 0.003 read as "on target", 2.3456 printed +2.4, -1.25 printed -1.2.
+it('a derived value reaches the format unrounded', () => {
+  const layout = (type: string, data: unknown, options: Record<string, unknown>) => getChart(type)!.layout(data as never, options as never) as any;
+  const bullet = layout('bullet', { rows: [{ id: 'a', label: 'A', value: 0.012, target: 0.015 }, { id: 'b', label: 'B', value: 12.3456, target: 10 }] }, { format: '0.123' });
+  expect(bullet.derived.deltaVsTarget).toEqual({ a: -0.003, b: 2.3456 });
+  expect(texts('bullet', { rows: [{ id: 'b', label: 'B', value: 12.3456, target: 10 }] }, { format: '1.1' })).toContain('+2.3');
+  const mekko = layout('mekko', { categories: [{ id: 'A' }, { id: 'B' }], series: [{ id: 'x', values: [0.003, 0.004] }, { id: 'y', values: [0.004, 0.008] }] }, { variant: 'stacked', format: '0.000' });
+  expect(mekko.derived.columnTotals).toEqual({ A: 0.007, B: 0.012 });
+  const variance = layout('variance', { categories: ['A', 'B'], series: [{ id: 'ac', values: [0.006, 79] }, { id: 'py', role: 'reference', values: [0.002, 80] }] }, { variant: 'absolute', variance: { vs: 'py' } });
+  expect(variance.derived.deltaAbs).toEqual({ A: 0.004, B: -1 });
+  const relative = texts('variance', { categories: ['A', 'B'], series: [{ id: 'ac', values: [79, 120] }, { id: 'py', role: 'reference', values: [80, 100] }] }, { variant: 'relative', variance: { vs: 'py' } });
+  expect(relative).toContain('−1.3%');
+  const slope = layout('slope', { categories: ['a', 'b'], series: [{ id: 's', values: [23.4, 19.2] }, { id: 't', values: [0.001, 0.005] }] }, {});
+  expect(slope.derived.changes.s.pct).toBeCloseTo(-17.9487, 3);
+  expect(slope.derived.changes.t.abs).toBe(0.004);
+});

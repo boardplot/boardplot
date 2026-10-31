@@ -11,7 +11,7 @@ import { breakUnsupported, chartPalette, chartTheme } from '../chartEnv';
 import { defaultMeasurer } from '../../text';
 import { formatAuthoredPercent, formatAutomaticNumber, formatShare, shareSetFormatter } from '../../format';
 import { formatterFromExample, parseFormatExample, specUnitKind } from '../../formatSpec';
-import { round2 } from '../../geometry';
+import { cleanFloat, round2 } from '../../geometry';
 import { isIncomplete } from '../../dataGaps';
 import { roundWholes } from '../../shareRounding';
 import {
@@ -274,7 +274,7 @@ function mekkoStacks(st: ValueState, fns: ReturnType<typeof valueFns>, warnings:
     posTop[ci] = pos;
     negBot[ci] = neg;
     anyByCat[ci] = any;
-    columnTotals[c.id] = round2(st.series.reduce((a, s) => a + (absAt(s, ci) ?? 0), 0));
+    columnTotals[c.id] = cleanFloat(st.series.reduce((a, s) => a + (absAt(s, ci) ?? 0), 0));
     weights[ci] = fns.weightAt(ci);
   });
   // A column of shares only (valueKind 'fraction', { pct } cells, no total100)

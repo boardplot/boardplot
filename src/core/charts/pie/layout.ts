@@ -27,7 +27,7 @@ import { formatAutomaticNumber, seriesValueFormatter, shareSetFormatter } from '
 import { warnIncompleteComposition, warnShareRoundingDrift } from '../../dataGaps';
 import { roundWholes, type RoundingAdjustment } from '../../shareRounding';
 import { seriesRasterFormatter, formatterFromExample } from '../../formatSpec';
-import { round2, type Point, type Rect, type Size } from '../../geometry';
+import { cleanFloat, round2, type Point, type Rect, type Size } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { markOutlineOff, namesOnly, separationStroke, sliceOutlineOff } from '../../markVisibility';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
@@ -424,7 +424,7 @@ function layoutPiePass(
     throw new NormalizeError('empty-data', 'series', 'pie requires a positive total');
   }
   const shares: Record<Id, number> = emptyIdRecord();
-  for (const s of slices) shares[s.cat.id] = round2(((s.v ?? 0) / total) * 100);
+  for (const s of slices) shares[s.cat.id] = cleanFloat(((s.v ?? 0) / total) * 100);
 
   // ---- paints (categorical hues or perceptually stepped sequential tint) ----
   const paintCss = (p: Paint): string => paintColor(theme, p);
@@ -1219,7 +1219,7 @@ function layoutPiePass(
     legend: frameResult.legend,
     frame: frameResult.frame,
     marks,
-    derived: { total: round2(total), shares, stackParts: { [sid]: Object.fromEntries(geoms.map((g) => [g.cat.id, g.v])) }, ...(rounded ? { roundingAdjustments: rounded.adjustments } : {}) },
+    derived: { total: cleanFloat(total), shares, stackParts: { [sid]: Object.fromEntries(geoms.map((g) => [g.cat.id, g.v])) }, ...(rounded ? { roundingAdjustments: rounded.adjustments } : {}) },
     a11y: {
       title:
         accessibleTitle(options.title, chartString(options, 'pieTitle', { v1: shapeName, v2: ser.label ?? sid, v3: geoms.length })),

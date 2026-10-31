@@ -1,0 +1,3 @@
+### Fixed
+
+- A gap, total or change no longer rounds to two decimals before its format applies. A bullet of 0.012 against 0.015 prints −0.003 under `format: "0.123"`, not +0.000 on target, and 12.3456 against 10 prints +2.3 under `format: "1.1"`, not +2.4. Mekko totals 0.007 and 0.012 print as they are. A variance of +0.004 keeps 0.004 in the reading, and 79 against 80 prints −1.3%, not −1.2%. The slope, dumbbell, pie and heatmap readings keep the same digits, so a slope that falls from 23.4 to 19.2 prints −17.9%, not −18.0%. The variance reading now uses the `difference@1` and `percentDelta@1` operations.

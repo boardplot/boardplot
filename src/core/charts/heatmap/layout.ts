@@ -18,7 +18,7 @@ import { runAnnotatePass } from '../../annotatePass';
 import { marginBracketLayout } from '../../annotateLinks';
 import { defaultNumberDecimals, formatAutomaticNumber, NOT_AVAILABLE, numberRange } from '../../format';
 import { AUTOMATIC_FORMAT, type AutomaticFormatSource, defaultFormatSpec, exampleSpec, formatNonzeroWithSpec, formatterFromExample, rasterDecimals, seriesRasterFormatter, parseFormatExample, specUnitKind } from '../../formatSpec';
-import { round2, type Rect } from '../../geometry';
+import { cleanFloat, round2, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
 import { categoryLineAlign, planCategoryRow, rotatedClaimRect } from '../../label/categoryRow';
@@ -1509,8 +1509,8 @@ export function layoutHeatmap(
     ...(frameResult.legend ? { legend: frameResult.legend } : {}),
     marks,
     derived: {
-      max: round2(vMax),
-      min: round2(vMin),
+      max: cleanFloat(vMax),
+      min: cleanFloat(vMin),
       rowMeans,
       colMeans,
       ...(showHeaderRow
