@@ -689,6 +689,17 @@ it('warns about a number in a status cell', () => {
   expect(warnings.map((w) => w.code)).toContain('status-value-number');
 });
 
+// A number in a date column printed the missing dash with no warning, so the author never learned that the value was dropped.
+it('warns about a number in a date cell, naming the row and the column', () => {
+  const data: TableData = {
+    columns: [{ id: 'l', kind: 'rowLabel', label: 'Task' }, { id: 'due', kind: 'date', label: 'Due' }],
+    rows: [{ id: 'a', label: 'Plan', cells: { due: 123 } }, { id: 'b', label: 'Build', cells: { due: { v: 456 } } }, { id: 'c', label: 'Ship', cells: { due: null } }],
+  };
+  const { table, warnings } = resolveTable(data);
+  expect(table.rows[0]!.cells.due!.state).not.toBe('value');
+  expect(warnings.filter((w) => w.code === 'date-value-number').map((w) => w.owner)).toEqual([{ rowId: 'a', colId: 'due' }, { rowId: 'b', colId: 'due' }]);
+});
+
 // Whitespace-only status labels must stay accepted and draw as before while both surfaces receive a repair warning.
 it('warns once per blank status label and offers its removal', () => {
   const data = tableDataSchema.parse({

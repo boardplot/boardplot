@@ -1687,7 +1687,17 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
         return { ...base, raw: v, state: 'value', displayed: labels?.[v] ?? v, tone: judgementTone(tone, obj?.strong) };
       }
       case 'date': {
-        const v = typeof authored === 'string' ? authored : typeof obj?.v === 'string' ? obj.v : null;
+        const given = typeof authored === 'number' ? authored : obj?.v;
+        const v = typeof authored === 'string' ? authored : typeof given === 'string' ? given : null;
+        // A number is no date. It keeps the missing dash it drew, and says so.
+        if (typeof given === 'number') {
+          warnings.push({
+            code: 'date-value-number',
+            severity: 'warn',
+            message: `date cell rows[${row.id}].cells[${col.id}] holds the number ${given} and draws the missing dash; write an ISO date (YYYY-MM-DD), or use a value or text column.`,
+            owner: { rowId: row.id, colId: col.id },
+          });
+        }
         if (v === null) return { ...base, displayed: missingGlyph };
         const d = parseISODate(v);
         if (!d) {
