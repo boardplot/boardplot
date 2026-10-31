@@ -31,6 +31,8 @@ import { round2, type Point, type Rect, type Size } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { markOutlineOff, namesOnly, separationStroke, sliceOutlineOff } from '../../markVisibility';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
+import { stepDownFont } from '../../label/rowFit';
+import { textScaleOf } from '../../typeFloors';
 import {
   labelCtx,
   PRIORITY,
@@ -227,7 +229,9 @@ const UNLABELLED = Symbol('pieUnlabelled');
 const FIXED_PASS = Symbol('pieFixedPass');
 /** The ring drops the smallest label without a good seat, never a lower one to free a seat. */
 const BAD_FIRST = Symbol('pieBadFirst');
-type PiePassOptions = PieOptions & { [UNLABELLED]?: Map<Id, string>; [FIXED_PASS]?: true; [BAD_FIRST]?: true };
+/** The pass gives a doughnut's centre total priority over the outside-label reserve. */
+const CENTRE_FIRST = Symbol('pieCentreFirst');
+type PiePassOptions = PieOptions & { [UNLABELLED]?: Map<Id, string>; [FIXED_PASS]?: true; [BAD_FIRST]?: true; [CENTRE_FIRST]?: true };
 
 /**
  * A slice whose label found no seat is named in the note
@@ -240,18 +244,30 @@ export function layoutPie(
   data: ChartData,
   options: PieOptions = {},
 ): Geometry<PieMarks, PieDerived> {
+  const layout = layoutPieOrdered(data, options);
+  if (!layout.centreLost) return layout.geometry;
+  // The settled layout drops the total that a larger ring could hold. The whole layout is set again with
+  // the total first, and stands only when it draws the total; else the first layout stands unchanged.
+  const centred = layoutPieOrdered(data, { ...options, [CENTRE_FIRST]: true } as PiePassOptions);
+  return centred.centreLost ? layout.geometry : centred.geometry;
+}
+
+function layoutPieOrdered(
+  data: ChartData,
+  options: PiePassOptions,
+): { geometry: Geometry<PieMarks, PieDerived>; centreLost: boolean } {
   const priority = drivePie(data, options);
-  if (!priority.swapped) return priority.geometry;
+  if (!priority.swapped) return priority;
   // Freeing a seat for a higher label changes the note, and so the height the driver settles
   // on. The order that keeps more labels wins; on a tie, the priority order.
   const plain = drivePie(data, { ...options, [BAD_FIRST]: true } as PiePassOptions);
-  return plain.lost < priority.lost ? plain.geometry : priority.geometry;
+  return plain.lost < priority.lost ? plain : priority;
 }
 
 function drivePie(
   data: ChartData,
   options: PiePassOptions,
-): { geometry: Geometry<PieMarks, PieDerived>; lost: number; swapped: boolean } {
+): { geometry: Geometry<PieMarks, PieDerived>; lost: number; swapped: boolean; centreLost: boolean } {
   let named = new Map<Id, string>();
   let swapped = false;
   const run = (passOptions: PiePassOptions) => {
@@ -266,7 +282,7 @@ function drivePie(
     pass = run(options);
   }
   // A grid panel has no footer of its own to spare: its grid speaks for it.
-  if (panelTypeClass(options) !== undefined) return { geometry: pass.geometry, lost: pass.unlabelled.size, swapped };
+  if (panelTypeClass(options) !== undefined) return { geometry: pass.geometry, lost: pass.unlabelled.size, swapped, centreLost: pass.centreLost };
   // A note that wraps to one more line shrinks the ring and can unseat one more
   // label, so the note is set again until it names every slice the last pass
   // left unlabelled, so nothing is lost silently. Each round names at least one more
@@ -282,15 +298,15 @@ function drivePie(
     const room = hiddenValueNoteHeight(pass.geometry);
     const { width, height } = pass.geometry.size;
     const taller = room > 0 ? run({ ...options, size: { width, height: Math.ceil(height + room) } } as PiePassOptions) : undefined;
-    if (taller && taller.unlabelled.size === 0) return { geometry: taller.geometry, lost: 0, swapped };
+    if (taller && taller.unlabelled.size === 0) return { geometry: taller.geometry, lost: 0, swapped, centreLost: taller.centreLost };
   }
-  return { geometry: pass.geometry, lost: new Set([...named.keys(), ...pass.unlabelled.keys()]).size, swapped };
+  return { geometry: pass.geometry, lost: new Set([...named.keys(), ...pass.unlabelled.keys()]).size, swapped, centreLost: pass.centreLost };
 }
 
 function layoutPiePass(
   data: ChartData,
   options: PiePassOptions,
-): { geometry: Geometry<PieMarks, PieDerived>; unlabelled: Map<Id, string>; swapped: boolean } {
+): { geometry: Geometry<PieMarks, PieDerived>; unlabelled: Map<Id, string>; swapped: boolean; centreLost: boolean } {
   const named = options[UNLABELLED] ?? new Map<Id, string>();
   let swapped = false;
   const warnings: LintWarning[] = [];
@@ -510,6 +526,11 @@ function layoutPiePass(
   const { insideContent, outsideContent, kindSetting } = pieLabelContent(options, displayedCount, sliceKey);
   const labelFont: FontSpec = { family: theme.type.family, ...theme.type.label };
   const lineH = measure('0', labelFont).height;
+  const strongFont: FontSpec = { family: theme.type.family, ...theme.type.label, weight: emphasisWeight(theme) };
+  /** The radius of the circle round a total block: the number in `font`, the unit line in `unitFont`. */
+  const centerBlockRadius = (lines: string[], font: FontSpec = strongFont, unitFont: FontSpec = labelFont): number =>
+    Math.hypot(Math.max(measure(lines[0]!, font).width, ...lines.slice(1).map((l) => measure(l, unitFont).width)) / 2,
+      (measure('0', font).height + (lines.length - 1) * measure('0', unitFont).height) / 2) + 1;
   const widestSliceWord = Math.max(0,
     maxOf(slices.flatMap((slice) => (slice.cat.label ?? slice.cat.id).split(/\s+/)).map((word) => measure(word, labelFont).width)));
   // Every label outside in two columns, two lines
@@ -639,20 +660,39 @@ function layoutPiePass(
   // reserved for it; any other plot keeps 24 px above and below the circle.
   const naturalPads = columns && automatic ? circlePads(diameterFor(plot.w) / 2) : undefined;
   const verticalPad = naturalPads ? (naturalPads.top + naturalPads.bottom) / 2 : 24;
+  // Only a slice that draws (a positive value) moves out, so only its offset shrinks the circle.
+  const maxAuthoredExplode = slices.reduce(
+    (max, slice) => (slice.v ?? 0) > 0 ? Math.max(max, Math.max(0, explode[slice.cat.id] ?? 0)) : max,
+    0,
+  );
+  // A doughnut's total in the hole can outrank the outside-label reserve. A layout that drops the total
+  // is laid out again with CENTRE_FIRST: the ring then grows into the reserve, to the radius whose hole
+  // holds the total at the label size, else one type step down, and the ring labels may not shrink it
+  // below that radius. Plot width, plot height and the size cap bound the growth. A ring that cannot
+  // reach either size is not laid out again, and a layout that draws the total is never changed. Label
+  // columns keep their width, so only the ring-label layout grows.
+  const centreFirst = options[CENTRE_FIRST] === true;
+  const centerLines = hole >= CENTER_TEXT_MIN && kindSetting('total') !== false && !negatives.length
+    ? pieCenterLines(fmt(total), options.unit ?? ser.unit, options.format) : undefined;
+  const circleLimit = Math.min(plot.w / 2, plot.h / 2 - verticalPad, diameterCap / 2);
+  const reserveFit = Math.min((plot.w - 2 * outsideMargin) / 2, plot.h / 2 - verticalPad, diameterCap / 2);
+  const centerStep = centerLines && !columns ? stepDownFont(theme, labelFont, 'label', options.target, textScaleOf(options)) : undefined;
+  // The ring radius whose hole holds the total at the label size, else one step down (0.01 px of slack
+  // so a hole as large as the block still counts as holding it); 0 when the limits allow neither.
+  const centerReach = centerLines && !columns
+    ? [centerBlockRadius(centerLines), ...(centerStep ? [centerBlockRadius(centerLines, { ...strongFont, size: centerStep.size }, centerStep)] : [])]
+      .map((need) => (need + 0.01) / hole).find((need) => need * (1 + maxAuthoredExplode) + arcRoom <= circleLimit) ?? 0
+    : 0;
+  const centerR = centreFirst ? centerReach : 0;
   const baseFit = Math.max(
     20,
-    Math.min((plot.w - 2 * outsideMargin) / 2, plot.h / 2 - verticalPad, diameterCap / 2) - arcRoom,
+    Math.max(reserveFit, centerR > 0 ? centerR * (1 + maxAuthoredExplode) + arcRoom : 0) - arcRoom,
   );
   // The circle and its two label columns stand centred as one block.
   if (columns) {
     const left = sideReserve(1, plot.w);
     cx = plot.x + (plot.w - left - 2 * baseFit - sideReserve(0, plot.w)) / 2 + left + baseFit;
   }
-  // Only a slice that draws (a positive value) moves out, so only its offset shrinks the circle.
-  const maxAuthoredExplode = slices.reduce(
-    (max, slice) => (slice.v ?? 0) > 0 ? Math.max(max, Math.max(0, explode[slice.cat.id] ?? 0)) : max,
-    0,
-  );
   let r = baseFit / (1 + maxAuthoredExplode);
   let pieMinWidth = 0;
   // Refuse-less: a pinned pie draws under its 320 px floor while the circle keeps a readable
@@ -722,7 +762,6 @@ function layoutPiePass(
   };
   let geoms = buildGeoms();
   // ---- label content ----
-  const strongFont: FontSpec = { family: theme.type.family, ...theme.type.label, weight: emphasisWeight(theme) };
   // The room an outside label has beside the rim at its slice's angle, with
   // the leader gap a four-line label takes. A long name on a label that only
   // goes outside wraps to it before it is measured, at most two lines; a cut
@@ -910,7 +949,8 @@ function layoutPiePass(
       }
       return { ring, seats };
     };
-    let placed = seatAll(Math.max(PIE_MIN_RADIUS, 0.7 * r));
+    // The ring may shrink the pie for its labels, but not below the radius whose hole holds the total.
+    let placed = seatAll(Math.max(PIE_MIN_RADIUS, 0.7 * r, centerR));
     if (placed.ring.r < r) {
       r = placed.ring.r;
       ri = r * hole;
@@ -1040,27 +1080,33 @@ function layoutPiePass(
   // ---- doughnut center: total in the hole (hole >= 0.35) ----
   let centerFont: FontSpec | undefined;
   /** The largest bold face, label size to CENTER_VALUE_MAX, whose total block fits in the hole. */
+  let centerUnitFont = labelFont;
   const centerValueFont = (lines: string[]): FontSpec => {
-    const unitW = Math.max(0, ...lines.slice(1).map((line) => measure(line, labelFont).width));
-    const fits = (font: FontSpec) => Math.hypot(Math.max(measure(lines[0]!, font).width, unitW) / 2, (measure('0', font).height + (lines.length - 1) * lineH) / 2) <= ri - 1;
+    const fits = (font: FontSpec) => centerBlockRadius(lines, font) <= ri;
     // The total scales with the ring: 24 px on a 170 px ring, 15 px on a 95 px ring.
     const cap = Math.min(CENTER_VALUE_MAX, Math.max(labelFont.size, Math.round(2 * CENTER_VALUE_RATIO * r) / 2));
     for (let px = cap; px > labelFont.size; px -= 0.5) {
       const font = { ...strongFont, size: px };
       if (fits(font)) return font;
     }
+    // A hole too small for the label size takes the next type step down, number and unit, when that holds it.
+    const step = !centreFirst || fits(strongFont) ? undefined : stepDownFont(theme, labelFont, 'label', options.target, textScaleOf(options));
+    if (step && centerBlockRadius(lines, { ...strongFont, size: step.size }, step) <= ri) {
+      centerUnitFont = step;
+      return { ...strongFont, size: step.size };
+    }
     return strongFont;
   };
-  if (hole >= CENTER_TEXT_MIN && kindSetting('total') !== false && !negatives.length) {
-    const lines = pieCenterLines(fmt(total), options.unit ?? ser.unit, options.format);
+  if (centerLines) {
+    const lines = centerLines;
     const text = lines.join(' ');
     // Under a new target the total prints as large as the hole
     // holds (up to CENTER_VALUE_MAX px), its unit below in the regular muted
     // label face.
     centerFont = centerValueFont(lines);
     const tsize = {
-      width: Math.max(measure(lines[0]!, centerFont).width, ...lines.slice(1).map((line) => measure(line, labelFont).width)),
-      height: measure('0', centerFont).height + (lines.length - 1) * lineH,
+      width: Math.max(measure(lines[0]!, centerFont).width, ...lines.slice(1).map((line) => measure(line, centerUnitFont).width)),
+      height: measure('0', centerFont).height + (lines.length - 1) * measure('0', centerUnitFont).height,
     };
     // A box wholly inside the hole needs no pad against the ring's claims.
     const inHole = Math.hypot(tsize.width / 2, tsize.height / 2) <= ri - 1;
@@ -1099,6 +1145,7 @@ function layoutPiePass(
   });
   const solved = solveLabels(labelRequests, occupied, solveCtx);
   pushAll(warnings, solved.warnings);
+  const centreHidden = centerReach > 0 && solved.placed.some((label) => label.kind === 'total' && label.hidden);
 
   // An inside label that lands outside prints its outside form, name included.
   const outsideForms = new Map<string, NonNullable<SliceLabel['outside']>>(sliceLabels.flatMap((sl) => (sl.outside ? [[`insidePie:${sid}:${sl.g.cat.id}`, sl.outside] as const] : [])));
@@ -1190,7 +1237,7 @@ function layoutPiePass(
       totalNode.lines = [value!];
       if (rest.length > 0) {
         nodes.splice(nodes.indexOf(totalNode) + 1, 0, {
-          ...totalNode, id: `${totalNode.id}:unit`, y: totalNode.y + valueH, lines: rest, font: labelFont, ink: { token: 'inkMuted' },
+          ...totalNode, id: `${totalNode.id}:unit`, y: totalNode.y + valueH, lines: rest, font: centerUnitFont, ink: { token: 'inkMuted' },
         });
       }
     }
@@ -1238,8 +1285,12 @@ function layoutPiePass(
       decisions: [...solved.decisions, ...annResult.decisions],
     },
   };
-  if (automatic && geometry.sizing?.naturalHeight === size.height) settledAutoHeight.add(geometry.frame);
-  return { geometry, unlabelled, swapped };
+  const naturalHeight = geometry.sizing?.naturalHeight;
+  if (automatic && naturalHeight === size.height) settledAutoHeight.add(geometry.frame);
+  // A canvas shorter than the content, or an open height not at its content height, is laid out again by
+  // the sizing, which can bring the total back; only a canvas that holds the content has lost it.
+  const settled = naturalHeight === undefined || (automatic ? naturalHeight === size.height : naturalHeight <= size.height);
+  return { geometry, unlabelled, swapped, centreLost: centreHidden && settled };
 }
 
 /**
