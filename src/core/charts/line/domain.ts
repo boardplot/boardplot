@@ -42,6 +42,7 @@ import type { LineAnomaly, LineDomain, LineEnv, LineVariant } from './model';
 import type { LineInterpolation, LineOptionTarget, LineOptions } from './types';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
+import { checkPointBudget } from '../../itemBudget';
 
 /**
  * The nice domain already caps wasted domain on either side at 15%. If the plotted data
@@ -434,20 +435,21 @@ function applyRebase(options: LineOptions, variant: LineVariant, cats: Category[
   }
   for (const s of seriesNorm) {
     const row = pv[rowOf.get(s)!]!;
-    const base = row[baseIdx];
-    if (base === null || base === 0) {
-      suppressed.push({ id: s.id, series: s.label, period: cats[baseIdx]!.label ?? atId, zero: base === 0 });
+    const base = row[baseIdx] ?? null;
+    // An index to 100 has no meaning on a base at or below zero: it would flip the series.
+    if (base === null || base <= 0) {
+      suppressed.push({ id: s.id, series: s.label, period: cats[baseIdx]!.label ?? atId, zero: base !== null });
       warnings.push({
         code: 'rebase-base-invalid',
         severity: 'warn',
-        message: `series '${s.id}': value at '${atId}' is ${base === 0 ? 'zero' : 'missing'} — series suppressed by rebase100`,
+        message: `series '${s.id}': value at '${atId}' is ${base === null ? 'missing' : base === 0 ? 'zero' : 'negative'} — series suppressed by rebase100`,
         owner: { seriesId: s.id },
       });
       for (let ci = 0; ci < row.length; ci++) row[ci] = null;
     } else {
       for (let ci = 0; ci < row.length; ci++) {
         const v = row[ci]!;
-        row[ci] = v === null ? null : round2((v / base!) * 100);
+        row[ci] = v === null ? null : round2((v / base) * 100);
       }
     }
   }
@@ -848,6 +850,7 @@ export function resolveLineDomain(data: LineChartData, input: LineOptions, env: 
     plotted: pv, basis: basisByCat, targets, annotations: options.annotations,
     anchors: [...phases?.phases.flatMap(phase => [phase.from, phase.to]) ?? [], ...live.anchors ?? []],
     samplingRows: [...(isBump ? pv : []), ...(isStacked ? stackBoundaries(dataSeries.map(s => pv[rowOf.get(s)!]!)) : []), ...(fan?.bands.map(band => band.widths) ?? [])] });
+  checkPointBudget(cats.length, seriesNorm.length);
   if (population) projectLineViewport({ ...population, bump: bumpDerived, fan, phases });
   if (population) options = liveWindowOptions({ ...options, annotations: population.annotations }, population.sampling);
   // After the viewport: the rounded shares are keyed by category, so they follow its projection.

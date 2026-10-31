@@ -14,7 +14,7 @@ import { separationStroke } from '../../markVisibility';
 import type { FontSpec } from '../../text';
 import { strokeToken, markRolePaint, markRoleToken, paintColor, semanticPalettePaint, surfaceFloorPaint } from '../../theme';
 import type { Id, OwnerRef } from '../../types/cell';
-import type { Paint, PlacedAnnotation, SceneNode } from '../../types/scene';
+import type { LintWarning, Paint, PlacedAnnotation, SceneNode } from '../../types/scene';
 import { dateFromDay, dayNum, floorTo, nextOf, type Unit } from './calendar';
 import { fmtPathNumber as f2 } from '../../curve';
 import { GANTT_ROW_PITCH } from './domain';
@@ -44,6 +44,7 @@ interface MarkCtx {
   claims: OccupiedIndex;
   headNames: Rect[];
   rows: readonly NormRow[];
+  warnings: LintWarning[];
 }
 
 type RowMarks = GanttMarks['rows'][number];
@@ -296,7 +297,11 @@ function headerRow(
   // empty — its rect and grid stroke still mark the period, and printing
   // ink wider than the cell would bleed into the neighbour cell; a
   // sub-glyph sliver cannot hold any label.
-  const cellFmts = fmts.slice(rowFmtIndex === -1 ? fmts.length - 1 : rowFmtIndex);
+  // A year row is the exception: its shorter format ('yy') is a whole-row
+  // fallback, so a clipped edge year never prints "27" beside "2026".
+  const fromFmt = rowFmtIndex === -1 ? fmts.length - 1 : rowFmtIndex;
+  const cellFmts = fmts.slice(fromFmt, unit === 'year' ? fromFmt + 1 : undefined);
+  let printed = false;
   starts.forEach((s, i) => {
     const cell = cells[i]!;
     ctx.nodes.push({ t: 'rect', id: `header:${kindTag}:${i}`, rect: cell, fill: { token: 'background' }, stroke: { token: 'grid' }, strokeWidth: strokeToken(ctx.env.theme, 'hair'), owner: {}, part: 'headerCell' });
@@ -304,12 +309,21 @@ function headerRow(
     const named = startDay ? dateFromDay(Math.max(dayNum(s), d0Day)) : s;
     const text = cellFmts.map((f) => formatDate(named, f, lang)).find((candidate) => fits(candidate, i));
     if (text !== undefined) {
+      printed = true;
       const { width: tw, height: th } = sized(text);
       const name = { x: startDay ? cell.x + 6 : cell.x + cell.w / 2 - tw / 2, y: cell.y + (headerRowH - th) / 2, w: tw, h: th };
       ctx.headNames.push(name);
       ctx.nodes.push({ t: 'text', typeRole: 'axis', id: `header:${kindTag}:${i}:text`, x: name.x, y: name.y, lines: [text], align: 'start', font, ink, owner: {}, part: 'scale' });
     }
   });
+  if (kindTag === 'major' && !printed) {
+    ctx.warnings.push({
+      code: 'gantt-calendar-unlabelled',
+      severity: 'warn',
+      message: `the calendar head's ${unit} row has no date: its cells are too narrow for any label`,
+      suggest: 'widen the chart or shorten the span',
+    });
+  }
 }
 
 /** Calendar header (two tiers) and the grid verticals: solid at major boundaries, dotted at minor ones. */
@@ -494,6 +508,7 @@ export function layoutGanttMarks(
   band: GanttBand,
   body: GanttBody,
   paints: GanttPaints,
+  warnings: LintWarning[],
 ): GanttMarkGeometry {
   const ctx: MarkCtx = {
     env,
@@ -504,6 +519,7 @@ export function layoutGanttMarks(
     claims: createOccupiedIndex({ x: 0, y: 0, w: env.size.width, h: env.size.height }),
     headNames: [],
     rows: domain.rows,
+    warnings,
   };
   const marks: GanttMarks = { rows: [], headerRect: { x: body.bodyX, y: band.headerTop, w: body.bodyW, h: band.headerH } };
   const { elapsed, shades } = backgroundLayers(ctx, domain);

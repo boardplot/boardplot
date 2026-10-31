@@ -30,7 +30,7 @@ import { rectSeriesAdjacentWarnings } from '../../adjacentSeries';
 import { PARTIAL_KEY, partialIds, toDateFits, toDateRoom } from '../../partialPeriod';
 import type { AnchorResolution, AnnotatePassResult } from '../../annotate';
 import { NOT_AVAILABLE } from '../../format';
-import { NO_STACK_TOTAL } from '../../stackAdds';
+import { noTotal } from '../../stackAdds';
 import { emitEventLane, percentLevels, runAnnotatePass, settleEventLane } from '../../annotatePass';
 import { categoryTargetFields, spliceAnnotationNodes } from '../../annotateFields';
 import { segmentHitsRect, type Rect } from '../../geometry';
@@ -273,7 +273,7 @@ function annotateColumn(
       value: stackTotals[c.id]!,
       pointValueText: domain.totalFmt(stackTotals[c.id]!),
       format: dataSeries.length === 1 ? dataSeries[0]!.format : undefined,
-      ...(totalsAdd(domain) ? {} : { noValue: NO_STACK_TOTAL }),
+      ...noTotal(totalsAdd(domain), domain.stacks[ci]!.hasValue),
       date: c.date,
       label: c.label ?? c.id,
       owner: { categoryId: c.id },

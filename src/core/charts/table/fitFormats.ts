@@ -23,6 +23,7 @@ import type { ResolvedCell, ResolvedColumn, ResolvedRow, ResolvedTable, TableCel
 import { nonzeroDecimals, roundHalfUp, roundsToZero, zeroLifts } from '../../formatPrecision';
 import { tableCellNodeId } from './cellKey';
 import { figureFont } from './tracks';
+import { columnOwnsFormat } from '../../tableCalc';
 import { resolveTable, ZERO_LIFT, type ZeroLiftOptions } from './resolve';
 import { maxOf, minOf } from '../../arrays';
 
@@ -76,15 +77,27 @@ function keptDigits(value: number, magnitude: NumberFormatSpec['magnitude'], dec
   return roundHalfUp(Math.abs(value) / MAGNITUDE_DIVISOR[magnitude], decimals).replace('.', '').replace(/^0+/, '').length;
 }
 
+/** How far a figure down to one digit may print from its value: "0.1" for 80,000 under (M) is 25% off. */
+const ONE_DIGIT_TOLERANCE = 0.05;
+
+/** Whether the figure prints near its value at a magnitude and decimals. */
+function printsNear(value: number, magnitude: NumberFormatSpec['magnitude'], decimals: number): boolean {
+  const scaled = Math.abs(value) / MAGNITUDE_DIVISOR[magnitude];
+  return Math.abs(Number(roundHalfUp(scaled, decimals)) / scaled - 1) <= ONE_DIGIT_TOLERANCE;
+}
+
 /**
  * Whether every figure keeps two significant digits under `next` (all of its own where `spec`
- * prints fewer). A figure that would print as zero passes only under an automatic format, which
- * prints the bound ("<0.1"); an authored one lifts it to one digit ("0.00001"), so it fails.
+ * prints fewer, and then near its value). A figure that would print as zero passes only under an
+ * automatic format, which prints the bound ("<0.1"); an authored one lifts it to one digit
+ * ("0.00001"), so it fails.
  */
 function keepsDigits(figures: readonly number[], spec: NumberFormatSpec, next: Pick<NumberFormatSpec, 'magnitude' | 'decimals'>): boolean {
   return figures.every((value) => {
     const kept = keptDigits(value, next.magnitude, next.decimals);
-    return (kept === 0 && spec.automatic) || kept >= Math.min(FIT_DIGITS, keptDigits(value, spec.magnitude, spec.decimals));
+    if (kept === 0 && spec.automatic) return true;
+    if (kept < Math.min(FIT_DIGITS, keptDigits(value, spec.magnitude, spec.decimals))) return false;
+    return kept === 0 || kept >= FIT_DIGITS || printsNear(value, next.magnitude, next.decimals);
   });
 }
 
@@ -142,7 +155,8 @@ function shorterSpec(spec: NumberFormatSpec, figures?: readonly number[]): Numbe
 
 /** A format-by-example that parses back to `spec`. */
 function exampleOf(spec: NumberFormatSpec): string {
-  const whole = spec.thousandsSep === '' ? '1' : `1${spec.thousandsSep}234`;
+  // Three decimals after a bare 1 ("1.234") read back as a thousands group, so a leading 0 marks them as decimals.
+  const whole = spec.thousandsSep === '' ? (spec.decimals === 3 ? '0' : '1') : `1${spec.thousandsSep}234`;
   const fraction = spec.decimals > 0 ? `${spec.decimalSep}${'2345678'.slice(0, spec.decimals)}` : '';
   const body = `${spec.signed ? '+' : ''}${spec.prefix}${whole}${fraction}${MAGNITUDE_LABEL[spec.magnitude]}${spec.suffix}`;
   return spec.negative === 'parens' ? `(${body})` : body;
@@ -271,7 +285,7 @@ export function fitTableFormats(
         const rowFormatted = rowExample(authoredRow, decimal) !== undefined
           && (authoredRow!.calc !== undefined
             || authoredRow!.inline === true
-            || (authoredColumn as { format?: string } | undefined)?.format === undefined);
+            || authoredColumn === undefined || !columnOwnsFormat(authoredColumn));
         // A money row of a measure group takes its magnitude and precision from resolve, so a fitted
         // format would change nothing in it and only cap the other rows of its unit.
         const fits = authoredRow?.fitFormat !== false
@@ -284,7 +298,8 @@ export function fitTableFormats(
     }
     /** Whether a data row with its own format prints a number in this unformatted column. */
     const rowFormattedColumn = (columnId: Id): boolean => {
-      if ((authoredColumns.get(columnId) as { format?: string } | undefined)?.format !== undefined) return false;
+      const authoredColumn = authoredColumns.get(columnId);
+      if (authoredColumn !== undefined && columnOwnsFormat(authoredColumn)) return false;
       return table.rows.some((row) => {
         const authored = rowsById.get(row.id);
         return authored?.format !== undefined && authored.calc === undefined && row.inline !== true

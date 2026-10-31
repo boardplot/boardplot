@@ -147,6 +147,18 @@ function colorAttr(value: string): string {
   return esc(color);
 }
 
+/**
+ * A fill attribute. A #rrggbbaa or #rgba colour becomes a plain colour plus
+ * fill-opacity, because LibreOffice paints an 8-digit hex fill opaque black.
+ */
+function fillAttr(fill: string): string {
+  const m = /^#(?:([0-9a-f]{6})([0-9a-f]{2})|([0-9a-f]{3})([0-9a-f]))$/i.exec(fill);
+  if (!m) return `fill="${fill}"`;
+  const rgb = m[1] ?? m[3]!;
+  const alpha = parseInt(m[2] ?? m[4]!.repeat(2), 16);
+  return alpha === 255 ? `fill="#${rgb}"` : `fill="#${rgb}" fill-opacity="${Number((alpha / 255).toFixed(3))}"`;
+}
+
 function validateNumber(
   label: string,
   value: number | undefined,
@@ -556,6 +568,8 @@ function renderSvgInternal(
 
 /** Public rendering never rounds data-driven colors. */
 export function renderSvg(geometry: Geometry, theme: Theme, opts: RenderSvgOptions = {}): string {
+  // A plain-JS caller gets the argument's name, not a TypeError from deep in the paint code.
+  if (!theme) throw new TypeError('renderSvg: theme is required; pass the theme the geometry was laid out with, such as request.theme');
   return renderSvgInternal(geometry, theme, opts);
 }
 
@@ -698,7 +712,7 @@ function renderNodeInner(
         }
       }
       const radius = node.radius ? ` rx="${n2(node.radius)}"` : '';
-      const open = `<rect${tf} data-id="${esc(node.id, 'node.id')}" data-part="${esc(node.part, 'node.part')}"${rc} x="${n2(rect.x)}" y="${n2(rect.y)}" width="${n2(rect.w)}" height="${n2(rect.h)}"${radius} fill="${fill}"${extra}`;
+      const open = `<rect${tf} data-id="${esc(node.id, 'node.id')}" data-part="${esc(node.part, 'node.part')}"${rc} x="${n2(rect.x)}" y="${n2(rect.y)}" width="${n2(rect.w)}" height="${n2(rect.h)}"${radius} ${fillAttr(fill)}${extra}`;
       // A rectangle that stands for text carries it, the way an image does.
       if (node.title === undefined) return `${open}/>`;
       return `${open} role="img" aria-label="${esc(node.title, 'node.title')}"><title>${esc(node.title, 'node.title')}</title></rect>`;
@@ -715,13 +729,13 @@ function renderNodeInner(
         : '';
       const dash = node.dash ? ` stroke-dasharray="${node.dash.join(' ')}"` : '';
       const lineCap = node.lineCap ? ` stroke-linecap="${esc(node.lineCap, 'path.lineCap')}"` : '';
-      return `<path${tf} data-id="${esc(node.id)}" data-part="${esc(node.part)}"${rc} d="${esc(node.d)}" fill="${fill}"${stroke}${dash}${lineCap} stroke-linejoin="round"/>`;
+      return `<path${tf} data-id="${esc(node.id)}" data-part="${esc(node.part)}"${rc} d="${esc(node.d)}" ${fillAttr(fill)}${stroke}${dash}${lineCap} stroke-linejoin="round"/>`;
     }
     case 'circle': {
       const stroke = node.stroke
         ? ` stroke="${formatter.attr(node.stroke)}" stroke-width="${node.strokeWidth ?? strokeToken(theme, 'mark')}"`
         : '';
-      return `<circle${tf} data-id="${esc(node.id, 'node.id')}" data-part="${esc(node.part, 'node.part')}"${rc} cx="${n2(node.cx)}" cy="${n2(node.cy)}" r="${n2(node.r)}" fill="${formatter.attr(node.fill)}"${stroke}${node.title === undefined ? '/>' : `><title>${esc(node.title, 'node.title')}</title></circle>`}`;
+      return `<circle${tf} data-id="${esc(node.id, 'node.id')}" data-part="${esc(node.part, 'node.part')}"${rc} cx="${n2(node.cx)}" cy="${n2(node.cy)}" r="${n2(node.r)}" ${fillAttr(formatter.attr(node.fill))}${stroke}${node.title === undefined ? '/>' : `><title>${esc(node.title, 'node.title')}</title></circle>`}`;
     }
     case 'text': {
       const anchor = node.align === 'start' ? 'start' : node.align === 'end' ? 'end' : 'middle';

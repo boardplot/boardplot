@@ -88,6 +88,8 @@ export interface CompiledDimSwitch {
   /** The deepest depth that still opens a row. */
   maxDepth: number;
   warnings: LintWarning[];
+  /** Measures left out of the table, for reading.omissions. */
+  omissions: { labelId: string; text: string; reason: string; destination: string }[];
 }
 
-export interface DimSwitchDerived extends TableDerived { compiled: {data: TableData; options: TableOptions} }
+export interface DimSwitchDerived extends TableDerived { compiled: {data: TableData; options: TableOptions}; omissions: CompiledDimSwitch['omissions'] }

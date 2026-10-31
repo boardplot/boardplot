@@ -830,6 +830,22 @@ describe('cohort — claims', () => {
     expect(claims.find((c) => c.id === 'cohort:average:t1')!.output.raw).toBe(2e-8);
   });
 
+  // The reading called every printed exhibit cell "Not displayed", because the receipt looked for heatmap cell nodes.
+  it('quotes the text an exhibit prints, and only a cell it prints', async () => {
+    const { claimsForChart } = await import('../src/core/claims');
+    const data = { cohorts: [{ id: 'a', active: [1000, 640, 500] }, { id: 'b', active: [1000, 660] }] };
+    for (const variant of ['pure', 'stepped'] as const) {
+      const geometry = layout(data, { variant, visiblePeriods: [0, 1], size: { width: 760, height: 420 } });
+      const claims = claimsForChart('cohort', geometry as never);
+      const claim = (id: string) => claims.find((c) => c.id === id)!;
+      const printed = geometry.labels.find((l) => l.id === 'cohort-cell:a:t1')!;
+      expect(claim('cohort:a:t1').output.displayed).toBe(printed.text);
+      expect(claim('cohort:a:t1').nodeId).toBe(printed.nodeId);
+      expect(claim('cohort:a:t2').output.displayed).toBe('');
+      expect(claim('cohort:a:t2').nodeId).toBeUndefined();
+    }
+  });
+
   it('gives every observed cell a receipt carrying both counts and the ratio', async () => {
     const { claimsForChart } = await import('../src/core/claims');
     const geometry = layout(clean());

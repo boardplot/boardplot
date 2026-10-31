@@ -13,7 +13,7 @@ export { pieDataSchema, pieOptionsSchema };
 export const pieDefinition: ChartDefinition<ChartData, PieOptions, PieMarks, PieDerived> = {
   ...pieCore,
   discovery: {
-    notFor: 'Negative parts; pie divides a nonnegative whole.',
+    notFor: 'Negative parts; pie divides a nonnegative whole. A negative slice is not drawn and the centre total is left out.',
     example: {
       data: {
         categories: [{ id: 'renewals', label: 'Renewals' }, { id: 'new', label: 'New' }],

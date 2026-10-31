@@ -30,7 +30,9 @@ import * as z from 'zod';
  * `kind: 'cadence'`) is not the branch the author meant when another branch
  * has no issue at that tag and failed on a present named field, so its issues
  * are dropped. Identical issues (same path and message), as branches that
- * share fields report them, are listed once.
+ * share fields report them, are listed once. When tags failed and exactly one
+ * branch fails only on missing fields, that branch matched the keys sent and
+ * its missing fields are reported.
  */
 export function flattenIssues(issues: readonly z.core.$ZodIssue[]): z.core.$ZodIssue[] {
   const seen = new Set<string>();
@@ -57,6 +59,15 @@ function flattenUnions(issues: readonly z.core.$ZodIssue[]): z.core.$ZodIssue[] 
     const tags = new Set(branches.flat().filter(tagIssue).map((inner) => inner.path[0]));
     const untagged = branches.filter((branch) => !branch.some((inner) => tags.has(inner.path[0]!))
       && branch.some((inner) => inner.path.length > 0 && !missingIssue(inner)));
+    // When a tag failed in some branches, the one branch that fails only on missing fields is the one the
+    // author keys point at ({ op: 'share' } without its `of`): its missing fields are the finding.
+    const keyed = untagged.length === 0 && tags.size > 0
+      ? branches.filter((branch) => branch.length > 0 && branch.every((inner) => inner.path.length > 0 && missingIssue(inner)))
+      : [];
+    if (keyed.length === 1) {
+      for (const inner of keyed[0]!) out.push({ ...inner, path: [...issue.path, ...inner.path] } as z.core.$ZodIssue);
+      continue;
+    }
     const nested = flattenUnions((untagged.length > 0 ? untagged : branches).flat());
     const withPath = nested.filter((inner) => inner.path.length > 0);
     const specific = (withPath.length > 0 ? withPath : nested.filter((inner) => inner.code === 'unrecognized_keys'))
