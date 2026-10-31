@@ -3,6 +3,9 @@
  * arrays, no Node Buffer and no zlib, so the browser bundle can import it.
  */
 
+/** The most pixels one PNG may have. A 1000000 px canvas made the rasterizer abort the process. */
+export const PNG_PIXELS_MAX = 100_000_000;
+
 let crcTable: Uint32Array | undefined;
 
 /** CRC-32 of a PNG chunk (ISO 3309); a table, because the browser bundle has no zlib. */

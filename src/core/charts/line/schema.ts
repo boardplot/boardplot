@@ -267,7 +267,7 @@ export const lineOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions
     .describe(
       "Weight and ink per scenario, opt-in. A board that draws an actual against its prior year authors { AC: { width: 1.5, ink: 'ink' }, PY: { width: 1, ink: 'inkMuted' } }; without it every line keeps the default 2px and its ramp colour. An authored series fill or colorRole, a highlight and emphasis: 'first' all still win, and a series with no scenario is untouched.",
     ),
-  rebase100: z.union([z.boolean(), z.object({ at: idSchema.describe("Category whose nonzero value becomes 100 in each series.") })]).optional().describe("Index each series to 100 at the first category, or at the supplied category id. A series with a missing or zero base is not drawn, and the key names it. Ignored for stacked100-area."),
+  rebase100: z.union([z.boolean(), z.object({ at: idSchema.describe("Category whose positive value becomes 100 in each series.") })]).optional().describe("Index each series to 100 at the first category, or at the supplied category id. A series with a missing, zero or negative base is not drawn, and the key names it. Ignored for stacked100-area."),
   ratioTier: derivedRatioTierSchema.optional(),
   interpolate: z
     .enum(['linear', 'step-after', 'step-before', 'monotone'])

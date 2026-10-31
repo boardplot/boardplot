@@ -1337,7 +1337,7 @@ export const baseOptionsSchema = z.object({
       missingStack: z.string().min(1).optional().describe('StackedArea source-null note; {categories} is replaced.'),
       incompleteStacks: z.string().min(1).optional().describe('Incomplete bar stack note (bar only; column and combo use knownPartsTotals); {categories} is replaced.'),
       knownPartsShares: z.string().min(1).optional().describe('Incomplete 100% stack note without total100; {categories} is replaced.'),
-      rebaseZero: z.string().min(1).optional().describe('Line or stacked-area series left out by rebase100 for a zero base; {series} and {period} are replaced.'),
+      rebaseZero: z.string().min(1).optional().describe('Line or stacked-area series left out by rebase100 for a zero or negative base; {series} and {period} are replaced.'),
       rebaseMissing: z.string().min(1).optional().describe('Line or stacked-area series left out by rebase100 for a missing base; {series} and {period} are replaced.'),
     })
     .strict()

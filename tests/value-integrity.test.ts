@@ -76,7 +76,16 @@ describe('value integrity on the chart', () => {
       categories: [{ id: 'q1', label: 'Q1' }, { id: 'q2', label: 'Q2' }, { id: 'q3', label: 'Q3' }],
       series: [{ id: 'a', label: 'Alpha', values: [0, 12, 13] }, { id: 'b', label: 'Beta', values: [20, 21, 22] }],
     };
-    expect(texts('line', data, { rebase100: true })).toContain('Alpha not shown: zero base at Q1');
+    expect(texts('line', data, { rebase100: true })).toContain('Alpha not shown: zero or negative base at Q1');
+  });
+
+  // A negative base made rebase100 divide by it, so a series from -50 to 80 drew 100, -120, -140, -160 with no warning.
+  it('a series with a negative rebase100 base is left out, never flipped', () => {
+    const data = {
+      categories: [{ id: 'q1', label: 'Q1' }, { id: 'q2', label: 'Q2' }, { id: 'q3', label: 'Q3' }],
+      series: [{ id: 'a', label: 'Alpha', values: [-50, 60, 80] }, { id: 'b', label: 'Beta', values: [20, 21, 22] }],
+    };
+    expect(texts('line', data, { rebase100: true })).toContain('Alpha not shown: zero or negative base at Q1');
   });
 
   // At the compact plot floor the series' own filled key entry came back as if it were drawn.

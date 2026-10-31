@@ -1,6 +1,7 @@
 import { PLOT_FLOOR_RECT } from '../../sizing';
 import { sk, stackParts } from '../band/stacks';
 import { chartString } from '../../strings/mekko';
+import { noTotal } from '../../stackAdds';
 import { withSegmentSeams } from '../../markVisibility';
 import { emphasisLabelTheme, emphasisWeight } from '../../theme';
 import { structureCount } from '../../structureCounts';
@@ -92,6 +93,12 @@ export interface MekkoDerived {
   tickBand?: TickBandDerived;
 }
 
+/** A column with no known total: every part blank, a part missing, or shares of an unknown whole. Blank is not 0. */
+function totalUnknown(domain: MekkoDomain, ci: number): boolean {
+  const id = domain.cats[ci]!.id;
+  return !domain.series.some((s) => s.vals[ci]!.v !== null) || domain.incomplete.has(id) || domain.wholeUnknown.has(id) || (domain.mode !== 'bar' && domain.unknownTotals.has(id));
+}
+
 /** Phase 4: annotations. `{categoryId, seriesId?}` resolves to a segment edge or the column top. */
 function annotateMekko(
   env: MekkoEnv,
@@ -131,6 +138,7 @@ function annotateMekko(
       x: colCx(area, ci),
       y: norm.edge === 'start' ? y0 : y(topPlotted),
       value: domain.columnTotals[c.id]!,
+      ...noTotal(true, !totalUnknown(domain, ci)),
       format: domain.series.length === 1 ? domain.series[0]!.format : undefined,
       date: c.date,
       owner: { categoryId: c.id },
@@ -166,13 +174,13 @@ function mekkoDescription(env: MekkoEnv, domain: MekkoDomain): string {
     return chartString(env.options, 'mekkoValidDesc', { v1: modeName, v2: domain.validCount, v3: series.length }) +
       widthText +
       chartString(env.options, 'mekkoInvalidDesc', { v1: cats
-        .flatMap((c, ci) => (domain.invalidAt(ci) || domain.wholeUnknown.has(c.id) ? [] : [`${c.label ?? c.id} ${columnTotalText(env, domain, ci)}`]))
+        .flatMap((c, ci) => (domain.invalidAt(ci) || totalUnknown(domain, ci) ? [] : [`${c.label ?? c.id} ${columnTotalText(env, domain, ci)}`]))
         .join(', ') || 'none', v2: cats
         .filter((_, ci) => domain.invalidAt(ci))
         .map((c) => `${c.label ?? c.id} (${nm.has(c.id) ? 'n.m.' : 'n/a'})`)
         .join(', ') });
   }
-  const totals = cats.flatMap((c, ci) => (domain.wholeUnknown.has(c.id) ? [] : [`${c.label ?? c.id} ${columnTotalText(env, domain, ci)}`]));
+  const totals = cats.flatMap((c, ci) => (totalUnknown(domain, ci) ? [] : [`${c.label ?? c.id} ${columnTotalText(env, domain, ci)}`]));
   return chartString(env.options, 'mekkoDesc', { v1: modeName, v2: cats.length, v3: series.length }) +
     widthText +
     (totals.length > 0 ? chartString(env.options, 'totalsSentence', { v1: totals.join(', ') }) : '.');

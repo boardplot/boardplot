@@ -3,10 +3,14 @@
 import { normalizeCategory, normalizeSeriesValues } from '../normalize/shared';
 import { isDateCell } from '../types/cell';
 import type { ChartData } from '../types/data';
-import type { StringsSpec } from '../types/options';
+import type { StringsSpec, TopNOptions } from '../types/options';
 import type { LintWarning } from '../types/scene';
 
 interface TopN { n: number; restLabel?: string; showRestCount?: boolean }
+
+/** Default pie topN: the seven largest slices, the rest merged when it holds DEFAULT_REST_MIN slices or more. */
+export const DEFAULT_TOP_N: TopNOptions = { n: 7, rest: true };
+export const DEFAULT_REST_MIN = 3;
 
 /**
  * Rank by size, largest first, authored order breaking ties; the first n
