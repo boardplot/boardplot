@@ -1810,3 +1810,15 @@ it('prints the resolved table unit in both frames', () => {
   expect(resolveTable(data, { subtitle: options.subtitle }).warnings.some(warning => warning.code === 'table-unit-overridden')).toBe(false);
   expect(resolveTable(data, { ...options, unit: '$k' }).warnings.some(warning => warning.code === 'table-unit-overridden')).toBe(false);
 });
+
+// A bare shared scale ('1.2bn') replaced options.unit in the frame, so "Revenue in B" printed with the currency nowhere.
+it('keeps the currency of options.unit in front of a shared bare scale', () => {
+  const data: TableData = { columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'v', kind: 'value', format: '1.2bn' }], rows: [{ id: 'r', label: 'North', cells: { v: 2500000000 } }] };
+  const unitOf = (unit: string) => {
+    const { table, warnings } = resolveTable(data, { subtitle: { measure: 'Revenue' }, unit });
+    return { unit: table.unit, overridden: warnings.some(warning => warning.code === 'table-unit-overridden') };
+  };
+  expect(unitOf('EUR')).toEqual({ unit: 'EUR B', overridden: false });
+  expect(unitOf('EUR bn')).toEqual({ unit: 'EUR bn', overridden: false });
+  expect(unitOf('$m')).toEqual({ unit: 'B', overridden: true });
+});

@@ -24,6 +24,8 @@ import {
   unitOfSpec,
   MAGNITUDE_DIVISOR,
   magnitudeLabel,
+  MAGNITUDE_LABEL,
+  sameUnit as sameUnitText,
   type NumberFormatSpec,
 } from '../../formatSpec';
 import { NormalizeError, resolveHighlight, resolveSubtitle } from '../../normalize/shared';
@@ -1078,8 +1080,18 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     unit: candidateUnit,
     unitShown: options.unitShown,
   });
-  const uniformUnit = candidateUnit && frameCarriesUnit ? candidateUnit : null;
-  if (uniformUnit !== null && options.unit !== undefined && options.unit !== uniformUnit) {
+  // A shared bare scale ("B" from '1.2bn') carries no currency, so options.unit's currency stays in front of it
+  // ("EUR B"). A unit that already ends in this scale is printed as written, and one that ends in another scale conflicts.
+  const authoredUnit = options.unit?.trim();
+  const authoredTail = authoredUnit?.split(/[\s$€£¥]+/).pop() ?? '';
+  const bareScale = candidateUnit !== undefined && [...valueCols, ...computedCols].every((col) => {
+    const spec = specs.get(col.id)!;
+    return specUnitKind(spec) !== 'number' || (spec.prefix.trim() === '' && spec.suffix.trim() === '');
+  });
+  const composes = bareScale && authoredUnit && !Object.values(MAGNITUDE_LABEL).some((label) => label !== '' && sameUnitText(authoredTail, label) && !sameUnitText(authoredTail, candidateUnit!));
+  const composedUnit = composes ? sameUnitText(authoredTail, candidateUnit!) ? authoredUnit : `${authoredUnit} ${candidateUnit}` : candidateUnit;
+  const uniformUnit = composedUnit && frameCarriesUnit ? composedUnit : null;
+  if (uniformUnit !== null && options.unit !== undefined && options.unit !== uniformUnit && !composes) {
     warnings.push({
       code: 'table-unit-overridden',
       severity: 'warn',
