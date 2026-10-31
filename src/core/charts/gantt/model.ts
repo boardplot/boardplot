@@ -246,6 +246,8 @@ export function laneTop(band: GanttBand, rows: readonly NormRow[], index: number
 
 /** Internal option: lay the chart out without the milestone lane (layout.ts gives an unused lane back to the timeline). */
 export const NO_LANE = Symbol('ganttNoLane');
+/** The label solver keeps this gap between labels; rows touch, so a row name needs its height plus this gap. */
+export const LABEL_PAD = 2;
 /** Internal option: per row id, the pitch its drawn name and sublabel need in the table form, once a pass has measured them. */
 export const ROW_TEXT_PITCH = Symbol('ganttRowTextPitch');
 /** Internal option: how many levels the event badges stack in, once a pass on the drawn timeline has planned them. */

@@ -22,7 +22,7 @@ import type { LintWarning, Paint } from '../../types/scene';
 import { GANTT_ROW_PITCH, MAX_COLS } from './domain';
 import { barSurfaces, cadenceRowPaint, milestonePaints } from './marks';
 import { badgeStrip, markerBand } from './events';
-import { laneTop, NO_LANE, ROW_TEXT_PITCH, RULE_LABEL_GAP, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv, type GanttPaints, type MetadataColumns, type NormItem, type NormRow, type RowLabel } from './model';
+import { LABEL_PAD, laneTop, NO_LANE, ROW_TEXT_PITCH, RULE_LABEL_GAP, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv, type GanttPaints, type MetadataColumns, type NormItem, type NormRow, type RowLabel } from './model';
 import { maxOf, minOf } from '../../arrays';
 
 /** The palest tint a wash swatch in the key takes, so a 12 px swatch reads as filled. */
@@ -314,8 +314,8 @@ export function ganttFrame(
   const textPitch = stacked ? undefined : (env.options as { [ROW_TEXT_PITCH]?: ReadonlyMap<string, number> })[ROW_TEXT_PITCH];
   const pitches = domain.rows.map((row) => Math.max(lanePitch, domain.milestones.flagPitch.get(row.id) ?? 0, textPitch?.get(row.id) ?? 0));
   const extra = pitches.reduce((sum, pitch) => sum + pitch - lanePitch, 0);
-  // A short canvas squeezes the rows by the same factor, except that a row never goes below the height its name needs.
-  const squeezed = squeezeRows(pitches, domain.rows.map((row) => textPitch?.get(row.id) ?? 0), Math.max(6 * n, bodyH - named * nameLineH));
+  // A short canvas squeezes the rows by the same factor, except that a row never goes below its text floor (its pitch less one label gap).
+  const squeezed = squeezeRows(pitches, domain.rows.map((row) => Math.max(0, (textPitch?.get(row.id) ?? LABEL_PAD) - LABEL_PAD)), Math.max(6 * n, bodyH - named * nameLineH));
   const rowH = extra > 0 ? lanePitch * squeezed.scale : Math.min(lanePitch, Math.max(6, (bodyH - named * nameLineH) / n));
   const rowHs = extra > 0 ? squeezed.heights : pitches.map(() => rowH);
   const rowY = [rowsTop];

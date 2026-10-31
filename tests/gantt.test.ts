@@ -379,3 +379,12 @@ it('gantt keeps every wrapped row name on a pinned canvas', () => {
       calendar: { weeks: 'isoWeek', span: 'data' }, source: 'Invented dates', target: 'slide', size: { width: 432, height: 630, unit: 'pt' } } }, return: ['reading'] }).body.reading as { omissions: { labelId: string }[] };
   expect(reading.omissions.filter(omission => omission.labelId.startsWith('activity:'))).toEqual([]);
 });
+
+// A wrapped name needs its height plus one label gap to keep its seat, so the declared minimum height counts one gap per row, not two.
+it('gantt draws every wrapped row name on a pinned canvas at the least height the names need', () => {
+  const rows = Array.from({ length: 8 }, (_, i) => ({ id: `r${i}`, label: `${i % 2 ? 'Management presentations and site visits for shortlisted bidders' : 'Information memorandum prepared and issued to bidders'} ${i}`,
+    items: [{ id: `b${i}`, kind: 'bar', start: `2026-11-0${1 + i}`, end: `2026-12-1${i}` }] }));
+  const body = render({ spec: { type: 'gantt', data: { rows }, options: { target: 'slide', size: { width: 720, height: 430 } } }, return: ['reading'] }).body as { ok: boolean; reading: { omissions: { labelId: string }[] } };
+  expect(body.ok).toBe(true);
+  expect(body.reading.omissions.filter(omission => omission.labelId.startsWith('activity:'))).toEqual([]);
+});
