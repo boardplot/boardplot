@@ -255,13 +255,15 @@ export function cleanFloat(v: number, scale: number = v): number {
 }
 
 /**
- * A sum of terms, cleaned at the size of its largest term. Cleaning a sum at
- * its own size keeps cancellation noise: 0.1 + 0.2 − 0.3 is 5.55e-17, and at
- * its own scale that residue looks like a real value.
+ * A sum of terms, cleaned at the sum of their absolute values. Cleaning a sum
+ * at its own size keeps cancellation noise: 0.1 + 0.2 − 0.3 is 5.55e-17, and at
+ * its own scale that residue looks like a real value. The largest term is too
+ * small a scale: float steps add up over the terms, so five terms leave noise
+ * that a scale of one term does not clear.
  */
 export function cleanSum(terms: readonly number[]): number {
   let scale = 0;
-  for (const t of terms) scale = Math.max(scale, Math.abs(t));
+  for (const t of terms) scale += Math.abs(t);
   return cleanFloat(terms.reduce((a, b) => a + b, 0), scale);
 }
 

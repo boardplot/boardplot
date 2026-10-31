@@ -361,3 +361,8 @@ it('cleanDiff keeps a representable gap at a large scale and cleanSum takes 1500
   expect(cleanDiff(0.30000000000000004, 0.3)).toBe(0);
   expect(cleanSum(new Array<number>(150000).fill(1))).toBe(150000);
 });
+
+// The noise of a sum of five terms is larger than a float step of its largest term, so 33.5 summed to 33.49999999999999 and printed as 33.
+it('cleanSum clears the float noise of a sum of five terms', () => {
+  expect(cleanSum([8.2, 8.6, 8.9, 6.2, 1.6])).toBe(33.5);
+});
