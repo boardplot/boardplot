@@ -741,6 +741,12 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
         geo.warnings = geo.warnings.map(warning => warning.fix
           ? { ...warning, fix: addWhereAbsent({ data, options: authored }, warning.fix) } : warning);
       }
+      // The author's description replaces every sentence the chart and the frame wrote into it.
+      const description = options?.a11y?.description;
+      if (description !== undefined && !geo.refused) {
+        geo.a11y.desc = description;
+        if (geo.story) geo.story.desc = description;
+      }
       return geo;
     });
   };
