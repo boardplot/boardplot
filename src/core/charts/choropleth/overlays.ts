@@ -51,8 +51,10 @@ interface RenderGeoOverlaysInput {
 }
 
 const SIZE: Record<GeoOverlaySize, number> = { sm: 12, md: 16, lg: 22 };
+/** The map frame sits this far inside the plot, so an anchor just beyond a simplified coastline stays on the canvas. */
+const FRAME_SLACK = 8;
 /** A glyph whose anchor lies outside the map frame (a crop dropped its region) cannot be drawn. */
-export const geoOverlayInFrame = (anchor: Point, frame: Rect): boolean => rectContains(frame, { ...anchor, w: 0, h: 0 });
+export const geoOverlayInFrame = (anchor: Point, frame: Rect): boolean => rectContains(frame, { ...anchor, w: 0, h: 0 }, -FRAME_SLACK);
 export const geoOverlayDiameter = (overlay: GeoOverlay): number => SIZE[overlay.size ?? 'md'];
 
 /** Reserve glyphs before solving region labels. Rendering reuses these exact claims. */

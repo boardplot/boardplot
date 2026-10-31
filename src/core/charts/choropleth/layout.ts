@@ -543,13 +543,15 @@ export function layoutChoropleth(
   // anchor the map crop leaves outside the map frame.
   const glyphDiscs: { x: number; y: number; radius: number }[] = [];
   const nextOmitted = new Set(omittedOverlays);
-  // The automatic height probe is too short to decide which geographic glyphs fit.
+  // The automatic height probe is too short to decide which geographic glyphs fit. A glyph outside the frame
+  // is outside at every height, so that test also runs on the probe: otherwise a taller pass omits the glyph,
+  // drops its tone key and the natural height, and the final pass is no longer ready to find it again.
   const heightReady = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height !== false || size.height >= naturalHeight - 2;
-  (heightReady ? overlays : []).forEach((overlay, index) => {
+  overlays.forEach((overlay, index) => {
     const anchor = resolveChoroplethOverlayAnchor(overlay, index, fitted, idIndex, pack);
     const diameter = geoOverlayDiameter(overlay);
     const radius = diameter / 2 * (overlay.glyph.kind === 'marker' && overlay.glyph.shape === 'square' ? Math.SQRT2 : 1);
-    if (!geoOverlayInFrame(anchor, mapFrame) || glyphDiscs.some(prior => Math.hypot(anchor.x - prior.x, anchor.y - prior.y) < radius + prior.radius)) nextOmitted.add(overlay.id);
+    if (!geoOverlayInFrame(anchor, mapFrame) || (heightReady && glyphDiscs.some(prior => Math.hypot(anchor.x - prior.x, anchor.y - prior.y) < radius + prior.radius))) nextOmitted.add(overlay.id);
     else glyphDiscs.push({ ...anchor, radius });
   });
   if (nextOmitted.size > omittedOverlays.size) return layoutChoropleth(data, options, listed, pass, new Map(), nextOmitted);
