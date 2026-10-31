@@ -45,13 +45,15 @@ export function categoryVariantRecords(ctx: RecordContext): InteractionRecord[] 
   const sources = data.series.filter(series => options.variance.of && options.variance.of !== 'total'
     ? series.id === options.variance.of : series.role !== 'reference');
   const mode = options.variant;
+  // On a relative chart a percent unit names the difference, not the plain values (as the layout reads it).
+  const valueUnit = mode === 'relative' && (options.unit === '%' || options.unit === 'pp') ? undefined : options.unit;
   return categories.map((category, index) => {
-    const operands = sources.map(series => cellRecordValue(cells.get(series.id)![index]!, series.unit ?? options.unit, series.format ?? options.format));
+    const operands = sources.map(series => cellRecordValue(cells.get(series.id)![index]!, series.unit ?? valueUnit, series.format ?? options.format));
     const values = operands.map(value => value.raw).filter((value): value is number => typeof value === 'number');
     const units = new Set(operands.map(value => value.unit));
     const current = operands.length === 1 ? operands[0]! : units.size > 1 ? unavailableValue('Current total combines incompatible units')
       : derivedValue(derived.ac[category.id] === null ? null : values.reduce((sum, value) => sum + value, 0), operands[0]?.unit, options.format);
-    const reference = cellRecordValue(cells.get(referenceSeries.id)![index]!, referenceSeries.unit ?? options.unit, referenceSeries.format ?? options.format);
+    const reference = cellRecordValue(cells.get(referenceSeries.id)![index]!, referenceSeries.unit ?? valueUnit, referenceSeries.format ?? options.format);
     const comparison = compareValues(current, reference, referenceSeries.label ?? referenceSeries.id, referenceSeries.scenario);
     const mark = marks.bars.find(mark => mark.categoryId === category.id) ?? marks.pins.find(mark => mark.categoryId === category.id);
     return makeRecord(ctx, { categoryId: category.id }, mode === 'integrated' ? current : mode === 'relative' ? comparison.percent : comparison.delta, {

@@ -5,6 +5,7 @@ import type { Theme } from '../../types/theme';
 import type { Id } from '../../types/cell';
 import type { ColumnKind, ResolvedCell, ResolvedColumn, ResolvedRow, ResolvedTable, TableOptions } from '../../types/table';
 import { PARTIAL_FOOTNOTE, SUPPRESSED_FOOTNOTE } from './resolve';
+import { ranksAsData } from './rank';
 import { disclosureNote } from '../../notes';
 import { heatRanges, statusDirectionNote } from './encodings/heat';
 
@@ -371,7 +372,7 @@ export function sortRows(table: ResolvedTable, sort?: TableSort | null, locale?:
     list.push(row);
     childrenOf.set(row.parentId, list);
   }
-  const movable = (row: ResolvedRow): boolean => row.role === 'data' && row.inline !== true;
+  const movable = (row: ResolvedRow): boolean => ranksAsData(row) && row.inline !== true;
   const compare = (a: ResolvedRow, b: ResolvedRow): number => {
     const ka = sortKey(a, sort.column);
     const kb = sortKey(b, sort.column);

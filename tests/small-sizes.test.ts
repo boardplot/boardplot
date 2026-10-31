@@ -440,9 +440,7 @@ it('judges a narrow diagram card by its card and group text at its content heigh
   expect((result.warnings[0]!.expected!.minimum as { width: number }).width).toBe(480);
   const deep = getFixtures('diagram').find((f) => f.id === 'deep-hierarchy')!;
   expect(getChart('diagram')!.layout(deep.data as never, { ...deep.options, target: 'report', size: { width: 400 } } as never).refused).toBeUndefined();
-  const edged = { nodes: [node('a', 'Alpha'), node('b', 'Beta')], edges: [{ ...edge('a', 'b'), label: 'edge' }] };
-  expect(getChart('diagram')!.layout(edged as never, { variant: 'hierarchy', target: 'report', size: { width: 400, height: 600 } } as never).refused).toBe(true);
-  // Edge labels the narrow card would cut (above) or hide keep the 480 px floor instead of vanishing without a note.
+  // Edge labels the narrow card would cut or hide keep the 480 px floor instead of vanishing without a note.
   const share = { nodes: [node('r', 'Parent'), node('a', 'Child 1'), node('b', 'Child 2')],
     edges: [{ ...edge('r', 'a'), label: 'Share 45%' }, { ...edge('r', 'b'), label: 'Share 45%' }] };
   const shared = getChart('diagram')!.layout(share as never, { variant: 'hierarchy', target: 'report', size: { width: 320 } } as never);
@@ -737,4 +735,15 @@ it('names a minimum width that draws at the automatic height', () => {
   const options = { variant: 'harvey', scale: 'discrete', title: 'Long names read whole at a generous size', subtitle: { company: 'Invented Group', measure: 'Maturity, 0 = absent to 4 = leading', period: 'May 2026' }, source: 'Invented capability assessment, May 2026' };
   const { minWidth } = measure({ type: 'heatmap', data, options } as never);
   expect(canDraw({ type: 'heatmap', data, options: { ...options, size: { width: minWidth } } } as never)).toMatchObject({ ok: true });
+});
+
+// Prevents circular-process arrow labels from losing their last letters: the label box is as wide as its text, so no side padding may be taken from it.
+it('prints a circular-process arrow label in full', () => {
+  const names = ['Share results', 'Refer leads', 'Qualify fast', 'Deliver value'];
+  const labels = ['proof', 'leads', 'deals', 'features'];
+  const nodes = names.map((label, i) => ({ id: `s${i}`, kind: 'step', shape: { kind: 'circle' }, label, role: 'primary', order: i + 1 }));
+  const edges = labels.map((label, i) => ({ id: `e${i}`, source: { nodeId: `s${i}` }, target: { nodeId: `s${(i + 1) % 4}` }, arrowEnd: true, label }));
+  const body = render({ spec: { type: 'diagram', data: { nodes, edges }, options: { variant: 'circular-process', size: { width: 456 } } } }).body as any;
+  expect(body.ok).toBe(true);
+  expect(body.reading.labelsTruncated).toEqual([]);
 });

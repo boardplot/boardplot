@@ -867,7 +867,7 @@ function planSteppedKey(
   const ticks = edges.map((value, i) => {
     const end = i === 0 || i === edges.length - 1;
     return {
-      text: !end || decimalsOf(value) <= roundDecimals ? scale.edgeFmt(value) : fmt(value),
+      text: !end || scale.liftedDecimals || decimalsOf(value) <= roundDecimals ? scale.edgeFmt(value) : fmt(value),
       align: (i === 0 ? 'start' : i === edges.length - 1 ? 'end' : 'middle') as 'start' | 'middle' | 'end',
     };
   });
