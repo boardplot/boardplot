@@ -268,6 +268,23 @@ export function layoutWaterfall(
     pad += Math.ceil(pass.annotationLegDeficit) + 2;
     pass = layoutWaterfallWithPad(data, options, pad, true, undefined, false);
   }
+  // A note or callout the seat cascade could not seat falls to the free-space scan, which
+  // draws no leader when it lands over its step. On a broken axis the bars stand 12 px
+  // under the key, too close for the far seats that lead back to the step. The band
+  // grows in 6 px steps until they open; a chart that gains no seat keeps its first pass.
+  const freeSeated = (geometry: Geometry<WaterfallMarks, WaterfallDerived>) =>
+    geometry.labels.some((label) => label.id.startsWith('annotation:') && label.slot === 'freeSpot');
+  // A grown pass is kept only if every note stays drawn and it raises no new warning: the
+  // shorter plot can hide a note that the first pass drew.
+  const noteHidden = (geometry: Geometry<WaterfallMarks, WaterfallDerived>) =>
+    geometry.labels.some((label) => label.id.startsWith('annotation:') && label.hidden);
+  if (!cagr && freeSeated(pass.geometry)) {
+    const warned = pass.geometry.warnings?.length ?? 0;
+    for (let grown = 6; grown <= 48; grown += 6) {
+      const next = layoutWaterfallWithPad(data, options, grown, true, undefined, false);
+      if (!freeSeated(next.geometry) && !noteHidden(next.geometry) && (next.geometry.warnings?.length ?? 0) <= warned) { pass = next; break; }
+    }
+  }
   // First settle the annotation band with the original break. A moved break
   // must not change the band search and falsely raise a fixed card's floor.
   if (pass.unsafeBreak) {
@@ -1252,7 +1269,7 @@ function layoutWaterfallWithPad(
   if (categoryRow) pushAll(warnings, catPlan.warnings);
   // spanning annotations (cagr) need arm headroom above the tallest bar
   // 12 px for the arms; the second pass adds what the arms still lack.
-  const annPad = (options.annotations ?? []).some((a) => a.kind === 'cagr') ? 12 + extraAnnPad : 0;
+  const annPad = (options.annotations ?? []).some((a) => a.kind === 'cagr') ? 12 + extraAnnPad : extraAnnPad;
   const axisTitle = categoryRow && axisTitleAllowed(options.labels) ? planValueAxisTitle(options.axisTitles?.primary, theme, measure, plotWidth) : undefined;
   const axisTitleBand = valueAxisTitleBand(axisTitle, theme, measure, annPad);
   const plot: Rect = {
