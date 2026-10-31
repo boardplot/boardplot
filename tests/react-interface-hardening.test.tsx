@@ -18,6 +18,9 @@ import { BarChart } from '../src/react/charts/bar';
 import { CohortChart } from '../src/react/charts/cohort';
 import { ChoroplethChart } from '../src/react/charts/choropleth';
 import { ColumnChart } from '../src/react/charts/column';
+import { DimSwitchChart } from '../src/react/DimSwitchChart';
+import { exampleData as dimSwitchData } from '../src/core/charts/dimswitch/example';
+import { BoardplotChart } from '../src/react/spec';
 import { createChartComponent } from '../src/react/createChartComponent';
 import { DotChart } from '../src/react/charts/dot';
 import { KpiChart } from '../src/react/charts/kpi';
@@ -224,6 +227,25 @@ describe('React adapter boundary', () => {
     // A hole in a sparse values array reads as a missing value, as the null of a JSON spec does.
     await act(async () => { root.render(<ColumnChart data={{ ...DATA, categories: [...DATA.categories, { id: 'c', label: 'C' }], series: [{ id: 's', label: 'S', values: sparse }] }} size={{ width: 480, height: 270 }} />); });
     expect(container.querySelector('svg')).not.toBeNull();
+  });
+
+  // A table is not built by createChartComponent: it threw on the same bad values and unmounted the host's root.
+  it('draws a refusal card for a bad value in a table and keeps its sibling chart', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const table = getFixtures('table').find(f => f.id === 'management-report')!.data;
+    const bad: Record<string, ReactElement> = {
+      'unknown-theme': <TableChart data={table} theme={'nope' as never} />,
+      'invalid-size': <TableChart data={table} size={{ width: '800' } as never} />,
+      'invalid-theme-override': <BoardplotChart spec={{ type: 'table', data: table, options: { theme: { preset: 'standard', overrides: { color: { ink: 'zzz' } } } } } as never} />,
+      'unknown-theme-spec': <BoardplotChart spec={{ type: 'table', data: table, options: { theme: 'nope' } } as never} />,
+      'unknown-theme-dimswitch': <DimSwitchChart data={dimSwitchData} variant="by-measure" depth={1} theme={'nope' as never} />,
+    };
+    for (const [code, element] of Object.entries(bad)) {
+      await act(async () => { root.render(<div><ColumnChart data={DATA} size={{ width: 480, height: 270 }} />{element}</div>); });
+      for (let i = 0; i < 20 && container.querySelector('[data-bp-loading]'); i++) await act(async () => { await new Promise(r => setTimeout(r, 25)); });
+      expect(container.querySelectorAll('svg').length, code).toBe(1);
+      expect(container.querySelector('[data-bp-error-code]'), code).not.toBeNull();
+    }
   });
 
   // An annotation added after the first draw waits for the annotation chunk: the busy placeholder

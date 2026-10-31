@@ -42,9 +42,7 @@ import type { RenderGeometry } from './prepared';
 import { markScrollRegion, scrollStateOf, type TableScrollState } from './scrollState';
 import { useChartExport, type ExportLink } from './exportLink';
 import { useRowsInput, type RowsProps } from './rowsInput';
-import { RefusalBoundary } from './RefusalBoundary';
-import { resolveSize } from '../core/normalize/shared';
-import type { Size } from '../core/geometry';
+import { frameSize, RefusalBoundary } from './RefusalBoundary';
 
 export type { HoverContentContext, HoverOption, RenderHoverContent } from './useHover';
 
@@ -54,11 +52,6 @@ export type { HoverContentContext, HoverOption, RenderHoverContent } from './use
  */
 const DrawnScene = memo(SceneRenderer);
 const DrawnSurface = memo(HoverSurface);
-
-/** The frame a refusal card takes when a chart prop broke the layout: the asked size, or the default when the size itself is the bad prop. */
-function frameSize(size: ContainerSizeOptions['fallbackSize'], target: RenderTarget | undefined): Size | undefined {
-  try { return resolveSize(size, target); } catch { return undefined; }
-}
 
 /** Chart types whose width refusal scrolls instead of drawing the refusal card. */
 const SCROLLS_WIDE = new Set(['cohort']);

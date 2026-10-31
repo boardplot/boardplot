@@ -2,6 +2,7 @@ import { hasPolarityBadge, isFigureCell, polarityBadgeInk } from '../core/charts
 import { belowTableViewportFloor, tableWidths } from '../core/charts/table/widths';
 import {
   createContext,
+  createElement,
   memo,
   useCallback,
   useContext,
@@ -28,6 +29,7 @@ import { usePrinting, watchPrint } from './printLayout';
 import { rebindable } from './linkedBinding';
 import { useExportLink, type DrawnChart, type ExportLink } from './exportLink';
 import { checkedIdPrefix, IdPrefixContext, useScopedId } from './idPrefix';
+import { frameSize, RefusalBoundary } from './RefusalBoundary';
 import { LayoutRefusal, LoadingPlaceholder, SizePlaceholder, type RefusalProps } from './SizePlaceholder';
 import { chartRefusals, isSizeDependentRefusal, optionRefusals, refusalFindings } from '../core/schema/refusals';
 import { useRefusalSettle } from './useRefusalSettle';
@@ -109,7 +111,7 @@ import { useRowsGate } from './rowsGate';
 import type { RowsProps } from './rowsInput';
 import type { InteractionScope } from '../core/a11y/types';
 import type { RenderTarget } from '../core/types/options';
-import type { Theme } from '../core/types/theme';
+import type { Theme, ThemeRef } from '../core/types/theme';
 import type { ChartRequest } from '../core/request';
 import { TableHoverFrame } from './hover/TableHoverFrame';
 import { hoverFlags, type HoverOption } from './useHover';
@@ -482,11 +484,17 @@ function columnVisibilityDefaults(table: ResolvedTable, authored?: Record<Id, bo
  * before the check.
  */
 export function createTableChart(checkKeys?: OptionKeyCheck, linked?: readonly DeferredName[]) {
-  function TableChart(props: TableChartProps): ReactElement {
+  function GatedTable(props: TableChartProps): ReactElement {
     // Rows answer before the table resolves: a table has no data while the rows chunk loads or after it refuses them.
     const { rows, columns, onRowsReading, ...table } = props;
     const gate = useRowsGate({ type: 'table', data: table.data }, { rows, columns, onRowsReading }, table);
     return gate.element ?? <DrawnTable table={{ ...table, data: gate.data! }} checkKeys={checkKeys} linked={linked} />;
+  }
+  // A bad value draws the refusal card in the table's own frame and never unmounts the host's root (RefusalBoundary).
+  function TableChart(props: TableChartProps): ReactElement {
+    const { size, fallbackSize, target, title, theme } = props as TableChartProps & { title?: unknown; theme?: ThemeRef };
+    return <RefusalBoundary watch={props} fallback={(finding) => <LayoutRefusal refusals={[finding]} theme={theme}
+      size={frameSize(size === 'container' ? fallbackSize : size as Parameters<typeof frameSize>[0], target)} options={typeof title === 'string' ? { title } : {}} />}>{createElement(GatedTable, props)}</RefusalBoundary>;
   }
   // The registry type this component renders, stated by the component itself —
   // the same stamp createChartComponent writes, so the public API check resolves

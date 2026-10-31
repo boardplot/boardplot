@@ -1,6 +1,13 @@
 import { Component, type ReactNode } from 'react';
-import { NormalizeError } from '../core/normalize/shared';
+import type { Size } from '../core/geometry';
+import { NormalizeError, resolveSize } from '../core/normalize/shared';
+import type { RenderTarget } from '../core/types/options';
 import type { RefusalFinding } from '../core/schema/refusals';
+
+/** The frame a refusal card takes when a chart prop broke the layout: the asked size, or the default when the size itself is the bad prop. */
+export function frameSize(size: Parameters<typeof resolveSize>[0], target: RenderTarget | undefined): Size | undefined {
+  try { return resolveSize(size, target); } catch { return undefined; }
+}
 
 /**
  * A chart prop the engine cannot draw (a theme name that does not exist, a size
