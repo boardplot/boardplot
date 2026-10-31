@@ -51,6 +51,7 @@ export const histogramOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOp
     .describe(
       "Snap an 'auto' width onto the {1, 2, 2.5, 5} ladder so bin edges are round numbers. Default true; ignored for an authored count or width.",
     ),
+  labelDensity: baseOptionsSchema.shape.labelDensity.describe("Count-label density. Default: every bin count competes for a seat over its bar, and an empty bin prints no 0 when one value fills each bin or most bins are empty. When more than 12 bins hold observations and a count is too wide for its bin and loses its seat, only the tallest bin keeps its count, the frequency axis carries the scale, and no tail callout prints (info histogram-counts-peak-only). 'full' keeps every count: a count without a seat moves onto a leader or into the note. 'minimal' keeps only the essential labels."),
   methodNote: z
     .boolean()
     .optional()

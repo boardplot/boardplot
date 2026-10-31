@@ -233,21 +233,18 @@ describe('histogram disclosures', () => {
       expect(suppressed.geometry!.labels.filter(label => label.kind === 'point' && !label.hidden)).toHaveLength(0);
       expect(suppressed.geometry!.labels.some(label => label.kind === 'point' && label.noted)).toBe(false);
     }
-    const crowded = measure({ type: 'histogram',
-      data: { observations: Array.from({ length: 17 }, (_, i) => Array(1234 + i).fill(i + 0.5)).flat() },
-      options: { ...options, size: { width: 320, height: 400 } },
-    });
+    // Counts too wide for their bins must not float on leaders or fill a note: the tallest keeps its count and the axis carries the scale.
+    const crowdedData = { observations: Array.from({ length: 17 }, (_, i) => Array(1234 + i).fill(i + 0.5)).flat() };
+    const crowded = measure({ type: 'histogram', data: crowdedData, options: { ...options, size: { width: 320, height: 400 } } });
     expect(crowded.geometry).toBeDefined();
-    const crowdedCounts = crowded.geometry!.labels.filter(label => label.kind === 'point');
-    expect(crowdedCounts).toHaveLength(17);
-    const hidden = crowdedCounts.filter(label => label.hidden);
-    expect(hidden.length).toBeGreaterThan(0);
-    const notes = crowded.geometry!.scene.flatMap(node => node.t === 'text' && node.part === 'footnote' ? node.lines : []).join(' ');
-    for (const label of hidden) {
-      const index = Number(label.owner.categoryId!.replace('bin', ''));
-      expect(label.noted).toBe(true);
-      expect(notes).toContain(`${(1234 + index).toLocaleString('en-US')} (${index}–${index + 1})`);
-    }
+    const crowdedCounts = crowded.geometry!.labels.filter(label => label.kind === 'point' && !label.hidden);
+    expect(crowdedCounts.map(label => [label.owner.categoryId, label.leader])).toEqual([['bin16', undefined]]);
+    expect(crowded.geometry!.labels.some(label => label.kind === 'point' && label.noted)).toBe(false);
+    expect((crowded.geometry!.derived as { frequencyAxisShown: boolean }).frequencyAxisShown).toBe(true);
+    expect(crowded.geometry!.warnings.map(warning => warning.code)).toContain('histogram-counts-peak-only');
+    // An authored 'full' density keeps every count, as before.
+    const full = measure({ type: 'histogram', data: crowdedData, options: { ...options, size: { width: 320, height: 400 }, labelDensity: 'full' } });
+    expect(full.geometry!.labels.filter(label => label.kind === 'point' && (label.noted || !label.hidden))).toHaveLength(17);
   });
 
   it('keeps every fitting count in a compact dashboard card', () => {
@@ -258,21 +255,6 @@ describe('histogram disclosures', () => {
         canvas: { margin: { top: 0, right: 0, bottom: 0, left: 0 } }, size: { width, height },
       }));
       expect(geometry.labels.filter(label => label.kind === 'point' && !label.hidden)).toHaveLength(10);
-    }
-    const observations = Array.from({ length: 10 }, (_, i) => Array.from({ length: 1000 + i * 10 }, () => i + 0.5)).flat();
-    const crowded = requireGeometry(getChart('histogram')!.layout({ observations }, {
-      target: 'dashboard', title: false, bins: { width: 1, anchor: 0 },
-      canvas: { margin: 0 }, size: { width: 320, height: 400 }, ...SHOW_NOTES,
-    }));
-    const counts = crowded.labels.filter(label => label.kind === 'point');
-    expect(counts).toHaveLength(10);
-    expect(counts.filter(label => !label.hidden).length).toBeGreaterThan(5);
-    const notes = crowded.scene.flatMap(node => node.t === 'text' && node.part === 'footnote' ? node.lines : []).join(' ');
-    for (const count of counts.filter(label => label.hidden)) {
-      expect(count.hidden).toBe('collision');
-      expect(count.noted).toBe(true);
-      expect(count.noteText).toContain('–');
-      expect(notes).toContain(count.noteText);
     }
     const equalData = { observations: Array.from({ length: 10 }, (_, i) => Array(1000).fill(i + 0.5)).flat() };
     const equal = requireGeometry(getChart('histogram')!.layout(equalData, {

@@ -1,8 +1,8 @@
 import type { ChartCore } from '../../registry';
 import type { Geometry } from '../../types/scene';
-import { CARD_MIN_WIDTH, chartSizing, isWidthProbe } from '../../sizing';
+import { CARD_MIN_WIDTH, chartSizing, isWidthProbe, WIDTH_PROBE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
-import { cardHeightFloor, classFloor, layoutTable, memoLayout, REGULAR_SPACING, type TableMarks } from '../table/layout';
+import { cardHeightFloor, classFloor, layoutKey, layoutTable, memoLayout, REGULAR_SPACING, type TableMarks } from '../table/layout';
 import { resolveTable } from '../table/resolve';
 import { compileDimSwitch, dimSwitchTableWarnings, type DimSwitchForm } from './compile';
 import type { DimSwitchData, DimSwitchOptions, DimSwitchDerived } from './types';
@@ -18,12 +18,36 @@ export function resolveDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
 
 type PreparedForm = { compiled: ReturnType<typeof compileDimSwitch>; resolved: ReturnType<typeof resolveTable> };
 
+/** The options a probe sets for itself. The compiled form does not depend on them, so a probe at another size reuses it. */
+const PER_PROBE = [TARGET_SIZE, WIDTH_PROBE, REGULAR_SPACING] as const;
+const keptForms = new WeakMap<object, Map<string, PreparedForm>>();
+
+/**
+ * The compiled and resolved table of one form. One measure call lays the card out at many sizes, and each layout
+ * compiles every form again, so the prepared forms are kept per data object and per options without the size and
+ * the probe settings. A theme named by string always compiles again, as `memoLayout` does.
+ * Limit: 64 forms per data object, then the map starts again.
+ */
+function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwitchForm): PreparedForm {
+  const probe=PER_PROBE.flatMap(symbol=>symbol in options ? [[symbol,(options as Record<symbol,unknown>)[symbol]] as const] : []);
+  const withProbe=(prepared:PreparedForm):PreparedForm=>({resolved:prepared.resolved,compiled:{...prepared.compiled,options:{...prepared.compiled.options,...Object.fromEntries(probe)}}});
+  const without=<T extends object>(value:T):T=>{const copy={...value} as Record<PropertyKey,unknown>; for (const symbol of PER_PROBE) delete copy[symbol]; return copy as T;};
+  const compute=():PreparedForm=>{const compiled=compileDimSwitch(data,options,form);return {compiled:{...compiled,options:without(compiled.options)},resolved:resolveTable(compiled.data,compiled.options)};};
+  if (typeof options.theme === 'string') return withProbe(compute());
+  const {size:_size,...rest}=without(options);
+  const key=`${layoutKey(data,rest)}:${form.card === true}:${form.hide ?? 0}`;
+  let byKey=keptForms.get(data);
+  if (!byKey || byKey.size >= 64) keptForms.set(data,byKey=new Map());
+  let prepared=byKey.get(key);
+  if (!prepared) byKey.set(key,prepared=compute());
+  return withProbe(prepared);
+}
+
 function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwitchForm, forms: Map<string, PreparedForm>): Geometry<TableMarks, DimSwitchDerived> {
   const key=`${form.card === true}:${form.hide ?? 0}`;
   let prepared=forms.get(key);
   if (!prepared) {
-    const compiled=compileDimSwitch(data,options,form);
-    prepared={compiled,resolved:resolveTable(compiled.data,compiled.options)};
+    prepared=prepareForm(data,options,form);
     forms.set(key,prepared);
   }
   // Only size and the internal floor flag change between this request's probes.
