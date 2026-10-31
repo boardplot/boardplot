@@ -463,7 +463,7 @@ A bare import is not enough for the theme checks, the annotation publisher or th
 
 Import the chart component you draw, such as `ColumnChart` from `boardplot/react/column`. That import registers the type. A bare `import 'boardplot/react'` registers nothing.
 
-Import the geo pack you draw, such as `import 'boardplot/geo/world'`. In the published package that file is `dist/geo/world.js`, and `dist/geo/*.js` is on the list, so the bare import stays. The Maps section names the packs. Without the import a choropleth throws `geo-pack-not-registered`.
+Import the geo pack you draw, such as `import 'boardplot/geo/world'`. In the published package that file is `dist/geo/world.js`, and `dist/geo/*.js` is on the list, so the bare import stays. The Maps section names the packs. Without the import a choropleth draws a refusal card with the code `geo-pack-not-registered`.
 
 Call the theme checks and the annotation publisher by value. `boardplot`, `boardplot/validate`, `boardplot/react`, `boardplot/react/prepare`, `boardplot/react/export` and `useChartLayout` call `linkThemeShapeRules()` and `linkAnnotateEngine()`. `boardplot/theme` calls `linkThemeShapeRules()`. An entry that makes such a call is on the `sideEffects` list. `withStory` from `boardplot/react/story` calls `linkStoryLayer()`. A per-type component loads the theme checks and the annotation publisher when the chart needs them. Do not add a bare import of those three modules. The bundler drops it.
 
@@ -482,7 +482,7 @@ export function StateMap() {
 }
 ```
 
-Without the import the chart throws `geo-pack-not-registered` at render time, with the pack and the import line in its message. The packs are `de-states`, `dach`, `eu27`, `europe`, `us-states` and `world`. `TilemapChart` carries its tile layouts and needs a pack only for an overlay placed by longitude and latitude. The CLI and the MCP server register every pack.
+Without the import the chart draws a refusal card with the code `geo-pack-not-registered`, and its message names the pack and the import line. The packs are `de-states`, `dach`, `eu27`, `europe`, `us-states` and `world`. `TilemapChart` carries its tile layouts and needs a pack only for an overlay placed by longitude and latitude. The CLI and the MCP server register every pack.
 
 ## Hover
 

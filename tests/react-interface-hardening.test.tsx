@@ -2,7 +2,7 @@
 
 // Patched themes are checked by `core/themeShape`, which a CLI-shaped graph links and a chart entry fetches (core/deferred).
 import '../src/core/themeShapeRules';
-import { act, createElement } from 'react';
+import { act, createElement, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -16,6 +16,7 @@ import { renderSvg } from '../src/core/svg/renderSvg';
 import type { Geometry, SceneNode } from '../src/core/types/scene';
 import { BarChart } from '../src/react/charts/bar';
 import { CohortChart } from '../src/react/charts/cohort';
+import { ChoroplethChart } from '../src/react/charts/choropleth';
 import { ColumnChart } from '../src/react/charts/column';
 import { createChartComponent } from '../src/react/createChartComponent';
 import { DotChart } from '../src/react/charts/dot';
@@ -202,6 +203,27 @@ describe('React adapter boundary', () => {
     expect(onRefused).toHaveBeenCalled();
     expect(warn.mock.calls.filter(([text]) => String(text).startsWith('Boardplot refused'))).toEqual([]);
     warn.mockRestore();
+  });
+
+  // A bad axis bound, size, theme name or geo pack threw during render and unmounted the host's whole React root, with its good charts.
+  it('draws a refusal card for a bad value and keeps its sibling chart', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const sparse: number[] = []; sparse[0] = 1; sparse[2] = 3;
+    const bad: Record<string, ReactElement> = {
+      'invalid-geometry': <ColumnChart data={DATA} size={{ width: 480, height: 270 }} valueAxis={{ min: 'low' } as never} />,
+      'invalid-size': <ColumnChart data={DATA} size={{ width: '480', height: '270' } as never} />,
+      'unknown-theme': <ColumnChart data={DATA} size={{ width: 480, height: 270 }} theme={'nope' as never} />,
+      'geo-pack-not-registered': <ChoroplethChart data={{ pack: 'eu27', regions: [{ id: 'DE', value: 1 }] } as never} size={{ width: 480, height: 270 }} />,
+    };
+    for (const [code, element] of Object.entries(bad)) {
+      await act(async () => { root.render(<div><ColumnChart data={DATA} size={{ width: 480, height: 270 }} />{element}</div>); });
+      for (let i = 0; i < 20 && container.querySelector('[data-bp-loading]'); i++) await act(async () => { await new Promise(r => setTimeout(r, 25)); });
+      expect(container.querySelectorAll('svg').length, code).toBe(1);
+      expect(container.querySelector(`[data-bp-error-code="${code}"]`), code).not.toBeNull();
+    }
+    // A hole in a sparse values array reads as a missing value, as the null of a JSON spec does.
+    await act(async () => { root.render(<ColumnChart data={{ ...DATA, categories: [...DATA.categories, { id: 'c', label: 'C' }], series: [{ id: 's', label: 'S', values: sparse }] }} size={{ width: 480, height: 270 }} />); });
+    expect(container.querySelector('svg')).not.toBeNull();
   });
 
   // An annotation added after the first draw waits for the annotation chunk: the busy placeholder

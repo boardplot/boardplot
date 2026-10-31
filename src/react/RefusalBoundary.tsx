@@ -1,0 +1,38 @@
+import { Component, type ReactNode } from 'react';
+import { NormalizeError } from '../core/normalize/shared';
+import type { RefusalFinding } from '../core/schema/refusals';
+
+/**
+ * A chart prop the engine cannot draw (a theme name that does not exist, a size
+ * written as text, a geo pack that is not registered, an axis bound that is not a
+ * number) throws a NormalizeError while the chart renders. The CLI turns that error
+ * into a refusal; here it draws the refusal card, so one bad chart does not unmount
+ * the host's React root. Any other error keeps travelling up to the host. The card
+ * is drawn again as soon as the chart gets new props.
+ */
+export class RefusalBoundary extends Component<
+  { watch: unknown; fallback: (finding: RefusalFinding) => ReactNode; children: ReactNode },
+  { watch: unknown; failed?: { error: unknown } }
+> {
+  override state: { watch: unknown; failed?: { error: unknown } } = { watch: this.props.watch };
+
+  static getDerivedStateFromError(error: unknown) {
+    return { failed: { error } };
+  }
+
+  static getDerivedStateFromProps({ watch }: { watch: unknown }, state: { watch: unknown }) {
+    return watch === state.watch ? null : { watch, failed: undefined };
+  }
+
+  override render(): ReactNode {
+    const { failed } = this.state;
+    if (!failed) return this.props.children;
+    const { error } = failed;
+    if (!(error instanceof NormalizeError)) throw error;
+    return this.props.fallback({
+      code: error.code, message: error.message, path: error.path,
+      ...(error.suggest ? { suggest: error.suggest } : {}),
+      ...(error.fix ? { fix: error.fix } : {}),
+    });
+  }
+}

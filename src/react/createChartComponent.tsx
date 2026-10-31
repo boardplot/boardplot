@@ -5,7 +5,7 @@ import { localeStrings } from '../core/strings/createChartComponent';
  * flat props = data + annotations + options, zero per-chart React code.
  */
 
-import { memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactElement, type ReactNode } from 'react';
+import { createElement, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type FunctionComponent, type KeyboardEvent, type MouseEvent, type ReactElement, type ReactNode } from 'react';
 import type { InteractionRecord } from '../core/a11y/types';
 import { BoardplotThemeContext } from './themeContext';
 import type { ChartRequest, RequestOptions } from '../core/request';
@@ -42,6 +42,9 @@ import type { RenderGeometry } from './prepared';
 import { markScrollRegion, scrollStateOf, type TableScrollState } from './scrollState';
 import { useChartExport, type ExportLink } from './exportLink';
 import { useRowsInput, type RowsProps } from './rowsInput';
+import { RefusalBoundary } from './RefusalBoundary';
+import { resolveSize } from '../core/normalize/shared';
+import type { Size } from '../core/geometry';
 
 export type { HoverContentContext, HoverOption, RenderHoverContent } from './useHover';
 
@@ -51,6 +54,11 @@ export type { HoverContentContext, HoverOption, RenderHoverContent } from './use
  */
 const DrawnScene = memo(SceneRenderer);
 const DrawnSurface = memo(HoverSurface);
+
+/** The frame a refusal card takes when a chart prop broke the layout: the asked size, or the default when the size itself is the bad prop. */
+function frameSize(size: ContainerSizeOptions['fallbackSize'], target: RenderTarget | undefined): Size | undefined {
+  try { return resolveSize(size, target); } catch { return undefined; }
+}
 
 /** Chart types whose width refusal scrolls instead of drawing the refusal card. */
 const SCROLLS_WIDE = new Set(['cohort']);
@@ -178,7 +186,7 @@ const OWN_ROWS_OPTIONS = new Set(['grid']);
  * count in the server's first frame and the hydrating one (`asFirstFrame`).
  */
 export function createChartComponent<D, O extends ChartOptionsLike>(type: string, checkKeys?: OptionKeyCheck, linked?: readonly DeferredName[]) {
-  function Chart(props: ChartProps<D, O>): ReactElement {
+  function Drawn(props: ChartProps<D, O>): ReactElement {
     const { data: authored, annotations, fixedSize, onGeometry, onWarnings, onRefused, renderRefused, onEmpty, target, size, fit, fallbackSize, prepared, hover, onSeriesClick, onRecordClick, renderHoverContent, zoom, styleNonce, idPrefix,
       storyLink, onNotes, renderNotes, onScrollChange, deferLayout = true, exporter, rows: rowsProp, columns: columnsProp, onRowsReading, ...rest } = props;
     // A grid's rows and columns are its panel layout options.
@@ -404,6 +412,12 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
       </div>
     );
     return frame(scrollBox ? <div ref={setScroller} data-bp-scroll="" className="bp-scroll" style={{ overflowX: fitted ? 'visible' : 'auto', maxWidth: '100%' }}>{chart}</div> : chart);
+  }
+  // A bad value draws the refusal card in the chart's own frame and never unmounts the host's root (RefusalBoundary).
+  function Chart(props: ChartProps<D, O>): ReactElement {
+    const { size, fallbackSize, target, fixedSize, title, theme } = props as ChartHostProps & { title?: unknown; theme?: ThemeRef };
+    return <RefusalBoundary watch={props} fallback={(finding) => <LayoutRefusal fixedSize={fixedSize} refusals={[finding]} theme={theme}
+      size={frameSize(size === 'container' ? fallbackSize : size, target)} options={typeof title === 'string' ? { title } : {}} />}>{createElement(Drawn as FunctionComponent<object>, props)}</RefusalBoundary>;
   }
   Chart.displayName = `${type[0]!.toUpperCase()}${type.slice(1)}Chart`;
   // First-class, not name-shaped: the public API check resolves type → component
