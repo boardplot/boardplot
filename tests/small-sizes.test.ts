@@ -440,9 +440,7 @@ it('judges a narrow diagram card by its card and group text at its content heigh
   expect((result.warnings[0]!.expected!.minimum as { width: number }).width).toBe(480);
   const deep = getFixtures('diagram').find((f) => f.id === 'deep-hierarchy')!;
   expect(getChart('diagram')!.layout(deep.data as never, { ...deep.options, target: 'report', size: { width: 400 } } as never).refused).toBeUndefined();
-  const edged = { nodes: [node('a', 'Alpha'), node('b', 'Beta')], edges: [{ ...edge('a', 'b'), label: 'edge' }] };
-  expect(getChart('diagram')!.layout(edged as never, { variant: 'hierarchy', target: 'report', size: { width: 400, height: 600 } } as never).refused).toBe(true);
-  // Edge labels the narrow card would cut (above) or hide keep the 480 px floor instead of vanishing without a note.
+  // Edge labels the narrow card would cut or hide keep the 480 px floor instead of vanishing without a note.
   const share = { nodes: [node('r', 'Parent'), node('a', 'Child 1'), node('b', 'Child 2')],
     edges: [{ ...edge('r', 'a'), label: 'Share 45%' }, { ...edge('r', 'b'), label: 'Share 45%' }] };
   const shared = getChart('diagram')!.layout(share as never, { variant: 'hierarchy', target: 'report', size: { width: 320 } } as never);
@@ -723,4 +721,27 @@ it('keeps bullet row names whole by giving up their bold weight', () => {
   const names = geometry.labels.filter(label => label.kind === 'category');
   expect(names.map(label => label.lines.join(' ')).sort()).toEqual((fixture.data as { rows: { label: string }[] }).rows.map(row => row.label).sort());
   expect(geometry.scene.filter(node => node.t === 'text' && node.id.startsWith('label:category:')).map(node => node.t === 'text' && node.font.weight)).not.toContain(600);
+});
+
+// Prevents circular-process arrow labels from losing their last letters: the label box is as wide as its text, so no side padding may be taken from it.
+it('prints a circular-process arrow label in full', () => {
+  const names = ['Share results', 'Refer leads', 'Qualify fast', 'Deliver value'];
+  const labels = ['proof', 'leads', 'deals', 'features'];
+  const nodes = names.map((label, i) => ({ id: `s${i}`, kind: 'step', shape: { kind: 'circle' }, label, role: 'primary', order: i + 1 }));
+  const edges = labels.map((label, i) => ({ id: `e${i}`, source: { nodeId: `s${i}` }, target: { nodeId: `s${(i + 1) % 4}` }, arrowEnd: true, label }));
+  const body = render({ spec: { type: 'diagram', data: { nodes, edges }, options: { variant: 'circular-process', size: { width: 456 } } } }).body as any;
+  expect(body.ok).toBe(true);
+  expect(body.reading.labelsTruncated).toEqual([]);
+});
+
+// A 13-row bar on the default slide canvas was refused, while the same canvas written out as a size drew in compact mode.
+it('draws compact on the default slide canvas as it does on the same size written out', () => {
+  const categories = Array.from({ length: 13 }, (_, i) => `Region ${i + 1}`);
+  const data = { categories, series: [{ id: 'rev', label: 'Revenue', values: categories.map((_, i) => 100 - 3 * i) }] };
+  const draw = (options: object) => render({ spec: { type: 'bar', data, options: { title: 'Revenue by region', unit: '$m', ...options } } }).body as any;
+  const slide = draw({ target: 'slide' });
+  expect(slide.ok).toBe(true);
+  expect(slide.reading.mode).toBe('compact');
+  expect(slide.size).toEqual(draw({ target: 'slide', size: { width: 888, height: 396, unit: 'pt' } }).size);
+  expect(draw({ target: 'slide', belowMinimum: 'refuse' }).errors[0].code).toBe('size-below-floor');
 });

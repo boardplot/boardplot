@@ -15,6 +15,7 @@ import { interactionValueText } from './a11y/valueText';
 import type { OwnerRef } from './types/cell';
 import type { ChartData } from './types/data';
 import { normalizeCategory, normalizeSeriesValues } from './normalize/shared';
+import { DEFAULT_REST_MIN, DEFAULT_TOP_N } from './charts/topN';
 import { chartNotes, type ChartNote } from './notes';
 import type { InteractionRecord } from './a11y/types';
 import type { RoundingAdjustment } from './shareRounding';
@@ -293,7 +294,9 @@ function unrequestedLabelOmissions(input: ChartReadingInput, records: readonly I
     const geometry = scope.geometry;
     const order = geometry.type === 'bar' ? (geometry.derived as { order?: string[] }).order : undefined;
     const visibleCategories = new Set(order ?? geometry.axes.flatMap(axis => axis.ticks.filter(tick => tick.labelId && /(?:^|[:/])category:/.test(tick.labelId)).map(tick => String(tick.at))));
-    const topN = options.topN as { n?: number; rest?: boolean; threshold?: number } | undefined;
+    // A pie merges its smallest slices by default, so it names them like an authored topN does.
+    const defaultPieCut = geometry.type === 'pie' && categories.length - DEFAULT_TOP_N.n >= DEFAULT_REST_MIN;
+    const topN = (options.topN ?? (defaultPieCut ? DEFAULT_TOP_N : undefined)) as { n?: number; rest?: boolean; threshold?: number } | undefined;
     const topNCut = typeof topN?.n === 'number' && topN.n > 0 && (categories.length > topN.n || typeof topN.threshold === 'number' && topN.threshold > 0) && !options.window && !options.viewDomain;
     return { categories, seriesById, geometry, data, options, visibleCategories, topNCut,
       plottedPoints: new Set((geometry.type === 'scatter' ? (geometry.marks as { points?: { id: string }[] }).points ?? [] : []).map(point => point.id)),
@@ -428,6 +431,7 @@ export function chartReading(input: ChartReadingInput): ChartReading {
     labelsDropped: dropped.length,
     labelsDroppedBy,
     omissions: [...omissions.sort((a, b) => byData(a.labelId, b.labelId)),
+      ...((input.geometry.derived as { omissions?: ChartReading['omissions'] }).omissions ?? []),
       ...(source && !sourceDrawn ? [{ labelId: 'frame:source', text: source, reason: fittedSource ? 'truncated' : 'not-drawn', destination: 'frame.source' }] : [])],
     derived: derivedNumbers(input.claims),
     ...((input.geometry.derived as GridDerived).metricStack ? { metricStack: { readouts: (input.geometry.derived as GridDerived).metricStack!.readouts } } : {}),

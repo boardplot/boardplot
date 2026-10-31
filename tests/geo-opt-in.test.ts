@@ -128,6 +128,8 @@ describe('geo pack registry', () => {
     expect(thrown!.message).toContain('into a different copy of boardplot');
     expect(thrown!.message).toContain('will not help');
     expect(thrown!.message).toMatch(/de-duplicate/);
+    // a Next.js server/client layer split looks the same and de-duplicating does not cure it
+    expect(thrown!.message).toContain("same 'use client' module as the chart");
     // and it must NOT repeat the advice the consumer already followed
     expect(thrown!.message).not.toMatch(/Fix: add `import 'boardplot\/geo\/dach';`/);
   });

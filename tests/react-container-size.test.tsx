@@ -25,6 +25,7 @@ import { ScatterChart } from '../src/react/charts/scatter';
 import { GridChart } from '../src/react/charts/grid';
 import { withStory } from '../src/react/story';
 import { BoardplotTheme } from '../src/react/BoardplotTheme';
+import { prepareChart } from '../src/react/prepare';
 import { getFixtures } from '../src/fixtures';
 import { getChart } from '../src/core/registry';
 import { resolveChartRequest } from '../src/index';
@@ -1194,4 +1195,27 @@ it('mounts a content-fit chart beside drawn charts without a render-phase update
   });
   React.act(() => fresh.unmount());
   expect(errors.filter(message => message.includes('Cannot update a component'))).toEqual([]);
+});
+
+// A host that re-renders with a new prepared object after the container measured a size other than the fallback
+// threw "Prepared chart does not match the resolved request": the snapshot is keyed at the fallback frame.
+// A host as wide as the fallback with no height has the fallback size but not its fixed flags, and threw too.
+it.each(['chart', 'table'] as const)('accepts a new prepared %s after the container measured another size', async kind => {
+  for (const [width, height] of [[820, 420], [640, 0]] as const) {
+  const fallbackSize = { width: 640, height: 360 };
+  const column = { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: 's', label: 'S', values: [3, 5] }] };
+  const table = { columns: [{ id: 'label', kind: 'rowLabel' as const, label: 'Item' }, { id: 'a', kind: 'value' as const, label: 'A', format: '1.0' }],
+    rows: [{ id: 'r1', label: 'One', cells: { a: 1 } }, { id: 'r2', label: 'Two', cells: { a: 2 } }] };
+  const input = kind === 'chart' ? { type: 'column' as const, data: column } : { type: 'table' as const, data: table };
+  const prepared = await prepareChart({ ...input, size: 'container', fit: kind === 'chart' ? 'fill' : 'content', fallbackSize } as never);
+  const draw = (snapshot: typeof prepared) => kind === 'chart'
+    ? <ColumnChart data={column} size="container" fit="fill" fallbackSize={fallbackSize} prepared={snapshot as never} />
+    : <TableChart data={table} size="container" fallbackSize={fallbackSize} prepared={snapshot as never} />;
+  act(() => root.render(draw(prepared)));
+  resize(width, height);
+  flush();
+  act(() => root.render(draw(structuredClone(prepared))));
+  expect(host.querySelector(kind === 'chart' ? 'svg[data-bp-chart]' : '.bp-table-grid')).not.toBeNull();
+  if (kind === 'chart') expect(host.querySelector('svg[data-bp-chart]')?.getAttribute('viewBox')?.split(' ')[2]).toBe(String(width));
+  }
 });

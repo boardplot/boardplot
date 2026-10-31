@@ -81,6 +81,19 @@ describe('hover card date', () => {
     expect(labelCardContent(week1(false)[0]!).rows.map(row => row.text)).not.toContain('Date: 2026-03-02');
     expect(sharedLabelCardContent(week1(true)).rows[0]!.text).toBe('Week 1');
   });
+  // A '%' unit on a relative variance names the difference, so the card printed 412% and 400% for plain order counts.
+  it('a relative variance card prints the plain values without the percent unit of the difference', () => {
+    const { request, geometry } = build({ type: 'variance', data: {
+      categories: [{ id: 'jan', label: 'Jan' }],
+      series: [{ id: 'orders', label: 'Order intake', values: [412] }, { id: 'pl', label: 'Plan', role: 'reference', scenario: 'PL', values: [400] }],
+    }, options: { variant: 'relative', variance: { of: 'orders', vs: 'pl' }, unit: '%' } });
+    const model = hoverModel(request, geometry);
+    const rows = labelCardContent(model.records[0]!).rows.map(row => row.text).join(' | ');
+    expect(rows).toContain('Order intake: 412');
+    expect(rows).toContain('Plan: 400');
+    expect(rows).toContain('(+3%)');
+    expect(rows).not.toMatch(/412\s*%|400\s*%|pp/);
+  });
 });
 
 describe("highlightMode 'fade'", () => {
