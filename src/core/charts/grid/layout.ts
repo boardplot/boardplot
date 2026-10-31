@@ -1445,7 +1445,7 @@ function layoutAuthoredGrid(
   return {
     type: 'grid',
     size,
-    sizing: withReadoutPlotHeight(gridSizing(size, area, children.map(child => ({ geometry: child.geometry, ...child.placement })), sizingRows, columnWeights, rowGaps, columnGaps, automaticRows),
+    sizing: withReadoutPlotHeight(gridSizing(size, area, children.map(child => ({ geometry: child.geometry, ...child.placement })), rowWeights, columnWeights, rowGaps, columnGaps, automaticRows, sizingRows),
       size, automaticRows ? children : []),
     plot: area,
     scene,

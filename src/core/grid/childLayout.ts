@@ -77,11 +77,15 @@ export function gridRowHeights(height: number, children: GridChild[], rows: numb
   return rows.map((weight, row) => fixed[row] ?? remaining * weight / flexibleWeight);
 }
 
-/** Each spanned slot must hold its child's requirement, including fixed content rows. */
+/**
+ * Each spanned slot must hold its child's requirement, including fixed content rows.
+ * `minimumRows` weights the rows for the minimum height only; the natural height keeps the slot `rows`.
+ */
 export function gridSizing(size: Size, area: Rect,
   children: GridChild[],
   rows: number[], columns: number[], rowGaps: number[], columnGaps: number[],
   automaticRows = false,
+  minimumRows = rows,
 ) {
   const fixed = contentRows(children, rows, rowGaps, automaticRows);
   const required = (axis: 'row' | 'column', weights: number[], gaps: number[], natural = false) => {
@@ -103,18 +107,21 @@ export function gridSizing(size: Size, area: Rect,
   const content = hasContentRows || (children.length > 0 && children.every(child => child.geometry.sizing?.fit === 'content'));
   const policy = chartSizing('grid');
   const chrome = size.height - area.h;
-  const minimumRows = required('row', rows, rowGaps);
+  const slotMinimum = required('row', rows, rowGaps);
+  const minimumHeight = minimumRows === rows ? slotMinimum : required('row', minimumRows, rowGaps);
   // Flexible rows keep their share of the grid's preferred aspect height.
   // Use that stable reference, not the current canvas, so measure and drawing agree.
-  const naturalRows = hasContentRows ? Math.max(minimumRows,
+  const naturalRows = hasContentRows ? Math.max(slotMinimum,
     sum(rowGaps) + sum(fixed.map(value => value ?? 0))
     + Math.max(0, resolveSizing(policy, size).naturalHeight - chrome - sum(rowGaps))
       * sum(rows.filter((_, row) => fixed[row] === undefined)) / sum(rows))
     : required('row', rows, rowGaps, true);
   return resolveSizing(content ? { ...policy, fit: 'content', aspect: 'content', minHeight: 0 } : policy, size, {
     minWidth: size.width - area.w + required('column', columns, columnGaps),
-    minHeight: chrome + minimumRows,
-    ...(content ? { naturalHeight: chrome + naturalRows } : {}),
+    minHeight: chrome + minimumHeight,
+    ...(content ? { naturalHeight: chrome + naturalRows }
+      // The minimum may come from tier minimums, below what the slots demand: the natural height keeps the slots' demand.
+      : minimumHeight < slotMinimum ? { naturalHeight: Math.max(resolveSizing(policy, size).naturalHeight, chrome + slotMinimum) } : {}),
   });
 }
 
