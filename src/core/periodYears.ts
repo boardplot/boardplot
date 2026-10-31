@@ -26,7 +26,7 @@ const UNIT_LAST = new RegExp(String.raw`^(?<y>.+?)\s?${UNIT}$`, 'i');
  * or German month names. Trailing forecast markers (F, E, A, P, B) are ignored.
  * Null for anything else, such as "Jan-23", which could be a day.
  */
-function periodOf(text: string): { months: number; short: boolean; wholeYear: boolean } | null {
+function periodOf(text: string): { months: number; short: boolean } | null {
   const t = text.replace(/\s?[FEAPB]$/i, '');
   const unit = UNIT_FIRST.exec(t) ?? UNIT_LAST.exec(t);
   const named = unit ? null : /^(?<name>[a-zäöü]+)\.?\s+(?<y>['’]\d{2}|\d{4})$/i.exec(t);
@@ -35,7 +35,7 @@ function periodOf(text: string): { months: number; short: boolean; wholeYear: bo
   const g = (unit ?? (monthIndex >= 0 ? named : null))?.groups;
   const month0 = unit ? (g!.q ? (Number(g!.q) - 1) * 3 : (Number(g!.h ?? g!.n) - 1) * 6) : Math.max(monthIndex, 0);
   const year = yearOf((g?.y ?? t).trim(), !!unit);
-  return year === null ? null : { months: year.year * 12 + month0, short: year.short, wholeYear: !unit && monthIndex < 0 };
+  return year === null ? null : { months: year.year * 12 + month0, short: year.short };
 }
 
 /** A label's period and the words before it: "Revenue Q4 2023" is Q4 2023 led by "revenue". A whole year ("2024F", "FY 24") has no month, quarter or half. */
@@ -66,8 +66,8 @@ export function yearSpanFromLabels(from?: string, to?: string): number | null {
   const a = periodOfLabel(from);
   const b = periodOfLabel(to);
   if (!a || !b || /(?:^|\s)(?:w|wk|kw|cw|week|woche)\s?\d+$/.test(a.lead)) return null;
-  // Different leads are fine on whole years when neither lead is part of the period: "Plan 2024" to "Actual 2026F", "FY 2023" to "Plan FY24".
-  if (a.lead !== b.lead && !(a.wholeYear && b.wholeYear && !leadIsPeriodic(a.lead) && !leadIsPeriodic(b.lead))) return null;
+  // Different leads are fine when neither lead is part of the period and both periods sit at the same point in the year: "Plan 2024" to "Actual 2026F", "Actual Q4 2023" to "Plan Q4 2025".
+  if (a.lead !== b.lead && !(a.months % 12 === b.months % 12 && !leadIsPeriodic(a.lead) && !leadIsPeriodic(b.lead))) return null;
   // A two-digit start more than 50 years after the end is in the century before ("FY98" to "FY02").
   const start = a.short && a.months > b.months + 600 ? a.months - 1200 : a.months;
   return (b.months - start) / 12;

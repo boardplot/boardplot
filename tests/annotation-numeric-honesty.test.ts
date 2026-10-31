@@ -362,6 +362,9 @@ it.each([
   [['2023-01-01', '2024-07-01'], '+36.8% p.a.'],
   [['Plan 2024', 'Actual 2026'], '+26.5% p.a.'],
   [['Plan 2024', 'Actual 2026F'], '+26.5% p.a.'],
+  // A scenario name before a quarter must not block the rate when both periods are the same quarter.
+  [['Actual Q4 2023', 'Plan Q4 2025'], '+26.5% p.a.'],
+  [['Actual Q4 2023', 'Plan Q1 2025'], undefined],
   [['FY 2023', 'FY2024'], '+60.0% p.a.'],
   [['FY 2023', 'FY 24'], '+60.0% p.a.'],
   [['Mid 2023', 'End 2024'], undefined],
