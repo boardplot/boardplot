@@ -434,20 +434,21 @@ function applyRebase(options: LineOptions, variant: LineVariant, cats: Category[
   }
   for (const s of seriesNorm) {
     const row = pv[rowOf.get(s)!]!;
-    const base = row[baseIdx];
-    if (base === null || base === 0) {
-      suppressed.push({ id: s.id, series: s.label, period: cats[baseIdx]!.label ?? atId, zero: base === 0 });
+    const base = row[baseIdx] ?? null;
+    // An index to 100 has no meaning on a base at or below zero: it would flip the series.
+    if (base === null || base <= 0) {
+      suppressed.push({ id: s.id, series: s.label, period: cats[baseIdx]!.label ?? atId, zero: base !== null });
       warnings.push({
         code: 'rebase-base-invalid',
         severity: 'warn',
-        message: `series '${s.id}': value at '${atId}' is ${base === 0 ? 'zero' : 'missing'} — series suppressed by rebase100`,
+        message: `series '${s.id}': value at '${atId}' is ${base === null ? 'missing' : base === 0 ? 'zero' : 'negative'} — series suppressed by rebase100`,
         owner: { seriesId: s.id },
       });
       for (let ci = 0; ci < row.length; ci++) row[ci] = null;
     } else {
       for (let ci = 0; ci < row.length; ci++) {
         const v = row[ci]!;
-        row[ci] = v === null ? null : cleanFloat((v / base!) * 100);
+        row[ci] = v === null ? null : cleanFloat((v / base) * 100);
       }
     }
   }

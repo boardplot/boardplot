@@ -1,0 +1,3 @@
+### Fixed
+
+- A misspelled option key now names the option it is closest to. `tile` or `Title` said `try: a11y`, because `a11y` holds `a11y.title`. They now say `try: title`. A key's own name is read before the words below it, case is folded, and two swapped letters count as one edit, so `tilte` is also `title`. The same read finds `values` for `valeus` on a data key. The `unknown-option` refusal now carries a JSON Patch fix that renames the key, but only when exactly one option is within one edit of the key and the author has not set it already, no other key in the object is a typo of it, and the renamed option takes the authored value (also in a nested object). The per-type React entries name the key and carry no patch. A weaker match keeps the hint and gets no patch.

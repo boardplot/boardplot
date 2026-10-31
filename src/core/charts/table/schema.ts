@@ -112,7 +112,7 @@ const columnSchema = z
       polarity: z.enum(['higherIsBetter', 'lowerIsBetter']).optional().describe('Which sign is favorable. Judgment tones and directional encodings read it.'),
       materiality: materialitySchema.optional().describe('Mute tones below this threshold; keep values visible.'),
       aggregate: z.enum(['sum', 'none', 'source']).optional()
-        .describe("Parent-row aggregation. Default 'sum' over additive children; 'none' where the column format is a percentage, percentage points or a multiple, or the summand rows carry different formats, since those do not add. An explicit 'sum' there warns aggregate-non-additive."),
+        .describe("Parent-row aggregation. Default 'sum' over additive children; 'none' where the column format is a percentage, percentage points or a multiple, or the summand rows carry different units (decimals do not count), since those do not add. An explicit 'sum' there warns aggregate-non-additive."),
       nulls: z.enum(['propagate', 'skip']).optional()
         .describe("Default 'propagate'. A missing child then makes the parent '—', with no silent partial sums; 'skip' sums the present values and auto-footnotes 'partial'."),
       percentScale: z.literal('points').optional().describe("Values already in points; percent-scale-suspect stays quiet."),
@@ -120,7 +120,7 @@ const columnSchema = z
     z.strictObject({
       ...columnBase,
       kind: z.literal('computed').describe('Kind.'),
-      calc: calcSchema,
+      calc: calcSchema.describe('Calculation over value-column ids. A { row } or { row, previous: true } ref is refused (row-ref-in-column-calc): put cross-row refs in rows[].calc.'),
       format: formatExample.optional().describe(COLUMN_FORMAT_DOC),
       polarity: z.enum(['higherIsBetter', 'lowerIsBetter']).optional().describe('Which sign is favorable. Judgment tones and directional encodings read it.'),
       materiality: materialitySchema.optional().describe('Mute tones below this threshold; keep values visible.'),
@@ -187,7 +187,7 @@ const cellObjectSchema = z
       .describe("Explicit non-value state; 'na' → n/a · 'nm' → n.m. · 'suppressed' → — with footnote · 'open' → a period still to come, empty on the band ground. Distinct from null (missing → '—')."),
     missing: z.enum(['blank', 'dash']).optional().describe('Override the missing glyph for this cell. blank leaves no glyph; dash uses the theme missing glyph.'),
     heat: z.literal(false).optional().describe('Keeps the cell out of its heat lane. false draws it unshaded in the muted ink and leaves it out of the range (a calendar M0 diagonal).'),
-    format: formatExample.optional().describe(FORMAT_DOC + " On a cell: a value cell prints through its own format, ahead of its row's and its column's. A YoY column in '+1.2%' prints the change of a share KPI in points with '+1.2pp' on that one cell. The text, the hover card, the accessible table and the width fitting all use it."),
+    format: formatExample.optional().describe(FORMAT_DOC + " On a cell: a value or computed cell prints through its own format, ahead of its row's and its column's. A YoY column in '+1.2%' prints the change of a share KPI in points with '+1.2pp' on that one cell. The text, the hover card, the accessible table and the width fitting all use it."),
   })
   .describe('Composite cell: value plus note/tone/href/state/format.');
 
@@ -210,7 +210,7 @@ const rowSchema: z.ZodType = z.lazy(() =>
       .describe("derive: computed from children (authored value linted). validate (default when a value is authored): authored value displays, difference vs the computed sum is reported — verify ≠ overwrite. source: trusted, no comparison."),
     calc: calcSchema.optional()
       .describe('Calculation per numeric column. Same algebra as computed columns. Requires relation ofWhich or displayOnly. Cross-row refs { row } and { row, previous: true } are for this field.'),
-    format: formatExample.optional().describe(FORMAT_DOC + " On a row: a calc row (and an inline row) prints its result through it everywhere, so a MoM subrow prints +1.2% in a money column; a data row prints its cells through it on every column that names no format of its own, so KPI rows carry their own units across month columns."),
+    format: formatExample.optional().describe(FORMAT_DOC + " On a row: a calc row (and an inline row) prints its result through it everywhere, so a MoM subrow prints +1.2% in a money column; a data row prints its cells through it on every column that names no format of its own, so KPI rows carry their own units across month columns. A computed column that is not additive (percent change, share, multiply, divide) keeps its own kind: a data row's format does not reach it."),
     polarity: z.enum(['higherIsBetter', 'lowerIsBetter']).optional().describe('Row judgment direction. It overrides the column polarity in every column that judges a change, and judges every cell of a calc or inline row; a level column without a polarity stays uncoloured. A table that colours both directions prints a note naming the rows that read the other way.'),
     inline: z.literal(true).optional()
       .describe("Line below the parent value. Its row label stays on that baseline; it has no row of its own. Requires relation 'displayOnly'. Its values carry data-id cellline:<parentRow>:<column>:<line> (not cell:<row>:<column>). Scene-ID components escape % as %25 and : as %3A. Authored IDs stay unchanged."),

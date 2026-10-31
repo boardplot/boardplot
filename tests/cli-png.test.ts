@@ -12,7 +12,7 @@ import '../src/core/charts';
 import { getFixtures } from '../src/fixtures';
 import { main } from '../src/cli/main';
 import { availableRasterizer, completePng, pngSize, rasterize, uncoveredCharacters } from '../src/cli/raster';
-import { glyphFallbackFamily, loadResvg, rasterFamily, rasterizeWithResvg } from '../src/cli/resvg';
+import { glyphFallbackFamily, installedFamilies, loadResvg, rasterFamily, rasterizeWithResvg } from '../src/cli/resvg';
 
 // The fallback case needs a machine without resvg; the mock hides it on demand.
 const hideResvg = vi.hoisted(() => ({ value: false }));
@@ -70,6 +70,14 @@ describe('render --format png', () => {
     const tooLarge = runCli(['render', doc, '--format', 'png', '--scale', '9', '--out', join(doc, '..', 'out')]);
     expect(tooLarge.code).toBe(1);
     expect(JSON.parse(tooLarge.log.join('\n')).errors[0]).toMatchObject({ code: 'invalid-argument', path: '/scale' });
+  });
+
+  // A 1000000 x 1000000 px canvas made resvg abort the whole process, and the MCP server with it.
+  it('refuses a PNG above the pixel limit before any rasterizer runs', () => {
+    const doc = docWithColumn();
+    const huge = runCli(['render', doc, '--format', 'png', '--width', '1000000', '--height', '1000000', '--out', join(doc, '..', 'out')]);
+    expect(huge.code).toBe(1);
+    expect(JSON.parse(huge.log.join('\n')).errors[0]).toMatchObject({ code: 'png-too-large', path: '/format' });
   });
 
   it.skipIf(!resvg)('rasterises through resvg at the chart size times the scale', () => {
@@ -297,6 +305,35 @@ process.exit(2);
       expect(pngSize(png)).toEqual({ width: 800, height: 450 });
       expect(completePng(png, { width: 800, height: 450 })).toBe(true);
       expect(runs()).toBe(1);
+    });
+  });
+
+  // resvg replaces a whole text run that holds a glyph it lacks, so '🇩🇪 Germany' lost its Latin word too.
+  it.skipIf(!resvg)('hands a drawing with emoji or CJK to Chrome, and without Chrome names the labels that can be lost', () => {
+    const stack = "'Helvetica Neue', Arial, sans-serif";
+    const drawing = { svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 200"><rect width="300" height="200" fill="#fff"/></svg>', size: { width: 300, height: 200 }, fontFamily: stack, text: '🇩🇪 Germany\nRevenue' };
+    withFakeChrome('written-exit-2', docWithColumn(), (runs) => {
+      hideResvg.value = false;
+      // Chrome on a host without CJK or emoji fonts still draws a whole PNG with boxes, so only macOS and Windows clear the warning.
+      // The test sets the platform itself, so it holds on every host.
+      const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+      try {
+        for (const [name, count] of [['darwin', 0], ['win32', 0], ['linux', 1]] as const) {
+          Object.defineProperty(process, 'platform', { value: name });
+          const before = runs();
+          const warnings = rasterize([drawing], 1, 'resvg').warnings;
+          expect(runs()).toBe(before + 1);
+          expect(warnings).toHaveLength(count);
+          if (count) expect(warnings[0]!.message).toContain('Chrome drew the PNG');
+        }
+      } finally {
+        Object.defineProperty(process, 'platform', platform);
+      }
+      process.env.BOARDPLOT_CHROME_PATH = join(tmpdir(), 'no-such-chrome');
+      if (rasterFamily(stack, installedFamilies()) === null) return;
+      const warning = rasterize([drawing], 1, 'resvg').warnings[0]!;
+      expect(warning.code).toBe('png-glyph-coverage');
+      expect(warning.message).toContain("whole label can go with them: '🇩🇪 Germany'.");
     });
   });
 
