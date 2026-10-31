@@ -465,7 +465,6 @@ describe('published option behaviour census', () => {
     ["table", "signs", "Fixture steering-monthly has no SVG or option-warning change with \"operators\"."],
     ["dimswitch", "driverTones", "Fixture by-measure has no SVG or option-warning change with \"never\"."],
     ["table", "driverTones", "Fixture steering-monthly has no SVG or option-warning change with \"never\"."],
-    ["dimswitch", "encodings", "Fixture by-measure has no SVG or option-warning change with {\"census\":\"polarityBadge\"}."],
     ["dimswitch", "totalPosition", "Fixture by-measure has no SVG or option-warning change with \"bottom\"."],
     ["table", "totalPosition", "Fixture steering-monthly has no SVG or option-warning change with \"bottom\"."],
     ["dimswitch", "density", "Fixture by-measure has no SVG or option-warning change with \"regular\"."],
