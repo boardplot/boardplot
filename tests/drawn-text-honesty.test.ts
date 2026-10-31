@@ -70,3 +70,15 @@ describe('number census', () => {
     expect(findings.filter((f) => f.class === 'wrong-scale')).toEqual([]);
   });
 });
+
+describe('a key label leaves room for its own value', () => {
+  // The key label wrapped as if it had no value, so a long group name pushed its total past the edge and cut '1,664' to '1,'.
+  it('treemap key: label and group total fit a 320 px frame at textScale 1.5', () => {
+    const names = ['Training and certification', 'Enterprise software licences', 'Managed services and support', 'Subscription revenue, monthly plans'];
+    const groups = names.map((label, i) => ({ id: `g${i}`, label }));
+    const items = names.flatMap((_, i) => [0, 1].map((j) => ({ id: `i${i}${j}`, label: `Item ${i}${j}`, group: `g${i}`, value: 800 + i * 20 + j * 5 })));
+    const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'treemap', data: { groups, items }, options: { variant: 'rect', size: { width: 320, height: 600 }, cellValue: 'value-share', textScale: 1.5 } } as never)) as Geometry;
+    expect(geometry.scene.some((n) => n.t === 'text' && n.part === 'legendValue')).toBe(true);
+    expect(geometry.warnings.map((w) => w.code)).not.toContain('text-clipped');
+  });
+});
