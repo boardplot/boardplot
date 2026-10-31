@@ -314,14 +314,15 @@ process.exit(2);
     const drawing = { svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 200"><rect width="300" height="200" fill="#fff"/></svg>', size: { width: 300, height: 200 }, fontFamily: stack, text: '🇩🇪 Germany\nRevenue' };
     withFakeChrome('written-exit-2', docWithColumn(), (runs) => {
       hideResvg.value = false;
-      expect(rasterize([drawing], 1, 'resvg').warnings).toEqual([]);
-      expect(runs()).toBe(1);
       // Chrome on a host without CJK or emoji fonts still draws a whole PNG with boxes, so only macOS and Windows clear the warning.
+      // The test sets the platform itself, so it holds on every host.
       const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
       try {
         for (const [name, count] of [['darwin', 0], ['win32', 0], ['linux', 1]] as const) {
           Object.defineProperty(process, 'platform', { value: name });
+          const before = runs();
           const warnings = rasterize([drawing], 1, 'resvg').warnings;
+          expect(runs()).toBe(before + 1);
           expect(warnings).toHaveLength(count);
           if (count) expect(warnings[0]!.message).toContain('Chrome drew the PNG');
         }
