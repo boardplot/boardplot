@@ -1188,7 +1188,9 @@ export interface ParetoOptions extends Omit<BaseOptionsFor<'pareto'>, 'sort'> {
   /**
    * Scale the left axis to the total, so 100 % on the right sits level with
    * the total on the left and the curve starts at the top of the first
-   * column; default false keeps two independent scales.
+   * column. Default: on when a vital few reaches the threshold and no
+   * valueAxis.min or max is set, off for a flat distribution; false keeps
+   * two independent scales.
    */
   totalScale?: boolean;
 }
@@ -1425,7 +1427,7 @@ export interface SlopeOptions extends BaseOptionsFor<'slope'> {
     labels?: { positive?: string; negative?: string };
     /** Panel order. Default 'positive': the positive share in period 2, descending. */
     sort?: 'positive' | 'net' | 'data';
-    /** Net score (positive − negative) in period 2 and its change under each panel. Default true. */
+    /** Net score (positive − negative) in period 2 and its change under each panel, defined once in the key. Default true. */
     net?: boolean;
     /** A note naming the share that chose neither answer, when the two do not add to 100. Default true. */
     neutralNote?: boolean;

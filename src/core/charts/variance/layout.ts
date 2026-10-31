@@ -31,6 +31,7 @@ import { structureCount } from '../../structureCounts';
 
 import { PARTIAL_KEY, partialAxisWords, partialFootnotes, partialIds, partialKeyForced, partialLegendKeys, partialPattern, saysToDate, toDateFits, toDateFont, toDateLabel, toDateRoom } from '../../partialPeriod';
 import { highlightPaintWarnings } from '../../paintWarnings';
+import { warnMissingValue } from '../../dataGaps';
 import type { PaintWarningRule } from '../../types/scene';
 import type { AnchorResolution } from '../../annotate';
 import { percentLevels, runAnnotatePass } from '../../annotatePass';
@@ -38,7 +39,7 @@ import { hiddenValueLineReserve, VALUE_LINE_RESERVE } from '../../annotateParts'
 import { defaultNumberDecimals, formatAutomaticNumber, formatAutomaticPercent, PERCENTAGE_POINTS, seriesValueFormatter } from '../../format';
 import { exampleSpec, formatterFromExample, formatWithSpec, parseFormatExample, roundedNumber, signedFormatterFromExample, specUnitKind } from '../../formatSpec';
 import { boxGap, cleanDiff, cleanFloat, cleanSum, type Rect } from '../../geometry';
-import { createOccupiedIndex } from '../../label/occupied';
+import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { labelsToNodes } from '../../label/emit';
 import { categoryLineAlign, planCategoryRow, rotatedClaimRect, rotatedLeftOverhang, yearRowRequests } from '../../label/categoryRow';
 import {
@@ -53,6 +54,7 @@ import {
   type LabelRequest,
   type SlotCandidate,
   type SolveCtx,
+  type SolveResult,
 } from '../../label/solver';
 import { accessibleTitle,
   NormalizeError,
@@ -82,6 +84,7 @@ import {
   resolveSemanticPaletteTheme,
   semanticPalettePaint,
   signedFillPaint,
+  emphasisLabelTheme,
   emphasisWeight,
   strokeToken,
 } from '../../theme';
@@ -296,6 +299,12 @@ export function layoutVariance(
     } else {
       const present = dataSeries.filter((s) => s.vals[ci]!.v !== null);
       ac = present.length !== dataSeries.length ? null : cleanSum(present.map((s) => s.vals[ci]!.v!));
+    }
+    // A blank part leaves the category without a total, so nothing is drawn for it.
+    if (ac === null) {
+      const blank = (ofSeries ? [ofSeries] : dataSeries).filter((s) => s.vals[ci]!.v === null).map((s) => `'${s.id}'`);
+      warnMissingValue(warnings, `series ${blank.join(' and ')} at '${c.id}'`, { categoryId: c.id },
+        options.missingMark === 'dash' ? 'the category is drawn as an en dash' : 'the category is not drawn');
     }
     const ref = refSeries.vals[ci]!.v;
     acArr[ci] = ac;
@@ -756,6 +765,8 @@ export function layoutVariance(
   const anchorTopY: (number | null)[] = [];
   /** Visual bottom (pixel) per category for category-label placement. */
   const visBottomY: number[] = [];
+  /** Integrated mode: the pixel span (top, bottom) of each column's marks, for the value seat clear of its neighbours. */
+  const markSpanY: ({ top: number; bottom: number } | null)[] = [];
 
   /**
    * The glyph a missing prior leaves behind. Without it a category
@@ -1041,6 +1052,7 @@ export function layoutVariance(
     const visHiY = y(visHiVal);
     const visLoY = y(visLoVal);
     anchorTopY[ci] = ac >= 0 ? visHiY : visLoY;
+    markSpanY[ci] = { top: Math.min(visHiY, visLoY, y0), bottom: Math.max(visHiY, visLoY, y0) };
     visBottomY[ci] = Math.max(y0, visLoY);
 
     // AC total label AT the AC edge (the notation rule says the bold
@@ -1156,6 +1168,45 @@ export function layoutVariance(
     }
   });
 
+  // A value wider than its column runs over its neighbours: their columns
+  // and their values. Where those block both seats over the cap, a value may
+  // rise clear of them (below them for a value under the baseline): clear of
+  // the columns, clear of the neighbours' values, or one row higher, on a
+  // leader to its own cap. solveVarianceLabels offers these seats only to a
+  // value that ranks among the values the chart can hold.
+  const pointRequests = new Map(labelRequests.filter(request => request.kind === 'point').map(request => [request.id, request]));
+  const liftSeats = (request: LabelRequest): SlotCandidate[] => {
+    const ci = cats.findIndex(c => request.id === `point:${c.id}`);
+    const shifted = request.candidates[1];
+    if (mode !== 'integrated' || ci < 0 || !shifted) return [];
+    const above = shifted.slot === 'aboveCapShifted';
+    const { x, w, h } = shifted.rect;
+    const near = (from: number, to: number, gap: number) => from < x + w + gap && to > x - gap;
+    const marks: number[] = [];
+    const values: number[] = [];
+    markSpanY.forEach((span, ni) => {
+      if (!span) return;
+      if (near(band.position(ni), band.position(ni) + band.bandwidth, 2)) marks.push(above ? span.top : span.bottom);
+      const seat = ni === ci ? undefined : pointRequests.get(`point:${cats[ni]!.id}`)?.candidates[0]?.rect;
+      if (seat && near(seat.x, seat.x + seat.w, SERIES_VALUE_GAP)) values.push(above ? seat.y : seat.y + seat.h);
+    });
+    if (marks.length === 0) return [];
+    const step = h + 4;
+    const clearOf = (edges: number[]) => above ? Math.min(...edges) - step : Math.max(...edges) + 4;
+    const overValues = clearOf([...marks, ...values]);
+    const rows = [clearOf(marks), overValues, overValues + (above ? -step : step)];
+    const naturalY = request.candidates[0]!.rect.y;
+    return [...new Set(rows)]
+      .filter(y => above ? y < shifted.rect.y - 0.5 : y > shifted.rect.y + 0.5)
+      .sort((p, q) => above ? q - p : p - q)
+      .map((y, row) => ({
+        slot: above ? 'aboveNeighbours' : 'belowNeighbours',
+        rect: { ...shifted.rect, y },
+        penalty: 2 + row,
+        reach: Math.abs(y - naturalY) + 1,
+      }));
+  };
+
   if (integratedExtreme.length > 0) {
     warnings.push({
       code: 'integrated-delta-extreme',
@@ -1239,7 +1290,7 @@ export function layoutVariance(
     plot,
     labelPad: 2,
   });
-  const solved = solveLabels(labelRequests, occupied, solveCtx);
+  const solved = mode === 'integrated' ? solveVarianceLabels(labelRequests, occupied, solveCtx, liftSeats) : solveLabels(labelRequests, occupied, solveCtx);
   // A running period keeps a cue: a to-date value without a seat brings the hatch key back.
   // Words wider than twice the drawn band (a small bandFraction) would float over their mark: the key names the period.
   if (toDateIds.size > 0 && (!toDateFits(toDate, theme, measure, toDateRoom(band.bandwidth))
@@ -1284,7 +1335,9 @@ export function layoutVariance(
       cats.length >= 2 ? { from: cats[0]!.id, to: cats[cats.length - 1]!.id } : undefined,
     occupied,
     plot,
-    theme,
+    // Annotation labels draw bold (see labelsToNodes below), so the pass measures them bold.
+    theme: emphasisLabelTheme(theme),
+    plainLabelWeight: theme.type.label.weight,
     measure,
     format: options.format,
     locale: options.locale?.language,
@@ -1434,4 +1487,36 @@ export function layoutVariance(
       { slot: 'insideEnd', rect: { x: cx - w / 2, y: yBot - h - 2, w, h }, penalty: 2, insideFill },
     ];
   }
+}
+
+/**
+ * Solve the labels, then keep a larger variance from losing its value to a
+ * smaller one. The chart holds k values (the values the solve drew). A value
+ * among the k largest that found no seat is offered its seats clear of the
+ * neighbouring columns and values (`lift`), against everything already placed.
+ * Only those few values solve again; the drawn labels do not move.
+ */
+function solveVarianceLabels(requests: LabelRequest[], occupied: OccupiedIndex, ctx: SolveCtx, lift: (request: LabelRequest) => SlotCandidate[]): SolveResult {
+  const solved = solveLabels(requests, occupied, ctx);
+  const points = solved.placed.filter(label => label.kind === 'point');
+  const shown = points.filter(label => label.hidden === undefined).length;
+  const crowded = new Set(points.filter(label => label.hidden === 'collision').map(label => label.id));
+  if (crowded.size === 0) return solved;
+  const ranked = requests.filter(request => request.kind === 'point' && !request.redundant)
+    .sort((a, b) => b.priority - a.priority || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const rescue = ranked.slice(0, shown).filter(request => crowded.has(request.id)).flatMap(request => {
+    const seats = lift(request);
+    return seats.length > 0 ? [{ ...request, candidates: [...request.candidates, ...seats] }] : [];
+  });
+  if (rescue.length === 0) return solved;
+  const repair = solveLabels(rescue, occupied, ctx);
+  const seated = new Map(repair.placed.filter(label => label.hidden === undefined).map(label => [label.id, label]));
+  if (seated.size === 0) return solved;
+  const decided = new Map(repair.decisions.map(decision => [decision.labelId, decision]));
+  return {
+    ...solved,
+    placed: solved.placed.map(label => seated.get(label.id) ?? label),
+    decisions: solved.decisions.map(decision => seated.has(decision.labelId) ? decided.get(decision.labelId) ?? decision : decision),
+    warnings: solved.warnings.filter(warning => warning.code !== 'label-hidden' || ![...seated.keys()].some(id => warning.message.startsWith(`label '${id}' `))),
+  };
 }

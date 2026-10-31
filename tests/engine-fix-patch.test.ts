@@ -21,7 +21,7 @@ function applyPatch(doc: any, patch: readonly Op[]): any {
     const last = keys.at(-1)!;
     if (op === 'replace' && !(last in parent)) throw new Error(`replace on a missing member: ${path}`);
     if (Array.isArray(parent) && last === '-') parent.push(structuredClone(value));
-    else if (op === 'remove') delete parent[last];
+    else if (op === 'remove') Array.isArray(parent) ? parent.splice(Number(last), 1) : delete parent[last];
     else parent[last] = structuredClone(value);
   }
   return out;
@@ -137,6 +137,73 @@ describe('root key fixes', () => {
       const fixed = applyPatch(spec, refused.errors.flatMap((error: any) => error.fix));
       expect(render({ spec: fixed, format: 'svg' }).body).toMatchObject({ ok: true });
     }
+  });
+});
+
+describe('football-field row without a range', () => {
+  // A football-field method with no range is refused, and the error must offer a patch that removes every such row so the chart draws.
+  it('offers a remove patch that makes the chart draw', () => {
+    const range = (low: number, high: number) => ({ number: (low + high) / 2, range: { low, high } });
+    const spec = {
+      type: 'bar',
+      data: {
+        categories: ['a', 'b', 'c', 'd'].map((id) => ({ id, label: `Method ${id}` })),
+        series: [{ id: 'v', label: 'Value', values: [range(17, 23), null, range(10, 14), null] }],
+      },
+      options: { variant: 'football-field', currentValue: { value: 15, label: 'Current' }, title: 'Football field', unit: 'USD per share' },
+    };
+    const refused = render({ spec, format: 'svg' }).body as any;
+    const error = refused.errors.find((item: any) => item.code === 'football-field-range-required');
+    expect(error.suggest).toContain('Remove the method');
+    expect(error.fix).toEqual([
+      { op: 'remove', path: '/data/series/0/values/3' },
+      { op: 'remove', path: '/data/series/0/values/1' },
+      { op: 'remove', path: '/data/categories/3' },
+      { op: 'remove', path: '/data/categories/1' },
+    ]);
+    const fixed = render({ spec: applyPatch(spec, error.fix), format: 'svg' }).body as any;
+    expect(fixed.ok).toBe(true);
+  });
+});
+
+describe('football-field row fix and the series that share its categories', () => {
+  const range = (low: number, high: number) => ({ number: (low + high) / 2, range: { low, high } });
+  const template = {
+    type: 'bar',
+    options: { variant: 'football-field', currentValue: { value: 15, label: 'Current' }, title: 'Football field', unit: 'USD per share' },
+  };
+
+  // A reference series shares the categories: the fix must shorten it too, or the chart loses its interaction records for a length mismatch.
+  it('removes the row from a reference series as well', () => {
+    const spec = {
+      ...template,
+      data: {
+        categories: ['a', 'b', 'c', 'd'].map((id) => ({ id, label: `Method ${id}` })),
+        series: [
+          { id: 'v', label: 'Value', values: [range(17, 23), null, range(10, 14), null] },
+          { id: 'ref', label: 'Reference', role: 'reference', values: [1, 2, 3, 4] },
+        ],
+      },
+    };
+    const refused = (render({ spec, format: 'svg' }).body as any).errors.find((item: any) => item.code === 'football-field-range-required');
+    const fixed = applyPatch(spec, refused.fix);
+    expect(fixed.data.series[1].values).toEqual([1, 3]);
+    const drawn = render({ spec: fixed, format: 'svg' }).body as any;
+    expect(drawn.ok).toBe(true);
+    expect(JSON.stringify(drawn.reading.notes)).not.toContain('interaction record');
+  });
+
+  // Rows generate the categories, so a fix that removes one has no source row to patch and must not reach the caller.
+  it('offers no fix for rows-backed input', () => {
+    const rows = [
+      { method: 'a', series: 'Value', value: range(17, 23) },
+      { method: 'b', series: 'Value', value: null },
+      { method: 'c', series: 'Value', value: range(10, 14) },
+    ];
+    const body = render({ spec: template, rows, columns: { category: 'method', series: 'series', value: 'value' }, format: 'svg' } as any).body as any;
+    const error = body.errors.find((item: any) => item.code === 'football-field-range-required');
+    expect(error.fix).toBeUndefined();
+    expect(error.suggest).toContain('Remove the method');
   });
 });
 

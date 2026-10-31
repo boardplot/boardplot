@@ -4,6 +4,7 @@ import { getFixtures } from '../src/fixtures';
 import { layoutResolvedRequest, renderSvg, resolveChartRequest } from '../src/index';
 import { contrastRatio } from '../src/core/color';
 import { resolveTheme } from '../src/core/theme';
+import { measureText } from '../src/core/text';
 
 /** Lay out a catalog fixture through the request path the CLI and React use. */
 function layoutFixture(type: string, id: string) {
@@ -276,6 +277,85 @@ describe('chart layout edge cases', () => {
     expect(Math.abs(dataPlot('area') / dataPlot('line') - 1)).toBeLessThanOrEqual(0.02);
   });
 
+  // A callout seat was measured in the regular face while variance, slope and waterfall drew it bold,
+  // so the text ran past its seat and covered the neighbouring label (a minus sign lost under it).
+  it('a callout seat holds the text as it is drawn', () => {
+    const categories = ['North', 'South', 'East', 'West'].map((label) => ({ id: label.toLowerCase(), label }));
+    const text = 'Largest step since the restatement';
+    const specs = [
+      { type: 'variance', data: { categories, series: [{ id: 'act', label: 'Actual', values: [120, 95, 140, 88] }, { id: 'ref', label: 'Reference', values: [100, 100, 100, 100] }] },
+        options: { variant: 'integrated', variance: { of: 'act', vs: 'ref' }, size: { width: 480 } }, annotations: [{ kind: 'callout', at: { categoryId: 'north', seriesId: 'act' }, text }] },
+      { type: 'slope', data: { categories: categories.slice(0, 2), series: [{ id: 'a', label: 'Alpha', values: [10, 14] }, { id: 'b', label: 'Beta', values: [12, 9] }] },
+        options: { size: { width: 720 } }, annotations: [{ kind: 'callout', at: { categoryId: 'south', seriesId: 'a' }, text }] },
+      { type: 'waterfall', data: { items: [{ id: 'a', label: 'Start', type: 'total', value: 100 }, { id: 'b', label: 'Gain', value: 30 }, { id: 'c', label: 'Loss', value: -20 }, { id: 'd', label: 'End', type: 'total', value: 110 }] },
+        options: { size: { width: 480 } }, annotations: [{ kind: 'callout', at: 'b', text }] },
+    ];
+    const tooNarrow = specs.filter((spec) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const geometry = layoutResolvedRequest(resolveChartRequest(spec as any) as any) as any;
+      const label = geometry.labels.find((l: { id: string }) => l.id.startsWith('annotation:'));
+      const node = geometry.scene.find((n: { id: string }) => n.id === `label:${label.id}`);
+      const drawn = Math.max(...node.lines.map((line: string) => measureText(line, node.font).width));
+      return label.rect.w + 0.5 < drawn;
+    }).map((spec) => spec.type);
+    expect(tooNarrow).toEqual([]);
+  });
+
+  // The bold seat measure also widened an arrow callout and the body under a headline, which print plain, so a callout that fits was moved to the notes.
+  it('an arrow callout and a headline body keep the plain face and their seat', () => {
+    const text = 'Restated after the audit of the Q3 numbers';
+    const categories = ['North', 'South', 'East', 'West'].map((label) => ({ id: label.toLowerCase(), label }));
+    const specs = [
+      { type: 'variance', data: { categories, series: [{ id: 'act', label: 'Actual', values: [120, 95, 140, 88] }, { id: 'ref', label: 'Reference', values: [100, 100, 100, 100] }] },
+        options: { variant: 'integrated', variance: { of: 'act', vs: 'ref' }, size: { width: 440 } }, annotations: [{ kind: 'callout', at: { categoryId: 'north', seriesId: 'act' }, text, arrow: true }] },
+      { type: 'waterfall', data: { items: [{ id: 'a', label: 'Start', type: 'total', value: 100 }, { id: 'b', label: 'Gain', value: 30 }, { id: 'c', label: 'Loss', value: -20 }, { id: 'd', label: 'End', type: 'total', value: 110 }] },
+        options: { title: 'Bridge', size: { width: 480 } }, annotations: [{ kind: 'callout', at: 'b', text, headline: 'Largest step ${value}' }] },
+    ];
+    const seen = specs.map((spec) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const geometry = layoutResolvedRequest(resolveChartRequest(spec as any) as any) as any;
+      const label = geometry.labels.find((l: { id: string }) => l.id.startsWith('annotation:'));
+      const node = geometry.scene.find((n: { id: string }) => n.id === `label:${label.id}:body`) ?? geometry.scene.find((n: { id: string }) => n.id === `label:${label.id}`);
+      return { type: spec.type, hidden: label.hidden, weight: node.font.weight };
+    });
+    expect(seen).toEqual([{ type: 'variance', hidden: undefined, weight: 400 }, { type: 'waterfall', hidden: undefined, weight: 400 }]);
+  });
+
+  // A callout seated in the strip under the axis, on top of the 45° names: a name claimed only a square at its anchor.
+  it('a callout does not seat on a rotated category name', () => {
+    const categories = ['Umsatzerlöse', 'Niedersachsen', 'Licence income', 'Abschreibungen'].map((label, i) => ({ id: `c${i}`, label }));
+    const values = [[4.7, 4.4, null, 5.4], [2.7, -2.7, -2.7, 2.5], [3.1, 3.2, null, 2.8], [3.6, 3.5, 3.4, -3.3], [4.5, -4.7, -4.3, -4.7], [-3.2, 3.6, 3.4, 3.3], [6.3, -5.7, 5.6, 5.5], [2.5, 2.7, 3, 3.1]];
+    const series = values.map((row, s) => ({ id: `s${s}`, label: `Series ${s}`, values: row }));
+    const request = { type: 'column', data: { categories, series }, options: { title: 'Revenue by unit', subtitle: { measure: 'Revenue by unit', period: 'FY26' }, unit: 'pp', source: 'Invented data', locale: { language: 'de', decimal: ',', thousands: '.' }, variant: 'stacked', labelDensity: 'full', size: { width: 320 } },
+      annotations: [{ kind: 'callout', at: { categoryId: 'c0', seriesId: 's0' }, text: 'Largest step since the restatement', preferSide: 'right' }] };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+    const callout = geometry.labels.find((l: { id: string }) => l.id === 'annotation:callout-1');
+    const onName = geometry.labels.filter((l: { kind: string; rotate?: number }) => l.kind === 'category' && l.rotate === -45).some((name: { id: string; rect: { x: number; y: number; w: number; h: number } }) => {
+      const node = geometry.scene.find((n: { id: string }) => n.id === `label:${name.id}`);
+      const length = Math.max(...node.lines.map((line: string) => measureText(line, node.font).width));
+      const end = { x: name.rect.x + name.rect.w, y: name.rect.y + (node.font.size * 1.2 * Math.SQRT1_2) / 2 };
+      return Array.from({ length: Math.ceil(length) }, (_, d) => ({ x: end.x - d * Math.SQRT1_2, y: end.y + d * Math.SQRT1_2 }))
+        .some((p) => p.x > callout.rect.x && p.x < callout.rect.x + callout.rect.w && p.y > callout.rect.y && p.y < callout.rect.y + callout.rect.h);
+    });
+    expect(callout.hidden === undefined && onName).toBe(false);
+  });
+
+  // A tall canvas widened the rotated names until the row had no pitch left for a 45° line, so all but one name were dropped.
+  it('a tall variance chart keeps its rotated category names at 400 px wide', () => {
+    const names = ['Nordrhein-Westfalen (Rheinland)', 'Net revenue retention, enterprise', 'Sonstige betriebliche Aufwendungen', 'Zinsen und ähnliche Aufwendungen', 'Aufwendungen für bezogene Waren', 'Schleswig-Holstein und Hamburg', 'Pensionsrückstellungen, Inland', 'Research and development expenses', 'Sonstige betriebliche Erträge', 'Fremdleistungen Logistik Ausland', 'Instandhaltung und Reparaturen', 'Mecklenburg-Vorpommern'];
+    const categories = names.map((label, i) => ({ id: `c${i}`, label }));
+    const request = { type: 'variance', data: { categories, series: [
+      { id: 'act', label: 'Actual', values: [178, 173.7, 182.1, 193.8, 204.9, 223.9, 243.9, 224.9, 200, 195.7, 190, 172.6] },
+      { id: 'ref', label: 'Prior year', role: 'reference', values: [145.6, 190.1, 165.5, 215.2, 245.5, 201.3, 221, 242.1, 190, 168.3, 180, 164.5] }] },
+      options: { variant: 'integrated', variance: { of: 'act', vs: 'ref' }, size: { width: 400, height: 560 } },
+      annotations: [{ kind: 'callout', at: { categoryId: 'c0', seriesId: 'act' }, text: 'Largest step since the restatement', preferSide: 'right' }] };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+    const drawn = geometry.labels.filter((l: { kind: string; hidden?: string }) => l.kind === 'category' && l.hidden === undefined).length;
+    expect(drawn).toBe(names.length);
+  });
+
   // A dot scatter reserved its y column for five round ticks but drew half-steps (5.5), so on a 280 pt slide the tick text started left of the canvas.
   it('scatter y ticks stay inside the canvas on a narrow slide', () => {
     const points = [[4, 3], [2, 5], [3, 5], [5, 2], [3, 4], [1, 5], [4, 4], [5, 1], [1, 3], [2, 2], [2, 4], [4, 1]]
@@ -290,5 +370,83 @@ describe('chart layout edge cases', () => {
     const ticks = geometry.scene.filter((node: { id?: string }) => String(node.id).startsWith('axis:y:tick:'));
     expect(ticks.length).toBeGreaterThan(0);
     for (const tick of ticks) expect(tick.x).toBeGreaterThanOrEqual(0);
+  });
+
+  // One long first name set the rotated-name cap for the whole row, so a name that fits its own seat was cut with it.
+  it('a rotated name that fits its seat is not cut for a long name elsewhere', () => {
+    const names = ['Rhein0', 'Pensionsrückstellungen, Inland1', 'Nordrhein-Westfalen (Rheinland)2', 'Zinsen und ähnliche Aufwendungen3', 'Instandhaltung und Reparaturen4', 'Mecklenburg-Vorpommern5', 'Research and development expenses6', 'Fremdleistungen Logistik Ausland7', 'Zinsen und ähnliche Aufwendungen8', 'Aufwendungen für bezogene Waren9'];
+    const request = { type: 'variance', data: { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [{ id: 'act', label: 'Actual', values: names.map((_, i) => 50 + i) }, { id: 'ref', label: 'Reference', role: 'reference', values: names.map(() => 52) }] },
+      options: { variant: 'integrated', variance: { of: 'act', vs: 'ref' }, size: { width: 320, height: 480 } } };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+    const node = geometry.scene.find((n: { id: string }) => n.id === 'label:category:c5');
+    expect(node.lines).toEqual(['Mecklenburg-Vorpommern5']);
+  });
+
+  // A qualitative scatter wrapped its y title to four lines in a plot too short for it, so the title printed over the Higher and Lower end labels.
+  it('a qualitative scatter plot too short for its y title drops the title and warns', () => {
+    const points = [[4, 3], [2, 5], [3, 5], [5, 2]].map(([x, y], i) => ({ id: `p${i}`, label: `Case ${i}`, x, y }));
+    const request = {
+      type: 'scatter',
+      data: { points },
+      options: { size: { width: 300, height: 240, unit: 'pt' }, title: 'Cases that combine high value and low effort are the ones to start with now', subtitle: 'Matrix of use cases', qualitativeAxes: true, axisTitles: { x: 'Ease', y: 'Value impact of use case' }, footnotes: Array.from({ length: 4 }, (_, i) => `Note ${i + 1} is long enough to wrap onto several lines of the footer in a narrow chart.`), source: 'Illustrative data' },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+    const ids = geometry.scene.map((node: { id?: string }) => String(node.id));
+    expect(geometry.plot.h).toBeLessThan(80);
+    expect(ids).toContain('axis:y:high');
+    expect(ids).not.toContain('axis:y:title');
+    expect(geometry.warnings.map((w: { code: string }) => w.code)).toContain('axis-title-dropped');
+  });
+
+  // The y arrows are drawn from the plot centre toward Higher and Lower also when no y axis title is set.
+  it('a tall qualitative scatter without a y title keeps both y arrows', () => {
+    const points = [[4, 3], [2, 5], [3, 5], [5, 2]].map(([x, y], i) => ({ id: `p${i}`, label: `Case ${i}`, x, y }));
+    const request = {
+      type: 'scatter',
+      data: { points },
+      options: { size: { width: 400, height: 300, unit: 'pt' }, title: 'T', qualitativeAxes: true, axisTitles: { x: 'Ease' } },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+    const ids = geometry.scene.map((node: { id?: string }) => String(node.id));
+    expect(ids).not.toContain('axis:y:title');
+    expect(ids).toContain('axis:y:arrow-high');
+    expect(ids).toContain('axis:y:arrow-low');
+  });
+  // A card that drops most value labels showed bare columns with no number and no scale to read them off.
+  it('a column whose value labels drop draws the value axis unless valueAxis.show is false', () => {
+    const cats = Array.from({ length: 12 }, (_, i) => ({ id: `u${i}`, label: `Unit ${i + 1}` }));
+    const request = (valueAxis?: { show: boolean }) => ({
+      type: 'column',
+      data: { categories: cats, series: [
+        { id: 'a', label: 'North', values: cats.map((_, i) => (i % 4 === 1 ? 1000 : 750)) },
+        { id: 'b', label: 'South', values: cats.map((_, i) => (i % 3 === 0 ? 1250 : 1500)) },
+      ] },
+      options: { target: 'dashboard', title: 'Revenue by unit', unit: 'EUR', format: '1.2bn', size: { width: 480 }, ...(valueAxis ? { valueAxis } : {}) },
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ticks = (r: unknown) => (layoutResolvedRequest(resolveChartRequest(r as any) as any) as any).scene.filter((n: { id?: string }) => String(n.id).startsWith('axis:y:tick:')).length;
+    expect(ticks(request())).toBeGreaterThan(1);
+    expect(ticks(request({ show: false }))).toBe(0);
+  });
+
+  // Eight diverging panels on a wide slide sent five net scores to a note: "Netto +20,9 (+7,9)" was wider than a panel.
+  it('a diverging slope prints every net score and defines the net once in the key', () => {
+    const names = ['Subscription revenue, annual plans', 'Professional services, fixed price', 'Training and certification', 'Other revenue abroad',
+      'Consulting and implementation', 'Maintenance and repair', 'Managed services and support', 'Enterprise software licences'];
+    const series = names.map((label, i) => ({ id: `g${i}`, label, values: [53.85 - i * 4.3, 58.54 - i * 4.9], negative: [6.697 + i * 2.1, 16.82 + i * 1.7] }));
+    const request = {
+      type: 'slope',
+      data: { categories: [{ id: 'fy24', label: 'FY24' }, { id: 'fy26', label: 'FY26' }], series },
+      options: { title: 'T', target: 'slide', size: { width: 888, height: 396, unit: 'pt' }, locale: { language: 'de' }, variant: 'diverging', diverging: { labels: { positive: 'Besser', negative: 'Schlechter' } } },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+    const nets = geometry.labels.filter((l: { id: string }) => /^total:g\d:net$/.test(l.id));
+    expect(nets.filter((l: { hidden?: unknown }) => !l.hidden)).toHaveLength(8);
+    const key = geometry.labels.find((l: { id: string }) => l.id === 'legend:net:0');
+    expect(key && !key.hidden).toBe(true);
   });
 });

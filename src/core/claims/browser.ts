@@ -532,7 +532,10 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
         output: {
           raw: count,
           state: 'value',
-          displayed: `[${derived.binning.edges[index]}, ${derived.binning.edges[index + 1]})`,
+          // The open last bin runs from openAbove up, to the largest observation.
+          displayed: derived.binning.openAbove !== undefined && index === derived.counts.length - 1
+            ? `[${derived.binning.edges[index]}, ${derived.binning.edges[index + 1]}]`
+            : `[${derived.binning.edges[index]}, ${derived.binning.edges[index + 1]})`,
         },
         ...(marks.bins?.[index]?.nodeId ? { nodeId: marks.bins[index]!.nodeId } : {}),
       }));
@@ -1042,7 +1045,7 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
         ],
         output: {
           // A refused relative change is recorded as the absolute change the
-          // card shows (mode 'absolute', state 'ref-nonpositive').
+          // card shows (mode 'absolute', state 'ref-nonpositive' or 'sign-change').
           raw: comparison.mode === 'absolute' ? comparison.deltaAbs : comparison.deltaPct,
           state: comparison.state,
           displayed: comparison.displayed,

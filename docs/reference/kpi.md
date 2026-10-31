@@ -39,12 +39,12 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | delta.vs | number | yes | Reference value subtracted from the main metric. |
 | delta.scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). Code of the comparison baseline; a baseline with its own name, such as a month, goes in compare[].label instead. |
 | delta.direction | string |  | Whether an increase from the reference is favorable. neutral prints ordinary ink without a judgment; omission keeps higherIsBetter. One of `'higherIsBetter'`, `'lowerIsBetter'`, `'neutral'`. |
-| delta.mode | string |  | Display absolute change, relative change, or both. Defaults to relative. A zero or negative vs shows the absolute change with a ref-nonpositive warning; under a percent format the absolute change prints in pp. One of `'absolute'`, `'relative'`, `'both'`. |
+| delta.mode | string |  | Display absolute change, relative change, or both. Defaults to relative; under a percent format it defaults to absolute, which prints in pp. A zero or negative vs shows the absolute change with a ref-nonpositive warning, and a value on the other side of zero from vs shows it with a sign-change warning. One of `'absolute'`, `'relative'`, `'both'`. |
 | compare | array |  | One or two named comparisons below the metric; cannot be combined with delta. An empty compare list is the same as none. |
 | compare[].vs | number | yes | Reference value for this named comparison. |
 | compare[].label | string | yes | Visible name of this comparison baseline. |
 | compare[].direction | string |  | Whether an increase from this reference is favorable. neutral prints ordinary ink without a judgment; omission keeps higherIsBetter. One of `'higherIsBetter'`, `'lowerIsBetter'`, `'neutral'`. |
-| compare[].mode | string |  | Display absolute change, relative change, or both. Defaults to both. A zero or negative vs shows the absolute change with a ref-nonpositive warning; under a percent format the absolute change prints in pp. One of `'absolute'`, `'relative'`, `'both'`. |
+| compare[].mode | string |  | Display absolute change, relative change, or both. Defaults to both; under a percent format it defaults to absolute, which prints in pp. A zero or negative vs shows the absolute change with a ref-nonpositive warning, and a value on the other side of zero from vs shows it with a sign-change warning. One of `'absolute'`, `'relative'`, `'both'`. |
 | attainment | object |  | Ratio of the main value to a named target, displayed as attainment. |
 | attainment.vs | number | yes | Target value used as the attainment denominator. |
 | attainment.label | string | yes | Visible name of the attainment target. |
@@ -55,7 +55,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | bands[].label | string |  | Visible name of this band. |
 | note | string |  | Authored caption under the value: the basis, filter or scope the number is true of. Printed as written; the card never composes it. |
 | spark | object |  | Small trend chart displayed beneath the KPI comparison content. |
-| spark.kind | string | yes | Shape-only sparkline. 'column' is zero-anchored. The last observed value is labelled unless the card's figure already prints it. No axes. One of `'line'`, `'area'`, `'column'`. |
+| spark.kind | string | yes | Shape-only sparkline. 'column' and 'area' are zero-anchored. 'line' spans the series range. The last observed value is labelled unless the card's figure already prints it. No axes. One of `'line'`, `'area'`, `'column'`. |
 | spark.values | cell[] | yes | Trend observations in chronological order, in the same base units as the main value; the card format labels the last observed value unless it reads the same as the card's figure. A last value 1000 times or more off the main value is refused (spark-scale-mismatch). Missing cells create gaps. |
 | spark.labels | array |  | One period name per value, such as 'W1' or 'Jan'. The card prints the first and the last under the spark's ends, so the reader sees the span. |
 
@@ -102,6 +102,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | editorial-figure | example | Editorial card: a light serif figure from type.figure over text comparisons and a text attainment |
 | spark-ink-pale-neutral | example | A line spark in the ink on a theme whose neutral is a pale sand |
 | spark-area-as-line | example | An area spark drawn as a shape-only line ending in a ring, no wash and no end label |
+| spark-area-from-min | example | An area spark whose scale and wash start at the series minimum |
 | house-eyebrow | example | Tracked eyebrow from type.eyebrow, comparisons without carets |
 | weekly-orders-card-spark | example | The bare weekly sparkline inside a card that names the measure, the period and the number |
 | spark-ends-below-card | example | Cash card: today on the card, month-end balances in the spark, the last one labelled |

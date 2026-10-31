@@ -132,6 +132,25 @@ describe('the KPI card never prints a nonzero value as 0', () => {
     expect(text(card, 'point:compare:1')).toBe('+3.1% (+3.0)');
     expect(desc(card)).toContain('+1.4 vs PY');
   });
+
+  // A loss of 42.5 against a plan of +18.2 printed "−333.5% vs PL", a percent that measures no gap.
+  it('prints the absolute change when the value crosses zero from its reference', () => {
+    const card = kpi({ value: -42.5, format: '1.1', delta: { vs: 18.2, scenario: 'PL', mode: 'both' } });
+    expect(text(card, 'point:delta')).toBe('−60.7 vs PL');
+    expect(card.warnings.map((w) => w.code)).toContain('sign-change');
+    const compared = kpi({ value: -42.5, format: '1.1', compare: [{ label: 'vs PL', vs: 18.2 }] });
+    expect(text(compared, 'point:compare:0')).toBe('−60.7');
+  });
+
+  // A percent measure printed "+22.6%" for a rate that moved 0.7 points, and two percents on one line.
+  it('compares a percent measure in points unless a mode is set', () => {
+    const delta = kpi({ value: 3.8, format: '1.1%', delta: { vs: 3.1, scenario: 'PY' } });
+    expect(text(delta, 'point:delta')).toBe('+0.7pp vs PY');
+    const compared = kpi({ value: 97.6, format: '1.1%', compare: [{ label: 'Plan', vs: 100 }] });
+    expect(text(compared, 'point:compare:0')).toBe('−2.4pp');
+    const relative = kpi({ value: 3.8, format: '1.1%', delta: { vs: 3.1, scenario: 'PY', mode: 'relative' } });
+    expect(text(relative, 'point:delta')).toBe('+22.6% vs PY');
+  });
 });
 
 describe('heatmap means are exact, and a row without values has none', () => {

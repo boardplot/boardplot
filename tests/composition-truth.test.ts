@@ -345,6 +345,32 @@ describe('line and mekko fail closed visibly', () => {
       expectSharesInRange(negative, `${type} negative direct shares`);
     }
   });
+  // A 100% column stack of percent cells has no absolute basis; its segments printed no share at all.
+  it('prints the share of each percent cell on a 100% column stack', () => {
+    const shares: ChartData = {
+      categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }],
+      series: [
+        { id: 's1', label: 'S1', values: [{ pct: 40 }, { pct: 30 }] },
+        { id: 's2', label: 'S2', values: [{ pct: 60 }, { pct: 70 }] },
+      ],
+    };
+    const texts = layoutComposition('column', shares).scene
+      .flatMap((node) => (node.t === 'text' ? [(node.lines ?? []).join(' ')] : []));
+    for (const share of ['40%', '30%', '60%', '70%']) expect(texts).toContain(share);
+  });
+
+  // Percent cells rounded alone printed 25 + 4 + 10 + 37 + 25 = 101% in one column.
+  it('prints percent-cell shares that add to 100% on a 100% column stack', () => {
+    const cells = [24.8, 3.8, 9.8, 36.8, 24.8];
+    const shares: ChartData = {
+      categories: [{ id: 'a', label: 'A' }],
+      series: cells.map((pct, i) => ({ id: `s${i}`, label: `S${i}`, values: [{ pct }] })),
+    };
+    const printed = layoutComposition('column', shares, { labelDensity: 'full' }).scene
+      .flatMap((node) => (node.t === 'text' && node.id.startsWith('label:segment:') ? percentageValues((node.lines ?? []).join(' ')) : []));
+    expect(printed).toHaveLength(5);
+    expect(printed.reduce((sum, share) => sum + share, 0)).toBe(100);
+  });
 });
 
 describe('composition share invariant', () => {
@@ -489,5 +515,18 @@ describe('pareto joined remainder record', () => {
     const column = interactionRecords({ request, geometry, scope: request.scope, claims: [] }).find((record) => record.target.owner?.categoryId === 'o' && record.target.owner.seriesId === 'pareto:value')!;
     expect(column.value).toMatchObject({ raw: 1.4, derived: 'number' });
     expect(column.members).toEqual([{ categoryId: 'c' }, { categoryId: 'd' }]);
+  });
+});
+
+// The changelog promises totalScale: false brings back the column-capped axis; no golden draws it.
+describe('pareto total scale', () => {
+  it('scales the left axis to the total when concentrated, unless the author turns it off', () => {
+    const data = { items: [{ id: 'a', value: 80 }, { id: 'b', value: 5 }, { id: 'c', value: 5 }, { id: 'd', value: 5 }, { id: 'e', value: 5 }] };
+    const top = (options: Record<string, unknown>) => {
+      const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'pareto', data, options } as never)));
+      return Math.max(...geometry.axes.find((axis) => axis.axis === 'y')!.ticks.map((tick) => Number(tick.at)));
+    };
+    expect(top({})).toBe(100);
+    expect(top({ totalScale: false })).toBe(80);
   });
 });

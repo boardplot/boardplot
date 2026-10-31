@@ -8,10 +8,10 @@
 
 import { registerFixtures } from '../../../fixtures/registry';
 import type { Fixture } from '../../registry';
-import type { ChartData } from '../../types/data';
+import type { HeatmapData } from '../../types/data';
 import type { HeatmapOptions } from '../../types/options';
 
-export const fixtures: Fixture<ChartData, HeatmapOptions>[] = [
+export const fixtures: Fixture<HeatmapData, HeatmapOptions>[] = [
   {
     id: 'harvey-quarter-steps',
     title: 'Harvey balls from empty to full in theme highlight',
@@ -395,6 +395,22 @@ fixtures.push({
 });
 
 fixtures.push({ id: 'series-formats', title: 'Rows have distinct formats', kind: 'torture', data: { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: 'amount', label: 'Amount', format: '$1.0', values: [2, 3] }, { id: 'rate', label: 'Rate', format: '1.0%', values: [4, 5] }] }, options: { title: 'Each row keeps its unit', size: { width: 650, height: 350 } } });
+
+fixtures.push({
+  id: 'cell-states',
+  title: 'A cell with a state is named in the key as suppressed, not meaningful or not applicable',
+  kind: 'example',
+  data: {
+    categories: [{ id: 'q1', label: 'Q1' }, { id: 'q2', label: 'Q2' }, { id: 'q3', label: 'Q3' }, { id: 'q4', label: 'Q4' }],
+    series: [
+      { id: 'north', label: 'North', values: [4.2, 4.8, 5.1, 5.6] },
+      { id: 'south', label: 'South', values: [3.1, null, 3.6, null], states: [null, 'suppressed', null, 'suppressed'] },
+      { id: 'east', label: 'East', values: [null, 2.9, 3.3, 3.4], states: ['na', null, null, null] },
+      { id: 'west', label: 'West', values: [2.2, 2.5, null, 2.9] },
+    ],
+  },
+  options: { title: 'Withheld cells are named, not blank', unit: '%' },
+});
 
 fixtures.push({
   id: 'measure-already-names-unit', title: 'The measure names the unit once', kind: 'torture',

@@ -1,6 +1,7 @@
 /** Core data model and chart-specific shapes. */
 
 import type { ValueBand } from '../bandSelect';
+import type { NamedColumnState } from '../schema/namedColumns';
 import type { Cell, ColorRole, ComparisonDirection, Direction, Id, RangeCell, Scenario } from './cell';
 
 export interface Category {
@@ -70,6 +71,8 @@ export interface Series {
 export interface HeatmapSeries extends Series {
   sizes?: (number | null)[];
   bases?: (number | null)[];
+  /** One per category: why a null cell has no value. null leaves the cell plain no data. */
+  states?: (NamedColumnState | null)[];
 }
 
 /** The heatmap's document: `ChartData` whose rows may carry bubble sizes and bases. */

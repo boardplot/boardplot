@@ -14,6 +14,7 @@ import {
   dataValueKindSchema,
   categorySchemaOf,
 } from '../../schema/shared';
+import { NAMED_COLUMN_STATES } from '../../schema/namedColumns';
 import type { HeatmapData } from '../../types/data';
 import type { HeatmapOptions } from '../../types/options';
 
@@ -40,6 +41,7 @@ const seriesSchema = z.strictObject({
   format: formatExample.optional().describe("Format-by-example for this series values, for example 1,234 or 1.2%."),
   sizes: z.array(z.number().nonnegative().nullable()).optional().describe("Bubble sizes. One per category, in order: a level 1 to n with bubble.levels, else area ∝ size."),
   bases: z.array(z.number().nonnegative().nullable()).optional().describe("Cell bases (n). One per category, in order; below minBase draws hatched."),
+  states: z.array(z.enum(NAMED_COLUMN_STATES).nullable()).optional().describe("Why a cell has no value. One per category, in order: suppressed, nm (not meaningful), na (not applicable) or null. A stated cell needs value null; it draws hatched and the key names its state."),
 });
 
 export const heatmapDataSchema = z

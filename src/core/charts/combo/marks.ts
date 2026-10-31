@@ -23,7 +23,7 @@ import type { Id } from '../../types/cell';
 import type { AxisGeometry, Paint } from '../../types/scene';
 import { markerPath, pathFor as linePathFor } from '../line/marks';
 import { REFERENCE_MARKER_R, referenceCasing, referenceMarkerPaint, referenceTickGeometry } from '../band/ticks';
-import { primaryLineMean } from './domain';
+import { primaryLineMean, SECONDARY_FULL_DOMAIN } from './domain';
 import type { ComboMarks } from './layout';
 import { MARKER_R, type ComboArea, type ComboDomain, type ComboEnv, type ComboMarkGeometry, type ComboPaints, type LinePlan, type NormSer } from './model';
 
@@ -48,7 +48,9 @@ function comboAxes(ctx: MarkCtx): void {
   let primaryDrawn: Set<number> | undefined;
   if (domain.showPrimaryAxis) {
     const axisResult = layoutValueAxis(
-      { scale: y, plot, orient: 'y', gridlines: domain.options.valueAxis?.gridlines ?? domain.anatomy, format: domain.fmt, formatSpec: domain.valueSpec, theme: env.theme, measure: env.measure, ticks: domain.pticks },
+      { scale: y, plot, orient: 'y', gridlines: domain.options.valueAxis?.gridlines ?? domain.anatomy, format: domain.fmt, formatSpec: domain.valueSpec, theme: env.theme, measure: env.measure, ticks: domain.pticks,
+        // A Pareto scaled to its total reads its top row as the total and 100%: thinning keeps that row.
+        ...((domain.options as { [SECONDARY_FULL_DOMAIN]?: unknown })[SECONDARY_FULL_DOMAIN] && Math.abs(domain.pticks.at(-1)! - domain.dHi) < 1e-9 ? { keepTopTick: true } : {}) },
       claims,
     );
     pushAll(nodes, axisResult.nodes);

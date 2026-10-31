@@ -250,3 +250,19 @@ it('keeps every stacked value wholly on its band or wholly off it, at both ends 
     }
   }
 });
+
+// A shown value axis replaced the tick of a nonzero baseline and of a value line past the data with its own ladder, so 41 and 37.5 never printed.
+it('keeps the baseline tick and the value-line tick on a shown line value axis', () => {
+  const tickValues = (valueAxis: object, annotations: unknown[]): number[] => {
+    const request = resolveChartRequest({
+      type: 'line',
+      data: { categories: ['A', 'B', 'C', 'D', 'E', 'F'], series: [{ id: 's', label: 'Sales', values: [52, 54, 57, 59, 60, 63] }] },
+      annotations,
+      options: { title: 'Sales', valueAxis: { show: true, ...valueAxis }, size: { width: 720, height: 404 } },
+    } as never);
+    const axis = (requireGeometry(layoutResolvedRequest(request)) as Geometry).axes.find((entry) => entry.axis === 'y');
+    return (axis?.ticks ?? []).map((tick) => tick.at as number);
+  };
+  expect(tickValues({ min: 41 }, [])).toContain(41);
+  expect(tickValues({}, [{ kind: 'valueLine', value: 37.5, label: 'Goal' }])).toContain(37.5);
+});

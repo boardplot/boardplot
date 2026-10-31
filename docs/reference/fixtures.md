@@ -118,6 +118,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | option-value-labels-ends | column.grouped | example | The first and latest quarter print their values (valueLabels ends) |
 | option-value-labels-none | column.grouped | example | No value prints; the axis reads every column (valueLabels none) |
 | option-value-labels-all | column.grouped | example | Every quarter prints its value (valueLabels all) |
+| grouped-twelve-slide | column.grouped | torture | Two series over twelve units on a full slide print all 24 values |
 
 ## bar
 
@@ -456,6 +457,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | editorial-figure | kpi | example | Editorial card: a light serif figure from type.figure over text comparisons and a text attainment |
 | spark-ink-pale-neutral | kpi | example | A line spark in the ink on a theme whose neutral is a pale sand |
 | spark-area-as-line | kpi | example | An area spark drawn as a shape-only line ending in a ring, no wash and no end label |
+| spark-area-from-min | kpi | example | An area spark whose scale and wash start at the series minimum |
 | house-eyebrow | kpi | example | Tracked eyebrow from type.eyebrow, comparisons without carets |
 | weekly-orders-card-spark | kpi | example | The bare weekly sparkline inside a card that names the measure, the period and the number |
 | spark-ends-below-card | kpi | example | Cash card: today on the card, month-end balances in the spark, the last one labelled |
@@ -648,6 +650,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | period-comparisons | heatmap.value | example | Annual growth and differences between named matrix cells |
 | torture-long-labels | heatmap.harvey | torture | Torture: long names at a generous size read whole, never cut |
 | series-formats | heatmap.value | torture | Rows have distinct formats |
+| cell-states | heatmap.value | example | A cell with a state is named in the key as suppressed, not meaningful or not applicable |
 | measure-already-names-unit | heatmap.value | torture | The measure names the unit once |
 | survey-journey-bubbles | heatmap.bubble | example | Survey bubble matrix: 6 segments × 12 touchpoints, importance as size, binned satisfaction as colour, two low-base cells |
 | survey-journey-long-names | heatmap.bubble | example | Survey bubble matrix with long touchpoint names: the matrix turns instead of rotating or thinning the names |
@@ -982,6 +985,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | engagement-options | likert | example | The engagement survey with left row labels, thicker bars, one highlighted statement and explicit label kinds |
 | engagement-notes-pinned | likert | torture | The engagement survey with its net and base pinned as one-line method notes under the author note |
 | engagement-dashboard-notes | likert | torture | The engagement survey on a dashboard with its notes in the info panel |
+| twelve-statements-slide | likert | torture | Twelve statements on a full slide print their shares inside the bars |
 
 ## histogram
 
@@ -991,6 +995,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | cycle-time-days | histogram | example | Cycle time peaks in the six-to-eight-day band and tails off by day thirteen |
 | order-value-eur-formatted | histogram | torture | Formatted in euro: the bin edges carry the currency, the bar heights are counts |
 | bimodal-with-far-outlier | histogram | torture | One $14,000 order stretches the axis over 40 bins; 999 of 1,000 orders sit in the first three |
+| claim-amount-open-tail | histogram | example | 15 of 800 claims run from $1,250 to $3,303; one open bin keeps them from stretching the axis |
 | unsnapped-bins-method-note | histogram | torture | The automatic bin width as computed, not snapped to a round number, with the binning rule stated |
 | localized-binning | histogram | torture | Authored binning wording under a German locale |
 
