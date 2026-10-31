@@ -229,7 +229,9 @@ const UNLABELLED = Symbol('pieUnlabelled');
 const FIXED_PASS = Symbol('pieFixedPass');
 /** The ring drops the smallest label without a good seat, never a lower one to free a seat. */
 const BAD_FIRST = Symbol('pieBadFirst');
-type PiePassOptions = PieOptions & { [UNLABELLED]?: Map<Id, string>; [FIXED_PASS]?: true; [BAD_FIRST]?: true };
+/** The pass gives a doughnut's centre total priority over the outside-label reserve. */
+const CENTRE_FIRST = Symbol('pieCentreFirst');
+type PiePassOptions = PieOptions & { [UNLABELLED]?: Map<Id, string>; [FIXED_PASS]?: true; [BAD_FIRST]?: true; [CENTRE_FIRST]?: true };
 
 /**
  * A slice whose label found no seat is named in the note
@@ -242,18 +244,30 @@ export function layoutPie(
   data: ChartData,
   options: PieOptions = {},
 ): Geometry<PieMarks, PieDerived> {
+  const layout = layoutPieOrdered(data, options);
+  if (!layout.centreLost) return layout.geometry;
+  // The settled layout drops the total that a larger ring could hold. The whole layout is set again with
+  // the total first, and stands only when it draws the total; else the first layout stands unchanged.
+  const centred = layoutPieOrdered(data, { ...options, [CENTRE_FIRST]: true } as PiePassOptions);
+  return centred.centreLost ? layout.geometry : centred.geometry;
+}
+
+function layoutPieOrdered(
+  data: ChartData,
+  options: PiePassOptions,
+): { geometry: Geometry<PieMarks, PieDerived>; centreLost: boolean } {
   const priority = drivePie(data, options);
-  if (!priority.swapped) return priority.geometry;
+  if (!priority.swapped) return priority;
   // Freeing a seat for a higher label changes the note, and so the height the driver settles
   // on. The order that keeps more labels wins; on a tie, the priority order.
   const plain = drivePie(data, { ...options, [BAD_FIRST]: true } as PiePassOptions);
-  return plain.lost < priority.lost ? plain.geometry : priority.geometry;
+  return plain.lost < priority.lost ? plain : priority;
 }
 
 function drivePie(
   data: ChartData,
   options: PiePassOptions,
-): { geometry: Geometry<PieMarks, PieDerived>; lost: number; swapped: boolean } {
+): { geometry: Geometry<PieMarks, PieDerived>; lost: number; swapped: boolean; centreLost: boolean } {
   let named = new Map<Id, string>();
   let swapped = false;
   const run = (passOptions: PiePassOptions) => {
@@ -268,7 +282,7 @@ function drivePie(
     pass = run(options);
   }
   // A grid panel has no footer of its own to spare: its grid speaks for it.
-  if (panelTypeClass(options) !== undefined) return { geometry: pass.geometry, lost: pass.unlabelled.size, swapped };
+  if (panelTypeClass(options) !== undefined) return { geometry: pass.geometry, lost: pass.unlabelled.size, swapped, centreLost: pass.centreLost };
   // A note that wraps to one more line shrinks the ring and can unseat one more
   // label, so the note is set again until it names every slice the last pass
   // left unlabelled, so nothing is lost silently. Each round names at least one more
@@ -284,15 +298,15 @@ function drivePie(
     const room = hiddenValueNoteHeight(pass.geometry);
     const { width, height } = pass.geometry.size;
     const taller = room > 0 ? run({ ...options, size: { width, height: Math.ceil(height + room) } } as PiePassOptions) : undefined;
-    if (taller && taller.unlabelled.size === 0) return { geometry: taller.geometry, lost: 0, swapped };
+    if (taller && taller.unlabelled.size === 0) return { geometry: taller.geometry, lost: 0, swapped, centreLost: taller.centreLost };
   }
-  return { geometry: pass.geometry, lost: new Set([...named.keys(), ...pass.unlabelled.keys()]).size, swapped };
+  return { geometry: pass.geometry, lost: new Set([...named.keys(), ...pass.unlabelled.keys()]).size, swapped, centreLost: pass.centreLost };
 }
 
 function layoutPiePass(
   data: ChartData,
   options: PiePassOptions,
-): { geometry: Geometry<PieMarks, PieDerived>; unlabelled: Map<Id, string>; swapped: boolean } {
+): { geometry: Geometry<PieMarks, PieDerived>; unlabelled: Map<Id, string>; swapped: boolean; centreLost: boolean } {
   const named = options[UNLABELLED] ?? new Map<Id, string>();
   let swapped = false;
   const warnings: LintWarning[] = [];
@@ -651,20 +665,25 @@ function layoutPiePass(
     (max, slice) => (slice.v ?? 0) > 0 ? Math.max(max, Math.max(0, explode[slice.cat.id] ?? 0)) : max,
     0,
   );
-  // A doughnut's total in the hole outranks the outside-label reserve: when the reserve leaves a hole
-  // too small for the total, the ring grows into the reserve, to the radius whose hole holds the total at
-  // the label size, else one type step down. Plot width, plot height and the size cap bound the growth, and
-  // a ring that cannot reach either size stays as it is. Label columns keep their width, so only the
-  // ring-label layout grows.
+  // A doughnut's total in the hole can outrank the outside-label reserve. A layout that drops the total
+  // is laid out again with CENTRE_FIRST: the ring then grows into the reserve, to the radius whose hole
+  // holds the total at the label size, else one type step down, and the ring labels may not shrink it
+  // below that radius. Plot width, plot height and the size cap bound the growth. A ring that cannot
+  // reach either size is not laid out again, and a layout that draws the total is never changed. Label
+  // columns keep their width, so only the ring-label layout grows.
+  const centreFirst = options[CENTRE_FIRST] === true;
   const centerLines = hole >= CENTER_TEXT_MIN && kindSetting('total') !== false && !negatives.length
     ? pieCenterLines(fmt(total), options.unit ?? ser.unit, options.format) : undefined;
   const circleLimit = Math.min(plot.w / 2, plot.h / 2 - verticalPad, diameterCap / 2);
   const reserveFit = Math.min((plot.w - 2 * outsideMargin) / 2, plot.h / 2 - verticalPad, diameterCap / 2);
   const centerStep = centerLines && !columns ? stepDownFont(theme, labelFont, 'label', options.target, textScaleOf(options)) : undefined;
-  const centerR = centerLines && !columns
+  // The ring radius whose hole holds the total at the label size, else one step down (0.01 px of slack
+  // so a hole as large as the block still counts as holding it); 0 when the limits allow neither.
+  const centerReach = centerLines && !columns
     ? [centerBlockRadius(centerLines), ...(centerStep ? [centerBlockRadius(centerLines, { ...strongFont, size: centerStep.size }, centerStep)] : [])]
-      .map((need) => need / hole).find((need) => need * (1 + maxAuthoredExplode) + arcRoom <= circleLimit) ?? 0
+      .map((need) => (need + 0.01) / hole).find((need) => need * (1 + maxAuthoredExplode) + arcRoom <= circleLimit) ?? 0
     : 0;
+  const centerR = centreFirst ? centerReach : 0;
   const baseFit = Math.max(
     20,
     Math.max(reserveFit, centerR > 0 ? centerR * (1 + maxAuthoredExplode) + arcRoom : 0) - arcRoom,
@@ -1071,7 +1090,7 @@ function layoutPiePass(
       if (fits(font)) return font;
     }
     // A hole too small for the label size takes the next type step down, number and unit, when that holds it.
-    const step = fits(strongFont) ? undefined : stepDownFont(theme, labelFont, 'label', options.target, textScaleOf(options));
+    const step = !centreFirst || fits(strongFont) ? undefined : stepDownFont(theme, labelFont, 'label', options.target, textScaleOf(options));
     if (step && centerBlockRadius(lines, { ...strongFont, size: step.size }, step) <= ri) {
       centerUnitFont = step;
       return { ...strongFont, size: step.size };
@@ -1126,6 +1145,7 @@ function layoutPiePass(
   });
   const solved = solveLabels(labelRequests, occupied, solveCtx);
   pushAll(warnings, solved.warnings);
+  const centreHidden = centerReach > 0 && solved.placed.some((label) => label.kind === 'total' && label.hidden);
 
   // An inside label that lands outside prints its outside form, name included.
   const outsideForms = new Map<string, NonNullable<SliceLabel['outside']>>(sliceLabels.flatMap((sl) => (sl.outside ? [[`insidePie:${sid}:${sl.g.cat.id}`, sl.outside] as const] : [])));
@@ -1265,8 +1285,12 @@ function layoutPiePass(
       decisions: [...solved.decisions, ...annResult.decisions],
     },
   };
-  if (automatic && geometry.sizing?.naturalHeight === size.height) settledAutoHeight.add(geometry.frame);
-  return { geometry, unlabelled, swapped };
+  const naturalHeight = geometry.sizing?.naturalHeight;
+  if (automatic && naturalHeight === size.height) settledAutoHeight.add(geometry.frame);
+  // A canvas shorter than the content, or an open height not at its content height, is laid out again by
+  // the sizing, which can bring the total back; only a canvas that holds the content has lost it.
+  const settled = naturalHeight === undefined || (automatic ? naturalHeight === size.height : naturalHeight <= size.height);
+  return { geometry, unlabelled, swapped, centreLost: centreHidden && settled };
 }
 
 /**
