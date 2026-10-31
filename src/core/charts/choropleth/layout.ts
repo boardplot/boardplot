@@ -45,7 +45,7 @@ import type {
 import { buildGeoScale, geoLabelFont, ingestGeoRegions, geoStatePattern, geoStateLabel, geoStateLegend, geoStateSummary, geoStateCounts, geoPolarityCaption, geoScaleHints } from '../geoScale';
 import { autoDecimals } from '../../formatPrecision';
 import { compareText } from '../../text';
-import { geoOverlayDiameter, geoOverlayLegend, renderGeoOverlays, reserveGeoOverlayGlyphs } from './overlays';
+import { geoOverlayDiameter, geoOverlayInFrame, geoOverlayLegend, renderGeoOverlays, reserveGeoOverlayGlyphs } from './overlays';
 import { layoutMapKeys, mapKeysSize, MAP_GAP, smallRegionIds, shortestRegionName, valueTable, VALUE_TABLE_MAX_ROWS } from './smallMembers';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { chartSizing, resolveSizing } from '../../sizing';
@@ -539,7 +539,8 @@ export function layoutChoropleth(
   const grow = rowDrivenHeight({ options, width: size.width, height: size.height, chromeH: 0, rowsH: naturalHeight });
   if (grow !== undefined) return layoutChoropleth(data, { ...options, size: { width: size.width, height: grow } }, listed, pass, passes, omittedOverlays);
 
-  // Crowded glyphs keep their geographic anchors; the later glyph moves to the note.
+  // Crowded glyphs keep their geographic anchors; the later glyph moves to the note. So does a glyph whose
+  // anchor the map crop leaves outside the map frame.
   const glyphDiscs: { x: number; y: number; radius: number }[] = [];
   const nextOmitted = new Set(omittedOverlays);
   // The automatic height probe is too short to decide which geographic glyphs fit.
@@ -548,7 +549,7 @@ export function layoutChoropleth(
     const anchor = resolveChoroplethOverlayAnchor(overlay, index, fitted, idIndex, pack);
     const diameter = geoOverlayDiameter(overlay);
     const radius = diameter / 2 * (overlay.glyph.kind === 'marker' && overlay.glyph.shape === 'square' ? Math.SQRT2 : 1);
-    if (glyphDiscs.some(prior => Math.hypot(anchor.x - prior.x, anchor.y - prior.y) < radius + prior.radius)) nextOmitted.add(overlay.id);
+    if (!geoOverlayInFrame(anchor, mapFrame) || glyphDiscs.some(prior => Math.hypot(anchor.x - prior.x, anchor.y - prior.y) < radius + prior.radius)) nextOmitted.add(overlay.id);
     else glyphDiscs.push({ ...anchor, radius });
   });
   if (nextOmitted.size > omittedOverlays.size) return layoutChoropleth(data, options, listed, pass, new Map(), nextOmitted);
@@ -715,6 +716,7 @@ export function layoutChoropleth(
   const overlayResult = renderGeoOverlays({ options,
     overlays: data.overlays ?? [],
     omitted: omittedOverlays,
+    frame: mapFrame,
     toneNames: options.overlayTones,
     overlayMeasure: options.overlayMeasure,
     resolveAnchor: (overlay, index) =>
