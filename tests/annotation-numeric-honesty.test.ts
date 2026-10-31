@@ -312,6 +312,16 @@ it('keeps the percent unit through column Others and the column average marker',
   expect(marker?.computedText).toMatch(/^Average 2\.33?%$/);
 });
 
+// An average of 1.25M must not print as "1M" because its raw number is whole: its decimals count at the printed scale.
+it('keeps the decimals an average needs at the magnitude of the format', () => {
+  const data = { categories: [{ id: 'a' }, { id: 'b' }], series: [{ id: 's', label: 'Series', values: [1000000, 1500000] }] };
+  const text = (layout: typeof layoutColumn, format: string, values = data) => layout(values, { averageMarker: true, format })
+    .annotations.find(annotation => annotation.id.startsWith('averageMarker'))?.computedText;
+  expect(text(layoutColumn, '1M')).toBe('Average 1.3M');
+  expect(text(layoutBar as never, '1M')).toBe('Average 1.3M');
+  expect(text(layoutColumn, '$1k', { ...data, series: [{ id: 's', label: 'Series', values: [2000, 3000] }] })).toBe('Average $2.5k');
+});
+
 // A reference at 2.5 must not call itself 3 because the plotted values use an integer format.
 it('keeps a value line precise unless its author chooses a format', () => {
   const data = { categories: [{ id: 'a' }, { id: 'b' }], series: [{ id: 's', label: 'Series', values: [1, 4] }] };
