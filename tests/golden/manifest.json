@@ -1005,6 +1005,8 @@
   "kpi/note-and-compact.notation": "9f1bb545fef74e753f5040251bdaef14a90a27c87ce3798b6a5e8e9838d9badd",
   "kpi/spark-area-as-line.authored": "fbd871b81902adc5075f541904ff442f43aaa9d08a5a78e28f3b5b4d7174627b",
   "kpi/spark-area-as-line.notation": "7ddd677ac388c16d3f8edd838aaadc0ee547e49518e06efe721bbe02d279bb22",
+  "kpi/spark-area-from-min.authored": "9d61cbbcf6ee2b867f2260c07b079e080768880f567e1a3fe1c0974df68fe4e9",
+  "kpi/spark-area-from-min.notation": "7ddd677ac388c16d3f8edd838aaadc0ee547e49518e06efe721bbe02d279bb22",
   "kpi/spark-column.authored": "3ba54affa49c02fa86ff632ebff03b85c9fba801d605bfd4cab3aff153ed7796",
   "kpi/spark-column.notation": "08c3ee34b604d8fa83d60dfe41c66d54e411f8f9a45c838e082fe2f703377570",
   "kpi/spark-ends-below-card.authored": "aab613167947870e462acedfae42edd1e4f5b3721c7652424f6c4d5428bec920",

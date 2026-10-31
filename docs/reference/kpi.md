@@ -102,6 +102,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | editorial-figure | example | Editorial card: a light serif figure from type.figure over text comparisons and a text attainment |
 | spark-ink-pale-neutral | example | A line spark in the ink on a theme whose neutral is a pale sand |
 | spark-area-as-line | example | An area spark drawn as a shape-only line ending in a ring, no wash and no end label |
+| spark-area-from-min | example | An area spark whose scale and wash start at the series minimum |
 | house-eyebrow | example | Tracked eyebrow from type.eyebrow, comparisons without carets |
 | weekly-orders-card-spark | example | The bare weekly sparkline inside a card that names the measure, the period and the number |
 | spark-ends-below-card | example | Cash card: today on the card, month-end balances in the spark, the last one labelled |

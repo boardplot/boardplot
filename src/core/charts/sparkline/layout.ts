@@ -360,8 +360,9 @@ export function emitSparklineMarks(input: {
   if (shape === 'area' && theme.surface?.sparkWash !== false) {
     // The wash fills to the zero line, which the zero-floor domain keeps
     // inside the plot: a series below zero fills up to it, as columns do.
+    // `surface.sparkAreaBase: 'min'` fills to the plot's foot.
     const foot = plot.plot.y + plot.plot.h;
-    const base = Math.min(foot, Math.max(plot.plot.y, plot.yAt(0)));
+    const base = theme.surface?.sparkAreaBase === 'min' ? foot : Math.min(foot, Math.max(plot.plot.y, plot.yAt(0)));
     const areaD = plot.runs
       .filter((points) => points.length > 1)
       .map((points) => `${linePath([...points, { x: points[points.length - 1]!.x, y: base }, { x: points[0]!.x, y: base }])}Z`)
@@ -510,12 +511,14 @@ export function emitKpiSpark(
     });
   }
   // A theme that draws no wash draws an area spark as a line, and a line
-  // keeps its min-max range.
-  const domain = sparklineDomain([values], kind === 'area' && theme.surface?.sparkWash === false ? 'line' : kind);
+  // keeps its min-max range. A theme with `surface.sparkAreaBase: 'min'`
+  // keeps that range under the wash too.
+  const areaFromMin = kind === 'area' && (theme.surface?.sparkWash === false || theme.surface?.sparkAreaBase === 'min');
+  const domain = sparklineDomain([values], areaFromMin ? 'line' : kind);
   const plot = plotSparkline({
     box: lineBox,
     values,
-    shape: kind,
+    shape: areaFromMin ? 'line' : kind,
     domain,
     style: sparkStyle(theme, KPI_SPARK_STYLE),
     lastText,
