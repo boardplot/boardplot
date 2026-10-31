@@ -5,6 +5,7 @@ import { getFixtures } from '../src/fixtures';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { requireGeometry } from '../src/core/sizing';
 import { runDocLints } from '../src/core/lint';
+import { paintColor } from '../src/core/theme';
 import { normalizeGridData } from '../src/core/charts/grid/normalize';
 
 // A dense key must leave the plot its furniture budget while keeping every series identifiable.
@@ -137,4 +138,65 @@ it('keeps the authored highlight of slope panels in a written-out grid', () => {
   for (const p of normalizeGridData(data).panels) {
     expect((p.data as { series: Array<{ colorRole?: string }> }).series.some((s) => s.colorRole !== undefined)).toBe(false);
   }
+});
+
+// A colour role is an absolute step of the theme's series colours, so on a panel that sets a palette it would silently replace that palette.
+it('keeps the palette of panels in a written-out grid', () => {
+  const panel = (id: string, column: number, ids: string[], options: object) => ({
+    id, type: 'column', row: 0, column, options,
+    data: { categories: [{ id: 'a' }], series: ids.map((sid) => ({ id: sid, label: sid, values: [1] })) },
+  });
+  const roles = (grid: ReturnType<typeof normalizeGridData>) => grid.panels.flatMap((p) =>
+    (p.data as { series: Array<{ colorRole?: string }> }).series.map((s) => s.colorRole));
+  const own = { panels: [panel('p1', 0, ['retail', 'online'], { palette: 'cool' }), panel('p2', 1, ['online'], { palette: 'cool' })] };
+  const inherited = { panels: [panel('p1', 0, ['retail', 'online'], {}), panel('p2', 1, ['online'], {})] };
+  expect(roles(normalizeGridData(own)).every((role) => role === undefined)).toBe(true);
+  expect(roles(normalizeGridData(inherited, { palette: 'cool' })).every((role) => role === undefined)).toBe(true);
+});
+
+// A series-level highlight role makes the other series the muted context, which a colour role on each of them would turn into peers.
+it('keeps the series-level highlight of slope panels in a written-out grid', () => {
+  const panel = (id: string, column: number, ids: string[]) => ({
+    id, type: 'slope', row: 0, column,
+    data: {
+      categories: [{ id: 'y1', label: '2020' }, { id: 'y2', label: '2025' }],
+      series: ids.map((sid, i) => ({ id: sid, label: sid, values: [10 + i, 20 - i], ...(sid === 'acme' ? { colorRole: 'highlight' } : {}) })),
+    },
+  });
+  const data = { panels: [panel('n', 0, ['acme', 'beta', 'gamma']), panel('s', 1, ['beta', 'acme', 'gamma'])] };
+  for (const p of normalizeGridData(data).panels) {
+    const context = (p.data as { series: Array<{ id: string; colorRole?: string }> }).series.filter((s) => s.id !== 'acme');
+    expect(context.every((s) => s.colorRole === undefined)).toBe(true);
+  }
+});
+
+// A locked role cannot step aside from an authored fill that equals a theme colour, so two series of one panel drew in one colour.
+it('keeps the series of a panel apart when one has an authored fill', () => {
+  const grid = (fill?: string) => resolveChartRequest({ type: 'grid', options: { columns: 2 }, data: { panels: [
+    { id: 'p1', type: 'column', row: 0, column: 0, options: { variant: 'grouped' },
+      data: { categories: [{ id: 'x' }], series: [{ id: 'a', label: 'A', values: [1], ...(fill ? { fill } : {}) }, { id: 'b', label: 'B', values: [2] }] } },
+    { id: 'p2', type: 'column', row: 0, column: 1, options: { variant: 'grouped' },
+      data: { categories: [{ id: 'x' }], series: [{ id: 'b', label: 'B', values: [2] }, { id: 'c', label: 'C', values: [3] }] } },
+  ] } });
+  const request = grid(grid().theme.color.series[1]);
+  const colours = new Map<string, string>();
+  for (const node of requireGeometry(layoutResolvedRequest(request)).scene) {
+    if (node.t === 'rect' && node.part === 'bar' && node.owner?.seriesId && node.fill && node.id.startsWith('p1/')) {
+      colours.set(node.owner.seriesId, paintColor(request.theme, node.fill));
+    }
+  }
+  expect([...colours.keys()].sort()).toEqual(['a', 'b']);
+  expect(new Set(colours.values()).size).toBe(2);
+});
+
+// The lock builds ordinary objects, which would read an inherited property of Object.prototype in the layout.
+it('returns null-prototype panels after locking a written-out grid', () => {
+  const panel = (id: string, column: number, ids: string[]) => ({
+    id, type: 'column', row: 0, column,
+    data: { categories: [{ id: 'a' }], series: ids.map((sid) => ({ id: sid, label: sid, values: [1] })) },
+  });
+  const [first] = normalizeGridData({ panels: [panel('p1', 0, ['retail', 'online']), panel('p2', 1, ['online'])] }).panels;
+  expect(Object.getPrototypeOf(first)).toBeNull();
+  expect(Object.getPrototypeOf(first!.data)).toBeNull();
+  expect(Object.getPrototypeOf((first!.data as { series: object[] }).series[0])).toBeNull();
 });

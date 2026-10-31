@@ -156,7 +156,7 @@ export function parseGridLegendPanelData(raw: unknown): GridLegendPanelData {
   return raw as GridLegendPanelData;
 }
 
-export function normalizeGridData(raw: unknown): ExplicitGridData {
+export function normalizeGridData(raw: unknown, options?: Pick<GridLayoutOptions, 'palette'>): ExplicitGridData {
   // Pre-parse ownership check, on the RAW document: zod's required-key
   // presence test reads `key in input`, so a branch key visible only through
   // the prototype chain would let the parse consume inherited data — with a
@@ -186,8 +186,9 @@ export function normalizeGridData(raw: unknown): ExplicitGridData {
   // parsed object owning 'panels' can only have come from the explicit branch.
   if (Object.hasOwn(input, 'panels')) {
     const explicit = input as ExplicitGridData;
-    const panels = lockWrittenOutPanels(explicit.panels);
-    return panels === explicit.panels ? explicit : { ...explicit, panels };
+    const panels = lockWrittenOutPanels(explicit.panels, options?.palette);
+    // The lock builds ordinary objects, so the owned copy runs again, as for the repeat branch below.
+    return panels === explicit.panels ? explicit : ownedDocumentCopy({ ...explicit, panels });
   }
   // Owning neither key is reachable: zod's required-key presence check reads
   // `key in input`, so a non-writable prototype gadget satisfies the explicit
@@ -350,25 +351,30 @@ function substitute(value: unknown, placeholder: string, replacement: string): u
 }
 
 /**
- * A panel that names its focus series with `highlight` or `emphasis` colours
- * its series by id itself. A colorRole on every series would override that
- * focus, so such a panel keeps its series as written.
+ * True for a panel that colours its series itself, so a colour role on every
+ * series would override it: a panel that sets `highlight`, `emphasis` or a
+ * `palette` (its own or the grid's), or that gives a series a `fill` or a
+ * `colorRole`. A role is an absolute step of the theme's own series colours,
+ * so it ignores a palette, replaces a focus series and cannot step aside from
+ * an authored colour. Such a panel keeps its series as written.
  */
-function stylesSeriesById(panel: GridPanelSpec): boolean {
+function stylesOwnSeries(panel: GridPanelSpec, gridPalette: unknown): boolean {
   const options = isRecord(panel.options) ? panel.options : {};
-  return options.highlight !== undefined || options.emphasis !== undefined;
+  if (options.highlight !== undefined || options.emphasis !== undefined || (options.palette ?? gridPalette) !== undefined) return true;
+  const series = isRecord(panel.data) && Array.isArray(panel.data.series) ? panel.data.series : [];
+  return series.some((item) => isRecord(item) && item.role !== 'reference' && (item.fill !== undefined || item.colorRole !== undefined));
 }
 
 /**
  * Locks the colours of a written-out grid by series id, over the panels that
- * do not style their series by id. Returns the same array when nothing changes.
+ * do not colour their series themselves. Returns the same array when nothing changes.
  */
-function lockWrittenOutPanels(panels: GridPanelSpec[]): GridPanelSpec[] {
-  const plain = panels.filter((panel) => !stylesSeriesById(panel));
+function lockWrittenOutPanels(panels: GridPanelSpec[], gridPalette: unknown): GridPanelSpec[] {
+  const plain = panels.filter((panel) => !stylesOwnSeries(panel, gridPalette));
   if (!seriesIdsDisagree(plain)) return panels;
   const locked = lockPaletteBySeriesId(plain, false);
   const lockedQueue = [...locked];
-  return panels.map((panel) => (stylesSeriesById(panel) ? panel : (lockedQueue.shift() ?? panel)));
+  return panels.map((panel) => (stylesOwnSeries(panel, gridPalette) ? panel : (lockedQueue.shift() ?? panel)));
 }
 
 /** The non-reference series ids a panel lists, in order. */

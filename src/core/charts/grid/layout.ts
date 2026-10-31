@@ -156,7 +156,7 @@ export function layoutGrid(
     return withWarnings(layoutMetricStack(data, options), formatWarnings);
   }
   if (options.stack) stackError('data', 'Metric stack mode needs shared categories and measures');
-  const normalized = normalizeGridData(data);
+  const normalized = normalizeGridData(data, options);
   requireChartCores(normalized.panels.map((panel) => panel.type), (type) => getChart(type) !== undefined);
   assertTrackLimits(options, normalized.panels);
   normalized.panels = normalized.panels.map((panel) => panel.options
