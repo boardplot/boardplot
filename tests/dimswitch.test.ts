@@ -232,6 +232,15 @@ describe('dimswitch partition totals with null and missing members',()=>{
   expect(result.warnings.find(w=>w.code==='dimswitch-measure-omitted')?.message).toContain("'profti'");
   expect(result.omissions.map(o=>o.labelId)).toEqual(['measure:margin']);
  });
+ // An authored Total figure must not fill a window where children that reported the field in another period have a gap.
+ it('prints the Total missing where children report a field only in other periods, and keeps a parent-only field',()=>{
+  const data=build([{memberId:'a',periodId:'p',sums:{sales:10,profit:5}},{memberId:'b',periodId:'p',sums:{sales:20,profit:5}},{memberId:'a',periodId:'r',sums:{profit:5}},{memberId:'b',periodId:'r',sums:{profit:5}},{memberId:'total',periodId:'r',sums:{sales:100,target:7}}]);
+  const compiled=compileDimSwitch(data,{depth:2});
+  expect(compiled.data.rows.find(r=>r.id===dimswitchRowId('by-measure','total','sales'))?.cells?.range).toBeNull();
+  expect(compiled.omissions.map(o=>o.labelId)).not.toContain('measure:sales');
+  data.measures.push({id:'target',label:'Target',value:{field:'target'}});
+  expect(compileDimSwitch(data,{depth:2}).data.rows.find(r=>r.id===dimswitchRowId('by-measure','total','target'))?.cells?.range).toMatchObject({v:7});
+ });
  it('prints the Total missing and warns when a member has no fact in a period',()=>{
   const data=build([...every('a',{sales:10,profit:5}),{memberId:'b',periodId:'p',sums:{sales:20,profit:5}}],true);
   const result=compileDimSwitch(data,{depth:2});

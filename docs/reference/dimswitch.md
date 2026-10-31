@@ -231,7 +231,7 @@ A KPI table: measures by one hierarchical dimension by period, switchable betwee
 | facts | array | yes | Additive sums per member and period, one entry each. |
 | facts[].memberId | string | yes | Stable id or display label. |
 | facts[].periodId | string | yes | Stable id or display label. |
-| facts[].sums | object | yes | Sums by field: a field that is absent or null in every fact of the member does not apply to it and its measures leave its rows, null in some facts is missing, 0 is data. With dimension.sums true, a member that reports a field in any period owes it in every period, and a missing fact or field makes the parent sum missing. |
+| facts[].sums | object | yes | Sums by field: an absent field drops its measures, null is missing, 0 is data. A field absent or null in every fact of a member does not apply to it, null in some facts is missing, and a host that means zero sends 0. With dimension.sums true, a member owes a field it reports in any period in every period, and a gap makes the parent sum missing. |
 | facts[].ref | object |  | Sums of the period before (partial: the same days one period earlier). Only displayed periods take ref; Range compares with prior and optional plan. |
 
 ## Options

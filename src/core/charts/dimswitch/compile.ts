@@ -332,7 +332,9 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
           }
         }
         // A field only the parent reports (a target, say) stays beside the sums derived from the children.
-        facts.set(key(member,period.id),existing ? {...existing,sums:Object.assign(emptyIdRecord(),existing.sums,next.sums) as DimSwitchSums,ref:Object.assign(emptyIdRecord(),existing.ref,next.ref) as DimSwitchSums} : next);
+        // An authored field that a child reports in the window gives way to the derived sum: the child's gap makes it missing, not the authored figure.
+        const own=(window:'sums'|'ref')=>{const out=emptyIdRecord() as DimSwitchSums;for(const [field,value] of Object.entries(existing?.[window] ?? {})) if(!children.some(child=>reportedBy(child.id)[window].has(field))) out[field]=value;return out;};
+        facts.set(key(member,period.id),existing ? {...existing,sums:Object.assign(emptyIdRecord(),own('sums'),next.sums) as DimSwitchSums,ref:Object.assign(emptyIdRecord(),own('ref'),next.ref) as DimSwitchSums} : next);
       }
     };
     derive(data.dimension.total.id,data.dimension.members.filter(m=>!m.parentId));
