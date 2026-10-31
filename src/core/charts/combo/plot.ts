@@ -601,7 +601,7 @@ export function composeLines(
   serFmt: (v: number) => string,
 ): string[] {
   const { abs, isPct, share } = value;
-  const explicit = value.format ? formatterFromExample(value.format, domain.options.locale?.language) : undefined;
+  const explicit = !value.format ? undefined : value.format === domain.options.format ? domain.fmt : formatterFromExample(value.format, domain.options.locale?.language);
   const parts: [LabelContent[number], string][] = [];
   for (const c of content) {
     if (c === 'absolute' && abs !== null) parts.push([c, explicit ? explicit(abs) : isPct ? domain.pctFmt(abs) : serFmt(abs)]);

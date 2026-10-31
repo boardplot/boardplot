@@ -10,7 +10,7 @@ import { cellFields, normalizeCategorySeries } from '../categorySeries';
 import { breakUnsupported, chartPalette, chartTheme } from '../chartEnv';
 import { defaultMeasurer } from '../../text';
 import { formatAuthoredPercent, formatAutomaticNumber, formatShare, shareSetFormatter } from '../../format';
-import { exampleSpec, formatNonzeroWithSpec, formatterFromExample, parseFormatExample, specUnitKind } from '../../formatSpec';
+import { exampleSpec, normalizedSeriesNumbers, formatNonzeroWithSpec, formatterFromExample, parseFormatExample, specUnitKind } from '../../formatSpec';
 import { cleanFloat, cleanSum } from '../../geometry';
 import { isIncomplete } from '../../dataGaps';
 import { roundWholes } from '../../shareRounding';
@@ -31,7 +31,7 @@ import { maxOf, minOf, pushAll } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
 
 /** Resolve the options once: theme, palette, size, measurer and the number formats. */
-export function resolveMekkoEnv(options: MekkoOptions, warnings: LintWarning[]): MekkoEnv {
+export function resolveMekkoEnv(options: MekkoOptions, warnings: LintWarning[], data?: ChartData): MekkoEnv {
   breakUnsupported('mekko', options, warnings);
   const theme = chartTheme(options);
   const paletteRamp = chartPalette(theme, options.palette, warnings);
@@ -42,14 +42,18 @@ export function resolveMekkoEnv(options: MekkoOptions, warnings: LintWarning[]):
   const plainFmt = (v: number) => formatAutomaticNumber(v, { locale: lang, decimals: autoDecimals(v) });
   const percentExample = options.format && specUnitKind(parseFormatExample(options.format)) === 'percent';
   const sharesOnly = percentExample && ((options.variant ?? 'stacked100') === 'stacked100' || options.valueAxis?.percent);
-  const totalSpec = options.format && !sharesOnly ? exampleSpec(options.format, lang) : undefined;
+  // An authored format holds every column's values and totals to one scale and one decimal count.
+  const printed = (data?.series ?? []).flatMap((series) => normalizedSeriesNumbers(series) ?? []);
+  const columns = printed.length > 0 ? data!.series.map((series) => normalizedSeriesNumbers(series) ?? []) : [];
+  const totals = (data?.categories ?? []).map((_, c) => columns.reduce((sum, values) => sum + (values[c] ?? 0), 0));
+  const totalSpec = options.format && !sharesOnly ? exampleSpec(options.format, lang, undefined, [...printed, ...totals]) : undefined;
   return {
     options,
     theme,
     palette: paletteRamp ? options.palette : undefined,
     size: resolveSize(options.size),
     measure: options.measure ?? defaultMeasurer,
-    fmt: options.format && !sharesOnly ? formatterFromExample(options.format, lang) : plainFmt,
+    fmt: options.format && !sharesOnly ? formatterFromExample(options.format, lang, undefined, [...printed, ...totals]) : plainFmt,
     totalFmt: totalSpec ? (v: number) => formatNonzeroWithSpec(v, totalSpec) : plainFmt,
     widthFmt: plainFmt,
     pctFmt: percentExample ? formatterFromExample(options.format!, lang) : (p: number) => formatShare(p, lang),

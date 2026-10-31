@@ -35,7 +35,7 @@ import {
   zeroLifts,
   type SmallValues,
 } from './formatPrecision';
-import { maxOf } from './arrays';
+import { maxOf, minOf } from './arrays';
 
 /** A composing chart's generated example is still an automatic format. */
 export const AUTOMATIC_FORMAT = Symbol('automatic-format');
@@ -894,12 +894,14 @@ export function localized(spec: NumberFormatSpec, locale: string | undefined): N
  * An authored example as every value formatter prints it: the
  * authored magnitude word, the chart locale's separators, and the scale a
  * unit states held at the example's own decimals ("$0.4k" and "$1000.0k"
- * under "$k" for a "$1.2k" example, never "$1.0M").
+ * under "$k" for a "$1.2k" example, never "$1.0M"). `values` are the chart's
+ * printed numbers, which share one scale and one decimal count (shareAuthoredScale).
  */
-export function exampleSpec(example: string, locale?: string, unit?: string): NumberFormatSpec {
+export function exampleSpec(example: string, locale?: string, unit?: string, values?: Iterable<number | null | undefined>): NumberFormatSpec {
   const spec = localized(parseFormatExample(example, true), locale);
   spec.nonzero = true;
   if (spec.magnitude !== 'none' && unitMagnitude(unit) === spec.magnitude) spec.rollMagnitude = false;
+  if (values) shareAuthoredScale(spec, [...values]);
   // An example under 1000 ("12%", "1.2") cannot show grouping, so a value from
   // 1000 up groups in the example's style ("40,000,000,000%"), as table cells
   // do. "1234" and "2024" state no grouping, nor does a literal-# rank ("#1").
@@ -911,8 +913,8 @@ export function exampleSpec(example: string, locale?: string, unit?: string): Nu
 }
 
 /** Parse an example and return a ready-to-use formatter. The chart locale is required (pass undefined for none), so no caller forgets it. */
-export function formatterFromExample(example: string, locale: string | undefined, unit?: string): (value: number) => string {
-  const spec = exampleSpec(example, locale, unit);
+export function formatterFromExample(example: string, locale: string | undefined, unit?: string, values?: Iterable<number | null | undefined>): (value: number) => string {
+  const spec = exampleSpec(example, locale, unit, values);
   return (value: number) => formatWithSpec(value, spec);
 }
 
@@ -934,8 +936,8 @@ export function formatNonzeroWithSpec(value: number, spec: NumberFormatSpec): st
  * no sign on a value that prints as zero. Prefixing '+' to the formatted
  * text would print "++18.20" for a "+1.0" example and "+0" for 0.02.
  */
-export function signedFormatterFromExample(example: string, locale: string | undefined, unit?: string): (value: number) => string {
-  const spec = { ...exampleSpec(example, locale, unit), signed: true };
+export function signedFormatterFromExample(example: string, locale: string | undefined, unit?: string, values?: Iterable<number | null | undefined>): (value: number) => string {
+  const spec = { ...exampleSpec(example, locale, unit, values), signed: true };
   return (value: number) => formatWithSpec(value, spec);
 }
 
@@ -1102,6 +1104,31 @@ export function trendRateFormatter(example: string | undefined, locale?: string,
   };
 }
 
+/** Past this many decimals an authored scale no longer reads, so a value that small keeps its own scale. */
+const SCALE_MAX_DECIMALS = 3;
+
+/**
+ * Hold a chart's values to one scale and one decimal count under an authored
+ * scale word. Decided per label, 1000, 50 and -20 under "1.2k" printed "1.0k",
+ * "+0.1k" and "-20.0": 50 read as 100 and -20 left the thousands. Every value
+ * shows its first digit instead, so all print "1.00k", "+0.05k" and "-0.02k".
+ * A scale above every value steps down first. A scale the unit fixes holds at
+ * any decimals. Elsewhere a value past SCALE_MAX_DECIMALS rolls down alone
+ * (effectiveScale), as 20 prints beside billions.
+ */
+function shareAuthoredScale(spec: NumberFormatSpec, values: readonly (number | null | undefined)[]): void {
+  const shown = values.flatMap((value) => value != null && Number.isFinite(value) && value !== 0 ? [Math.abs(value)] : []);
+  if (spec.magnitude === 'none' || shown.length === 0) return;
+  const locked = spec.rollMagnitude === false;
+  const largest = maxOf(shown);
+  let magnitude: NumberFormatSpec['magnitude'] = spec.magnitude;
+  while (!locked && magnitude !== 'none' && largest < MAGNITUDE_DIVISOR[magnitude]) magnitude = MAGNITUDE_PREVIOUS[magnitude];
+  const divisor = MAGNITUDE_DIVISOR[magnitude];
+  const decimals = Math.max(spec.decimals, -Math.floor(Math.log10(minOf(shown) / divisor)));
+  spec.magnitude = magnitude;
+  if (locked || decimals <= SCALE_MAX_DECIMALS) spec.decimals = Math.min(MAX_FORMAT_DECIMALS, decimals);
+}
+
 /** Style-only default for charts with no authored example: en-US grouping,
  *  point decimal, no unit — the exact face formatNumber's default shows. */
 export function defaultFormatSpec(locale?: string): NumberFormatSpec {
@@ -1198,11 +1225,16 @@ export function unscaledFormatLint(
   const checked = options?.variant !== 'bump' && !spec.suffix.includes('%');
   const zero = formatWithSpec(0, spec);
   const zeroed = checked ? numbers.flat().filter((v) => v !== 0 && formatWithSpec(v, spec) === zero) : [];
+  // An authored scale holds the chart to one precision (shareAuthoredScale): the warning says what that draws.
+  const locale = (options?.locale as { language?: string } | undefined)?.language;
+  const shared = spec.magnitude !== 'none' ? seriesRasterFormatter(format, numbers.flat(), locale, unit) : undefined;
+  const raised = checked && shared !== undefined && shared.spec.decimals > spec.decimals;
+  const smallest = numbers.flat().reduce((small, v) => v !== 0 && (small === 0 || Math.abs(v) < Math.abs(small)) ? v : small, 0);
   // Distinct at 12 significant digits, so float noise never asks for 20 decimals.
   const distinct = (row: readonly number[]) => new Set(row.map((v) => Number(v.toPrecision(12)))).size;
   const hidden = (row: readonly number[]) => distinct(row) > 1 && new Set(row.map((v) => formatWithSpec(v, spec))).size === 1;
   const hides = checked && numbers.some(hidden);
-  if ((hides || zeroed.length > 0) && body) {
+  if ((hides || raised || zeroed.length > 0) && body) {
     // The finer body keeps the style; an integer part of 0 keeps three decimals from reading as a group ("0.004", not "1.004").
     const finerAt = (decimals: number) => format.slice(0, body.index) + formatWithSpec(((spec.thousandsSep ? 1234 : decimals === 3 ? 0 : 1) + 0.123456789),
       { ...spec, decimals, signed: false, prefix: '', suffix: '', magnitude: 'none', magnitudeWord: undefined, locale: undefined }) + format.slice(body.index + body.text.length);
@@ -1213,13 +1245,17 @@ export function unscaledFormatLint(
       return zeroed.every((v) => print(v) !== print(0))
         && numbers.every((row) => !hidden(row) || new Set(row.map(print)).size >= distinct(row));
     };
-    let decimals = spec.decimals + 1;
+    let decimals = Math.max(spec.decimals + 1, raised ? shared.spec.decimals : 0);
     while (decimals < MAX_FORMAT_DECIMALS && !shows(finerAt(decimals))) decimals++;
     const finer = finerAt(decimals);
     return [{
       code: 'format-hides-values',
       severity: 'warn',
-      message: zeroed.length > 0
+      message: raised
+        ? `format '${format}' cannot show ${smallest} near its size, so the chart prints every value with ${shared.spec.decimals} decimals: ${smallest} as ${shared.fmt(smallest)}`
+        : shared && zeroed.length > 0
+        ? `format '${format}' cannot show ${zeroed[0]} on its scale, so the chart prints it as ${shared.fmt(zeroed[0]!)}`
+        : zeroed.length > 0
         ? `format '${format}' prints the nonzero value ${zeroed[0]} as ${zero}`
         : `format '${format}' prints the different values of a series as one string`,
       suggest: `set a finer format such as '${finer}', or remove options.format to let the engine pick the precision`,
@@ -1316,7 +1352,7 @@ export function seriesRasterFormatter(
   // Iterators must survive both magnitude selection and precision selection.
   const raster = [...values];
   const unitScale = unitMagnitude(unit);
-  const spec = example ? exampleSpec(example, locale, unit) : defaultExample ? localized(parseFormatExample(defaultExample, true), locale) : defaultFormatSpec(locale);
+  const spec = example ? exampleSpec(example, locale, unit, raster) : defaultExample ? localized(parseFormatExample(defaultExample, true), locale) : defaultFormatSpec(locale);
   if (!example) spec.automatic = true;
   const unscaledSpec = { ...spec };
   let autoMagnitude = false;
@@ -1387,9 +1423,15 @@ export function seriesRasterFormatter(
   const seriesFormatters = new WeakMap<object, (value: number) => string>();
   const forSeries = (series: { format?: string; unit?: string }, cellFormat?: string): ((value: number) => string) => {
     // The unit the value is in states the scale an example holds (exampleSpec).
-    if (cellFormat || series.format) return byExample((cellFormat ?? series.format)!, series.unit ?? unit);
+    if (cellFormat) return byExample(cellFormat, series.unit ?? unit);
     let formatter = seriesFormatters.get(series);
     if (formatter) return formatter;
+    if (series.format) {
+      // A series format holds its own values to one scale and one decimal count (exampleSpec).
+      formatter = formatterFromExample(series.format, locale, series.unit ?? unit, normalizedSeriesNumbers(series));
+      seriesFormatters.set(series, formatter);
+      return formatter;
+    }
     const wholeFrom = !defaultExample && unitMagnitude(series.unit) ? 100 : undefined;
     const currencyWhole = currencyWholeNumbers(series.unit, target);
     // A series unit that names a scale gets no engine scale on top.
@@ -1423,7 +1465,7 @@ export function seriesRasterFormatter(
  * `{ value }`, and its `range` ends count too. Undefined where none is read:
  * the shared precision stands, never a precision of 0.
  */
-function normalizedSeriesNumbers(series: object): number[] | undefined {
+export function normalizedSeriesNumbers(series: object): number[] | undefined {
   const { values, vals, cells } = series as { values?: unknown; vals?: unknown; cells?: unknown };
   const list = Array.isArray(values) ? values : Array.isArray(vals) ? vals : Array.isArray(cells) ? cells : undefined;
   if (!list) return undefined;

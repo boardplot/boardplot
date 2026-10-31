@@ -207,7 +207,7 @@ export function buildGeoScale(
   }
   const roundingStep = (value: number) => {
     if (options.format === undefined) return 10 ** -autoDecimals(value);
-    const spec = exampleSpec(options.format, options.locale?.language);
+    const spec = exampleSpec(options.format, options.locale?.language, undefined, values);
     return MAGNITUDE_DIVISOR[spec.magnitude] / 10 ** spec.decimals;
   };
   if (options.steps?.some((step) => Math.abs(printedEdge(step, options.format) - step) > roundingStep(step) * 1e-9)) {
@@ -316,13 +316,13 @@ export function buildGeoScale(
     const index = Math.max(0, edges.slice(1, -1).filter((edge) => value >= edge).length);
     return classPaint(index);
   };
-  const spec = options.format === undefined ? undefined : exampleSpec(options.format, options.locale?.language);
+  const spec = options.format === undefined ? undefined : exampleSpec(options.format, options.locale?.language, undefined, values);
   const keyFmt = keyDecimals === undefined ? fmt : (value: number) => formatWithSpec(value, { ...spec!, decimals: keyDecimals! });
   const legend = geoScaleLegend({ min, max, kind, declaredMidpoint, edges, hasNoDataRegion, polarity }, options, keyFmt, classPaint, continuousPaint);
   // A round break prints round: '20' under a '1.1' format, not '20.0'.
   const edgeFmt = nice && options.format !== undefined
     ? (() => {
-        const spec = exampleSpec(options.format, options.locale?.language);
+        const spec = exampleSpec(options.format, options.locale?.language, undefined, values);
         const decimals = Math.min(spec.decimals, Math.max(0, maxOf(nice.map((edge) => decimalsOf(edge / MAGNITUDE_DIVISOR[spec.magnitude])))));
         return (value: number) => formatWithSpec(value, { ...spec, decimals });
       })()

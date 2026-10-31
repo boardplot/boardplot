@@ -372,7 +372,7 @@ function exhibitRows(data: CohortData, derived: CohortDerived, options: CohortOp
 function retentionFormatter(options: CohortOptions, rows: readonly ExhibitRow[], compact?: (text: string) => boolean): (retention: number, period: number) => string {
   const suffix = options.showPercentSign ? '%' : '';
   if (options.format) {
-    const format = formatterFromExample(options.format, options.locale?.language);
+    const format = formatterFromExample(options.format, options.locale?.language, undefined, rows.flatMap((row) => row.retention.map((value) => value == null ? null : value * 100)));
     return (retention) => `${format(retention * 100)}${suffix}`;
   }
   // One decimal count for the whole exhibit: a rate that needs
