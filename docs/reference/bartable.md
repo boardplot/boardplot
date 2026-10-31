@@ -76,7 +76,7 @@ Table rows with number columns and stacked bars. One panel when the rows compare
 | columns[].values | array | yes | One number per row, in row order; null prints the missing glyph, { state } n/a or n.m. |
 | columns[].values[].state | string | yes | 'na' prints n/a, 'nm' prints n.m. One of `'na'`, `'nm'`. |
 | columns[].format | string |  | Format by example, such as 1,234 or 12.5%. |
-| columns[].aggregate | string |  | What the Total row prints: 'sum' (default) adds the column, 'none' leaves the cell empty for numbers that do not add up, such as averages or rates. One of `'sum'`, `'none'`. |
+| columns[].aggregate | string |  | What the Total row prints: 'sum' (default) adds the column, 'none' leaves the cell empty for numbers that do not add up, such as averages or rates. The default is 'none' where the column format is a percentage, percentage points or a multiple; an explicit 'sum' there warns aggregate-non-additive. One of `'sum'`, `'none'`. |
 | panels | array | yes | One stacked-bar panel per measure, each with its own unit and scale. Use one panel when the rows compare one measure: EBITDA impact in $bn, split into Run and Grow. Use several when the same split reads in different units side by side: the impact in $bn and the same impact as % of EBITDA. Bars in different panels compare by length only under sharedScale true. Under variant 'cascade' the panels are periods of one total. |
 | panels[].id | string | yes | Panel identity; distinct from every column id. |
 | panels[].label | string |  | The measure, printed in the head as "label, unit". |
@@ -88,7 +88,7 @@ Table rows with number columns and stacked bars. One panel when the rows compare
 | panels[].ends[].low | number | yes | Lower end of the row total, where the segments end; zero or more. |
 | panels[].ends[].high | number | yes | Upper end of the row total, where the light extension ends; at least low. |
 | panels[].format | string |  | Format by example for the end labels and the total; falls back to options.format. |
-| panels[].aggregate | string |  | What the Total row prints for this panel: 'sum' (default) adds the rows, or their ranges when a row has one; 'none' leaves it empty. Use 'none' for shares, rates or averages, such as a % of each row's own base, whose sum means nothing. One of `'sum'`, `'none'`. |
+| panels[].aggregate | string |  | What the Total row prints for this panel: 'sum' (default) adds the rows, or their ranges when a row has one; 'none' leaves it empty. The default is 'none' where the panel format (or options.format) is a percentage, percentage points or a multiple, or the unit is '%', except under variant 'cascade'; an explicit 'sum' there warns aggregate-non-additive. Use 'none' for shares, rates or averages, such as a % of each row's own base, whose sum means nothing. One of `'sum'`, `'none'`. |
 | rowGroups | object |  | Colour bars by a row attribute, keyed under a title. Needs one segment. |
 | rowGroups.title | string |  | Key title with the unit ("Margin of market, %"). |
 | rowGroups.groups | array | yes | In key order. |
