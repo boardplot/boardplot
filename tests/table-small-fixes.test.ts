@@ -319,7 +319,22 @@ it('keeps the authored decimals of a small money row under a forced magnitude', 
     columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'q1', kind: 'value' }],
     rows: [{ id: 'sales', label: 'Sales', format: '$1.2M', cells: { q1: 4_120_000 } }, { id: 'aov', label: 'AOV', format: '$1.23', cells: { q1: 12.93 } }],
   }, { magnitude: 'thousand' });
-  expect(table.rows.map((row) => row.cells.q1!.displayed)).toEqual(['4,120', '12.93']);
+  expect(table.rows.map((row) => row.cells.q1!.displayed)).toEqual(['4,120', '$12.93']);
+});
+
+// A forced million took "$" and "x" out of rows it did not scale: only a scale letter leaves the cells.
+it('keeps the unit in the cells of a row that prints no scale letter under a forced magnitude', () => {
+  const { table } = resolveTable({
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'q1', kind: 'value' }],
+    rows: [
+      { id: 'sales', label: 'Sales', format: '$1.2m', cells: { q1: 4_120_000 } },
+      { id: 'plain', label: 'Plain', format: '$1,234', cells: { q1: 2_500_000 } },
+      { id: 'aov', label: 'AOV', format: '$1.2', cells: { q1: 215.9 } },
+      { id: 'roas', label: 'ROAS', format: '1.2x', cells: { q1: 5.1 } },
+    ],
+  }, { magnitude: 'million' });
+  expect(table.rows.map((row) => row.cells.q1!.displayed)).toEqual(['4.1', '2.5', '$215.9', '5.1x']);
+  expect(table.rows.map((row) => row.unitAffix)).toEqual(['$M', '$M', undefined, undefined]);
 });
 
 // A '1,234k' column printed 1,080,000 as "1.1M" under its "(k)" head: the example's grouped digits hold the magnitude.
