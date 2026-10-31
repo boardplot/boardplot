@@ -1,4 +1,4 @@
-import { prepareFractionAnnotations, percentScaleWarnings } from './normalize/fraction';
+import { fractionLineWarnings, prepareFractionAnnotations, percentScaleWarnings } from './normalize/fraction';
 import { readFormatExamples } from './formatSpec';
 import { colorVariableWarnings } from './colorVariables';
 import { shownNoteKinds } from './notes';
@@ -208,6 +208,7 @@ export function resolveChartRequest<D, O extends object>(
     // Records and hover cards read this request too, before the layout resolves its own anchors.
     options.annotations = options.annotations.map(annotation => timeAnnotationAnchors(annotation) as Annotation);
   }
+  const authoredAnnotations = options.annotations;
   options.annotations = prepareFractionAnnotations(options.annotations);
   const target = input.target ?? input.options?.target ?? context.target ?? DEFAULT_TARGET;
   options.target = target;
@@ -244,7 +245,8 @@ export function resolveChartRequest<D, O extends object>(
   const fontMetrics = options.measure ?? defaultMeasurer;
   options.measure = fontMetrics;
   const data = prepared(def, read.data, options) as D;
-  const inputWarnings = [...retired.warnings, ...read.warnings, ...requestInputWarnings(def.type, def.type === 'grid' ? data : input.data, options),
+  const inputWarnings = [...retired.warnings, ...read.warnings, ...requestInputWarnings(def.type, def.type === 'grid' ? data : input.data, { ...options, annotations: authoredAnnotations },
+    input.annotations === undefined ? '/options/annotations' : '/annotations'),
     ...colorVariableWarnings(input.data, options.theme)];
   return {
     ...(inputWarnings.length ? { inputWarnings } : {}),
@@ -343,13 +345,13 @@ function inputPanels(data: unknown): { id: string; type: string; data: unknown; 
   return Array.isArray(normalized?.panels) ? normalized.panels : [];
 }
 
-function requestInputWarnings(type: string, data: unknown, options: RequestOptions): LintWarning[] {
-  if (type !== 'grid') return percentScaleWarnings(data, options, type);
+function requestInputWarnings(type: string, data: unknown, options: RequestOptions, annotationsPath = ''): LintWarning[] {
+  if (type !== 'grid') return [...percentScaleWarnings(data, options, type), ...fractionLineWarnings(data, options.annotations, annotationsPath)];
   return inputPanels(data).flatMap(panel => {
     const definition = getChart(panel.type);
     // Resolve defaults while the alias is still known, as the child layout does.
     return requestInputWarnings(definition?.type ?? panel.type, panel.data, { ...definition?.defaults, ...panel.options })
-      .map(warning => ({ ...warning, message: `[${panel.id}] ${warning.message}` }));
+      .map(({ fix: _fix, ...warning }) => ({ ...warning, message: `[${panel.id}] ${warning.message}` }));
   });
 }
 

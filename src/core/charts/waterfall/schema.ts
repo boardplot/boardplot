@@ -30,7 +30,7 @@ const itemSchema = z.object({
   date: z.string().optional().describe("ISO 8601 date associated with this bridge item."),
   scenario: scenarioField('Scenario for this bridge item and its default segment styling.'),
   direction: z.enum(['higherIsBetter', 'lowerIsBetter']).optional().describe("Under 'lowerIsBetter' a rise paints bad and a fall good (options.signColor)."),
-  toBaseline: z.boolean().optional().describe("Start this item at zero and reset the accumulated contribution list."),
+  toBaseline: z.boolean().optional().describe("Start this delta at zero and reset the accumulated contribution list. A subtotal draws the sum of the deltas since the last total or baseline subtotal, from zero; the running level carries on."),
   values: z.array(cellSchema).optional().describe("With data.cases: one value per case, in case order, in place of value — the signed delta of each case, or a total's opening or check value."),
 }).passthrough();
 
