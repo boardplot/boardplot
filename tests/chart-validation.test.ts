@@ -167,6 +167,14 @@ describe('actionable input refusals', () => {
   });
 
   // The library request path must reject malformed data before a caller can pass it to layout.
+  // Options that hold themselves overflowed the stack, so canDraw threw a RangeError instead of answering.
+  it('refuses a self-referencing options object', () => {
+    const data = { categories: [{ id: 'a', label: 'A' }], series: [{ id: 's', label: 'S', values: [1] }] };
+    const options: Record<string, unknown> = { title: 'T' };
+    options.self = options;
+    expect(canDraw({ type: 'column', data, options })).toMatchObject({ ok: false, code: 'circular-reference' });
+  });
+
   it('validates library requests and returns the same refusal from canDraw', () => {
     const request = { type: 'waterfall', data: { items: [null] } };
     expect(() => resolveChartRequest(request as never)).toThrow(expect.objectContaining({ code: 'invalid-data', path: '/charts/0/data/items/0' }));
