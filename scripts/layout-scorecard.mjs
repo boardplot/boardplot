@@ -626,7 +626,8 @@ export function auditScene(item, request, geometry, reading) {
   // Exclude only those obsolete requests, and keep every final axis request.
   // Whole-number data names one value per bin, at the bin centre, instead of the edges.
   const binning = geometry.derived?.binning;
-  const binEdges = binning?.edges;
+  // An open last bin is named on its own: its upper edge, the largest observation, has no tick.
+  const binEdges = binning?.openAbove !== undefined ? binning.edges.slice(0, -1) : binning?.edges;
   const axisValues = binning?.perValue ? binEdges?.slice(1).map(edge => edge - 0.5) : binEdges;
   const histogramAxis = request.type === 'histogram' && axisValues && geometry.axes?.some(axis => axis.axis === 'x'
     && axis.ticks.length === axisValues.length && axis.ticks.every((tick, i) => tick.at === axisValues[i]));

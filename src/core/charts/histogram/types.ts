@@ -23,9 +23,11 @@ export interface HistogramData {
 /**
  * `'auto'` derives the width from the data (Freedman-Diaconis vs Sturges);
  * a number sets the bin COUNT; `{ width }` sets the width outright and skips
- * the readability snap.
+ * the readability snap. `openAbove` gathers every value at or above it into
+ * one open last bin; without `width` the automatic rule picks the width of
+ * the other bins.
  */
-export type BinSpec = 'auto' | number | { width: number; anchor?: number };
+export type BinSpec = 'auto' | number | { width?: number; anchor?: number; openAbove?: number };
 
 export type BinRule = 'auto' | 'count' | 'width';
 
@@ -59,6 +61,11 @@ export interface Binning {
   hAuto: number;
   /** Set only for `bins: <number>`; the realized count may differ (anchor rule). */
   requestedCount?: number;
+  /**
+   * Set only when the last bin is open: it holds every observation at or above
+   * this value, and its upper edge is the largest observation.
+   */
+  openAbove?: number;
 }
 
 /**

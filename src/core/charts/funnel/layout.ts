@@ -875,14 +875,22 @@ export function layoutFunnel(
   // Pins bypass collision checks in the shared solver. Remove every
   // row-owned candidate that leaves its declared lane before the solver sees
   // it, so even a forced slot cannot trespass into another row.
+  // A step caption in the right-hand column stands level with the gap between
+  // its two rows, so its lane is both rows: the step from one stage to the next.
+  const convColumn = !inGap && convReserve > 0;
+  const laneOf = (request: LabelRequest, ci: number): Rect => {
+    const lane = rowLanes[ci]!;
+    const next = rowLanes[ci + 1];
+    if (!convColumn || !request.id.startsWith('conv:') || next === undefined) return lane;
+    return { x: lane.x, y: lane.y, w: lane.w, h: next.y + next.h - lane.y };
+  };
   for (const request of labelRequests) {
     const categoryId = request.owner.categoryId;
     if (categoryId === undefined) continue;
     const ci = stages.findIndex((stage) => stage.id === categoryId);
     if (ci < 0) continue;
-    request.candidates = request.candidates.filter((candidate) =>
-      rectContains(rowLanes[ci]!, candidate.rect),
-    );
+    const lane = laneOf(request, ci);
+    request.candidates = request.candidates.filter((candidate) => rectContains(lane, candidate.rect));
   }
 
   // Full-width row lanes are synthetic marks: the solver treats a lane as
@@ -891,10 +899,12 @@ export function layoutFunnel(
   // tile without a gap, so a claim on the full rect would put a two-pixel moat
   // at every row boundary and refuse any label that fills its own row.
   // Containment is still judged against the whole lane below.
+  // The step captions' column is no row's lane: the row lanes end left of it.
+  const laneRight = convColumn ? convRight - convColW - LANE_PAD : innerRight;
   stages.forEach((stage, ci) => {
     const lane = rowLanes[ci]!;
     occupied.claim(
-      { x: lane.x, y: lane.y + LANE_PAD, w: lane.w, h: Math.max(1, lane.h - 2 * LANE_PAD) },
+      { x: lane.x, y: lane.y + LANE_PAD, w: Math.max(1, Math.min(lane.w, laneRight - lane.x)), h: Math.max(1, lane.h - 2 * LANE_PAD) },
       'mark',
       { categoryId: stage.id },
       'funnel-row-lane',

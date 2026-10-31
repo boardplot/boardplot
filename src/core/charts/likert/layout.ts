@@ -69,6 +69,7 @@ import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { BAND_PAD } from '../../annotateParts';
 import { wrapText } from '../../text';
 import { maxOf, minOf, pushAll } from '../../arrays';
+import { INSIDE_MIN_H } from '../band/labels';
 import { emptyIdRecord } from '../../idRecords';
 
 /** One rung of the response scale, ordered most-negative -> most-positive. */
@@ -195,6 +196,10 @@ const BASE_SPREAD = 1.2;
 const STACKED_MAX_WIDTH = 480;
 /** The bar's share of its row (40 px on a 75 px pitch). */
 const BAND_FRACTION = 0.53;
+/** The most of its row a bar takes so that its shares print inside it. */
+const BAND_FRACTION_MAX = 0.8;
+/** Air above and below a share inside its bar. */
+const SHARE_PAD = 2;
 /** Statement box to the top of its bar. */
 const STATEMENT_GAP = 3;
 /** The least air between a bar and the next statement. */
@@ -888,6 +893,18 @@ export function layoutLikert(
   if (stacked) {
     rows = stackedRows(geo.plot.h);
     geo = layoutWith(rows);
+  } else if (defaultFraction !== undefined && opts.bandFraction === undefined) {
+    // Many statements make the rows thin: a bar at the default share of its
+    // row is then lower than a share label, and the shares are hidden. Such a
+    // bar takes more of its row, up to BAND_FRACTION_MAX, to hold a share with
+    // SHARE_PAD above and below it. Rows too thin even for that keep the default.
+    const shareH = maxOf(geo.labels.filter((label) => label.kind === 'segment').map((label) => label.rect.h));
+    const fits = Math.max(INSIDE_MIN_H, shareH);
+    const step = geo.plot.h / Math.max(1, ordered.length);
+    if (shareH > 0 && step * defaultFraction < fits && step * BAND_FRACTION_MAX >= fits) {
+      rows = { bandFraction: Math.min(BAND_FRACTION_MAX, (fits + 2 * SHARE_PAD) / step) };
+      geo = layoutWith(rows);
+    }
   }
   const reach = brackets.need?.().right ?? 0;
   if (comparing && reach > 0) {

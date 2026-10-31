@@ -517,3 +517,16 @@ describe('pareto joined remainder record', () => {
     expect(column.members).toEqual([{ categoryId: 'c' }, { categoryId: 'd' }]);
   });
 });
+
+// The changelog promises totalScale: false brings back the column-capped axis; no golden draws it.
+describe('pareto total scale', () => {
+  it('scales the left axis to the total when concentrated, unless the author turns it off', () => {
+    const data = { items: [{ id: 'a', value: 80 }, { id: 'b', value: 5 }, { id: 'c', value: 5 }, { id: 'd', value: 5 }, { id: 'e', value: 5 }] };
+    const top = (options: Record<string, unknown>) => {
+      const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'pareto', data, options } as never)));
+      return Math.max(...geometry.axes.find((axis) => axis.axis === 'y')!.ticks.map((tick) => Number(tick.at)));
+    };
+    expect(top({})).toBe(100);
+    expect(top({ totalScale: false })).toBe(80);
+  });
+});

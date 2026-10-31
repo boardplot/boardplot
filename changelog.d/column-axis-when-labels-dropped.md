@@ -1,0 +1,3 @@
+### Changed / may need action
+
+- A column chart now draws its value axis when the automatic value labels leave any column with no number: a grouped column whose label was dropped or thinned, or a stack that lost every segment value and its total. Before, a narrow card could print 7 of 24 values with no axis, so the other columns had no readable value. The `valueAxis.show` default already promised this ("shown unless every value is labelled"). A value the author turned off (`labels.point: false`, a cell's `label: false`), an authored `valueAxis.show` and a grid panel keep their axis as before. To bring back the old look, set `valueAxis: { show: false }`.

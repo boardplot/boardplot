@@ -1,0 +1,4 @@
+### Changed / may need action
+
+- Grouped columns: when a value label, already one font step down, is wider than its column plus the gap to the next one, the group now takes more of its category, up to 92% instead of 70%, so every series prints its values. Before, the whole series lost its values: two series over twelve categories on a full slide printed only the second series. A group that would still lose its values at 92% keeps its width. To bring back the old look, set the option `{ "bandFraction": 0.7 }`.
+- Likert: when a share label is taller than the bar, the bar now takes more of its row, up to 80% instead of 53%, so the shares print inside the bars. Before, twelve statements on a full slide hid 37 of 72 shares and printed only some end shares beside the bars. A card of 480 px or less, which stacks each statement above its bar, and a theme with `space.barRow` do not change. To bring back the old look, set the option `{ "bandFraction": 0.53 }`.
