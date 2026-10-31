@@ -108,7 +108,7 @@ function presetHeight(preset: Size, width: number): number {
 }
 
 type SizeFinding = DocumentFinding & { fix?: JsonPatchOperation[] };
-const SIZE_FIXES = ['size-below-floor', 'height-off-ladder', 'plot-under-min', 'aspect-cap'];
+const SIZE_FIXES = ['size-below-floor', 'height-off-ladder', 'plot-under-min', 'aspect-cap', 'diagram-size-too-small', 'diagram-node-label-unplaced'];
 
 /**
  * A size refusal caused by a `width` or `height` argument names that argument,
@@ -120,19 +120,23 @@ export function attributeSizeOverride<T extends SizeFinding>(findings: T[], widt
   if (!width && !height) return findings;
   const args = { width, height };
   return findings.map((finding) => {
-    if (!SIZE_FIXES.includes(finding.code) || !finding.path?.endsWith('/options/size')) return finding;
+    if (!SIZE_FIXES.includes(finding.code)) return finding;
     const operation = finding.fix?.find(operation => operation.op === 'replace' || operation.op === 'add');
     if (!operation || !('value' in operation)) return finding;
+    // A diagram refusal names no field, so its fix says where the size is.
+    const sizePath = finding.path?.endsWith('/options/size') ? finding.path
+      : !finding.path && operation.path.endsWith('/options/size') ? operation.path : undefined;
+    if (!sizePath) return finding;
     const needed = (operation.path.endsWith('/options')
       ? (operation.value as { size: Size }).size : operation.value) as Size;
     const short = (['width', 'height'] as const)
       .filter((side) => args[side] && needed?.[side] !== undefined && Math.abs(needed[side] - px(args[side]!)) > 1e-6);
     if (!short.length) return finding;
     const side = short[0]!;
-    const original = readJsonPointer(spec, finding.path);
+    const original = readJsonPointer(spec, sizePath);
     const authored = original.found ? original.value : undefined;
     // The default frame of an unsized chart is its target's: the argument, else the chart's own.
-    const own = readJsonPointer(spec, finding.path.replace(/size$/, 'target'));
+    const own = readJsonPointer(spec, sizePath.replace(/size$/, 'target'));
     const actual = resolveSize(authored as CanvasSizeInput | undefined, target ?? (own.found ? own.value as RenderTarget : DEFAULT_TARGET));
     // Repair an unpassed side only if its authored/default value is short.
     // An omitted height is automatic and grows after repairing the width.

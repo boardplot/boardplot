@@ -667,7 +667,8 @@ describe('size advice', () => {
   });
 
   // Prevents a size patch that loops or turns a drawn chart into a refusal: a size warning on a chart that
-  // draws carries no height patch, and every patch from render and measure leads to a drawn chart at a new size.
+  // draws carries no height patch, and every patch from render and measure leads to a drawn chart at a new size,
+  // also when the size came from a width or height argument that a spec patch would not change.
   it('names a size patch only at a drawn size, and following the patches never repeats a size', () => {
     const names = ['Field service', 'Net revenue', 'Order intake', 'Rhein-Main', 'Warehouse costs', 'Personnel costs', 'Turnover', 'Black Forest', 'Churn rate', 'Cost of sales', 'Saxony-Anhalt', 'Retail stores'];
     const column = (size: object) => ({ type: 'column', data: { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [
@@ -698,6 +699,7 @@ describe('size advice', () => {
       ['column 480x361', { spec: column({ width: 480, height: 361 }) }],
       ['column 360x202.5pt', { spec: column({ width: 360, height: 202.5, unit: 'pt' }) }],
       ['diagram 320x200', { spec: diagram({ width: 320, height: 200 }) }],
+      ['diagram 320x200 by argument', { spec: diagram({ width: 800, height: 600 }), width: 320, height: 200 }],
       ['heatmap survey-journey-long-names 480x200', { spec: fixture('heatmap', 'survey-journey-long-names', { width: 480, height: 200 }) }],
       ['heatmap survey-journey-long-names 480x200 by argument', { spec: fixture('heatmap', 'survey-journey-long-names', { width: 800, height: 600 }), width: 480, height: 200 }],
       ['line recession-era-band 1200x200', { spec: fixture('line', 'recession-era-band', { width: 1200, height: 200 }) }],
