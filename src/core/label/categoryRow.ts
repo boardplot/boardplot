@@ -1152,22 +1152,29 @@ function planRow(input: CategoryRowInput, bundled: boolean): CategoryRowPlan {
     const whole = rotatable.find((font) => measureAll(font, 1).every((info) => info.w <= maxRotatedWidth));
     const font = whole ?? rotatable[0];
     if (font) {
+      // The first names reach left of the row by their slant (rotatedLeftOverhang). A name no wider than the
+      // cap that leaves every column the pitch of a 45° line, or the row stops rotating once the caller takes the overhang.
+      const lineH = font.size * (font.lineHeight ?? 1.2);
+      const spare = n * step - (n * (lineH + 2)) / SIN45 - n;
+      const reach = (i: number) => (spare + centers[i]! - 4) / SIN45 - lineH;
+      const pitchCap = Math.min(...measureAll(font, 1).map((info, i) => (info.w > reach(i) ? reach(i) : Infinity)));
+      const cap = input.maxRotatedWidth !== undefined ? maxRotatedWidth : Math.max(ROTATED_MIN_WIDTH, Math.min(maxRotatedWidth, Math.floor(pitchCap)));
       // A rotated name longer than the cap is cut, or the plot would shrink
       // to a strip under a fan of sixty-character labels. A cut name
       // carries a note mark, and the note gives it back whole.
       const cutNotes: string[] = [];
       const cutNames: string[] = [];
       const infos = measureAll(font, 1).map((info, i) => {
-        if (info.w <= maxRotatedWidth) return info;
+        if (info.w <= cap) return info;
         // A name that already carries the author's reference keeps that one mark.
         const mark = input.cutMarkFrom === undefined || suffixAt(i) ? '' : ` ${footnoteMark(input.cutMarkFrom + cutNotes.length)}`;
         const suffix = suffixAt(i) + mark;
         const reserve = suffix ? measure(suffix, font).width : 0;
         const bare = suffixAt(i) && info.lines[0]!.endsWith(suffixAt(i)) ? info.lines[0]!.slice(0, -suffixAt(i).length) : info.lines[0]!;
-        const cut = cutWithTitle(bare, font, Math.max(maxRotatedWidth - reserve, 1), measure);
+        const cut = cutWithTitle(bare, font, Math.max(cap - reserve, 1), measure);
         cutNames.push(labels[i]!);
         if (mark) cutNotes.push(disclosureNote(`${mark.trim()} ${labels[i]!}.`));
-        return { ...info, lines: [`${cut.text}${suffix}`], w: maxRotatedWidth, truncated: true, ...(cut.title !== undefined ? { title: cut.title } : {}) };
+        return { ...info, lines: [`${cut.text}${suffix}`], w: cap, truncated: true, ...(cut.title !== undefined ? { title: cut.title } : {}) };
       });
       return plan(font, infos, all, 'rotate', {
         rotation: 45,

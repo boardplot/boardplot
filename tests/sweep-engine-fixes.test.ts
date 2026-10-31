@@ -286,4 +286,19 @@ describe('chart layout edge cases', () => {
     });
     expect(callout.hidden === undefined && onName).toBe(false);
   });
+
+  // A tall canvas widened the rotated names until the row had no pitch left for a 45° line, so all but one name were dropped.
+  it('a tall variance chart keeps its rotated category names at 400 px wide', () => {
+    const names = ['Nordrhein-Westfalen (Rheinland)', 'Net revenue retention, enterprise', 'Sonstige betriebliche Aufwendungen', 'Zinsen und ähnliche Aufwendungen', 'Aufwendungen für bezogene Waren', 'Schleswig-Holstein und Hamburg', 'Pensionsrückstellungen, Inland', 'Research and development expenses', 'Sonstige betriebliche Erträge', 'Fremdleistungen Logistik Ausland', 'Instandhaltung und Reparaturen', 'Mecklenburg-Vorpommern'];
+    const categories = names.map((label, i) => ({ id: `c${i}`, label }));
+    const request = { type: 'variance', data: { categories, series: [
+      { id: 'act', label: 'Actual', values: [178, 173.7, 182.1, 193.8, 204.9, 223.9, 243.9, 224.9, 200, 195.7, 190, 172.6] },
+      { id: 'ref', label: 'Prior year', role: 'reference', values: [145.6, 190.1, 165.5, 215.2, 245.5, 201.3, 221, 242.1, 190, 168.3, 180, 164.5] }] },
+      options: { variant: 'integrated', variance: { of: 'act', vs: 'ref' }, size: { width: 400, height: 560 } },
+      annotations: [{ kind: 'callout', at: { categoryId: 'c0', seriesId: 'act' }, text: 'Largest step since the restatement', preferSide: 'right' }] };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+    const drawn = geometry.labels.filter((l: { kind: string; hidden?: string }) => l.kind === 'category' && l.hidden === undefined).length;
+    expect(drawn).toBe(names.length);
+  });
 });
