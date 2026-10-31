@@ -37,9 +37,10 @@ it('renders a short scatter without extra layouts for plot-height advice', () =>
   const result = layoutResolvedRequest(resolveChartRequest(request));
   expect(result.warnings.some(w => w.code === 'plot-under-floor')).toBe(true);
   expect(scatterCalls.count).toBe(1);
-  const warning = result.warnings.find(w => w.code === 'plot-under-floor')!;
-  expect(warning.fix).toBeDefined();
-  const repaired = render({ spec: applyRepair(request, warning.fix) }).body as any;
+  // The layout draws and estimates a height: a patch that was not drawn is left to measure.
+  expect(result.warnings.find(w => w.code === 'plot-under-floor')!.fix).toBeUndefined();
+  const verified = measure(request).warnings.find(w => w.code === 'plot-under-floor')!;
+  const repaired = render({ spec: applyRepair(request, verified.fix) }).body as any;
   expect(repaired.ok).toBe(true);
   expect(repaired.warnings.some((w: any) => w.code === 'plot-under-floor')).toBe(false);
 });
@@ -110,7 +111,8 @@ it('verifies the complete frame at the height offered for a short plot', () => {
   for (const [type, id] of [['scatter', 'option-info-grid'], ['pareto', 'revenue-concentration']]) {
     const fixture = getFixtures(type!).find(f => f.id === id)!;
     const request = { type: type!, data: fixture.data, options: { ...fixture.options, size: { width: 400, height: 300 } } };
-    for (const result of [measure(request), getChart(type!)!.layout(request.data, request.options)]) {
+    expect(getChart(type!)!.layout(request.data, request.options).warnings.find(w => w.code === 'plot-under-floor')!.fix).toBeUndefined();
+    for (const result of [measure(request)]) {
       const warning = result.warnings.find(w => w.code === 'plot-under-floor')!;
       expect(warning).toBeDefined();
       expect(warning.fix).toBeDefined();
@@ -252,11 +254,11 @@ describe('below the minimum', () => {
     expect(short.refused).toBeUndefined();
     expect(short.size.height).toBe(200);
     const estimate = short.warnings.find((warning) => warning.code === 'plot-under-floor')!;
-    expect(estimate.fix).toBeDefined();
+    expect(estimate.fix).toBeUndefined();
     expect(estimate.message).toContain('estimated height');
     expect(estimate.suggest).toContain('measure');
     const request = { type: 'line', data: fixture.data, options: { ...fixture.options, size: { width: 480, height: 200 } } };
-    const repaired = render({ spec: applyRepair(request, estimate.fix) }).body as any;
+    const repaired = render({ spec: applyRepair(request, measure(request).warnings.find((warning) => warning.code === 'plot-under-floor')!.fix) }).body as any;
     expect(repaired.ok).toBe(true);
     expect(repaired.warnings.some((warning: any) => warning.code === 'plot-under-floor')).toBe(false);
     const tiny = at(480, 150);
@@ -692,6 +694,99 @@ describe('size advice', () => {
     const fix = refused.warnings[0]!.fix![0]! as { value: { width: number; height?: number } };
     expect(fix.value.height).toBeUndefined();
     expect(layout(fix.value).refused).toBeUndefined();
+  });
+
+  // Prevents a size patch that loops or turns a drawn chart into a refusal: a size warning on a chart that
+  // draws carries no height patch, and every patch from render and measure leads to a drawn chart at a new size,
+  // also when the size came from a width or height argument that a spec patch would not change.
+  it('names a size patch only at a drawn size, and following the patches never repeats a size', () => {
+    const names = ['Field service', 'Net revenue', 'Order intake', 'Rhein-Main', 'Warehouse costs', 'Personnel costs', 'Turnover', 'Black Forest', 'Churn rate', 'Cost of sales', 'Saxony-Anhalt', 'Retail stores'];
+    const column = (size: object) => ({ type: 'column', data: { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [
+      { id: 'a', label: 'Partner channel', values: names.map((_, i) => (i % 5 === 0 ? 1e9 : 7.5e8)) },
+      { id: 'b', label: 'Mid market', values: names.map((_, i) => (i % 3 === 0 ? 1.25e9 : 1.5e9)) },
+    ] }, options: { title: 'Revenue by unit', unit: 'EUR', source: 'Invented data', variant: 'grouped', format: '1.2bn', size } });
+    const labels = ['Schleswig-Holstein and Hamburg', 'Depreciation of fixed assets', 'Rebilled freight costs', 'Mecklenburg-Western Pomerania', 'Research and development expenses', 'Income from equity-accounted firms', 'Thuringia and Saxony-Anhalt', 'Pension provisions, domestic'];
+    const diagram = (size?: object) => ({ type: 'diagram', data: { nodes: labels.map((label, i) => ({ id: `n${i}`, kind: 'entity', shape: { kind: 'roundedRect' }, label, role: i ? 'primary' : 'accent', order: i })),
+      edges: [[0, 1], [0, 2], [1, 3], [2, 4], [1, 5], [2, 6], [1, 7]].map(([s, t], i) => ({ id: `e${i}`, source: { nodeId: `n${s}` }, target: { nodeId: `n${t}` } })) },
+    options: { variant: 'hierarchy', title: 'Structure of the programme', source: 'Invented data', ...(size ? { size } : {}) } });
+    const fixture = (type: string, id: string, size: object) => {
+      const found = getFixtures(type as never).find(f => f.id === id)!;
+      return { type, data: found.data, options: { ...found.options, size } };
+    };
+    // A request is a spec plus the CLI width and height. A patch aims at the spec or at one of those arguments.
+    type Request = { spec: any; width?: number; height?: number };
+    const apply = (request: Request, fix: { path: string }[]): Request => {
+      const next = { ...request };
+      const toSpec = fix.filter(op => !/^\/(width|height)$/.test(op.path));
+      for (const op of fix.filter(op => /^\/(width|height)$/.test(op.path)) as { path: string; value: number }[]) (next as any)[op.path.slice(1)] = op.value;
+      return toSpec.length ? { ...next, spec: applyRepair(next.spec, toSpec as never) } : next;
+    };
+    const sizePatches = (body: any) => [...(body.errors ?? []), ...(body.warnings ?? [])]
+      .filter((item: any) => item.fix?.some((op: any) => op.path.endsWith('/options/size') || /^\/(width|height)$/.test(op.path)));
+    const requests: [string, Request][] = [
+      ['column 480x213', { spec: column({ width: 480, height: 213 }) }],
+      ['column 480x270', { spec: column({ width: 480, height: 270 }) }],
+      ['column 480x361', { spec: column({ width: 480, height: 361 }) }],
+      ['column 360x202.5pt', { spec: column({ width: 360, height: 202.5, unit: 'pt' }) }],
+      ['diagram 320x200', { spec: diagram({ width: 320, height: 200 }) }],
+      ['diagram 320x200 by argument', { spec: diagram({ width: 800, height: 600 }), width: 320, height: 200 }],
+      ['heatmap survey-journey-long-names 480x200', { spec: fixture('heatmap', 'survey-journey-long-names', { width: 480, height: 200 }) }],
+      ['heatmap survey-journey-long-names 480x200 by argument', { spec: fixture('heatmap', 'survey-journey-long-names', { width: 800, height: 600 }), width: 480, height: 200 }],
+      ['line recession-era-band 1200x200', { spec: fixture('line', 'recession-era-band', { width: 1200, height: 200 }) }],
+    ];
+    const sizeOf = (request: Request) => JSON.stringify([request.width, request.height, request.spec.options.size]);
+    for (const [name, start] of requests) {
+      const first = render(start).body as any;
+      if (first.ok) expect(sizePatches(first), `${name}: render of a drawn chart names a size patch`).toEqual([]);
+      // Every patch of render and of measure, applied once to the request, draws and names no size patch again.
+      const patches = [...sizePatches(first), ...sizePatches(cliMeasure(start).body)];
+      for (const item of patches) {
+        const patched = apply(start, item.fix);
+        expect(sizeOf(patched), `${name}: ${item.code} patch changes nothing`).not.toBe(sizeOf(start));
+        const after = render(patched).body as any;
+        expect(after.ok, `${name}: ${item.code} patch ${sizeOf(patched)} is refused`).toBe(true);
+        expect(sizePatches(after), `${name}: ${item.code} patch ${sizeOf(patched)} draws with a size patch`).toEqual([]);
+      }
+      // Measure's own patches, followed one after another, end without a repeated size.
+      let current = start;
+      const seen = new Set<string>();
+      for (let step = 0; step < 6; step++) {
+        expect(seen.has(sizeOf(current)), `${name}: measure came back to ${sizeOf(current)}`).toBe(false);
+        seen.add(sizeOf(current));
+        const [next] = sizePatches(cliMeasure(current).body);
+        if (!next) break;
+        current = apply(current, next.fix);
+      }
+      expect(seen.size, `${name}: measure advice still going after 6 patches`).toBeLessThan(6);
+    }
+  });
+
+  // Prevents the layout of a card (what React reports) from naming an estimated plot-floor height that refuses:
+  // a heatmap at 414 px drew with an estimate of 518 px, and 518 px needs 566 px.
+  it('reports the plot-floor estimate of a drawn layout with no patch', () => {
+    const found = getFixtures('heatmap').find(f => f.id === 'survey-journey-long-names')!;
+    const drawn = layoutResolvedRequest(resolveChartRequest({ type: 'heatmap', data: found.data, options: { ...found.options, size: { width: 480, height: 414 } } } as never));
+    expect(drawn.refused).toBeUndefined();
+    const floor = drawn.warnings.find(w => w.code === 'plot-under-floor')!;
+    expect(floor.message).toContain('estimated height');
+    expect(floor.fix).toBeUndefined();
+  });
+
+  // Prevents a plain render of a table from laying out a second, wider frame (1.6x to 2x slower than main) to name a
+  // patch: a drawn table with a fixed height reports table-overflow with no patch, and measure names the height that draws.
+  it('names the table-overflow height in measure, not in a plain render', () => {
+    const found = getFixtures('table').find(f => f.id === 'cohort-heat-relative')!;
+    const spec = { type: 'table', data: found.data, options: { ...found.options, size: { width: 1048, height: 379 } } };
+    const drawn = render({ spec }).body as any;
+    expect(drawn.ok).toBe(true);
+    const plain = drawn.warnings.find((warning: any) => warning.code === 'table-overflow');
+    expect(plain.fix).toBeUndefined();
+    expect(plain.suggest).toContain('measure');
+    const overflow = measure(spec).warnings.find(warning => warning.code === 'table-overflow')!;
+    expect(overflow.fix).toBeDefined();
+    const after = render({ spec: applyRepair(spec, overflow.fix) }).body as any;
+    expect(after.ok).toBe(true);
+    expect(after.warnings.map((warning: any) => warning.code)).not.toContain('table-overflow');
   });
 });
 

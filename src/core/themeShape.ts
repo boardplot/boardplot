@@ -143,7 +143,7 @@ export const THEME_SHAPE: ShapeNode = object({
     restOutline: flag, areaFromOrigin: flag, barLabels: optOneOf('auto', 'outside'), comboColumnTint: optNum(0, 1),
     comboLine: optOneOf('series', 'ink'), sparkEnd: optOneOf('dot', 'ring'), sparkEndLabel: flag,
     sliceOutline: flag, othersOutline: flag, contrastEdge: flag, nodeFill: optOneOf('role', 'panel'), kpiCaret: flag,
-    bridge: optOneOf('neutral', 'sign'), funnelFill: optOneOf('status', 'ramp'),
+    bridge: optOneOf('neutral', 'sign'), funnelFill: optOneOf('status', 'ramp'), statusFill: optOneOf('quiet', 'full'),
   })),
   labels: opt(object({ endLabelPlacement: optOneOf('gutter', 'lineEnd'), ink: optOneOf('ink', 'muted') })),
   valueAxis: opt(object({ titles: flag, includeZero: flag, dualAxis: flag, gridDash: optOneOf('solid', 'dotted', 'dashed') })),

@@ -431,4 +431,15 @@ fixtures.push({
 
 fixtures.push({ id: 'status-with-values', title: 'State cells include their measured values', kind: 'torture', data: { rows: [{ id: 'team', label: 'Team' }], columns: [{ id: 'month', label: 'Month' }], cells: [{ row: 'team', col: 'month', state: 'ok', value: { number: 97.5, format: '1.0%' } }] }, options: { title: 'Attainment stays on plan', states: [{ id: 'ok', label: 'On plan', tone: 'good' }], size: { width: 600, height: 250 } } });
 
+// The capability board with its good and neutral cells in their full colours
+// (marks.statusFill 'full') instead of washed toward the page.
+const capability = fixtures.find((fixture) => fixture.id === 'capability-assessment')!;
+fixtures.push({
+  ...capability,
+  kind: 'torture', id: 'capability-assessment-full-fill',
+  title: 'Capability board with good and neutral cells in their full colours',
+  tags: ['theme'],
+  options: { ...capability.options!, theme: { preset: 'standard', overrides: { marks: { statusFill: 'full' } } } },
+});
+
 registerFixtures('status', fixtures);

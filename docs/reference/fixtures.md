@@ -630,6 +630,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | rag-forecast-hatched | status | torture | RAG board with each tone plain and hatched beside cells without a status |
 | review-status-legend-object | status | torture | Review status with the legend placed above through a position object |
 | status-with-values | status | torture | State cells include their measured values |
+| capability-assessment-full-fill | status | torture | Capability board with good and neutral cells in their full colours |
 
 ## heatmap
 
