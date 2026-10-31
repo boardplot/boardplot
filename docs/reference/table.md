@@ -86,7 +86,7 @@ Consulting-grade table: hierarchy with honest totals (derive/validate/source), t
 | columns[].materiality (columns[] branch 2) | object |  | Mute tones below this threshold; keep values visible. |
 | columns[].materiality.pct (columns[] branch 2) | number |  | Percent-column threshold in points. |
 | columns[].materiality.abs (columns[] branch 2) | number |  | Other numeric threshold in source units. |
-| columns[].aggregate (columns[] branch 2) | string |  | Parent-row aggregation. Default 'sum' over additive children; 'none' where the column format is a percentage, percentage points or a multiple, or the summand rows carry different formats, since those do not add. An explicit 'sum' there warns aggregate-non-additive. One of `'sum'`, `'none'`, `'source'`. |
+| columns[].aggregate (columns[] branch 2) | string |  | Parent-row aggregation. Default 'sum' over additive children; 'none' where the column format is a percentage, percentage points or a multiple, or the summand rows carry different units (decimals do not count), since those do not add. An explicit 'sum' there warns aggregate-non-additive. One of `'sum'`, `'none'`, `'source'`. |
 | columns[].nulls (columns[] branch 2) | string |  | Default 'propagate'. A missing child then makes the parent '—', with no silent partial sums; 'skip' sums the present values and auto-footnotes 'partial'. One of `'propagate'`, `'skip'`. |
 | columns[].percentScale (columns[] branch 2) | string |  | Values already in points; percent-scale-suspect stays quiet. One of `'points'`. |
 | columns[].id (columns[] branch 3) | string | yes | Nonempty reference id. |

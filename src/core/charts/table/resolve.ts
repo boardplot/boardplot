@@ -495,9 +495,15 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
   };
   // A cell's own format counts where it sits: a pp change among summands does not add either.
   const formatAt = (row: FlatRow, colId: Id): string | undefined => cellFormat(row.cells[colId]) ?? row.format;
+  // Decimals are no unit: "$1.2m" and "$1.23m" add, "$1.2m" and "$500k" do not.
+  const unitOf = (format: string): string => {
+    if (!format) return '';
+    const spec = parseFormatExample(format);
+    return `${spec.prefix}\u0000${spec.suffix}\u0000${spec.magnitude}`;
+  };
   const nonAdditiveSum = (col: Extract<TableColumn, { kind: 'value' }>, row: FlatRow, kids: readonly FlatRow[]): boolean =>
     nonAdditiveFormat(col.format) || [row, ...kids].some((k) => nonAdditiveFormat(formatAt(k, col.id))) ||
-    new Set(kids.map((k) => formatAt(k, col.id) ?? col.format ?? '')).size > 1;
+    new Set(kids.map((k) => unitOf(formatAt(k, col.id) ?? col.format ?? ''))).size > 1;
   const aggregateFor = (col: Extract<TableColumn, { kind: 'value' }>, row: FlatRow): 'sum' | 'none' | 'source' =>
     col.aggregate ?? (nonAdditiveSum(col, row, summandsOf(row.id)) ? 'none' : 'sum');
   const warnedNonAdditive = new Set<Id>();
