@@ -1830,3 +1830,16 @@ it('keeps the currency of options.unit in front of a shared bare scale', () => {
   expect(de.warnings.some(warning => warning.code === 'table-unit-overridden')).toBe(true);
   expect(de.table.unit).not.toContain('Mio.');
 });
+
+// Row formats ('$1.2k') hoist their own currency; unformatted columns carry no affix, so they must not make the unit look bare.
+it('does not compose options.unit with a unit hoisted from row formats', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'v', kind: 'value' }],
+    rows: [{ id: 'a', label: 'North', format: '$1.2k', cells: { v: 2500 } }, { id: 'b', label: 'South', format: '$1.2k', cells: { v: 1800 } }],
+  };
+  for (const unit of ['EUR', '$']) {
+    const { table, warnings } = resolveTable(data, { magnitude: 'thousand', unit, subtitle: { measure: 'Revenue' } });
+    expect(table.unit).toBe('$k');
+    expect(warnings.some(warning => warning.code === 'table-unit-overridden')).toBe(true);
+  }
+});

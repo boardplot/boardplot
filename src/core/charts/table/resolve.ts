@@ -1085,10 +1085,9 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
   // unit prints as written, or conflicts with it. Only a unit without a scale word gets the scale appended.
   const authoredUnit = options.unit?.trim();
   const scaleWords = (authoredUnit?.split(/[\s$€£¥()]+/) ?? []).filter((word) => Object.values(MAGNITUDE_LABEL).some((label) => label !== '' && sameUnitText(word, label)));
-  const bareScale = candidateUnit !== undefined && [...valueCols, ...computedCols].every((col) => {
-    const spec = specs.get(col.id)!;
-    return specUnitKind(spec) !== 'number' || (spec.prefix.trim() === '' && spec.suffix.trim() === '');
-  });
+  // Row formats can supply the unit too, so their affixes count as well as the columns'.
+  const bareScale = candidateUnit !== undefined && [...[...valueCols, ...computedCols].map((col) => specs.get(col.id)!), ...rowSpecs.values()]
+    .every((spec) => specUnitKind(spec) !== 'number' || (spec.prefix.trim() === '' && spec.suffix.trim() === ''));
   const carriesScale = scaleWords.some((word) => sameUnitText(word, candidateUnit ?? ''));
   const composes = bareScale && !!authoredUnit && (scaleWords.length === 0 || carriesScale);
   const composedUnit = composes ? carriesScale ? authoredUnit : `${authoredUnit} ${candidateUnit}` : candidateUnit;
