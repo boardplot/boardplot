@@ -331,6 +331,14 @@ describe('data gaps', () => {
     expect(image.svg).toContain('viewBox="0 0 360 269"');
   });
 
+  // Printing method notes through notes.show also printed the hidden share note, and a bar or column that drew before was refused for the extra line.
+  it('keeps the draw of a 100% stack when notes.show lists method notes', () => {
+    const thirds = { categories: ['q1', 'q2', 'q3'].map((id) => ({ id })), series: ['a', 'b', 'c'].map((id) => ({ id, values: [10, 10, 10] })) };
+    const drawn = (type: string, show?: string[]) => render({ spec: { type, data: thirds, options: { variant: 'stacked100', title: 'Mix', source: 'Source: invented', ...(show ? { notes: { show } } : {}) } }, width: 480, height: 220, return: ['svg'] }).body as { ok: boolean };
+    for (const type of ['bar', 'column']) expect([type, drawn(type, ['method']).ok]).toEqual([type, drawn(type).ok]);
+    expect(drawn('bar', ['method']).ok).toBe(true);
+  });
+
   it('omits a CAGR to a partial period and flags a diff that uses one', () => {
     const categories = [{ id: 'y1', label: '2022', date: '2022-12-31' }, { id: 'y2', label: '2023', date: '2023-12-31' }, { id: 'y3', label: '2024 YTD', date: '2024-12-31', partial: true }];
     const g = lay('column', { categories, series: [{ id: 'a', values: [100, 120, 70] }] }, {

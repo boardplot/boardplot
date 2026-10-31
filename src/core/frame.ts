@@ -26,7 +26,7 @@ import { PRIORITY } from './label/solver';
 import { footnoteMark } from './footnoteMark';
 import { localeStrings } from './strings/frame';
 import { withLocaleStrings } from './strings';
-import { allQuiet, chartNotes, copyNote, defaultNoteLines, defaultNotePlacement, engineNote, engineNoteMeta, footerParts, keepNoteMeta, notesPointer, shownNoteKinds, sourceLine, valueNote, type ChartCredit, type ChartNote, type NoteKind, type NoteList } from './notes';
+import { allQuiet, isQuiet, chartNotes, copyNote, defaultNoteLines, defaultNotePlacement, engineNote, engineNoteMeta, footerParts, keepNoteMeta, notesPointer, shownNoteKinds, sourceLine, valueNote, type ChartCredit, type ChartNote, type NoteKind, type NoteList } from './notes';
 import { harveyWedgePath } from './svgPath';
 import { parseFormatExample, unitOfSpec } from './formatSpec';
 import { hasAuthoredTypeSize, type FontSpec } from './text';
@@ -2246,7 +2246,7 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
   // host; a disclosure the author asks for stays.
   const pointed = new Set(input.pointedNotes ?? []);
   const kept = entries.filter((entry) => entry.kind === 'disclosure' ? shown.has('disclosure') || (entry.ranks === true && shown.has('ranks')) : !input.footnotesOff && pointed.has(entry.text));
-  const candidates = input.footnotesOff || placement === 'list' ? [] : entries.filter((entry) => !kept.includes(entry) && shown.has(entry.kind));
+  const candidates = input.footnotesOff || placement === 'list' ? [] : entries.filter((entry) => !kept.includes(entry) && shown.has(entry.kind) && !isQuiet(entry));
   // The pointer counts the notes of the kinds the author prints; the engine's
   // hidden notes stay in the notes list without a pointer under the chart.
   // React's 'info' footer is the exception: its "Notes and sources (N)" button lists the engine's
@@ -2258,7 +2258,7 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
   const infoCount = (hidden: readonly object[]) => allQuiet(hidden) && !(credit && !creditInFrame) ? 0 : hidden.length;
   const listed = (k: number) => infoPanel
     ? infoCount(entries.filter((entry) => !kept.includes(entry) && !candidates.slice(0, k).includes(entry))) + (credit && !creditInFrame ? 1 : 0)
-    : entries.filter((entry) => shown.has(entry.kind) && !kept.includes(entry)).length - k + (credit && !creditInFrame ? 1 : 0);
+    : entries.filter((entry) => shown.has(entry.kind) && !kept.includes(entry) && !isQuiet(entry)).length - k + (credit && !creditInFrame ? 1 : 0);
   const sourcePara = (k: number): string | undefined => {
     const hidden = listed(k);
     const pointer = pointerOn && hidden > 0 ? notesPointer(hidden, input.strings) : undefined;
@@ -2312,12 +2312,16 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
   const omitted = Array.from({ length: input[COMPACT_OMITTED_NOTES] ?? 0 }, (): ChartNote => ({ n: 0, kind: 'note', text: '', inFrame: false }));
   // The 'info' button row reaches into the bottom margin, as hitRoom rules.
   const liveParts = (pointer: boolean) => footerParts([...noteList, ...omitted], placement, input[LIVE_NOTE_SHOW] ?? input.notes?.show, pointer);
-  const liveHeight = (pointer: boolean) => Math.max(0, htmlFooterHeight(input, liveParts(pointer), sourceText, footFont, contentW, footLineH, measure) - (placement === 'info' ? margin.bottom : 0));
-  liveFooterH = staticFrame.live && !fullStatic ? liveHeight(pointerOn) : 0;
+  const liveHeight = (parts: ReturnType<typeof footerParts>) => Math.max(0, htmlFooterHeight(input, parts, sourceText, footFont, contentW, footLineH, measure) - (placement === 'info' ? margin.bottom : 0));
+  const withPointer = staticFrame.live && !fullStatic ? liveParts(pointerOn) : undefined;
+  liveFooterH = withPointer ? liveHeight(withPointer) : 0;
   // A quiet method note alone never makes the footer taller: without its button row the footer keeps its height.
-  if (liveFooterH > 0 && allQuiet(liveParts(pointerOn).panel) && liveHeight(false) < liveFooterH) {
-    liveFooterH = liveHeight(false);
-    frame.notesButtonOff = true;
+  if (withPointer && liveFooterH > 0 && allQuiet(withPointer.panel)) {
+    const without = liveHeight(liveParts(false));
+    if (without < liveFooterH) {
+      liveFooterH = without;
+      frame.notesButtonOff = true;
+    }
   }
   if (footParts.length > 0 || liveFooterH > 0) {
     frame.footnoteNodeIds = [];

@@ -244,8 +244,9 @@ export function methodNote(text: string, short: string): string {
 
 /**
  * A method note the engine adds on its own, which never costs a chart its draw or its size:
- * it stays in the notes list and the reading, and when it is the only hidden note and the
- * notes button needs a row of its own, the layout leaves the button off.
+ * it never prints under the chart, also where `notes.show` lists 'method'. It stays in the
+ * notes list and the reading, and when it is the only hidden note and the notes button needs
+ * a row of its own, the layout leaves the button off.
  */
 export function quietMethodNote(text: string): string {
   engineNote(text, 'method');
@@ -254,9 +255,14 @@ export function quietMethodNote(text: string): string {
   return text;
 }
 
+/** True for a quiet method note, which never prints under the chart, whatever `notes.show` lists. */
+export function isQuiet(note: object): boolean {
+  return engineNoteMeta(note)?.quiet === true;
+}
+
 /** True when every note in the list is a quiet method note (and the list has one). */
 export function allQuiet(notes: readonly object[]): boolean {
-  return notes.length > 0 && notes.every((note) => engineNoteMeta(note)?.quiet === true);
+  return notes.length > 0 && notes.every(isQuiet);
 }
 
 export function engineNoteMeta(note: string | object): EngineNoteMeta | undefined {

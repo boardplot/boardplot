@@ -2,7 +2,7 @@
 import { footnoteMark } from './footnoteMark';
 import { INTERACTIVE_LAYOUT, footerPlans, footerType, staticFrame, wrapFootnote } from './footer';
 import { publishDeferred } from './deferred';
-import { allQuiet, chartNotes, copyNote, engineNoteMeta, keepNoteMeta, printsNote, shownNoteKinds, sourceLine, unprintedNotes, type ChartNote } from './notes';
+import { allQuiet, isQuiet, chartNotes, copyNote, engineNoteMeta, keepNoteMeta, printsNote, shownNoteKinds, sourceLine, unprintedNotes, type ChartNote } from './notes';
 import { fittedNote } from './frame';
 import { panelTypeClass, spaceTokens } from './theme';
 import { chartString, localeStrings } from './strings/frame';
@@ -89,7 +89,7 @@ function staticFooterLayout<D, O extends object, M extends object, DV extends ob
     if (current.live || geometry.refused) return geometry;
     const notesOff = (options as { footnotes?: unknown } | undefined)?.footnotes === false;
     const show = shownNoteKinds(options as Parameters<typeof shownNoteKinds>[0]);
-    if (!footerPlans.has(geometry.frame) && geometry.frame.noteList?.some(note => !note.inFrame && printsNote(note, show)
+    if (!footerPlans.has(geometry.frame) && geometry.frame.noteList?.some(note => !note.inFrame && printsNote(note, show) && !isQuiet(note)
       && (!notesOff || note.kind === 'source' || note.kind === 'credit'))) {
       const warning = { code: 'static-footer-plan-missing', severity: 'error' as const,
         message: 'Static output cannot print all enabled notes because its footer plan is missing.' };
@@ -155,7 +155,7 @@ function allNotes(plan: StaticFooterPlan): ChartNote[] {
   });
   return [...authored, ...plan.notes.filter((_, i) => !used.has(i)).map(fit)].map((note, i) => copyNote(note, { n: i + 1 }));
 }
-const enabledNotes = (plan: StaticFooterPlan) => allNotes(plan).filter(note => printsNote(note, plan.input.notes?.show)
+const enabledNotes = (plan: StaticFooterPlan) => allNotes(plan).filter(note => printsNote(note, plan.input.notes?.show) && !isQuiet(note)
   && (!plan.input.footnotesOff || note.inFrame || note.kind === 'source' || note.kind === 'credit'));
 function needsFooter(geometry: Geometry<object, object>, plan: StaticFooterPlan): boolean {
   const source = geometry.scene.find(node => node.id === geometry.frame.sourceNodeId);
