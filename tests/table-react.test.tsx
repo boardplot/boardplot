@@ -1810,3 +1810,20 @@ it('prints the resolved table unit in both frames', () => {
   expect(resolveTable(data, { subtitle: options.subtitle }).warnings.some(warning => warning.code === 'table-unit-overridden')).toBe(false);
   expect(resolveTable(data, { ...options, unit: '$k' }).warnings.some(warning => warning.code === 'table-unit-overridden')).toBe(false);
 });
+
+// A capitalised head printed "Power,mW" as "POWER,MW": milliwatts read as megawatts.
+it('keeps the unit after a head comma as written, on column and group heads, on both surfaces', async () => {
+  const { render } = await import('../src/cli/render');
+  const data = {
+    columns: [{ id: 'l', kind: 'rowLabel' as const, label: 'Site' }, { id: 'p', kind: 'value' as const, label: 'Power,mW' }],
+    columnGroups: [{ id: 'g', label: 'Load, kW', columns: ['p'] }],
+    rows: [{ id: 'a', label: 'North', cells: { p: 12 } }],
+  };
+  const { svg } = render({ spec: { type: 'table', data }, return: ['svg'] }).body as { svg: string };
+  for (const markup of [svg, renderToString(<TableChart data={data} />)]) {
+    expect(markup).toContain('POWER,mW');
+    expect(markup).toContain('LOAD, kW');
+  }
+  // The grid's capitals are in its text. A CSS capital rule on the group row would turn "kW" into "KW".
+  expect(tableStylesheet(resolveTheme('boardroom'), 'report')).not.toMatch(/\.bp-groups>\*\{[^}]*text-transform/);
+});

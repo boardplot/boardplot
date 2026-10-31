@@ -1068,14 +1068,6 @@ it('never gives a theme with less head air more in the compact fallback', () => 
   expect(geometry.warnings.map(w => w.code)).not.toContain('size-below-floor');
 });
 
-// A capitalised head printed "Power,mW" as "POWER,MW": milliwatts read as megawatts.
-it('keeps the unit after a head comma as written', async () => {
-  const { fieldHeadText } = await import('../src/core/charts/table/headFace');
-  const theme = resolveTheme('boardroom');
-  expect(fieldHeadText('Power,mW', theme)).toBe('POWER,mW');
-  expect(fieldHeadText('EBITDA impact, $bn', theme)).toBe('EBITDA IMPACT, $bn');
-});
-
 // `table.inks.head` was documented, but no table-family head read it, on the SVG or in the React grid.
 it('paints every table-family column head in table.inks.head, on the SVG and in React', () => {
   const head = '#AA0000';
