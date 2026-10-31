@@ -231,7 +231,7 @@ A KPI table: measures by one hierarchical dimension by period, switchable betwee
 | facts | array | yes | Additive sums per member and period, one entry each. |
 | facts[].memberId | string | yes | Stable id or display label. |
 | facts[].periodId | string | yes | Stable id or display label. |
-| facts[].sums | object | yes | Sums by field: an absent field drops its measures, null is missing, 0 is data. Absent means absent from every fact of the member. |
+| facts[].sums | object | yes | Sums by field: an absent field drops its measures, null is missing, 0 is data. A field absent or null in every fact of a member does not apply to it, null in some facts is missing, and a host that means zero sends 0. With dimension.sums true, a member owes a field it reports in any period in every period, and a gap makes the parent sum missing. |
 | facts[].ref | object |  | Sums of the period before (partial: the same days one period earlier). Only displayed periods take ref; Range compares with prior and optional plan. |
 
 ## Options
@@ -459,7 +459,7 @@ GROUP BY w.period_id, r.member_id;
 
 Map each result row to one fact: `{ "memberId": member_id, "periodId": period_id, "sums": { "orders": orders, "nc": nc, "spend": spend }, "ref": { "orders": ref_orders, "nc": ref_nc, "spend": ref_spend } }`. A SQL `SUM` over no rows gives NULL. Change that NULL to 0 for a field that applies to the member, and remove the key for a field that does not apply. The [React usage](#react-usage) example does this mapping.
 
-A measure applies to a member when every local field that its `value` reads has a number in at least one fact of that member. Otherwise Boardplot leaves the row of that measure out for that member. If the Total lacks a field, the measure is left out everywhere. The three states of a field mean different things:
+A measure applies to a member when every local field that its `value` reads has a number in at least one fact of that member. Otherwise Boardplot leaves the row of that measure out for that member. If the Total lacks a field, the measure is left out everywhere, with the warning `dimswitch-measure-omitted` and an entry in `reading.omissions`. With `dimension.sums: true` the Total has a field when at least one member has a number for it. The three states of a field mean different things:
 
 - Absent or `null` in every fact of the member: the measure does not apply. Use this for a structural absence, such as spend for Email. A SQL export that gives `null` works as it is.
 - `null` in some facts only: the measure applies, and those values are missing. Their cells print the missing glyph (—).
@@ -467,7 +467,7 @@ A measure applies to a member when every local field that its `value` reads has 
 
 To keep a row when the selected windows hold only `null` for a field, declare the field on the member: `{ "id": "email", "label": "Email", "fields": ["spend"] }` (and `dimension.total.fields` for the Total). The row then stays and prints the missing glyph. A statement line never leaves by applicability: see [Statements](#statements-subtotals-results-and-drivers). Decide applicability on the whole source data, not on the selected range, so rows do not appear and disappear when the reader changes the range. Source tables often fill spend with 0 for channels that never have spend. Remove that field or set it to `null` for those members; a 0 draws Marketing spend 0 and CAC 0.0 rows.
 
-By default Boardplot uses the sums that you supply for every member and for the Total. Members do not have to add up to their parent: a channel list can leave out small channels, and members can overlap. Set `dimension.sums: true` only for a true partition. Boardplot then derives the sums of each parent, and of the Total, from its children, so supply no fact for the Total or for a parent member; for both `sums` and `ref`, and records the difference to any supplied parent sum as a reconciliation record. A field present on only some children adds up over those children. A `null` child value makes the parent value `null`.
+By default Boardplot uses the sums that you supply for every member and for the Total. Members do not have to add up to their parent: a channel list can leave out small channels, and members can overlap. Set `dimension.sums: true` only for a true partition. Boardplot then derives the sums of each parent, and of the Total, from its children, so supply no fact for the Total or for a parent member; for both `sums` and `ref`, and records the difference to any supplied parent sum as a reconciliation record. A field that a child reports in no fact adds up over the other children. A child that reports a field in any period owes it in every period: a `null` value, a missing field or a missing fact makes the parent value `null`, and the Total prints the missing glyph. A missing fact or field also gives the warning `dimswitch-fact-missing`, which names the member and the periods. Send `null` for an unknown value and `0` for none.
 
 ## Measures: values, formats, changes and judgement
 
