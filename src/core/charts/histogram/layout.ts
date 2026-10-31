@@ -553,19 +553,21 @@ export function layoutHistogram(
    * a wide bin (by a tail callout, say) keeps its seating, and so does a
    * chart with at most twelve filled bins: its few counts and callouts are
    * the exhibit (a far outlier), and its empty bins already print nothing. An authored
-   * labelDensity 'full' keeps every count on its seat or leader; a hidden
+   * labelDensity 'full' keeps every count on its seat or leader. A count the
+   * density gate drops on purpose ('minimal') has not lost a seat. A hidden
    * axis keeps them too, since nothing else would carry the scale.
    */
   const NATURAL_SEATS: ReadonlySet<string> = new Set(['outsideTop', 'outsideBottom', 'insideEnd']);
   const bars = column.marks.bars;
   const binStep = bars.length > 1 ? Math.abs(bars[1]!.rect.x - bars[0]!.rect.x) : Infinity;
   const countsDisplaced = options.labels !== false && options.labels?.point !== false && options.labelDensity !== 'full'
-    && options.valueAxis?.show !== false && filled > POINT_LABEL_MAX_BINS && column.labels.some((label) => label.kind === 'point' && label.hidden !== 'redundant'
+    && options.valueAxis?.show !== false && filled > POINT_LABEL_MAX_BINS && column.labels.some((label) => label.kind === 'point' && label.hidden !== 'redundant' && label.hidden !== 'density'
       && counts[Number(label.owner.categoryId?.slice(3))]! > 0 && label.rect.w + SERIES_VALUE_GAP > binStep
       && (label.hidden !== undefined || label.leader !== undefined || !NATURAL_SEATS.has(label.slot)));
   if (countsDisplaced) {
     delegateData = countData(true);
-    columnOptions = delegateOptions(true);
+    // One count is left: no density gate may drop it.
+    columnOptions = { ...delegateOptions(true), labelDensity: 'full' };
     column = layoutColumn(delegateData, columnOptions, true);
     warnings.push({
       code: 'histogram-counts-peak-only',
