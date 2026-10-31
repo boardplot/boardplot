@@ -5,4 +5,4 @@
 
 ### Changed
 
-- The narrowest width a table with a strong row-label column accepts rises by the extra width of the bold labels. The `benchmark-competitors` fixture needs 314 px instead of 310 px; at 311 to 313 px it was drawn with the bold labels running 4 px into the cell air, and it now refuses with `size-below-floor`. Wider frames are unaffected.
+- The narrowest width a table with a strong row-label column accepts rises by the extra width of the bold labels. The `benchmark-competitors` fixture needs 314 px instead of 310 px; at 310 to 313 px it was drawn with the bold labels running 4 px into the cell air, and it now refuses with `size-below-floor`. This holds at the fixture's own height of 405 px and at 420 px. Wider frames are unaffected. Among the table fixtures, only this one changes its narrowest width.
