@@ -451,6 +451,13 @@ export interface Theme {
      * stage).
      */
     funnelFill?: 'status' | 'ramp';
+    /**
+     * How a status chart fills its good and neutral cells. Absent means
+     * 'quiet': both draw washed toward the page, the good tone more than the
+     * neutral, so off-track and at-risk cells carry the colour. 'full' fills
+     * them with color.goodFill and color.neutralMark as they are.
+     */
+    statusFill?: 'quiet' | 'full';
   };
   /** Label conventions; absent keeps the shipped placement. */
   labels?: {

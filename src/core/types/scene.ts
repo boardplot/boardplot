@@ -110,6 +110,15 @@ export type ThemePaintSource =
   | { kind: 'bullet-band'; poor: Paint; good: Paint; count: number; index: number; light?: true }
   /** A plain waterfall segment colour, tinted in the active theme where it reads too close to the total (segmentApartPaints). */
   | { kind: 'segment-apart'; plain: Paint[]; others: Paint[]; index: number }
+  /**
+   * A status cell in the good or the neutral tone: `base` washed toward the
+   * page (good further than neutral), so on-track and not-started cells
+   * recede behind the problems. The wash steps back toward `base` until the
+   * cell sits further from the page than the cell with no status (`empty`)
+   * and a ramp class step from it and from every `apartFrom` paint, decided
+   * again in every theme the scene is painted in (statusTonePaint).
+   */
+  | { kind: 'status-tone'; role: 'good' | 'neutral'; base: Paint; empty: Paint; apartFrom?: Paint[]; /** Hatch grounds of the same tone (a forecast twin): the wash stops a step further from the page than they sit, so an actual reads stronger than its forecast. */ under?: Paint[] }
   /** The third or later story line of a highlighted bump chart: index `index` of `count` story colours (bumpStoryPaints). */
   | { kind: 'bump-story'; index: number; count: number }
   | { kind: 'colorblind'; role: 'good' | 'bad' | 'goodFill' | 'badFill' }

@@ -276,9 +276,42 @@ function layoutTableLadder(authoredData: TableData, options: TableOptions, resol
   return withWidthRepair(compactTable(authoredData, options, full, margin, Math.min(pad, 3), 2, resolved, sizingOnly, formatFits));
 }
 
+/** A layout of the wider frame that a table-overflow patch names; it adds no patch of its own. */
+const WIDTH_REPAIR_PROBE = Symbol('tableWidthRepairProbe');
+
+/**
+ * The table-overflow patch widens the frame and keeps the authored height, but the wider frame draws the rows
+ * at their regular spacing and can need more height than that. Measure lays the wider frame out and names the
+ * height it needs. A layout that only draws would pay a second layout for every such table, so it reports the
+ * warning with no patch and sends the caller to measure. A table without a fixed height keeps its width patch.
+ */
+function widthRepairHeight(data: TableData, options: TableOptions, geometry: Geometry<TableMarks, TableDerived>): Geometry<TableMarks, TableDerived> {
+  if ((options as { [WIDTH_REPAIR_PROBE]?: boolean })[WIDTH_REPAIR_PROBE] || (options as LayoutOptions)[SIZING_ONLY]) return geometry;
+  const warning = geometry.warnings.find(w => w.code === 'table-overflow' && w.fix?.length);
+  const patch = warning?.fix?.[0];
+  const size = patch && 'value' in patch ? patch.value as { width: number; height?: number } : undefined;
+  if (!warning || !size || size.height === undefined) return geometry;
+  if (!(options as { [VERIFY_ADVICE]?: boolean })[VERIFY_ADVICE]) {
+    geometry.warnings = geometry.warnings.map(w => {
+      if (w !== warning) return w;
+      const { fix: _unverified, ...rest } = w;
+      return { ...rest, suggest: `${w.suggest ?? ''} Call measure for a size that keeps the height and draws.`.trim() };
+    });
+    return geometry;
+  }
+  const wider = layoutTableCard(data, { ...options, size, [WIDTH_REPAIR_PROBE]: true } as TableOptions);
+  const needed = wider.refused || !wider.sizing ? undefined : Math.ceil(wider.sizing.minHeight);
+  if (needed !== undefined && needed > size.height) {
+    geometry.warnings = geometry.warnings.map(w => w === warning
+      ? { ...w, fix: [{ op: 'add', path: '/options/size', value: { width: size.width, height: needed } }] } : w);
+  }
+  return geometry;
+}
+
 /** The registered table layout: the ladder above, then the height floor at card widths. */
 export function layoutTableCard(data: TableData, options: TableOptions = {}): Geometry<TableMarks, TableDerived> {
-  return memoLayout(data, options, () => cardHeightFloor(layoutTableCard, data, options, classFloor(layoutTable, data, options, layoutTable(data, options))));
+  return memoLayout(data, options, () => widthRepairHeight(data, options,
+    cardHeightFloor(layoutTableCard, data, options, classFloor(layoutTable, data, options, layoutTable(data, options)))));
 }
 
 const layouts = new WeakMap<object, Map<string, unknown>>();
