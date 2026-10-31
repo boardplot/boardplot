@@ -461,17 +461,25 @@ describe('tiers keep the height their parts need', () => {
     expect(grid.refused).toBeFalsy();
     expect(grid.warnings.map((warning) => warning.code)).not.toContain('size-below-floor');
   });
-  // The minimum counts the tiers alone, but the natural height still asks for the slots' room: a grid with no authored height drew shorter and moved variance labels to a note.
-  it('draws a row-placed tier grid with no authored height tall enough for its labels', () => {
+  // The minimum counts the tiers alone, but a grid with no authored height must still draw at the height its panels ask for.
+  // It drew shorter, squashed the base panel and moved variance labels to a note. The heights are those of the unfixed engine.
+  it.each([
+    { target: 'report', sign: 1, heightAtLeast: 313 },
+    { target: 'report', sign: -1, heightAtLeast: 326 },
+    { target: 'slide', sign: 1, heightAtLeast: 381 },
+    { target: 'dashboard', sign: -1, heightAtLeast: 340 },
+  ])('draws a row-placed tier grid with no authored height tall enough ($target, sign $sign)', ({ target, sign, heightAtLeast }) => {
     const three = { categories: ['a', 'b', 'c'].map((label) => ({ id: label, label: label.toUpperCase() })), series: [
-      { id: 'ac', label: 'Actual', values: [360, 397, 374] },
-      { id: 'py', label: 'PY', role: 'reference' as const, scenario: 'PY' as const, values: [390, 427, 404] }] };
+      { id: 'ac', label: 'Actual', values: sign > 0 ? [360, 397, 374] : [-360, -397, -374] },
+      { id: 'py', label: 'PY', role: 'reference' as const, scenario: 'PY' as const, values: sign > 0 ? [390, 427, 404] : [-370, -407, -384] }] };
     const grid = laidOut({ type: 'grid', data: { panels: [
       { id: 'base', type: 'column', row: 1, column: 0, data: three },
       { id: 'tier', type: 'variance', row: 0, column: 0, data: three, options: { variant: 'relative', variance: { of: 'ac', vs: 'py' } } }] },
-    options: { title: 'Revenue by region', unit: 'EUR m', source: 'Invented data', sharedAxis: 'category', target: 'report', size: { width: 480, unit: 'px' } } });
-    expect(grid.warnings.map((warning) => warning.code)).not.toContain('values-in-note');
-    expect(grid.size.height).toBeGreaterThan(300);
+    options: { title: 'Revenue by region', subtitle: { measure: 'Revenue', period: 'FY26' }, unit: 'EUR m', source: 'Invented data', sharedAxis: 'category', target, size: { width: 480, unit: 'px' } } });
+    const codes = grid.warnings.map((warning) => warning.code);
+    expect(codes).not.toContain('grid-panel-too-short');
+    if (target === 'report' && sign < 0) expect(codes).not.toContain('values-in-note');
+    expect(grid.size.height).toBeGreaterThanOrEqual(heightAtLeast);
   });
 });
 

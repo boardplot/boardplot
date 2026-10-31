@@ -70,6 +70,9 @@ export function partNeedOf(frame: FrameGeometry | undefined): number {
   return (frame && partNeeds.get(frame)) ?? 0;
 }
 
+/** A grid whose natural height is what its tiers ask for in their slots: an automatic height grows to it until the tiers fit. */
+export const slotDemandHeight = new WeakSet<FrameGeometry>();
+
 /** Keep the static footer plan, the freed room and the part need when layout copies its frame. */
 export function copyFrame(frame: FrameGeometry, patch?: Partial<FrameGeometry>): FrameGeometry {
   const copy = { ...frame, ...patch };
@@ -81,6 +84,7 @@ export function copyFrame(frame: FrameGeometry, patch?: Partial<FrameGeometry>):
   if (need) partNeeds.set(copy, need);
   const extra = liveFooterExtra.get(frame);
   if (extra) liveFooterExtra.set(copy, extra);
+  if (slotDemandHeight.has(frame)) slotDemandHeight.add(copy);
   return copy;
 }
 
