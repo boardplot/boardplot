@@ -39,7 +39,7 @@ const seriesSchema = z.strictObject({
   role: z.enum(['data', 'reference']).optional().describe("Data series or comparison-only reference series; references are excluded from the main plotted data."),
   colorRole: colorRoleField("Theme color role of the integrated actual columns and their key when this series is the actual and sets no fill; no effect in the other modes or on a reference series."),
   fill: z.string().optional().describe("CSS fill of the integrated actual columns and their key when this series is the actual; a cell fill wins. No effect in the other modes or on a reference series."),
-  unit: z.string().optional().describe("Unit of this series' values, read only by the grid shared-scale check; variance prints options.unit, not this."),
+  unit: z.string().optional().describe("Unit of this series' values, read by the grid shared-scale check and the hover card; the drawn labels print options.unit."),
   format: formatExample.optional().describe("Format-by-example for this series values, for example 1,234 or 1.2%."),
 });
 
