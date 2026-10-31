@@ -119,7 +119,7 @@ const nodeSchema = z
       'foundation',
       'milestone',
       'callout',
-    ]).describe('Semantic node kind used by the selected variant.'),
+    ]).describe("Semantic node kind. Each variant reads: hierarchy 'entity'; issue-tree 'issue' or 'driver'; linear-process and circular-process 'step'; customer-journey 'painPoint'; roadmap 'milestone'. Another kind is refused with invalid-diagram-kind. strategy-house does not check the kind."),
     shape: shapeSchema.describe('Node outline or icon-only shape.'),
     label: textSchema(200).describe('Primary visible node label, at most 200 Unicode code points.'),
     secondaryLabel: textSchema(400, true).describe('Secondary line inside the node, at most 400 Unicode code points.'),
@@ -318,7 +318,7 @@ const diagramPresetOptions = z.discriminatedUnion('variant', [
   z.strictObject({ variant: z.literal('issue-tree').describe('Select the issue-tree diagram layout.') }),
   z.strictObject({ variant: z.literal('linear-process').describe('Select the linear-process diagram layout.') }),
   z.strictObject({
-    variant: z.literal('customer-journey').describe('Select the customer-journey diagram layout.'),
+    variant: z.literal('customer-journey').describe('Select the customer-journey diagram layout: a pain-point board with pain points in phase lanes, no touchpoints and no emotion curve.'),
     flow: z.enum(['columns', 'serpentine']).optional().describe('Customer-journey flow; accepted only with variant customer-journey.'),
   }),
   z.strictObject({ variant: z.literal('circular-process').describe('Select the circular-process diagram layout.') }),
