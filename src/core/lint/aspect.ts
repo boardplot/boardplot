@@ -39,7 +39,7 @@ function legalSteps(cls: AspectClass): { name: LadderStepName; ratio: number }[]
   return ASPECT_LADDER.filter((s) => (cls === 'strip' ? true : s.ratio <= ASPECT_CAPS.flatNonStrip));
 }
 
-/** Smallest legal ladder height ≥ `minHeight` at this width, or null. */
+/** Smallest legal ladder height ≥ `minHeight` at this width, or null. It words the plot-under-min message. */
 function nextStepUp(
   width: number,
   minHeight: number,
@@ -51,6 +51,12 @@ function nextStepUp(
   }
   return null;
 }
+
+/**
+ * Names the first height of an ordered list that draws with no size warning, or none. Only `measure` has
+ * one: a drawing is what verifies a height, and the render path draws nothing extra.
+ */
+export type HeightVerifier = (width: number, heights: readonly number[]) => number | undefined;
 
 /**
  * The aspect lints for one top-level chart. Severities come from the
@@ -68,6 +74,7 @@ export function aspectDocLints(
   type: string,
   options: Record<string, unknown> | undefined,
   geo: { size: Size; plot: Rect; marks?: unknown; sizing?: { fit?: 'fill' | 'content'; minHeight?: number } },
+  verify?: HeightVerifier,
 ): LintWarning[] {
   const cls = aspectClassFor(type, options, geo.marks);
   if (!cls) return []; // unregistered type — nothing to judge against
@@ -93,6 +100,17 @@ export function aspectDocLints(
   const flatMinHeight = Math.round(width / flatCapRatio);
   const tallMaxHeight = Math.round(width / ASPECT_CAPS.tall);
   const minHeight = geo.sizing?.minHeight ?? 0;
+  // A size patch names a height that was drawn. Without a verifier the warning carries none and its suggest says how to get one.
+  const unverified = 'Call measure for a verified size, widen the chart, or leave the height out.';
+  const steps = legalSteps(cls).map((step) => Math.round(width / step.ratio));
+  // The ladder heights that satisfy `keeps`, nearest to the current height first. They sit inside both caps.
+  const candidates = (keeps: (h: number) => boolean): number[] => [...new Set(steps)]
+    .filter((h) => h !== height && h >= minHeight && keeps(h))
+    .sort((a, b) => Math.abs(a - height) - Math.abs(b - height) || a - b);
+  const patch = (keeps: (h: number) => boolean) => {
+    const verified = verify?.(width, candidates(keeps));
+    return verified === undefined ? undefined : { height: verified, fix: [{ op: 'replace' as const, path: '/options/size', value: { width, height: verified } }] };
+  };
   // Content can raise an automatic height above every ladder step. Neither
   // aspect lint should ask the caller to undo that required height.
   const automaticTall = height > tallMaxHeight && heightOmitted(options?.size);
@@ -101,23 +119,24 @@ export function aspectDocLints(
   // not judge it. Types that stretch their marks to the canvas keep
   // it. The message names the cap its height comes from.
   if (type !== 'table' && height < flatMinHeight * (1 - LADDER_TOLERANCE)) {
+    const raised = patch((h) => h >= flatMinHeight * (1 - LADDER_TOLERANCE));
     warnings.push({
       code: 'aspect-cap',
       severity: 'warn',
       message: `'${type}' canvas ${canvas} is ${ratio.toFixed(2)}:1, flatter than the ${flatCapRatio.toFixed(2)}:1 limit this type allows. At width ${width} the height has to be at least ${flatMinHeight}px.`,
-      suggest: `Raise the height to ${flatMinHeight}px.`,
+      suggest: raised ? `Raise the height to ${raised.height}px.` : unverified,
       field: ['options', 'size'],
-      fix: [{ op: 'replace', path: '/options/size', value: { width, height: flatMinHeight } }],
+      ...(raised ? { fix: raised.fix } : {}),
     });
   } else if (!rowDriven && !automaticTall && height > tallMaxHeight * (1 + LADDER_TOLERANCE)) {
-    const canLower = tallMaxHeight >= minHeight;
+    const lowered = patch((h) => h <= tallMaxHeight * (1 + LADDER_TOLERANCE));
     warnings.push({
       code: 'aspect-cap',
       severity: 'warn',
       message: `'${type}' canvas ${canvas} is ${ratio.toFixed(2)}:1, taller than the ${ASPECT_CAPS.tall.toFixed(2)}:1 limit. Only charts whose height comes from their row count go above it. At width ${width} the height has to be at most ${tallMaxHeight}px.`,
-      suggest: canLower ? `Lower the height to ${tallMaxHeight}px.` : 'Shorten the chart content or use a wider canvas.',
+      suggest: lowered ? `Lower the height to ${lowered.height}px.` : unverified,
       field: ['options', 'size'],
-      ...(canLower ? { fix: [{ op: 'replace' as const, path: '/options/size', value: { width, height: tallMaxHeight } }] } : {}),
+      ...(lowered ? { fix: lowered.fix } : {}),
     });
   }
 
@@ -133,14 +152,14 @@ export function aspectDocLints(
         message: `'${type}' canvas ${canvas} is off the standard height steps. ${fixedRows ? 'The theme fixes the row pitch, and the authored height only adds space under the rows' : type === 'table' ? 'A table takes its height from its rows, and the authored height only adds space under them' : 'This type takes its natural height from its rows, and the authored height stretches them to fill the canvas'}, so this is an observation only. The nearest step is ${nearest.name} at ${width}x${nearest.height}.`,
       });
     } else {
-      const canSnap = nearest.height >= minHeight;
+      const snapped = patch(() => true);
       warnings.push({
         code: 'height-off-ladder',
         severity: 'warn',
         message: `'${type}' canvas ${canvas} is off the standard height steps for width ${width}. The nearest step is ${nearest.name} at ${width}x${nearest.height}.`,
-        suggest: canSnap ? `Use height ${nearest.height}px at width ${width}.` : 'Shorten the chart content or use a wider canvas.',
+        suggest: snapped ? `Use height ${snapped.height}px at width ${width}.` : unverified,
         field: ['options', 'size'],
-        ...(canSnap ? { fix: [{ op: 'replace' as const, path: '/options/size', value: { width, height: nearest.height } }] } : {}),
+        ...(snapped ? { fix: snapped.fix } : {}),
       });
     }
   }
@@ -159,23 +178,25 @@ export function aspectDocLints(
     const remedy = roomy
       ? `Raise the height to ${step.height}px, or present the figures as a table.`
       : 'Present the figures as a table.';
+    const raised = roomy ? patch((h) => h >= height + deficit) : undefined;
     warnings.push({
       code: 'plot-under-min',
       severity: 'warn',
       message: `'${type}' leaves only ${plotW}x${plotH}px for the plot itself, under the ${PLOT_MIN.cartesianW}x${PLOT_MIN.cartesianH}px floor. ${remedy}`,
-      suggest: remedy,
+      suggest: raised ? `Raise the height to ${raised.height}px, or present the figures as a table.` : roomy ? unverified : remedy,
       field: ['options', 'size'],
-      ...(roomy ? { fix: [{ op: 'replace', path: '/options/size', value: { width, height: step!.height } }] } : {}),
+      ...(raised ? { fix: raised.fix } : {}),
     });
   } else if (cls === 'card' && plotH < PLOT_MIN.cardH) {
     const step = nextStepUp(width, height + (PLOT_MIN.cardH - plotH), cls);
+    const raised = step ? patch((h) => h >= height + (PLOT_MIN.cardH - plotH)) : undefined;
     warnings.push({
       code: 'plot-under-min',
       severity: 'warn',
       message: `'${type}' card plot is ${plotH}px high, under the ${PLOT_MIN.cardH}px floor. ${step ? `Raise the height to ${step.height}px, or present the figures as a table.` : 'Present the figures as a table.'}`,
-      suggest: step ? `Raise the height to ${step.height}px.` : 'Present the figures as a table.',
+      suggest: raised ? `Raise the height to ${raised.height}px.` : step ? unverified : 'Present the figures as a table.',
       field: ['options', 'size'],
-      ...(step ? { fix: [{ op: 'replace', path: '/options/size', value: { width, height: step.height } }] } : {}),
+      ...(raised ? { fix: raised.fix } : {}),
     });
   }
 

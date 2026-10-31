@@ -5,6 +5,8 @@ import { getFixtures } from '../src/fixtures';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { requireGeometry } from '../src/core/sizing';
 import { runDocLints } from '../src/core/lint';
+import { paintColor, resolveTheme } from '../src/core/theme';
+import { normalizeGridData } from '../src/core/charts/grid/normalize';
 
 // A dense key must leave the plot its furniture budget while keeping every series identifiable.
 it('fits 25 long series names inside the furniture budget', () => {
@@ -101,4 +103,170 @@ it('keys a grid of two-series panels with no legend set, and leaves single-serie
     .scene.flatMap(node => node.t === 'text' && node.part === 'legendLabel' ? node.lines : []);
   expect(keyOf([panel('North', [['Sales', [4, 5]], ['Target', [5, 5]]]), panel('South', [['Sales', [3, 4]], ['Target', [4, 4]]])])).toEqual(['Sales', 'Target']);
   expect(keyOf([panel('North', [['Sales', [4, 5]]]), panel('South', [['Returns', [3, 4]]])])).toEqual([]);
+});
+
+// A written-out grid coloured a series by its place in each panel, so Online was blue in one panel and navy in the next.
+it('colours a series alike in every panel of a written-out grid', () => {
+  const cats = ['a', 'b'].map(id => ({ id }));
+  const panel = (id: string, column: number, series: Array<[string, number]>) => ({
+    id, type: 'column', row: 0, column, options: { variant: 'stacked' },
+    data: { categories: cats, series: series.map(([sid, v]) => ({ id: sid, label: sid, values: [v, v + 1] })) },
+  });
+  const geo = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'grid',
+    data: { panels: [panel('p1', 0, [['retail', 3], ['online', 2], ['wholesale', 1]]), panel('p2', 1, [['online', 2], ['wholesale', 1]])] },
+    options: { columns: 2, legend: 'top' },
+  })));
+  const fills = new Map<string, Set<string>>();
+  for (const node of geo.scene) {
+    if (node.t !== 'rect' || node.part !== 'segment' || !node.owner?.seriesId) continue;
+    fills.set(node.owner.seriesId, (fills.get(node.owner.seriesId) ?? new Set()).add(JSON.stringify(node.fill)));
+  }
+  expect([...fills.keys()].sort()).toEqual(['online', 'retail', 'wholesale']);
+  for (const [id, set] of fills) expect(set.size, id).toBe(1);
+});
+
+// A colorRole on every series would override the authored highlight, so a panel that sets one keeps its series as written.
+it('keeps the authored highlight of slope panels in a written-out grid', () => {
+  const panel = (id: string, column: number, ids: string[]) => ({
+    id, type: 'slope', row: 0, column, options: { highlight: 'acme' },
+    data: {
+      categories: [{ id: 'y1', label: '2020' }, { id: 'y2', label: '2025' }],
+      series: ids.map((sid, i) => ({ id: sid, label: sid, values: [10 + i, 20 - i] })),
+    },
+  });
+  const data = { panels: [panel('n', 0, ['acme', 'beta', 'gamma']), panel('s', 1, ['beta', 'acme', 'gamma'])] };
+  for (const p of normalizeGridData(data).panels) {
+    expect((p.data as { series: Array<{ colorRole?: string }> }).series.some((s) => s.colorRole !== undefined)).toBe(false);
+  }
+});
+
+// A colour role is an absolute step of the theme's series colours, so on a panel that sets a palette it would silently replace that palette.
+it('keeps the palette of panels in a written-out grid', () => {
+  const panel = (id: string, column: number, ids: string[], options: object) => ({
+    id, type: 'column', row: 0, column, options,
+    data: { categories: [{ id: 'a' }], series: ids.map((sid) => ({ id: sid, label: sid, values: [1] })) },
+  });
+  const roles = (grid: ReturnType<typeof normalizeGridData>) => grid.panels.flatMap((p) =>
+    (p.data as { series: Array<{ colorRole?: string }> }).series.map((s) => s.colorRole));
+  const own = { panels: [panel('p1', 0, ['retail', 'online'], { palette: 'cool' }), panel('p2', 1, ['online'], { palette: 'cool' })] };
+  const inherited = { panels: [panel('p1', 0, ['retail', 'online'], {}), panel('p2', 1, ['online'], {})] };
+  expect(roles(normalizeGridData(own)).every((role) => role === undefined)).toBe(true);
+  expect(roles(normalizeGridData(inherited, { palette: 'cool' })).every((role) => role === undefined)).toBe(true);
+});
+
+// A colour role is checked before seriesRamp in the column paints, so locking a ramp panel replaced its ordered ramp with categorical colours.
+it('keeps the series ramp of panels in a written-out grid', () => {
+  const panel = (id: string, column: number, ids: string[]) => ({
+    id, type: 'column', row: 0, column, options: { variant: 'stacked', seriesRamp: true },
+    data: { categories: [{ id: 'a' }], series: ids.map((sid) => ({ id: sid, label: sid, values: [1] })) },
+  });
+  const grid = normalizeGridData({ panels: [panel('p1', 0, ['a', 'b', 'c']), panel('p2', 1, ['b', 'c'])] });
+  for (const p of grid.panels) {
+    expect((p.data as { series: Array<{ colorRole?: string }> }).series.some((s) => s.colorRole !== undefined)).toBe(false);
+  }
+});
+
+// Panels whose shared ids already sit at the same positions drew alike, so locking them would recolour the extra series for nothing.
+it('leaves a written-out grid alone when shared series sit at the same positions', () => {
+  const panel = (id: string, column: number, ids: string[]) => ({
+    id, type: 'column', row: 0, column, options: { variant: 'stacked' },
+    data: { categories: [{ id: 'a' }], series: ids.map((sid) => ({ id: sid, label: sid, values: [1] })) },
+  });
+  const data = { panels: [panel('p1', 0, ['a', 'b', 'c']), panel('p2', 1, ['a', 'b'])] };
+  const grid = normalizeGridData(data);
+  expect(grid.panels.every((p) => (p.data as { series: Array<{ colorRole?: string }> }).series.every((s) => s.colorRole === undefined))).toBe(true);
+});
+
+// A series-level highlight role makes the other series the muted context, which a colour role on each of them would turn into peers.
+it('keeps the series-level highlight of slope panels in a written-out grid', () => {
+  const panel = (id: string, column: number, ids: string[]) => ({
+    id, type: 'slope', row: 0, column,
+    data: {
+      categories: [{ id: 'y1', label: '2020' }, { id: 'y2', label: '2025' }],
+      series: ids.map((sid, i) => ({ id: sid, label: sid, values: [10 + i, 20 - i], ...(sid === 'acme' ? { colorRole: 'highlight' } : {}) })),
+    },
+  });
+  const data = { panels: [panel('n', 0, ['acme', 'beta', 'gamma']), panel('s', 1, ['beta', 'acme', 'gamma'])] };
+  for (const p of normalizeGridData(data).panels) {
+    const context = (p.data as { series: Array<{ id: string; colorRole?: string }> }).series.filter((s) => s.id !== 'acme');
+    expect(context.every((s) => s.colorRole === undefined)).toBe(true);
+  }
+});
+
+// A locked role cannot step aside from an authored fill that equals a theme colour, so two series of one panel drew in one colour.
+it('keeps the series of a panel apart when one has an authored fill', () => {
+  const grid = (fill?: string) => resolveChartRequest({ type: 'grid', options: { columns: 2 }, data: { panels: [
+    { id: 'p1', type: 'column', row: 0, column: 0, options: { variant: 'grouped' },
+      data: { categories: [{ id: 'x' }], series: [{ id: 'a', label: 'A', values: [1], ...(fill ? { fill } : {}) }, { id: 'b', label: 'B', values: [2] }] } },
+    { id: 'p2', type: 'column', row: 0, column: 1, options: { variant: 'grouped' },
+      data: { categories: [{ id: 'x' }], series: [{ id: 'b', label: 'B', values: [2] }, { id: 'c', label: 'C', values: [3] }] } },
+  ] } });
+  const request = grid(grid().theme.color.series[1]);
+  const colours = new Map<string, string>();
+  for (const node of requireGeometry(layoutResolvedRequest(request)).scene) {
+    if (node.t === 'rect' && node.part === 'bar' && node.owner?.seriesId && node.fill && node.id.startsWith('p1/')) {
+      colours.set(node.owner.seriesId, paintColor(request.theme, node.fill));
+    }
+  }
+  expect([...colours.keys()].sort()).toEqual(['a', 'b']);
+  expect(new Set(colours.values()).size).toBe(2);
+});
+
+// The lock builds ordinary objects, which would read an inherited property of Object.prototype in the layout.
+it('returns null-prototype panels after locking a written-out grid', () => {
+  const panel = (id: string, column: number, ids: string[]) => ({
+    id, type: 'column', row: 0, column,
+    data: { categories: [{ id: 'a' }], series: ids.map((sid) => ({ id: sid, label: sid, values: [1] })) },
+  });
+  const [first] = normalizeGridData({ panels: [panel('p1', 0, ['retail', 'online']), panel('p2', 1, ['online'])] }).panels;
+  expect(Object.getPrototypeOf(first)).toBeNull();
+  expect(Object.getPrototypeOf(first!.data)).toBeNull();
+  expect(Object.getPrototypeOf((first!.data as { series: object[] }).series[0])).toBeNull();
+});
+
+// A role past the end of the theme's ramp repeats the last colour, so locking a grid with more series than colours drew several series of one panel alike.
+it('keeps the panel colours of a written-out grid with more series than the ramp has colours', () => {
+  const ids = Array.from({ length: 12 }, (_, i) => `s${i}`);
+  const panel = (id: string, column: number, list: string[]) => ({
+    id, type: 'column', row: 0, column, options: { variant: 'stacked' },
+    data: { categories: [{ id: 'a' }, { id: 'b' }], series: list.map((sid, k) => ({ id: sid, label: sid, values: [5 + k, 6 + k] })) },
+  });
+  const request = resolveChartRequest({ type: 'grid', options: { columns: 2 }, data: { panels: [panel('p1', 0, ids), panel('p2', 1, [...ids].reverse())] } });
+  const colours = new Set<string>();
+  for (const node of requireGeometry(layoutResolvedRequest(request)).scene) {
+    if (node.t === 'rect' && node.part === 'segment' && node.owner?.seriesId && node.fill && node.id.startsWith('p1/')) colours.add(paintColor(request.theme, node.fill));
+  }
+  expect(colours.size).toBe(12);
+});
+
+// A colour role outranks a theme's ink lead line, so locking combo panels in such a theme turned the ink line blue and dropped its latest-point markers.
+it('keeps the ink lead line of combo panels in a written-out grid under a theme that inks it', () => {
+  const categories = ['2019', '2020', '2021'].map(id => ({ id, label: id }));
+  const panel = (id: string, column: number, order: 'column-first' | 'line-first') => {
+    const bars = { id: 'revenue', label: 'Revenue', values: [3, 4, 5] };
+    const line = { id: 'units', label: 'Units', kind: 'line', axis: 'secondary', values: [2, 3, 5] };
+    return { id, type: 'combo', row: 0, column, options: { secondaryAxis: { acknowledge: true } },
+      data: { categories, series: order === 'column-first' ? [bars, line] : [line, bars] } };
+  };
+  const theme = { preset: 'boardroom', overrides: { marks: { comboLine: 'ink', lineMarkers: 'none' } } } as const;
+  const markers = (panels: object[]) => requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'grid',
+    data: { panels }, options: { columns: 2, theme } }))).scene.filter(node => node.part === 'marker').length;
+  const agree = markers([panel('p1', 0, 'column-first'), panel('p2', 1, 'column-first')]);
+  expect(agree).toBeGreaterThan(0);
+  expect(markers([panel('p1', 0, 'column-first'), panel('p2', 1, 'line-first')])).toBe(agree);
+});
+
+// A panel's own theme can have a shorter series ramp than the grid's, so a role capped by the grid's ramp repeated a colour in that panel.
+it('keeps the panel colours of a written-out grid when a panel theme has fewer series colours', () => {
+  const panel = (id: string, column: number, list: string[]) => ({
+    id, type: 'column', row: 0, column, options: { variant: 'stacked', theme: 'notation' },
+    data: { categories: [{ id: 'a' }], series: list.map((sid, k) => ({ id: sid, label: sid, values: [5 + k] })) },
+  });
+  const request = resolveChartRequest({ type: 'grid', options: { columns: 2 },
+    data: { panels: [panel('p1', 0, ['a', 'b', 'c', 'd', 'e']), panel('p2', 1, ['f', 'e'])] } });
+  const fills = new Set<string>();
+  for (const node of requireGeometry(layoutResolvedRequest(request)).scene) {
+    if (node.t === 'rect' && node.part === 'segment' && node.fill && node.id.startsWith('p2/')) fills.add(paintColor(resolveTheme('notation'), node.fill));
+  }
+  expect(fills.size).toBe(2);
 });

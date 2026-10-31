@@ -11,6 +11,7 @@ import { colorRolePaints, effectiveFill, markRolePaint, markRoleToken, mutedMark
 import { signColorOverrides, signPaint } from '../band/sign';
 import { partialPattern } from '../../partialPeriod';
 import type { Category } from '../../types/data';
+import type { Scenario } from '../../types/cell';
 import type { LintWarning, Paint } from '../../types/scene';
 import type { ColumnDomain, ColumnPaints, NormSer, NormVal } from './model';
 import { columnCorridorPaint } from './anomaly';
@@ -61,17 +62,44 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
   // Colour follows the series, not its sorted place, so sorting
   // the segments never recolours one. Slots are dealt in authored order.
   const authored = domain.seriesNorm.filter((s) => dataSeries.includes(s));
+  // Notation rule: a scenario series is a view of an actual, so it takes that actual's colour and
+  // its scenario draws the difference (PY a wash, FC a hatch, PL an outline). The k-th PY, PL or
+  // FC series pairs with the k-th actual (no scenario or AC), in authored order, so series order
+  // never changes the look. A series whose cells all carry one scenario counts as that scenario.
+  const roleOf = (s: NormSer): Scenario | undefined => {
+    if (s.scenario) return s.scenario;
+    const own = s.vals.filter((val) => val.v !== null).map((val) => val.scenario);
+    return own.length > 0 && own.every((sc) => sc === own[0]) ? own[0] : undefined;
+  };
+  // A stack keeps its stack colours: there only a plan pairs, as it always did, and keeps its step.
+  const stackLike = variant === 'stacked' || variant === 'stacked100';
+  const ownPaint = (x: NormSer): boolean => !!x.fill || !!x.colorRole || highlights.has(x.id);
+  const roleIn = (x: NormSer): Scenario | undefined => (stackLike ? x.scenario : roleOf(x));
+  const pairOrder = stackLike ? dataSeries : authored;
+  const actuals = pairOrder.filter((x) => { const role = roleIn(x); return role === undefined || role === 'AC'; });
+  const scenarioPartner = new Map<string, NormSer>();
+  for (const sc of stackLike ? (['PL'] as const) : (['PY', 'PL', 'FC'] as const)) {
+    pairOrder.filter((x) => roleIn(x) === sc).forEach((x, k) => {
+      const actual = actuals[k];
+      // A prior year draws its actual's colour as a wash, which needs the theme's series colour:
+      // beside an actual in an authored colour or role it keeps a washed step of its own.
+      if (actual && (sc !== 'PY' || !ownPaint(actual))) scenarioPartner.set(x.id, actual);
+    });
+  }
   const roles = colorRolePaints(authored);
   const ownPaints = authored.map((s): Paint | undefined =>
     s.fill ? { css: s.fill } : s.colorRole ? roles.get(s.id)! : highlights.has(s.id) ? { token: 'focus' } : undefined);
-  const authoredSlots = rampSlots(theme, ownPaints, palette, { labels: authored.map((s) => s.label), warnings });
+  // A paired scenario series of grouped columns takes no ramp step of its own. One with its own
+  // paint keeps it, so it stays in the deal and the plain series step past its colour.
+  const dealt = authored.filter((s) => stackLike || ownPaint(s) || !scenarioPartner.has(s.id));
+  const authoredSlots = rampSlots(theme, dealt.map((s) => ownPaints[authored.indexOf(s)]), palette, { labels: dealt.map((s) => s.label), warnings });
   // A plain series of a stack beside authored colours keeps apart from them in the active theme.
   const stackOwn = (variant === 'stacked' || variant === 'stacked100') && ownPaints.some(Boolean) ? ownPaints : undefined;
   // A Rest series (colorRole 'others') beside the ordered ramp is the quietest part (othersShade).
   const quietRest = !!options.seriesRamp && (options.othersShade ?? DEFAULT_OTHERS_SHADE) === 'quietest' &&
     authored.some((s) => s.colorRole === 'others' && !s.fill);
   if (quietRest) warnings.push(...othersShadeUnavailableWarnings(theme, { token: 'markInk' }));
-  const slotOf = new Map(authored.map((s, i) => [s.id, authoredSlots[i] ?? i]));
+  const slotOf = new Map(dealt.map((s, i) => [s.id, authoredSlots[i] ?? i]));
   const receding = recedingSeriesId(dataSeries, highlights);
   const slots = dataSeries.map((s, i) => slotOf.get(s.id) ?? i);
   // The plain series of a stack take the theme's stack ramp, dark to light in authored order.
@@ -80,15 +108,10 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
   const marked = authored.some((s) => s.colorRole !== undefined || highlights.has(s.id) || s.id === receding);
   const stackPlain = (variant === 'stacked' || variant === 'stacked100') && palette === undefined && !marked
     ? authored.filter((s) => !s.fill) : [];
-  // Notation rule: a plan series takes the colour of the actual series it is compared with:
-  // the k-th PL series pairs with the k-th AC series (no scenario or AC), in authored order.
-  const actuals = dataSeries.filter((x) => x.scenario === undefined || x.scenario === 'AC');
-  const plans = dataSeries.filter((x) => x.scenario === 'PL');
-  const planPartner = new Map(plans.flatMap((plan, k) => actuals[k] ? [[plan.id, actuals[k]!] as const] : []));
   const seriesIdentityPaint = (
     s: NormSer,
     dataIdx: number,
-    scenario = s.scenario,
+    scenario = roleOf(s),
   ): Paint => {
     if (s.fill) return { css: s.fill };
     if (s.colorRole) return roles.get(s.id) ?? markRolePaint(s.colorRole, true);
@@ -97,16 +120,18 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
     // Series whose order is the encoding take the ordered ramp, in authored order.
     if (options.seriesRamp) return orderedRampPaint(authored.length - 1 - authored.indexOf(s), authored.length, quietRest);
     if (s.id === receding) return mutedMarkPaint();
-    const partner = planPartner.get(s.id);
+    const partner = scenarioPartner.get(s.id);
     if (partner) return seriesIdentityPaint(partner, dataSeries.indexOf(partner), scenario);
     const slot = slots[dataIdx] ?? dataIdx;
     if (dataSeries.length === 1) return themeSeriesPaint(slot, palette, scenario, true);
     if (stackPlain.length > 1 && stackPlain.includes(s)) return stackRampPaint(stackPlain.indexOf(s), stackPlain.length, slot);
     if (stackOwn && authored.includes(s)) return stackApartPaint(stackOwn, authored.indexOf(s), slot, palette);
-    // A forecast cell of several series grounds its hatch in its own
-    // series tint (segmentHatchGround), so it keeps its key colour; the FC
-    // visibility lift in scenarioSeriesColor is for a hatch with no ground.
-    return themeSeriesPaint(slot, palette);
+    if (stackLike) return themeSeriesPaint(slot, palette);
+    // A prior year draws its colour at the scenario wash, apart from the actual it shares it with.
+    if (scenario === 'PY') return themeSeriesPaint(slot, palette, 'PY', true, false, true);
+    // A forecast keeps its key colour where its hatch reads on the page; scenarioSeriesColor lifts
+    // only a colour whose hatch would fade into the page (an actual near a dark page's floor).
+    return scenario === 'FC' ? themeSeriesPaint(slot, palette, 'FC', true, false, true) : themeSeriesPaint(slot, palette);
   };
   /**
    * The bar rule: a category highlight on one series makes the named

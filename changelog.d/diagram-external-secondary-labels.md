@@ -1,0 +1,3 @@
+### Fixed
+
+- A roadmap milestone and a cycle step with a `secondaryLabel` now draw the secondary text under the name outside the node. Before, the text had no seat inside the small node and moved to an off-page note, so a roadmap with a date on each milestone showed none of them. Every name keeps the seat it has without secondary text, and its block grows to take the secondary lines on the first seat that is free. Where no seat is free, the name draws alone and the secondary text stays in the note with the warning `diagram-secondary-label-unplaced`, as before. A milestone whose text prints under its name opens no hover card that only repeats it.

@@ -49,7 +49,9 @@ import type { AnchorRef } from '../../types/annotations';
 import { cellMeta, type Id } from '../../types/cell';
 import type { ChartData } from '../../types/data';
 import type { Geometry, LintWarning, PaintWarningRule, PlacedLabel, SceneNode } from '../../types/scene';
-import { bandValueLabelUniformity, haloOverRules, keepValuesWithoutAxis, raiseOverRules, warnSliverLabels } from '../band/labels';
+import { bandValueLabelUniformity, compactValueLabelFont, groupedValueLabelPolicy, haloOverRules, keepValuesWithoutAxis, raiseOverRules, warnSliverLabels } from '../band/labels';
+import { groupedOffsets } from '../band/groups';
+import { textScaleOf } from '../../typeFloors';
 import { anomalyReceipt } from './anomaly';
 import { edgeNameFont, KEY_EDGE_SERIES, kindSetting, resolveColumnDomain, toDateOnValues } from './domain';
 import { cellValueText, planColumnLabels, planColumnValueLabels, type DigitSeats } from './labels';
@@ -581,6 +583,12 @@ export function layoutColumn(
 /** Whether the value axis was turned on for columns left with no number: decided once per chart. */
 interface AxisFallback { on: boolean }
 
+const AXIS_FALLBACK = Symbol('columnAxisFallback');
+interface AxisProbe {
+  checked: boolean;
+  prepared?: { domain: ColumnDomain; paints: ReturnType<typeof columnPaints>; warnings: LintWarning[] };
+}
+
 const withValueAxis = (options: AnomalyColumnOptions): AnomalyColumnOptions => ({ ...options, valueAxis: { ...options.valueAxis, show: true } });
 
 /**
@@ -590,7 +598,7 @@ const withValueAxis = (options: AnomalyColumnOptions): AnomalyColumnOptions => (
  * turned off (labels.point false, a cell's label false) leaves no gap to
  * fill. An authored valueAxis.show and a grid panel keep their axis.
  */
-function unnumberedColumn(data: ChartData, options: AnomalyColumnOptions, geometry: Geometry<ColumnMarks, ColumnDerived>): boolean {
+function unnumberedColumn(data: ChartData, options: AnomalyColumnOptions, geometry: Pick<Geometry<ColumnMarks, ColumnDerived>, 'labels' | 'marks'>): boolean {
   if (options.valueAxis?.show !== undefined || panelTypeClass(options) !== undefined) return false;
   const shown = (label: PlacedLabel) => label.hidden === undefined || label.printedIn !== undefined;
   // A label the engine dropped; a 'redundant' one that owes nothing is the author's label: false.
@@ -648,13 +656,18 @@ function layoutColumnWithNotes(
   keepEachValue: boolean,
   axis: AxisFallback = { on: false },
 ): Geometry<ColumnMarks, ColumnDerived> {
+  const probe: AxisProbe = { checked: false };
   if (!axis.on) {
     // The first pass usually shows the gap already, so the settling passes are not spent on it.
-    const geometry = layoutColumnSettled(data, options, keepEachValue, (first) => unnumberedColumn(data, options, first));
-    if (geometry && !unnumberedColumn(data, options, geometry)) return geometry;
+    try {
+      const geometry = layoutColumnSettled(data, options, keepEachValue, probe, (first) => unnumberedColumn(data, options, first));
+      if (geometry && !unnumberedColumn(data, options, geometry)) return geometry;
+    } catch (error) {
+      if (error !== AXIS_FALLBACK) throw error;
+    }
     axis.on = true;
   }
-  return layoutColumnSettled(data, withValueAxis(options), keepEachValue)!;
+  return layoutColumnSettled(data, withValueAxis(options), keepEachValue, probe)!;
 }
 
 /** The settled column; undefined when `stopAfterFirst` says so after the first pass. */
@@ -662,6 +675,7 @@ function layoutColumnSettled(
   data: ChartData,
   options: AnomalyColumnOptions,
   keepEachValue: boolean,
+  probe: AxisProbe,
   stopAfterFirst?: (geometry: Geometry<ColumnMarks, ColumnDerived>) => boolean,
 ): Geometry<ColumnMarks, ColumnDerived> | undefined {
   let named = new Map<string, string>();
@@ -669,8 +683,10 @@ function layoutColumnSettled(
   // Every re-layout settles them again, as each later pass (CAGR pad, value-line reserve, notes) moves the plot.
   let pass!: ReturnType<typeof layoutColumnPass>;
   let minimumChrome = Infinity;
+  let first = true;
   const run = (next: AnomalyColumnOptions): AnomalyColumnOptions => {
-    pass = layoutColumnPass(data, next, keepEachValue);
+    pass = layoutColumnPass(data, next, keepEachValue, first ? probe : undefined, first && stopAfterFirst !== undefined);
+    first = false;
     const settled = settleStaircase(next, (o) => (pass = layoutColumnPass(data, o, keepEachValue)).staircase, pass.staircase);
     minimumChrome = Math.min(minimumChrome, plotChromeFloor.get(pass.geometry.frame) ?? NaN);
     return settled;
@@ -684,7 +700,7 @@ function layoutColumnSettled(
     return next;
   };
   options = run(options);
-  if (stopAfterFirst?.(pass.geometry)) return undefined;
+  if (!probe.checked && stopAfterFirst?.(pass.geometry)) return undefined;
   // A CAGR arm too low to give its arrow end the minimum shaft (MIN_LEG)
   // gets the room it lacked over the plot, and the chart is laid out again.
   for (let round = 0, pad = 0; round < 3 && pass.legDeficit > 0.5; round++) {
@@ -762,11 +778,41 @@ function layoutColumnPass(
   data: ChartData,
   options: AnomalyColumnOptions,
   keepEachValue: boolean,
+  axisProbe?: AxisProbe,
+  probeAxis = false,
 ): { geometry: Geometry<ColumnMarks, ColumnDerived>; unprinted: Map<string, string>; categoryNotes: string[]; planNotes: string[]; rankKey: () => string[]; legDeficit: number; bandNeed: number; valueLineReserve: number; tickReserve: number; staircase?: StaircaseOutcome } {
-  const warnings: LintWarning[] = [];
-  const domain = resolveColumnDomain(data, options, warnings);
-  const paints = columnPaints(domain, warnings);
+  const prepared = axisProbe?.prepared;
+  if (axisProbe) axisProbe.prepared = undefined;
+  const warnings: LintWarning[] = prepared ? [...prepared.warnings] : [];
+  // Turning on a grouped axis changes no data, paints or domain. Only its
+  // options and frame change; keep preparation from the discarded pass.
+  const domain = prepared ? { ...prepared.domain, options: { ...prepared.domain.options, valueAxis: options.valueAxis }, va: options.valueAxis! }
+    : resolveColumnDomain(data, options, warnings);
+  const paints = prepared?.paints ?? columnPaints(domain, warnings);
+  const preparedWarnings = warnings.length;
+  const fallback = () => {
+    axisProbe!.prepared = { domain, paints, warnings: warnings.slice(0, preparedWarnings) };
+    throw AXIS_FALLBACK;
+  };
   const { size, theme } = domain;
+  // Grouped values cannot return after the solver. Stacks have late digit seats;
+  // ratio badges, running periods and staircase retries can change what counts.
+  const probe = probeAxis && options.valueAxis?.show === undefined && panelTypeClass(options) === undefined
+    && domain.variant === 'grouped' && kindSetting(options, 'point') !== false && !options.ratioTier
+    && options.categoryLabels !== 'staircase' && !domain.cats.some(c => c.partial)
+    && !domain.annList.some(a => a.kind === 'event');
+  const beforeCategoryRow = probe && domain.dataSeries.length > 1 ? (bandwidth: number) => {
+    const font = compactValueLabelFont({ family: theme.type.family, ...theme.type.label }, theme.type.footnote, options.target, textScaleOf(options));
+    if (!groupedValueLabelPolicy('vertical', groupedOffsets(bandwidth, domain.dataSeries.length)[0]!.size,
+      domain.dataSeries.length, [], theme.type.label.size, font.size).firstSeriesOnly) return;
+    const off = new Set(data.series.flatMap(s => s.values.flatMap((cell, ci) =>
+      cellMeta(cell)?.label === false ? [`${s.id}|${data.categories[ci]?.id}`] : [])));
+    // Rotation can only narrow this band. Thinned, unprotected values have no
+    // request to solve, so the completed pass would turn the axis on too.
+    if (domain.dataSeries.slice(1).some(s => !domain.highlights.has(s.id) && domain.cats.some((c, ci) =>
+      domain.plottedOf(s, ci) !== null && !off.has(`${s.id}|${c.id}`) && !domain.highlights.has(c.id)
+      && !domain.anomaly?.flagByCategory.has(c.id)))) fallback();
+  } : undefined;
   // The frame is the first claimer, so its index becomes the run's index.
   // The event lane sizes itself and the key with the frame and plot passes.
   let areaWarningsAt = 0;
@@ -777,7 +823,7 @@ function layoutColumnPass(
     solve: (key, w) => solveColumnFrame(domain, paints, w, key),
     area: (framed, w) => {
       areaWarningsAt = w.length;
-      return columnPlotArea(domain, framed.frame, w);
+      return columnPlotArea(domain, framed.frame, w, beforeCategoryRow);
     },
     axis: (area) => ({ x: (ci) => area.band.center(ci), step: area.band.step, plot: area.plot }),
     warnings,
@@ -839,6 +885,10 @@ function layoutColumnPass(
   if (toDate.size > 0 && (!toDateFits(domain.options.strings?.toDate ?? chartString(domain.options, 'toDate'), theme, domain.measure, toDateRoom(area.band.bandwidth))
     || solved.placed.some((l) => (l.kind === 'grandTotal' || l.kind === 'point') && l.hidden !== undefined && toDate.has(l.owner.categoryId ?? '')))) {
     return layoutColumnPass(data, { ...options, [PARTIAL_KEY]: true } as AnomalyColumnOptions, keepEachValue);
+  }
+  if (probe) {
+    axisProbe!.checked = true;
+    if (unnumberedColumn(data, options, { labels: solved.placed, marks: scene.marks })) fallback();
   }
   const staircase = runStaircase(theme, options.categoryLabels, options, stair, solved.placed, occupied, scene.nodes, warnings);
   applyValueAxisTitleInk(solved.placed);

@@ -1670,11 +1670,14 @@ function scenarioSeriesColor(
   scenario: Scenario | undefined,
   deEmphasizePy = true,
   surfaceFade = false,
+  apart = false,
 ): string {
   const base = seriesColor(theme, index, ramp);
   const background = theme.color.background;
   const floor = markVisibilityFloor(background);
-  const target = scenario === 'FC' ? floor + 0.12 : floor;
+  // A forecast hatch beside its actual's solid column on a dark page reads by its stripes alone
+  // (a dark page's grounded hatch keeps no cell floor), so they keep the strong grounded target.
+  const target = scenario === 'FC' ? (apart && floor === 3 ? GROUNDED_STRONG_TARGET : floor + 0.12) : floor;
   const visibilityContrast = (candidate: string): number => {
     if (scenario !== 'FC') return contrastRatio(candidate, background);
     // A hatched forecast cell must stand apart from the page. The reader sees
@@ -1704,16 +1707,26 @@ function scenarioSeriesColor(
   }
 
   if (scenario === 'PY' && deEmphasizePy) {
-    const light = mixColors(base, background, 0.45);
-    if (visibilityContrast(light) >= floor) return light;
-    // Preserve the PY de-emphasis as far as the active surface permits. Dark
-    // presets have a 3:1 mark floor, so the full base may be the lightest
-    // legal member of the selected palette family.
-    for (let lightWeight = 0.99; lightWeight >= 0; lightWeight -= 0.01) {
-      const candidate = mixColors(light, base, lightWeight);
-      if (visibilityContrast(candidate) >= floor) return candidate;
+    const washed = ((): string => {
+      const light = mixColors(base, background, 0.45);
+      if (visibilityContrast(light) >= floor) return light;
+      // Preserve the PY de-emphasis as far as the active surface permits. Dark
+      // presets have a 3:1 mark floor, so the full base may be the lightest
+      // legal member of the selected palette family.
+      for (let lightWeight = 0.99; lightWeight >= 0; lightWeight -= 0.01) {
+        const candidate = mixColors(light, base, lightWeight);
+        if (visibilityContrast(candidate) >= floor) return candidate;
+      }
+      return base;
+    })();
+    if (!apart || swatchesApart(washed, base)) return washed;
+    // A prior year beside its actual must not print as the actual. When the page floor
+    // leaves no wash apart from it (an actual near the floor), it steps toward the ink.
+    for (let amount = 0.01; amount < 1; amount = Number((amount + 0.01).toFixed(2))) {
+      const step = tint(base, amount, theme.color.ink);
+      if (swatchesApart(step, base)) return step;
     }
-    return base;
+    return theme.color.ink;
   }
 
   if (visibilityContrast(base) >= target) return base;
@@ -1911,6 +1924,7 @@ function sourceColor(theme: Theme, source: ThemePaintSource): string {
         source.scenario,
         source.deEmphasizePy ?? true,
         source.surfaceFade ?? false,
+        source.apart ?? false,
       );
 }
 
@@ -2060,12 +2074,14 @@ export function seriesPaint(
   scenario?: Scenario,
   deEmphasizePy = true,
   surfaceFade = false,
+  apart = false,
 ): Paint {
   const source: Extract<ThemePaintSource, { kind: 'series' }> = { kind: 'series', index };
   if (palette !== undefined) source.palette = palette;
   if (scenario !== undefined) source.scenario = scenario;
   if (!deEmphasizePy) source.deEmphasizePy = false;
   if (surfaceFade) source.surfaceFade = true;
+  if (apart) source.apart = true;
   return {
     token: `series-${index + 1}`,
     theme: source,

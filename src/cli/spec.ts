@@ -28,7 +28,7 @@ import { claimsForChart } from '../core/claims';
 import { adoptThemeObject, isThemeObject, rootContextErrors } from '../core/doc/themeObject';
 import { lintCodes, runDocAdvice, runDocLints } from '../core/lint';
 import { isRecord } from '../core/lint/shared';
-import { aspectDocLints } from '../core/lint/aspect';
+import { aspectDocLints, type HeightVerifier } from '../core/lint/aspect';
 import { spaceDocLints } from '../core/lint/space';
 import { typeDocLints } from '../core/lint/type';
 import { lineIntegrityDocLints } from '../core/lint/lineIntegrity';
@@ -415,11 +415,11 @@ function panelUnitLints(data: unknown, geo: Geometry, base: (string | number)[] 
 }
 
 /** The document-boundary norm lints: warnings about proportions and embed legibility. */
-function normLints(type: string, options: Record<string, unknown>, geo: Geometry, data?: unknown): LintWarning[] {
+function normLints(type: string, options: Record<string, unknown>, geo: Geometry, data?: unknown, verify?: HeightVerifier): LintWarning[] {
   // Each family stands down behind any refusal already on the geometry, so a
   // refused chart gets one trace naming the real cause. They run here,
   // not inside layout, because grid panels lay out on slot-sized canvases.
-  const found = [...aspectDocLints(type, options, geo as never)];
+  const found = [...aspectDocLints(type, options, geo as never, verify)];
   pushAll(geo.warnings, found);
   const rest = [
     ...spaceDocLints(type, options, geo as never),
@@ -471,10 +471,13 @@ function resolveRequest(doc: BoardplotDoc, chart: DocChart, envelope: DocumentEn
 /** What the CLI render adds to the serializer: the id scope and a transparent canvas. */
 interface SvgWriteOptions { idScope?: string; background?: false }
 
-function drawn(doc: BoardplotDoc, chart: DocChart, envelope: DocumentEnvelope, write: SvgWriteOptions = {}, target?: RenderTarget) {
+/** The warnings that name a height. A render gives them no patch: only a drawn height is a patch, and `measure` draws it. */
+const SIZE_PATCH_CODES: ReadonlySet<string> = new Set(['aspect-cap', 'height-off-ladder', 'plot-under-floor', 'plot-under-min']);
+
+function drawn(doc: BoardplotDoc, chart: DocChart, envelope: DocumentEnvelope, write: SvgWriteOptions = {}, target?: RenderTarget, verify?: HeightVerifier) {
   const resolved = resolveRequest(doc, chart, envelope, target);
   if (!resolved) return null;
-  return judged(chart, resolved, requireGeometry(layoutResolvedRequest(resolved.request)) as Geometry, envelope, true, write);
+  return judged(chart, resolved, requireGeometry(layoutResolvedRequest(resolved.request)) as Geometry, envelope, true, write, verify);
 }
 
 /**
@@ -491,6 +494,7 @@ function judged(
   envelope: DocumentEnvelope,
   reportWarnings: boolean,
   write: SvgWriteOptions = {},
+  verify?: HeightVerifier,
 ) {
   const def = validated.definition;
   const options = request.options as Record<string, unknown>;
@@ -515,7 +519,7 @@ function judged(
         });
     return null;
   }
-  const warnings = normLints(def.type, options, geo, validated.data);
+  const warnings = normLints(def.type, options, geo, validated.data, verify);
   // The refusal path React shares (core/schema/refusals): what refuses here
   // draws the error card there, with the same message.
   const refusals = chartRefusals(warnings);
@@ -533,30 +537,57 @@ function judged(
     });
   }
   if (refusals.length) return null;
-  return { def, geo, options, claims, request, svg, fontFamily: theme.type.family };
+  return { def, geo, options, claims, request, svg, fontFamily: theme.type.family, warnings };
 }
 
 export type DrawnChart = NonNullable<ReturnType<typeof drawn>>;
 
-/** Measurement verifies drawing and size codes. Data and proportion warnings do not reject a size. */
+/** The codes a drawn size must not raise: each one asks for a different size. */
+const SIZE_CODES: ReadonlySet<string> = new Set([...SIZE_PATCH_CODES, 'size-below-floor']);
+
+/** Whether the chart draws at a size with no error and none of `codes` raised. The draw builds no size advice of its own. */
+function drawsWithout(doc: BoardplotDoc, chart: DocChart, size: object, target: RenderTarget | undefined, codes: ReadonlySet<string>): boolean {
+  const scratch: DocumentEnvelope = { ok: true, errors: [], warnings: [] };
+  try {
+    return drawn(doc, { ...chart, options: { ...chart.options, size } }, scratch, {}, target) !== null
+      && scratch.errors.length === 0 && !scratch.warnings.some(w => codes.has(w.code) && w.severity !== 'info');
+  } catch { return false; }
+}
+
+/**
+ * The heights an aspect lint may name: the first of the ladder heights it lists, nearest first, that draws
+ * with no size warning. Each height is drawn once. None that draws gives the warning no patch.
+ */
+function heightVerifier(doc: BoardplotDoc, chart: DocChart, target?: RenderTarget): HeightVerifier {
+  const drew = new Map<string, boolean>();
+  return (width, heights) => heights.find(height => {
+    const key = `${width}x${height}`;
+    if (!drew.has(key)) drew.set(key, drawsWithout(doc, chart, { width, height }, target, SIZE_CODES));
+    return drew.get(key);
+  });
+}
+
+/**
+ * Measurement verifies a size that a refusal or a plot-floor warning names by drawing it, and searches for
+ * a size that draws when it does not. Data and proportion warnings do not reject a size.
+ */
 function verifySizeAdvice(doc: BoardplotDoc, chart: DocChart, findings: DocumentFinding[], target?: RenderTarget): void {
   for (const finding of findings) {
     const operation = finding.fix?.find(op => op.op !== 'test' && op.path.endsWith('/options/size'));
     if (!operation || !('value' in operation)) continue;
     const value = operation.value as { width: number; height: number; unit?: string };
-    const repair = verifiedSizeRepair(value, size => {
-      const scratch: DocumentEnvelope = { ok: true, errors: [], warnings: [] };
-      try {
-        return drawn(doc, { ...chart, options: { ...chart.options, size: { ...value, ...size } } }, scratch, {}, target) !== null
-          && scratch.errors.length === 0 && !scratch.warnings.some(w => w.code === finding.code
-            || w.code === 'plot-under-floor' || w.code === 'size-below-floor');
-      } catch { return false; }
-    });
+    const repair = verifiedSizeRepair(value, size => drawsWithout(doc, chart, { ...value, ...size }, target,
+      new Set([finding.code, 'plot-under-floor', 'size-below-floor'])));
     if (repair.size) {
       if (repair.size.width !== value.width || repair.size.height !== value.height) {
         operation.value = { ...value, ...repair.size };
-        finding.expected = { ...finding.expected, minimum: operation.value };
-        finding.message = `The chart needs at least ${repair.size.width} × ${repair.size.height}${value.unit ?? 'px'}.`;
+        if (finding.code === 'plot-under-floor') {
+          finding.message = finding.message.replace(/the chart needs \d+ px/, `the chart needs ${repair.size.height} px`);
+          finding.suggest = `Give the chart ${repair.size.height} px of height, or leave the height out so the chart takes it.`;
+        } else {
+          finding.expected = { ...finding.expected, minimum: operation.value };
+          finding.message = `The chart needs at least ${repair.size.width} × ${repair.size.height}${value.unit ?? 'px'}.`;
+        }
       }
       continue;
     }
@@ -615,9 +646,14 @@ export function measureChart(doc: BoardplotDoc, chart: DocChart, envelope: Docum
     const request = { ...resolved.request, options: { ...resolved.request.options, [VERIFY_ADVICE]: true } };
     const layout = layoutResolvedRequest(request);
     const measured = measureLayout(request, layout);
-    if (measured.refused) verifySizeAdvice(doc, chart, measured.refused.warnings, target);
+    const floorWarnings = measured.warnings.filter((warning) => warning.code === 'plot-under-floor');
+    verifySizeAdvice(doc, chart, [...(measured.refused?.warnings ?? []), ...floorWarnings] as DocumentFinding[], target);
     pushAll(envelope.warnings, measured.warnings.filter((warning) => warning.severity !== 'error'));
-    if (!layout.refused && !judged(chart, resolved, layout, envelope, false)) return null;
+    if (layout.refused) return { ...measured, target: resolved.request.target };
+    const judgedChart = judged(chart, resolved, layout, envelope, false, {}, heightVerifier(doc, chart, target));
+    if (!judgedChart) return null;
+    // The aspect lints name a drawn height here, or none: render reports them with no patch and sends the caller to measure.
+    pushAll(envelope.warnings, judgedChart.warnings.filter((warning) => warning.severity !== 'error' && warning.code !== 'plot-under-floor' && SIZE_PATCH_CODES.has(warning.code)));
     return { ...measured, target: resolved.request.target };
   });
 }

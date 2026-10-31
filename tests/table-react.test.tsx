@@ -231,6 +231,26 @@ describe('TableChart uncontrolled state', () => {
     expect(pins.at(-1)!.hasAttribute('data-bp-pin-last')).toBe(true);
   });
 
+  // A section label under pinned columns printed "ADVERTI…" beside a row of empty cells: it keeps the empty width after the pinned block.
+  it('lets a pinned section heading read across the empty cells of its row', () => {
+    const data: TableData = {
+      columns: [
+        { id: 'label', kind: 'rowLabel', label: 'Item', width: 90 },
+        { id: 'a', kind: 'value', label: 'A', width: 120 },
+        { id: 'b', kind: 'value', label: 'B', width: 100 },
+      ],
+      rows: [
+        { id: 'block', label: 'Block heading', role: 'section' },
+        { id: 'one', label: 'One', cells: { a: 10, b: 9 } },
+      ],
+    };
+    act(() => root.render(<TableChart data={data} size={{ width: 400 }} frameFill="none" stickyLabels={1} />));
+    const heading = container.querySelector<HTMLElement>('[data-role="section"] [role="rowheader"]')!;
+    expect(heading.hasAttribute('data-bp-pin')).toBe(true);
+    expect(heading.style.getPropertyValue('--bp-section-spill')).toBe('220px');
+    expect(getComputedStyle(heading).overflow).toBe('visible');
+  });
+
   // Revealing a hidden table must restore its full row height without waiting for a prop change.
   it('ignores zero row pitch and measures the row again on resize', () => {
     const observers: { callback: ResizeObserverCallback; elements: Element[] }[] = [];

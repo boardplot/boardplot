@@ -526,6 +526,19 @@ fixtures.push({
     source: 'Illustrative planning cases',
   },
 });
+fixtures.push({
+  id: 'two-case-budget-bars',
+  title: 'The two-case bridge as bars: each value stands past the end of its own bar',
+  kind: 'example',
+  data: fixtures.find((fixture) => fixture.id === 'two-case-budget-bridge')!.data,
+  options: {
+    title: 'The aggressive plan ends 23 m above the conservative one',
+    subtitle: { measure: 'Marketing budget', period: 'FY25 to FY26' },
+    unit: '$m',
+    source: 'Illustrative planning cases',
+    variant: 'horizontal',
+  },
+});
 
 fixtures.push({
   "id": "single-segment-authored-format",
