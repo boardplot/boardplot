@@ -4,6 +4,7 @@ import { getFixtures } from '../src/fixtures';
 import { layoutResolvedRequest, renderSvg, resolveChartRequest } from '../src/index';
 import { contrastRatio } from '../src/core/color';
 import { resolveTheme } from '../src/core/theme';
+import { measureText } from '../src/core/text';
 
 /** Lay out a catalog fixture through the request path the CLI and React use. */
 function layoutFixture(type: string, id: string) {
@@ -240,5 +241,49 @@ describe('chart layout edge cases', () => {
       return geometry.plot.h as number;
     };
     expect(Math.abs(dataPlot('area') / dataPlot('line') - 1)).toBeLessThanOrEqual(0.02);
+  });
+
+  // A callout seat was measured in the regular face while variance, slope and waterfall drew it bold,
+  // so the text ran past its seat and covered the neighbouring label (a minus sign lost under it).
+  it('a callout seat holds the text as it is drawn', () => {
+    const categories = ['North', 'South', 'East', 'West'].map((label) => ({ id: label.toLowerCase(), label }));
+    const text = 'Largest step since the restatement';
+    const specs = [
+      { type: 'variance', data: { categories, series: [{ id: 'act', label: 'Actual', values: [120, 95, 140, 88] }, { id: 'ref', label: 'Reference', values: [100, 100, 100, 100] }] },
+        options: { variant: 'integrated', variance: { of: 'act', vs: 'ref' }, size: { width: 480 } }, annotations: [{ kind: 'callout', at: { categoryId: 'north', seriesId: 'act' }, text }] },
+      { type: 'slope', data: { categories: categories.slice(0, 2), series: [{ id: 'a', label: 'Alpha', values: [10, 14] }, { id: 'b', label: 'Beta', values: [12, 9] }] },
+        options: { size: { width: 720 } }, annotations: [{ kind: 'callout', at: { categoryId: 'south', seriesId: 'a' }, text }] },
+      { type: 'waterfall', data: { items: [{ id: 'a', label: 'Start', type: 'total', value: 100 }, { id: 'b', label: 'Gain', value: 30 }, { id: 'c', label: 'Loss', value: -20 }, { id: 'd', label: 'End', type: 'total', value: 110 }] },
+        options: { size: { width: 480 } }, annotations: [{ kind: 'callout', at: 'b', text }] },
+    ];
+    const tooNarrow = specs.filter((spec) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const geometry = layoutResolvedRequest(resolveChartRequest(spec as any) as any) as any;
+      const label = geometry.labels.find((l: { id: string }) => l.id.startsWith('annotation:'));
+      const node = geometry.scene.find((n: { id: string }) => n.id === `label:${label.id}`);
+      const drawn = Math.max(...node.lines.map((line: string) => measureText(line, node.font).width));
+      return label.rect.w + 0.5 < drawn;
+    }).map((spec) => spec.type);
+    expect(tooNarrow).toEqual([]);
+  });
+
+  // A callout seated in the strip under the axis, on top of the 45° names: a name claimed only a square at its anchor.
+  it('a callout does not seat on a rotated category name', () => {
+    const categories = ['Umsatzerlöse', 'Niedersachsen', 'Licence income', 'Abschreibungen'].map((label, i) => ({ id: `c${i}`, label }));
+    const values = [[4.7, 4.4, null, 5.4], [2.7, -2.7, -2.7, 2.5], [3.1, 3.2, null, 2.8], [3.6, 3.5, 3.4, -3.3], [4.5, -4.7, -4.3, -4.7], [-3.2, 3.6, 3.4, 3.3], [6.3, -5.7, 5.6, 5.5], [2.5, 2.7, 3, 3.1]];
+    const series = values.map((row, s) => ({ id: `s${s}`, label: `Series ${s}`, values: row }));
+    const request = { type: 'column', data: { categories, series }, options: { title: 'Revenue by unit', subtitle: { measure: 'Revenue by unit', period: 'FY26' }, unit: 'pp', source: 'Invented data', locale: { language: 'de', decimal: ',', thousands: '.' }, variant: 'stacked', labelDensity: 'full', size: { width: 320 } },
+      annotations: [{ kind: 'callout', at: { categoryId: 'c0', seriesId: 's0' }, text: 'Largest step since the restatement', preferSide: 'right' }] };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+    const callout = geometry.labels.find((l: { id: string }) => l.id === 'annotation:callout-1');
+    const onName = geometry.labels.filter((l: { kind: string; rotate?: number }) => l.kind === 'category' && l.rotate === -45).some((name: { id: string; rect: { x: number; y: number; w: number; h: number } }) => {
+      const node = geometry.scene.find((n: { id: string }) => n.id === `label:${name.id}`);
+      const length = Math.max(...node.lines.map((line: string) => measureText(line, node.font).width));
+      const end = { x: name.rect.x + name.rect.w, y: name.rect.y + (node.font.size * 1.2 * Math.SQRT1_2) / 2 };
+      return Array.from({ length: Math.ceil(length) }, (_, d) => ({ x: end.x - d * Math.SQRT1_2, y: end.y + d * Math.SQRT1_2 }))
+        .some((p) => p.x > callout.rect.x && p.x < callout.rect.x + callout.rect.w && p.y > callout.rect.y && p.y < callout.rect.y + callout.rect.h);
+    });
+    expect(callout.hidden === undefined && onName).toBe(false);
   });
 });

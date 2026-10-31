@@ -55,6 +55,7 @@ import {
   resolveSemanticPaletteTheme,
   mutedMarkPaint,
   semanticPalettePaint,
+  emphasisLabelTheme,
   emphasisWeight,
   dashToken,
   strokeToken,
@@ -927,7 +928,8 @@ export function layoutSlope(
         : undefined,
     occupied,
     plot,
-    theme,
+    // Annotation labels draw bold (see labelsToNodes below), so the pass measures them bold.
+    theme: emphasisLabelTheme(theme),
     measure,
     format: options.format,
     locale: options.locale?.language,
