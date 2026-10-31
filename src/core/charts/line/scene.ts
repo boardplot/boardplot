@@ -92,7 +92,7 @@ export function layoutLineMarks(
         theme,
         measure,
         ...(area.bumpTicks ? { ticks: area.bumpTicks, keepEndTicks: true } : {}),
-        ...(!area.bumpTicks && area.disclosedTicks ? { ticks: area.disclosedTicks } : {}),
+        ...(!area.bumpTicks && area.disclosedTicks ? { ticks: area.disclosedTicks, keepEndTicks: true } : {}),
         ...(!area.bumpTicks && !area.disclosedTicks && area.stepTicks ? { ticks: area.stepTicks } : {}),
       },
       claims,

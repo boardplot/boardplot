@@ -140,6 +140,23 @@ describe('histogram binning arithmetic', () => {
     expect(countPerBin(sample, binning.edges)).toEqual([4, 5, 1, 0, 1]);
     expect(countPerBin(sample, binning.edges).reduce((a, b) => a + b, 0)).toBe(sample.length);
   });
+  // Prevents a false spike: edges on the integers closed the last bin over 3 and 4 and drew 51 beside 24.
+  it('gives whole numbers one bin per value, centred on it and named under the bar', () => {
+    const observations = [0, 1, 2, 3, 4].flatMap((value, index) => Array.from({ length: [20, 25, 24, 25, 26][index]! }, () => value));
+    for (const bins of ['auto', { width: 1 }] as const) {
+      const geometry = layoutHistogram({ observations }, { bins });
+      expect(geometry.derived.counts).toEqual([20, 25, 24, 25, 26]);
+      expect(geometry.derived.binning.edges).toEqual([-0.5, 0.5, 1.5, 2.5, 3.5, 4.5]);
+      expect(geometry.derived.binLabels).toEqual(['0', '1', '2', '3', '4']);
+      const bars = geometry.marks.bins.map((bin) => bin.rect.x + bin.rect.w / 2);
+      const names = geometry.labels.filter((label) => label.kind === 'category' && !label.hidden);
+      expect(names.map((label) => label.text)).toEqual(['0', '1', '2', '3', '4']);
+      names.forEach((label, index) => expect(label.rect.x + label.rect.w / 2).toBeCloseTo(bars[index]!, 0));
+    }
+    // Large whole numbers keep their exact names: the display-rounded anchor is a half off.
+    const large = layoutHistogram({ observations: observations.map((value) => value + 100000000001) }, { bins: { width: 1 } });
+    expect(large.derived.binLabels.map((label) => label.replace(/\D/g, ''))).toEqual(['100000000001', '100000000002', '100000000003', '100000000004', '100000000005']);
+  });
 });
 
 describe('histogram refuses what it cannot draw honestly', () => {
@@ -307,7 +324,8 @@ describe('histogram disclosures', () => {
     for (const id of ['order-value-distribution', 'cycle-time-days']) {
       const noTitle = fixtures.find((candidate) => candidate.id === id)!;
       const withoutAxis = layoutHistogram(noTitle.data, { ...noTitle.options, axisTitles: undefined, footnotes: false, ...SHOW_NOTES, size: { width: 720, height: 405 } });
-      expect(withoutAxis.scene.map(node2text).join(' ')).toMatch(/(Bins of [\d,.]+|per [\d,.]+ bin), lower edge included · n = \d+/);
+      // Whole days get one bin per value, so that line names the values instead of a width.
+      expect(withoutAxis.scene.map(node2text).join(' ')).toMatch(/(Bins of [\d,.]+|per [\d,.]+ bin), lower edge included · n = \d+|One bin per value · n = \d+/);
     }
   });
 

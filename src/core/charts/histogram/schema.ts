@@ -43,7 +43,7 @@ export const histogramOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOp
     )
     .optional()
     .describe(
-      "Binning. 'auto' (default) takes the narrower of the Freedman-Diaconis and Sturges widths, then snaps it to a round number. A positive integer is an EXACT bin count: that many equal bins from the smallest to the largest observation, so the width is rarely round. { width } sets the width outright and skips the snap. Named rules such as 'sturges' or 'fd' are not accepted — the engine states which rule it used on the exhibit.",
+      "Binning. 'auto' (default) takes the narrower of the Freedman-Diaconis and Sturges widths, then snaps it to a round number. A positive integer is an EXACT bin count: that many equal bins from the smallest to the largest observation, so the width is rarely round. { width } sets the width outright and skips the snap. When every observation is a whole number and the width is 1 ('auto' or { width: 1 } without an anchor), each bin holds one value, centres on it and is named under its bar. Named rules such as 'sturges' or 'fd' are not accepted — the engine states which rule it used on the exhibit.",
     ),
   binSnap: z
     .boolean()

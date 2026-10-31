@@ -23,6 +23,12 @@
  * 5. Anchor: `first = floor(min / h) * h` (or the explicit `anchor`);
  *    `k = max(1, ceil((max - first) / h))`; `edges[i] = first + i*h`.
  *    Membership keeps full precision; labels are formatted by the layout.
+ * 5a. Whole numbers: when every observation is an integer and the width is 1
+ *    (an 'auto' width, or an authored width without an anchor), the anchor
+ *    is `min - 0.5`, so each bin holds exactly one value and centres on it.
+ *    Edges on the integers would close the last bin over two values and draw
+ *    a false spike. An 'auto' width that snaps below 1 rises to 1: a
+ *    narrower bin on whole numbers leaves every other bin empty.
  * 6. Membership is left-closed, right-open `[lo, hi)`; the LAST bin is closed
  *    at its upper edge. Assignment compares against `edges`, never
  *    `floor((v - first)/h)` alone -- that expression lands one ULP low on
@@ -150,6 +156,11 @@ interface BinningInput {
   snap: boolean;
 }
 
+/** Bins of width 1 centred on whole numbers: `min - 0.5` up to `max + 0.5`, within MAX_BINS. */
+function perValueFits(min: number, max: number): boolean {
+  return Number.isSafeInteger(min) && Number.isSafeInteger(max) && max - min + 1 <= MAX_BINS;
+}
+
 /**
  * Choose the bins. Throws `histogram-bin-explosion` rather than emitting a
  * chart with 4,000 hairlines: an exhibit whose bars are thinner than their own
@@ -169,6 +180,8 @@ export function computeBinning(input: BinningInput): Binning {
   let anchor: number;
   let snapped = false;
   let explicitAnchor = false;
+  let perValue = false;
+  const wholeNumbers = sorted.every((value) => Number.isInteger(value));
   let requestedCount: number | undefined;
 
   if (typeof bins === 'number') {
@@ -182,25 +195,29 @@ export function computeBinning(input: BinningInput): Binning {
     rule = 'width';
     width = bins.width;
     explicitAnchor = bins.anchor !== undefined;
-    anchor = bins.anchor ?? derivedAnchor(min, width);
+    perValue = !explicitAnchor && width === 1 && wholeNumbers && perValueFits(min, max);
+    anchor = bins.anchor ?? (perValue ? min - 0.5 : derivedAnchor(min, width));
   } else {
     rule = 'auto';
     width = hAuto;
     if (snap) {
-      const candidate = snapWidth(hAuto);
+      const snappedWidth = snapWidth(hAuto);
+      const candidate = wholeNumbers && snappedWidth < 1 && perValueFits(min, max) ? 1 : snappedWidth;
       // Snapping trades an exact rule for a readable edge, and it is only a
       // good trade while the shape survives. Three bins is the floor at which
       // "distribution" still means anything; below it the snap has erased the
       // very thing the chart was asked to show, so the rule wins.
-      if (candidate > 0 && binCountFor(max, derivedAnchor(min, candidate), candidate) >= 3) {
+      const centred = candidate === 1 && wholeNumbers && perValueFits(min, max);
+      if (candidate > 0 && binCountFor(max, centred ? min - 0.5 : derivedAnchor(min, candidate), candidate) >= 3) {
         // `snapped` records a MOVE, not an attempt: a rule width that already
         // sits on the ladder would otherwise print "snapped to a round width"
         // in the method note about a number nothing touched.
         snapped = candidate !== width;
         width = candidate;
+        perValue = centred;
       }
     }
-    anchor = derivedAnchor(min, width);
+    anchor = perValue ? min - 0.5 : derivedAnchor(min, width);
   }
 
   if (!(width > 0) || !Number.isFinite(width)) {
@@ -258,6 +275,7 @@ export function computeBinning(input: BinningInput): Binning {
     anchor: first,
     edges,
     snapped,
+    perValue,
     hFd,
     hSturges,
     hAuto,

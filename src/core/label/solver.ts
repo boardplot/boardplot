@@ -944,6 +944,21 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
     placed.sort((a, b) => byRank(a.id, b.id));
     decisions.sort((a, b) => byRank(a.labelId, b.labelId));
   }
+  // A 45° name claims only a square at its anchor (see rotatedClaimRect), so later labels, such as a callout, could seat on the name.
+  // Once every label has its seat, claim the slanted box the text covers.
+  for (const label of placed) {
+    const req = label.hidden || label.rotate !== -45 ? undefined : requests.find(r => r.id === label.id);
+    if (!req) continue;
+    const lineH = req.font.size * (req.font.lineHeight ?? 1.2);
+    const length = Math.max(...req.lines.map(line => ctx.measure(line, req.font).width));
+    const end = { x: label.rect.x + label.rect.w, y: label.rect.y + (lineH * Math.SQRT1_2) / 2 };
+    const reach = { x: -length * Math.SQRT1_2, y: length * Math.SQRT1_2 };
+    const half = (lineH * Math.SQRT1_2) / 2;
+    const polygon = [{ x: end.x - half, y: end.y - half }, { x: end.x + half, y: end.y + half }, { x: end.x + reach.x + half, y: end.y + reach.y + half }, { x: end.x + reach.x - half, y: end.y + reach.y - half }];
+    const xs = polygon.map(p => p.x);
+    const ys = polygon.map(p => p.y);
+    occupied.claim({ x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }, 'label', label.owner, 'rotatedName', polygon);
+  }
   return { placed, decisions, warnings, ...(ownershipLimited.size > 0 ? { ownershipLimited } : {}) };
 }
 
