@@ -73,7 +73,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | diverging.labels.positive | string |  |  | Default 'Positive'. |
 | diverging.labels.negative | string |  |  | Default 'Negative'. |
 | diverging.sort | string | `'positive'`, `'net'`, `'data'` |  | Panel order: 'positive' (default; second-period positive share, descending), 'net' or 'data'. |
-| diverging.net | boolean |  |  | Net score (positive minus negative) and its change under each panel. Default true. |
+| diverging.net | boolean |  |  | Net score (positive minus negative) and its change under each panel, defined once in the key. Default true. |
 | diverging.neutralNote | boolean |  |  | Note the share that chose neither answer. Default true. |
 | diverging.minBase | number |  |  | Base n below which a panel is hatched and noted. Default 30. |
 
