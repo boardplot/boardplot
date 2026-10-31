@@ -821,6 +821,15 @@ describe('cohort — governing unit', () => {
 });
 
 describe('cohort — claims', () => {
+  // The residue cleanup read a true 1-in-100,000,000 ratio as noise beside its base and reported 0.
+  it('keeps a tiny real ratio in the claim', async () => {
+    const { claimsForChart } = await import('../src/core/claims');
+    const geometry = layout({ cohorts: [{ id: 'a', active: [100_000_000, 1] }, { id: 'b', active: [100_000_000, 3] }] }, { averages: 'weighted' });
+    const claims = claimsForChart('cohort', geometry as never);
+    expect(claims.find((c) => c.id === 'cohort:a:t1')!.output.raw).toBe(1e-8);
+    expect(claims.find((c) => c.id === 'cohort:average:t1')!.output.raw).toBe(2e-8);
+  });
+
   // The reading called every printed exhibit cell "Not displayed", because the receipt looked for heatmap cell nodes.
   it('quotes the text an exhibit prints, and only a cell it prints', async () => {
     const { claimsForChart } = await import('../src/core/claims');
