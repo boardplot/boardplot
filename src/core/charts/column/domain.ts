@@ -1099,7 +1099,7 @@ function seriesCagrs(
   }
   const from = cats[fi]!;
   const to = cats[ti]!;
-  const years = yearSpan(from.date, to.date) ?? yearSpanFromLabels(from.label, to.label);
+  const years = yearSpan(from.date ?? from.id, to.date ?? to.id) ?? yearSpanFromLabels(from.label, to.label);
   if (from.partial || to.partial || years === null || years <= 0) {
     warn(
       'series-cagr-no-span',
