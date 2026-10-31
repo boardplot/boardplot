@@ -18,6 +18,9 @@ interface ArrowMetrics {
 
 const ARROW_GAP = 4;
 
+/** The number a cell prints: its raw figure, negated where its row carries sign -1. */
+export const printedNumber = (cell: { raw: unknown; negated?: true }): number => (cell.negated ? -(cell.raw as number) : (cell.raw as number));
+
 /**
  * 'absolute' cuts the change itself (a percent column's points) at 10 and 2,
  * so the glyph says what the key says; 'relative' cuts its share of the
@@ -61,7 +64,7 @@ export function arrowKey(columns: readonly ResolvedColumn[], rows: readonly Reso
     const scale = column.cellEncoding.scale;
     const values = rows.flatMap((row) => {
       const cell = row.cells[column.id];
-      return cell?.state === 'value' && typeof cell.raw === 'number' ? [cell.raw] : [];
+      return cell?.state === 'value' && typeof cell.raw === 'number' ? [printedNumber(cell)] : [];
     });
     const maxAbs = Math.max(0, maxOf(values.map(Math.abs)));
     for (const value of values) drawn[scale].add(arrowGlyph(value, maxAbs, scale));
@@ -72,8 +75,8 @@ export function arrowKey(columns: readonly ResolvedColumn[], rows: readonly Reso
 }
 
 export function emitArrow(context: EncodingContext, metrics: ArrowMetrics): SceneNode[] {
-  const value = context.cell.raw;
-  if (context.cell.state !== 'value' || typeof value !== 'number') return [];
+  if (context.cell.state !== 'value' || typeof context.cell.raw !== 'number') return [];
+  const value = printedNumber(context.cell);
 
   const glyph = arrowGlyph(value, metrics.maxAbs, metrics.scale);
   let font = metrics.font;
