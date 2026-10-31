@@ -154,6 +154,29 @@ it('keeps the palette of panels in a written-out grid', () => {
   expect(roles(normalizeGridData(inherited, { palette: 'cool' })).every((role) => role === undefined)).toBe(true);
 });
 
+// A colour role is checked before seriesRamp in the column paints, so locking a ramp panel replaced its ordered ramp with categorical colours.
+it('keeps the series ramp of panels in a written-out grid', () => {
+  const panel = (id: string, column: number, ids: string[]) => ({
+    id, type: 'column', row: 0, column, options: { variant: 'stacked', seriesRamp: true },
+    data: { categories: [{ id: 'a' }], series: ids.map((sid) => ({ id: sid, label: sid, values: [1] })) },
+  });
+  const grid = normalizeGridData({ panels: [panel('p1', 0, ['a', 'b', 'c']), panel('p2', 1, ['b', 'c'])] });
+  for (const p of grid.panels) {
+    expect((p.data as { series: Array<{ colorRole?: string }> }).series.some((s) => s.colorRole !== undefined)).toBe(false);
+  }
+});
+
+// Panels whose shared ids already sit at the same positions drew alike, so locking them would recolour the extra series for nothing.
+it('leaves a written-out grid alone when shared series sit at the same positions', () => {
+  const panel = (id: string, column: number, ids: string[]) => ({
+    id, type: 'column', row: 0, column, options: { variant: 'stacked' },
+    data: { categories: [{ id: 'a' }], series: ids.map((sid) => ({ id: sid, label: sid, values: [1] })) },
+  });
+  const data = { panels: [panel('p1', 0, ['a', 'b', 'c']), panel('p2', 1, ['a', 'b'])] };
+  const grid = normalizeGridData(data);
+  expect(grid.panels.every((p) => (p.data as { series: Array<{ colorRole?: string }> }).series.every((s) => s.colorRole === undefined))).toBe(true);
+});
+
 // A series-level highlight role makes the other series the muted context, which a colour role on each of them would turn into peers.
 it('keeps the series-level highlight of slope panels in a written-out grid', () => {
   const panel = (id: string, column: number, ids: string[]) => ({

@@ -352,15 +352,15 @@ function substitute(value: unknown, placeholder: string, replacement: string): u
 
 /**
  * True for a panel that colours its series itself, so a colour role on every
- * series would override it: a panel that sets `highlight`, `emphasis` or a
- * `palette` (its own or the grid's), or that gives a series a `fill` or a
+ * series would override it: a panel that sets `highlight`, `emphasis`,
+ * `seriesRamp` or a `palette` (its own or the grid's), or that gives a series a `fill` or a
  * `colorRole`. A role is an absolute step of the theme's own series colours,
  * so it ignores a palette, replaces a focus series and cannot step aside from
  * an authored colour. Such a panel keeps its series as written.
  */
 function stylesOwnSeries(panel: GridPanelSpec, gridPalette: unknown): boolean {
   const options = isRecord(panel.options) ? panel.options : {};
-  if (options.highlight !== undefined || options.emphasis !== undefined || (options.palette ?? gridPalette) !== undefined) return true;
+  if (options.highlight !== undefined || options.emphasis !== undefined || options.seriesRamp !== undefined || (options.palette ?? gridPalette) !== undefined) return true;
   const series = isRecord(panel.data) && Array.isArray(panel.data.series) ? panel.data.series : [];
   return series.some((item) => isRecord(item) && item.role !== 'reference' && (item.fill !== undefined || item.colorRole !== undefined));
 }
@@ -384,17 +384,23 @@ function panelSeriesIds(panel: GridPanelSpec): string[] {
 }
 
 /**
- * True when a written-out grid shares a series id between panels and the panels
- * do not already list the same ids in the same order. Panels that agree by
- * position, or that share no id, keep the colours they have.
+ * True when a written-out grid shares a series id between panels and a shared
+ * id sits at a different position in two panels. Panels whose shared ids
+ * already agree by position (a prefix of the same list, say), or that share no
+ * id, keep the colours they have.
  */
 function seriesIdsDisagree(panels: GridPanelSpec[]): boolean {
-  const lists = panels.map(panelSeriesIds).filter((ids) => ids.length > 0);
-  const panelsOfId = new Map<string, number>();
-  for (const ids of lists) for (const id of new Set(ids)) panelsOfId.set(id, (panelsOfId.get(id) ?? 0) + 1);
-  const shared = [...panelsOfId.values()].some((count) => count > 1);
-  const first = lists[0] ?? [];
-  return shared && lists.some((ids) => ids.length !== first.length || ids.some((id, index) => id !== first[index]));
+  const positionOfId = new Map<string, number>();
+  for (const panel of panels) {
+    const ids = panelSeriesIds(panel);
+    for (const [index, id] of ids.entries()) {
+      if (ids.indexOf(id) !== index) continue;
+      const seen = positionOfId.get(id);
+      if (seen === undefined) positionOfId.set(id, index);
+      else if (seen !== index) return true;
+    }
+  }
+  return false;
 }
 
 function lockPaletteBySeriesId(panels: GridPanelSpec[], reorder = true): GridPanelSpec[] {
