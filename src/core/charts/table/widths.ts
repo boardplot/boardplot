@@ -322,6 +322,8 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
     // prose has hit its floor. A truncated country name next to slack
     // prose reads as a layout fault.
     let deficit = totalW - available;
+    const beforeShrink = new Map(widths);
+    const floorOf = (col: ResolvedColumn) => view.scroll ? chosen.labelFloor : shrinkFloorWidth(col, wideTable, minimumWidths, chosen.labelFloor);
     // The hint room in the label track is optional and goes first: the hint is then cut or
     // left out, and no other column shrinks for it.
     for (const col of cols.filter((c) => canShrink(c) && c.kind === 'rowLabel')) {
@@ -337,7 +339,7 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
       const shrinkable = tier
         .map((col) => ({
           id: col.id,
-          room: Math.max(0, widths.get(col.id)! - (view.scroll ? chosen.labelFloor : shrinkFloorWidth(col, wideTable, minimumWidths, chosen.labelFloor))),
+          room: Math.max(0, widths.get(col.id)! - floorOf(col)),
         }))
         .filter((f) => f.room > 0);
       const totalRoom = shrinkable.reduce((a, f) => a + f.room, 0);
@@ -348,6 +350,17 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
         widths.set(f.id, Math.round(widths.get(f.id)! - cut));
       }
       deficit -= take;
+    }
+    // Each cut above is rounded, so tracks that cover the deficit in exact arithmetic can end a
+    // pixel or more over the plot. The columns with the most room give that pixel back.
+    if (deficit <= 0) {
+      const flex = cols.filter((col) => canShrink(col) && (col.kind === 'rowLabel' || col.kind === 'text'));
+      for (let over = Math.ceil(sumOf(widths) - available); over > 0; over--) {
+        const roomOf = (col: ResolvedColumn) => widths.get(col.id)! - floorOf(col);
+        const widest = flex.reduce<ResolvedColumn | undefined>((best, col) => best === undefined || roomOf(col) > roomOf(best) ? col : best, undefined);
+        if (widest === undefined || roomOf(widest) < 1) break;
+        widths.set(widest.id, widths.get(widest.id)! - 1);
+      }
     }
     let remaining = Math.ceil(sumOf(widths) - available);
     if (remaining > 0 && wideTable) {
@@ -373,8 +386,12 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
     const printsUncut = (col: ResolvedColumn) => col.wrap ? minimumWidths.get(col.id)!
       : intrinsicColumnWidth(col, widthRows, { ...chosen.context, hint: undefined, twoLineLabels: true });
     const flexText = cols.filter((col) => canShrink(col) && col.kind === 'text' && col.width === undefined);
-    const gaps = flexText.map((col) => ({ id: col.id, gap: printsUncut(col) - widths.get(col.id)! }));
-    const wants = gaps.filter((entry) => entry.gap > 0);
+    // Only a column the shrink cut can want width, and the uncut width of the others is measured
+    // only when one does: the two-line measure costs a cell-by-cell pass over each text column.
+    const gapOf = (col: ResolvedColumn) => ({ id: col.id, gap: printsUncut(col) - widths.get(col.id)! });
+    const cutGaps = flexText.filter((col) => widths.get(col.id)! < beforeShrink.get(col.id)!).map(gapOf);
+    const wants = cutGaps.filter((entry) => entry.gap > 0);
+    const gaps = wants.length === 0 ? [] : flexText.map((col) => cutGaps.find((entry) => entry.id === col.id) ?? gapOf(col));
     const wanted = wants.reduce((sum, entry) => sum + entry.gap, 0);
     // A donor gives at most the width it keeps above its uncut text, and no group heading it sits
     // under gives up the room its heading needs: the later group pass cannot restore that room

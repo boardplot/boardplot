@@ -11,7 +11,7 @@ import { bartableDataSchema } from '../src/core/charts/bartable/schema';
 import { tableDataSchema } from '../src/core/charts/table/schema';
 import { authoredTrackWidth, intrinsicColumnWidth, tableFonts, ENCODING_WIDTH } from '../src/core/charts/table/tracks';
 import { levelLadder } from '../src/core/charts/table/ladder';
-import { defaultMeasurer } from '../src/core/text';
+import { defaultMeasurer, twoLineWidth } from '../src/core/text';
 import { cellGrounds, paintColor, registerTheme, resolveTheme, themes } from '../src/core/theme';
 import { contrastRatio, hueSaturation, mixColors } from '../src/core/color';
 import { onTableGround, toneTextPaint } from '../src/core/charts/table/chips';
@@ -1172,4 +1172,47 @@ it('keeps the room a column-group heading needs when a cut column takes width fr
   };
   const geometry = layout('table', data, { size: { width: 540, height: 400 } });
   expect(geometry.warnings.filter((warning) => warning.code === 'table-group-heading-overflow')).toEqual([]);
+});
+
+// Each rounded cut of the shrink could leave the tracks a pixel over the plot, and a table that fit in exact arithmetic then warned table-overflow.
+it('does not report an overflow for a pixel of rounding in the shrink', () => {
+  const rows: Array<[string, string[]]> = [
+    ['syndication signing Q1', ['foxtrot', 'EU consideration', 'delta syndication EU works', 'echo alpha closing works charlie bravo closing UK financing EU financing Q2']],
+    ['bravo unitranche', ['council unitranche Q1 echo clearance', 'alpha', 'syndication bravo antitrust foxtrot works EU EU UK', 'signing clearance alpha council consideration consideration council bravo consideration closing']],
+    ['clearance financing Q1', ['financing', 'closing Q1 financing unitranche closing consideration syndication council alpha', 'foxtrot syndication UK council foxtrot syndication UK consideration foxtrot unitranche consideration', 'council UK clearance closing charlie financing Q1 financing Q1 foxtrot']],
+    ['echo UK', ['charlie unitranche signing UK syndication charlie echo clearance unitranche', 'alpha Q2 works UK EU alpha Q2 alpha delta', 'unitranche works alpha EU financing echo Q2 alpha antitrust echo', 'charlie council works delta']],
+  ];
+  const ids = ['t1', 't2', 't0', 't3'];
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel', label: 'Offer' }, ...ids.map((id, i) => ({ id, kind: 'text' as const, label: ['Terms', 'Timeline', 'Conditions', 'Conditions'][i]!, wrap: true }))],
+    rows: rows.map(([label, cells], i) => ({ id: `r${i}`, label, cells: Object.fromEntries(ids.map((id, c) => [id, cells[c]!])) })),
+  };
+  const geometry = layout('table', data, { theme: 'boardroom', variant: 'benchmark', size: { width: 1235, height: 700 } });
+  expect(geometry.warnings.filter((warning) => warning.code === 'table-overflow')).toEqual([]);
+});
+
+// The post-pass measured every non-wrap text column at its two-line width in each pass, also when the shrink cut none of them.
+it('measures no two-line width of a text column the shrink did not cut', () => {
+  const data: TableData = {
+    columns: [
+      { id: 'label', kind: 'rowLabel', label: 'Offer' },
+      { id: 'when', kind: 'text', label: 'When' },
+    ],
+    rows: [{ id: 'a', label: 'A bidder with a long name that needs most of the frame', cells: { when: 'Q1 Q2 Q3' } }],
+  };
+  const seen: string[] = [];
+  const measure: typeof defaultMeasurer = (text, font) => { seen.push(text); return defaultMeasurer(text, font); };
+  layout('table', data, { measure, size: { width: 380, height: 200 } });
+  expect(seen).not.toContain('Q2 Q3');
+});
+
+// A table asks for the two-line width of one cell again on each layout pass, and each ask measured every split of the text again.
+it('measures the two-line width of a text once per measurer', () => {
+  let calls = 0;
+  const measure: typeof defaultMeasurer = (text, font) => { calls++; return defaultMeasurer(text, font); };
+  const font = { size: 12, weight: 400 };
+  const first = twoLineWidth('Signing in the second quarter and closing early next year', font, measure);
+  const used = calls;
+  expect(twoLineWidth('Signing in the second quarter and closing early next year', font, measure)).toBe(first);
+  expect(calls).toBe(used);
 });
