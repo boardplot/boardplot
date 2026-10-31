@@ -19,7 +19,7 @@ import { chartString } from '../../strings/slope';
  */
 
 import { receivedDescription } from '../../diagnostics/describe';
-import { round2 } from '../../geometry';
+import { cleanFloat, round2 } from '../../geometry';
 import { formatAutomaticPercent } from '../../format';
 import type { Id, Scenario } from '../../types/cell';
 import type { LintWarning } from '../../types/scene';
@@ -343,9 +343,9 @@ function buildFold(
       share,
       otherId: other.id,
       memberIds: members.map((s) => s.id),
-      values: { from: round2(values.from), to: round2(values.to) },
+      values: { from: cleanFloat(values.from), to: cleanFloat(values.to) },
       shares: { from: round4(values.from / totals.from), to: round4(values.to / totals.to) },
-      totals: { from: round2(totals.from), to: round2(totals.to) },
+      totals: { from: cleanFloat(totals.from), to: cleanFloat(totals.to) },
       note,
     },
   };

@@ -541,3 +541,21 @@ describe('a lone valid 100% category', () => {
     expect([columns.length, note]).toEqual([2, true]);
   });
 });
+
+// The n.m. text of a variance category ran past the canvas edge when its category sat at the plot edge.
+describe('variance n.m. text', () => {
+  it('stays inside the plot on a narrow canvas', () => {
+    const categories = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'].map((id) => ({ id, label: id.toUpperCase() }));
+    const actual = [14, 11.2, 9.8, 7.6, 6, 4.5, 2.9, 8.8, 0.4];
+    const plan = [13, 10.4, 9, 7, 6.2, 4.6, 3, 10, 0];
+    const geometry = lay('variance', { categories, series: [
+      { id: 'ac', label: 'Actual', scenario: 'AC', values: actual },
+      { id: 'pl', label: 'Plan', scenario: 'PL', role: 'reference', values: plan },
+    ] }, { variant: 'relative', variance: { of: 'ac', vs: 'pl' }, unit: 'EUR m', size: { width: 343, height: 258, unit: 'px' } });
+    const node = geometry.scene.find((n) => n.t === 'text' && n.id === 'nm:i');
+    if (node?.t !== 'text') throw new Error('no n.m. text');
+    const width = Math.max(...node.lines.map((line) => measureText(line, node.font).width));
+    const { plot } = geometry;
+    expect([node.x - width / 2 >= plot.x - 0.01, node.x + width / 2 <= plot.x + plot.w + 0.01]).toEqual([true, true]);
+  });
+});

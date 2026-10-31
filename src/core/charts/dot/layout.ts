@@ -33,7 +33,7 @@ import { CONTENT_PLOT_HEIGHT, HARD_MINIMUM, type ContentPlotHeight } from '../..
 import { REFERENCE_LABEL_CLEARANCE } from '../../markVisibility';
 import { averageMarkerLine, averageMarkerScope } from '../band/stacks';
 import { rowLabelX, type Rect } from '../../geometry';
-import { clamp, round2, unionRect } from '../../geometry';
+import { clamp, cleanDiff, round2, unionRect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
 import { seatsPastBlockers } from '../../label/slots';
@@ -318,7 +318,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     cats.forEach((c, ci) => {
       const a = dataSeries[0]!.cells[ci]!.v;
       const b = dataSeries[1]!.cells[ci]!.v;
-      if (a !== null && b !== null) gaps![c.id] = round2(b - a);
+      if (a !== null && b !== null) gaps![c.id] = cleanDiff(b, a);
     });
   }
 
