@@ -929,13 +929,14 @@ export function layoutBullet(
   // outranks column alignment.
   // The compact mark prints no value, so it keeps no room for one.
   // Every value prints in one right-aligned column in that headroom, under the head Actual beside
-  // the target columns, so a negative row keeps no room on its left.
+  // the target columns. A negative row keeps its room on the left as well: a bar that started at the
+  // plot edge, where the other rows have their zero, would read as a short positive bar.
   const actualHead = cols && labelOn('point') && Math.max(maxPosW, maxNegW) > 0
     ? fitHead(chartString(options, 'actualColumn'), cp.headerFont, Math.max(maxPosW, maxNegW), measure, { target, textScale: textScaleOf(options) })
     : undefined;
   const valueColW = Math.max(maxPosW, maxNegW, actualHead?.w ?? 0);
   const fP = compact || stacked ? 0 : Math.min(0.35, (valueColW + LABEL_GAP + 8) / plot.w);
-  const fN = 0;
+  const fN = lo < 0 && !compact && !stacked ? Math.min(0.35, (maxNegW + LABEL_GAP + 8) / plot.w) : 0;
   const extend = (extentLo: number, extentHi: number): [number, number] => {
     const span = extentHi - extentLo || 1;
     const denom = Math.max(0.3, 1 - fP - (extentLo < 0 ? fN : 0));
