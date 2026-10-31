@@ -49,10 +49,11 @@ function composeText(
   catLabel: string,
   serLabel: string,
   example?: string,
+  absFmt = env.fmt,
 ): string {
   const parts: string[] = [];
   for (const c of content) {
-    if (c === 'absolute' && values.abs !== null) parts.push(example ? formatterFromExample(example, env.options.locale?.language)(values.abs) : env.fmt(values.abs));
+    if (c === 'absolute' && values.abs !== null) parts.push(example ? formatterFromExample(example, env.options.locale?.language)(values.abs) : absFmt(values.abs));
     else if (c === 'percent' && values.pct !== null) parts.push((env.options.rounding === 'sum-consistent' ? values.pctText : undefined) ??
       (example ? formatterFromExample(example, env.options.locale?.language)(values.pct) : values.authoredPct ? env.authoredPctFmt(values.pct) : values.pctText ?? env.pctFmt(values.pct)));
     else if (c === 'category' && catLabel) parts.push(catLabel);
@@ -221,7 +222,7 @@ export function columnTotalText(env: MekkoEnv, domain: MekkoDomain, ci: number, 
   const series = domain.series[0]!;
   const example = domain.mode === 'bar' ? series.vals[ci]!.format ?? series.format : undefined;
   return example ? formatterFromExample(example, env.options.locale?.language)(value)
-    : domain.mode === 'bar' && series.vals[ci]!.isPct ? env.authoredPctFmt(value) : env.fmt(value);
+    : domain.mode === 'bar' && series.vals[ci]!.isPct ? env.authoredPctFmt(value) : env.totalFmt(value);
 }
 
 /** The solver's 2 px of air to a rule, plus a hair so the seat is free, not touching. */
@@ -255,7 +256,7 @@ function totalLabel(ctx: LabelCtx, ci: number, visibleCol: boolean, edges: { top
     if (mode === 'bar') {
       if (barV !== null) text = columnTotalText(env, domain, ci, barV);
     } else {
-      text = composeText(env, totalContent, { abs: domain.columnTotals[c.id]!, pct: null }, c.label ?? c.id, '');
+      text = composeText(env, totalContent, { abs: domain.columnTotals[c.id]!, pct: null }, c.label ?? c.id, '', undefined, env.totalFmt);
     }
   }
   // The shared join: a currency sign where the locale writes it ("$10,000", "10.000 $").

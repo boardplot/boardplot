@@ -1,6 +1,10 @@
 /** The topN cut of bar, column, butterfly, pie and mekko: one ranking, one rest name, one rest sum. */
 
+import { normalizeCategory, normalizeSeriesValues } from '../normalize/shared';
+import { isDateCell } from '../types/cell';
+import type { ChartData } from '../types/data';
 import type { StringsSpec, TopNOptions } from '../types/options';
+import type { LintWarning } from '../types/scene';
 
 interface TopN { n: number; restLabel?: string; showRestCount?: boolean }
 
@@ -33,6 +37,29 @@ export function restLabel(topN: TopN, strings: StringsSpec | undefined, count: n
 export function restSum(values: readonly (number | null)[]): number | null {
   const nums = values.filter((x): x is number => x !== null);
   return nums.length ? nums.reduce((a, b) => a + b, 0) : null;
+}
+
+/**
+ * Others is a sum and has no details of its own, so the details of the cells
+ * folded into it leave the hover card. Adding them could mean nothing (a rate,
+ * a name), so the chart says what went instead.
+ */
+export function restDetailsWarning(data: Pick<ChartData, 'categories' | 'series'>, drawn: ReadonlySet<string>): LintWarning | undefined {
+  const categories = data.categories.map(normalizeCategory);
+  const labels = new Set<string>();
+  const keys = new Set<string>();
+  data.series.forEach((series, index) => normalizeSeriesValues(series, categories, index).forEach((cell, i) => {
+    const category = categories[i]!;
+    if (drawn.has(category.id) || cell === null || typeof cell !== 'object' || isDateCell(cell) || !cell.details) return;
+    labels.add(category.label ?? category.id);
+    for (const key of Object.keys(cell.details)) keys.add(key);
+  }));
+  if (!keys.size) return undefined;
+  return {
+    code: 'details-topn-omitted', severity: 'warn',
+    message: `topN Others sums values but not details; the details of ${[...labels].join(', ')} were dropped (${[...keys].join(', ')})`,
+    suggest: 'raise topN.n to keep these categories, or aggregate them upstream and write the details on one category',
+  };
 }
 
 /** A mekko cell as an amount: in percent mode a percent cell converts through its category basis. */
