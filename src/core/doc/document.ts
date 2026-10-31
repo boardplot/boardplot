@@ -199,7 +199,10 @@ function unknownDocFields(raw: unknown): { errors: DocumentFinding[]; warnings: 
         suggest: "Remove 'version', or put the chart into 'charts'.",
         fix: [{ op: 'remove', path: '/version' }],
       }, raw, ['version'], 'docs/manual.md#the-spec'));
-    } else if (strays.includes(key)) errors.push(strayKey(raw, key, 'Root', strays));
+    } else if (strays.includes(key)) {
+      // An envelope has no root options to move a key into, so its fix removes the key.
+      errors.push(oneChart ? strayKey(raw, key, 'Root', strays) : unknownField(raw, [key], 'Root'));
+    }
   }
   if (Object.hasOwn(raw, 'locale') && typeof raw.locale !== 'string') {
     warnings.push(completeDiagnostic({

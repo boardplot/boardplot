@@ -87,6 +87,17 @@ describe('root key fixes', () => {
       expect(render({ spec: fixed, format: 'svg' }).body).toMatchObject({ ok: true });
     }
   });
+
+  // A stray root key beside charts got a move into a root options that an envelope does not have; the fixed document was refused.
+  it('draws an envelope after its stray root key is removed', () => {
+    for (const extra of [{ title: 'Revenue' }, { unit: 'EUR m' }, { foo: 1 }, { type: 'column' }]) {
+      const spec = { version: 1, charts: [{ name: 'a', ...chart }], ...extra };
+      const refused = render({ spec, format: 'svg' }).body as any;
+      expect(refused.ok).toBe(false);
+      const fixed = applyPatch(spec, refused.errors.flatMap((error: any) => error.fix));
+      expect(render({ spec: fixed, format: 'svg' }).body).toMatchObject({ ok: true });
+    }
+  });
 });
 
 const fixtureSpec = (type: string, id: string) => {
