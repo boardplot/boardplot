@@ -827,6 +827,27 @@ it('draws a column whose names cannot fit or rotate as bars, or lists the names 
   expect(hiddenNames(tall)).toEqual([]);
 });
 
+// A column that stepped to bars at 320 px took the bar's natural and comfortable sizes, so advice to widen drew a column at other sizes.
+it('measures a column that stepped to bars with the natural sizes of the chart drawn at its natural width', () => {
+  const names = Array.from({ length: 20 }, (_, i) => `Sector number ${i + 1} of the survey`);
+  const data = { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [{ id: 's', label: 'Margin', values: names.map((_, i) => 8 + ((i * 7) % 23)) }] };
+  const spec = (width: number) => ({ type: 'column', data, options: { title: 'Margin by sector', unit: '%', size: { width } } }) as never;
+  const narrow = measure(spec(320));
+  expect((narrow.geometry as Geometry).type).toBe('bar');
+  const wide = measure(spec(narrow.naturalWidth));
+  expect((wide.geometry as Geometry).type).toBe('column');
+  expect([narrow.naturalHeight, narrow.comfortableWidth, narrow.comfortableHeight, narrow.fit]).toEqual([wide.naturalHeight, wide.comfortableWidth, wide.comfortableHeight, wide.fit]);
+});
+
+// tickStep is read by column and refused by bar, so a column that stepped to bars dropped it with no word.
+it('keeps the column when a column-only value axis key is set', () => {
+  const names = Array.from({ length: 20 }, (_, i) => `Sector number ${i + 1} of the survey`);
+  const data = { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [{ id: 's', label: 'Margin', values: names.map((_, i) => 8 + ((i * 7) % 23)) }] };
+  const draw = (valueAxis: object) => layoutResolvedRequest(resolveChartRequest({ type: 'column', data, options: { title: 'Margin by sector', unit: '%', size: { width: 320 }, valueAxis } } as never)) as Geometry;
+  expect(draw({ show: true }).type).toBe('bar');
+  expect(draw({ tickStep: 5 }).type).toBe('column');
+});
+
 // The reading of a column that stepped to bars said column, so an agent reading it took the wrong chart type.
 it('reports the drawn type in the reading of a column that stepped to bars', () => {
   const names = ['Automotive OEM', 'Automotive suppliers', 'Chemicals', 'Consumer goods', 'Energy utilities', 'Financial services', 'Food and beverage', 'Healthcare providers', 'Industrial machinery', 'Insurance',

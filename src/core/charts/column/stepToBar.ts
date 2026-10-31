@@ -6,6 +6,7 @@
  * it leaves out are listed as omissions (labels.ts).
  */
 
+import { valueAxisRefusal } from '../../schema/capability';
 import { fitsSize, SIZE_TOLERANCE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { panelTypeClass, resolveTheme } from '../../theme';
@@ -17,7 +18,7 @@ import { layoutBar } from '../bar/layout';
 import type { ColumnDerived, ColumnMarks } from './layout';
 import type { AnomalyColumnOptions } from './types';
 
-/** Settings that bar has no counterpart for. */
+/** Settings that bar has no counterpart for. A value axis key bar refuses and column reads (tickStep) counts too. */
 const COLUMN_ONLY = ['anomaly', 'ratioTier', 'events', 'seriesRamp', 'othersShade', 'seriesLabels', 'shareLabels', 'window', 'viewDomain', 'categoryLabels', 'ribbons'] as const;
 
 export function stepToBar(
@@ -29,6 +30,7 @@ export function stepToBar(
   const lost = names.filter((label) => label.hidden === 'density');
   if (lost.length === 0 || panelTypeClass(options) !== undefined) return undefined;
   if (COLUMN_ONLY.some((key) => options[key] !== undefined) || options.annotations?.some((annotation) => annotation.kind === 'event')) return undefined;
+  if (Object.entries(options.valueAxis ?? {}).some(([key, value]) => value !== undefined && valueAxisRefusal('bar', key) !== undefined && valueAxisRefusal('column', key) === undefined)) return undefined;
   // An open height is the bar's to choose: the fit step after the layout gives its rows their height.
   // A pinned height must already hold every row with its name.
   const pinned = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === true;
