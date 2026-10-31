@@ -328,36 +328,46 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
       });
     }
   });
-  // A cell key that names no column draws nothing: the number vanishes without a word.
+  // A cell key that names a column almost, but not quite, draws nothing: the number vanishes without a word.
+  // A key far from every column, or beside a column the row also fills, is data the author left out of the columns on purpose, so it stays quiet.
+  // One warning per key keeps the response small on a wide row set.
   const columnIds = data.columns.map((column) => column.id);
+  const unknownKeys = new Map<string, { row: TableData['rows'][number]; rowPath: (string | number)[]; near: string; rows: number }>();
   const checkCellKeys = (rows: TableData['rows'], path: (string | number)[]): void => {
     rows.forEach((row, index) => {
       const rowPath = [...path, index];
       for (const key of Object.keys(row.cells ?? {})) {
         if (columnIds.includes(key)) continue;
         const nearest = closestKey(key, columnIds);
-        const near = nearest?.near ? nearest.key : undefined;
-        const cells = row.cells!;
-        warnings.push({
-          code: 'cell-column-unknown',
-          severity: 'warn',
-          message: `cell '${key}' in row '${row.id}' names no column, so its value is not drawn${near ? `; did you mean '${near}'?` : ''}`,
-          owner: { rowId: row.id },
-          field: ['data', 'rows', ...rowPath, 'cells', key],
-          suggest: near ? `Rename the cell key to '${near}'.` : `Use one of the column ids (${columnIds.join(', ')}), or remove the cell.`,
-          ...(near === undefined || Object.hasOwn(cells, near) ? {} : {
-            fix: [
-              { op: 'test', path: `/data/rows/${rowPath.join('/')}/cells`, value: cells },
-              { op: 'replace', path: `/data/rows/${rowPath.join('/')}/cells`, value: Object.fromEntries(Object.entries(cells).map(([name, value]) => [name === key ? near : name, value])) },
-            ],
-          }),
-        });
+        // The near column holds a cell in this row too: the key is another column, left out on purpose.
+        if (!nearest?.near || Object.hasOwn(row.cells!, nearest.key)) continue;
+        const seen = unknownKeys.get(key);
+        if (seen) seen.rows += 1;
+        else unknownKeys.set(key, { row, rowPath, near: nearest.key, rows: 1 });
       }
       if (row.children) checkCellKeys(row.children, [...rowPath, 'children']);
     });
   };
   // The authored rows: a fitted resolution rewrites cell formats, which the repair patch must not test.
   checkCellKeys(magnitudeSource.rows, []);
+  for (const [key, { row, rowPath, near, rows }] of unknownKeys) {
+    const cells = row.cells!;
+    warnings.push({
+      code: 'cell-column-unknown',
+      severity: 'warn',
+      message: `cell '${key}' in row '${row.id}'${rows > 1 ? ` and ${rows - 1} more` : ''} names no column, so its value is not drawn; did you mean '${near}'?`,
+      owner: { rowId: row.id },
+      field: ['data', 'rows', ...rowPath, 'cells', key],
+      suggest: `Rename the cell key to '${near}'.`,
+      // A patch for the first row only would leave the others; a key in several rows gets the suggestion alone.
+      ...(rows > 1 ? {} : {
+        fix: [
+          { op: 'test', path: `/data/rows/${rowPath.join('/')}/cells`, value: cells },
+          { op: 'replace', path: `/data/rows/${rowPath.join('/')}/cells`, value: Object.fromEntries(Object.entries(cells).map(([name, value]) => [name === key ? near : name, value])) },
+        ],
+      }),
+    });
+  }
   const records: ComputedCellRecord[] = [];
   const autoFootnotes = new Set<string>();
   /** Row labels whose changes took a tone, by the direction that judged them. */

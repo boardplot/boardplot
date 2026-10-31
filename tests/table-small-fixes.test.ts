@@ -1140,6 +1140,18 @@ it('warns about a cell key that names no column and offers the nearest column id
   expect(found[0]!.suggest).toContain("'amount'");
 });
 
+// A table that filters its columns on purpose got one cell-column-unknown warning per row and key, so the response grew with the row count.
+it('warns once per cell key and stays quiet for keys that are not a typo of an empty column', () => {
+  const data: TableData = {
+    columns: [{ id: 'l', kind: 'rowLabel', label: 'Unit' }, { id: 'amountPlan', kind: 'value', label: 'Plan' }, { id: 'amount', kind: 'value', label: 'Amount' }],
+    rows: Array.from({ length: 20 }, (_, i) => ({ id: `r${i}`, label: `Row ${i}`, cells: { amountPlan: 2, amountPlans: 3, region: 4, amunt: 5 } })),
+  };
+  const found = resolveTable(data).warnings.filter((w) => w.code === 'cell-column-unknown');
+  expect(found.map((w) => w.field?.at(-1))).toEqual(['amunt']);
+  expect(found[0]!.message).toContain('19 more');
+  expect(found[0]!.fix).toBeUndefined();
+});
+
 // A repair patch built from the fitted rows tested a cell format the author never wrote, so applying it to the authored spec failed.
 it('builds the cell-column-unknown repair from the authored cells when fitFormats shortens a cell format', () => {
   const data: TableData = {
