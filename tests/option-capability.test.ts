@@ -559,6 +559,8 @@ describe('published option behaviour census', () => {
         if (type === 'dimswitch' && key === 'order') value = { by: 'revenue', desc: true };
         if (type === 'dimswitch' && key === 'expansion') value = { depth: 1 };
         if (type === 'scatter' && key === 'zones') value = { grid: { x: [5], y: [4] } };
+        // A swamped pvm base breaks the axis by default, so the probe asks for a whole axis.
+        if (type === 'pvm' && key === 'valueAxis') value = { break: false };
         if (type === 'line' && key === 'fan') value = { of: 'output', bands: [{ low: 'output', high: 'market', label: 'Census bounds' }] };
         if (type === 'bartable' && key === 'combinedShare') value = { rows: [ids[1], ids[2]] };
         if (type === 'grid' && key === 'alignmentRules') value = [{ id: 'census', orientation: 'horizontal', at: { panelId: 'rev', anchor: 'plotTop' } }];

@@ -1127,7 +1127,7 @@ export const valueAxisSchema = z
       .describe(
         'Straight value-axis break; the omitted span collapses to a fixed 12px gap when valid.',
       )])
-      .describe("No break by default or with false. Waterfall and pvm alone accept 'auto' to choose a safe break; { from, to, style? } sets the omitted span. A valid straight break uses a fixed 12px gap and discloses the omitted range. Totals and levels stay visibly longer than smaller steps or segments and no shorter than equal ones. Unsafe automatic breaks move down when valid; unsafe authored breaks are ignored with a warning. An unbroken positive bridge gets an info hint when its smallest total divided by its largest step exceeds 10.")
+      .describe("No break by default or with false. Waterfall and pvm alone accept 'auto' to choose a safe break; pvm defaults to 'auto' when its smaller total exceeds 10 times its largest step or its running levels span under 20% of the larger total; { from, to, style? } sets the omitted span. A valid straight break uses a fixed 12px gap and discloses the omitted range. Totals and levels stay visibly longer than smaller steps or segments and no shorter than equal ones. Unsafe automatic breaks move down when valid; unsafe authored breaks are ignored with a warning. An unbroken positive bridge gets an info hint when its smallest total divided by its largest step exceeds 10.")
       .optional(),
   });
 
