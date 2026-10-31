@@ -891,27 +891,34 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     return spec;
   };
   // The figures a row's magnitude reads: its visible value cells without a format of their own.
-  const valuesOfRow = new Map<string, number[]>();
-  const rowValues = (row: FlatRow): number[] => {
-    let values = valuesOfRow.get(row.id);
-    if (values === undefined) valuesOfRow.set(row.id, values = rowValuesUncached(row));
-    return values;
+  const cellsOfRow = new Map<string, (readonly [Id, number])[]>();
+  const rowCells = (row: FlatRow): (readonly [Id, number])[] => {
+    let cells = cellsOfRow.get(row.id);
+    if (cells === undefined) cellsOfRow.set(row.id, cells = rowCellsUncached(row));
+    return cells;
   };
-  const rowValuesUncached = (row: FlatRow) => valueCols.filter(col => col.format === undefined && cellFormat(row.cells[col.id]) === undefined && !(data.columnToggles ?? []).some(toggle => toggle.columns.includes(col.id) && (options.columnVisibility?.[toggle.id] ?? toggle.defaultVisible ?? false) === false)).map(col => rawState.get(row.id)?.get(col.id)?.raw).filter((v): v is number => typeof v === 'number');
+  const rowValues = (row: FlatRow): number[] => rowCells(row).map(([, value]) => value);
+  const rowCellsUncached = (row: FlatRow) => valueCols.filter(col => col.format === undefined && cellFormat(row.cells[col.id]) === undefined && !(data.columnToggles ?? []).some(toggle => toggle.columns.includes(col.id) && (options.columnVisibility?.[toggle.id] ?? toggle.defaultVisible ?? false) === false)).flatMap(col => { const raw = rawState.get(row.id)?.get(col.id)?.raw; return typeof raw === 'number' ? [[col.id, raw] as const] : []; });
   const largest = (values: number[]) => values.reduce((n,v)=>Math.max(n,Math.abs(v)),0);
   // Rows of one composed measure share the magnitude of their largest cell.
   const groupOf = (row: FlatRow) => (sourceRows.get(row.id) as MagnitudeGroupSource | undefined)?.[MAGNITUDE_GROUP];
   const groupMax = new Map<string, number>();
-  const groupValues = new Map<string, number[]>();
+  // The figures of a group by column: each column takes its precision from its own largest figure.
+  const groupColumns = new Map<string, Map<Id, number[]>>();
   for (const row of flat) {
     const group = groupOf(row);
     if (group === undefined) continue;
-    const values = rowValues(row);
-    groupMax.set(group, Math.max(groupMax.get(group) ?? 0, largest(values)));
-    const shared = groupValues.get(group);
-    if (shared === undefined) groupValues.set(group, [...values]);
-    else pushAll(shared, values);
+    groupMax.set(group, Math.max(groupMax.get(group) ?? 0, largest(rowValues(row))));
+    let columns = groupColumns.get(group);
+    if (columns === undefined) groupColumns.set(group, columns = new Map());
+    for (const [colId, value] of rowCells(row)) {
+      const column = columns.get(colId);
+      if (column === undefined) columns.set(colId, [value]);
+      else column.push(value);
+    }
   }
+  // The spec a group row prints a column through: the row's, with the decimals that column needs.
+  const groupCellSpecs = new Map<Id, Map<Id, NumberFormatSpec>>();
   for (const row of flat) {
     rowById.set(row.id, row);
     const example = row.format ?? (row.scale ? row.scale === 'percent' ? '1.2%' : '1,234' : undefined) ?? (row.calc && calcYieldsPoints(row.calc) ? `1${locale.decimal}2%` : undefined);
@@ -976,9 +983,32 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
         // with no magnitude letter too (a 0.18 spend prints 0.18, not <1).
         if (!changeLine && (spec.magnitude !== 'none' || (group !== undefined && row.scale === 'money')) && !(spec.lockMagnitude && spec.magnitude === 'k')
           && (row.scale === 'money' || (row.scale === 'count' && !authoredFormat))) {
-          for (const value of group === undefined ? values : groupValues.get(group)!) {
-            while (value !== 0 && spec.decimals < MAX_FORMAT_DECIMALS
-              && Math.abs(roundedNumber(value, spec) - value) > (group === undefined ? Math.abs(value) : max) * 0.01) spec.decimals++;
+          if (group === undefined) {
+            for (const value of values) {
+              while (value !== 0 && spec.decimals < MAX_FORMAT_DECIMALS
+                && Math.abs(roundedNumber(value, spec) - value) > Math.abs(value) * 0.01) spec.decimals++;
+            }
+          } else {
+            // The group precision is the floor. A column of 1.46M cells then adds the decimals its own
+            // largest figure asks for, which a Range total of 18.2M does not.
+            const columns = groupColumns.get(group)!;
+            for (const column of columns.values()) {
+              for (const value of column) {
+                while (value !== 0 && spec.decimals < MAX_FORMAT_DECIMALS
+                  && Math.abs(roundedNumber(value, spec) - value) > max * 0.01) spec.decimals++;
+              }
+            }
+            const inRow = new Map<Id, NumberFormatSpec>();
+            for (const [colId, column] of columns) {
+              const cellSpec = { ...spec };
+              const bound = largest(column) * 0.01;
+              for (const value of column) {
+                while (value !== 0 && cellSpec.decimals < MAX_FORMAT_DECIMALS
+                  && Math.abs(roundedNumber(value, cellSpec) - value) > bound) cellSpec.decimals++;
+              }
+              inRow.set(colId, cellSpec);
+            }
+            groupCellSpecs.set(row.id, inRow);
           }
         }
       }
@@ -986,6 +1016,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
       const sourceRow = sourceRows.get(row.id) as (TableRow & AutomaticFormatSource) | undefined;
       // A measure group's row prints a small member as the shared bound, authored format or not.
       spec.automatic = automaticAs(group !== undefined || ((sourceRow?.format === undefined || sourceRow[AUTOMATIC_FORMAT] === true) && options.format === undefined && options.unit === undefined && forcedMagnitude === undefined));
+      for (const cellSpec of groupCellSpecs.get(row.id)?.values() ?? []) cellSpec.automatic = spec.automatic;
       rowSpecs.set(row.id, spec);
     }
   }
@@ -1148,7 +1179,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     const cellSpec = rowId ? cellSpecs.get(rowId)?.get(colId) : undefined;
     if (cellSpec) return cellSpec;
     const rowSpec = rowId ? rowSpecs.get(rowId) : undefined;
-    return rowSpec && (rowOverridesColumn(rowId!) || !ownFormatColumns.has(colId)) ? rowSpec : specs.get(colId)!;
+    return rowSpec && (rowOverridesColumn(rowId!) || !ownFormatColumns.has(colId)) ? groupCellSpecs.get(rowId!)?.get(colId) ?? rowSpec : specs.get(colId)!;
   };
   // `lift: false` prints the plain rounded text, which the near-zero base check reads.
   const formatNumber = (raw: number, colId: Id, rowId?: Id, lift = true): string => {
@@ -1166,7 +1197,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     // print as 0 that way.
     const base = rowPath ? rowSpec! : specs.get(colId)!;
     if (cellSpec && !sameUnit(cellSpec, base)) return formatWithSpec(raw, lift ? cellSpec : { ...cellSpec, automatic: false });
-    const decimals = cellSpec?.decimals ?? base.decimals;
+    const decimals = cellSpec?.decimals ?? (rowPath ? groupCellSpecs.get(rowId!)?.get(colId)?.decimals : undefined) ?? base.decimals;
     if (rowPath) {
       // A measure group's exact zero prints "0": no decimals, no magnitude letter.
       if (raw === 0 && lift && !cellSpec && groupOf(rowById.get(rowId!)!) !== undefined) return '0';
