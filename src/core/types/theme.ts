@@ -557,6 +557,8 @@ export interface Theme {
      * last point alone. Absent means true.
      */
     sparkWash?: boolean;
+    /** Where an area spark's scale and wash start; see themeFields. */
+    sparkAreaBase?: 'zero' | 'min';
     /** CSS box-shadow of the React notes popover; see themeFields. */
     panelShadow?: string;
   };

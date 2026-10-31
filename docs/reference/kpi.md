@@ -55,7 +55,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | bands[].label | string |  | Visible name of this band. |
 | note | string |  | Authored caption under the value: the basis, filter or scope the number is true of. Printed as written; the card never composes it. |
 | spark | object |  | Small trend chart displayed beneath the KPI comparison content. |
-| spark.kind | string | yes | Shape-only sparkline. 'column' is zero-anchored. The last observed value is labelled unless the card's figure already prints it. No axes. One of `'line'`, `'area'`, `'column'`. |
+| spark.kind | string | yes | Shape-only sparkline. 'column' and 'area' are zero-anchored. 'line' spans the series range. The last observed value is labelled unless the card's figure already prints it. No axes. One of `'line'`, `'area'`, `'column'`. |
 | spark.values | cell[] | yes | Trend observations in chronological order, in the same base units as the main value; the card format labels the last observed value unless it reads the same as the card's figure. A last value 1000 times or more off the main value is refused (spark-scale-mismatch). Missing cells create gaps. |
 | spark.labels | array |  | One period name per value, such as 'W1' or 'Jan'. The card prints the first and the last under the spark's ends, so the reader sees the span. |
 
@@ -102,6 +102,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | editorial-figure | example | Editorial card: a light serif figure from type.figure over text comparisons and a text attainment |
 | spark-ink-pale-neutral | example | A line spark in the ink on a theme whose neutral is a pale sand |
 | spark-area-as-line | example | An area spark drawn as a shape-only line ending in a ring, no wash and no end label |
+| spark-area-from-min | example | An area spark whose scale and wash start at the series minimum |
 | house-eyebrow | example | Tracked eyebrow from type.eyebrow, comparisons without carets |
 | weekly-orders-card-spark | example | The bare weekly sparkline inside a card that names the measure, the period and the number |
 | spark-ends-below-card | example | Cash card: today on the card, month-end balances in the spark, the last one labelled |
