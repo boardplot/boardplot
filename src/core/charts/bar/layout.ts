@@ -1642,6 +1642,7 @@ function planFootballField(
   // series, so its per-series formatter IS this plan's formatter — the same
   // rule the standard bar path applies through `valueSpec.forSeries`.
   const fmt = ctx.forSeries(series);
+  const missingRange: number[] = [];
   let cells = normalizeSeriesValues(series, cats, 0).map((cell, ci) => {
     const range = resolveCellRange(
       cell,
@@ -1649,15 +1650,35 @@ function planFootballField(
       warnings,
       { seriesId: series.id, categoryId: cats[ci]?.id },
     );
-    if (!range) {
-      throw new NormalizeError(
-        'football-field-range-required',
-        `series[${series.id}].values[${ci}].range`,
-        `football-field method '${cats[ci]!.id}' requires a range`,
-      );
-    }
-    return { value: cellValue(cell), meta: cellMeta(cell), range };
+    if (!range) missingRange.push(ci);
+    return { value: cellValue(cell), meta: cellMeta(cell), range: range! };
   });
+  if (missingRange.length > 0) {
+    // A method with no range has no bar and no text the engine could compose
+    // for it, so it is refused. The fix removes every such method, highest
+    // index first so earlier indices stay valid.
+    const first = missingRange[0]!;
+    const values = series.values as unknown[];
+    const seriesPath = `/data/series/${data.series.indexOf(series)}/values`;
+    const seriesOps = missingRange
+      .map((ci) => values.findIndex((entry, index) => (
+        typeof entry === 'object' && entry !== null && 'categoryId' in entry
+          ? (entry as { categoryId: unknown }).categoryId === cats[ci]!.id
+          : index === ci
+      )))
+      .filter((index) => index >= 0)
+      .sort((a, b) => b - a)
+      .map((index) => ({ op: 'remove' as const, path: `${seriesPath}/${index}` }));
+    const categoryOps = [...missingRange].reverse()
+      .map((ci) => ({ op: 'remove' as const, path: `/data/categories/${ci}` }));
+    throw new NormalizeError(
+      'football-field-range-required',
+      `series[${series.id}].values[${first}].range`,
+      `football-field method '${cats[first]!.id}' requires a range`,
+      'Remove the method from data.categories and from the series values, or give it a range.',
+      missingRange.length < cats.length ? [...seriesOps, ...categoryOps] : undefined,
+    );
+  }
 
   const order = cats.map((_, index) => index);
   const sort = options.sort?.categories ?? 'sheet';

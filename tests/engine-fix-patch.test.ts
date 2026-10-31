@@ -21,7 +21,7 @@ function applyPatch(doc: any, patch: readonly Op[]): any {
     const last = keys.at(-1)!;
     if (op === 'replace' && !(last in parent)) throw new Error(`replace on a missing member: ${path}`);
     if (Array.isArray(parent) && last === '-') parent.push(structuredClone(value));
-    else if (op === 'remove') delete parent[last];
+    else if (op === 'remove') Array.isArray(parent) ? parent.splice(Number(last), 1) : delete parent[last];
     else parent[last] = structuredClone(value);
   }
   return out;
@@ -67,6 +67,32 @@ describe('engine fix patches', () => {
     // The fixed size gets past the label refusal.
     const again = render({ spec: fixed, format: 'svg' }).body as any;
     expect(again.ok).toBe(true);
+  });
+});
+
+describe('football-field row without a range', () => {
+  // A football-field method with no range is refused, and the error must offer a patch that removes every such row so the chart draws.
+  it('offers a remove patch that makes the chart draw', () => {
+    const range = (low: number, high: number) => ({ number: (low + high) / 2, range: { low, high } });
+    const spec = {
+      type: 'bar',
+      data: {
+        categories: ['a', 'b', 'c', 'd'].map((id) => ({ id, label: `Method ${id}` })),
+        series: [{ id: 'v', label: 'Value', values: [range(17, 23), null, range(10, 14), null] }],
+      },
+      options: { variant: 'football-field', currentValue: { value: 15, label: 'Current' }, title: 'Football field', unit: 'USD per share' },
+    };
+    const refused = render({ spec, format: 'svg' }).body as any;
+    const error = refused.errors.find((item: any) => item.code === 'football-field-range-required');
+    expect(error.suggest).toContain('Remove the method');
+    expect(error.fix).toEqual([
+      { op: 'remove', path: '/data/series/0/values/3' },
+      { op: 'remove', path: '/data/series/0/values/1' },
+      { op: 'remove', path: '/data/categories/3' },
+      { op: 'remove', path: '/data/categories/1' },
+    ]);
+    const fixed = render({ spec: applyPatch(spec, error.fix), format: 'svg' }).body as any;
+    expect(fixed.ok).toBe(true);
   });
 });
 
