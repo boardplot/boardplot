@@ -1,0 +1,3 @@
+### Fixed
+
+- Following the size fixes no longer loops or turns a drawn chart into a refusal. A `plot-under-floor` fix and an `aspect-cap` fix each named a height from their own rule, so a column at 480 px wide went from 463 to 361 to 484 and back to 361, and a diagram went from a drawn 416 to a refused 241. The height fixes of `aspect-cap` and `height-off-ladder` now stay above the height the chart needs, and `height-off-ladder` moves up to the next step when the nearest step is too low. When the plot floor needs more height than the aspect cap allows, `plot-under-floor` offers no height patch and says to widen the chart or leave the height out.

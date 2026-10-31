@@ -622,6 +622,39 @@ describe('size advice', () => {
     expect(fix.value.height).toBeUndefined();
     expect(layout(fix.value).refused).toBeUndefined();
   });
+
+  // Prevents a loop in the size advice: the fix of a plot-floor, aspect or ladder finding must end at a size that
+  // draws with no further size fix, and must never step from a drawn chart into a refusal.
+  it('ends when the plot floor, the aspect cap and the ladder disagree', () => {
+    const names = ['Field service', 'Net revenue', 'Order intake', 'Rhein-Main', 'Warehouse costs', 'Personnel costs', 'Turnover', 'Black Forest', 'Churn rate', 'Cost of sales', 'Saxony-Anhalt', 'Retail stores'];
+    const column = { type: 'column', data: { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [
+      { id: 'a', label: 'Partner channel', values: names.map((_, i) => (i % 5 === 0 ? 1e9 : 7.5e8)) },
+      { id: 'b', label: 'Mid market', values: names.map((_, i) => (i % 3 === 0 ? 1.25e9 : 1.5e9)) },
+    ] }, options: { title: 'Revenue by unit', unit: 'EUR', source: 'Invented data', variant: 'grouped', format: '1.2bn', size: { width: 480, height: 270 } } };
+    const labels = ['Schleswig-Holstein and Hamburg', 'Depreciation of fixed assets', 'Rebilled freight costs', 'Mecklenburg-Western Pomerania', 'Research and development expenses', 'Income from equity-accounted firms', 'Thuringia and Saxony-Anhalt', 'Pension provisions, domestic'];
+    const diagram = { type: 'diagram', data: { nodes: labels.map((label, i) => ({ id: `n${i}`, kind: 'entity', shape: { kind: 'roundedRect' }, label, role: i ? 'primary' : 'accent', order: i })),
+      edges: [[0, 1], [0, 2], [1, 3], [2, 4], [1, 5], [2, 6], [1, 7]].map(([s, t], i) => ({ id: `e${i}`, source: { nodeId: `n${s}` }, target: { nodeId: `n${t}` } })) },
+    options: { variant: 'hierarchy', title: 'Structure of the programme', source: 'Invented data', size: { width: 320, height: 200 } } };
+    for (const start of [column, diagram]) {
+      let spec: any = start;
+      const seen = new Set<string>();
+      for (let step = 0; step < 6; step++) {
+        const size = JSON.stringify(spec.options.size);
+        expect(seen.has(size), `${start.type} size ${size} came up twice`).toBe(false);
+        seen.add(size);
+        const body = render({ spec }).body as any;
+        const finding = [...(body.errors ?? []), ...(body.warnings ?? [])].find((item: any) => item.fix?.some((op: any) => op.path === '/options/size'));
+        if (!finding) {
+          expect(body.ok, `${start.type} at ${size} is refused with no size fix`).toBe(true);
+          break;
+        }
+        const next = applyRepair(spec, finding.fix);
+        if (body.ok) expect((render({ spec: next }).body as any).ok, `${start.type} fix ${JSON.stringify(next.options.size)} refuses a drawn chart`).toBe(true);
+        spec = next;
+      }
+      expect(seen.size, `${start.type} advice still going after 6 fixes`).toBeLessThan(6);
+    }
+  });
 });
 
 describe('textScale under 1', () => {
