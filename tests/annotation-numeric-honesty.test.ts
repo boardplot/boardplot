@@ -109,7 +109,8 @@ it('measures variance value-line statistics on the drawn axis', () => {
       const geometry = layoutVariance(data, options);
       const expected = typeof value === 'number' ? value : variant === 'integrated' ? 21 : 16 / 3;
       expect(geometry.annotations.find(annotation => annotation.id === 'stat')?.derivation?.raw).toBeCloseTo(expected, 12);
-      const printed = format ? expected.toFixed(2) : expected === 16 / 3 ? '5.3' : String(expected);
+      // An authored format prints a mean one decimal past its raster (5.333), as a bar's mean does.
+      const printed = format ? expected === 16 / 3 ? '5.333' : expected.toFixed(2) : expected === 16 / 3 ? '5.3' : String(expected);
       const unit = percent ? variant === 'absolute' ? 'pp' : '%' : '';
       expect(annOf(geometry, 'valueLine')?.valueText).toBe(`${printed}${unit}`);
       const line = geometry.scene.find(node => node.part === 'valueLine');
@@ -320,6 +321,19 @@ it('keeps the decimals an average needs at the magnitude of the format', () => {
   expect(text(layoutColumn, '1M')).toBe('Average 1.3M');
   expect(text(layoutBar as never, '1M')).toBe('Average 1.3M');
   expect(text(layoutColumn, '$1k', { ...data, series: [{ id: 's', label: 'Series', values: [2000, 3000] }] })).toBe('Average $2.5k');
+});
+
+// A line chart rejects averageMarker, so its mean valueLine is its only average; it must print the mean, as a bar does.
+it('keeps the decimals a mean valueLine needs on every chart that draws one', () => {
+  const data = { categories: [{ id: 'a' }, { id: 'b' }], series: [{ id: 's', label: 'Series', values: [1000000, 1500000] }] };
+  const small = { ...data, series: [{ id: 's', label: 'Series', values: [2000, 3000] }] };
+  const text = (layout: typeof layoutColumn, format: string, values = data) => layout(values, { format, annotations: [{ kind: 'valueLine', value: 'mean' }] } as never)
+    .annotations.find(annotation => annotation.kind === 'valueLine')?.computedText;
+  for (const layout of [layoutBar, layoutColumn, layoutLine, layoutDot] as never[]) {
+    expect(text(layout, '1M')).toBe('Average 1.3M');
+    expect(text(layout, '1.0M')).toBe('Average 1.25M');
+    expect(text(layout, '$1k', small)).toBe('Average $2.5k');
+  }
 });
 
 // A reference at 2.5 must not call itself 3 because the plotted values use an integer format.
