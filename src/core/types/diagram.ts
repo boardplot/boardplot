@@ -214,6 +214,8 @@ export interface ResolvedDiagramNode {
   sceneNodeIds: string[];
   badgeBox?: Rect;
   captionBox?: Rect;
+  /** The node's secondary text prints as lines of its outside label. */
+  secondaryPrinted?: boolean;
 }
 
 export interface ResolvedDiagramEndpoint {

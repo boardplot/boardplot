@@ -2,12 +2,12 @@ import { chartString } from '../../strings/diagram';
 import { chartPalette, chartTheme } from '../chartEnv';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { structureCount, type StructureCount } from '../../structureCounts';
-import { rectContains, rectsOverlap, type Rect } from '../../geometry';
+import { rectContains, rectsOverlap, type Point, type Rect } from '../../geometry';
 import { fitText } from '../../label/fitText';
 import { frameTextOptions, solveFrame, type LegendItemInput } from '../../frame';
 import { labelsToNodes } from '../../label/emit';
-import { createOccupiedIndex } from '../../label/occupied';
-import { labelCtx, PRIORITY, solveLabels, type LabelRequest } from '../../label/solver';
+import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
+import { labelCtx, PRIORITY, seatLeader, solveLabels, type LabelRequest, type SolveCtx } from '../../label/solver';
 import { accessibleTitle, NormalizeError, resolveSize } from '../../normalize/shared';
 import { defaultMeasurer, wrapText, type FontSpec } from '../../text';
 import { emphasisWeight, headingWeight, resolveSurface, strokeToken, canvasMargin, paintColor, panelTypeClass } from '../../theme';
@@ -284,6 +284,7 @@ function layoutDiagramPass(
   const refusedIds = ensurePositionContract(rawData.nodes, data.nodes, preset.nodeRects, plot, warnings);
 
   const labelRequests: LabelRequest[] = [];
+  const joinedLabels = new Map<string, JoinedLabel>();
   const labelKinds = new Map<string, DiagramLabelKind>();
   /** Node labels whose first lines are the step name, printed bold. */
   const boldLeads = new Map<string, number>();
@@ -449,6 +450,7 @@ function layoutDiagramPass(
       org !== undefined && !org.centred,
       emphasisWeight(theme),
       org?.captionBoxes ? { font: captionFont, box: org.captionBoxes.get(node.id) } : org?.seats ? { font: labelFont, seat: org.seats.get(node.id) } : undefined,
+      joinedLabels,
     );
     if (node.badge || options.variant === 'linear-process') {
       // An authored badge takes its role; the engine's step number is no
@@ -519,12 +521,13 @@ function layoutDiagramPass(
     nodeMarks.push(resolved);
   }
 
-  const solvedStructural = solveLabels(labelRequests, occupied, labelCtx(theme, size, {}, {
+  const structuralCtx = labelCtx(theme, size, {}, {
     density: 'full',
     measure,
     plot,
     labelPad: 1,
-  }));
+  });
+  const solvedStructural = solveLabels(labelRequests, occupied, structuralCtx);
   remapLabelKinds(solvedStructural.placed, labelKinds);
   // A compact layout's own inks: a muted description, a numeral in its step's fill.
   for (const label of solvedStructural.placed) {
@@ -538,6 +541,15 @@ function layoutDiagramPass(
     nodeMarks.filter(node => !refusedIds.has(node.id)), plot, warnings, options.variant, 0,
   ))) return { warnings };
   if (probe && fitOnly === 'structural') return { warnings };
+  // A size search that stops at the structure never reads a secondary text, so only a later pass settles the blocks.
+  const unplaced = settleJoinedLabels(solvedStructural.placed, joinedLabels, nodeMarks, occupied, { x: 0, y: 0, w: size.width, h: size.height }, structuralCtx);
+  if (unplaced) {
+    remapLabelKinds(unplaced.placed, labelKinds);
+    solvedStructural.placed.push(...unplaced.placed);
+    solvedStructural.decisions.push(...unplaced.decisions);
+    pushAll(warnings, unplaced.warnings);
+    translateLabelLosses(unplaced.placed, labelKinds, warnings);
+  }
   for (const label of solvedStructural.placed) {
     const nodeId = label.owner.pointId;
     if (!nodeId) continue;
@@ -755,6 +767,8 @@ function addNodeLabels(
   leadWeight = font.weight,
   /** A compact layout's caption type and its seat. */
   caption?: { font: FontSpec; box?: { rect: Rect; lines: string[] }; seat?: { rect: Rect; lines: string[] } },
+  /** Per node label id, what the label block needs once the solver has seated it with its secondary lines or without them. */
+  joinedLabels?: Map<string, JoinedLabel>,
 ): void {
   const external = options.variant === 'roadmap' || options.variant === 'circular-process';
   // A cycle step's label sits on the side of its node that faces away from
@@ -776,7 +790,7 @@ function addNodeLabels(
   const bold: FontSpec = { ...font, weight: leadWeight };
   const lead = cut > 0 ? fitText(node.label.slice(0, cut), bold, maxWidth, 1, measure, externalFit) : undefined;
   const seat = caption?.seat;
-  const wrapped = seat ? { lines: seat.lines, title: undefined as string | undefined } : lead
+  const primary = seat ? { lines: seat.lines, title: undefined as string | undefined } : lead
     ? (() => {
       const rest = fitText(node.label.slice(cut + 1), font, maxWidth, 2, measure, externalFit);
       return { lines: [...lead.lines, ...rest.lines], title: lead.title ?? rest.title };
@@ -784,51 +798,71 @@ function addNodeLabels(
     : fitText(node.label, font, maxWidth, 3, measure, externalFit);
   if (lead) boldLeads.set(id, lead.lines.length);
   const lineH = font.size * (font.lineHeight ?? 1.2);
-  const width = Math.max(1, ...wrapped.lines.map((line, index) => measure(line, index < (lead?.lines.length ?? 0) ? bold : font).width));
-  const height = wrapped.lines.length * lineH;
   const secondary = node.secondaryLabel ? fitText(node.secondaryLabel, font, resolved.contentRect.w, 2, measure, { target: options.target, typeRole: 'label' }) : undefined;
   const secondaryHeight = (secondary?.lines.length ?? 0) * lineH;
+  const height = primary.lines.length * lineH;
   const secondaryFits = secondary && !secondary.title && height + secondaryHeight + u <= resolved.contentRect.h;
   const primaryHeight = resolved.contentRect.h - (!external && secondaryFits ? secondaryHeight + u : 0);
   kinds.set(id, 'diagramNode');
-  const candidates = seat ? [{ slot: 'right', rect: qRect(seat.rect), penalty: 0 }] : !external && height > primaryHeight + 0.5
-    ? [] : external
-    ? externalCandidates(
-        resolved.rect,
-        width,
-        height,
-        u,
-        options.variant === 'roadmap',
-        plot,
-        laneBox,
-      )
-    : [
-        {
-          slot: 'inside',
-          rect: qRect({
-            x: start ? resolved.contentRect.x : resolved.contentRect.x + (resolved.contentRect.w - width) / 2,
-            y: resolved.contentRect.y + (primaryHeight - height) / 2,
-            w: width,
-            h: height,
-          }),
-          penalty: 0,
-          insideFill: fillCss,
-          insidePaint,
-        },
-      ];
-  requests.push({
-    id,
-    kind: 'point', markAnchored: false, typeRole: 'label',
-    owner: nodeOwner(node.id),
-    text: node.label,
-    lines: wrapped.lines,
-    ...(wrapped.title !== undefined ? { title: wrapped.title } : {}),
-    font,
-    priority: PRIORITY.valueLine,
-    ...(ring === 'left' ? { align: 'end' as const } : ring === 'above' || ring === 'below' ? { align: 'middle' as const } : { align: 'start' as const }),
-    candidates,
-  });
-  if (wrapped.title !== undefined) {
+  const labelRequest = (block: { lines: string[]; title?: string | undefined }, text: string): LabelRequest => {
+    const width = Math.max(1, ...block.lines.map((line, index) => measure(line, index < (lead?.lines.length ?? 0) ? bold : font).width));
+    const blockHeight = block.lines.length * lineH;
+    const candidates = seat ? [{ slot: 'right', rect: qRect(seat.rect), penalty: 0 }] : !external && blockHeight > primaryHeight + 0.5
+      ? [] : external
+      ? externalCandidates(
+          resolved.rect,
+          width,
+          blockHeight,
+          u,
+          options.variant === 'roadmap',
+          plot,
+          laneBox,
+        )
+      : [
+          {
+            slot: 'inside',
+            rect: qRect({
+              x: start ? resolved.contentRect.x : resolved.contentRect.x + (resolved.contentRect.w - width) / 2,
+              y: resolved.contentRect.y + (primaryHeight - blockHeight) / 2,
+              w: width,
+              h: blockHeight,
+            }),
+            penalty: 0,
+            insideFill: fillCss,
+            insidePaint,
+          },
+        ];
+    return {
+      id,
+      kind: 'point', markAnchored: false, typeRole: 'label',
+      owner: nodeOwner(node.id),
+      text,
+      lines: block.lines,
+      ...(block.title !== undefined ? { title: block.title } : {}),
+      font,
+      priority: PRIORITY.valueLine,
+      ...(ring === 'left' ? { align: 'end' as const } : ring === 'above' || ring === 'below' ? { align: 'middle' as const } : { align: 'start' as const }),
+      candidates,
+    };
+  };
+  requests.push(labelRequest(primary, node.label));
+  // A node with its label outside has no room inside for a second text. Its
+  // secondary lines follow the name in one outside block, which settles after
+  // the solve (see `settleJoinedLabels`).
+  const joined = joinedLabels !== undefined && external && !seat && Boolean(node.secondaryLabel) && !secondaryFits;
+  if (joined) {
+    joinedLabels.set(id, {
+      block: () => {
+        const outside = fitText(node.secondaryLabel!, font, maxWidth, 2, measure, externalFit);
+        const text = `${node.label}\n${node.secondaryLabel}`;
+        const block = { lines: [...primary.lines, ...outside.lines], title: primary.title !== undefined || outside.title !== undefined ? text : undefined };
+        return { text, lines: block.lines, title: block.title, seats: labelRequest(block, text).candidates };
+      },
+      from: { x: resolved.rect.x + resolved.rect.w / 2, y: resolved.rect.y + resolved.rect.h / 2 },
+      secondary: () => secondaryRequest(secondary!),
+    });
+  }
+  if (primary.title !== undefined) {
     warnings.push({
       code: 'diagram-node-label-unplaced',
       severity: 'error',
@@ -837,17 +871,17 @@ function addNodeLabels(
     });
   }
 
-  if (node.secondaryLabel && secondary) {
-    const secondaryWidth = Math.max(1, ...secondary.lines.map((line) => measure(line, font).width));
+  function secondaryRequest(lines: { lines: string[]; title?: string | undefined }): LabelRequest {
+    const secondaryWidth = Math.max(1, ...lines.lines.map((line) => measure(line, font).width));
     const secondaryId = `secondary-label:${node.id}`;
     kinds.set(secondaryId, 'diagramSecondary');
-    requests.push({
+    return {
       id: secondaryId,
       kind: 'point', markAnchored: false, typeRole: 'label',
       owner: nodeOwner(node.id),
-      text: node.secondaryLabel,
-      lines: secondary.lines,
-      ...(secondary.title !== undefined ? { title: secondary.title } : {}),
+      text: node.secondaryLabel!,
+      lines: lines.lines,
+      ...(lines.title !== undefined ? { title: lines.title } : {}),
       font,
       priority: PRIORITY.interior,
       candidates: !secondaryFits ? [] : [
@@ -864,10 +898,78 @@ function addNodeLabels(
           insidePaint,
         },
       ],
-    });
+    };
   }
+  if (secondary && !joined) requests.push(secondaryRequest(secondary));
 
   addNodeCaption(node, resolved, options, caption?.font ?? font, measure, u, requests, kinds, caption?.box);
+}
+
+/** An outside node label that can take its node's secondary lines as extra lines of one block. */
+interface JoinedLabel {
+  /** The label text, lines, title and seats of the name with its secondary lines. The seats follow the order of the name's own seats. */
+  block: () => { text: string; lines: string[]; title: string | undefined; seats: LabelRequest['candidates'] };
+  /** The centre of the node, where a leader starts. */
+  from: Point;
+  /** The secondary text as a request of its own, which has no seat. */
+  secondary: () => LabelRequest;
+}
+
+/**
+ * Gives each outside node label its secondary lines once every name has its
+ * seat. The taller block takes the first of its seats that is clear of every
+ * other claim, and the name keeps its own seat where none is, so a secondary
+ * text cannot cost any node its name. A secondary text with no room stays
+ * unplaced and goes to the note.
+ */
+function settleJoinedLabels(
+  placed: readonly PlacedLabel[],
+  joined: ReadonlyMap<string, JoinedLabel>,
+  nodes: readonly ResolvedDiagramNode[],
+  occupied: OccupiedIndex,
+  canvas: Rect,
+  ctx: SolveCtx,
+): ReturnType<typeof solveLabels> | undefined {
+  if (joined.size === 0) return undefined;
+  const pad = ctx.labelPad ?? 2;
+  const byId = new Map(placed.map(label => [label.id, label]));
+  const unplaced: LabelRequest[] = [];
+  for (const [id, entry] of joined) {
+    const label = byId.get(id);
+    const name = label && !label.hidden
+      ? occupied.hitsWhich(label.rect, 0).find(claim => claim.kind === 'label' && claim.owner.pointId === label.owner.pointId && sameRect(claim.rect, label.rect))
+      : undefined;
+    if (!label || !name) {
+      unplaced.push(entry.secondary());
+      continue;
+    }
+    // The name gives up its own claim while its taller block looks for a seat.
+    occupied.release?.(name);
+    const block = entry.block();
+    const seat = block.seats.find(candidate => rectContains(canvas, candidate.rect, 0) && !occupied.hits(candidate.rect, pad));
+    if (!seat) {
+      occupied.claim(label.rect, 'label', label.owner);
+      unplaced.push(entry.secondary());
+      continue;
+    }
+    occupied.claim(seat.rect, 'label', label.owner);
+    label.rect = seat.rect;
+    label.slot = seat.slot;
+    label.lines = block.lines;
+    label.text = block.text;
+    if (block.title === undefined) delete label.title;
+    else label.title = block.title;
+    const leader = seatLeader(seat.rect, entry.from);
+    if (leader) label.leader = leader;
+    else delete label.leader;
+    const node = nodes.find(candidate => candidate.id === label.owner.pointId);
+    if (node) node.secondaryPrinted = true;
+  }
+  return unplaced.length === 0 ? undefined : solveLabels(unplaced, occupied, ctx);
+}
+
+function sameRect(a: Rect, b: Rect): boolean {
+  return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
 }
 
 /** The side of the plot centre a ring node sits on: where its label goes. */
