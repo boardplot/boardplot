@@ -89,3 +89,16 @@ it('draws every ribbon on a light page at or above the mark floor', async () => 
     expect(contrastRatio(drawn, page)).toBeGreaterThanOrEqual(1.4);
   }
 });
+
+// A source node in a later stage still counts: the total is what flows in from outside, not the first column's sum.
+it('totals every source node, also one in a later column', () => {
+  const links = [
+    { source: 'a', target: 'b', value: 10, sourceStage: 's1', targetStage: 's2' },
+    { source: 'n', target: 'c', value: 90, sourceStage: 's2', targetStage: 's3' },
+    { source: 'b', target: 'c', value: 10, sourceStage: 's2', targetStage: 's3' },
+  ];
+  const request = resolveChartRequest({ type: 'sankey', data: { links }, options: { title: 'Flows', size: { width: 640, height: 400 } } });
+  const geometry = requireGeometry(layoutResolvedRequest(request));
+  expect((geometry.derived as unknown as SankeyDerived).total).toBe(100);
+  expect(geometry.a11y.desc).toContain('total 100');
+});

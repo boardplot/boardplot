@@ -377,7 +377,8 @@ export function layoutSankey(data: SankeyData, options: SankeyOptions = {}): Geo
     shareOfSource: clean(nodes[link.source]!.out > 0 ? (link.value / nodes[link.source]!.out) * 100 : 0),
     shareOfTarget: clean(nodes[link.target]!.in > 0 ? (link.value / nodes[link.target]!.in) * 100 : 0),
   }));
-  const total = columnTotal[0] ?? 0;
+  // What flows in from outside: the nodes nothing flows into. A source can sit in a later column.
+  const total = nodes.reduce((sum, node) => (node.in > 0 ? sum : sum + node.value), 0);
   const largest = [...links].sort((a, b) => b.value - a.value || a.first - b.first).slice(0, 3)
     .map((link) => chartString(options, 'flowReading', { v1: nodeName(nodes[link.source]!), v2: nodeName(nodes[link.target]!), v3: fmt(link.value) })).join('; ');
   const desc = chartString(options, 'sankeyDesc', { v1: links.length, v2: nodes.length, v3: columnCount, v4: fmt(total) }) + chartString(options, 'largestFlows', { v1: largest });
