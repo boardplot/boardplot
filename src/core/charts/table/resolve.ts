@@ -20,6 +20,7 @@ import {
   parseFormatExample as parseExample,
   effectiveScale,
   roundedNumber,
+  nonAdditiveFormat,
   specUnitKind,
   unitOfSpec,
   MAGNITUDE_DIVISOR,
@@ -488,11 +489,6 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
    * 'none' unless the author asks for a sum, and an authored sum there is
    * warned once per column.
    */
-  const nonAdditiveFormat = (format: string | undefined): boolean => {
-    if (!format) return false;
-    const spec = parseFormatExample(format);
-    return specUnitKind(spec) !== 'number' || /^[x\u00d7]$/i.test(spec.suffix.trim());
-  };
   // A cell's own format counts where it sits: a pp change among summands does not add either.
   const formatAt = (row: FlatRow, colId: Id): string | undefined => cellFormat(row.cells[colId]) ?? row.format;
   const nonAdditiveSum = (col: Extract<TableColumn, { kind: 'value' }>, row: FlatRow, kids: readonly FlatRow[]): boolean =>

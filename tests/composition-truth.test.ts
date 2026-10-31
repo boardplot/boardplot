@@ -387,6 +387,28 @@ describe('bartable Total row', () => {
     expect(text(requireGeometry(bartable.layout(one, { ...bartable.defaults, ...fixture.options })), 'total:abs')).toBe('567\u2013617');
   });
 
+  // Percent, multiple and rate figures do not add, yet the Total printed 30.5% for margins of 12.5, 8 and 10.
+  it('leaves the Total empty for a percent, multiple or rate figure unless the author asks for a sum', () => {
+    const bartable = getChart('bartable')!;
+    const totals = (data: unknown, options: Record<string, unknown> = {}) => {
+      const geometry = requireGeometry(bartable.layout(data as BarTableData, { size: { width: 900 }, ...options }));
+      return { text: geometry.labels.filter((label) => label.id.startsWith('total:') && label.id !== 'total:label').map((label) => `${label.id}=${label.text}`), warnings: geometry.warnings.map((warning) => warning.code) };
+    };
+    const base = { categories: [{ id: 'a' }, { id: 'b' }, { id: 'c' }], series: [{ id: 's' }] };
+    const panel = (extra: object) => ({ id: 'p', label: 'Margin', values: { s: [12.5, 8, 10] }, ...extra });
+    const column = (extra: object) => ({ id: 'c', label: 'Multiple', values: [2, 3, 4], ...extra });
+    const sum = { text: ['total:p=30.5'], warnings: [] };
+    expect(totals({ ...base, panels: [panel({})] })).toEqual(sum);
+    expect(totals({ ...base, panels: [panel({ unit: '%' })] })).toEqual({ text: [], warnings: [] });
+    expect(totals({ ...base, panels: [panel({})] }, { format: '1.1%' })).toEqual({ text: [], warnings: [] });
+    expect(totals({ ...base, panels: [panel({ format: '1.1x' })] })).toEqual({ text: [], warnings: [] });
+    expect(totals({ ...base, panels: [panel({ unit: '%', aggregate: 'sum' })] })).toEqual({ text: ['total:p=30.5'], warnings: ['aggregate-non-additive'] });
+    // A column in a plain number format still adds; a multiple does not.
+    expect(totals({ ...base, panels: [panel({})], columns: [column({ format: '1.0' }), { ...column({ format: '1.0x' }), id: 'm' }] }).text).toEqual(['total:c=9.0', 'total:p=30.5']);
+    // A cascade splits its panel total, so a percent format there keeps the sum.
+    expect(totals({ ...base, series: [{ id: 's' }], panels: [panel({ format: '1.0%' })] }, { variant: 'cascade' }).text).toEqual(['total:p=30.5%']);
+  });
+
   it('lists the rows the shared scale leaves as a sliver, with their parts, in one note ', () => {
     const bartable = getChart('bartable')!;
     const fixture = getFixtures('bartable').find((entry) => entry.id === 'null-and-long-labels')!;
