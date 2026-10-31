@@ -11,7 +11,7 @@ import { breakUnsupported, chartPalette, chartTheme } from '../chartEnv';
 import { defaultMeasurer } from '../../text';
 import { formatAuthoredPercent, formatAutomaticNumber, formatShare, shareSetFormatter } from '../../format';
 import { formatterFromExample, parseFormatExample, specUnitKind } from '../../formatSpec';
-import { cleanFloat, round2 } from '../../geometry';
+import { cleanFloat } from '../../geometry';
 import { isIncomplete } from '../../dataGaps';
 import { roundWholes } from '../../shareRounding';
 import {
@@ -306,12 +306,12 @@ function mekkoStacks(st: ValueState, fns: ReturnType<typeof valueFns>, warnings:
     for (const s of st.series) {
       if (st.mode === 'percent') {
         const p = plottedAt(s, ci);
-        if (p !== null) row[s.id] = round2(p);
+        if (p !== null) row[s.id] = cleanFloat(p);
       } else if (st.mode === 'bar') {
         if (s.vals[ci]!.v !== null) row[s.id] = 100;
       } else {
         const a = absAt(s, ci);
-        if (a !== null) row[s.id] = totalAbs !== 0 ? round2((a / totalAbs) * 100) : 0;
+        if (a !== null) row[s.id] = totalAbs !== 0 ? cleanFloat((a / totalAbs) * 100) : 0;
       }
     }
     shares[c.id] = row;

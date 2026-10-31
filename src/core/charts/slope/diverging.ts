@@ -13,7 +13,7 @@ import { fitText } from '../../label/fitText';
 import { formatAuthoredPercent, formatAutomaticNumber, numberRange, seriesValueFormatter } from '../../format';
 import { formatterFromExample } from '../../formatSpec';
 import { autoDecimals } from '../../formatPrecision';
-import { cleanFloat, type Rect } from '../../geometry';
+import { cleanDiff, cleanFloat, type Rect } from '../../geometry';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelsToNodes } from '../../label/emit';
 import { labelCtx, PRIORITY, solveLabels, type LabelRequest, type SolveCtx } from '../../label/solver';
@@ -156,7 +156,7 @@ export function layoutDivergingSlope(
     }
     const positive: [number, number] = [pv[0]!, pv[1]!];
     const negative: [number, number] = [nv[0]!, nv[1]!];
-    const net: [number, number] = [cleanFloat(positive[0] - negative[0]), cleanFloat(positive[1] - negative[1])];
+    const net: [number, number] = [cleanDiff(positive[0], negative[0]), cleanDiff(positive[1], negative[1])];
     const n = s.n === undefined ? undefined : (typeof s.n === 'number' ? [s.n, s.n] : [s.n[0]!, s.n[s.n.length - 1]!]) as [number, number];
     groups.push({
       s,
@@ -167,8 +167,8 @@ export function layoutDivergingSlope(
         positive,
         negative,
         net,
-        netChange: cleanFloat(net[1] - net[0]),
-        neither: [cleanFloat(100 - positive[0] - negative[0]), cleanFloat(100 - positive[1] - negative[1])],
+        netChange: cleanDiff(net[1], net[0]),
+        neither: [cleanFloat(100 - positive[0] - negative[0], 100), cleanFloat(100 - positive[1] - negative[1], 100)],
         ...(n ? { n } : {}),
         lowBase: n !== undefined && Math.min(...n) < minBase,
       },
@@ -463,8 +463,8 @@ export function layoutDivergingSlope(
   // ---- derived and a11y ----
   const changes: SlopeDerived['changes'] = emptyIdRecord();
   for (const p of panels) {
-    const abs = p.g.positive[1] - p.g.positive[0];
-    changes[p.s.id] = { abs: cleanFloat(abs), pct: p.g.positive[0] !== 0 ? cleanFloat((abs / p.g.positive[0]) * 100) : null };
+    const abs = cleanDiff(p.g.positive[1], p.g.positive[0]);
+    changes[p.s.id] = { abs, pct: p.g.positive[0] !== 0 ? cleanFloat((abs / p.g.positive[0]) * 100) : null };
   }
   const rising = panels.filter((p) => p.g.netChange > 0).length;
   const best = [...panels].sort((a, b) => b.g.net[1] - a.g.net[1])[0]!;

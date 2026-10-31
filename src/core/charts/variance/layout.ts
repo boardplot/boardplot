@@ -37,7 +37,7 @@ import { percentLevels, runAnnotatePass } from '../../annotatePass';
 import { hiddenValueLineReserve, VALUE_LINE_RESERVE } from '../../annotateParts';
 import { defaultNumberDecimals, formatAutomaticNumber, formatAutomaticPercent, PERCENTAGE_POINTS, seriesValueFormatter } from '../../format';
 import { exampleSpec, formatterFromExample, formatWithSpec, parseFormatExample, roundedNumber, signedFormatterFromExample, specUnitKind } from '../../formatSpec';
-import { boxGap, cleanFloat, type Rect } from '../../geometry';
+import { boxGap, cleanDiff, cleanFloat, type Rect } from '../../geometry';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelsToNodes } from '../../label/emit';
 import { categoryLineAlign, planCategoryRow, rotatedClaimRect, rotatedLeftOverhang, yearRowRequests } from '../../label/categoryRow';
@@ -300,7 +300,7 @@ export function layoutVariance(
     const ref = refSeries.vals[ci]!.v;
     acArr[ci] = ac;
     refArr[ci] = ref;
-    dAbsArr[ci] = ac === null || ref === null ? null : ac - ref;
+    dAbsArr[ci] = ac === null || ref === null ? null : cleanDiff(ac, ref);
     if (ac === null || ref === null) {
       dPctArr[ci] = null;
     } else if (ref <= 0) {
@@ -313,7 +313,7 @@ export function layoutVariance(
         owner: { categoryId: c.id },
       });
     } else {
-      dPctArr[ci] = (100 * (ac - ref)) / Math.abs(ref);
+      dPctArr[ci] = cleanFloat((100 * dAbsArr[ci]!) / Math.abs(ref));
     }
   });
   const derived: VarianceDerived = {
@@ -326,8 +326,8 @@ export function layoutVariance(
   cats.forEach((c, ci) => {
     derived.ac[c.id] = acArr[ci] === null ? null : cleanFloat(acArr[ci]!);
     derived.ref[c.id] = refArr[ci] === null ? null : cleanFloat(refArr[ci]!);
-    derived.deltaAbs[c.id] = dAbsArr[ci] === null ? null : cleanFloat(dAbsArr[ci]!);
-    derived.deltaPct[c.id] = dPctArr[ci] === null ? null : cleanFloat(dPctArr[ci]!);
+    derived.deltaAbs[c.id] = dAbsArr[ci]!;
+    derived.deltaPct[c.id] = dPctArr[ci]!;
   });
 
   /** Plotted Δ per category: Δ% in relative mode, ΔABS otherwise. */

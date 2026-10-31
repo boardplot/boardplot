@@ -239,13 +239,21 @@ export function round2(v: number): number {
 }
 
 /**
- * A value or difference kept for printing, a verdict or a reading: twelve
- * significant digits clear float noise (0.1 + 0.2) and keep every digit a
- * format may print. Never `round2` such a number: the format then rounds an
- * already rounded value, and a gap of 0.004 reads as 0.
+ * A value or difference kept for printing, a verdict or a reading: fifteen
+ * significant digits of `scale` clear float noise (0.1 + 0.2) and keep every
+ * digit a format may print. `scale` is the size of the operands: a difference
+ * of 5.5e-17 between 0.3 and 0.30000000000000004 is noise, so it becomes 0.
+ * Never `round2` such a number: the format then rounds an already rounded
+ * value, and a gap of 0.004 reads as 0.
  */
-export function cleanFloat(v: number): number {
-  return Number(v.toPrecision(12));
+export function cleanFloat(v: number, scale: number = v): number {
+  const decimals = 14 - Math.floor(Math.log10(Math.abs(scale)));
+  return decimals >= 0 && decimals <= 100 ? Number(v.toFixed(decimals)) + 0 : v; // + 0 turns -0 into 0
+}
+
+/** `a − b`, cleaned at the size of its operands. */
+export function cleanDiff(a: number, b: number): number {
+  return cleanFloat(a - b, Math.max(Math.abs(a), Math.abs(b)));
 }
 
 /**

@@ -316,4 +316,16 @@ it('a derived value reaches the format unrounded', () => {
   const slope = layout('slope', { categories: ['a', 'b'], series: [{ id: 's', values: [23.4, 19.2] }, { id: 't', values: [0.001, 0.005] }] }, {});
   expect(slope.derived.changes.s.pct).toBeCloseTo(-17.9487, 3);
   expect(slope.derived.changes.t.abs).toBe(0.004);
+  // Equal values are on target whatever float noise their difference holds, and a 14-digit total keeps its last digits.
+  const equal = layout('bullet', { rows: [{ id: 'a', label: 'A', value: 0.30000000000000004, target: 0.3 }, { id: 'b', label: 'B', value: 0.3, target: 0.30000000000000004 }] }, { format: '0.00' });
+  expect(equal.derived.deltaVsTarget).toEqual({ a: 0, b: 0 });
+  const big = layout('mekko', { categories: [{ id: 'A' }], series: [{ id: 'x', values: [12345678901234] }, { id: 'y', values: [1] }] }, { variant: 'stacked', format: '1,234' });
+  expect(big.derived.columnTotals).toEqual({ A: 12345678901235 });
+  // A printed share and an index are not rounded to two places before the format rounds them.
+  const share = layout('mekko', { categories: [{ id: 'A' }], series: [{ id: 'x', values: [12.449] }, { id: 'y', values: [87.551] }] }, { variant: 'stacked', format: '0.0%' });
+  expect(share.derived.shares.A.x).toBe(12.449);
+  expect(texts('line', { categories: ['a', 'b', 'c'], series: [{ id: 's', values: [50, 51, 52.2245] }] }, { rebase100: true, format: '0.0' })).toContain('104.4');
+  // 100.35 − 100 is 0.3499999999999943 in float: the gap is 0.35 and prints 0.4, not 0.3.
+  const noisy = layout('variance', { categories: ['A'], series: [{ id: 'ac', values: [100.35] }, { id: 'py', role: 'reference', values: [100] }] }, { variant: 'absolute', variance: { vs: 'py' }, format: '1.1' });
+  expect(noisy.derived.deltaAbs.A).toBe(0.35);
 });
