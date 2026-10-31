@@ -1867,6 +1867,7 @@ function sourceColor(theme: Theme, source: ThemePaintSource): string {
   }
   if (source.kind === 'stack-ramp') return stackRampColor(theme, source);
   if (source.kind === 'stack-apart') return stackApartColor(theme, source);
+  if (source.kind === 'neutral-ramp') return neutralRampColor(theme, source);
   if (source.kind === 'ordered-ramp') {
     let weakest = visibleTintAmount(theme, { kind: 'visible-tint', base: { token: 'markInk' }, amount: 0.9, floor: MARK_CONTRAST_FLOOR });
     // A Rest series beside the ramp is the quietest part: the weakest rung stops above its colour.
@@ -2103,6 +2104,45 @@ export function recedingSeriesId(
   if (!series.some((s) => !s.fill && (s.colorRole === 'highlight' || (!s.colorRole && highlights.has(s.id))))) return undefined;
   const plain = series.filter((s) => !s.fill && !s.colorRole && !highlights.has(s.id));
   return plain.length === 1 ? plain[0]!.id : undefined;
+}
+
+/**
+ * The plain series that recede beside a highlight in a stack, in authored
+ * order. When the author makes one series the focus and two or more series
+ * have no own fill or colorRole, those take steps of the neutral ramp
+ * (neutralRampPaint), so the accent is the only colour on the chart.
+ */
+export function recedingRampIds(
+  series: readonly { id: string; fill?: string; colorRole?: string }[],
+  highlights: ReadonlySet<string>,
+): string[] {
+  if (!series.some((s) => !s.fill && (s.colorRole === 'highlight' || (!s.colorRole && highlights.has(s.id))))) return [];
+  const plain = series.filter((s) => !s.fill && !s.colorRole && !highlights.has(s.id));
+  return plain.length >= 2 ? plain.map((s) => s.id) : [];
+}
+
+/**
+ * Step `index` of `count` on the neutral ramp, in authored order: the first
+ * step is the muted mark a single receding series takes (mutedMarkPaint), the
+ * last the light neutral, with even steps between. Where the muted mark sits
+ * too near the light neutral for the steps to read apart (a dark page holds
+ * both near its floor), the ramp starts at the full neutral mark. It resolves
+ * in the active theme, so a repaint to dark decides again.
+ */
+export function neutralRampPaint(index: number, count: number): Paint {
+  return { token: 'neutralMark', theme: { kind: 'neutral-ramp', index, count } };
+}
+
+/** Neighbouring steps of the neutral ramp keep at least this OKLab distance (twice the ordered step floor). */
+const NEUTRAL_RAMP_STEP = 6;
+
+function neutralRampColor(theme: Theme, source: { index: number; count: number }): string {
+  const quiet = theme.color.neutralLight;
+  const muted = paintColor(theme, mutedMarkPaint());
+  if (source.count < 2) return muted;
+  const roomy = palettePerceptualDistance(muted, quiet, 'normal') / (source.count - 1) >= NEUTRAL_RAMP_STEP;
+  const strong = roomy ? muted : paintTokenColor(theme, 'neutralMark');
+  return mixColors(quiet, strong, source.index / (source.count - 1));
 }
 
 /**

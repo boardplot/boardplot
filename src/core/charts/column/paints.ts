@@ -7,7 +7,7 @@ import type { StringsSpec } from '../../types/options';
 
 import { DEFAULT_OTHERS_SHADE } from '../../othersShade';
 import { othersShadeUnavailableWarnings } from '../../paintWarnings';
-import { colorRolePaints, effectiveFill, markRolePaint, markRoleToken, mutedMarkPaint, orderedRampPaint, paintColor, rampSlots, stackApartPaint, stackRampPaint, recedingSeriesId, seriesPaint as themeSeriesPaint } from '../../theme';
+import { colorRolePaints, effectiveFill, markRolePaint, markRoleToken, mutedMarkPaint, neutralRampPaint, orderedRampPaint, paintColor, rampSlots, recedingRampIds, stackApartPaint, stackRampPaint, recedingSeriesId, seriesPaint as themeSeriesPaint } from '../../theme';
 import { signColorOverrides, signPaint } from '../band/sign';
 import { partialPattern } from '../../partialPeriod';
 import type { Category } from '../../types/data';
@@ -102,6 +102,9 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
   const slotOf = new Map(dealt.map((s, i) => [s.id, authoredSlots[i] ?? i]));
   const receding = recedingSeriesId(dataSeries, highlights);
   const slots = dataSeries.map((s, i) => slotOf.get(s.id) ?? i);
+  // Two or more plain series of a stack beside a highlight recede on the neutral ramp, strongest
+  // to quietest in authored order. A plan paired with its actual keeps the actual's step.
+  const rampIds = stackLike && !options.seriesRamp ? recedingRampIds(authored.filter((s) => !scenarioPartner.has(s.id)), highlights) : [];
   // The plain series of a stack take the theme's stack ramp, dark to light in authored order.
   // An authored fill or palette keeps its colour. A highlight, a colour role or a receding
   // series keeps every series in its usual colour.
@@ -120,6 +123,8 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
     // Series whose order is the encoding take the ordered ramp, in authored order.
     if (options.seriesRamp) return orderedRampPaint(authored.length - 1 - authored.indexOf(s), authored.length, quietRest);
     if (s.id === receding) return mutedMarkPaint();
+    const step = rampIds.indexOf(s.id);
+    if (step >= 0) return neutralRampPaint(step, rampIds.length);
     const partner = scenarioPartner.get(s.id);
     if (partner) return seriesIdentityPaint(partner, dataSeries.indexOf(partner), scenario);
     const slot = slots[dataIdx] ?? dataIdx;

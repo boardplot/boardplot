@@ -33,6 +33,8 @@ import {
   mutedMarkPaint,
   panelTypeClass,
   recedingSeriesId,
+  recedingRampIds,
+  neutralRampPaint,
   typeWidthClass,
 } from '../../theme';
 import type { Id } from '../../types/cell';
@@ -54,10 +56,14 @@ export function mekkoPaints(env: MekkoEnv, domain: MekkoDomain, warnings: LintWa
     s.fill ? { css: s.fill } : s.colorRole ? markRolePaint(s.colorRole, true) : highlights.has(s.id) ? { token: 'focus' } : undefined,
   ), palette, series.length > 1 ? { labels: series.map((s) => s.label), warnings } : undefined);
   const receding = recedingSeriesId(series, highlights);
+  // Two or more plain series beside a highlight recede on the neutral ramp, strongest to quietest.
+  const rampIds = recedingRampIds(series, highlights);
   const base = (s: NormSer, dataIdx: number): Paint => {
     if (s.fill) return { css: s.fill };
     if (s.colorRole) return markRolePaint(s.colorRole, true);
     if (s.id === receding) return mutedMarkPaint();
+    const step = rampIds.indexOf(s.id);
+    if (step >= 0) return neutralRampPaint(step, rampIds.length);
     if (series.length === 1) return themeSeriesPaint(dataIdx, palette, s.scenario);
     return themeSeriesPaint(slots[dataIdx] ?? dataIdx, palette);
   };

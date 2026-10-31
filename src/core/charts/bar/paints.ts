@@ -4,7 +4,7 @@
  */
 
 import { partialPattern } from '../../partialPeriod';
-import { colorRolePaints, effectiveFill, paintColor, recedingSeriesId, seriesPaint as themeSeriesPaint, stackApartPaint, stackRampPaint } from '../../theme';
+import { colorRolePaints, effectiveFill, neutralRampPaint, paintColor, recedingSeriesId, seriesPaint as themeSeriesPaint, stackApartPaint, stackRampPaint } from '../../theme';
 import { signColorOverrides, signPaint } from '../band/sign';
 import type { CellMeta, Id } from '../../types/cell';
 import type { LintWarning, Paint } from '../../types/scene';
@@ -50,10 +50,10 @@ export function barPaints(domain: BarDomain, warnings: LintWarning[]): BarLegend
     // enough to carry white value labels inside its bar ends; lines and slopes
     // keep the lighter muted tint.
     if (s.id === receding) return { token: 'neutralMark' };
-    // Several plain parts of a stack beside a highlight recede in two greys,
-    // dark and light in turn, so neighbours stay apart.
+    // Several plain parts of a stack beside a highlight recede on the neutral
+    // ramp, strongest to quietest in authored order.
     const grey = stackGreys.indexOf(s.id);
-    if (grey >= 0) return grey % 2 === 0 ? { token: 'neutralMark' } : { token: 'rest' };
+    if (grey >= 0) return neutralRampPaint(grey, stackGreys.length);
     if (beyondNet.has(s.id)) return { token: 'rest' };
     if (dataSeries.length === 1) return themeSeriesPaint(s.slot, palette, scenario, true);
     if (stackPlain.length > 1 && stackPlain.includes(s)) return stackRampPaint(stackPlain.indexOf(s), stackPlain.length, s.slot);
