@@ -1112,3 +1112,22 @@ it('builds the cell-column-unknown repair from the authored cells when fitFormat
   const fix = warnings.find((w) => w.code === 'cell-column-unknown')!.fix!;
   expect(fix[0]).toEqual({ op: 'test', path: '/data/rows/0/cells', value: data.rows[0]!.cells });
 });
+
+// A margin row (gp / rev * 100) in a delta column printed the ratio of the changes (30.0%) and not the change of the margins (10.0%).
+it('prints the change of a nonlinear row calc in a delta or sub column, and keeps a linear one', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'ac', kind: 'value' }, { id: 'py', kind: 'value' },
+      { id: 'd', kind: 'computed', calc: { op: 'delta', a: 'ac', b: 'py' } },
+      { id: 's', kind: 'computed', calc: { op: 'sub', a: { ref: 'ac' }, b: { ref: 'py' } } }],
+    rows: [
+      { id: 'rev', label: 'Revenue', cells: { ac: 200, py: 100 } },
+      { id: 'gp', label: 'Gross profit', cells: { ac: 40, py: 10 } },
+      { id: 'margin', label: 'Margin', relation: 'displayOnly', format: '1.2%',
+        calc: { op: 'mul', a: { op: 'div', a: { ref: { row: 'gp' } }, b: { ref: { row: 'rev' } } }, b: { lit: 100 } } },
+      { id: 'sum', label: 'Sum', relation: 'displayOnly', calc: { op: 'add', a: { ref: { row: 'gp' } }, b: { ref: { row: 'rev' } } } },
+    ],
+  };
+  const table = resolveTable(data, {}).table;
+  const cell = (row: string, col: string) => table.rows.find((r) => r.id === row)!.cells[col]!.displayed;
+  expect([cell('margin', 'ac'), cell('margin', 'py'), cell('margin', 'd'), cell('margin', 's'), cell('sum', 'd')]).toEqual(['20.0%', '10.0%', '10.0%', '10.0%', '130']);
+});
