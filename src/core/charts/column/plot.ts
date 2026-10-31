@@ -370,6 +370,7 @@ function columnBand(
   tickFont: FontSpec,
   warnings: LintWarning[],
   stair: boolean,
+  beforeCategoryRow?: (bandwidth: number) => void,
 ): Pick<ColumnArea, 'band' | 'catPlan'> {
   const { options, theme, measure, cats, va } = domain;
   let plotX0 = frame.plot.x + (va.show ? valueAxisReserve : 0);
@@ -538,6 +539,7 @@ function columnBand(
     fitColumnWidth();
   }
   let band = bandFor(plotX0, plotW0);
+  beforeCategoryRow?.(band.bandwidth);
   // One cascade decides the whole row (wrap, font step, uniform
   // stride for dates, 45° for prose); no label is hidden by a local sweep.
   // A cut name takes a note mark and prints whole in the notes; once
@@ -593,6 +595,7 @@ export function columnPlotArea(
   domain: ColumnDomain,
   frame: FrameResult,
   warnings: LintWarning[],
+  beforeCategoryRow?: (bandwidth: number) => void,
 ): ColumnArea {
   const { options, theme, size, measure, variant, va, fmt, valueSpec, cats, dLo, dHi } = domain;
   // Percent cells print '%' on the ticks as on the value labels (fmtPercent).
@@ -641,7 +644,7 @@ export function columnPlotArea(
     : undefined;
   // Staircase names replace the category row (options.categoryLabels).
   const stair = staircaseOn(options.categoryLabels, options) && kindSetting(options, 'category') !== false && cats.length > 1;
-  const { band, catPlan } = columnBand(domain, frame, valueAxisReserve, tickFont, warnings, stair);
+  const { band, catPlan } = columnBand(domain, frame, valueAxisReserve, tickFont, warnings, stair, beforeCategoryRow);
   const showCatRow = kindSetting(options, 'category') !== false && cats.length > 0 && !stair;
   if (showCatRow) pushAll(warnings, catPlan.warnings);
   if (showCatRow && catPlan.step === 'ranks') warnings.push(categoryRanksLint(cats.map((c) => c.label ?? c.id), band.step));
