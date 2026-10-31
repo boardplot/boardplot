@@ -1042,7 +1042,7 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
         ],
         output: {
           // A refused relative change is recorded as the absolute change the
-          // card shows (mode 'absolute', state 'ref-nonpositive').
+          // card shows (mode 'absolute', state 'ref-nonpositive' or 'sign-change').
           raw: comparison.mode === 'absolute' ? comparison.deltaAbs : comparison.deltaPct,
           state: comparison.state,
           displayed: comparison.displayed,
