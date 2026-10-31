@@ -38,7 +38,7 @@ import { canvasMargin, panelTypeClass, emphasisWeight, strokeToken, dashToken, s
 import type { Id } from '../../types/cell';
 import type { LegendOptions } from '../../types/options';
 import type { LintWarning } from '../../types/scene';
-import { edgeNameFont, edgeNamesReplaceKey, KEY_EDGE_SERIES, kindSetting, partialNamedOnValues, pyTickKeyed, rightEdgeSeriesLabels, RIGHT_EDGE_GAP, shareTextOf } from './domain';
+import { contentOf, edgeNameFont, edgeNamesReplaceKey, KEY_EDGE_SERIES, kindSetting, partialNamedOnValues, pyTickKeyed, rightEdgeSeriesLabels, RIGHT_EDGE_GAP, shareTextOf } from './domain';
 import { ANOMALY_FLAG_GAP, ANOMALY_FLAG_H, TICK_LABEL_RESERVE, PY_TICK_LEAD, type ColumnArea, type ColumnDomain, type NormSer } from './model';
 import { seriesPattern, signWord, type ColumnLegendPaints } from './paints';
 import { signPaint } from '../band/sign';
@@ -51,6 +51,8 @@ import { disclosuresShown, knownPartsLead, rankKeyShown } from '../../notes';
 import { categoryLabelsAndMarks } from '../../footnoteMark';
 import { staircaseDirection, staircaseOn, staircaseRoom, staircaseState } from '../../label/staircase';
 import { textScaleOf } from '../../typeFloors';
+import { compactValueLabelFont } from '../band/labels';
+import { groupedOffsets } from '../band/groups';
 import { PLOT_FLOOR_PX, plotFloorRows, plotFloorShare } from '../../sizing';
 import { partialWords, stackTotalText } from './labels';
 import { maxOf, minOf, pushAll } from '../../arrays';
@@ -162,6 +164,8 @@ const PANEL_GROUP_BAR = 76;
 
 /** The share of its category pitch a column had before the narrower default. */
 const COLUMN_FRACTION_MAX = 0.7;
+/** The most of its category pitch a column group takes so that every series prints its values. */
+const GROUPED_FRACTION_MAX = 0.92;
 
 /**
  * The default share of its category pitch for one column per category: half on
@@ -337,9 +341,8 @@ const RIBBON_COLUMN = 0.04;
  * holds it. shortcut: plain value only; a share label (shareLabels) is wider
  * and falls back to the solver's outside seats.
  */
-function widestSegmentValue(domain: ColumnDomain): number {
-  const { dataSeries, cats, variant, theme, measure } = domain;
-  const font: FontSpec = { family: theme.type.family, ...theme.type.label };
+function widestSegmentValue(domain: ColumnDomain, font: FontSpec = { family: domain.theme.type.family, ...domain.theme.type.label }): number {
+  const { dataSeries, cats, variant, measure } = domain;
   let widest = 0;
   for (const s of dataSeries) {
     cats.forEach((_, ci) => {
@@ -440,6 +443,25 @@ function columnBand(
     if (direction === 'left') plotX0 += room;
     plotW0 -= room;
   }
+  // Grouped values print one font step down when one is wider than its column.
+  // At that step, a value that still reaches over the next column is hidden,
+  // and with it the whole series. Such a group widens until the stepped values
+  // fit, when GROUPED_FRACTION_MAX of the category is enough for them; a group
+  // that would still lose them keeps its width and the gap between the groups.
+  const groupedValuesPrint = grouped && options.bandFraction === undefined && !narrow && !panelGroup && !domain.pyRef
+    && contentOf(options, 'point', ['absolute']) !== null;
+  const groupedValueW = groupedValuesPrint ? widestSegmentValue(domain, compactValueLabelFont(
+    { family: theme.type.family, ...theme.type.label }, { family: theme.type.family, ...theme.type.footnote }, options.target, textScaleOf(options))) : 0;
+  const groupedValuesNeed = (n: number) => n * (groupedValueW - 2) + 4 * (n - 1);
+  const groupedValuesReach = groupedValuesPrint && (() => {
+    const width = bandFor(plotX0, plotW0).bandwidth;
+    if (groupedValueW <= groupedOffsets(width, domain.dataSeries.length)[0]!.size + 2 * Math.min(4, width * 0.08)) return false;
+    const before = bandFraction;
+    bandFraction = GROUPED_FRACTION_MAX;
+    const widest = bandFor(plotX0, plotW0).bandwidth;
+    bandFraction = before;
+    return widest >= groupedValuesNeed(domain.dataSeries.length) - 0.01;
+  })();
   // The column width: wide enough for its values, then capped (100% stack, grid panel group).
   const fitColumnWidth = () => {
     // A narrower default column never narrows below its widest value plus 5 px a
@@ -458,6 +480,16 @@ function columnBand(
         const width = bandFor(plotX0, plotW0).bandwidth;
         if (width >= need - 0.01 || bandFraction >= COLUMN_FRACTION_MAX) break;
         bandFraction = Math.min(COLUMN_FRACTION_MAX, bandFraction * need / width);
+      }
+    }
+    // A group whose stepped values reach over the next column takes more of its
+    // category, up to GROUPED_FRACTION_MAX, until each value fits over its own column.
+    if (groupedValuesReach) {
+      for (let pass = 0; pass < 3; pass++) {
+        const width = bandFor(plotX0, plotW0).bandwidth;
+        const need = groupedValuesNeed(domain.dataSeries.length);
+        if (width >= need - 0.01 || bandFraction >= GROUPED_FRACTION_MAX) break;
+        bandFraction = Math.min(GROUPED_FRACTION_MAX, bandFraction * need / width);
       }
     }
     // A 100% column is at most STACKED100_COLUMN_MAX px wide, so the room the edge names give
