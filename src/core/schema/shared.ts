@@ -1337,7 +1337,7 @@ export const baseOptionsSchema = z.object({
       missingStack: z.string().min(1).optional().describe('StackedArea source-null note; {categories} is replaced.'),
       incompleteStacks: z.string().min(1).optional().describe('Incomplete bar stack note (bar only; column and combo use knownPartsTotals); {categories} is replaced.'),
       knownPartsShares: z.string().min(1).optional().describe('Incomplete 100% stack note without total100; {categories} is replaced.'),
-      rebaseZero: z.string().min(1).optional().describe('Line or stacked-area series left out by rebase100 for a zero base; {series} and {period} are replaced.'),
+      rebaseZero: z.string().min(1).optional().describe('Line or stacked-area series left out by rebase100 for a zero or negative base; {series} and {period} are replaced.'),
       rebaseMissing: z.string().min(1).optional().describe('Line or stacked-area series left out by rebase100 for a missing base; {series} and {period} are replaced.'),
     })
     .strict()
@@ -1404,7 +1404,7 @@ export const baseOptionsSchema = z.object({
   topN: z
     .object({
       n: z.number().int().positive().describe('Maximum number of individually retained categories after chart-specific ranking.'),
-      rest: z.boolean().optional().describe('Aggregate remaining categories into a rest bucket by default; false omits them where supported. Pareto retains the bucket to preserve its population.'),
+      rest: z.boolean().optional().describe('Aggregate remaining categories into a rest bucket by default; false omits them where supported. On a bar mekko the rest bucket is the width-weighted mean of its rates. Pareto retains the bucket to preserve its population.'),
       restLabel: z.string().optional().describe('Authored rest-bucket name; ordinary charts default to Others and Pareto to Rest.'),
       showRestCount: z.boolean().optional().describe('Append the number of aggregated categories; ordinary charts default to false, while Pareto always discloses the count.'),
       threshold: z.number().optional().describe('Bar-chart minimum absolute category total after the rank cut; not a universal Top-N threshold. Pareto warns that it ignores this field.'),

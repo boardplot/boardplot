@@ -603,7 +603,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: TableChartProp
   // so `usePrepared` has nothing to reject and the table is not resolved
   // against a theme the caller did not ask for.
   const tableOptions = layoutRequest?.options as TableOptions | undefined;
-  const initialPrepared = usePrepared(prepared, fullLayoutRequest, 'table', size === 'container' ? fit : undefined);
+  const initialPrepared = usePrepared(prepared, fullLayoutRequest, 'table', size === 'container' ? fit : undefined, size === 'container' ? container.fallback : undefined);
   // The values, formats and judgements do not depend on the frame size: a container that reports its width after the
   // first pass does not resolve the table again.
   const { size: _resolveSize, ...sizeFreeOptions } = tableOptions ?? {};

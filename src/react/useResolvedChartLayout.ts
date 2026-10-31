@@ -6,6 +6,7 @@ import { getChart } from '../core/registry';
 import { asFirstFrame, DeferredCoreError, deferredFailure, type DeferredName } from '../core/deferred';
 import type { ChartRequest, RequestContext, ResolvedChartRequest } from '../core/request';
 import type { LayoutResult } from '../core/types/scene';
+import type { Size } from '../core/geometry';
 import { isFullGeometry, type PreparedChart, type RenderGeometry } from './prepared';
 import { layoutContainerRequest, type ContainerFit } from './containerLayout';
 import { useDeferredRevision } from './deferredCore';
@@ -15,6 +16,8 @@ import { usePrepared } from './usePrepared';
 interface RenderOptions {
   prepared?: PreparedChart;
   fit?: ContainerFit;
+  /** The frame of a container snapshot (`usePrepared`). */
+  fallback?: Size;
   /** The options are refused (optionRefusals): no layout runs, since one may throw on them. */
   skipLayout?: boolean;
   /** A layout that refuses (`empty-data`, a spacing floor, ...) answers with its refusal card instead of throwing, as the CLI refuses. */
@@ -65,7 +68,7 @@ export function useDeferrableChartLayout(
   context: RequestContext = {},
   rendering: RenderOptions = {},
 ): { request?: ResolvedChartRequest; geometry?: RenderResult; deferred?: DeferredName; pending?: boolean; failure?: string } {
-  const { prepared, fit, skipLayout, errorAsRefusal, linked = NONE, defer = false, idle = false } = rendering;
+  const { prepared, fit, fallback, skipLayout, errorAsRefusal, linked = NONE, defer = false, idle = false } = rendering;
   const current = useResolvedChartRequest(input, context, prepared, linked, idle);
   const { provider } = current;
   // Deferred: the layout reads the inputs of the last background pass. React renders the new inputs at transition
@@ -85,7 +88,7 @@ export function useDeferrableChartLayout(
   // core module has nothing to compare a prepared scene against, and a
   // stand-in would reject the snapshot that was prepared correctly.
   const shownFit = inputs.fit;
-  const initial = usePrepared(prepared, layoutRequest, 'svg', shownFit);
+  const initial = usePrepared(prepared, layoutRequest, 'svg', shownFit, fallback);
   const revision = useDeferredRevision();
   const attempt = useMemo((): { geometry?: RenderResult; deferred?: DeferredName; failure?: string } => {
     // A refused chart lays nothing out, but its card still needs the resolved

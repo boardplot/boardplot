@@ -399,8 +399,8 @@ function effectiveLineValues(
   const at = isRecord(rebase) && typeof rebase.at === 'string' ? rebase.at : categories[0]?.id;
   const baseIndex = categories.findIndex((category) => category.id === at);
   if (baseIndex < 0) return values;
-  const base = values[baseIndex];
-  return base === null || base === 0 ? values.map(() => null) : values;
+  const base = values[baseIndex] ?? null;
+  return base === null || base <= 0 ? values.map(() => null) : values;
 }
 
 function isGenericTitle(title: string, typeNames: (string | undefined)[]): boolean {

@@ -59,7 +59,7 @@ import type {
 } from './types/scene';
 import type { Theme } from './types/theme';
 import { indicator100LabelRect, lineLabelGutterLines, namedLineText, pruneOrphanAnnotationArms } from './annotateParts';
-import { SHARES_OF_ONE_WHOLE_FIX, VALUELESS_ANCHOR_FIX } from './stackAdds';
+import { SHARES_OF_ONE_WHOLE_FIX, valuelessFix } from './stackAdds';
 import { maxOf, pushAll } from './arrays';
 
 
@@ -597,7 +597,7 @@ function warn(s: AnnotationScope, code: string, message: string, suggest?: strin
 function valueless(s: AnnotationScope, kind: string, anchors: readonly (AnchorResolution | null | undefined)[]): boolean {
   const reason = anchors.find((anchor) => anchor?.noValue !== undefined)?.noValue;
   if (reason === undefined) return false;
-  warn(s, 'bad-anchor', `${kind} '${s.id}': ${reason}, so it prints no value there`, VALUELESS_ANCHOR_FIX);
+  warn(s, 'bad-anchor', `${kind} '${s.id}': ${reason}, so it prints no value there`, valuelessFix(reason));
   return true;
 }
 

@@ -742,8 +742,11 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
     });
   });
   let lo = stackLo, hi = stackHi;
-  let sLoRaw = 0;
-  let sHiRaw = 0;
+  // A pinned secondary domain is the start and data only widen it (rightAxis), so a pinned minimum above zero stays.
+  // A secondary area fills down to zero, so it keeps zero in the domain.
+  const pinnedSecondary = secondaryActive && !lines.some((s) => s.axis === 'secondary' && s.kind === 'area') ? gate.secOpt?.domain : undefined;
+  let sLoRaw = pinnedSecondary?.[0] ?? 0;
+  let sHiRaw = pinnedSecondary?.[1] ?? 0;
   for (const s of [...lines, ...refs]) {
     const secondary = s.axis === 'secondary' && secondaryActive && s.role !== 'reference';
     for (const val of s.vals) {

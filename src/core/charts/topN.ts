@@ -46,3 +46,24 @@ export function poolMekkoAmounts(cells: readonly { v: number | null; isPct: bool
   const amounts = cells.map((cell) => mekkoAmount(cell, cell.basis, percent));
   return amounts.some((value) => value === null) ? null : restSum(amounts);
 }
+
+/**
+ * The mekko Others cell. A rate (a bar height over a width series, or a percent
+ * cell whose column width comes from elsewhere) does not add: Others is the
+ * mean weighted by column width, which keeps the drawn area of the folded
+ * columns. Without a width series a stacked column is as wide as its sum, so
+ * its cells are amounts.
+ */
+export function poolMekkoCell(
+  cells: readonly { v: number | null; isPct: boolean; basis: number; weight: number }[],
+  mode: 'percent' | 'unit' | 'bar',
+  widthSeries: boolean,
+): { v: number | null; isPct: boolean } {
+  const allPct = cells.every((cell) => cell.isPct);
+  const isPct = allPct && (mode === 'bar' || (mode === 'unit' && widthSeries));
+  if (!isPct && !(mode === 'bar' && widthSeries)) return { v: poolMekkoAmounts(cells, mode === 'percent'), isPct: false };
+  if (cells.some((cell) => cell.v === null)) return { v: null, isPct };
+  const weight = cells.reduce((sum, cell) => sum + cell.weight, 0);
+  const weighted = (cell: { v: number | null; weight: number }) => cell.v! * (weight > 0 ? cell.weight : 1);
+  return { v: cells.reduce((sum, cell) => sum + weighted(cell), 0) / (weight > 0 ? weight : cells.length), isPct };
+}

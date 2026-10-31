@@ -234,7 +234,7 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
     const attached = zoomed.derived || detached.current === prepared ? undefined : prepared;
     const defer = deferLayout && attached === undefined && !measured.printing;
     const first = useDeferrableChartLayout({ type, data: zoomed.data as D, target, options: { ...zoomed.options as typeof noteOptions, size: asked }, annotations: zoomed.annotations as Annotation[] | undefined }, {},
-      { prepared: attached, fit: measured.printFill ? 'fill' : resolvedFit, skipLayout: refusedOptions.length > 0 || measured.waiting || noData, idle: noData, errorAsRefusal: true, linked, defer });
+      { prepared: attached, fit: measured.printFill ? 'fill' : resolvedFit, fallback: container ? measured.fallback : undefined, skipLayout: refusedOptions.length > 0 || measured.waiting || noData, idle: noData, errorAsRefusal: true, linked, defer });
     // A cohort refused for width alone draws at the width it needs in a horizontal
     // scroll box, as TableChart scrolls a wide table. A pinned height stays pinned. A prepared
     // chart attaches without a client layout, so its refusal keeps the card.
