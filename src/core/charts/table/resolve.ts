@@ -990,8 +990,9 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
   // YoY calc column on a row that prints its months in $M keeps its percent.
   // So does the kind of its calculation: a percent change or a share is points
   // whatever its row prints in, and a row's '$1.2m' never turns it into "$0.0M".
+  // A mul or div by a literal keeps its row's scale and currency.
   const ownFormatColumns = new Set<Id>([...valueCols, ...computedCols]
-    .filter(col => col.format !== undefined || (col.kind === 'computed' && !calcPreservesScale(col.calc))).map(col => col.id));
+    .filter(col => col.format !== undefined || (col.kind === 'computed' && calcYieldsPoints(col.calc))).map(col => col.id));
   const rowFormattedColumns = new Set<Id>();
   for (const row of flat) {
     if (row.calc || !rowSpecs.has(row.id)) continue;

@@ -249,6 +249,15 @@ it('keeps a computed column in its own kind under a row format and honours a com
     rows: [{ id: 'rev', cells: { ac: 200, py: 100 } }, { id: 'margin', cells: { ac: { v: 19.84, format: '1.0%' }, py: { v: 18.5, format: '1.0%' }, d: { format: '+1.0pp' } } }],
   }, {}).table.rows;
   expect(delta.map(r => r.cells.d!.displayed)).toEqual(['+100', '+1.3pp']);
+
+  // A column that multiplies or divides by a literal lost its row's currency and unit ("2.6" and "208,333" instead of "$2.6M" and "$0.2M").
+  const scaled = resolveTable({
+    columns: [{ id: 'l', kind: 'rowLabel' }, { id: 'ac', kind: 'value' },
+      { id: 'fc', kind: 'computed', calc: { op: 'mul', a: { ref: 'ac' }, b: { lit: 1.05 } } },
+      { id: 'rr', kind: 'computed', calc: { op: 'div', a: { ref: 'ac' }, b: { lit: 12 } } }],
+    rows: [{ id: 'rev', format: '$1.2m', cells: { ac: 2500000 } }],
+  }, {}).table.rows;
+  expect(['ac', 'fc', 'rr'].map(col => scaled[0]!.cells[col]!.displayed)).toEqual(['$2.5M', '$2.6M', '$0.2M']);
 });
 
 // A large Range total made unequal weekly counts and money both print as 0.2B.
