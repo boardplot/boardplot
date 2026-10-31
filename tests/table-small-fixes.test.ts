@@ -226,6 +226,31 @@ it('keeps the dash when a calculation input is an explicit blank', () => {
   expect(yoy.cells.plan!.displayed).toBe('\u2013');
 });
 
+// A row's money format printed a percent change and a parent share as "$0.0M", and a cell format on a computed cell was ignored.
+it('keeps a computed column in its own kind under a row format and honours a computed cell format', () => {
+  const data: TableData = {
+    columns: [{ id: 'l', kind: 'rowLabel' }, { id: 'ac', kind: 'value' }, { id: 'py', kind: 'value' },
+      { id: 'yoy', kind: 'computed', calc: { op: 'percentDelta', a: 'ac', b: 'py' } },
+      { id: 'share', kind: 'computed', calc: { op: 'share', of: 'ac' } }],
+    rows: [
+      { id: 'p', format: '$1.2m', children: [
+        { id: 'a', format: '$1.2m', cells: { ac: 2500000, py: 2000000 } },
+        { id: 'b', format: '$1.2m', cells: { ac: 1500000, py: 1000000 } }] },
+      { id: 'c', format: '$1.2m', cells: { ac: 1000000, py: 1000000 } }],
+  };
+  const rows = resolveTable(data, {}).table.rows;
+  const shown = (row: string, col: string) => rows.find(r => r.id === row)!.cells[col]!.displayed;
+  expect(['yoy', 'share'].map(col => shown('a', col))).toEqual(['25.0%', '50.0%']);
+  expect(['yoy', 'share'].map(col => shown('p', col))).toEqual(['33.3%', '80.0%']);
+
+  const delta = resolveTable({
+    columns: [{ id: 'l', kind: 'rowLabel' }, { id: 'ac', kind: 'value', format: '1,234' }, { id: 'py', kind: 'value', format: '1,234' },
+      { id: 'd', kind: 'computed', format: '+1,234', calc: { op: 'delta', a: 'ac', b: 'py' } }],
+    rows: [{ id: 'rev', cells: { ac: 200, py: 100 } }, { id: 'margin', cells: { ac: { v: 19.84, format: '1.0%' }, py: { v: 18.5, format: '1.0%' }, d: { format: '+1.0pp' } } }],
+  }, {}).table.rows;
+  expect(delta.map(r => r.cells.d!.displayed)).toEqual(['+100', '+1.3pp']);
+});
+
 // A large Range total made unequal weekly counts and money both print as 0.2B.
 it('keeps scaled weekly levels accurate beside a large range total', () => {
   const cells = { range: 5_705_293_076, w1: 188_633_562, w2: 195_633_562, zero: 0 };
