@@ -15,6 +15,7 @@ import type { ChartData } from '../../types/data';
 import type { BarOptions } from '../../types/options';
 import type { Geometry } from '../../types/scene';
 import { layoutBar } from '../bar/layout';
+import { BarTooTall, STOP_IF_TOO_TALL } from '../bar/model';
 import type { ColumnDerived, ColumnMarks } from './layout';
 import type { AnomalyColumnOptions } from './types';
 
@@ -37,7 +38,14 @@ export function stepToBar(
   // A pinned height must already hold every row with its name.
   const pinned = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === true;
   if (pinned && rowsExceed(names.length, options, column.size.height)) return undefined;
-  const bar = layoutBar(data, options as BarOptions);
+  // A pinned height the rows cannot fit stops the bar layout once its frame and rows are sized, before its marks and labels are built.
+  let bar: ReturnType<typeof layoutBar>;
+  try {
+    bar = layoutBar(data, (pinned ? { ...options, [STOP_IF_TOO_TALL]: true } : options) as BarOptions);
+  } catch (error) {
+    if (error instanceof BarTooTall) return undefined;
+    throw error;
+  }
   const fits = bar.sizing !== undefined && (pinned ? fitsSize(bar.size, bar.sizing) : bar.size.width + SIZE_TOLERANCE >= bar.sizing.minWidth);
   if (bar.refused || !fits || (pinned && bar.labels.some((label) => label.kind === 'category' && label.hidden))) return undefined;
   bar.warnings.push({
