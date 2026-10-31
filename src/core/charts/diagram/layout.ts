@@ -364,9 +364,19 @@ function layoutDiagramPass(
   );
 
   // Presets reserve the pill above the body as part of each node's envelope.
+  // A node too short to keep its label clear of the pill keeps its whole rect.
+  // The pill then sits inside the node's left end and the label takes the rest.
+  const badgeFlush = new Set<string>();
   for (const [id, pill] of badgeSizes) {
     const rect = preset.nodeRects.get(id);
-    if (rect && !externalLabels && !org?.badges) preset.nodeRects.set(id, qRect({ ...rect, y: rect.y + pill.height / 2, h: rect.h - pill.height / 2 }));
+    const node = rect && !externalLabels && !org?.badges ? data.nodes.find(candidate => candidate.id === id) : undefined;
+    if (!rect || !node) continue;
+    const icon = node.icon ?? (node.shape.kind === 'icon' ? node.shape.name : undefined);
+    const room = rect.h - pill.height / 2 - 2.5 * u - Math.max(0, pill.height / 2 + u - 1.25 * u)
+      - (preset.contentTopReserves.get(id) ?? (icon ? Math.min(rect.h * 0.42, 28) : 0));
+    const lines = fitText(node.label, presetFont(node) ?? labelFont, Math.max(1, rect.w - 4 * u), 3, measure, { target: options.target, typeRole: 'label' }).lines.length;
+    if (room + 0.5 < lines * lineHeight) badgeFlush.add(id);
+    else preset.nodeRects.set(id, qRect({ ...rect, y: rect.y + pill.height / 2, h: rect.h - pill.height / 2 }));
   }
   for (const node of data.nodes) {
     const rect = preset.nodeRects.get(node.id);
@@ -389,7 +399,10 @@ function layoutDiagramPass(
     });
     const pill = pills.get(node.id);
     const badgeSize = badgeSizes.get(node.id);
-    if (badgeSize && !externalLabels && !org?.badges) {
+    if (badgeSize && badgeFlush.has(node.id)) {
+      contentRect.x += badgeSize.width;
+      contentRect.w = Math.max(1, contentRect.w - badgeSize.width);
+    } else if (badgeSize && !externalLabels && !org?.badges) {
       const reserve = Math.max(0, badgeSize.height / 2 + u - 1.25 * u);
       contentRect.y += reserve;
       contentRect.h = Math.max(1, contentRect.h - reserve);
@@ -443,13 +456,22 @@ function layoutDiagramPass(
       const badgePaint: Paint = org?.badgePaint ?? (node.badge ? diagramPalette.fill(node.badge.role, node.badge.paletteKey) : { token: 'neutralMark' });
       const text = badgeText(node);
       const diameter = q(Math.max(4 * u, measure(text, badgeFont).width + 2 * u));
-      const badgeBox = org?.badges?.get(node.id) ?? qRect({
+      const placed = org?.badges?.get(node.id) ?? qRect({
         x: rect.x + u,
-        y: rect.y - (badgeSize?.height ?? diameter) / 2,
+        y: badgeFlush.has(node.id) ? rect.y + (rect.h - badgeSize!.height) / 2 : rect.y - (badgeSize?.height ?? diameter) / 2,
         w: badgeSize?.width ?? diameter,
         h: badgeSize?.height ?? diameter,
       });
-      if (rectContains({ x: 0, y: 0, w: size.width, h: size.height }, badgeBox)) {
+      // A badge that leaves the canvas moves inside it and keeps its size. A node
+      // that is itself off the canvas is refused for its own label, so its badge is not drawn.
+      const canvas = { x: 0, y: 0, w: size.width, h: size.height };
+      const nodeOnCanvas = rectContains(canvas, rect, -0.5);
+      const badgeBox = qRect({
+        ...placed,
+        x: Math.max(0, Math.min(placed.x, size.width - placed.w)),
+        y: Math.max(0, Math.min(placed.y, size.height - placed.h)),
+      });
+      if (nodeOnCanvas && rectContains(canvas, badgeBox)) {
         const badgeId = diagramSceneId('badge', node.id);
         badgeScene.push({
           ...(pill ? { t: 'rect' as const, rect: badgeBox, radius: resolveSurface(theme).chipRadius } : {
@@ -483,7 +505,8 @@ function layoutDiagramPass(
           // Authored badge text is a name; the linear-process sequence number is a value.
           node.badge ? 'category' : 'value',
         );
-      } else if (node.badge) {
+      } else if (node.badge && nodeOnCanvas) {
+        // Only a canvas smaller than the badge itself lands here.
         warnings.push({
           code: 'diagram-size-too-small',
           severity: 'error',

@@ -40,6 +40,7 @@ import { defaultNumberDecimals, formatAutomaticNumber, formatAutomaticPercent, P
 import { exampleSpec, formatterFromExample, formatWithSpec, parseFormatExample, roundedNumber, signedFormatterFromExample, specUnitKind } from '../../formatSpec';
 import { boxGap, cleanDiff, cleanFloat, cleanSum, type Rect } from '../../geometry';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
+import { DEFAULT_TARGET, resolveTargetSize, TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { labelsToNodes } from '../../label/emit';
 import { categoryLineAlign, planCategoryRow, rotatedClaimRect, rotatedLeftOverhang, yearRowRequests } from '../../label/categoryRow';
 import {
@@ -164,6 +165,9 @@ interface NormSer {
 const pinGeometry = (theme: Parameters<typeof strokeToken>[0], width: number): { r: number; stem: number } => width >= 720
   ? { r: 5, stem: strokeToken(theme, 'data') * 1.25 }
   : { r: 4.5, stem: strokeToken(theme, 'data') };
+
+/** Internal option: px of one more value row over (above) or under (below) the columns, set by the second pass. */
+const LIFT_ROW = Symbol('liftRow');
 
 export function layoutVariance(
   data: ChartData,
@@ -566,11 +570,13 @@ export function layoutVariance(
   const bracketPad = legendInput && (options.annotations ?? []).some((annotation) => annotation.kind === 'cagr') ? 30 : 0;
   // A running value's to-date words stand under it: the headroom holds the second line too.
   const wordsH = toDateIds.size > 0 ? measure(toDate, toDateFont(theme)).height : 0;
-  const topPad = 8 + valueAxisTitleBand(axisTitle, theme, measure) + labelH + wordsH + 4 + bracketPad;
+  // A larger variance that found no seat over its neighbours gets one more value row (second pass).
+  const liftRow = (options as { [LIFT_ROW]?: { above: number; below: number } })[LIFT_ROW];
+  const topPad = 8 + valueAxisTitleBand(axisTitle, theme, measure) + labelH + wordsH + 4 + bracketPad + (liftRow?.above ?? 0);
   // an integrated chart with nothing under zero prints no
   // label below its columns; its name row starts at the baseline.
   const nothingBelowZero = mode === 'integrated' && cats.every((_, ci) => (acArr[ci] ?? 0) >= 0 && (refArr[ci] ?? 0) >= 0);
-  const bottomPad = nothingBelowZero ? 0 : labelH + 4;
+  const bottomPad = (nothingBelowZero ? 0 : labelH + 4) + (liftRow?.below ?? 0);
 
   // ---- domain (zero always included; user min/max may never clip data) ----
   // Computed BEFORE the plot rect: the tick-band reserve must measure its
@@ -1290,7 +1296,29 @@ export function layoutVariance(
     plot,
     labelPad: 2,
   });
-  const solved = mode === 'integrated' ? solveVarianceLabels(labelRequests, occupied, solveCtx, liftSeats) : solveLabels(labelRequests, occupied, solveCtx);
+  const solved: SolveResult & { stranded?: LabelRequest[] } = mode === 'integrated'
+    ? solveVarianceLabels(labelRequests, occupied, solveCtx, liftSeats)
+    : solveLabels(labelRequests, occupied, solveCtx);
+  // The plot holds one value row over the tallest column. When a larger
+  // variance still finds no seat while a smaller one keeps its value (the seat
+  // over its neighbours runs into the key or the subtitle), a fixed-height
+  // canvas lays out again with one more value row on that side. It is kept only when it seats more of these values and the
+  // canvas still meets the chart's size floor.
+  // An automatic height grows the canvas for a hidden value instead (sizing.ts), and keeps the names it grew for.
+  const fixedHeight = ((options as TargetSizeOptions)[TARGET_SIZE] ?? resolveTargetSize(options.target ?? DEFAULT_TARGET, options.size)).fixed.height;
+  const stranded = solved.stranded ?? [];
+  if (fixedHeight && stranded.length > 0 && !(LIFT_ROW in options)) {
+    const row = labelH + 4;
+    const above = stranded.some(request => request.candidates[1]?.slot === 'aboveCapShifted');
+    const below = stranded.some(request => request.candidates[1]?.slot !== 'aboveCapShifted');
+    const lifted = layoutVariance(data, { ...options, [LIFT_ROW]: { above: above ? row : 0, below: below ? row : 0 } } as VarianceOptions);
+    const ids = new Set(stranded.map(request => request.id));
+    const nowSeated = lifted.labels.filter(label => ids.has(label.id) && label.hidden === undefined).length;
+    // The row must not raise the chart's size floor past the canvas: a chart that draws keeps drawing.
+    const fits = (lifted.frame.plotMinHeight ?? 0) <= size.height
+      && (lifted.sizing === undefined || (lifted.sizing.minWidth <= size.width && lifted.sizing.minHeight <= size.height));
+    if (nowSeated > 0 && fits) return lifted;
+  }
   // A running period keeps a cue: a to-date value without a seat brings the hatch key back.
   // Words wider than twice the drawn band (a small bandFraction) would float over their mark: the key names the period.
   if (toDateIds.size > 0 && (!toDateFits(toDate, theme, measure, toDateRoom(band.bandwidth))
@@ -1496,25 +1524,27 @@ export function layoutVariance(
  * neighbouring columns and values (`lift`), against everything already placed.
  * Only those few values solve again; the drawn labels do not move.
  */
-function solveVarianceLabels(requests: LabelRequest[], occupied: OccupiedIndex, ctx: SolveCtx, lift: (request: LabelRequest) => SlotCandidate[]): SolveResult {
+function solveVarianceLabels(requests: LabelRequest[], occupied: OccupiedIndex, ctx: SolveCtx, lift: (request: LabelRequest) => SlotCandidate[]): SolveResult & { stranded: LabelRequest[] } {
   const solved = solveLabels(requests, occupied, ctx);
   const points = solved.placed.filter(label => label.kind === 'point');
   const shown = points.filter(label => label.hidden === undefined).length;
   const crowded = new Set(points.filter(label => label.hidden === 'collision').map(label => label.id));
-  if (crowded.size === 0) return solved;
+  if (crowded.size === 0) return { ...solved, stranded: [] };
   const ranked = requests.filter(request => request.kind === 'point' && !request.redundant)
     .sort((a, b) => b.priority - a.priority || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const rescue = ranked.slice(0, shown).filter(request => crowded.has(request.id)).flatMap(request => {
     const seats = lift(request);
     return seats.length > 0 ? [{ ...request, candidates: [...request.candidates, ...seats] }] : [];
   });
-  if (rescue.length === 0) return solved;
+  if (rescue.length === 0) return { ...solved, stranded: [] };
   const repair = solveLabels(rescue, occupied, ctx);
   const seated = new Map(repair.placed.filter(label => label.hidden === undefined).map(label => [label.id, label]));
-  if (seated.size === 0) return solved;
+  const stranded = rescue.filter(request => !seated.has(request.id));
+  if (seated.size === 0) return { ...solved, stranded };
   const decided = new Map(repair.decisions.map(decision => [decision.labelId, decision]));
   return {
     ...solved,
+    stranded,
     placed: solved.placed.map(label => seated.get(label.id) ?? label),
     decisions: solved.decisions.map(decision => seated.has(decision.labelId) ? decided.get(decision.labelId) ?? decision : decision),
     warnings: solved.warnings.filter(warning => warning.code !== 'label-hidden' || ![...seated.keys()].some(id => warning.message.startsWith(`label '${id}' `))),

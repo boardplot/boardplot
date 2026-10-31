@@ -461,6 +461,34 @@ it('judges a narrow diagram card by its card and group text at its content heigh
   expect(getChart('diagram')!.layout(placed as never, { variant: 'hierarchy', target: 'report', size: { width: 320, height: 600 } } as never).refused).toBe(true);
 });
 
+// Prevents a badge from refusing a diagram and being named as the cause: a house header too short for its
+// label beside a pill draws with the pill inside it, and a tree taller than its canvas names its labels, not a badge.
+it('does not refuse a diagram for its badges', () => {
+  const cell = (id: string, kind: string, label: string, extra: object = {}) => ({ id, kind, shape: { kind: 'rectangle' }, label, role: 'primary', ...extra });
+  // Placeholder text of a given length: the badge fit depends on label length, not on its words.
+  const filler = (name: string, length: number) => `${name} ${'text '.repeat(length)}`.slice(0, length).replace(/ $/, 'x');
+  const initiatives = [82, 76, 64, 83, 64, 72, 82, 78, 75].map((length, i) => filler(`Initiative ${i + 1}`, length));
+  const house = {
+    groups: ['g1', 'g2', 'g3'].map((id, order) => ({ id, title: `Pillar ${order + 1}`, role: 'primary', order: order + 1 })),
+    nodes: [
+      cell('roof', 'vision', filler('Roof', 47), { shape: { kind: 'roof' } }),
+      ...['g1', 'g2', 'g3'].flatMap((g, i) => [
+        cell(`o${i}`, 'objective', filler(`Objective ${i + 1}`, [15, 17, 22][i]!), { groupId: g, badge: { text: String(i + 1), role: 'accent' } }),
+        ...[1, 2, 3].map((row) => cell(`${g}-${row}`, 'initiative', initiatives[i * 3 + row - 1]!, { groupId: g, order: row, role: 'secondary' })),
+      ]),
+      ...[1, 2, 3].map((order) => cell(`e${order}`, 'enabler', `Enabler ${order}`, { order, role: 'muted' })),
+      cell('base', 'foundation', filler('Base', 31)),
+    ],
+  };
+  const crowded = getChart('diagram')!.layout(house as never, { variant: 'strategy-house', target: 'slide', size: { width: 960, height: 540, unit: 'pt' } } as never);
+  expect(crowded.warnings.filter((warning) => warning.severity === 'error')).toEqual([]);
+  const nodes = [cell('q', 'issue', filler('Question', 27)),
+    ...[1, 2, 3, 4, 5, 6].map((n) => cell(`l${n}`, 'driver', filler(`Driver ${n}`, 46), { badge: { text: `H${n}`, role: 'accent' } }))];
+  const edges = [1, 2, 3, 4, 5, 6].map((n) => ({ id: `e${n}`, source: { nodeId: 'q' }, target: { nodeId: `l${n}` } }));
+  const tree = getChart('diagram')!.layout({ nodes, edges } as never, { variant: 'issue-tree', target: 'slide', size: { width: 1184, height: 200 } } as never);
+  expect(tree.warnings.filter((warning) => warning.severity === 'error').map((warning) => warning.message).join(' ')).not.toMatch(/badge/i);
+});
+
 // Prevents measure and render from naming different floors: a height that render refuses, a card width
 // that render refuses while measure says it draws, and a pinned choropleth that draws taller than measure says.
 it('names the size that render draws in measure', () => {
