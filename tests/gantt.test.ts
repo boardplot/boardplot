@@ -388,3 +388,17 @@ it('gantt draws every wrapped row name on a pinned canvas at the least height th
   expect(body.ok).toBe(true);
   expect(body.reading.omissions.filter(omission => omission.labelId.startsWith('activity:'))).toEqual([]);
 });
+
+// A row whose name needs less than the 40 px pitch had no text floor, so a pinned canvas at the declared minimum height squeezed it below its name and hid the name.
+it('gantt keeps every row name at the declared minimum height for rows with and without sublabels', () => {
+  const names = ['Management presentations and site visits for shortlisted bidders', 'Information memorandum prepared and issued to bidders', 'Board and works council approval of the final binding offer'];
+  const rows = Array.from({ length: 10 }, (_, i) => ({ id: `r${i}`, label: i < 3 ? names[i]! : `Step ${i}`, ...(i === 0 ? { sublabel: 'PMO' } : {}),
+    items: [{ id: `b${i}`, kind: 'bar', start: `2026-11-${String(1 + i).padStart(2, '0')}`, end: `2026-12-${String(10 + i)}` }] }));
+  const options = { theme: 'standard', size: { width: 1200 } };
+  const open = layoutResolvedRequest(resolveChartRequest({ type: 'gantt', data: { rows }, options }));
+  if (open.refused) throw new Error('gantt refused');
+  const height = open.sizing!.minHeight;
+  const body = render({ spec: { type: 'gantt', data: { rows }, options: { ...options, size: { width: 1200, height } } }, return: ['reading'] }).body as { ok: boolean; reading: { omissions: { labelId: string }[] } };
+  expect(body.ok).toBe(true);
+  expect(body.reading.omissions.filter(omission => omission.labelId.startsWith('activity:') || omission.labelId.startsWith('sublabel:'))).toEqual([]);
+});

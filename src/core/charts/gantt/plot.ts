@@ -315,13 +315,16 @@ export function ganttFrame(
   const pitches = domain.rows.map((row) => Math.max(lanePitch, domain.milestones.flagPitch.get(row.id) ?? 0, textPitch?.get(row.id) ?? 0));
   const extra = pitches.reduce((sum, pitch) => sum + pitch - lanePitch, 0);
   // A short canvas squeezes the rows by the same factor, except that a row never goes below its text floor (its pitch less one label gap).
-  const squeezed = squeezeRows(pitches, domain.rows.map((row) => Math.max(0, (textPitch?.get(row.id) ?? LABEL_PAD) - LABEL_PAD)), Math.max(6 * n, bodyH - named * nameLineH));
-  const rowH = extra > 0 ? lanePitch * squeezed.scale : Math.min(lanePitch, Math.max(6, (bodyH - named * nameLineH) / n));
-  const rowHs = extra > 0 ? squeezed.heights : pitches.map(() => rowH);
+  const floors = domain.rows.map((row) => Math.max(0, (textPitch?.get(row.id) ?? LABEL_PAD) - LABEL_PAD));
+  const squeezed = squeezeRows(pitches, floors, Math.max(6 * n, bodyH - named * nameLineH));
+  // Rows differ in height when one grows or one has a text floor above the common squeeze.
+  const uneven = extra > 0 || floors.some((floor) => floor > 0);
+  const rowH = uneven ? lanePitch * squeezed.scale : Math.min(lanePitch, Math.max(6, (bodyH - named * nameLineH) / n));
+  const rowHs = uneven ? squeezed.heights : pitches.map(() => rowH);
   const rowY = [rowsTop];
-  for (let i = 0; i < n; i++) rowY.push(stacked ? rowY[i]! + rowHs[i]! + (domain.rows[i]!.shared && !sharedLine ? 0 : nameLineH) : extra > 0 ? rowY[i]! + rowHs[i]! : rowsTop + (i + 1) * rowH);
+  for (let i = 0; i < n; i++) rowY.push(stacked ? rowY[i]! + rowHs[i]! + (domain.rows[i]!.shared && !sharedLine ? 0 : nameLineH) : uneven ? rowY[i]! + rowHs[i]! : rowsTop + (i + 1) * rowH);
   const band: GanttBand = {
-    headerRowH, headerH, markerLabelH, markerStrip, headerTop, rowsTop, bodyH, rowH, rowHs, rowsBottom: stacked || extra > 0 ? rowY[n]! : rowsTop + rowH * n,
+    headerRowH, headerH, markerLabelH, markerStrip, headerTop, rowsTop, bodyH, rowH, rowHs, rowsBottom: stacked || uneven ? rowY[n]! : rowsTop + rowH * n,
     rowY, stacked, nameLineH, sharedLine, colHeaderH, stackedLineW: stackedLineW ?? 0, naturalRowsH: n * lanePitch + extra + named * nameLineH,
   };
   return { frame, claims, band };

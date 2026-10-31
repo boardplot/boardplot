@@ -50,7 +50,7 @@ import type { GanttData, GanttItem } from '../../types/data';
 import type { BaseOptionsFor, LabelKind, LabelContent } from '../../types/options';
 import type { Geometry, LintWarning, PlacedLabel, SceneNode } from '../../types/scene';
 import { dateFromDay, dayNum } from './calendar';
-import { GANTT_ROW_PITCH, resolveGanttDomain, resolveGanttEnv } from './domain';
+import { resolveGanttDomain, resolveGanttEnv } from './domain';
 import { badgeFill, badgeLevels, layoutGanttAnnotations, ruleNodes, type GanttAnnotationLayer } from './events';
 import { flagRowPitch, ganttSpanBlockers, planGanttLabels, planRowFlags } from './labels';
 import { fmtDay, ganttPaints, layoutGanttMarks, type GanttMarkGeometry } from './marks';
@@ -236,7 +236,7 @@ function assembleGanttGeometry(input: {
       chromeH: size.height - band.bodyH,
       minimumRowsH: band.stacked
         ? n * Math.max(STACKED_LANE_FLOOR, input.keyRowHeight) + rows.filter((row) => !row.shared || band.sharedLine).length * band.nameLineH
-        : body.rowLabels.reduce((sum, label) => sum + Math.max(28, input.keyRowHeight, rowTextFloor(label)), 0),
+        : body.rowLabels.reduce((sum, label) => sum + Math.max(MIN_ROW_H, input.keyRowHeight, rowTextFloor(label)), 0),
       naturalRowsH: Math.max(band.naturalRowsH, (input.cardHeight ?? 0) - (size.height - band.bodyH)),
       minWidth: band.stacked ? size.width - body.inner.w + Math.max(80, band.stackedLineW) : size.width - body.inner.w + body.minimumLabelBandW + 12 + colWs.reduce((sum, width) => sum + width, 0) + (colWs.length ? 4 : 0) + 80 + (laneLabelW && options.mode !== 'compact' ? body.laneGap + laneLabelW : 0),
     }),
@@ -310,6 +310,9 @@ function commitClaims(occupied: OccupiedIndex, phase: OccupiedIndex): void {
 
 // The registry tries full before compact. Keep that full context so a wider
 // reference does not inherit compact spacing or minimal label density.
+/** The least height of a table row; a row whose text needs less keeps it. */
+const MIN_ROW_H = 28;
+
 /** The least row height at which a wrapped name and its sublabel keep their seats: the text plus one gap to the next row's name. */
 const rowTextFloor = (label: RowLabel) => label.h + (label.sub ? 2 + label.sub.h : 0) + LABEL_PAD;
 
@@ -375,12 +378,14 @@ function layoutGanttPass(data: GanttData, options: GanttOptions = {}, keyed: Rea
   if (!band.stacked) {
     const known = (options as { [ROW_TEXT_PITCH]?: ReadonlyMap<string, number> })[ROW_TEXT_PITCH] ?? new Map<string, number>();
     const grown = new Map(known);
+    let measured = false;
     body.rowLabels.forEach((label, i) => {
       const need = rowTextNeed(label);
       const id = domain.rows[i]!.id;
-      if (need > Math.max(GANTT_ROW_PITCH, known.get(id) ?? 0) + 0.5) grown.set(id, need);
+      // A row under the declared per-row minimum keeps that minimum and needs no record. Any taller row is recorded, also one below the common pitch, so a squeeze keeps its text floor.
+      if (rowTextFloor(label) > MIN_ROW_H && need > (known.get(id) ?? 0) + 0.5) { grown.set(id, need); measured = true; }
     });
-    if (grown.size > known.size) return layoutGanttPass(data, { ...options, [ROW_TEXT_PITCH]: grown } as GanttOptions, keyed, autoHeight, flags);
+    if (measured) return layoutGanttPass(data, { ...options, [ROW_TEXT_PITCH]: grown } as GanttOptions, keyed, autoHeight, flags);
   }
   // Badges that crowd on the drawn timeline stack up: lay the chart out again with the strip they need.
   const badgeLevelCount = 1 + Math.max(0, ...badgeLevels(env, domain, body.x).values());
