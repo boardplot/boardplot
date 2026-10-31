@@ -274,10 +274,15 @@ export function layoutWaterfall(
   // grows in 6 px steps until they open; a chart that gains no seat keeps its first pass.
   const freeSeated = (geometry: Geometry<WaterfallMarks, WaterfallDerived>) =>
     geometry.labels.some((label) => label.id.startsWith('annotation:') && label.slot === 'freeSpot');
+  // A grown pass is kept only if every note stays drawn and it raises no new warning: the
+  // shorter plot can hide a note that the first pass drew.
+  const noteHidden = (geometry: Geometry<WaterfallMarks, WaterfallDerived>) =>
+    geometry.labels.some((label) => label.id.startsWith('annotation:') && label.hidden);
   if (!cagr && freeSeated(pass.geometry)) {
+    const warned = pass.geometry.warnings?.length ?? 0;
     for (let grown = 6; grown <= 48; grown += 6) {
       const next = layoutWaterfallWithPad(data, options, grown, true, undefined, false);
-      if (!freeSeated(next.geometry)) { pass = next; break; }
+      if (!freeSeated(next.geometry) && !noteHidden(next.geometry) && (next.geometry.warnings?.length ?? 0) <= warned) { pass = next; break; }
     }
   }
   // First settle the annotation band with the original break. A moved break

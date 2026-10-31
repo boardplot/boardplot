@@ -368,4 +368,33 @@ describe('step notes on a broken value axis', () => {
       expect(note.leader).toBeDefined();
     }
   });
+
+  // The band growth on a small unbroken chart shrank the plot until the second note was hidden
+  // for a collision, where the first pass drew both. A grown pass that hides a note is dropped.
+  it('keeps every note drawn on a small chart without a break', () => {
+    const data = def.normalize({
+      items: [
+        { id: 'start', label: 'Start', type: 'total', value: 1000 },
+        { id: 'e0', label: 'Step 0', value: -100 },
+        { id: 'e1', label: 'Step 1', value: 50 },
+        { id: 'e2', label: 'Step 2', value: -30 },
+        { id: 'e3', label: 'Step 3', value: 20 },
+        { id: 'end', label: 'End', type: 'total', value: 940 },
+      ],
+    });
+    const geometry = def.layout(data as never, {
+      size: { width: 320, height: 300 },
+      theme: 'studio',
+      title: 'Title here for the chart',
+      unit: 'EUR',
+      source: 'Src',
+      annotations: [
+        { kind: 'note', at: { categoryId: 'e0' }, text: 'New supplier contract' },
+        { kind: 'note', at: { categoryId: 'e1' }, text: 'Line 3 yield programme' },
+      ],
+    } as never) as unknown as { labels: { id: string; hidden?: string }[] };
+    const notes = geometry.labels.filter((label) => label.id.startsWith('annotation:'));
+    expect(notes).toHaveLength(2);
+    expect(notes.filter((note) => note.hidden)).toEqual([]);
+  });
 });
