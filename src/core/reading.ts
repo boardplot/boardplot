@@ -331,7 +331,10 @@ function unrequestedLabelOmissions(input: ChartReadingInput, records: readonly I
       ? (options.seriesLabels as { only?: string[] }).only : undefined;
     const excludedSeries = only !== undefined && owner.seriesId !== undefined && !only.includes(owner.seriesId);
     const excludedValues = excludedSeries && context.geometry.type === 'line';
-    const hasValueRequest = context.requestedValues.has(valueKey(owner));
+    // A histogram's open last bin prints its count even when the other counts are off.
+    const openBin = (context.geometry.derived as { binning?: { openAbove?: number; edges: number[] } } | undefined)?.binning;
+    const hasValueRequest = context.requestedValues.has(valueKey(owner)) || (context.geometry.type === 'histogram' && openBin?.openAbove !== undefined
+      && owner.categoryId === JSON.stringify(['bin', openBin.edges.at(-2), openBin.edges.at(-1)]));
     const valueKind = context.geometry.type !== 'line' && typeof options.variant === 'string' && options.variant.startsWith('stacked') ? 'segment' : 'point';
     // A selection explains an absent request only for a value still in the plot; viewport exclusions were skipped above.
     const selectiveValues = typeof options.valueLabels === 'string' && options.valueLabels !== 'all';

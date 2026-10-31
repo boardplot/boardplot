@@ -142,7 +142,10 @@ function histogramRecords(ctx: RecordContext): InteractionRecord[] {
     const counted = bin.count === 1 && noun.endsWith('s') ? noun.slice(0, -1) : noun;
     return makeRecord(ctx, { categoryId: JSON.stringify(['bin', bin.lo, bin.hi]) }, numericValue(bin.count, counted), {
       // One bin per whole value names that value, "3 days", not "2.5 to under 3.5".
-      label: derived.binning.perValue ? edge(derived.binLabels[bin.index], (bin.lo + bin.hi) / 2, true)
+      // The open last bin reads "1,600 or more", its upper edge is only the largest observation.
+      label: last && derived.binning.openAbove !== undefined
+        ? chartString(ctx.request.options, 'intervalAtLeast', { v1: edge(undefined, derived.binning.perValue ? Math.ceil(derived.binning.openAbove) : bin.lo, true) })
+        : derived.binning.perValue ? edge(derived.binLabels[bin.index], (bin.lo + bin.hi) / 2, true)
         : intervalText(edge(low, bin.lo, false), edge(high, bin.hi, true), last, ctx.request.options), anchor: bin.rect,
       annotations: makeRecord(ctx, { categoryId: bin.id }, numericValue(bin.count)).annotations,
       nodeIds: bin.nodeId ? [bin.nodeId] : [], members: members.map(item => item.owner),
