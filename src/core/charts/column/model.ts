@@ -93,6 +93,8 @@ export interface ColumnDomain extends ColumnEnv {
   shareTexts: Map<string, string>;
   /** rounding 'sum-consistent': the shares printed off their nearest rounding. */
   roundingAdjustments: import('../../shareRounding').RoundingAdjustment[];
+  /** The hidden method note on moved or rescaled shares. */
+  shareNotes: string[];
   cats: Category[];
   seriesNorm: NormSer[];
   dataSeries: NormSer[];

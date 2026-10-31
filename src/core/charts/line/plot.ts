@@ -57,6 +57,7 @@ import { textScaleOf } from '../../typeFloors';
 import { footerType } from '../../footer';
 import { DEFAULT_TARGET, targetFloorsPx } from '../../target';
 import { disclosureNote, disclosuresShown } from '../../notes';
+import { shareRoundingNotes } from '../../shareRounding';
 import { omittedKey } from '../../seriesIdentity';
 import { maxOf, minOf, pushAll } from '../../arrays';
 
@@ -436,6 +437,7 @@ export function solveLineFrame(
           footer: { width: size.width - margin.left - margin.right, font: { family: theme.type.family, ...footerType(theme.type.footnote, options.target, textScaleOf(options)) }, measure },
           mixedSign: cats.filter((c) => domain.nmCats100.has(c.id) && !domain.overfullCats100.has(c.id)), incompleteStack: domain.incompleteStack,
           knownParts: cats.filter(c => domain.sharesWithheld.has(c.id)), rebaseSuppressed: domain.rebaseCompact ? [] : domain.rebaseSuppressed, bumpOmitted: domain.bumpOmitted }),
+        ...shareRoundingNotes(options, domain.roundingAdjustments ?? []),
         // The anomaly rule, stated on the exhibit (column prints it over the plot).
         ...(domain.anomaly ? [disclosureNote(`${domain.anomaly.model.rule}${domain.anomaly.corridorNote}`)] : []),
         ...timeZoneNote(domain, options),

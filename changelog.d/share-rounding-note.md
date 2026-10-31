@@ -1,0 +1,3 @@
+### Fixed
+
+- A chart that moves a printed share so a whole adds up to 100% now says so in its notes list. A column, bar, combo, bar table cascade or stacked 100% area chart defaults to `rounding: "sum-consistent"`, and three equal thirds printed 34%, 33% and 33% with only `reading.rounding` showing the move. The chart gets one method note, which prints under the chart only where `notes.show` lists `"method"`, so the drawing does not change. On a column or bar stack with `sharesOfOneWhole`, the note also names a stack whose authored parts miss 100 by more than 0.05, because each share is its part divided by the stack total. The manual now names every type that takes `options.rounding` and its default.
