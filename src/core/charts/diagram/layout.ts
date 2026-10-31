@@ -505,7 +505,6 @@ function layoutDiagramPass(
     labelPad: 1,
   });
   const solvedStructural = solveLabels(labelRequests, occupied, structuralCtx);
-  settleJoinedLabels(solvedStructural, joinedLabels, nodeMarks, occupied, { x: 0, y: 0, w: size.width, h: size.height }, structuralCtx);
   remapLabelKinds(solvedStructural.placed, labelKinds);
   // A compact layout's own inks: a muted description, a numeral in its step's fill.
   for (const label of solvedStructural.placed) {
@@ -519,6 +518,15 @@ function layoutDiagramPass(
     nodeMarks.filter(node => !refusedIds.has(node.id)), plot, warnings, options.variant, 0,
   ))) return { warnings };
   if (probe && fitOnly === 'structural') return { warnings };
+  // A size search that stops at the structure never reads a secondary text, so only a later pass settles the blocks.
+  const unplaced = settleJoinedLabels(solvedStructural.placed, joinedLabels, nodeMarks, occupied, { x: 0, y: 0, w: size.width, h: size.height }, structuralCtx);
+  if (unplaced) {
+    remapLabelKinds(unplaced.placed, labelKinds);
+    solvedStructural.placed.push(...unplaced.placed);
+    solvedStructural.decisions.push(...unplaced.decisions);
+    pushAll(warnings, unplaced.warnings);
+    translateLabelLosses(unplaced.placed, labelKinds, warnings);
+  }
   for (const label of solvedStructural.placed) {
     const nodeId = label.owner.pointId;
     if (!nodeId) continue;
@@ -818,18 +826,17 @@ function addNodeLabels(
   // A node with its label outside has no room inside for a second text. Its
   // secondary lines follow the name in one outside block, which settles after
   // the solve (see `settleJoinedLabels`).
-  const outside = joinedLabels && external && !seat && node.secondaryLabel && !secondaryFits
-    ? fitText(node.secondaryLabel, font, maxWidth, 2, measure, externalFit) : undefined;
-  if (outside) {
-    const text = `${node.label}\n${node.secondaryLabel}`;
-    const block = { lines: [...primary.lines, ...outside.lines], title: primary.title !== undefined || outside.title !== undefined ? text : undefined };
-    joinedLabels?.set(id, {
-      text,
-      lines: block.lines,
-      title: block.title,
-      seats: () => labelRequest(block, text).candidates,
+  const joined = joinedLabels !== undefined && external && !seat && Boolean(node.secondaryLabel) && !secondaryFits;
+  if (joined) {
+    joinedLabels.set(id, {
+      block: () => {
+        const outside = fitText(node.secondaryLabel!, font, maxWidth, 2, measure, externalFit);
+        const text = `${node.label}\n${node.secondaryLabel}`;
+        const block = { lines: [...primary.lines, ...outside.lines], title: primary.title !== undefined || outside.title !== undefined ? text : undefined };
+        return { text, lines: block.lines, title: block.title, seats: labelRequest(block, text).candidates };
+      },
       from: { x: resolved.rect.x + resolved.rect.w / 2, y: resolved.rect.y + resolved.rect.h / 2 },
-      secondary: secondaryRequest(secondary!),
+      secondary: () => secondaryRequest(secondary!),
     });
   }
   if (primary.title !== undefined) {
@@ -870,23 +877,19 @@ function addNodeLabels(
       ],
     };
   }
-  if (secondary && !outside) requests.push(secondaryRequest(secondary));
+  if (secondary && !joined) requests.push(secondaryRequest(secondary));
 
   addNodeCaption(node, resolved, options, caption?.font ?? font, measure, u, requests, kinds, caption?.box);
 }
 
 /** An outside node label that can take its node's secondary lines as extra lines of one block. */
 interface JoinedLabel {
-  /** The label text, lines and title of the name with its secondary lines. */
-  text: string;
-  lines: string[];
-  title: string | undefined;
-  /** The seats of that taller block, in the order of the name's own seats. */
-  seats: () => LabelRequest['candidates'];
+  /** The label text, lines, title and seats of the name with its secondary lines. The seats follow the order of the name's own seats. */
+  block: () => { text: string; lines: string[]; title: string | undefined; seats: LabelRequest['candidates'] };
   /** The centre of the node, where a leader starts. */
   from: Point;
   /** The secondary text as a request of its own, which has no seat. */
-  secondary: LabelRequest;
+  secondary: () => LabelRequest;
 }
 
 /**
@@ -897,51 +900,49 @@ interface JoinedLabel {
  * unplaced and goes to the note.
  */
 function settleJoinedLabels(
-  solved: ReturnType<typeof solveLabels>,
+  placed: readonly PlacedLabel[],
   joined: ReadonlyMap<string, JoinedLabel>,
   nodes: readonly ResolvedDiagramNode[],
   occupied: OccupiedIndex,
   canvas: Rect,
   ctx: SolveCtx,
-): void {
-  if (joined.size === 0) return;
+): ReturnType<typeof solveLabels> | undefined {
+  if (joined.size === 0) return undefined;
   const pad = ctx.labelPad ?? 2;
+  const byId = new Map(placed.map(label => [label.id, label]));
   const unplaced: LabelRequest[] = [];
   for (const [id, entry] of joined) {
-    const label = solved.placed.find(candidate => candidate.id === id);
+    const label = byId.get(id);
     const name = label && !label.hidden
       ? occupied.hitsWhich(label.rect, 0).find(claim => claim.kind === 'label' && claim.owner.pointId === label.owner.pointId && sameRect(claim.rect, label.rect))
       : undefined;
     if (!label || !name) {
-      unplaced.push(entry.secondary);
+      unplaced.push(entry.secondary());
       continue;
     }
     // The name gives up its own claim while its taller block looks for a seat.
     occupied.release?.(name);
-    const seat = entry.seats().find(candidate => rectContains(canvas, candidate.rect, 0) && !occupied.hits(candidate.rect, pad));
+    const block = entry.block();
+    const seat = block.seats.find(candidate => rectContains(canvas, candidate.rect, 0) && !occupied.hits(candidate.rect, pad));
     if (!seat) {
       occupied.claim(label.rect, 'label', label.owner);
-      unplaced.push(entry.secondary);
+      unplaced.push(entry.secondary());
       continue;
     }
     occupied.claim(seat.rect, 'label', label.owner);
     label.rect = seat.rect;
     label.slot = seat.slot;
-    label.lines = entry.lines;
-    label.text = entry.text;
-    if (entry.title === undefined) delete label.title;
-    else label.title = entry.title;
+    label.lines = block.lines;
+    label.text = block.text;
+    if (block.title === undefined) delete label.title;
+    else label.title = block.title;
     const leader = seatLeader(seat.rect, entry.from);
     if (leader) label.leader = leader;
     else delete label.leader;
     const node = nodes.find(candidate => candidate.id === label.owner.pointId);
     if (node) node.secondaryPrinted = true;
   }
-  if (unplaced.length === 0) return;
-  const rest = solveLabels(unplaced, occupied, ctx);
-  solved.placed.push(...rest.placed);
-  solved.decisions.push(...rest.decisions);
-  solved.warnings.push(...rest.warnings);
+  return unplaced.length === 0 ? undefined : solveLabels(unplaced, occupied, ctx);
 }
 
 function sameRect(a: Rect, b: Rect): boolean {
