@@ -29,12 +29,12 @@ vi.mock('../src/core/charts/scatter/layout', async original => {
   } };
 });
 
-const barMarkCalls = vi.hoisted(() => ({ count: 0 }));
-vi.mock('../src/core/charts/bar/marks', async original => {
-  const module = await original<typeof import('../src/core/charts/bar/marks')>();
-  return { ...module, layoutBarMarks: (...args: Parameters<typeof module.layoutBarMarks>) => {
-    barMarkCalls.count++;
-    return module.layoutBarMarks(...args);
+const barLayoutCalls = vi.hoisted(() => ({ count: 0 }));
+vi.mock('../src/core/charts/bar/layout', async original => {
+  const module = await original<typeof import('../src/core/charts/bar/layout')>();
+  return { ...module, layoutBar: (...args: Parameters<typeof module.layoutBar>) => {
+    barLayoutCalls.count++;
+    return module.layoutBar(...args);
   } };
 });
 
@@ -836,21 +836,21 @@ it('draws a column whose names cannot fit or rotate as bars, or lists the names 
   expect(hiddenNames(tall)).toEqual([]);
 });
 
-// A pinned height between the row floor and the bar's real minimum built a whole bar before the column kept its place, which slowed those columns.
-it('does not build bar marks for a pinned height the bar rows cannot fit', () => {
+// A pinned height between the row floor and the bar's real minimum laid out a bar before the column kept its place, which slowed those columns.
+it('does not lay out a bar for a pinned height the bar rows and frame cannot fit', () => {
   const names = ['Automotive OEM', 'Automotive suppliers', 'Chemicals', 'Consumer goods', 'Energy utilities', 'Financial services', 'Food and beverage', 'Healthcare providers', 'Industrial machinery', 'Insurance',
     'Logistics', 'Media', 'Oil and gas', 'Pharmaceuticals', 'Retail', 'Software', 'Telecommunications', 'Transport', 'Utilities', 'Wholesale'];
   const data = { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [{ id: 's', label: 'Margin', values: names.map((_, i) => 8 + ((i * 7) % 23)) }] };
   const draw = (height: number) => {
-    barMarkCalls.count = 0;
+    barLayoutCalls.count = 0;
     const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'column', data, options: { title: 'Margin by sector', unit: '%', source: 'Invented', size: { width: 320, height } } })) as Geometry;
-    return { type: geometry.type, marks: barMarkCalls.count };
+    return { type: geometry.type, layouts: barLayoutCalls.count };
   };
-  // 560 px is the rows alone at the row floor; the frame and the value axis need more.
-  expect(draw(600)).toEqual({ type: 'column', marks: 0 });
+  // 560 px is the rows alone at the row floor; the title and the source line need more.
+  expect(draw(600)).toEqual({ type: 'column', layouts: 0 });
   const tall = draw(900);
   expect(tall.type).toBe('bar');
-  expect(tall.marks).toBeGreaterThan(0);
+  expect(tall.layouts).toBeGreaterThan(0);
 });
 
 // A column that stepped to bars at 320 px took the bar's natural and comfortable sizes, so advice to widen drew a column at other sizes.

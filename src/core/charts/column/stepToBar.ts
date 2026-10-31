@@ -15,6 +15,7 @@ import type { ChartData } from '../../types/data';
 import type { BarOptions } from '../../types/options';
 import type { Geometry } from '../../types/scene';
 import { layoutBar } from '../bar/layout';
+import { barChromeFloor } from '../bar/plot';
 import { BarTooTall, STOP_IF_TOO_TALL } from '../bar/model';
 import type { ColumnDerived, ColumnMarks } from './layout';
 import type { AnomalyColumnOptions } from './types';
@@ -61,11 +62,12 @@ export function stepToBar(
 const BAR_ROW_FLOOR = 28;
 
 /**
- * Whether the category rows alone are taller than a pinned height, so no bar layout can hold them and the
- * bar need not be laid out. Every bar row is at least the row floor times the text scale; a theme
- * with its own row pitch sets another height, so that case is laid out.
+ * Whether a pinned height is too short for any bar layout of these rows, so none need be laid out. Every
+ * bar row is at least the row floor times the text scale, and the frame (barChromeFloor) takes its own
+ * height besides. A theme with its own row pitch sets another row height, so that case is laid out.
  */
 function rowsExceed(rows: number, options: AnomalyColumnOptions, height: number): boolean {
   if (resolveTheme(options.theme).space.barRow !== undefined) return false;
-  return rows * BAR_ROW_FLOOR * textScaleOf(options) > height + SIZE_TOLERANCE;
+  const rowsH = rows * BAR_ROW_FLOOR * textScaleOf(options);
+  return rowsH > height + SIZE_TOLERANCE || rowsH + barChromeFloor(options as BarOptions) > height + SIZE_TOLERANCE;
 }
