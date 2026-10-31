@@ -817,14 +817,19 @@ export function layoutVariance(
           // A percent unit names the relative change, not the source measure: the change then prints bare.
           const sourceUnit = options.unit === '%' || options.unit === 'pp' ? undefined : options.unit;
           const text = `n.m. (${absoluteFormat(ci) ? change : withUnit(change, sourceUnit, false, options.locale?.language)})`;
-          const size = measure(text, font);
-          const rect: Rect = { x: cx - size.width / 2, y: y0 - size.height - 6, w: size.width, h: size.height };
+          // Centred on its category, kept inside the plot. A text wider than the plot breaks after "n.m.".
+          const whole = measure(text, font);
+          const split = whole.width > plot.w ? text.indexOf(' ') : -1;
+          const lines = split > 0 ? [text.slice(0, split), text.slice(split + 1)] : [text];
+          const size = { width: Math.max(...lines.map((line) => measure(line, font).width)), height: whole.height * lines.length };
+          const nx = Math.max(plot.x + size.width / 2, Math.min(cx, plot.x + plot.w - size.width / 2));
+          const rect: Rect = { x: nx - size.width / 2, y: y0 - size.height - 6, w: size.width, h: size.height };
           nodes.push({
             t: 'text',
             id: `nm:${c.id}`,
-            x: cx,
+            x: nx,
             y: rect.y,
-            lines: [text],
+            lines,
             align: 'middle',
             font,
             ink: { token: 'inkMuted' },
