@@ -23,3 +23,12 @@ it('renders SVG and HTML container charts on the server without layout effects',
   expect(html).toContain('bp-table-grid');
   expect(useLayoutEffect).not.toHaveBeenCalled();
 });
+
+// A React column with hover sets the capped-note wording itself, and that key made the column keep its dropped names while the same chart without hover drew bars.
+it('draws a narrow column with hover as bars, as it does without hover', () => {
+  const names = Array.from({ length: 20 }, (_, i) => `Sector number ${i + 1} of the survey`);
+  const data = { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [{ id: 's', label: 'Margin', values: names.map((_, i) => 8 + ((i * 7) % 23)) }] };
+  const drawn = (hover: boolean) => renderToStaticMarkup(<ColumnChart data={data} title="Margin by sector" unit="%" size={{ width: 320 }} hover={hover} />).match(/data-bp-chart="(\w+)"/)![1];
+  expect(drawn(false)).toBe('bar');
+  expect(drawn(true)).toBe('bar');
+});
