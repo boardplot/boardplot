@@ -101,6 +101,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | rag-forecast-hatched | torture | RAG board with each tone plain and hatched beside cells without a status |
 | review-status-legend-object | torture | Review status with the legend placed above through a position object |
 | status-with-values | torture | State cells include their measured values |
+| capability-assessment-full-fill | torture | Capability board with good and neutral cells in their full colours |
 
 ## Not for
 
