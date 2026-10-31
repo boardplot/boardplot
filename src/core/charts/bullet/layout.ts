@@ -973,8 +973,12 @@ export function layoutBullet(
     scaleAt = (ri) => rowScales[ri]!;
   }
   const zeroX = rows.map((_, ri) => scaleAt(ri)(0));
-  // The value column ends one value width past the rightmost band, bar or target of all rows.
-  const valueColRight = Math.min(plot.x + plot.w, maxOf(extents.map((extent, ri) => scaleAt(ri)(extent.hi))) + VALUE_COL_GAP + valueColW);
+  // The value column ends one value width past the rightmost band, bar or target of all rows, inside the
+  // plot. No value starts over the marks: one wider than the headroom runs past the column, where the
+  // columns beside it or the solver take it, as on any outside seat.
+  const valueColLeft = maxOf(extents.map((extent, ri) => scaleAt(ri)(extent.hi))) + VALUE_COL_GAP;
+  const valueColRight = Math.min(plot.x + plot.w, valueColLeft + valueColW);
+  const valueX = (width: number) => Math.max(valueColLeft, valueColRight - width);
   // The heads share the key line only where the Actual head clears the key too.
   if (actualHead && cp.headsOnKey && cp.legendRight + 2 * COLUMN_GAP > valueColRight - actualHead.w) {
     return layoutBullet(data, { ...options, [HEADS_OFF_KEY]: true } as BulletOptions);
@@ -1216,7 +1220,7 @@ export function layoutBullet(
               PRIORITY.endpoint + (highlights.has(row.id) ? PRIORITY.highlightBonus : 0),
             candidates: [stacked
               ? { slot: 'cardValue', rect: { x: plot.x + plot.w - tsize.width, y: cardTop, w: tsize.width, h: tsize.height }, penalty: 0 }
-              : { slot: 'valueColumn', rect: { x: valueColRight - tsize.width, y: rowCenter - tsize.height / 2, w: tsize.width, h: tsize.height }, penalty: 0 }],
+              : { slot: 'valueColumn', rect: { x: valueX(tsize.width), y: rowCenter - tsize.height / 2, w: tsize.width, h: tsize.height }, penalty: 0 }],
           });
         }
       }
