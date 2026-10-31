@@ -297,7 +297,10 @@ function headerRow(
   // empty — its rect and grid stroke still mark the period, and printing
   // ink wider than the cell would bleed into the neighbour cell; a
   // sub-glyph sliver cannot hold any label.
-  const cellFmts = fmts.slice(rowFmtIndex === -1 ? fmts.length - 1 : rowFmtIndex);
+  // A year row is the exception: its shorter format ('yy') is a whole-row
+  // fallback, so a clipped edge year never prints "27" beside "2026".
+  const fromFmt = rowFmtIndex === -1 ? fmts.length - 1 : rowFmtIndex;
+  const cellFmts = fmts.slice(fromFmt, unit === 'year' ? fromFmt + 1 : undefined);
   let printed = false;
   starts.forEach((s, i) => {
     const cell = cells[i]!;

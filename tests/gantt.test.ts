@@ -344,3 +344,11 @@ it('gantt calendar head falls back to two-digit years and warns when no date fit
   expect(codes(long)).not.toContain('gantt-calendar-unlabelled');
   expect(codes(render({ spec: spec('1990-01-01', '2029-12-31', 300), return: ['svg'] }))).toContain('gantt-calendar-unlabelled');
 });
+
+// A clipped edge year printed "27" beside the four-digit "2025" and "2026" once "yy" joined the year formats.
+it('gantt calendar head keeps four-digit years and leaves a clipped edge year empty', () => {
+  const fixture = getFixtures('gantt').find(f => f.id === 'two-year-span')!;
+  const svg = render({ spec: { type: 'gantt', data: fixture.data, options: { ...fixture.options, size: { width: 400, height: 300 } } }, return: ['svg'] }).body.svg as string;
+  expect(svg).toContain('>2026<');
+  expect(svg).not.toMatch(/>2[0-9]</);
+});
