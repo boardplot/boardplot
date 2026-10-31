@@ -91,6 +91,14 @@ describe('note rules', () => {
     expect(noteLine('Lead', ['a', 'b'], { notes: { maxListed: 0 } })).toEqual(['Lead: 2 items.']);
   });
 
+  // A heatmap callout on a printed cell lost its ${value} and the words before it with no word to the author.
+  it('says so when a callout leaves ${value} to the mark that prints it', () => {
+    const geo = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'heatmap', data: { categories: ['a', 'b'], series: [{ id: 's', label: 'S', values: [1.5, -2.8] }] },
+      options: { size: { width: 480 } }, annotations: [{ kind: 'callout', id: 'c1', at: { categoryId: 'b', seriesId: 's' }, text: 'Low in B: ${value}' }] } as never)));
+    expect(geo.labels.find((label) => label.id === 'annotation:c1')?.text).toBe('b: Low in B');
+    expect(geo.warnings.find((warning) => warning.code === 'annotation-value-on-mark')?.message).toContain('−2.8');
+  });
+
   it('a callout that prints ${value} is the label of its point: the note does not name the point', () => {
     const geo = requireGeometry(layoutResolvedRequest(twoLines([{ kind: 'callout', id: 'c1', at: { categoryId: 'd0', seriesId: 'b' }, text: 'Start ${value}' }])));
     expect(geo.labels.find((label) => label.id === 'annotation:c1')?.text).toBe('Start 1,020');
@@ -214,6 +222,15 @@ describe('note rules', () => {
     const x = (id: string) => geo.labels.find((label) => label.id === `outsidePie:s:${id}`)!.rect.x;
     expect(x('a')).toBeLessThan(360);
     expect(x('b')).toBeGreaterThan(360);
+  });
+
+  // A doughnut that dropped negative slices printed the sum of the rest as the total of the data.
+  it('a doughnut with negative slices prints no centre total and names the dropped slices', () => {
+    const geo = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'pie', data: { categories: [{ id: 'a', label: 'Gain' }, { id: 'b', label: 'Loss' }, { id: 'c', label: 'Rest' }],
+      series: [{ id: 's', values: [84.9, -12.3, 43.8] }] }, options: { title: 'Split', doughnut: 0.55 } } as never)));
+    expect(geo.labels.some((label) => label.kind === 'total')).toBe(false);
+    expect(geo.a11y.desc).not.toContain('total');
+    expect(noteTexts(geo, ['disclosure'])).toEqual(['Not drawn (negative value, so no total shown): Loss.']);
   });
 
   it('an open height gives hidden values the room their unprinted note took', () => {

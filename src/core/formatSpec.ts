@@ -262,6 +262,100 @@ export function formatExampleProblem(example: string): { message: string; replac
   }
 }
 
+/** One dot before three digits ("1.234", "$12.345M"): a thousands group to one reader, three decimals to another. */
+const GROUP_OR_DECIMALS = /^[1-9][0-9]{0,2}\.[0-9]{3}$/;
+
+/** `example` with no integer part left to group, which reads as decimals ("$1.234M" as "$0.234M"); undefined where it reads one way only. */
+function decimalExample(example: string): string | undefined {
+  const body = numericBody(example);
+  const text = body?.text.trimEnd();
+  if (text === undefined || !GROUP_OR_DECIMALS.test(text)) return undefined;
+  return example.slice(0, body!.index) + text.replace(/^[0-9]+/, '0') + example.slice(body!.index + text.length);
+}
+
+/**
+ * How a chart with `numbers` reads `example`. The data decides a `GROUP_OR_DECIMALS`
+ * example, as a group needs four digits to show: where every number stays below
+ * 1000 and one has a fraction, it names three decimals, so 0.512 prints "0.512"
+ * and not "1" (`decimals`). Where the numbers reach 1000 it stays a group, and
+ * `lost` is the first small number that group rounds to a whole one.
+ */
+function exampleReading(example: string, numbers: readonly number[]): { decimals?: string; lost?: number } {
+  const decimals = decimalExample(example);
+  if (decimals === undefined) return {};
+  const divisor = MAGNITUDE_DIVISOR[parseFormatExample(example).magnitude];
+  const lost = numbers.find((value) => Math.abs(value) / divisor < 1000 && !Number.isInteger(value / divisor));
+  if (lost === undefined) return {};
+  return maxOf(numbers.map((value) => Math.abs(value))) / divisor < 1000 ? { decimals } : { lost };
+}
+
+function isPlainTree(node: unknown): node is Record<string, unknown> {
+  if (typeof node !== 'object' || node === null) return false;
+  const proto = Object.getPrototypeOf(node) as unknown;
+  return proto === Object.prototype || proto === Array.prototype || proto === null;
+}
+
+/** `node` with each format example passed through `change`, the same object where nothing changed. */
+function mapExamples<T>(node: T, change: (example: string) => string, seen = new Map<unknown, unknown>(), keys: 'format' | 'all' | 'none' = 'format'): T {
+  if (!isPlainTree(node)) return node;
+  if (seen.has(node)) return seen.get(node) as T;
+  seen.set(node, node);
+  let changed: Record<string, unknown> | undefined;
+  for (const key of Object.keys(node)) {
+    const child = node[key];
+    const example = keys === 'all' || (keys === 'format' && key === 'format');
+    // `cells` is keyed by column id, so a text column named format holds no example; a cell object's own format does.
+    const next = typeof child === 'string' ? (example ? change(child) : child)
+      : mapExamples(child, change, seen, key === 'axisFormat' ? 'all' : key === 'cells' ? 'none' : 'format');
+    if (next === child) continue;
+    changed ??= Array.isArray(node) ? [...node] as unknown as Record<string, unknown> : Object.assign(Object.create(Object.getPrototypeOf(node) as object | null) as object, node) as Record<string, unknown>;
+    changed[key] = next;
+  }
+  seen.set(node, changed ?? node);
+  return (changed ?? node) as T;
+}
+
+/** Every finite number in `node`, the keys of a table or a chart that are no values included. */
+function treeNumbers(node: unknown, into: number[] = [], seen = new Set<unknown>()): number[] {
+  if (typeof node === 'number') {
+    if (Number.isFinite(node)) into.push(node);
+  } else if (isPlainTree(node) && !seen.has(node)) {
+    seen.add(node);
+    for (const key of Object.keys(node)) treeNumbers(node[key], into, seen);
+  }
+  return into;
+}
+
+/**
+ * The chart's data and options with each format example read by that data
+ * (`exampleReading`), and a warning where a group rounds a small number.
+ * ponytail: one reading per chart from all of its numbers, a number that is no
+ * value counts too; per-field numbers if a real chart needs them.
+ */
+export function readFormatExamples<D, O>(data: D, options: O): { data: D; options: O; warnings: LintWarning[] } {
+  const examples = new Set<string>();
+  const collect = (example: string) => {
+    if (decimalExample(example) !== undefined) examples.add(example);
+    return example;
+  };
+  mapExamples(data, collect);
+  mapExamples(options, collect);
+  if (examples.size === 0) return { data, options, warnings: [] };
+  const numbers = treeNumbers(data);
+  const readings = new Map([...examples].map((example) => [example, exampleReading(example, numbers)]));
+  const change = (example: string) => readings.get(example)?.decimals ?? example;
+  return {
+    data: mapExamples(data, change),
+    options: mapExamples(options, change),
+    warnings: [...readings].flatMap(([example, { lost }]) => lost === undefined ? [] : [{
+      code: 'format-reads-as-group',
+      severity: 'warn' as const,
+      message: `format '${example}' reads as a thousands group on this chart, so ${lost} prints ${formatWithSpec(lost, parseFormatExample(example))}`,
+      suggest: `write ${JSON.stringify(decimalExample(example))} for three decimals, or remove the format to let the engine pick the precision`,
+    }]),
+  };
+}
+
 /** A number run; a leading separator counts when a digit follows and no letter precedes (".5", not "Fr.5"). */
 /** The spaces a format example groups digits with: space, no-break space, narrow no-break space (what `Intl` prints for fr-FR) and thin space. */
 const GROUP_SPACES = ' \u00a0\u202f\u2009';
@@ -399,6 +493,15 @@ export function specUnitKind(spec: NumberFormatSpec): 'percent' | 'pp' | 'number
   if (suffix === 'pp' || suffix === 'p.p.') return 'pp';
   if (spec.suffix.includes('%')) return 'percent';
   return 'number';
+}
+
+/** A percentage, percentage points or a multiple ("1.0x"): a figure that does not add. */
+export function nonAdditiveSpec(spec: NumberFormatSpec): boolean {
+  return specUnitKind(spec) !== 'number' || /^[x×]$/i.test(spec.suffix.trim());
+}
+
+export function nonAdditiveFormat(format: string | undefined): boolean {
+  return !!format && nonAdditiveSpec(parseFormatExample(format));
 }
 
 const MAGNITUDE_PREVIOUS: Record<Scale, NumberFormatSpec['magnitude']> = { k: 'none', m: 'k', bn: 'm', t: 'bn' };
@@ -1054,7 +1157,7 @@ export function unscaledFormatLint(
   data: unknown,
   geo?: { labels?: readonly PlacedLabel[]; scene: readonly SceneNode[] },
 ): LintWarning[] {
-  const format = typeof options?.format === 'string' ? options.format : undefined;
+  const authored = typeof options?.format === 'string' ? options.format : undefined;
   // Series rows, one row of values (sparkline, kpi), or waterfall items.
   const own = data as { series?: { values?: unknown[] }[]; values?: unknown[]; items?: { value?: unknown }[] } | undefined;
   const rows = [...(Array.isArray(own?.series) ? own.series : []), ...(Array.isArray(own?.values) ? [own] : []),
@@ -1081,7 +1184,8 @@ export function unscaledFormatLint(
       field: ['options', 'unit'],
     }];
   }
-  if (!format) return [];
+  if (!authored) return [];
+  const format = exampleReading(authored, numbers.flat()).decimals ?? authored;
   let spec: NumberFormatSpec;
   try { spec = parseFormatExample(format); } catch { return []; }
   // A series whose different values all print as one string hides them. The
