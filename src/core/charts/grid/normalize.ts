@@ -156,7 +156,26 @@ export function parseGridLegendPanelData(raw: unknown): GridLegendPanelData {
   return raw as GridLegendPanelData;
 }
 
-export function normalizeGridData(raw: unknown): ExplicitGridData {
+/** What the lock needs to know about the theme a panel renders in. */
+export interface GridThemeFacts {
+  /** How many colours the theme's series ramp has. */
+  seriesCount: number;
+  /** True when the theme itself paints the series (an ink lead line, a tinted column), which a colour role would override. */
+  stylesSeries: boolean;
+}
+
+/** What the lock of a written-out grid needs to know about the render: the grid palette, and the theme facts of a panel. */
+export interface GridNormalizeOptions {
+  palette?: GridLayoutOptions['palette'];
+  /**
+   * The facts of the theme a panel renders in, given the panel's own
+   * `options.theme` (absent: the grid's theme). Absent means the themes are
+   * unknown and the lock neither checks them nor caps the ramp.
+   */
+  themeFacts?: (panelTheme: unknown) => GridThemeFacts;
+}
+
+export function normalizeGridData(raw: unknown, options?: GridNormalizeOptions): ExplicitGridData {
   // Pre-parse ownership check, on the RAW document: zod's required-key
   // presence test reads `key in input`, so a branch key visible only through
   // the prototype chain would let the parse consume inherited data — with a
@@ -184,7 +203,12 @@ export function normalizeGridData(raw: unknown): ExplicitGridData {
   // Object.hasOwn, not `in`: see the union discriminator in index.ts.
   // hasOwn does not narrow the union for TypeScript, hence the casts — a
   // parsed object owning 'panels' can only have come from the explicit branch.
-  if (Object.hasOwn(input, 'panels')) return input as ExplicitGridData;
+  if (Object.hasOwn(input, 'panels')) {
+    const explicit = input as ExplicitGridData;
+    const panels = lockWrittenOutPanels(explicit.panels, options?.palette, options?.themeFacts);
+    // The lock builds ordinary objects, so the owned copy runs again, as for the repeat branch below.
+    return panels === explicit.panels ? explicit : ownedDocumentCopy({ ...explicit, panels });
+  }
   // Owning neither key is reachable: zod's required-key presence check reads
   // `key in input`, so a non-writable prototype gadget satisfies the explicit
   // branch while zod's output drops the assignment. NormalizeError is this
@@ -345,7 +369,71 @@ function substitute(value: unknown, placeholder: string, replacement: string): u
   return value;
 }
 
-function lockPaletteBySeriesId(panels: GridPanelSpec[]): GridPanelSpec[] {
+/**
+ * True for a panel that colours its series itself, so a colour role on every
+ * series would override it: a panel that sets `highlight`, `emphasis`,
+ * `seriesRamp` or a `palette` (its own or the grid's), that renders in a theme
+ * which paints the series itself, or that gives a series a `fill` or a
+ * `colorRole`. A role is an absolute step of the theme's own series colours,
+ * so it ignores a palette, replaces a focus series, outranks a theme's ink
+ * line and cannot step aside from an authored colour. Such a panel keeps its
+ * series as written.
+ */
+function stylesOwnSeries(panel: GridPanelSpec, gridPalette: unknown, themeFacts?: (panelTheme: unknown) => GridThemeFacts): boolean {
+  const options = isRecord(panel.options) ? panel.options : {};
+  if (options.highlight !== undefined || options.emphasis !== undefined || options.seriesRamp !== undefined || (options.palette ?? gridPalette) !== undefined) return true;
+  if (themeFacts?.(options.theme).stylesSeries) return true;
+  const series = isRecord(panel.data) && Array.isArray(panel.data.series) ? panel.data.series : [];
+  return series.some((item) => isRecord(item) && item.role !== 'reference' && (item.fill !== undefined || item.colorRole !== undefined));
+}
+
+/**
+ * Locks the colours of a written-out grid by series id, over the panels that
+ * do not colour their series themselves. Returns the same array when nothing
+ * changes, and when the grid has more distinct series than the theme has
+ * colours: the panels then keep their own positional colours.
+ */
+function lockWrittenOutPanels(panels: GridPanelSpec[], gridPalette: unknown, themeFacts?: (panelTheme: unknown) => GridThemeFacts): GridPanelSpec[] {
+  const own = panels.map((panel) => stylesOwnSeries(panel, gridPalette, themeFacts));
+  const plain = panels.filter((_, index) => !own[index]);
+  if (!seriesIdsDisagree(plain)) return panels;
+  // A role past the end of a panel's own ramp repeats that ramp's last colour,
+  // which would draw several series of one panel alike where its own colours kept them apart.
+  if (themeFacts) {
+    const shortest = Math.min(...plain.map((panel) => themeFacts(isRecord(panel.options) ? panel.options.theme : undefined).seriesCount));
+    if (new Set(plain.flatMap(panelSeriesIds)).size > shortest) return panels;
+  }
+  const lockedQueue = [...lockPaletteBySeriesId(plain, false)];
+  return panels.map((panel, index) => (own[index] ? panel : (lockedQueue.shift() ?? panel)));
+}
+
+/** The non-reference series ids a panel lists, in order. */
+function panelSeriesIds(panel: GridPanelSpec): string[] {
+  const series = isRecord(panel.data) && Array.isArray(panel.data.series) ? panel.data.series : [];
+  return series.flatMap((item) => (isRecord(item) && typeof item.id === 'string' && item.role !== 'reference' ? [item.id] : []));
+}
+
+/**
+ * True when a written-out grid shares a series id between panels and a shared
+ * id sits at a different position in two panels. Panels whose shared ids
+ * already agree by position (a prefix of the same list, say), or that share no
+ * id, keep the colours they have.
+ */
+function seriesIdsDisagree(panels: GridPanelSpec[]): boolean {
+  const positionOfId = new Map<string, number>();
+  for (const panel of panels) {
+    const ids = panelSeriesIds(panel);
+    for (const [index, id] of ids.entries()) {
+      if (ids.indexOf(id) !== index) continue;
+      const seen = positionOfId.get(id);
+      if (seen === undefined) positionOfId.set(id, index);
+      else if (seen !== index) return true;
+    }
+  }
+  return false;
+}
+
+function lockPaletteBySeriesId(panels: GridPanelSpec[], reorder = true): GridPanelSpec[] {
   const roleBySeries = new Map<string, string>();
   for (const panel of panels) {
     const series = isRecord(panel.data) && Array.isArray(panel.data.series) ? panel.data.series : [];
@@ -365,7 +453,7 @@ function lockPaletteBySeriesId(panels: GridPanelSpec[]): GridPanelSpec[] {
   };
   return panels.map((panel) => {
     if (!isRecord(panel.data) || !Array.isArray(panel.data.series)) return panel;
-    const series = [...panel.data.series].sort((a, b) => at(a) - at(b)).map((item) => {
+    const series = (reorder ? [...panel.data.series].sort((a, b) => at(a) - at(b)) : panel.data.series).map((item) => {
       if (
         !isRecord(item) ||
         typeof item.id !== 'string' ||
