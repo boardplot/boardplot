@@ -197,11 +197,27 @@ describe('unknown option keys are refused on every type', () => {
     // A key that names only a word below an option gets the hint and no patch; so does a typo whose target the author already set.
     expect(fix({ valueAxis: { show: true }, gridlines: true }, 'gridlines').fix).toBeUndefined();
     expect(fix({ title: 'A', tile: 'B' }, 'tile').fix).toBeUndefined();
-    // The per-type React entry words the same patch from its key tree.
+    // The per-type React entry names the key and offers no patch, as it cannot check the value against the schema.
     const tree: OptionKeyTree = { a11y: { title: 0 }, title: 0 };
-    expect(wordUnknownKeys([{ path: ['tile'], node: tree, parent: { tile: 'Revenue' } }], tree)[0]).toMatchObject({
-      suggest: "Rename 'tile' to 'title'.", fix: [{ op: 'remove', path: '/options/tile' }, { op: 'add', path: '/options/title', value: 'Revenue' }],
-    });
+    expect(wordUnknownKeys([{ path: ['tile'], node: tree }], tree)[0]).toMatchObject({ suggest: "Rename 'tile' to 'title'." });
+    expect(wordUnknownKeys([{ path: ['tile'], node: tree }], tree)[0]).not.toHaveProperty('fix');
+  });
+  // A patch that renames a nested key onto a boolean option but keeps the string 'yes' leaves the chart refused.
+  it('patches a nested typo only when the renamed key takes the authored value', () => {
+    const data = getFixtures('column')[0]!.data;
+    const fix = (valueAxis: object) => cliErrors({ type: 'column', data, options: { valueAxis } }).errors.find((finding) => finding.path === '/options/valueAxis/gridlinez') as Finding & { fix?: JsonPatchOperation[] };
+    expect(fix({ gridlinez: true }).fix).toEqual([{ op: 'remove', path: '/options/valueAxis/gridlinez' }, { op: 'add', path: '/options/valueAxis/gridlines', value: true }]);
+    expect(fix({ gridlinez: 'yes' }).fix).toBeUndefined();
+  });
+  // Two typos of one option would both add the same member, and the second add overwrites the first authored value.
+  it('withholds the patch when two keys in one object are typos of the same option', () => {
+    const data = getFixtures('column')[0]!.data;
+    const errors = cliErrors({ type: 'column', data, options: { tile: 'First', Title: 'Second' } }).errors;
+    for (const key of ['tile', 'Title']) {
+      const finding = errors.find((error) => error.path === `/options/${key}`) as Finding & { fix?: JsonPatchOperation[] };
+      expect(finding.message, key).toContain('try: title');
+      expect(finding.fix, key).toBeUndefined();
+    }
   });
   // A retired-setting fix that does not apply (an add under a missing parent) leaves an agent with no way to clean the spec.
   it('gives every retired setting a fix that applies, also under a missing parent and in a repeat template', () => {

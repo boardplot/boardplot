@@ -97,12 +97,14 @@ function uniqueTypo(key: string, known: readonly string[]): string | undefined {
 /**
  * The rename patch for an unknown option key, or none: the near key must be the
  * one typo of the key in `known`, and the object that holds the key must not
- * set it yet. `field` is the key's path from the chart, `parent` the authored object that holds it.
+ * set it yet or hold a second typo of it. `field` is the key's path from the chart, `parent` the authored object that holds it.
  */
 export function typoRenameFix(field: readonly (string | number)[], nearest: { key: string; near: boolean } | undefined, known: readonly string[], parent: unknown): RefusalFinding['fix'] {
   const key = String(field.at(-1));
   const target = nearest?.near ? uniqueTypo(key, known) : undefined;
   if (target === undefined || target !== nearest!.key || parent === null || typeof parent !== 'object' || Object.hasOwn(parent, target)) return undefined;
+  // Two typos of one option would add the same member, and the second add overwrites the first value.
+  if (Object.keys(parent).some((other) => other !== key && uniqueTypo(other, known) === target)) return undefined;
   return [
     { op: 'remove', path: toJsonPointer(field) },
     { op: 'add', path: toJsonPointer([...field.slice(0, -1), target]), value: (parent as Record<string, unknown>)[key] },
@@ -171,16 +173,15 @@ function treeTakes(tree: OptionKeyTree, path: readonly string[]): boolean {
   return true;
 }
 
-/** The refusal for each unknown key, worded as the CLI words it. */
+/** The refusal for each unknown key, worded as the CLI words it. It carries no patch: the per-type entries hold no value schema to prove the renamed key takes the authored value. */
 export function wordUnknownKeys(found: readonly UnknownKey[], tree?: OptionKeyTree): RefusalFinding[] {
-  return found.map(({ path, node, parent }) => {
+  return found.map(({ path, node }) => {
     const key = String(path.at(-1));
     // At the top the near miss also reads the words below each option (gridlines -> valueAxis).
     const top = path.length === 1 ? nearestOptionTerm(key, termsOf(node)) : undefined;
     const nearest = top ? { key: top, near: true } : closestKey(key, namedKeys(node));
     const dotted = path.join('.');
     const moved = tree === undefined ? undefined : movedKey(dotted, (target) => treeTakes(tree, target));
-    const fix = moved === undefined ? typoRenameFix(['options', ...path], nearest, namedKeys(node), parent) : undefined;
-    return { code: 'unknown-option', message: unknownOptionMessage(dotted, nearest, moved), path: `options.${dotted}`, suggest: unknownKeySuggest(key, nearest, moved), ...(fix ? { fix } : {}) };
+    return { code: 'unknown-option', message: unknownOptionMessage(dotted, nearest, moved), path: `options.${dotted}`, suggest: unknownKeySuggest(key, nearest, moved) };
   });
 }

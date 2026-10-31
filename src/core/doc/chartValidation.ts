@@ -565,8 +565,7 @@ function sweepStrippedOptionKeys(
     const dotted = keyPath.join('.');
     const moved = movedKey(dotted, (target) => expectedObjectKeys(schema, target.slice(0, -1)).includes(target.at(-1)!));
     // A rename is advice only when the near option takes the authored value too.
-    const renameFits = !nearest?.near || moved !== undefined || parent.length > 0
-      || !(schema.safeParse({ [nearest.key]: authored[key] }).error?.issues ?? []).some((issue) => issue.path[0] === nearest.key);
+    const renameFits = !nearest?.near || moved !== undefined || valueFitsKey(schema, parent, nearest.key, valueAtPath(authored, keyPath));
     const fix = renameFits && moved === undefined ? typoRenameFix(field, nearest, siblings, valueAtPath(authored, parent)) : undefined;
     envelope.errors.push(completeChartDiagnostic(source.doc, source.chart, {
       code: 'unknown-option',
@@ -577,6 +576,20 @@ function sweepStrippedOptionKeys(
     }, field));
   }
   return stripped.length > 0;
+}
+
+/** Whether the options schema takes `value` under `key` in the object at `parent`: the value alone, set where the rename would put it. */
+function valueFitsKey(schema: z.ZodType, parent: readonly (string | number)[], key: string, value: unknown): boolean {
+  const place = [...parent, key];
+  let probe: unknown = value;
+  for (const segment of [...place].reverse()) {
+    if (typeof segment === 'number') {
+      const items: unknown[] = [];
+      items[segment] = probe;
+      probe = items;
+    } else probe = { [segment]: probe };
+  }
+  return !(schema.safeParse(probe).error?.issues ?? []).some((issue) => place.every((segment, index) => issue.path[index] === segment));
 }
 
 /** Where the data of a chart type takes a key: on each series, at the data root, or both. */
