@@ -8,7 +8,7 @@ import { saysToDate } from '../../partialPeriod';
 import { closestKey } from '../../schema/unknownKeyWords';
 import { cappedItems } from '../../frame';
 import { localeStrings, stringFields } from '../../strings';
-import { AUTOMATIC_FORMAT, MAGNITUDE_GROUP, parseFormatExample, specUnitKind } from '../../formatSpec';
+import { AUTOMATIC_FORMAT, MAGNITUDE_GROUP, parseFormatExample, specUnitKind, unitMagnitude } from '../../formatSpec';
 import type { CellState, CellTone, ComputedCellRecord, TableCell, TableRow } from '../../types/table';
 import type { LintWarning } from '../../types/scene';
 import type { CompiledDimSwitch, DimSwitchData, DimSwitchExpression, DimSwitchMeasure, DimSwitchMember, DimSwitchOptions, DimSwitchPeriod, DimSwitchSums, DimSwitchComparisonKind, DimSwitchJudgeBase } from './types';
@@ -203,6 +203,10 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   }
   const warned = new Set<string>();
   const warn = (code: string, id: string, message: string, severity: 'info' | 'warn' = 'warn') => { if (!warned.has(code + id)) { warned.add(code + id); warnings.push({ code, severity, field: ['data', 'measures', data.measures.findIndex(m => m.id === id)], message }); } };
+  // Scale 'money' reads values as currency units and climbs k, M, B itself: a unit that names a magnitude would print 1.32k for 1,320 Mio. CHF.
+  data.measures.forEach((m, index) => { if (m.scale === 'money' && unitMagnitude(m.unit) !== undefined) warnings.push({ code: 'dimswitch-scale-unit', severity: 'warn', field: ['data', 'measures', index, 'unit'],
+    message: `Measure '${m.id}': scale 'money' reads its values as currency units and picks k, M or B itself, but unit '${m.unit}' names a magnitude, so the figures climb a second time (1,320 prints 1.32k).`,
+    suggest: `Use scale 'count' to print the values as authored under unit '${m.unit}', or send the values in the base unit and name only the currency in unit.` }); });
 
   // ---------- the statement: parts, drivers, results ----------
   const driverOwner = new Map<string, string>();

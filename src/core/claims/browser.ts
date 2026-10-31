@@ -1001,12 +1001,6 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
       // operands of every delta were already in `derived` (`ac` and `ref`, the
       // two bars the reader compares by eye) and neither reached the receipt:
       // 84 claims across 8 fixtures, every one of them `inputs: []`.
-      //
-      // The rounding is part of the op, not a tolerance: `variance-delta@1` is
-      // defined as round2(ac − ref), because that is what the engine files and
-      // what the exhibit prints. Recording the unrounded operands and an op
-      // that ignores the rounding would need a fudge factor at verify time,
-      // and a fudge factor is where a real defect hides.
       const derived = geo.derived as {
         ac: Record<string, number | null>;
         ref: Record<string, number | null>;
@@ -1022,14 +1016,14 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
           id: `var:abs:${id}`,
           ...(geo.scene.some(node => node.id === `nm:${id}`) ? { nodeId: `nm:${id}` } : {}),
           kind: 'derived' as const,
-          op: 'variance-delta@1',
+          op: 'difference@1',
           inputs: operands(id),
           output: { raw, state: raw === null ? 'missing' : 'value', displayed: '' },
         })),
         ...Object.entries(derived.deltaPct).map(([id, raw]) => ({
           id: `var:pct:${id}`,
           kind: 'derived' as const,
-          op: 'variance-delta-pct@1',
+          op: 'percentDelta@1',
           inputs: operands(id),
           output: { raw, state: raw === null ? 'missing' : 'value', displayed: '' },
         })),

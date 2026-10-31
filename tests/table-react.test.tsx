@@ -1811,6 +1811,41 @@ it('prints the resolved table unit in both frames', () => {
   expect(resolveTable(data, { ...options, unit: '$k' }).warnings.some(warning => warning.code === 'table-unit-overridden')).toBe(false);
 });
 
+// A bare shared scale ('1.2bn') replaced options.unit in the frame, so "Revenue in B" printed with the currency nowhere.
+it('keeps the currency of options.unit in front of a shared bare scale', () => {
+  const data: TableData = { columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'v', kind: 'value', format: '1.2bn' }], rows: [{ id: 'r', label: 'North', cells: { v: 2500000000 } }] };
+  const unitOf = (unit: string) => {
+    const { table, warnings } = resolveTable(data, { subtitle: { measure: 'Revenue' }, unit });
+    return { unit: table.unit, overridden: warnings.some(warning => warning.code === 'table-unit-overridden') };
+  };
+  expect(unitOf('EUR')).toEqual({ unit: 'EUR B', overridden: false });
+  expect(unitOf('EUR bn')).toEqual({ unit: 'EUR bn', overridden: false });
+  expect(unitOf('$m')).toEqual({ unit: 'B', overridden: true });
+  // A scale word that is not the last word still counts: it never gets a second scale appended.
+  expect(unitOf('Mio. EUR')).toEqual({ unit: 'B', overridden: true });
+  expect(unitOf('k EUR')).toEqual({ unit: 'B', overridden: true });
+  expect(unitOf('EUR bn (adj.)')).toEqual({ unit: 'EUR bn (adj.)', overridden: false });
+  expect(unitOf('Mrd. EUR')).toEqual({ unit: 'Mrd. EUR', overridden: false });
+  // A scale glued to the currency ('USDbn') or in another language ('Md') is not a bare currency, so it never gets a second scale.
+  for (const unit of ['USDbn', 'EURm', 'kEUR', 'EUR Md']) expect(unitOf(unit)).toEqual({ unit: 'B', overridden: true });
+  const de = resolveTable({ ...data, columns: [data.columns[0]!, { id: 'v', kind: 'value', format: '1,2 Mrd' }] }, { subtitle: { measure: 'Umsatz' }, unit: 'Mio. EUR', locale: { decimal: ',', thousands: '.' } });
+  expect(de.warnings.some(warning => warning.code === 'table-unit-overridden')).toBe(true);
+  expect(de.table.unit).not.toContain('Mio.');
+});
+
+// Row formats ('$1.2k') hoist their own currency; unformatted columns carry no affix, so they must not make the unit look bare.
+it('does not compose options.unit with a unit hoisted from row formats', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'v', kind: 'value' }],
+    rows: [{ id: 'a', label: 'North', format: '$1.2k', cells: { v: 2500 } }, { id: 'b', label: 'South', format: '$1.2k', cells: { v: 1800 } }],
+  };
+  for (const unit of ['EUR', '$']) {
+    const { table, warnings } = resolveTable(data, { magnitude: 'thousand', unit, subtitle: { measure: 'Revenue' } });
+    expect(table.unit).toBe('$k');
+    expect(warnings.some(warning => warning.code === 'table-unit-overridden')).toBe(true);
+  }
+});
+
 // A prepared snapshot dropped the raw values of arrow and sparkline cells, so the reader lost the arrows, their key and the trend lines.
 it('draws arrows, their key and sparklines from a prepared snapshot', async () => {
   const { prepareChart } = await import('../src/react/prepare');
