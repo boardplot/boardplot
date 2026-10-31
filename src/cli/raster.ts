@@ -188,15 +188,18 @@ export function uncoveredCharacters(text: string, fontFamily: string): string[] 
     ? missing.filter(character => !arrow(character)) : missing;
 }
 
-function glyphCoverageWarning(name: string, characters: readonly string[]): RasterWarning {
+function glyphCoverageWarning(name: string, characters: readonly string[], text: string): RasterWarning {
   const listed = characters.slice(0, 5).map((character) => `'${character}'`).join(', ');
   const more = characters.length > 5 ? ` and ${characters.length - 5} more` : '';
+  // resvg replaces the whole text run, so the Latin words next to a lost character go with it.
+  const labels = [...new Set(text.split('\n').map((line) => line.trim()).filter((line) => characters.some((character) => line.includes(character))))];
+  const named = labels.slice(0, 3).map((label) => `'${label}'`).join(', ') + (labels.length > 3 ? ` and ${labels.length - 3} more` : '');
   return {
     code: 'png-glyph-coverage',
     severity: 'warn',
-    message: `chart '${name}': the theme font has no glyph for ${listed}${more}; the PNG draws them as boxes or leaves them out. The SVG shows them in a browser.`,
+    message: `chart '${name}': the theme font has no glyph for ${listed}${more}; the PNG draws them as boxes or leaves them out, and the whole label can go with them: ${named}. The SVG shows them in a browser.`,
     path: '/format',
-    suggest: 'Deliver the SVG, or leave these characters out of labels meant for the PNG.',
+    suggest: 'Install Chrome so the PNG is drawn by the browser, deliver the SVG, or leave these characters out of labels meant for the PNG.',
   };
 }
 
@@ -211,7 +214,9 @@ interface RasterResult {
  * is the theme's font stack and `text` the chart's visible label text. resvg
  * falls back to the first installed family of the stack (rasterFamily); when
  * a drawing has none, Chrome takes over, and without Chrome the result is no
- * PNG and the raster-fonts-missing warning.
+ * PNG and the raster-fonts-missing warning. A drawing with a character the
+ * theme font lacks (emoji, CJK) goes to Chrome too, because resvg loses the
+ * whole label; without Chrome it keeps the resvg PNG and the png-glyph-coverage warning.
  */
 export function rasterize(
   drawings: readonly { svg: string; size: { width: number; height: number }; fontFamily: string; name?: string; text?: string }[],
@@ -236,12 +241,23 @@ export function rasterize(
     const installed = installedFamilies();
     const families = drawings.map((drawing) => rasterFamily(drawing.fontFamily, installed));
     if (families.every((family) => family !== null)) {
-      const warnings = drawings.flatMap((drawing) => {
+      const warnings: RasterWarning[] = [];
+      const browser = findChrome();
+      const pngs = drawings.map((drawing, index) => {
         const lost = uncoveredCharacters(drawing.text ?? '', drawing.fontFamily);
-        return lost.length ? [glyphCoverageWarning(drawing.name ?? 'chart', lost)] : [];
+        const drawn = () => Buffer.from(withPhysicalSize(rasterizeWithResvg(resvg, drawing.svg, drawing.size.width, scale, families[index]!), scale));
+        if (!lost.length) return drawn();
+        // Chrome draws the glyphs resvg lacks. If it fails too, the resvg PNG still beats no PNG.
+        if (browser) {
+          try {
+            return Buffer.from(withPhysicalSize(rasterizeSvg(drawing.svg, drawing.size.width, drawing.size.height, scale, browser), scale));
+          } catch (error) {
+            if (!(error instanceof ToolFailure)) throw error;
+          }
+        }
+        warnings.push(glyphCoverageWarning(drawing.name ?? 'chart', lost, drawing.text ?? ''));
+        return drawn();
       });
-      const pngs = drawings.map((drawing, index) =>
-        Buffer.from(withPhysicalSize(rasterizeWithResvg(resvg, drawing.svg, drawing.size.width, scale, families[index]!), scale)));
       return { pngs, warnings };
     }
     chrome = findChrome();
