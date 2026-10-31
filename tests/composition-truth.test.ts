@@ -199,7 +199,11 @@ describe('line and mekko fail closed visibly', () => {
       return { geometry, records };
     };
     const absolute = draw('amount');
-    expect(absolute.geometry.derived).toMatchObject({ columnTotals: { large: 5000, others: 1100 }, shares: { others: { s0: 25.45, s1: 74.55 } } });
+    expect(absolute.geometry.derived).toMatchObject({ columnTotals: { large: 5000, others: 1100 } });
+    // Shares keep their full value until the format applies: 280/1100 and 820/1100.
+    const othersShares = (absolute.geometry.derived as { shares: Record<string, Record<string, number>> }).shares.others!;
+    expect(othersShares.s0).toBeCloseTo(25.4545454545, 9);
+    expect(othersShares.s1).toBeCloseTo(74.5454545454, 9);
     for (const kind of ['percent', 'fraction'] as const) {
       const { geometry: g, records } = draw(kind);
       expect(g.derived).toEqual(absolute.geometry.derived);
@@ -225,13 +229,26 @@ describe('line and mekko fail closed visibly', () => {
       expect(geometry.derived).toMatchObject({
         widths: { others: expect.closeTo(geometry.plot.w / 6, 2) },
         columnTotals: { others: missingData ? 180 : 270 },
-        shares: { others: missingData ? { b: 100 } : { a: 33.33, b: 66.67 } },
+        shares: { others: missingData ? { b: 100 } : { a: expect.closeTo(100 / 3, 9), b: expect.closeTo(200 / 3, 9) } },
       });
       expect(segments.map((n) => n.owner.seriesId).sort()).toEqual(missingData ? ['b'] : ['a', 'b']);
       for (const segment of segments) expect(segment).toMatchObject({ t: 'rect', rect: { w: expect.closeTo(geometry.plot.w / 6, 2) } });
       expect(geometry.warnings.some((w) => w.code === 'zero-weight-column')).toBe(false);
       expect(geometry.warnings.some((w) => w.code === 'incomplete-composition')).toBe(missingData);
     }
+  });
+
+  // A column whose amounts cancel (0.1 + 0.2 - 0.3) must total exactly 0, not a 5.55e-17 residue that prints as a bound.
+  it('cleans a Mekko column total at the size of its terms', () => {
+    const geometry = layoutComposition('mekko', {
+      categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }],
+      series: [
+        { id: 's1', label: 'S1', values: [0.1, 5] },
+        { id: 's2', label: 'S2', values: [0.2, 5] },
+        { id: 's3', label: 'S3', values: [-0.3, 5] },
+      ],
+    }, { variant: 'stacked' });
+    expect((geometry.derived as { columnTotals: Record<string, number> }).columnTotals.a).toBe(0);
   });
 
   it('suppresses the invalid stacked100-area category and leaves one claimed n.m. trace', () => {

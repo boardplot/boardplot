@@ -37,7 +37,7 @@ import { percentLevels, runAnnotatePass } from '../../annotatePass';
 import { hiddenValueLineReserve, VALUE_LINE_RESERVE } from '../../annotateParts';
 import { defaultNumberDecimals, formatAutomaticNumber, formatAutomaticPercent, PERCENTAGE_POINTS, seriesValueFormatter } from '../../format';
 import { exampleSpec, formatterFromExample, formatWithSpec, parseFormatExample, roundedNumber, signedFormatterFromExample, specUnitKind } from '../../formatSpec';
-import { boxGap, round2, type Rect } from '../../geometry';
+import { boxGap, cleanDiff, cleanFloat, cleanSum, type Rect } from '../../geometry';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelsToNodes } from '../../label/emit';
 import { categoryLineAlign, planCategoryRow, rotatedClaimRect, rotatedLeftOverhang, yearRowRequests } from '../../label/categoryRow';
@@ -97,7 +97,7 @@ import type {
   PlacedLabel,
   SceneNode,
 } from '../../types/scene';
-import { autoDecimals, currentSmallValues, roundsToZero, valueSetDecimals } from '../../formatPrecision';
+import { autoDecimals, currentSmallValues, roundHalfUp, roundsToZero, valueSetDecimals } from '../../formatPrecision';
 import { isSingleVarianceTier, isVarianceTier } from '../../grid/varianceTiers';
 import { relativePointCandidates } from './pointLabels';
 import { categoryLabelsAndMarks } from '../../footnoteMark';
@@ -295,12 +295,12 @@ export function layoutVariance(
       ac = ofSeries.vals[ci]!.v;
     } else {
       const present = dataSeries.filter((s) => s.vals[ci]!.v !== null);
-      ac = present.length !== dataSeries.length ? null : present.reduce((a, s) => a + s.vals[ci]!.v!, 0);
+      ac = present.length !== dataSeries.length ? null : cleanSum(present.map((s) => s.vals[ci]!.v!));
     }
     const ref = refSeries.vals[ci]!.v;
     acArr[ci] = ac;
     refArr[ci] = ref;
-    dAbsArr[ci] = ac === null || ref === null ? null : ac - ref;
+    dAbsArr[ci] = ac === null || ref === null ? null : cleanDiff(ac, ref);
     if (ac === null || ref === null) {
       dPctArr[ci] = null;
     } else if (ref <= 0) {
@@ -313,7 +313,7 @@ export function layoutVariance(
         owner: { categoryId: c.id },
       });
     } else {
-      dPctArr[ci] = (100 * (ac - ref)) / Math.abs(ref);
+      dPctArr[ci] = cleanFloat((100 * dAbsArr[ci]!) / Math.abs(ref));
     }
   });
   const derived: VarianceDerived = {
@@ -324,10 +324,10 @@ export function layoutVariance(
     tierName,
   };
   cats.forEach((c, ci) => {
-    derived.ac[c.id] = acArr[ci] === null ? null : round2(acArr[ci]!);
-    derived.ref[c.id] = refArr[ci] === null ? null : round2(refArr[ci]!);
-    derived.deltaAbs[c.id] = dAbsArr[ci] === null ? null : round2(dAbsArr[ci]!);
-    derived.deltaPct[c.id] = dPctArr[ci] === null ? null : round2(dPctArr[ci]!);
+    derived.ac[c.id] = acArr[ci] === null ? null : cleanFloat(acArr[ci]!);
+    derived.ref[c.id] = refArr[ci] === null ? null : cleanFloat(refArr[ci]!);
+    derived.deltaAbs[c.id] = dAbsArr[ci]!;
+    derived.deltaPct[c.id] = dPctArr[ci]!;
   });
 
   /** Plotted Δ per category: Δ% in relative mode, ΔABS otherwise. */
@@ -352,11 +352,13 @@ export function layoutVariance(
     return { ...spec, signed: true, suffix: spec.suffix || '%' };
   });
   // One decimal count for the series (shared helper), so "+3.0%" stands beside "+2.6%", not "+3%".
-  const pctDecimals = valueSetDecimals(dPctArr.flatMap((p) => (p === null || !Number.isFinite(p) ? [] : [Math.round(p * 10) / 10])));
+  // To a tenth, half away from zero as the formatter rounds: Math.round takes -1.25 to -1.2.
+  const tenths = (p: number): number => Math.sign(p) * Number(roundHalfUp(Math.abs(p), 1));
+  const pctDecimals = valueSetDecimals(dPctArr.flatMap((p) => (p === null || !Number.isFinite(p) ? [] : [tenths(p)])));
   const pctSigned = (p: number, ci = 0): string => {
     const spec = percentSpecs[ci];
     if (spec) return formatWithSpec(p, spec);
-    return formatAutomaticPercent(Math.round(p * 10) / 10, pctDecimals, true, options.locale?.language);
+    return formatAutomaticPercent(tenths(p), pctDecimals, true, options.locale?.language);
   };
   const absoluteFormat = (ci: number): string | undefined => {
     const example = formats[ci];
@@ -387,7 +389,7 @@ export function layoutVariance(
   const deltaDecimals = valueSetDecimals(dAbsArr.filter((d): d is number => d !== null && Number.isFinite(d)));
   const deltaPrintsZero = (d: number): boolean => currentSmallValues() === 'zero' && roundsToZero(d, defaultNumberDecimals(d, deltaDecimals));
   const shownZero = (d: number, ci: number): boolean =>
-    mode === 'relative' ? (percentSpecs[ci] ? roundedNumber(d, percentSpecs[ci]) === 0 : Math.round(d * 10) === 0)
+    mode === 'relative' ? (percentSpecs[ci] ? roundedNumber(d, percentSpecs[ci]) === 0 : tenths(d) === 0)
       : absoluteSpecs[ci] ? roundedNumber(d, absoluteSpecs[ci]) === 0 : deltaPrintsZero(d);
   const toneOf = (d: number, ci = 0): 'good' | 'bad' | 'neutral' =>
     d === 0 || shownZero(d, ci) ? 'neutral' : (d > 0) === (direction === 'higherIsBetter') ? 'good' : 'bad';
