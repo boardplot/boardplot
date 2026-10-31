@@ -323,21 +323,27 @@ function drawnAdvice(request: ResolvedChartRequest, result: LayoutResult, layout
   const finding = result.refused ? result.warnings[0] : undefined;
   const need = finding?.code === 'size-below-floor' ? finding.expected?.minimum as Size | undefined : undefined;
   if (!result.refused || !need || request.fixed.height || need.width <= result.size.width) return result;
+  // The same bounds as measure: a floor the chart declares statically is not searched under, and a width at it is the answer.
+  const def = getChart(request.type);
+  const staticMinWidth = def === undefined ? 0 : declaredSizing(def, request.options).minWidth;
+  if (need.width <= staticMinWidth) return result;
   const floorOptions = request.type === 'table' || request.type === 'dimswitch' ? {} : { belowMinimum: 'refuse' as const };
   const fullAt = (width: number): Geometry | undefined => {
     const probe = layoutAt.probe({ ...request.options, ...floorOptions, size: { width }, [WIDTH_PROBE]: request.type });
     return !isRefused(probe) && (probe as Geometry).mode !== 'compact' ? probe as Geometry : undefined;
   };
-  let drawn = fullAt(need.width);
-  let [low, high] = [Math.ceil(result.size.width) - 1, need.width];
+  // One probe one pixel under the registry width ends the search when nothing narrower draws; a layout
+  // is made for each step of the search only when it does.
+  let drawn = fullAt(need.width - 1);
+  let [low, high] = [Math.max(Math.ceil(result.size.width), staticMinWidth) - 1, drawn ? need.width - 1 : need.width];
   while (drawn && high - low > 1) {
     const mid = Math.floor((low + high) / 2);
     const probe = fullAt(mid);
     if (probe) [high, drawn] = [mid, probe];
     else low = mid;
   }
-  const width = drawn ? high : need.width;
-  const height = drawn && width < need.width ? Math.max(Math.ceil(drawn.size.height), Math.ceil(result.sizing.minHeight)) : need.height;
+  const width = high;
+  const height = drawn ? Math.max(Math.ceil(drawn.size.height), Math.ceil(result.sizing.minHeight)) : need.height;
   const advice = sizeRefusal(result.type, result.title, result.size, { ...result.sizing, minWidth: width, minHeight: height }).warnings[0]!;
   const warning = {
     ...advice,
@@ -717,7 +723,7 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
       if (!request.fixed.height) return result.size.height;
       // A probe that draws the same chart at the same width is the answer; the floor bounds the search.
       const run = preparedLayout(request);
-      try { return drawnHeight(result, floorHeight, size => run({ ...request.options, size })); } finally { run.finish(); }
+      try { return drawnHeight(result, floorHeight, size => run({ ...request.options, size }), request.size.height); } finally { run.finish(); }
     },
     warnings,
     ...(result.refused ? { refused: { ...result, sizing, warnings } }

@@ -477,6 +477,13 @@ it('names the size that render draws in measure', () => {
     options: { title: 'Value by region', unit: 'EUR m', source: 'Invented sample data', classes: 5, size: { width: 720, height: 270 } } };
   const drawn = (render({ spec: map }).body as { size: { height: number } }).size.height;
   expect((cliMeasure({ spec: map }).body as { size: { height: number } }).size.height).toBe(drawn);
+
+  // A pin far taller than the map still finds the empty band: the canvas stays the pin plus the footer.
+  const tall = { ...map, options: { ...map.options, size: { width: 720, height: 1200 } } };
+  const found = (cliMeasure({ spec: tall }).body as { size: { height: number } }).size.height;
+  expect(found).toBeLessThan(700);
+  const fitted = { ...map, options: { ...map.options, size: { width: 720, height: Math.round((found - (drawn - 270)) * 10) / 10 } } };
+  expect((render({ spec: fitted }).body as { size: { height: number } }).size.height).toBeCloseTo(found, 0);
 });
 
 // Prevents a pinned slope from refusing a 180–269 px slot where its end labels fit, from drawing a
