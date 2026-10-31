@@ -382,6 +382,8 @@ export function layoutVariance(
   // The AC values and the signed deltas are two series: each takes one precision (seriesValueFormatter).
   const acFmt = seriesValueFormatter(acArr, options.locale?.language);
   const deltaFmt = seriesValueFormatter(dAbsArr, options.locale?.language);
+  const chartPlain = options.format ? formatterFromExample(options.format, options.locale?.language, options.unit, printed) : undefined;
+  const chartSigned = options.format ? signedFormatterFromExample(options.format, options.locale?.language, options.unit, printed) : undefined;
   const absolute = (v: number, ci: number, signed = false): string => {
     const example = absoluteFormat(ci);
     if (percentDifferences || integratedPercent) {
@@ -390,9 +392,9 @@ export function layoutVariance(
         ? formatWithSpec(v, { ...exampleSpec(example, options.locale?.language), prefix: '', suffix, signed })
         : withUnit((signed ? deltaFmt : acFmt)(v, signed), suffix);
     }
-    const shared = example === options.format ? printed : undefined;
-    return example ? (signed ? signedFormatterFromExample(example, options.locale?.language, options.unit, shared) : formatterFromExample(example, options.locale?.language, options.unit, shared))(v)
-      : (signed ? deltaFmt : acFmt)(v, signed);
+    if (!example) return (signed ? deltaFmt : acFmt)(v, signed);
+    if (example === options.format) return (signed ? chartSigned : chartPlain)!(v);
+    return (signed ? signedFormatterFromExample : formatterFromExample)(example, options.locale?.language, options.unit)(v);
   };
 
   // ---- tones & paints (semantic; colorblindSafe swaps to alternates) ----

@@ -459,7 +459,7 @@ export function layoutPareto(
   const sharedFormat = options.format ?? sharedFormatExample(ranked.map((p) => p.value));
   const fmt = currencyDefault
     ? seriesRasterFormatter(undefined, ranked.map((p) => p.value), options.locale?.language, options.unit, options.target, sharedFormat).fmt
-    : fmtOf({ ...options, format: sharedFormat }, ranked.map((p) => p.value));
+    : fmtOf({ ...options, format: sharedFormat }, plotted.map((p) => p.value));
   // A zero prints as 0, not in the shared decimals ("0.0" reads as a rounded value).
   const hideRestColumn = topN?.rest === false && restColumnId !== undefined;
   const columnCells: Cell[] = plotted.map(p => hideRestColumn && p.id === restColumnId ? null : (p.fill || p.value === 0
