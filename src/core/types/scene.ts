@@ -90,6 +90,8 @@ export type ThemePaintSource =
       deEmphasizePy?: boolean;
       /** Internal low/high companion fade toward the visible surface pole. */
       surfaceFade?: boolean;
+      /** A scenario beside its actual: a PY wash the page floor keeps on the actual's colour steps toward the ink instead, and an FC hatch on a dark page keeps strong stripes. */
+      apart?: boolean;
     }
   | { kind: 'line-forecast'; base: Paint; crossesBand: boolean }
   | { kind: 'line-band'; base: Paint; seriesId: string }

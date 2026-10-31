@@ -337,3 +337,36 @@ it('draws series that share a colour role in distinct steps of that colour', () 
     expect(stepped.warnings.map(w => w.code), `${type} custom series`).not.toContain('series-indistinguishable');
   }
 });
+
+// Scenario series took their rank colour, so a prior year listed first painted darker than the actual and the look changed with series order.
+it('paints scenario columns from the actual, whatever the series order', () => {
+  const series = {
+    ac: { id: 'ac', label: 'Actual', scenario: 'AC' as const, values: [101, 108, null] },
+    py: { id: 'py', label: 'Prior year', scenario: 'PY' as const, values: [90, 101, null] },
+    pl: { id: 'pl', label: 'Plan', scenario: 'PL' as const, values: [104, 112, 120] },
+    fc: { id: 'fc', label: 'Forecast', scenario: 'FC' as const, values: [null, null, 117] },
+  };
+  for (const theme of ['boardroom', 'standard', 'standard-dark', 'notation', 'notation-dark', 'capital', 'studio', 'glass']) {
+    const resolved = resolveTheme(theme);
+    const paints = (order: (keyof typeof series)[]) => {
+      const geometry = layoutResolvedRequest(resolveChartRequest({
+        type: 'column',
+        theme,
+        data: { categories: ['y1', 'y2', 'y3'].map(id => ({ id, label: id })), series: order.map(key => series[key]) },
+        options: { variant: 'grouped' },
+      }));
+      if (geometry.refused) throw new Error('refused');
+      // The cell's base colour, before its pattern: PL outlines it and FC hatches it.
+      const paint = (id: string) => {
+        const node = geometry.scene.find((n): n is Extract<SceneNode, { t: 'rect' }> => n.t === 'rect' && n.owner?.seriesId === id && !!n.owner.categoryId && !!n.fill);
+        return node?.fill ? resolvePaint(node.fill, resolved) : undefined;
+      };
+      return { ac: paint('ac'), py: paint('py'), pl: paint('pl'), fc: paint('fc') };
+    };
+    const acFirst = paints(['ac', 'py', 'pl', 'fc']);
+    expect(paints(['py', 'ac', 'pl', 'fc']), theme).toEqual(acFirst);
+    // FC may lift off a dark page's floor, so only PL is held to the actual's exact colour.
+    expect(acFirst.pl, theme).toBe(acFirst.ac);
+    expect(acFirst.py, theme).not.toBe(acFirst.ac);
+  }
+});
