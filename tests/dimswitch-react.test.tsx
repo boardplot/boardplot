@@ -176,3 +176,9 @@ it('ignores a prepared snapshot and draws from data',async()=>{
  const plain=renderToStaticMarkup(<DimSwitchChart data={exampleData} depth={1}/>);
  expect(renderToStaticMarkup(<DimSwitchChart data={exampleData} depth={1} {...{prepared} as object}/>)).toBe(plain);
 });
+
+it('describes its table with options.a11y.description when the author writes one',()=>{
+ const description='Margin held across the two views.';
+ const html=renderToStaticMarkup(<DimSwitchChart data={exampleData} a11y={{description}}/>);
+ expect(html).toContain(`class="bp-summary">${description}</p>`);
+});
