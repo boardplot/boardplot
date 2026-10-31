@@ -25,6 +25,8 @@ import {
   unitOfSpec,
   MAGNITUDE_DIVISOR,
   magnitudeLabel,
+  MAGNITUDE_LABEL,
+  sameUnit as sameUnitText,
   type NumberFormatSpec,
 } from '../../formatSpec';
 import { NormalizeError, resolveHighlight, resolveSubtitle } from '../../normalize/shared';
@@ -1126,8 +1128,20 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     unit: candidateUnit,
     unitShown: options.unitShown,
   });
-  const uniformUnit = candidateUnit && frameCarriesUnit ? candidateUnit : null;
-  if (uniformUnit !== null && options.unit !== undefined && options.unit !== uniformUnit) {
+  // A shared bare scale ("B" from '1.2bn') carries no currency, so options.unit's currency stays in front of it
+  // ("EUR B"). A scale word anywhere in options.unit ("Mio. EUR", "k EUR", "EUR bn (adj.)") either is this scale, so the
+  // unit prints as written, or conflicts with it. Only a unit without a scale word gets the scale appended.
+  const authoredUnit = typeof options.unit === 'string' ? options.unit.trim() : undefined;
+  const scaleWords = (authoredUnit?.split(/[\s$€£¥()]+/) ?? []).filter((word) => Object.values(MAGNITUDE_LABEL).some((label) => label !== '' && sameUnitText(word, label)));
+  // Row formats can supply the unit too, so their affixes count as well as the columns'.
+  const bareScale = candidateUnit !== undefined && [...[...valueCols, ...computedCols].map((col) => specs.get(col.id)!), ...rowSpecs.values()]
+    .every((spec) => specUnitKind(spec) !== 'number' || (spec.prefix.trim() === '' && spec.suffix.trim() === ''));
+  const carriesScale = scaleWords.some((word) => sameUnitText(word, candidateUnit ?? ''));
+  // Only a bare currency code or symbol takes the scale appended. Any other text ('USDbn', 'EURm', 'EUR Md') may hold a scale this check cannot read.
+  const composes = bareScale && !!authoredUnit && (carriesScale || (scaleWords.length === 0 && /^(?:[A-Z]{3}|\p{Sc})$/u.test(authoredUnit)));
+  const composedUnit = composes ? carriesScale ? authoredUnit : `${authoredUnit} ${candidateUnit}` : candidateUnit;
+  const uniformUnit = composedUnit && frameCarriesUnit ? composedUnit : null;
+  if (uniformUnit !== null && options.unit !== undefined && options.unit !== uniformUnit && !composes) {
     warnings.push({
       code: 'table-unit-overridden',
       severity: 'warn',
