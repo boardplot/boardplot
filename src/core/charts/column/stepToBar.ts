@@ -32,6 +32,8 @@ export function stepToBar(
   const lost = names.filter((label) => label.hidden === 'density');
   if (lost.length === 0 || panelTypeClass(options) !== undefined) return undefined;
   if (COLUMN_ONLY.some((key) => options[key] !== undefined) || options.annotations?.some((annotation) => annotation.kind === 'event')) return undefined;
+  // A total category (role: 'total') is set apart by a gap, a divider and bold type in a column; a bar has no such row.
+  if (data.categories.some((category) => category.role === 'total')) return undefined;
   // valueAxis.percent turns a column into shares of 100%, and an integrated PY reference draws growth labels; a bar draws neither.
   if (options.valueAxis?.percent || column.derived.integratedVariance !== undefined) return undefined;
   if (Object.entries(options.valueAxis ?? {}).some(([key, value]) => value !== undefined && valueAxisRefusal('bar', key) !== undefined && valueAxisRefusal('column', key) === undefined)) return undefined;

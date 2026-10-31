@@ -887,6 +887,18 @@ it('keeps the column when it draws shares of 100% or growth against a PY referen
   expect(draw(withPy, { variant: 'stacked' }).type).toBe('column');
 });
 
+// A column with a total category stepped to bars, which draw the total as one more plain row, with no gap, divider or bold type.
+it('keeps the column when a category is a total', () => {
+  const names = Array.from({ length: 20 }, (_, i) => `Sector number ${i + 1} of the survey`);
+  const draw = (role?: 'total') => {
+    const categories = names.map((label, i) => (i === 19 && role ? { id: `c${i}`, label, role } : { id: `c${i}`, label }));
+    const data = { categories, series: [{ id: 's', label: 'Margin', values: names.map((_, i) => 8 + ((i * 7) % 23)) }] };
+    return layoutResolvedRequest(resolveChartRequest({ type: 'column', data, options: { title: 'Margin by sector', unit: '%', size: { width: 320 } } } as never)) as Geometry;
+  };
+  expect(draw().type).toBe('bar');
+  expect(draw('total').type).toBe('column');
+});
+
 // The reading of a column that stepped to bars said column, so an agent reading it took the wrong chart type.
 it('reports the drawn type in the reading of a column that stepped to bars', () => {
   const names = ['Automotive OEM', 'Automotive suppliers', 'Chemicals', 'Consumer goods', 'Energy utilities', 'Financial services', 'Food and beverage', 'Healthcare providers', 'Industrial machinery', 'Insurance',
