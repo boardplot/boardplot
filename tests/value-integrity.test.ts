@@ -212,6 +212,16 @@ describe('value integrity on the chart', () => {
     expect(printed).not.toContain('0');
   });
 
+  // A whole-number format printed the column totals 0.4 and 0.2 as a false 0 over their columns.
+  it('a mekko column total under a whole-number format stays off 0', () => {
+    const data = { categories: [{ id: 'A' }, { id: 'B' }], series: [{ id: 'v', values: [0.28, 0.14] }, { id: 'w', values: [0.12, 0.06] }] };
+    const printed = texts('mekko', data, { format: '1,234' });
+    expect(printed).toEqual(expect.arrayContaining(['0.4', '0.2']));
+    expect(printed).not.toContain('0');
+    // A total the format can show keeps the authored digits.
+    expect(texts('mekko', { ...data, series: [{ id: 'v', values: [1200.4, 14] }] }, { format: '1,234' })).toContain('1,200');
+  });
+
   // A centered funnel and a bar Rest built from percent cells still printed bare numbers ("70", "30") after the main paths kept their '%'.
   it('a centered funnel and a bar Rest of percent cells keep their percent sign', () => {
     const data = { categories: [{ id: 'B' }, { id: 'A' }], series: [{ id: 'v', values: [{ pct: 30 }, { pct: 70 }] }] };
@@ -308,4 +318,33 @@ it('numbers linear-process steps in drawn order, with and without order', () => 
     const badges = geometry.labels.filter((label: any) => label.id.startsWith('badge-label:')).sort((a: any, b: any) => a.rect.x - b.rect.x);
     expect(badges.map((label: any) => label.text)).toEqual(nodes.map((_, index) => String(index + 1)));
   }
+});
+
+// Layout stored round2 of a value or difference and the format rounded that again: a gap of 0.003 read as "on target", 2.3456 printed +2.4, -1.25 printed -1.2.
+it('a derived value reaches the format unrounded', () => {
+  const layout = (type: string, data: unknown, options: Record<string, unknown>) => getChart(type)!.layout(data as never, options as never) as any;
+  const bullet = layout('bullet', { rows: [{ id: 'a', label: 'A', value: 0.012, target: 0.015 }, { id: 'b', label: 'B', value: 12.3456, target: 10 }] }, { format: '0.123' });
+  expect(bullet.derived.deltaVsTarget).toEqual({ a: -0.003, b: 2.3456 });
+  expect(texts('bullet', { rows: [{ id: 'b', label: 'B', value: 12.3456, target: 10 }] }, { format: '1.1' })).toContain('+2.3');
+  const mekko = layout('mekko', { categories: [{ id: 'A' }, { id: 'B' }], series: [{ id: 'x', values: [0.003, 0.004] }, { id: 'y', values: [0.004, 0.008] }] }, { variant: 'stacked', format: '0.000' });
+  expect(mekko.derived.columnTotals).toEqual({ A: 0.007, B: 0.012 });
+  const variance = layout('variance', { categories: ['A', 'B'], series: [{ id: 'ac', values: [0.006, 79] }, { id: 'py', role: 'reference', values: [0.002, 80] }] }, { variant: 'absolute', variance: { vs: 'py' } });
+  expect(variance.derived.deltaAbs).toEqual({ A: 0.004, B: -1 });
+  const relative = texts('variance', { categories: ['A', 'B'], series: [{ id: 'ac', values: [79, 120] }, { id: 'py', role: 'reference', values: [80, 100] }] }, { variant: 'relative', variance: { vs: 'py' } });
+  expect(relative).toContain('−1.3%');
+  const slope = layout('slope', { categories: ['a', 'b'], series: [{ id: 's', values: [23.4, 19.2] }, { id: 't', values: [0.001, 0.005] }] }, {});
+  expect(slope.derived.changes.s.pct).toBeCloseTo(-17.9487, 3);
+  expect(slope.derived.changes.t.abs).toBe(0.004);
+  // Equal values are on target whatever float noise their difference holds, and a 14-digit total keeps its last digits.
+  const equal = layout('bullet', { rows: [{ id: 'a', label: 'A', value: 0.30000000000000004, target: 0.3 }, { id: 'b', label: 'B', value: 0.3, target: 0.30000000000000004 }] }, { format: '0.00' });
+  expect(equal.derived.deltaVsTarget).toEqual({ a: 0, b: 0 });
+  const big = layout('mekko', { categories: [{ id: 'A' }], series: [{ id: 'x', values: [12345678901234] }, { id: 'y', values: [1] }] }, { variant: 'stacked', format: '1,234' });
+  expect(big.derived.columnTotals).toEqual({ A: 12345678901235 });
+  // A printed share and an index are not rounded to two places before the format rounds them.
+  const share = layout('mekko', { categories: [{ id: 'A' }], series: [{ id: 'x', values: [12.449] }, { id: 'y', values: [87.551] }] }, { variant: 'stacked', format: '0.0%' });
+  expect(share.derived.shares.A.x).toBe(12.449);
+  expect(texts('line', { categories: ['a', 'b', 'c'], series: [{ id: 's', values: [50, 51, 52.2245] }] }, { rebase100: true, format: '0.0' })).toContain('104.4');
+  // 100.35 − 100 is 0.3499999999999943 in float: the gap is 0.35 and prints 0.4, not 0.3.
+  const noisy = layout('variance', { categories: ['A'], series: [{ id: 'ac', values: [100.35] }, { id: 'py', role: 'reference', values: [100] }] }, { variant: 'absolute', variance: { vs: 'py' }, format: '1.1' });
+  expect(noisy.derived.deltaAbs.A).toBe(0.35);
 });

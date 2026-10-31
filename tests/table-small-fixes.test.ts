@@ -5,6 +5,7 @@ import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request'
 import { requireGeometry } from '../src/core/sizing';
 import { repaintGeometry } from '../src/core/repaintGeometry';
 import { resolveTable } from '../src/core/charts/table/resolve';
+import { sortRows } from '../src/core/charts/table/view';
 import { preparedTableRecords } from '../src/core/a11y/structuralRecords';
 import { displayedValueText, interactionValueText } from '../src/core/a11y/valueText';
 import { claimsForChart } from '../src/core/claims/browser';
@@ -12,7 +13,7 @@ import { bartableDataSchema } from '../src/core/charts/bartable/schema';
 import { tableDataSchema } from '../src/core/charts/table/schema';
 import { authoredTrackWidth, intrinsicColumnWidth, tableFonts, ENCODING_WIDTH } from '../src/core/charts/table/tracks';
 import { levelLadder } from '../src/core/charts/table/ladder';
-import { defaultMeasurer } from '../src/core/text';
+import { defaultMeasurer, twoLineWidth } from '../src/core/text';
 import { cellGrounds, paintColor, registerTheme, resolveTheme, themes } from '../src/core/theme';
 import { contrastRatio, hueSaturation, mixColors } from '../src/core/color';
 import { onTableGround, toneTextPaint } from '../src/core/charts/table/chips';
@@ -341,6 +342,8 @@ it('keeps two significant digits of every figure when it fits formats', () => {
     rows: values.map((v, i) => ({ id: `r${i}`, label: `Row ${i}`, cells: { v } })) });
   expect(column([80_000, 100_000, 1_234_567], '1,234')).toEqual(['80', '100', '1,235']);
   expect(column([2_470_000, 2_630_000], '$1.23M')).toEqual(['2.5', '2.6']);
+  // A figure the authored format prints in one digit keeps that digit: 80,000 read as "0.1" under (M), 25% off.
+  expect(column([80_000, 1_230_000], '$1.23M')).toEqual(['0.08', '1.23']);
   // A small figure blocks a magnitude that would print it as zero: 12 never reads "0.00001" under M.
   expect(column([12, 100_000, 1_234_567], '1,234').every((text) => !/^0[.,]0/.test(text))).toBe(true);
   // So does a chart-level format, and a shorter decimal keeps one magnitude: 950 and 1,000 under (k), not 950 and 1.0M.
@@ -687,6 +690,17 @@ it('warns about a number in a status cell', () => {
   const { table, warnings } = resolveTable(data);
   expect(table.rows[0]!.cells.s!.state).not.toBe('value');
   expect(warnings.map((w) => w.code)).toContain('status-value-number');
+});
+
+// A number in a date column printed the missing dash with no warning, so the author never learned that the value was dropped.
+it('warns about a number in a date cell, naming the row and the column', () => {
+  const data: TableData = {
+    columns: [{ id: 'l', kind: 'rowLabel', label: 'Task' }, { id: 'due', kind: 'date', label: 'Due' }],
+    rows: [{ id: 'a', label: 'Plan', cells: { due: 123 } }, { id: 'b', label: 'Build', cells: { due: { v: 456 } } }, { id: 'c', label: 'Ship', cells: { due: null } }],
+  };
+  const { table, warnings } = resolveTable(data);
+  expect(table.rows[0]!.cells.due!.state).not.toBe('value');
+  expect(warnings.filter((w) => w.code === 'date-value-number').map((w) => w.owner)).toEqual([{ rowId: 'a', colId: 'due' }, { rowId: 'b', colId: 'due' }]);
 });
 
 // Whitespace-only status labels must stay accepted and draw as before while both surfaces receive a repair warning.
@@ -1068,14 +1082,6 @@ it('never gives a theme with less head air more in the compact fallback', () => 
   expect(geometry.warnings.map(w => w.code)).not.toContain('size-below-floor');
 });
 
-// A capitalised head printed "Power,mW" as "POWER,MW": milliwatts read as megawatts.
-it('keeps the unit after a head comma as written', async () => {
-  const { fieldHeadText } = await import('../src/core/charts/table/headFace');
-  const theme = resolveTheme('boardroom');
-  expect(fieldHeadText('Power,mW', theme)).toBe('POWER,mW');
-  expect(fieldHeadText('EBITDA impact, $bn', theme)).toBe('EBITDA IMPACT, $bn');
-});
-
 // `table.inks.head` was documented, but no table-family head read it, on the SVG or in the React grid.
 it('paints every table-family column head in table.inks.head, on the SVG and in React', () => {
   const head = '#AA0000';
@@ -1103,6 +1109,25 @@ it('a pinned cell in a groundless total row keeps the page under it', () => {
   const pinned = css.findIndex((rule) => rule.includes('[data-role="total"]') && rule.includes('>[data-bp-pin]{background:linear-gradient(var(--bp-row-ground),var(--bp-row-ground)),var(--bp-background)}'));
   expect(clear).toBeGreaterThanOrEqual(0);
   expect(pinned).toBeGreaterThan(clear);
+});
+
+// A head or a row label took its unit from the column or the row and ignored a cell's own format: "$" stood over euro cells.
+it('leaves the unit in the cells when a cell format names another one', () => {
+  const columns: TableData['columns'] = [{ id: 'l', kind: 'rowLabel', label: 'Item' }, { id: 'v', kind: 'value', label: 'Revenue', format: '$1,234' }];
+  const byColumn = resolveTable({ columns, rows: [
+    { id: 'a', label: 'US', cells: { v: 1200 } },
+    { id: 'b', label: 'DE', cells: { v: { v: 900, format: '€1,234' } } },
+  ] }, { subtitle: 'By market' }).table;
+  expect(byColumn.columns.find((c) => c.id === 'v')!.unitLabel).toBeUndefined();
+  expect(byColumn.unit).toBeUndefined();
+  expect(byColumn.rows.map((r) => r.cells.v!.displayed)).toEqual(['$1,200', '€900']);
+
+  const byRow = resolveTable({ columns: [columns[0]!, { id: 'v', kind: 'value', label: 'Q1' }, { id: 'w', kind: 'value', label: 'Q2' }], rows: [
+    { id: 'a', label: 'Net sales', format: '$1,234', cells: { v: 12000, w: { v: 9000, format: '€1,234k' } } },
+  ] }, { magnitude: 'thousand' }).table;
+  expect(byRow.rows[0]!.unitAffix).toBeUndefined();
+  expect(byRow.rows[0]!.cells.v!.displayed).toMatch(/^\$/);
+  expect(byRow.rows[0]!.cells.w!.displayed).toMatch(/^€/);
 });
 
 // A narrow percent-change column under a money row format shortened the money and stayed clipped, though the percent fits at one digit less.
@@ -1205,4 +1230,152 @@ it('prints the change of a nonlinear row calc in a delta or sub column, and keep
   const table = resolveTable(data, {}).table;
   const cell = (row: string, col: string) => table.rows.find((r) => r.id === row)!.cells[col]!.displayed;
   expect([cell('margin', 'ac'), cell('margin', 'py'), cell('margin', 'd'), cell('margin', 's'), cell('sum', 'd')]).toEqual(['20.0%', '10.0%', '10.0%', '10.0%', '130']);
+});
+
+// A bold (`strong`) label column was measured in the regular weight, so its track was too narrow and the next cell painted over the last letters.
+it('measures a strong row-label column in the weight it draws', () => {
+  const data: TableData = {
+    columns: [
+      { id: 'label', kind: 'rowLabel', label: 'Business', emphasis: 'strong' },
+      ...['a', 'b'].map((id) => ({ id, kind: 'value' as const, label: `Column ${id}`, format: '0.0' })),
+    ],
+    rows: ['Point-of-Care Analyzers', 'Imaging Contrast Agents', 'Molecular Test Kits']
+      .map((label, i) => ({ id: `r${i}`, label, cells: { a: 3.1 + i, b: 4.2 + i } })),
+  };
+  const encodings = { a: { type: 'heat', scale: 'column' }, b: { type: 'heat', scale: 'column' } };
+  const geometry = layout('table', data, { encodings, target: 'slide', size: { width: 444, height: 396, unit: 'pt' } });
+  for (const id of ['r0', 'r1', 'r2']) {
+    const text = geometry.scene.find((node): node is TextNode => node.t === 'text' && node.id === `cell:${id}:label`)!;
+    const heat = geometry.scene.find((node): node is Extract<SceneNode, { t: 'rect' }> => node.t === 'rect' && node.id === `heat:${id}:a`)!;
+    const drawn = Math.max(...text.lines.map((line) => defaultMeasurer(line, text.font).width));
+    expect(text.x + drawn).toBeLessThanOrEqual(heat.rect.x);
+  }
+});
+
+// A fixed frame cut a head and a cell in text columns that were narrow while wrapping columns kept width they did not need.
+it('takes width from a wrapping text column before it cuts another text column', () => {
+  const data: TableData = {
+    columns: [
+      { id: 'label', kind: 'rowLabel', label: 'Offer' },
+      { id: 'mix', kind: 'text', label: 'Consideration' },
+      { id: 'terms', kind: 'text', label: 'Terms', wrap: true },
+      { id: 'notes', kind: 'text', label: 'Notes', wrap: true },
+      { id: 'when', kind: 'text', label: 'Timeline' },
+    ],
+    rows: ['A', 'B'].map((id) => ({
+      id, label: `Bidder ${id}`,
+      cells: {
+        mix: 'Cash and stock',
+        terms: 'Antitrust clearance in the EU and UK, no material adverse change, works council consulted',
+        notes: 'Bridge facility from two lead banks, syndication after signing the offer',
+        when: 'Signing in the second quarter, closing early next year',
+      },
+    })),
+  };
+  const geometry = layout('table', data, { size: { width: 760, height: 400 } });
+  expect(geometry.warnings.filter((warning) => warning.code === 'label-truncated')).toEqual([]);
+});
+
+// The post-pass gave a column group's heading room to another column, and the heading then ran past its block.
+it('keeps the room a column-group heading needs when a cut column takes width from a text column', () => {
+  const words = ['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot'];
+  const text = (count: number, from: number) => Array.from({ length: count }, (_, i) => words[(i + from) % 6]).join(' ');
+  const data: TableData = {
+    columns: [
+      { id: 'label', kind: 'rowLabel', label: 'Offer' },
+      { id: 'a', kind: 'text', label: 'Aa', wrap: true },
+      { id: 'b', kind: 'text', label: 'Bb', wrap: true },
+      { id: 'c', kind: 'text', label: 'Cc', wrap: true },
+      { id: 'd', kind: 'text', label: 'Dd' },
+    ],
+    columnGroups: [{ id: 'g', label: 'A long group heading text here', columns: ['c', 'd'] }],
+    rows: ['x', 'y'].map((id) => ({
+      id, label: `Row ${id}`,
+      cells: { a: text(9, 0), b: text(8, 1), c: text(7, 2), d: 'Signing in the second quarter and closing early next year' },
+    })),
+  };
+  const geometry = layout('table', data, { size: { width: 540, height: 400 } });
+  expect(geometry.warnings.filter((warning) => warning.code === 'table-group-heading-overflow')).toEqual([]);
+});
+
+// Each rounded cut of the shrink could leave the tracks a pixel over the plot, and a table that fit in exact arithmetic then warned table-overflow.
+it('does not report an overflow for a pixel of rounding in the shrink', () => {
+  const rows: Array<[string, string[]]> = [
+    ['syndication signing Q1', ['foxtrot', 'EU consideration', 'delta syndication EU works', 'echo alpha closing works charlie bravo closing UK financing EU financing Q2']],
+    ['bravo unitranche', ['council unitranche Q1 echo clearance', 'alpha', 'syndication bravo antitrust foxtrot works EU EU UK', 'signing clearance alpha council consideration consideration council bravo consideration closing']],
+    ['clearance financing Q1', ['financing', 'closing Q1 financing unitranche closing consideration syndication council alpha', 'foxtrot syndication UK council foxtrot syndication UK consideration foxtrot unitranche consideration', 'council UK clearance closing charlie financing Q1 financing Q1 foxtrot']],
+    ['echo UK', ['charlie unitranche signing UK syndication charlie echo clearance unitranche', 'alpha Q2 works UK EU alpha Q2 alpha delta', 'unitranche works alpha EU financing echo Q2 alpha antitrust echo', 'charlie council works delta']],
+  ];
+  const ids = ['t1', 't2', 't0', 't3'];
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel', label: 'Offer' }, ...ids.map((id, i) => ({ id, kind: 'text' as const, label: ['Terms', 'Timeline', 'Conditions', 'Conditions'][i]!, wrap: true }))],
+    rows: rows.map(([label, cells], i) => ({ id: `r${i}`, label, cells: Object.fromEntries(ids.map((id, c) => [id, cells[c]!])) })),
+  };
+  const geometry = layout('table', data, { theme: 'boardroom', variant: 'benchmark', size: { width: 1235, height: 700 } });
+  expect(geometry.warnings.filter((warning) => warning.code === 'table-overflow')).toEqual([]);
+});
+
+// The post-pass measured every non-wrap text column at its two-line width in each pass, also when the shrink cut none of them.
+it('measures no two-line width of a text column the shrink did not cut', () => {
+  const data: TableData = {
+    columns: [
+      { id: 'label', kind: 'rowLabel', label: 'Offer' },
+      { id: 'when', kind: 'text', label: 'When' },
+    ],
+    rows: [{ id: 'a', label: 'A bidder with a long name that needs most of the frame', cells: { when: 'Q1 Q2 Q3' } }],
+  };
+  const seen: string[] = [];
+  const measure: typeof defaultMeasurer = (text, font) => { seen.push(text); return defaultMeasurer(text, font); };
+  layout('table', data, { measure, size: { width: 380, height: 200 } });
+  expect(seen).not.toContain('Q2 Q3');
+});
+
+// A table asks for the two-line width of one cell again on each layout pass, and each ask measured every split of the text again.
+it('measures the two-line width of a text once per measurer', () => {
+  let calls = 0;
+  const measure: typeof defaultMeasurer = (text, font) => { calls++; return defaultMeasurer(text, font); };
+  const font = { size: 12, weight: 400 };
+  const first = twoLineWidth('Signing in the second quarter and closing early next year', font, measure);
+  const used = calls;
+  expect(twoLineWidth('Signing in the second quarter and closing early next year', font, measure)).toBe(first);
+  expect(calls).toBe(used);
+});
+
+// The React path skips schema validation, and a non-string options.unit threw "trim is not a function" instead of drawing.
+it('draws a table whose options.unit is not a string', () => {
+  const data: TableData = { columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'v', kind: 'value', format: '1.2bn' }], rows: [{ id: 'r', label: 'North', cells: { v: 2500000000 } }] };
+  for (const unit of [5, { a: 1 }, null]) {
+    expect(() => resolveTable(data, { subtitle: { measure: 'Revenue' }, unit } as never)).not.toThrow();
+  }
+});
+
+// A sign -1 row printed its figures negated but drew its arrow and sorted from the supplied figures, and a ratio of two cells printed -1.20 where the printed figures give 1.20.
+it('reads arrows, sort and ratios of a sign -1 row from the printed figures', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'ac', kind: 'value' }, { id: 'py', kind: 'value' },
+      { id: 'd', kind: 'computed', polarity: 'higherIsBetter', calc: { op: 'delta', a: 'ac', b: 'py' } },
+      { id: 'r', kind: 'computed', format: '0.00', calc: { op: 'div', a: { ref: 'ac' }, b: { ref: 'py' } } }],
+    rows: [
+      { id: 'rev', label: 'Revenue', cells: { ac: 300, py: 300 } },
+      { id: 'cost', label: 'Cost', sign: -1, cells: { ac: 120, py: 100 } },
+      { id: 'fee', label: 'Fee', sign: -1, cells: { ac: 30, py: 20 } },
+    ],
+  };
+  const table = resolveTable(data, {}).table;
+  expect(table.rows.find((r) => r.id === 'cost')!.cells.r!.displayed).toBe('1.20');
+  // A literal over a cell flips with the row sign, so it prints the quotient of the printed -120.
+  const inverse = resolveTable({ ...data, columns: [...data.columns, { id: 'q', kind: 'computed', format: '0.00', calc: { op: 'div', a: { lit: 100 }, b: { ref: 'ac' } } }] }, {}).table;
+  expect(inverse.rows.find((r) => r.id === 'cost')!.cells.q!.displayed).toBe('\u22120.83');
+  // A sum of a ratio and a cell is neither odd nor invariant, so operand order must not change its sign.
+  const ratio = { op: 'div', a: { ref: 'ac' }, b: { ref: 'py' } } as const;
+  const mixed = resolveTable({ ...data, columns: [...data.columns,
+    { id: 'm1', kind: 'computed', format: '0.00', calc: { op: 'add', a: ratio, b: { ref: 'ac' } } },
+    { id: 'm2', kind: 'computed', format: '0.00', calc: { op: 'add', a: { ref: 'ac' }, b: ratio } }] }, {}).table;
+  expect(mixed.rows.find((r) => r.id === 'cost')!.cells.m1!.displayed).toBe(mixed.rows.find((r) => r.id === 'cost')!.cells.m2!.displayed);
+  // Printed -120 sorts before -30, though the supplied 120 is the larger figure.
+  expect(sortRows(table, { column: 'ac', direction: 'asc' }).map((r) => r.id)).toEqual(['cost', 'fee', 'rev']);
+  const arrows = layout('table', data, { encodings: { d: 'arrow' } }).scene
+    .filter((node): node is TextNode => node.t === 'text' && node.part === 'tableArrow');
+  // The cost change prints -20 and the fee change -10, so both fall.
+  expect(arrows.map((node) => node.lines.join(''))).toEqual(['→', '↓', '↓']);
 });

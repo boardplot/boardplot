@@ -6,7 +6,7 @@ import { percentCellsOnly, percentLevels } from '../../annotatePass';
  * the averages and the net line, the annotation split, and the value extent.
  */
 
-import { restLabel, restSum, topNCut } from '../topN';
+import { restDetailsWarning, restLabel, restSum, topNCut } from '../topN';
 import { normalizeCategorySeries } from '../categorySeries';
 import { chartPalette } from '../chartEnv';
 import { valueLineHasTargetExtras } from '../../annotateFields';
@@ -479,6 +479,8 @@ export function resolveBarDomain(data: ChartData, options: BarOptions, warnings:
     });
   }
   const cats = orderBarCategories(options, rawCats, normSeries, dataSeries, warnings);
+  const lostDetails = cats.some((c) => c.id === OTHERS_ID) ? restDetailsWarning(data, new Set(cats.map((c) => c.id))) : undefined;
+  if (lostDetails) warnings.push(lostDetails);
   const uniformScenario = new Map<Id, Scenario>();
   if (variant !== 'grouped' && dataSeries.length > 1) {
     cats.forEach((cat, ci) => {

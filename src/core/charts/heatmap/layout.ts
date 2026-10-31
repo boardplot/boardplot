@@ -1,5 +1,6 @@
 import { chartString } from '../../strings/heatmap';
 import { chartTheme } from '../chartEnv';
+import { NAMED_COLUMN_STATES, NAMED_STATE_PATTERN, type NamedColumnState } from '../../schema/namedColumns';
 import { labelOn as chartLabelOn } from '../labelOn';
 import { structureCount } from '../../structureCounts';
 /**
@@ -18,7 +19,7 @@ import { runAnnotatePass } from '../../annotatePass';
 import { marginBracketLayout } from '../../annotateLinks';
 import { defaultNumberDecimals, formatAutomaticNumber, NOT_AVAILABLE, numberRange } from '../../format';
 import { AUTOMATIC_FORMAT, type AutomaticFormatSource, defaultFormatSpec, exampleSpec, formatNonzeroWithSpec, formatterFromExample, rasterDecimals, seriesRasterFormatter, parseFormatExample, specUnitKind } from '../../formatSpec';
-import { round2, type Rect } from '../../geometry';
+import { cleanFloat, round2, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
 import { categoryLineAlign, planCategoryRow, rotatedClaimRect } from '../../label/categoryRow';
@@ -52,6 +53,7 @@ import type { HeatmapData } from '../../types/data';
 import type { HeatmapOptions, LabelKind, LegendOptions } from '../../types/options';
 import type {
   Geometry,
+  HatchPattern,
   LintWarning,
   Paint,
   PlacedAnnotation,
@@ -100,7 +102,7 @@ interface NormRow {
   direction?: Direction;
   format?: string;
   unit?: string;
-  cells: { v: number | null; pct: boolean; meta: CellMeta | null; size: number | null; base: number | null }[];
+  cells: { v: number | null; pct: boolean; meta: CellMeta | null; size: number | null; base: number | null; state: NamedColumnState | null }[];
 }
 
 interface NormCol {
@@ -235,9 +237,9 @@ export function layoutHeatmap(
   let cols: NormCol[] = rawCats.map((c) => ({ id: c.id, label: c.label ?? c.id, date: c.date, ...(c.footnote === undefined ? {} : { footnote: c.footnote }) }));
   let rows: NormRow[] = data.series.map((s, i) => {
     if (!s?.id) throw new NormalizeError('missing-id', `series[${i}]`, 'series requires an id');
-    const { sizes, bases } = s;
-    if ((sizes?.length ?? 0) > rawCats.length || (bases?.length ?? 0) > rawCats.length) {
-      throw new NormalizeError('length-mismatch', `series[${s.id}]`, `series '${s.id}' has more sizes or bases than the ${rawCats.length} categories`, 'give one size and one base per category, in category order');
+    const { sizes, bases, states } = s;
+    if ((sizes?.length ?? 0) > rawCats.length || (bases?.length ?? 0) > rawCats.length || (states?.length ?? 0) > rawCats.length) {
+      throw new NormalizeError('length-mismatch', `series[${s.id}]`, `series '${s.id}' has more sizes, bases or states than the ${rawCats.length} categories`, 'give one size, base and state per category, in category order');
     }
     const cells = normalizeSeriesValues(s, rawCats, i).map((c, ci) => ({
       v: cellValue(c),
@@ -245,7 +247,11 @@ export function layoutHeatmap(
       meta: cellMeta(c),
       size: sizes?.[ci] ?? null,
       base: bases?.[ci] ?? null,
+      state: states?.[ci] ?? null,
     }));
+    cells.forEach((cell, ci) => {
+      if (cell.state && cell.v !== null) throw new NormalizeError('state-with-value', `series[${s.id}].states[${ci}]`, `a cell state requires value null; series '${s.id}' holds ${cell.v} for '${rawCats[ci]!.id}'`, 'give the cell value null or drop its state', undefined, ['data', 'series', i, 'states', ci]);
+    });
     return { id: s.id, label: s.label ?? s.id, direction: s.direction, format: s.format, unit: s.unit, cells };
   });
   // A Harvey ball is a rating 0 to 4. Any other value is
@@ -537,15 +543,21 @@ export function layoutHeatmap(
   const missingCells = glyph !== 'harvey' && options.heatKey === undefined && rows.some((r) => r.cells.some((c) => c.v === null));
   const missingLook = options.missing ?? 'hatch';
   const hatchMissing = missingCells && missingLook !== 'blank';
+  // A null cell with a state is named by it; one without stays plain no data.
+  const stateNames = { na: chartString(options, 'stateNa'), nm: chartString(options, 'stateNm'), suppressed: chartString(options, 'stateSuppressed') };
+  const statesPresent = NAMED_COLUMN_STATES.filter((state) => rows.some((r) => r.cells.some((c) => c.state === state)));
+  const plainNoData = rows.some((r) => r.cells.some((c) => c.v === null && !c.state));
+  const noDataKey = (id: string, label: string, pattern: HatchPattern = 'hatch45') => missingLook === 'blank'
+    ? { id, label, paint: { token: 'background' } as Paint, stroke: { token: 'grid' } as Paint }
+    : { id, label, paint: NO_DATA_PAINT, pattern, hatchGround: { token: 'background' } as Paint, stroke: { token: 'grid' } as Paint };
+  const noDataNames = [...(plainNoData ? [chartString(options, 'noData')] : []), ...statesPresent.map((state) => stateNames[state])].join(', ');
   // `legend: 'none'` drops the key, as on the table: a host that
   // draws its own key for the same scale would otherwise show two.
   const anyLowBase = rows.some((r) => r.cells.some((c) => c.v !== null && lowBase(c)));
   const lowBaseKey = `n < ${formatAutomaticNumber(options.minBase ?? 0, { locale: options.locale?.language })}`;
   const scaleItems = glyph !== 'harvey' && !bubble && allValues.length > 0 && panelTypeClass(options) === undefined
     ? options.heatKey?.items ?? [...(continuousKey ? [] : colourScaleKey()), ...(missingCells
-      ? [missingLook === 'blank'
-        ? { id: 'scale:none', label: chartString(options, 'noData'), paint: { token: 'background' } as Paint, stroke: { token: 'grid' } as Paint }
-        : { id: 'scale:none', label: chartString(options, 'noData'), paint: NO_DATA_PAINT, pattern: 'hatch45' as const, hatchGround: { token: 'background' } as Paint, stroke: { token: 'grid' } as Paint }]
+      ? [...(plainNoData ? [noDataKey('scale:none', chartString(options, 'noData'))] : []), ...statesPresent.map((state) => noDataKey(`scale:${state}`, stateNames[state], NAMED_STATE_PATTERN[state]))]
       : []), ...(anyLowBase ? [{ id: 'scale:lowBase', label: lowBaseKey, paint: { token: 'neutralMark' } as Paint, pattern: 'hatch45' as const, hatchGround: { token: 'background' } as Paint }] : [])]
     : undefined;
   // The bubble keys (size and colour) stand in their own strip above the matrix.
@@ -553,7 +565,9 @@ export function layoutHeatmap(
   const derivedNotes = [
     ...(topOnly ? [disclosureNote(chartString(options, 'heatmapTopValuesNote'))] : []),
     ...(valueNote ? [disclosureNote(valueNote)] : []),
-    ...(bubble && missingCells ? [disclosureNote(missingLook === 'blank' ? 'Blank cells: no data.' : chartString(options, 'hatchedNoData'))] : []),
+    ...(bubble && missingCells ? [disclosureNote(statesPresent.length
+      ? (missingLook === 'blank' ? `Blank cells: ${noDataNames}.` : chartString(options, 'hatchedCells', { v1: noDataNames }))
+      : missingLook === 'blank' ? 'Blank cells: no data.' : chartString(options, 'hatchedNoData'))] : []),
     ...(anyLowBase
       ? [disclosureNote(chartString(options, 'heatmapBaseNote', { v1: bubble ? chartString(options, 'circles') : chartString(options, 'cellsLower'), v2: formatAutomaticNumber(options.minBase!, { locale: options.locale?.language }) }))] : []),
   ];
@@ -1066,13 +1080,13 @@ export function layoutHeatmap(
         id: nodeId,
         rect,
         fill: noData ? NO_DATA_PAINT : blankCell ? { token: 'background' } : paint,
-        ...(noData || low ? { pattern: 'hatch45' as const, hatchGround: { token: 'background' } as Paint } : {}),
+        ...(noData || low ? { pattern: noData && cell.state ? NAMED_STATE_PATTERN[cell.state] : 'hatch45' as const, hatchGround: { token: 'background' } as Paint } : {}),
         ...(needsStroke ? { stroke: { token: 'grid' } as Paint, strokeWidth: strokeToken(theme, 'hair') } : {}),
         owner,
         part: 'cell',
         display:
           cell.v === null
-            ? { state: 'No data' }
+            ? { state: cell.state ? stateNames[cell.state] : 'No data' }
             : { value: displayFor(cell.v, cell.pct, cell.meta, r) },
       });
       occupied.claim(rect, 'mark', owner);
@@ -1509,8 +1523,8 @@ export function layoutHeatmap(
     ...(frameResult.legend ? { legend: frameResult.legend } : {}),
     marks,
     derived: {
-      max: round2(vMax),
-      min: round2(vMin),
+      max: cleanFloat(vMax),
+      min: cleanFloat(vMin),
       rowMeans,
       colMeans,
       ...(showHeaderRow

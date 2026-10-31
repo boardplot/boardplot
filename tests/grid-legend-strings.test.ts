@@ -90,3 +90,15 @@ describe('authored grid legend', () => {
     expect(geometry.scene.some((node) => node.id.endsWith(':marker'))).toBe(false);
   });
 });
+
+// Two-series panels with no legend option drew coloured bars that nothing named.
+it('keys a grid of two-series panels with no legend set, and leaves single-series panels alone', () => {
+  const panel = (id: string, series: [string, number[]][]) => ({ id, type: 'column', title: id, options: { variant: 'grouped' },
+    data: { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }],
+      series: series.map(([label, values]) => ({ id: label, label, values })) } });
+  const keyOf = (panels: unknown[]) => requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'grid', data: { panels },
+    options: { title: 'Sales', size: { width: 640 }, sharedAxis: 'none', columns: 2 } })))
+    .scene.flatMap(node => node.t === 'text' && node.part === 'legendLabel' ? node.lines : []);
+  expect(keyOf([panel('North', [['Sales', [4, 5]], ['Target', [5, 5]]]), panel('South', [['Sales', [3, 4]], ['Target', [4, 4]]])])).toEqual(['Sales', 'Target']);
+  expect(keyOf([panel('North', [['Sales', [4, 5]]]), panel('South', [['Returns', [3, 4]]])])).toEqual([]);
+});

@@ -25,6 +25,8 @@ import {
   unitOfSpec,
   MAGNITUDE_DIVISOR,
   magnitudeLabel,
+  MAGNITUDE_LABEL,
+  sameUnit as sameUnitText,
   type NumberFormatSpec,
 } from '../../formatSpec';
 import { NormalizeError, resolveHighlight, resolveSubtitle } from '../../normalize/shared';
@@ -60,7 +62,7 @@ import type {
   TotalPolicy,
 } from '../../types/table';
 import { previousColumnInGroup, readCalcInput, resolveCalcRef } from './calcRef';
-import { calcIsLinear, calcPreservesScale, calcYieldsPoints, columnOwnsFormat } from '../../tableCalc';
+import { calcFlipsWithInputs, calcIsLinear, calcPreservesScale, calcYieldsPoints, columnOwnsFormat } from '../../tableCalc';
 import {
   additiveRankKey,
   assertTableRankOptions,
@@ -235,15 +237,6 @@ function stripMagnitude(text: string, spec: NumberFormatSpec): string {
 
 /** Float noise from magnitude math (bn-scale): a gap this small between two figures is no disagreement. */
 const floatNoise = (a: number, b: number): number => 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
-
-/**
- * A column head's label as both surfaces print and measure it: in
- * capitals, unless the theme's `table.head.case` is 'asis'. The affix after
- * it stays as written.
- */
-export function columnHeadLabel(label: string, theme: Pick<Theme, 'table'>): string {
-  return theme.table?.head?.case === 'asis' ? label : label.toUpperCase();
-}
 
 export function columnHeaderAffix(column: {
   scenario?: string;
@@ -900,27 +893,34 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     return spec;
   };
   // The figures a row's magnitude reads: its visible value cells without a format of their own.
-  const valuesOfRow = new Map<string, number[]>();
-  const rowValues = (row: FlatRow): number[] => {
-    let values = valuesOfRow.get(row.id);
-    if (values === undefined) valuesOfRow.set(row.id, values = rowValuesUncached(row));
-    return values;
+  const cellsOfRow = new Map<string, (readonly [Id, number])[]>();
+  const rowCells = (row: FlatRow): (readonly [Id, number])[] => {
+    let cells = cellsOfRow.get(row.id);
+    if (cells === undefined) cellsOfRow.set(row.id, cells = rowCellsUncached(row));
+    return cells;
   };
-  const rowValuesUncached = (row: FlatRow) => valueCols.filter(col => col.format === undefined && cellFormat(row.cells[col.id]) === undefined && !(data.columnToggles ?? []).some(toggle => toggle.columns.includes(col.id) && (options.columnVisibility?.[toggle.id] ?? toggle.defaultVisible ?? false) === false)).map(col => rawState.get(row.id)?.get(col.id)?.raw).filter((v): v is number => typeof v === 'number');
+  const rowValues = (row: FlatRow): number[] => rowCells(row).map(([, value]) => value);
+  const rowCellsUncached = (row: FlatRow) => valueCols.filter(col => col.format === undefined && cellFormat(row.cells[col.id]) === undefined && !(data.columnToggles ?? []).some(toggle => toggle.columns.includes(col.id) && (options.columnVisibility?.[toggle.id] ?? toggle.defaultVisible ?? false) === false)).flatMap(col => { const raw = rawState.get(row.id)?.get(col.id)?.raw; return typeof raw === 'number' ? [[col.id, raw] as const] : []; });
   const largest = (values: number[]) => values.reduce((n,v)=>Math.max(n,Math.abs(v)),0);
   // Rows of one composed measure share the magnitude of their largest cell.
   const groupOf = (row: FlatRow) => (sourceRows.get(row.id) as MagnitudeGroupSource | undefined)?.[MAGNITUDE_GROUP];
   const groupMax = new Map<string, number>();
-  const groupValues = new Map<string, number[]>();
+  // The figures of a group by column: each column takes its precision from its own largest figure.
+  const groupColumns = new Map<string, Map<Id, number[]>>();
   for (const row of flat) {
     const group = groupOf(row);
     if (group === undefined) continue;
-    const values = rowValues(row);
-    groupMax.set(group, Math.max(groupMax.get(group) ?? 0, largest(values)));
-    const shared = groupValues.get(group);
-    if (shared === undefined) groupValues.set(group, [...values]);
-    else pushAll(shared, values);
+    groupMax.set(group, Math.max(groupMax.get(group) ?? 0, largest(rowValues(row))));
+    let columns = groupColumns.get(group);
+    if (columns === undefined) groupColumns.set(group, columns = new Map());
+    for (const [colId, value] of rowCells(row)) {
+      const column = columns.get(colId);
+      if (column === undefined) columns.set(colId, [value]);
+      else column.push(value);
+    }
   }
+  // The spec a group row prints a column through: the row's, with the decimals that column needs.
+  const groupCellSpecs = new Map<Id, Map<Id, NumberFormatSpec>>();
   for (const row of flat) {
     rowById.set(row.id, row);
     const example = row.format ?? (row.scale ? row.scale === 'percent' ? '1.2%' : '1,234' : undefined) ?? (row.calc && calcYieldsPoints(row.calc) ? `1${locale.decimal}2%` : undefined);
@@ -985,9 +985,32 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
         // with no magnitude letter too (a 0.18 spend prints 0.18, not <1).
         if (!changeLine && (spec.magnitude !== 'none' || (group !== undefined && row.scale === 'money')) && !(spec.lockMagnitude && spec.magnitude === 'k')
           && (row.scale === 'money' || (row.scale === 'count' && !authoredFormat))) {
-          for (const value of group === undefined ? values : groupValues.get(group)!) {
-            while (value !== 0 && spec.decimals < MAX_FORMAT_DECIMALS
-              && Math.abs(roundedNumber(value, spec) - value) > (group === undefined ? Math.abs(value) : max) * 0.01) spec.decimals++;
+          if (group === undefined) {
+            for (const value of values) {
+              while (value !== 0 && spec.decimals < MAX_FORMAT_DECIMALS
+                && Math.abs(roundedNumber(value, spec) - value) > Math.abs(value) * 0.01) spec.decimals++;
+            }
+          } else {
+            // The group precision is the floor. A column of 1.46M cells then adds the decimals its own
+            // largest figure asks for, which a Range total of 18.2M does not.
+            const columns = groupColumns.get(group)!;
+            for (const column of columns.values()) {
+              for (const value of column) {
+                while (value !== 0 && spec.decimals < MAX_FORMAT_DECIMALS
+                  && Math.abs(roundedNumber(value, spec) - value) > max * 0.01) spec.decimals++;
+              }
+            }
+            const inRow = new Map<Id, NumberFormatSpec>();
+            for (const [colId, column] of columns) {
+              const cellSpec = { ...spec };
+              const bound = largest(column) * 0.01;
+              for (const value of column) {
+                while (value !== 0 && cellSpec.decimals < MAX_FORMAT_DECIMALS
+                  && Math.abs(roundedNumber(value, cellSpec) - value) > bound) cellSpec.decimals++;
+              }
+              inRow.set(colId, cellSpec);
+            }
+            groupCellSpecs.set(row.id, inRow);
           }
         }
       }
@@ -995,6 +1018,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
       const sourceRow = sourceRows.get(row.id) as (TableRow & AutomaticFormatSource) | undefined;
       // A measure group's row prints a small member as the shared bound, authored format or not.
       spec.automatic = automaticAs(group !== undefined || ((sourceRow?.format === undefined || sourceRow[AUTOMATIC_FORMAT] === true) && options.format === undefined && options.unit === undefined && forcedMagnitude === undefined));
+      for (const cellSpec of groupCellSpecs.get(row.id)?.values() ?? []) cellSpec.automatic = spec.automatic;
       rowSpecs.set(row.id, spec);
     }
   }
@@ -1021,6 +1045,13 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
       }
     }
   }
+  // A head or a row label names a unit only when every figure under it prints
+  // in that unit. A cell's own format that names another one ("€900" under
+  // "$") leaves the unit in the cells.
+  const cellNamesOtherUnit = (rowId: Id, colId: Id, spec: NumberFormatSpec): boolean => {
+    const own = cellSpecs.get(rowId)?.get(colId);
+    return own !== undefined && typeof rawState.get(rowId)?.get(colId)?.raw === 'number' && unitOfSpec(own) !== unitOfSpec(spec);
+  };
   /**
    * The unit a row-formatted money row hoists out of its cells and onto its
    * own label: every cell of the row said "11,300.0k" where the row
@@ -1033,7 +1064,8 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     for (const [rowId, spec] of rowSpecs) {
       if (rowById.get(rowId)?.scale === 'money' || rowById.get(rowId)?.scale === 'perUnit'
         || rowById.get(rowId)?.calc !== undefined
-        || !scales(sourceRows.get(rowId)?.format ?? '1,234')) continue;
+        || !scales(sourceRows.get(rowId)?.format ?? '1,234')
+        || valueCols.some((col) => cellNamesOtherUnit(rowId, col.id, spec))) continue;
       const unit = unitOfSpec(spec);
       if (unit !== null) hoistedRowUnits.set(rowId, unit);
     }
@@ -1111,7 +1143,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
   const lettersInCells = new Set<Id>();
   for (const col of [...valueCols, ...computedCols]) {
     const spec = specs.get(col.id)!;
-    if (!rowFormattedColumns.has(col.id) && rollsOff(col.id, spec)) lettersInCells.add(col.id);
+    if (!rowFormattedColumns.has(col.id) && (rollsOff(col.id, spec) || flat.some((row) => cellNamesOtherUnit(row.id, col.id, spec)))) lettersInCells.add(col.id);
     unitByCol.set(col.id, rowFormattedColumns.has(col.id) || lettersInCells.has(col.id) ? null : unitOfSpec(spec));
   }
   const headerUnitFor = (id: Id): string | null => unitByCol.get(id) ?? (rowFormattedColumns.has(id) ? headUnit ?? null : null);
@@ -1135,8 +1167,20 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     unit: candidateUnit,
     unitShown: options.unitShown,
   });
-  const uniformUnit = candidateUnit && frameCarriesUnit ? candidateUnit : null;
-  if (uniformUnit !== null && options.unit !== undefined && options.unit !== uniformUnit) {
+  // A shared bare scale ("B" from '1.2bn') carries no currency, so options.unit's currency stays in front of it
+  // ("EUR B"). A scale word anywhere in options.unit ("Mio. EUR", "k EUR", "EUR bn (adj.)") either is this scale, so the
+  // unit prints as written, or conflicts with it. Only a unit without a scale word gets the scale appended.
+  const authoredUnit = typeof options.unit === 'string' ? options.unit.trim() : undefined;
+  const scaleWords = (authoredUnit?.split(/[\s$€£¥()]+/) ?? []).filter((word) => Object.values(MAGNITUDE_LABEL).some((label) => label !== '' && sameUnitText(word, label)));
+  // Row formats can supply the unit too, so their affixes count as well as the columns'.
+  const bareScale = candidateUnit !== undefined && [...[...valueCols, ...computedCols].map((col) => specs.get(col.id)!), ...rowSpecs.values()]
+    .every((spec) => specUnitKind(spec) !== 'number' || (spec.prefix.trim() === '' && spec.suffix.trim() === ''));
+  const carriesScale = scaleWords.some((word) => sameUnitText(word, candidateUnit ?? ''));
+  // Only a bare currency code or symbol takes the scale appended. Any other text ('USDbn', 'EURm', 'EUR Md') may hold a scale this check cannot read.
+  const composes = bareScale && !!authoredUnit && (carriesScale || (scaleWords.length === 0 && /^(?:[A-Z]{3}|\p{Sc})$/u.test(authoredUnit)));
+  const composedUnit = composes ? carriesScale ? authoredUnit : `${authoredUnit} ${candidateUnit}` : candidateUnit;
+  const uniformUnit = composedUnit && frameCarriesUnit ? composedUnit : null;
+  if (uniformUnit !== null && options.unit !== undefined && options.unit !== uniformUnit && !composes) {
     warnings.push({
       code: 'table-unit-overridden',
       severity: 'warn',
@@ -1157,7 +1201,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     const cellSpec = rowId ? cellSpecs.get(rowId)?.get(colId) : undefined;
     if (cellSpec) return cellSpec;
     const rowSpec = rowId ? rowSpecs.get(rowId) : undefined;
-    return rowSpec && (rowOverridesColumn(rowId!) || !ownFormatColumns.has(colId)) ? rowSpec : specs.get(colId)!;
+    return rowSpec && (rowOverridesColumn(rowId!) || !ownFormatColumns.has(colId)) ? groupCellSpecs.get(rowId!)?.get(colId) ?? rowSpec : specs.get(colId)!;
   };
   // `lift: false` prints the plain rounded text, which the near-zero base check reads.
   const formatNumber = (raw: number, colId: Id, rowId?: Id, lift = true): string => {
@@ -1175,7 +1219,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     // print as 0 that way.
     const base = rowPath ? rowSpec! : specs.get(colId)!;
     if (cellSpec && !sameUnit(cellSpec, base)) return formatWithSpec(raw, lift ? cellSpec : { ...cellSpec, automatic: false });
-    const decimals = cellSpec?.decimals ?? base.decimals;
+    const decimals = cellSpec?.decimals ?? (rowPath ? groupCellSpecs.get(rowId!)?.get(colId)?.decimals : undefined) ?? base.decimals;
     if (rowPath) {
       // A measure group's exact zero prints "0": no decimals, no magnitude letter.
       if (raw === 0 && lift && !cellSpec && groupOf(rowById.get(rowId!)!) !== undefined) return '0';
@@ -1584,6 +1628,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
         const evaluated = rawState.get(row.id)!.get(col.id);
         const s = evaluated ?? { raw: null, state: 'missing' as CellState };
         let displayed: string;
+        let negated = false;
         if (s.state !== 'value' || typeof s.raw !== 'number') {
           const state = s.state === 'value' ? 'missing' : (s.state as Exclude<CellState, 'value'>);
           const noPreviousColumn = row.calc !== undefined && JSON.stringify(row.calc).includes('"previous":true') && previousColumnInGroup(data.columnGroups ?? [], col.id) === null;
@@ -1595,7 +1640,10 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
           const relativeChange = (row.inline === true || row.calc !== undefined || col.kind === 'computed')
             && (specUnitKind(specFor(col.id, row.id)) !== 'number' || (row.calc !== undefined && calcYieldsPoints(row.calc)) || (col.kind === 'computed' && calcYieldsPoints(col.calc)));
           const negate = (options.signs ?? 'signed') === 'signed' && row.kind !== 'driver' && row.kind !== 'result'
-            && !relativeChange && signTo(row, null) === -1;
+            && !relativeChange && signTo(row, null) === -1
+            // A ratio of two cells prints the same on the negated figures, so only a calc that flips with its inputs flips.
+            && (col.kind !== 'computed' || row.calc !== undefined || calcFlipsWithInputs(col.calc));
+          negated = negate && s.raw !== 0;
           displayed = (negate ? undefined : displayOverride.get(tableCellKey(row.id, col.id))) ?? formatNumber(negate && s.raw !== 0 ? -s.raw : s.raw, col.id, row.id);
           if (negate && locale.minusGlyph === '-') displayed = displayed.replace(MINUS, '-');
           // The head's † and its note say it where they print (disclosures shown, a column that skipped a child); else the cell says it.
@@ -1663,6 +1711,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
         // judges a fall under lowerIsBetter as good even where the tone stays
         // neutral (an ofWhich line, a muted cell).
         return { ...base, raw: s.raw, state: s.state, displayed, tone, deEmphasized, polarity, ...(zero ? { zero: true as const } : {}),
+          ...(negated ? { negated: true as const } : {}),
           ...(band === undefined ? {} : { band: { to: band.to, ...(bandIndex > 0 ? { from: obj!.bands![bandIndex - 1]!.to } : {}), ...(band.label === undefined ? {} : { label: band.label }) } }) };
       }
       case 'status': {
@@ -1696,7 +1745,17 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
         return { ...base, raw: v, state: 'value', displayed: labels?.[v] ?? v, tone: judgementTone(tone, obj?.strong) };
       }
       case 'date': {
-        const v = typeof authored === 'string' ? authored : typeof obj?.v === 'string' ? obj.v : null;
+        const given = typeof authored === 'number' ? authored : obj?.v;
+        const v = typeof authored === 'string' ? authored : typeof given === 'string' ? given : null;
+        // A number is no date. It keeps the missing dash it drew, and says so.
+        if (typeof given === 'number') {
+          warnings.push({
+            code: 'date-value-number',
+            severity: 'warn',
+            message: `date cell rows[${row.id}].cells[${col.id}] holds the number ${given} and draws the missing dash; write an ISO date (YYYY-MM-DD), or use a value or text column.`,
+            owner: { rowId: row.id, colId: col.id },
+          });
+        }
         if (v === null) return { ...base, displayed: missingGlyph };
         const d = parseISODate(v);
         if (!d) {

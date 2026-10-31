@@ -62,6 +62,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | series[].format | string |  | Format-by-example for this series values, for example 1,234 or 1.2%. |
 | series[].sizes | array |  | Bubble sizes. One per category, in order: a level 1 to n with bubble.levels, else area ∝ size. |
 | series[].bases | array |  | Cell bases (n). One per category, in order; below minBase draws hatched. |
+| series[].states | string \| null[] |  | Why a cell has no value. One per category, in order: suppressed, nm (not meaningful), na (not applicable) or null. A stated cell needs value null; it draws hatched and the key names its state. One of `'na'`, `'nm'`, `'suppressed'` (or another value of its type). |
 
 ## Options
 
@@ -121,6 +122,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | period-comparisons | example | Annual growth and differences between named matrix cells |
 | torture-long-labels | torture | Torture: long names at a generous size read whole, never cut |
 | series-formats | torture | Rows have distinct formats |
+| cell-states | example | A cell with a state is named in the key as suppressed, not meaningful or not applicable |
 | measure-already-names-unit | torture | The measure names the unit once |
 | survey-journey-bubbles | example | Survey bubble matrix: 6 segments × 12 touchpoints, importance as size, binned satisfaction as colour, two low-base cells |
 | survey-journey-long-names | example | Survey bubble matrix with long touchpoint names: the matrix turns instead of rotating or thinning the names |

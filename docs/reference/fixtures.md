@@ -648,6 +648,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | period-comparisons | heatmap.value | example | Annual growth and differences between named matrix cells |
 | torture-long-labels | heatmap.harvey | torture | Torture: long names at a generous size read whole, never cut |
 | series-formats | heatmap.value | torture | Rows have distinct formats |
+| cell-states | heatmap.value | example | A cell with a state is named in the key as suppressed, not meaningful or not applicable |
 | measure-already-names-unit | heatmap.value | torture | The measure names the unit once |
 | survey-journey-bubbles | heatmap.bubble | example | Survey bubble matrix: 6 segments × 12 touchpoints, importance as size, binned satisfaction as colour, two low-base cells |
 | survey-journey-long-names | heatmap.bubble | example | Survey bubble matrix with long touchpoint names: the matrix turns instead of rotating or thinning the names |

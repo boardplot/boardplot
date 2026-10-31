@@ -141,14 +141,25 @@ export function hiddenValueLineReserve(labels: readonly PlacedLabel[], drawnWidt
  */
 export function namedLineText(label: string, value: string, v: number, id: string): string {
   if (label.includes('${value}')) return label.replace(/\$\{value\}/g, value);
-  if (label.includes(value) || id.startsWith('averageMarker') || carriesNumber(label, v)) return label;
+  if (holdsFigure(label, value) || id.startsWith('averageMarker') || carriesNumber(label, v)) return label;
   return /\d$/.test(label) ? `${label}: ${value}` : `${label} ${value}`;
 }
 
-/** True when a figure in the text is `v` at the decimals it is written with. */
+/** True when `value` stands in the text as its own number: 20 is not in "120", "20.5" or "from -20". */
+function holdsFigure(text: string, value: string): boolean {
+  for (let at = text.indexOf(value); at >= 0; at = text.indexOf(value, at + 1)) {
+    if (!LONGER_BEFORE.test(text.slice(0, at)) && !/^[.,]?\d/.test(text.slice(at + value.length))) return true;
+  }
+  return false;
+}
+
+/** The end of a text that makes the number after it another number: a digit, or a minus sign that is no hyphen. */
+const LONGER_BEFORE = /(?:\d[.,]?|(?<![\p{L}\p{N}])[-\u2212])$/u;
+
+/** True when a figure in the text is `v` at the decimals it is written with. A written minus is part of the figure; a name of 20 may stand for a line at -20. */
 function carriesNumber(text: string, v: number): boolean {
-  return (text.match(/\d+(?:[.,]\d+)?/g) ?? []).some((figure) => {
-    const decimals = figure.split(/[.,]/)[1]?.length ?? 0;
-    return Math.abs(Number(figure.replace(',', '.')) - Math.abs(v)) <= 0.5 * 10 ** -decimals;
+  return [...text.matchAll(/((?<![\p{L}\p{N}])[-\u2212])?(\d+(?:[.,]\d+)?)/gu)].some(([, minus, figure]) => {
+    const decimals = figure!.split(/[.,]/)[1]?.length ?? 0;
+    return Math.abs(Number(figure!.replace(',', '.')) - (minus ? -v : Math.abs(v))) <= 0.5 * 10 ** -decimals;
   });
 }

@@ -42,33 +42,52 @@ function waterfallMembership(data: WaterfallData, derived: WaterfallDerived): Ma
   const hiddenAfter = new Set(data.connectors?.filter(connector => connector.hidden).map(connector => connector.from));
   const inbound = new Map(data.connectors?.filter(connector => !connector.hidden).map(connector => [connector.to, connector]));
   let running: OwnerRef[] = [];
+  /** The steps since the last baseline: what a subtotal drawn `toBaseline` adds up. */
+  let block: OwnerRef[] = [];
   for (const item of data.items) {
     const connector = inbound.get(item.id);
     const origin = connector && levels.get(connector.from);
-    if (origin) running = origin.anchors.get(connector!.anchor ?? 'sum') ?? origin.end;
+    if (origin) {
+      running = origin.anchors.get(connector!.anchor ?? 'sum') ?? origin.end;
+      block = [];
+    }
     const anchors = new Map<string, OwnerRef[]>();
     const basis = derived.totalBasis[item.id];
     if (basis) {
-      running = basis.authored ? [{ categoryId: item.id }] : running;
-      totals.set(item.id, running);
+      if (derived.levels[item.id]?.balance !== undefined) {
+        totals.set(item.id, block);
+        block = [];
+      } else {
+        running = basis.authored ? [{ categoryId: item.id }] : running;
+        totals.set(item.id, running);
+        if (item.type === 'total') block = [];
+      }
       // The total's normalized placeholder has zero value; named anchors on
       // totals fall back to the total unless they explicitly name __total.
       anchors.set('__total', []);
     } else {
-      if (item.toBaseline) running = [];
+      if (item.toBaseline) {
+        running = [];
+        block = [];
+      }
       if (item.segments?.length) {
         for (const segment of item.segments) {
           running = [...running, { categoryId: item.id, segmentId: segment.id }];
+          block = [...block, { categoryId: item.id, segmentId: segment.id }];
           anchors.set(segment.id, running);
         }
       } else {
         running = [...running, { categoryId: item.id }];
+        block = [...block, { categoryId: item.id }];
         anchors.set('__value', running);
       }
     }
     anchors.set('sum', running);
     levels.set(item.id, { end: running, anchors });
-    if (hiddenAfter.has(item.id)) running = [];
+    if (hiddenAfter.has(item.id)) {
+      running = [];
+      block = [];
+    }
   }
   return new Map([...totals].map(([id, members]) => [id, members.filter((member, index) =>
     members.findIndex(other => other.categoryId === member.categoryId && other.segmentId === member.segmentId) === index)]));

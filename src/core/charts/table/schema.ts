@@ -85,7 +85,7 @@ const columnBase = {
   align: z.enum(['left', 'right', 'center']).optional()
     .describe('Cell alignment. Numeric left alignment is accepted but linted.'),
   emphasis: z.enum(['strong', 'muted']).optional()
-    .describe("Header and cell emphasis. 'strong' sets the header and its cells to the emphasis weight (700 by default), 'muted' paints them in the muted ink. Paint only — column widths and row heights do not move."),
+    .describe("Header and cell emphasis. 'strong' sets the header and its cells to the emphasis weight (700 by default), 'muted' paints them in the muted ink. A strong column is measured in the bold weight; muted is paint only."),
   band: z.boolean().optional()
     .describe('Column band ground. Neighbouring banded columns read as one block and the first of the run takes the left hairline, so a block inside a column group needs no group of its own. Paint only.'),
   fitFormat: z.literal(false).optional().describe('false: options.fitFormats leaves this column\'s format as authored.'),
@@ -141,7 +141,7 @@ const columnSchema = z
     }),
     z.strictObject({
       ...columnBase,
-      kind: z.literal('date').describe('Kind.'),
+      kind: z.literal('date').describe('Date cell: an ISO date (YYYY-MM-DD) or { v: date } (other text refuses: date-invalid; numbers draw the missing dash and warn: date-value-number).'),
       format: z.string().optional()
         .describe("Date format example. Examples: '30 Sep 2026', 'Sep-26', '2026-09-30'."),
     }),

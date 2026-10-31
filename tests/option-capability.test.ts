@@ -199,6 +199,7 @@ describe('OPTION_CAPABILITY census, behaviour: an accepted key changes the drawi
   const AT_THE_FLOOR: Record<string, string> = {
     'column/scenario-corridor-fc': 'the forecast corridor stripes sit at the 3:1 floor',
     'heatmap/missing-cells': 'the no-data stripes sit at the 3:1 floor in the shipped presets',
+    'heatmap/cell-states': 'the no-data and state stripes sit at the 3:1 floor in the shipped presets',
   };
 
   type AnyDefinition = NonNullable<ReturnType<typeof getChartDefinition>>;
@@ -465,7 +466,6 @@ describe('published option behaviour census', () => {
     ["table", "signs", "Fixture steering-monthly has no SVG or option-warning change with \"operators\"."],
     ["dimswitch", "driverTones", "Fixture by-measure has no SVG or option-warning change with \"never\"."],
     ["table", "driverTones", "Fixture steering-monthly has no SVG or option-warning change with \"never\"."],
-    ["dimswitch", "encodings", "Fixture by-measure has no SVG or option-warning change with {\"census\":\"polarityBadge\"}."],
     ["dimswitch", "totalPosition", "Fixture by-measure has no SVG or option-warning change with \"bottom\"."],
     ["table", "totalPosition", "Fixture steering-monthly has no SVG or option-warning change with \"bottom\"."],
     ["dimswitch", "density", "Fixture by-measure has no SVG or option-warning change with \"regular\"."],

@@ -52,7 +52,7 @@ export interface SpecFromRowsInput {
   columns: RowsColumns;
 }
 
-/** What the rows gave beside the data: the chart draws a suppressed cell as empty. */
+/** What the rows gave beside the data: a map and a heatmap name a stated cell; other charts draw it empty. */
 export interface RowsReading {
   rows: number;
   /** Source columns that no role names. */

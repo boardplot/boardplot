@@ -4,6 +4,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import '../src/core/charts';
+import '../src/core/geo/packs/dach';
 import { getChart } from '../src/core/registry';
 import { getFixtures, getRefusalExamples } from '../src/fixtures';
 import { canDraw, measure } from '../src/index';
@@ -451,6 +452,48 @@ it('judges a narrow diagram card by its card and group text at its content heigh
   expect(getChart('diagram')!.layout(placed as never, { variant: 'hierarchy', target: 'report', size: { width: 320, height: 600 } } as never).refused).toBe(true);
 });
 
+// Prevents measure and render from naming different floors: a height that render refuses, a card width
+// that render refuses while measure says it draws, and a pinned choropleth that draws taller than measure says.
+it('names the size that render draws in measure', () => {
+  const names = ['Northern upland districts', 'Southern river valleys', 'Eastern coastal plains', 'Western forest foothills', 'Central market towns',
+    'Island ferry crossings', 'Research and development expenses', 'Income from equity-accounted firms', 'Pension provisions, domestic'];
+  const nodes = names.map((label, index) => ({ id: `n${index}`, kind: 'entity', shape: { kind: 'roundedRect' }, label, role: index === 0 ? 'accent' : 'primary', order: index }));
+  const edges = [[0, 1], [0, 2], [1, 3], [2, 4], [1, 5], [2, 6], [1, 7], [2, 8]].map(([from, to]) => ({ id: `e${from}-${to}`, source: { nodeId: `n${from}` }, target: { nodeId: `n${to}` } }));
+  const tree = { type: 'diagram', data: { nodes, edges }, options: { variant: 'hierarchy', title: 'Structure of the programme', source: 'Invented sample data' } };
+  const needed = (cliMeasure({ spec: tree, width: 720 }).body as { minHeightAtWidth: number }).minHeightAtWidth;
+  expect((render({ spec: { ...tree, options: { ...tree.options, size: { width: 720, height: needed } } } }).body as { ok: boolean }).ok).toBe(true);
+
+  const steps = ['Fix lead qualification', 'Shorten the demo wait', 'Simplify legal terms', 'Launch referral scheme'].map((label, index) => ({
+    id: `p${index}`, kind: 'step', shape: { kind: 'chevron' }, label, caption: `Sales ops, ${index + 4} weeks`, badge: { text: 'Sales ops', role: 'accent' }, order: index + 1, role: 'primary' }));
+  const card = { type: 'diagram', data: { nodes: steps }, options: { variant: 'linear-process', title: 'Four steps take 28 weeks and start with lead qualification', subtitle: 'Owner and duration for each step', source: 'Invented plan', target: 'dashboard' } };
+  const narrow = { ...card, options: { ...card.options, size: { width: 438 } } };
+  const floor = (cliMeasure({ spec: narrow }).body as { minWidth: number }).minWidth;
+  const refused = (render({ spec: narrow }).body as { errors: { code: string; fix: { value: { width: number } }[] }[] }).errors[0]!;
+  expect(refused.code).toBe('size-below-floor');
+  expect(refused.fix[0]!.value.width).toBe(floor);
+  expect((render({ spec: { ...card, options: { ...card.options, size: { width: floor } } } }).body as { ok: boolean }).ok).toBe(true);
+
+  // A width-only refusal at the chart's static floor advises the width alone, and that width draws.
+  const football = getFixtures('bar').find((f) => f.id === 'valuation-football-field')!;
+  const narrowBar = { type: 'bar', data: football.data, options: { ...football.options, size: { width: 150 } } };
+  const barRefused = (render({ spec: narrowBar }).body as { errors: { code: string; fix: { value: { width: number; height?: number } }[] }[] }).errors[0]!;
+  expect(barRefused.code).toBe('size-below-floor');
+  expect(barRefused.fix[0]!.value).toEqual({ width: 280 });
+  expect((render({ spec: { ...narrowBar, options: { ...narrowBar.options, size: barRefused.fix[0]!.value } } }).body as { ok: boolean }).ok).toBe(true);
+
+  const map = { type: 'choropleth', data: { pack: 'dach', regions: [{ id: 'DE', value: 620.3 }, { id: 'AT', value: 618.9 }, { id: 'CH', value: 148.3 }] },
+    options: { title: 'Value by region', unit: 'EUR m', source: 'Invented sample data', classes: 5, size: { width: 720, height: 270 } } };
+  const drawn = (render({ spec: map }).body as { size: { height: number } }).size.height;
+  expect((cliMeasure({ spec: map }).body as { size: { height: number } }).size.height).toBe(drawn);
+
+  // A pin far taller than the map still finds the empty band: the canvas stays the pin plus the footer.
+  const tall = { ...map, options: { ...map.options, size: { width: 720, height: 1200 } } };
+  const found = (cliMeasure({ spec: tall }).body as { size: { height: number } }).size.height;
+  expect(found).toBeLessThan(700);
+  const fitted = { ...map, options: { ...map.options, size: { width: 720, height: Math.round((found - (drawn - 270)) * 10) / 10 } } };
+  expect((render({ spec: fitted }).body as { size: { height: number } }).size.height).toBeCloseTo(found, 0);
+});
+
 // Prevents a pinned slope from refusing a 180–269 px slot where its end labels fit, from drawing a
 // plot under 80 px there.
 it('draws a pinned slope under its 270 px floor while its plot keeps 80 px', () => {
@@ -783,6 +826,20 @@ it('keeps bullet row names whole by giving up their bold weight', () => {
   const names = geometry.labels.filter(label => label.kind === 'category');
   expect(names.map(label => label.lines.join(' ')).sort()).toEqual((fixture.data as { rows: { label: string }[] }).rows.map(row => row.label).sort());
   expect(geometry.scene.filter(node => node.t === 'text' && node.id.startsWith('label:category:')).map(node => node.t === 'text' && node.font.weight)).not.toContain(600);
+});
+
+// measure named a width that draws only at a pinned height, so a host sizing a card from minWidth got a refusal.
+it('names a minimum width that draws at the automatic height', () => {
+  const series = ['Coastal freight, harbour logistics and bonded warehouse handling for bulk importers', 'Regional rail signalling, track renewal and level-crossing upkeep across older lines',
+    'Municipal water treatment, sewer relining and storm-drain mapping for smaller towns', 'Orchard irrigation, frost protection and packing-shed cold chains for fruit growers',
+    'Community library lending, archive scanning and reading rooms for rural districts', 'Ferry timetabling, pier maintenance and winter crew rosters for island crossings'];
+  const data = {
+    categories: ['Northern upland districts and hill farms', 'Southern river valleys and flood plains', 'Eastern coastal plains', 'Western forest foothills'].map((label, index) => ({ id: `c${index}`, label })),
+    series: series.map((label, index) => ({ id: `s${index}`, label, values: [0, 1, 2, 3].map((value) => (value + index) % 5) })),
+  };
+  const options = { variant: 'harvey', scale: 'discrete', title: 'Long names read whole at a generous size', subtitle: { company: 'Invented Group', measure: 'Maturity, 0 = absent to 4 = leading', period: 'May 2026' }, source: 'Invented capability assessment, May 2026' };
+  const { minWidth } = measure({ type: 'heatmap', data, options } as never);
+  expect(canDraw({ type: 'heatmap', data, options: { ...options, size: { width: minWidth } } } as never)).toMatchObject({ ok: true });
 });
 
 // Prevents circular-process arrow labels from losing their last letters: the label box is as wide as its text, so no side padding may be taken from it.

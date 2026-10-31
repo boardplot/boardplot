@@ -128,6 +128,9 @@ function places(node: unknown, steps: readonly string[], at: (string | number)[]
 
 const quoted = (value: unknown) => typeof value === 'string' ? `'${value}'` : String(value);
 
+/** The content parts a `labels` array can name. */
+const LABEL_PARTS: readonly unknown[] = ['absolute', 'percent', 'category', 'series'];
+
 /**
  * The chart's options and data with every retired setting rewritten to its
  * successor or removed, and one `option-deprecated` warning for each. The
@@ -192,6 +195,22 @@ export function retireChartSettings<C extends { options?: unknown; data?: unknow
           fix: [{ op: 'remove', path }, ...addWhereAbsent(without, [{ op: 'replace', path: toJsonPointer(target), value: successor }])] });
       }
     }
+  }
+  // Schema takes any string as a part, and a part no chart reads drew an empty label. `value` means
+  // the number; with no part left the kind draws its default content.
+  const labels = readAt(next, ['options', 'labels']);
+  for (const [kind, content] of Object.entries(isRecord(labels) ? labels : {})) {
+    if (!Array.isArray(content) || content.every(part => LABEL_PARTS.includes(part))) continue;
+    const at = ['options', 'labels', kind];
+    const dotted = at.join('.');
+    const unread = content.filter(part => !LABEL_PARTS.includes(part));
+    const kept = [...new Set(content.map(part => part === 'value' ? 'absolute' : part).filter(part => LABEL_PARTS.includes(part)))];
+    next = setAt(next, at, kept.length > 0 ? kept : undefined);
+    const path = toJsonPointer(at);
+    warnings.push({ code: 'option-deprecated', severity: 'warn', field: at,
+      message: `${dotted} has ${unread.map(quoted).join(', ')}, which is not a label part. The parts are absolute, percent, category and series.`,
+      suggest: kept.length > 0 ? `Set ${dotted} to ${JSON.stringify(kept)}.` : `Remove ${dotted} for the default label, or set one of the parts.`,
+      fix: kept.length > 0 ? [{ op: 'test', path, value: content }, { op: 'replace', path, value: kept }] : [{ op: 'remove', path }] });
   }
   return { chart: next as C, warnings };
 }

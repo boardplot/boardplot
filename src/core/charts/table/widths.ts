@@ -13,13 +13,14 @@ import { targetFloorsPx, TARGET_SIZE, type TargetSizeOptions } from '../../targe
 import { footerType } from '../../footer';
 import type { RenderTarget } from '../../types/options';
 import type { PresentationInfo } from '../../types/sizing';
-import { columnHeadLabel, columnHeaderAffix } from './resolve';
+import { fieldHeadText } from './headFace';
+import { columnHeaderAffix } from './resolve';
 import { visibleColumns, visibleRows, visibleInlineRows, treeChildCounts, heatColumn, printsFigures, cellDrawsTabular } from './view';
 import { operatorWidth, qualifierFont } from './statement';
-import { groupHeadingFaces, groupHeadingFloors } from './groupHeading';
+import { groupHeadingFaces, groupHeadingFloors, groupHeadingNeed } from './groupHeading';
 import {
   DENSE_COLUMNS, LABEL_WRAP_FLOOR, SOFT_LABEL_CAP, INLINE_LABEL_INDENT, cellPadX as trackCellPadX,
-  tableFonts, rowFont as ladderRowFont, kindFont, labelIndents, inlineFont as ladderInlineFont,
+  tableFonts, rowFont as ladderRowFont, kindFont, strongColumnFont, labelIndents, inlineFont as ladderInlineFont,
   changeLineFont, encodingReserve, intrinsicColumnWidth, authoredTrackWidth, authoredWidthWarnings,
   wrapFloorWidth, sectionChipFloor, collapsedHintWidth, headsFit, frameFillExtras,
   SORT_CHEVRON_RESERVE, DEFAULT_TRACK_GROWTH, headerContentWidth, columnTracks, type TableFonts, type WidthContext,
@@ -112,7 +113,8 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
     const totalFace = kind === undefined || (kind !== 'subtotal' && kind !== 'result' && kind !== 'driver' &&
       ((kind !== 'member' && kind !== 'measure') || theme.table?.weights?.figures?.[kind] === undefined));
     if (cell.role === 'total' && cell.kind !== 'rowLabel' && totalFace) return regularFonts.totalValue;
-    return kindFont(ladderRowFont(theme, ladder, regularFonts, cell.role, cellStep(cell), row?.hasChildren === true, hasChanges.has(cell.rowId)), kind, cell.kind === 'rowLabel', theme);
+    const font = kindFont(ladderRowFont(theme, ladder, regularFonts, cell.role, cellStep(cell), row?.hasChildren === true, hasChanges.has(cell.rowId)), kind, cell.kind === 'rowLabel', theme);
+    return cell.state === 'value' ? strongColumnFont(font, cols.find((col) => col.id === cell.colId), cell, kind, theme) : font;
   }
   function affixRoom(row: ResolvedRow, font: FontSpec): number {
     if (row.unitAffix === undefined) return 0;
@@ -127,7 +129,7 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
   // The label's case is the theme's (`table.head.case`), and the
   // tracks measure the text the head draws.
   const columnHeaderText = (col: (typeof cols)[number]) =>
-    columnHeadLabel(col.label, theme) + columnHeaderAffix(col);
+    fieldHeadText(col.label, theme) + columnHeaderAffix(col);
   /** The tracks every column takes at one set of head faces, and the cuts they report. */
   function trackWidths(faces: TableFonts) {
     const widths = new Map<Id, number>();
@@ -321,6 +323,8 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
     // prose has hit its floor. A truncated country name next to slack
     // prose reads as a layout fault.
     let deficit = totalW - available;
+    const beforeShrink = new Map(widths);
+    const floorOf = (col: ResolvedColumn) => view.scroll ? chosen.labelFloor : shrinkFloorWidth(col, wideTable, minimumWidths, chosen.labelFloor);
     // The hint room in the label track is optional and goes first: the hint is then cut or
     // left out, and no other column shrinks for it.
     for (const col of cols.filter((c) => canShrink(c) && c.kind === 'rowLabel')) {
@@ -336,7 +340,7 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
       const shrinkable = tier
         .map((col) => ({
           id: col.id,
-          room: Math.max(0, widths.get(col.id)! - (view.scroll ? chosen.labelFloor : shrinkFloorWidth(col, wideTable, minimumWidths, chosen.labelFloor))),
+          room: Math.max(0, widths.get(col.id)! - floorOf(col)),
         }))
         .filter((f) => f.room > 0);
       const totalRoom = shrinkable.reduce((a, f) => a + f.room, 0);
@@ -347,6 +351,17 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
         widths.set(f.id, Math.round(widths.get(f.id)! - cut));
       }
       deficit -= take;
+    }
+    // Each cut above is rounded, so tracks that cover the deficit in exact arithmetic can end a
+    // pixel or more over the plot. The columns with the most room give that pixel back.
+    if (deficit <= 0) {
+      const flex = cols.filter((col) => canShrink(col) && (col.kind === 'rowLabel' || col.kind === 'text'));
+      for (let over = Math.ceil(sumOf(widths) - available); over > 0; over--) {
+        const roomOf = (col: ResolvedColumn) => widths.get(col.id)! - floorOf(col);
+        const widest = flex.reduce<ResolvedColumn | undefined>((best, col) => best === undefined || roomOf(col) > roomOf(best) ? col : best, undefined);
+        if (widest === undefined || roomOf(widest) < 1) break;
+        widths.set(widest.id, widths.get(widest.id)! - 1);
+      }
     }
     let remaining = Math.ceil(sumOf(widths) - available);
     if (remaining > 0 && wideTable) {
@@ -365,6 +380,55 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
           changed = true;
         }
         if (!changed) break;
+      }
+    }
+    // A text column the shrink cut while another keeps width above what prints it uncut takes that
+    // width: the cut column is the one that loses text, and the slack column only wraps more.
+    const printsUncut = (col: ResolvedColumn) => col.wrap ? minimumWidths.get(col.id)!
+      : intrinsicColumnWidth(col, widthRows, { ...chosen.context, hint: undefined, twoLineLabels: true });
+    const flexText = cols.filter((col) => canShrink(col) && col.kind === 'text' && col.width === undefined);
+    // Only a column the shrink cut can want width, and the uncut width of the others is measured
+    // only when one does: the two-line measure costs a cell-by-cell pass over each text column.
+    const gapOf = (col: ResolvedColumn) => ({ id: col.id, gap: printsUncut(col) - widths.get(col.id)! });
+    const cutGaps = flexText.filter((col) => widths.get(col.id)! < beforeShrink.get(col.id)!).map(gapOf);
+    const wants = cutGaps.filter((entry) => entry.gap > 0);
+    const gaps = wants.length === 0 ? [] : flexText.map((col) => cutGaps.find((entry) => entry.id === col.id) ?? gapOf(col));
+    const wanted = wants.reduce((sum, entry) => sum + entry.gap, 0);
+    // A donor gives at most the width it keeps above its uncut text, and no group heading it sits
+    // under gives up the room its heading needs: the later group pass cannot restore that room
+    // when the frame is full.
+    const groupFaces = headingFaces(fonts);
+    const spare = new Map(table.columnGroups.filter((group) => group.heading !== false).map((group) => [group.id,
+      cols.filter((col) => group.columnIds.includes(col.id)).reduce((sum, col) => sum + widths.get(col.id)!, 0)
+        - groupHeadingNeed(group, groupFaces, measure, groupCell)]));
+    const donors = gaps.filter((entry) => entry.gap < 0).map((entry) => ({
+      id: entry.id,
+      slack: Math.floor(-entry.gap),
+      groups: table.columnGroups.filter((group) => spare.has(group.id) && group.columnIds.includes(entry.id)),
+    }));
+    const roomOf = (donor: (typeof donors)[number]) => Math.max(0, Math.min(donor.slack, ...donor.groups.map((group) => spare.get(group.id)!)));
+    const rooms = donors.map(roomOf);
+    const given = rooms.reduce((sum, room) => sum + room, 0);
+    const move = Math.floor(Math.min(wanted, given));
+    let moved = 0;
+    const cut = (donor: (typeof donors)[number], amount: number) => {
+      const take = Math.min(amount, roomOf(donor));
+      widths.set(donor.id, widths.get(donor.id)! - take);
+      donor.slack -= take;
+      for (const group of donor.groups) spare.set(group.id, spare.get(group.id)! - take);
+      moved += take;
+    };
+    if (move > 0) {
+      donors.forEach((donor, index) => cut(donor, Math.floor(move * rooms[index]! / given)));
+      for (let progress = true; progress && moved < move;) {
+        progress = false;
+        for (const donor of donors) if (moved < move && roomOf(donor) > 0) { cut(donor, 1); progress = true; }
+      }
+      let toTake = moved;
+      for (const [index, entry] of wants.entries()) {
+        const add = index === wants.length - 1 ? toTake : Math.min(toTake, Math.floor(moved * entry.gap / wanted));
+        widths.set(entry.id, widths.get(entry.id)! + add);
+        toTake -= add;
       }
     }
     // A shrink never takes a section chip past the table's end: a frame without room for it

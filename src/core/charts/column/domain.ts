@@ -4,7 +4,7 @@
  * stacks and totals, the anomaly rule, the value domain and the axis break.
  */
 
-import { restLabel, restSum, topNCut } from '../topN';
+import { restDetailsWarning, restLabel, restSum, topNCut } from '../topN';
 import { cellFields, normalizeCategorySeries } from '../categorySeries';
 import { chartPalette } from '../chartEnv';
 import { breakStyleRefusal } from '../band/breakOrder';
@@ -592,8 +592,14 @@ function columnBasis(
     .map((c) => c.id));
   const shareOf = (s: NormSer, ci: number): number | null => {
     const c = cats[ci]!;
-    if (basisByCat[ci]! <= 0 || (incompleteCats.has(c.id) && c.total100 === undefined)) return null;
-    if (variant === 'stacked100') return plottedOf(s, ci);
+    if (incompleteCats.has(c.id) && c.total100 === undefined) return null;
+    // A percent cell on a 100% stack is its own share: it needs no basis of
+    // absolute parts, which a stack of percent cells does not have.
+    if (variant === 'stacked100') {
+      if (nmCats100.has(c.id) || naCats100.has(c.id)) return null;
+      return basisByCat[ci]! > 0 || s.vals[ci]!.isPct ? plottedOf(s, ci) : null;
+    }
+    if (basisByCat[ci]! <= 0) return null;
     const val = s.vals[ci]!;
     return val.v === null || val.isPct ? null : (val.v / basisByCat[ci]!) * 100;
   };
@@ -940,6 +946,8 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
   // Read before topN: the Others cell is a sum, never a typed percent cell.
   const pctLevels = percentLevels(plotted);
   const { cats, dataSeries, othersId } = orderColumnCategories(options, normalized.cats, seriesNorm, plotted, warnings);
+  const lostDetails = othersId === null ? undefined : restDetailsWarning(data, new Set(cats.map((c) => c.id)));
+  if (lostDetails) warnings.push(lostDetails);
   const stackedLike = variant !== 'grouped';
   const { pyRef, uniformScenario } = columnScenarios(options, variant, cats, dataSeries, refSeries, warnings);
   const lines = columnLines(options, stackedLike, dataSeries, warnings, cats.some((cat) => cat.total100 !== undefined));
@@ -1009,12 +1017,12 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
   const sharesOn = variant === 'stacked100' && contentOf(options, 'segment', ['percent'])?.includes('percent') === true;
   warnIncompleteStacks(variant, cats, basis.incompleteCats, gtContent !== null, sharesOn, 'columns', warnings, disclosuresShown(options));
   // Every computed share the chart prints takes one precision.
-  const shareSet = shareSetFormatter(cats.flatMap((_, ci) => dataSeries.flatMap((s) =>
-    s.vals[ci]!.isPct ? [] : basis.shareOf(s, ci) ?? [])), options.locale?.language);
-  // Computed shares only: an authored percent or total100 is the author's number.
+  const shareSet = shareSetFormatter(cats.flatMap((_, ci) => dataSeries.flatMap((s) => basis.shareOf(s, ci) ?? [])), options.locale?.language);
+  // An authored total100 is the author's whole. Percent cells take part, as on bar:
+  // shares that add to exactly 100 print so they still do, and others print as given.
   const wholes = sharesOn ? cats.flatMap((c, ci) =>
     basis.nmCats100.has(c.id) || basis.naCats100.has(c.id) || basis.incompleteCats.has(c.id) ||
-    c.total100 !== undefined || dataSeries.some((s) => s.vals[ci]!.isPct)
+    c.total100 !== undefined
       ? []
       : [{ c, parts: dataSeries.flatMap((s) => { const share = basis.plottedOf(s, ci); return share === null ? [] : [{ s, share }]; }) }]) : [];
   // rounding 'sum-consistent' (the default): each complete stack's shares print so they add up to 100%,
@@ -1279,7 +1287,7 @@ export function shareKey(categoryId: string, seriesId: string): string {
   return `${categoryId}\0${seriesId}`;
 }
 
-/** A segment's printed share: its sum-consistent text, else the chart's share format. */
+/** A segment's printed share: its sum-consistent text, else the author's percent or the chart's share format. */
 export function shareTextOf(domain: Pick<ColumnDomain, 'shareTexts' | 'pctFmt' | 'authoredPctFmt'>, categoryId: string, seriesId: string, pct: number, authored: boolean): string {
-  return authored ? domain.authoredPctFmt(pct) : domain.shareTexts.get(shareKey(categoryId, seriesId)) ?? domain.pctFmt(pct);
+  return domain.shareTexts.get(shareKey(categoryId, seriesId)) ?? (authored ? domain.authoredPctFmt(pct) : domain.pctFmt(pct));
 }

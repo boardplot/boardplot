@@ -1810,3 +1810,66 @@ it('prints the resolved table unit in both frames', () => {
   expect(resolveTable(data, { subtitle: options.subtitle }).warnings.some(warning => warning.code === 'table-unit-overridden')).toBe(false);
   expect(resolveTable(data, { ...options, unit: '$k' }).warnings.some(warning => warning.code === 'table-unit-overridden')).toBe(false);
 });
+
+// A bare shared scale ('1.2bn') replaced options.unit in the frame, so "Revenue in B" printed with the currency nowhere.
+it('keeps the currency of options.unit in front of a shared bare scale', () => {
+  const data: TableData = { columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'v', kind: 'value', format: '1.2bn' }], rows: [{ id: 'r', label: 'North', cells: { v: 2500000000 } }] };
+  const unitOf = (unit: string) => {
+    const { table, warnings } = resolveTable(data, { subtitle: { measure: 'Revenue' }, unit });
+    return { unit: table.unit, overridden: warnings.some(warning => warning.code === 'table-unit-overridden') };
+  };
+  expect(unitOf('EUR')).toEqual({ unit: 'EUR B', overridden: false });
+  expect(unitOf('EUR bn')).toEqual({ unit: 'EUR bn', overridden: false });
+  expect(unitOf('$m')).toEqual({ unit: 'B', overridden: true });
+  // A scale word that is not the last word still counts: it never gets a second scale appended.
+  expect(unitOf('Mio. EUR')).toEqual({ unit: 'B', overridden: true });
+  expect(unitOf('k EUR')).toEqual({ unit: 'B', overridden: true });
+  expect(unitOf('EUR bn (adj.)')).toEqual({ unit: 'EUR bn (adj.)', overridden: false });
+  expect(unitOf('Mrd. EUR')).toEqual({ unit: 'Mrd. EUR', overridden: false });
+  // A scale glued to the currency ('USDbn') or in another language ('Md') is not a bare currency, so it never gets a second scale.
+  for (const unit of ['USDbn', 'EURm', 'kEUR', 'EUR Md']) expect(unitOf(unit)).toEqual({ unit: 'B', overridden: true });
+  const de = resolveTable({ ...data, columns: [data.columns[0]!, { id: 'v', kind: 'value', format: '1,2 Mrd' }] }, { subtitle: { measure: 'Umsatz' }, unit: 'Mio. EUR', locale: { decimal: ',', thousands: '.' } });
+  expect(de.warnings.some(warning => warning.code === 'table-unit-overridden')).toBe(true);
+  expect(de.table.unit).not.toContain('Mio.');
+});
+
+// Row formats ('$1.2k') hoist their own currency; unformatted columns carry no affix, so they must not make the unit look bare.
+it('does not compose options.unit with a unit hoisted from row formats', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'v', kind: 'value' }],
+    rows: [{ id: 'a', label: 'North', format: '$1.2k', cells: { v: 2500 } }, { id: 'b', label: 'South', format: '$1.2k', cells: { v: 1800 } }],
+  };
+  for (const unit of ['EUR', '$']) {
+    const { table, warnings } = resolveTable(data, { magnitude: 'thousand', unit, subtitle: { measure: 'Revenue' } });
+    expect(table.unit).toBe('$k');
+    expect(warnings.some(warning => warning.code === 'table-unit-overridden')).toBe(true);
+  }
+});
+
+// A prepared snapshot dropped the raw values of arrow and sparkline cells, so the reader lost the arrows, their key and the trend lines.
+it('draws arrows, their key and sparklines from a prepared snapshot', async () => {
+  const { prepareChart } = await import('../src/react/prepare');
+  for (const id of ['fatigue-cell-encodings', 'sparkline-line-column']) {
+    const { data, options } = getFixtures('table').find((f) => f.id === id)!;
+    const props = { data: data as TableData, ...(options as TableOptions), size: { width: 900 } };
+    const prepared = await prepareChart({ type: 'table', data, options, size: { width: 900 } });
+    expect(renderToString(<TableChart {...props} prepared={prepared} />)).toBe(renderToString(<TableChart {...props} />));
+  }
+});
+
+// A capitalised head printed "Power,mW" as "POWER,MW": milliwatts read as megawatts.
+it('keeps the unit after a head comma as written, on column and group heads, on both surfaces', async () => {
+  const { render } = await import('../src/cli/render');
+  const data = {
+    columns: [{ id: 'l', kind: 'rowLabel' as const, label: 'Site' }, { id: 'p', kind: 'value' as const, label: 'Power,mW' }],
+    columnGroups: [{ id: 'g', label: 'Load, kW', columns: ['p'] }],
+    rows: [{ id: 'a', label: 'North', cells: { p: 12 } }],
+  };
+  const { svg } = render({ spec: { type: 'table', data }, return: ['svg'] }).body as { svg: string };
+  for (const markup of [svg, renderToString(<TableChart data={data} />)]) {
+    expect(markup).toContain('POWER,mW');
+    expect(markup).toContain('LOAD, kW');
+  }
+  // The grid's capitals are in its text. A CSS capital rule on the group row would turn "kW" into "KW".
+  expect(tableStylesheet(resolveTheme('boardroom'), 'report')).not.toMatch(/\.bp-groups>\*\{[^}]*text-transform/);
+});

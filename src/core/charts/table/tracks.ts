@@ -187,6 +187,15 @@ export function kindFont(font: FontSpec, kind: ResolvedRow['kind'], label: boole
 }
 
 /**
+ * A `strong` column carries the header's weight down its cells, except on a subtotal, a result or a
+ * de-emphasized cell. The tracks measure this face, so a bold label gets the room it draws in.
+ */
+export function strongColumnFont(font: FontSpec, column: Pick<ResolvedColumn, 'emphasis'> | undefined, cell: ResolvedCell, kind: ResolvedRow['kind'], theme: Theme): FontSpec {
+  return column?.emphasis === 'strong' && !cell.deEmphasized && kind !== 'subtotal' && kind !== 'result'
+    ? { ...font, weight: theme.table?.weights?.block ?? tableEmphasis(theme) } : font;
+}
+
+/**
  * The legacy inline-note and unit face. Change lines use `changeLineFont`.
  */
 export function inlineFont(theme: Theme, ladder: LevelLadder, _step: number, _signed: boolean): FontSpec {
@@ -248,7 +257,7 @@ export interface WidthContext {
   headerTrailingTracking?: boolean;
   /** Extra a browser needs over the measured width; `browserSlack` on React. */
   slack?: (font: FontSpec, width: number) => number;
-  /** A row label counts at its two-line width, broken as a name breaks (`twoLineWidth`): the floor a label track narrows to. */
+  /** A row label or a text cell counts at its two-line width (`twoLineWidth`, a label broken as a name breaks): the width that prints it uncut. */
   twoLineLabels?: boolean;
   /**
    * Whether the surface draws a cell's string, or a line inside that cell,
@@ -390,8 +399,8 @@ export function intrinsicColumnWidth(
     const cell = row.cells[column.id];
     if (!cell) continue;
     const font = ctx.cellFont(cell);
-    let width = isRowLabel && ctx.twoLineLabels === true
-      ? twoLineWidth(cell.displayed, font, ctx.measure, true)
+    let width = (isRowLabel || column.kind === 'text') && ctx.twoLineLabels === true
+      ? twoLineWidth(cell.displayed, font, ctx.measure, isRowLabel)
       : ctx.measure(cell.displayed, figureFont(font, ctx.figures?.(column, cell.displayed))).width;
     width += ctx.slack?.(font, width) ?? 0;
     // Only what the text adds is capped here: the indent, the affix and the hint come on top, and a wider column from other content gives labels the room.

@@ -320,8 +320,28 @@ function primaryDomain(options: ComboOptions, gate: Gate, extent: { lo: number; 
     pticks = Array.from({ length: ruler.intervals + 1 }, (_, i) =>
       roundTick(dLo + ((dHi - dLo) * i) / ruler.intervals),
     );
+  } else if (gate.secondaryActive && (va.min !== undefined || va.max !== undefined) && !(options as { [SECONDARY_FULL_DOMAIN]?: unknown })[SECONDARY_FULL_DOMAIN]
+    && (pticks[0] !== dLo || pticks[pticks.length - 1] !== dHi)) {
+    // A second scale reads off the same rows, so they run the whole scale: an authored
+    // bound between two ticks moves the rows, it is not left above them. A Pareto total
+    // is not a bound the reader asked to see; its round ticks stay.
+    const step = pinnedStep(dLo, dHi, pticks.length - 1);
+    pticks = Array.from({ length: Math.round((dHi - dLo) / step) + 1 }, (_, i) => Number((dLo + step * i).toPrecision(12)));
   }
   return { dLo, dHi, pticks };
+}
+
+/** The step of a pinned range: a ladder step that divides it, in the count nearest `rows`, more rows on a tie; else an even division. */
+function pinnedStep(lo: number, hi: number, rows: number): number {
+  const even = (hi - lo) / rows || 1;
+  const steps = ladderSteps(even / 2, even * 2, PRIMARY_MANTISSAS)
+    .filter((step) => Math.abs((hi - lo) / step - Math.round((hi - lo) / step)) < 1e-9);
+  return steps.reduce<number | undefined>((best, step) => {
+    if (best === undefined) return step;
+    const off = Math.abs((hi - lo) / step - rows);
+    const bestOff = Math.abs((hi - lo) / best - rows);
+    return off < bestOff - 1e-9 || (Math.abs(off - bestOff) <= 1e-9 && step < best) ? step : best;
+  }, undefined) ?? even;
 }
 
 /**
@@ -351,15 +371,7 @@ function rightAxis(
     // the primary's, more rows on a tie: 0/25/50/75/100, never 0/33/67/100.
     const lo = Math.min(secOpt.domain[0], raw.lo);
     const hi = Math.max(secOpt.domain[1], raw.hi);
-    const even = (hi - lo) / (nTicks - 1) || 1;
-    const steps = ladderSteps(even / 2, even * 2, PRIMARY_MANTISSAS)
-      .filter((step) => Math.abs((hi - lo) / step - Math.round((hi - lo) / step)) < 1e-9);
-    secStep = steps.reduce<number | undefined>((best, step) => {
-      if (best === undefined) return step;
-      const off = Math.abs((hi - lo) / step - (nTicks - 1));
-      const bestOff = Math.abs((hi - lo) / best - (nTicks - 1));
-      return off < bestOff - 1e-9 || (Math.abs(off - bestOff) <= 1e-9 && step < best) ? step : best;
-    }, undefined) ?? even;
+    secStep = pinnedStep(lo, hi, nTicks - 1);
     secondaryDomain = [roundTick(lo), roundTick(hi)];
   } else if (secondaryActive && fixed !== undefined) {
     secStep = fixed.step;

@@ -8,6 +8,7 @@
  */
 
 import { WEIGHT_REGULAR } from '../../theme';
+import { fieldHeadText } from './headFace';
 import type { FontSpec, TextMeasurer } from '../../text';
 import type { Id } from '../../types/cell';
 import type { ResolvedTable } from '../../types/table';
@@ -27,9 +28,9 @@ export function groupHeadingFaces(label: FontSpec): GroupHeadingFaces {
   return { label, note: { ...label, weight: WEIGHT_REGULAR, letterSpacing: 0 } };
 }
 
-/** The label as drawn: in capitals. The tracking is the face's own. */
+/** The label as drawn: in capitals, a unit after the last comma as written. The tracking is the face's own. */
 export function groupHeadingLabel(label: string): string {
-  return label.toUpperCase();
+  return fieldHeadText(label, {});
 }
 
 /** The note as drawn after the label, or undefined where there is none. */
@@ -75,7 +76,7 @@ export interface GroupHeadingCell {
  * The width a heading's cell needs: the label and its note as drawn, plus
  * what the cell itself takes. Rounded up to a whole pixel.
  */
-function groupHeadingNeed(
+export function groupHeadingNeed(
   group: { id: Id; label: string; note?: string },
   faces: GroupHeadingFaces,
   measure: TextMeasurer,

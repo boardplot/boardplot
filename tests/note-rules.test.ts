@@ -91,6 +91,14 @@ describe('note rules', () => {
     expect(noteLine('Lead', ['a', 'b'], { notes: { maxListed: 0 } })).toEqual(['Lead: 2 items.']);
   });
 
+  // A heatmap callout on a printed cell lost its ${value} and the words before it with no word to the author.
+  it('says so when a callout leaves ${value} to the mark that prints it', () => {
+    const geo = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'heatmap', data: { categories: ['a', 'b'], series: [{ id: 's', label: 'S', values: [1.5, -2.8] }] },
+      options: { size: { width: 480 } }, annotations: [{ kind: 'callout', id: 'c1', at: { categoryId: 'b', seriesId: 's' }, text: 'Low in B: ${value}' }] } as never)));
+    expect(geo.labels.find((label) => label.id === 'annotation:c1')?.text).toBe('b: Low in B');
+    expect(geo.warnings.find((warning) => warning.code === 'annotation-value-on-mark')?.message).toContain('−2.8');
+  });
+
   it('a callout that prints ${value} is the label of its point: the note does not name the point', () => {
     const geo = requireGeometry(layoutResolvedRequest(twoLines([{ kind: 'callout', id: 'c1', at: { categoryId: 'd0', seriesId: 'b' }, text: 'Start ${value}' }])));
     expect(geo.labels.find((label) => label.id === 'annotation:c1')?.text).toBe('Start 1,020');
@@ -223,6 +231,35 @@ describe('note rules', () => {
     expect(geo.labels.some((label) => label.kind === 'total')).toBe(false);
     expect(geo.a11y.desc).not.toContain('total');
     expect(noteTexts(geo, ['disclosure'])).toEqual(['Not drawn (negative value, so no total shown): Loss.']);
+  });
+
+  // A narrow doughnut gave its width to the slice labels, so the hole was too small and the total moved to the notes.
+  // The ring grows for the total only when the layout would drop it; a layout that draws it keeps its labels.
+  describe('a doughnut\'s centre total', () => {
+    const categories = ['Cloud infrastructure & tools', 'People and contractors', 'Facilities and building lease', 'Marketing & brand campaigns', 'Travel and events', 'Professional services & legal', 'Training and development']
+      .map((label, i) => ({ id: `c${i + 1}`, label }));
+    const drawnAt = (target: string, width: number, height: number, hole: number, scale: number) => {
+      const values = [1.428, 0.882, 0.672, 0.504, 0.378, 0.21, 0.126].map((v) => v * scale);
+      const geo = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'pie', data: { categories, series: [{ id: 's', label: 'Spend', values }] },
+        options: { target, size: { width, height }, doughnut: hole, legend: 'bottom', unit: 'EUR m', format: '1.0' } } as never)));
+      const shown = (label: { hidden?: unknown; noted?: boolean }) => !label.hidden && !label.noted;
+      return {
+        total: shown(geo.labels.find((label) => label.kind === 'total')!),
+        slices: geo.labels.filter((label) => label.kind !== 'total' && shown(label)).length,
+      };
+    };
+
+    it('stays in the hole of a 280 px doughnut', () => {
+      expect(drawnAt('dashboard', 280, 420, 0.6, 1).total).toBe(true);
+    });
+
+    it('does not cost a 343 px doughnut a slice label when its hole already holds the total', () => {
+      expect(drawnAt('dashboard', 343, 300, 0.6, 1)).toEqual({ total: true, slices: 3 });
+    });
+
+    it('leaves the labels as they are when the hole cannot hold the total at either size', () => {
+      expect(drawnAt('report', 360, 300, 0.4, 1e6)).toEqual({ total: false, slices: 4 });
+    });
   });
 
   it('an open height gives hidden values the room their unprinted note took', () => {

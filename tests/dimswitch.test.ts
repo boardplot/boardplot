@@ -49,6 +49,21 @@ it('prints every member row of a money measure in the magnitude of its largest c
  const small:DimSwitchData={...exampleData,facts:exampleData.facts.map(fact=>({...fact,sums:tiny(fact.sums)!,...(fact.ref ? {ref:tiny(fact.ref)} : {})}))};
  expect(['total','paid','search-a','search-b'].map(member=>row(member,'spend',small).cells.range!.displayed)).toEqual(['0.180','0.160','0.140','0.120']);
 });
+// Period cells of 1.46M printed one string (1.5M ... 1.4M) because the Range total of 18.2M set the precision of every column of the measure.
+it('gives each column of a money measure the precision its own figures need', () => {
+ const sums=(amount:number)=>({amount});
+ const data:DimSwitchData={dimension:{label:'Region',total:{id:'total',label:'Total'},members:[{id:'a',label:'A'},{id:'b',label:'B'}],headline:['amount'],sums:true},
+  measures:[{id:'amount',scale:'money',label:'Amount',value:{field:'amount'}}],periods:[{id:'range',label:'Range',kind:'range'},{id:'prior',label:'Prior',kind:'prior'},{id:'p1',label:'P1'},{id:'p2',label:'P2'}],
+  facts:[['total',18200000,1460000,1440000],['a',17100000,1370000,1350000],['b',1100000,90000,90000]].flatMap(([memberId,...v])=>(['range','p1','p2'] as const).map((periodId,i)=>({memberId:memberId as string,periodId,sums:sums(v[i] as number),...(i===0 ? {ref:sums(v[0] as number*0.9)} : {})})))};
+ expect(['range','p1','p2'].map(col=>row('total','amount',data).cells[col]!.displayed)).toEqual(['18.2M','1.46M','1.44M']);
+ expect(['range','p1','p2'].map(col=>row('b','amount',data).cells[col]!.displayed)).toEqual(['1.1M','0.09M','0.09M']);
+});
+// Scale 'money' climbs k, M, B itself, so a unit that names a magnitude prints 1,320 Mio. CHF as 1.32k.
+it('warns when a money measure has a unit that names a magnitude', () => {
+ const data:DimSwitchData={...exampleData,measures:exampleData.measures.map(m=>m.scale==='money' ? {...m,unit:'Mio. CHF'} : m)};
+ expect(compileDimSwitch(data).warnings.filter(w=>w.code==='dimswitch-scale-unit').length).toBeGreaterThan(0);
+ expect(compileDimSwitch(exampleData).warnings.some(w=>w.code==='dimswitch-scale-unit')).toBe(false);
+});
 // One table prints one decimal separator: language alone must not switch the comparisons to commas while the values keep points.
 it('keeps the value separator in comparisons when only the language is German', () => {
  const german=resolveDimSwitch(exampleData,{locale:{language:'de'}}).table.rows.find(r=>r.id===dimswitchRowId('by-measure','total','cac'))!;
@@ -312,4 +327,20 @@ it('advises a size at which compact spacing holds', () => {
   const advice = tight({ width: 400 })?.fix?.[0];
   if (advice?.op !== 'replace') throw new Error('no size advice at 400 px');
   expect(tight(advice.value as { width: number; height?: number })).toBeUndefined();
+});
+
+// A displayed period with no ref printed n/a under every figure, and an encodings key that names no column was dropped without a word.
+it('leaves out the change line of periods with no ref and warns on an encodings key that names no column', () => {
+  const periods = [{ id: 'range', label: 'Range', kind: 'range' as const }, { id: 'prior', label: 'vs prior', kind: 'prior' as const }, { id: 'w1', label: 'W1' }, { id: 'w2', label: 'W2' }];
+  const facts = (ref: boolean) => ['range', 'prior', 'w1', 'w2'].map(periodId => ({ memberId: 'total', periodId, sums: { orders: 100 }, ...(ref && periodId === 'w2' ? { ref: { orders: 90 } } : {}) }));
+  const data = (withRef: boolean): DimSwitchData => ({ dimension: { label: 'Segment', total: { id: 'total', label: 'Total' }, members: [], headline: ['orders'] },
+    measures: [{ id: 'orders', label: 'Orders', scale: 'count', value: { field: 'orders' }, change: 'relative' }], periods, facts: facts(withRef) });
+  const none = resolveDimSwitch(data(false), { encodings: { prior: { type: 'arrow', scale: 'relative' } } });
+  const changeRow = (r: typeof none) => r.table.rows.find(x => x.id === dimswitchRowId('by-measure', 'total', 'orders') + ':change');
+  expect(changeRow(none)).toBeUndefined();
+  expect(none.compileWarnings.find(w => w.code === 'dimswitch-encoding-column')).toMatchObject({ suggest: expect.stringContaining("Use 'pp'. The column ids are 'range', 'pp', 'w1', 'w2'") });
+  const some = resolveDimSwitch(data(true), { encodings: { pp: 'arrow' } });
+  expect(changeRow(some)!.cells.w1!.displayed).toBe('');
+  expect(changeRow(some)!.cells.w2!.displayed).toContain('+11%');
+  expect(some.compileWarnings.map(w => w.code)).not.toContain('dimswitch-encoding-column');
 });

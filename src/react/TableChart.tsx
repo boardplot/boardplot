@@ -37,7 +37,9 @@ import { publishTableChart } from './specHandover';
 import { registeredType } from './chartEntry';
 import { tableCore } from '../core/charts/table/core';
 import { tableCellNodeId } from '../core/charts/table/cellKey';
-import { columnHeadLabel, columnHeaderAffix, resolveTable } from '../core/charts/table/resolve';
+import { fieldHeadText } from '../core/charts/table/headFace';
+import { groupHeadingLabel } from '../core/charts/table/groupHeading';
+import { columnHeaderAffix, resolveTable } from '../core/charts/table/resolve';
 import {
   cellDrawsTabular,
   collapsedByDefault,
@@ -80,7 +82,7 @@ import {
 import { DEFAULT_EMPTY_MESSAGE } from '../core/emptyData';
 import { fitTableFormats, formatsFittedWarning, type FormatFitChange } from '../core/charts/table/fitFormats';
 import { emitSparkline, sparklineDomains, sparklineSourceValues } from '../core/charts/table/encodings/sparkline';
-import { arrowGlyph, arrowKey, type ArrowKeyEntry } from '../core/charts/table/encodings/arrow';
+import { arrowGlyph, arrowKey, printedNumber, type ArrowKeyEntry } from '../core/charts/table/encodings/arrow';
 import { badSide, heatKey, heatPaint, heatRanges, type HeatKeyEntry, type HeatRange } from '../core/charts/table/encodings/heat';
 import { heatEncodingRefusals } from '../core/charts/table/encodings/heatOptions';
 import { lastObservedIndex, type SparklineDomain } from '../core/charts/sparkline/layout';
@@ -2086,7 +2088,7 @@ function TableHead({
         aria-label={group.heading === false ? group.label : undefined}
       >
         {group.heading === false ? null : (
-          <span>{group.label}{group.note === undefined ? null : <span className="bp-group-note"> · {group.note}</span>}</span>
+          <span>{groupHeadingLabel(group.label)}{group.note === undefined ? null : <span className="bp-group-note"> · {group.note}</span>}</span>
         )}
       </div>,
     );
@@ -2161,7 +2163,7 @@ function TableHead({
  * written ("SPEND ($k)").
  */
 function headText(column: ResolvedColumn, theme: Pick<Theme, 'table'> | undefined): string {
-  return `${columnHeadLabel(column.label, theme ?? {})}${columnHeaderAffix(column)}`;
+  return `${fieldHeadText(column.label, theme ?? {})}${columnHeaderAffix(column)}`;
 }
 
 /** The pin offset and the explicit track a head cell carries, or nothing. */
@@ -3205,7 +3207,7 @@ function CellContent({
     cell.state === 'value' && typeof cell.raw === 'number') {
     // The direction glyph the SVG sets before the change, in its tone:
     // the grid printed the coloured number alone.
-    main = <><span className="bp-arrow" aria-hidden="true">{arrowGlyph(cell.raw, barMaximum, column.cellEncoding.scale)}</span>{cell.displayed}</>;
+    main = <><span className="bp-arrow" aria-hidden="true">{arrowGlyph(printedNumber(cell), barMaximum, column.cellEncoding.scale)}</span>{cell.displayed}</>;
   } else if (column.kind === 'rowLabel') {
     // The breaks the SVG may take after _ - / . (NAME_BREAK), so a long name wraps at the same places.
     main = splitNameBreaks(cell.displayed).flatMap((piece, index) => index === 0 ? [piece] : [<wbr key={index} />, piece]);

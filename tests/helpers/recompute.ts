@@ -44,9 +44,6 @@ export type ReceiptVerdict =
   | { status: 'unknown-op'; reason: string }
   | { status: 'not-a-derivation'; reason: string };
 
-/** Two decimals, the engine's own rounding helper semantics. */
-const round2 = (v: number): number => Math.round(v * 100) / 100;
-
 type Operands = { ref: string; value: number | null; state?: string }[];
 
 /**
@@ -148,11 +145,6 @@ const OPS: Record<string, (inputs: Operands) => number | null> = {
     return part === null || total === null || total === 0 ? null : (100 * part) / total;
   },
   'likert-net@1': (i) => binary(i, (a, b) => a - b),
-  'variance-delta@1': (i) => binary(i, (a, b) => round2(a - b)),
-  // Same refusal as kpi, same reason, and the layout warns `ref-nonpositive`
-  // and marks the category n.m. when it fires.
-  'variance-delta-pct@1': (i) =>
-    binary(i, (a, b) => (b <= 0 ? null : round2((100 * (a - b)) / Math.abs(b)))),
   'funnel-conversion@1': (i) => binary(i, (a, b) => (a === 0 ? null : b / a)),
   'waterfall-total@1': (i) => reduceSum(i),
   'pvm-effect@1': (i) => reduceSum(i),

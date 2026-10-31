@@ -48,6 +48,18 @@ const NUMBER_ONLY_SHAPES: readonly RowsShape[] = ['table', 'histogram', 'box'];
 /** Table column kinds that take their cells from the source field named like the column id. */
 const TABLE_INPUT_KINDS: ReadonlySet<unknown> = new Set(['value', 'text', 'status', 'date']);
 
+/** Roles that read a number; every other role reads text. */
+const NUMBER_ROLES: ReadonlySet<string> = new Set(['value', 'x', 'y', 'size']);
+
+/** A number in a text role reads as its text, as the same cell of a CSV does: SQL keys and years often arrive as numbers. */
+function numbersAsText(rows: Row[], contract: RowContract): Row[] {
+  const columns = Object.entries(contract).filter(([role]) => !NUMBER_ROLES.has(role)).map(([, column]) => column);
+  return rows.map((row) => {
+    const numbers = columns.filter((column) => typeof own(row, column) === 'number');
+    return numbers.length ? { ...row, ...Object.fromEntries(numbers.map((column) => [column, String(row[column])])) } : row;
+  });
+}
+
 /** Where the rows come from: the argument a refusal points at, and the read that yields them. */
 export interface RowsSource {
   argument: '/rows' | '/rowsFile';
@@ -213,9 +225,6 @@ function adaptItemRows(
           ...(WRITTEN_NUMBER.test(value) ? { suggest: plainNumberAdvice(value, kind, decimalComma) } : {}),
         });
         entry[role] = value;
-      } else if (shape === 'flow' && typeof raw === 'number') {
-        // SQL keys are often integers; a node or stage id is text.
-        entry[role] = String(raw);
       } else {
         if (role === 'label' && shape === 'waterfall' && (typeof raw !== 'string' || !raw)) {
           throw new InputError('invalid-identity', `${source.displayPath}: item label must be a non-empty string`, source);
@@ -596,17 +605,18 @@ export function adaptRows(spec: unknown, columns: unknown, source: RowsSource): 
     throw new InputError('invalid-rows', 'rows must be an array of objects', { path: rowsArgument });
   }
   const decimalComma = loaded.decimalComma === true;
+  const sourceRows = numbersAsText(loaded.rows, rowContract);
   if (shape === 'waterfall' || shape === 'scatter' || shape === 'flow' || shape === 'table' || shape === 'histogram' || shape === 'box') {
     const adapted = shape === 'table'
-      ? adaptTableRows(loaded.rows, rowContract, template, tableInputs, decimalComma, rowsArgument)
+      ? adaptTableRows(sourceRows, rowContract, template, tableInputs, decimalComma, rowsArgument)
       : shape === 'histogram' || shape === 'box'
-        ? adaptObservationRows(shape, loaded.rows, rowContract, template, decimalComma, rowsArgument)
-        : adaptItemRows(shape, loaded.rows, rowContract, template, valueKind, decimalComma, rowsArgument);
+        ? adaptObservationRows(shape, sourceRows, rowContract, template, decimalComma, rowsArgument)
+        : adaptItemRows(shape, sourceRows, rowContract, template, valueKind, decimalComma, rowsArgument);
     return { spec: { ...spec, data: adapted.data }, pathMap: adapted.pathMap, rows: loaded.rows.length, ignoredColumns: adapted.ignoredColumns, states: [] };
   }
   const contract = rowContract as NamedColumnContract;
   // A row without the value column stays without it, so the adapter names the column as missing.
-  const rows = loaded.rows.map((row, index) => (Object.hasOwn(row, contract.value)
+  const rows = sourceRows.map((row, index) => (Object.hasOwn(row, contract.value)
     ? { ...row, [contract.value]: valueCell(row[contract.value], valueKind, decimalComma, `rows[${index}].${contract.value}`) }
     : row));
   // Reuse the existing single-series adapter, including value, duplicate and state checks.
@@ -717,7 +727,12 @@ export function adaptRows(spec: unknown, columns: unknown, source: RowsSource): 
           return { ...template, id: category.id, ...authored, ...(named('date') && category.date !== undefined ? { date: category.date } : {}) };
         }),
         ...(bartable ? bartablePanel(data, adapted.data.series, series, contract.value, (generated) => pathMap.get(generated)) : {
-          series: adapted.data.series.map((entry) => ({ ...series.get(entry.id), ...entry })),
+          series: adapted.data.series.map((entry) => {
+            if (type !== 'heatmap') return { ...series.get(entry.id), ...entry };
+            // The rows decide every heatmap cell state, so the template's own list is dropped before the rows' states are added.
+            const { states: _templateStates, ...template } = series.get(entry.id) ?? {};
+            return { ...template, ...entry, ...cellStates(entry.id, adapted.data.categories, adapted.states) };
+          }),
         }),
         }),
       },
@@ -727,6 +742,12 @@ export function adaptRows(spec: unknown, columns: unknown, source: RowsSource): 
     ignoredColumns: adapted.ignoredColumns,
     states: adapted.states,
   };
+}
+
+/** A heatmap row's states in category order, or nothing when none of its cells has one. */
+function cellStates(seriesId: string, categories: readonly { id: string }[], states: readonly NamedColumnStateEntry[]) {
+  const own = states.filter((entry) => entry.seriesId === seriesId);
+  return own.length ? { states: categories.map((category) => own.find((entry) => entry.categoryId === category.id)?.state ?? null) } : {};
 }
 
 /**
@@ -798,7 +819,10 @@ export function rewriteRowsDiagnostics<T extends { path?: string; displayPath?: 
       ? `rows[${finding.owner.rowId}].cells[${finding.owner.colId}]` : undefined;
     const source = sourceFor(finding.path) ?? (finding.displayPath === undefined ? undefined : pathMap?.get(finding.displayPath))
       ?? (owner === undefined ? undefined : pathMap?.get(owner));
-    const fix = finding.fix?.map(operation => ({ ...operation, path: sourceFor(operation.path)?.path ?? operation.path }));
-    return { ...finding, ...(source || {}), ...(fix ? { fix } : {}) };
+    // A fix aimed at data the rows generated has no source row to patch (a removed category, say). It is left out whole, and its suggest stays.
+    const generated = pathMap && finding.fix?.some(operation => operation.path.startsWith('/data/') && !sourceFor(operation.path));
+    const fix = generated ? undefined : finding.fix?.map(operation => ({ ...operation, path: sourceFor(operation.path)?.path ?? operation.path }));
+    const { fix: _fix, ...rest } = finding;
+    return { ...(generated ? rest : finding), ...(source || {}), ...(fix ? { fix } : {}) } as T;
   });
 }

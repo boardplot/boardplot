@@ -22,7 +22,7 @@ import { GridChildRefusal, gridRowHeights, gridSizing, hasKpiFigure, layoutChild
 import { KPI_HOST_TEXT, KPI_VALUE_SIZE } from '../typeFloors';
 import { stringsIn } from '../frame';
 import { authoredStrings } from '../strings';
-import { defaultMeasurer } from '../text';
+import { defaultMeasurer, wrapText, type FontSpec, type TextMeasurer } from '../text';
 import { canvasMargin, panelTypeClass, resolveTheme, themeForWidth, typeWidthClass, type TypeWidthClass } from '../theme';
 import type { GridData, GridPanel } from '../types/data';
 import type { ThemeRef } from '../types/theme';
@@ -86,6 +86,15 @@ export function tierWeights(panels: { type?: string; options?: object }[]): numb
   return panels.map((_, index) =>
     index === 0 && panels.length > 1 && !uniformScale ? TIER_WEIGHT_FIRST : 1,
   );
+}
+
+/** A panel caption wrapped to its width, with the box it fills. */
+export function measuredCaption(text: string, font: FontSpec, width: number, measure: TextMeasurer) {
+  const { lines, truncated } = wrapText(text, font, width, Number.MAX_SAFE_INTEGER, measure);
+  const sizes = lines.map(line => measure(line, font));
+  // A word wider than the width is cut; `title` keeps the whole text for the warning and the reading.
+  return { lines, ...(truncated ? { title: text } : {}), width: Math.max(...sizes.map(size => size.width)),
+    height: Math.max(...sizes.map(size => size.height)) + (lines.length - 1) * font.size * (font.lineHeight ?? 1.2) };
 }
 
 /** The first tier that has not explicitly suppressed category labels. */
@@ -372,9 +381,9 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
       : undefined;
     const tierFont = { family: theme.type.family, ...theme.type.axis };
     const tierReserve = compactTiers
-      ? (tierCaption ? measure(tierCaption, tierFont).height : 0) +
+      ? (tierCaption ? measuredCaption(tierCaption, tierFont, slot.w, measure).height : 0) +
         (tierCaption && tierDetail ? theme.space.labelPad : 0) +
-        (tierDetail ? measure(tierDetail, tierFont).height : 0) +
+        (tierDetail ? measuredCaption(tierDetail, tierFont, slot.w, measure).height : 0) +
         (tierCaption || tierDetail ? theme.space.labelPad : 0)
       : 0;
     const childMargin: Record<string, unknown> = isRecord(opts.margin) ? opts.margin : {};
@@ -493,8 +502,8 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
     const tierLabels = laidOut.map((child, index) => {
       if (!child.tierCaption && !child.tierDetail) return undefined;
       const font = { family: theme.type.family, ...theme.type.axis };
-      const titleSize = child.tierCaption ? measure(child.tierCaption, font) : undefined;
-      const detailSize = child.tierDetail ? measure(child.tierDetail, font) : undefined;
+      const titleSize = child.tierCaption ? measuredCaption(child.tierCaption, font, child.geo.size.width, measure) : undefined;
+      const detailSize = child.tierDetail ? measuredCaption(child.tierDetail, font, child.geo.size.width, measure) : undefined;
       const lineGap = titleSize && detailSize ? theme.space.labelPad : 0;
       const height = (titleSize?.height ?? 0) + lineGap + (detailSize?.height ?? 0);
       let y = childContent[index]!.y - theme.space.labelPad - height;
@@ -510,12 +519,12 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
         { slot: 'tierLeft', rect, penalty: 0 },
         { slot: 'tierPlotLeft', rect: { ...rect, x: child.geo.plot.x }, penalty: 1 },
       ];
-      for (const [id, text, rect, priority] of [
-        ['tier:caption', child.tierCaption, title, PRIORITY.total],
-        ['tier:detail', child.tierDetail, detail, PRIORITY.valueLine],
+      for (const [id, text, size, rect, priority] of [
+        ['tier:caption', child.tierCaption, titleSize, title, PRIORITY.total],
+        ['tier:detail', child.tierDetail, detailSize, detail, PRIORITY.valueLine],
       ] as const) {
-        if (text && rect) requests.push({ id, kind: 'axisTitle', typeRole: 'axis', owner: {}, text,
-          lines: [text], font, priority, candidates: candidates(rect) });
+        if (text && size && rect) requests.push({ id, kind: 'axisTitle', typeRole: 'axis', owner: {}, text,
+          lines: size.lines, ...(size.title ? { title: size.title } : {}), font, priority, candidates: candidates(rect) });
       }
       const solved = solveLabels(requests, occupied, {
         density: 'full',
@@ -744,6 +753,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
         x: moved.rect.x,
         y: moved.rect.y,
         lines: moved.lines,
+        ...(moved.title ? { title: moved.title } : {}),
         align: 'start',
         font: tier!.font,
         ink: moved.ink,
