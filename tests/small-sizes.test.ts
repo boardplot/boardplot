@@ -826,3 +826,25 @@ it('draws a column whose names cannot fit or rotate as bars, or lists the names 
   expect(tall.type).toBe('bar');
   expect(hiddenNames(tall)).toEqual([]);
 });
+
+// The reading of a column that stepped to bars said column, so an agent reading it took the wrong chart type.
+it('reports the drawn type in the reading of a column that stepped to bars', () => {
+  const names = ['Automotive OEM', 'Automotive suppliers', 'Chemicals', 'Consumer goods', 'Energy utilities', 'Financial services', 'Food and beverage', 'Healthcare providers', 'Industrial machinery', 'Insurance',
+    'Logistics', 'Media', 'Oil and gas', 'Pharmaceuticals', 'Retail', 'Software', 'Telecommunications', 'Transport', 'Utilities', 'Wholesale'];
+  const data = { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [{ id: 's', label: 'Margin', values: names.map((_, i) => 8 + ((i * 7) % 23)) }] };
+  const body = render({ spec: { type: 'column', data, options: { title: 'Margin by sector', unit: '%', size: { width: 320 } } }, return: ['reading'] }).body as any;
+  expect(body.reading.type).toBe('bar');
+});
+
+// Taking owed off a thinned grand total let a pin override the thinning and hide a total the engine draws.
+it('keeps the thinned grand total when a pin names another one', () => {
+  const categories = Array.from({ length: 24 }, (_, i) => ({ id: `c${i}`, label: `Cat ${i + 1}` }));
+  const data = { categories, series: [
+    { id: 'a', label: 'A', values: categories.map((_, i) => 1200000 + i * 51234) },
+    { id: 'b', label: 'B', values: categories.map((_, i) => 900000 + i * 31234) },
+  ] };
+  const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'column', data, options: { title: 'T', variant: 'stacked', size: { width: 560, height: 360 }, labelPlacements: { 'grandTotal:c0': 'aboveNeighbours' } } })) as Geometry;
+  const shown = (id: string) => geometry.labels.some(label => label.id === `grandTotal:${id}` && label.hidden === undefined);
+  expect(shown('c1')).toBe(true);
+  expect(shown('c0')).toBe(false);
+});

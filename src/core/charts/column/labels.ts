@@ -719,7 +719,7 @@ export function planColumnLabels(
       kind: 'grandTotal',
       ...namesOnly(variant === 'stacked100' ? gtContent : gtContent?.filter((part) => part !== 'percent'), undefined),
       ...(net ? { role: 'category' as const } : {}),
-      ...(skipped ? { redundant: true, suppressedAs: 'density' as const } : {}),
+      ...(skipped ? { redundant: true, suppressedAs: 'density' as const, owed: true as const } : {}),
       ...(!net && !words && valueAlone && linked.has(`grandTotal:${c.id}`) ? { printedIn: linked.get(`grandTotal:${c.id}`) } : {}),
       owner: { categoryId: c.id },
       text,

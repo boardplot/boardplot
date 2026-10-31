@@ -19,6 +19,7 @@ import { DEFAULT_REST_MIN, DEFAULT_TOP_N } from './charts/topN';
 import { chartNotes, type ChartNote } from './notes';
 import type { InteractionRecord } from './a11y/types';
 import type { RoundingAdjustment } from './shareRounding';
+import { drawnRequest } from './drawnRequest';
 import type { ResolvedChartRequest } from './request';
 import type { Geometry } from './types/scene';
 import type { StructureCount } from './structureCounts';
@@ -419,7 +420,8 @@ export function chartReading(input: ChartReadingInput): ChartReading {
     || readableLabelDestination(input.geometry)('frame:source', source, {}, 'source'));
   return {
     name: input.name,
-    type: input.type,
+    // A column that stepped to bars reads as the bar chart that was drawn.
+    type: drawnRequest({ type: input.type }, input.geometry).type,
     counts: (input.geometry.a11y.counts ?? []).map(count => ({ ...count })),
     title: typeof title === 'string' && title.trim() !== '' ? title : null,
     size: { width: input.geometry.size.width, height: input.geometry.size.height },
