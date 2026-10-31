@@ -1169,6 +1169,9 @@ it('reads arrows, sort and ratios of a sign -1 row from the printed figures', ()
   };
   const table = resolveTable(data, {}).table;
   expect(table.rows.find((r) => r.id === 'cost')!.cells.r!.displayed).toBe('1.20');
+  // A literal over a cell flips with the row sign, so it prints the quotient of the printed -120.
+  const inverse = resolveTable({ ...data, columns: [...data.columns, { id: 'q', kind: 'computed', format: '0.00', calc: { op: 'div', a: { lit: 100 }, b: { ref: 'ac' } } }] }, {}).table;
+  expect(inverse.rows.find((r) => r.id === 'cost')!.cells.q!.displayed).toBe('\u22120.83');
   // Printed -120 sorts before -30, though the supplied 120 is the larger figure.
   expect(sortRows(table, { column: 'ac', direction: 'asc' }).map((r) => r.id)).toEqual(['cost', 'fee', 'rev']);
   const arrows = layout('table', data, { encodings: { d: 'arrow' } }).scene

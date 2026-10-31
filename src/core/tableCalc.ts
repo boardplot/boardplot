@@ -49,6 +49,34 @@ export function calcIsLinear(calc: Calc): boolean {
 }
 
 /**
+ * True when negating every cell the calc reads negates its result: odd in its cell inputs.
+ * A linear calc does, a ratio or product of two cells does not (both flip), and a literal
+ * over a cell does (only one flips). Literals never flip.
+ */
+export function calcFlipsWithInputs(calc: Calc): boolean {
+  if (calcIsLinear(calc)) return true;
+  const odd = (c: Calc): boolean => {
+    if ('ref' in c) return true;
+    if ('lit' in c) return false;
+    switch (c.op) {
+      case 'add':
+      case 'sub':
+        return odd(c.a);
+      case 'mul':
+      case 'div':
+        return odd(c.a) !== odd(c.b);
+      case 'delta':
+        return true;
+      case 'abs':
+      case 'percentDelta':
+      case 'share':
+        return false;
+    }
+  };
+  return odd(calc);
+}
+
+/**
  * Calcs the engine itself produces in percentage POINTS — the
  * only computed columns whose scale is guaranteed by construction.
  */

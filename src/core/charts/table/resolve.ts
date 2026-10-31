@@ -59,7 +59,7 @@ import type {
   TotalPolicy,
 } from '../../types/table';
 import { previousColumnInGroup, readCalcInput, resolveCalcRef } from './calcRef';
-import { calcIsLinear, calcPreservesScale, calcYieldsPoints, columnOwnsFormat } from '../../tableCalc';
+import { calcFlipsWithInputs, calcIsLinear, calcPreservesScale, calcYieldsPoints, columnOwnsFormat } from '../../tableCalc';
 import {
   additiveRankKey,
   assertTableRankOptions,
@@ -1549,8 +1549,8 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
             && (specUnitKind(specFor(col.id, row.id)) !== 'number' || (row.calc !== undefined && calcYieldsPoints(row.calc)) || (col.kind === 'computed' && calcYieldsPoints(col.calc)));
           const negate = (options.signs ?? 'signed') === 'signed' && row.kind !== 'driver' && row.kind !== 'result'
             && !relativeChange && signTo(row, null) === -1
-            // A ratio of two cells prints the same on the negated figures, so only a calc that scales with its inputs flips.
-            && (col.kind !== 'computed' || row.calc !== undefined || calcIsLinear(col.calc));
+            // A ratio of two cells prints the same on the negated figures, so only a calc that flips with its inputs flips.
+            && (col.kind !== 'computed' || row.calc !== undefined || calcFlipsWithInputs(col.calc));
           negated = negate && s.raw !== 0;
           displayed = (negate ? undefined : displayOverride.get(tableCellKey(row.id, col.id))) ?? formatNumber(negate && s.raw !== 0 ? -s.raw : s.raw, col.id, row.id);
           if (negate && locale.minusGlyph === '-') displayed = displayed.replace(MINUS, '-');
