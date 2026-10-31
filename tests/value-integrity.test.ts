@@ -274,6 +274,21 @@ it('keeps variance actual labels within their own column or reports their omissi
   expect(geometry.warnings.map((warning: any) => warning.code)).toContain('values-in-note');
 });
 
+// The largest variance sat in a valley between taller columns: both seats over its cap were blocked, and it lost
+// its value while smaller variances kept theirs.
+it('labels the largest integrated variance when smaller ones keep their labels', () => {
+  const actual = [25.08, 25.84, 28.19, 30.78, 30.7, 34.36, 35.23, 33.29, 32.01, 29.62, 29.31, 30.37, 33.64, 32.08, 34.02, 33.79, 35.62, 34.52, 36.14, 36.62, 38.86, 39.96, 44.46, 43.21];
+  const plan = [22.54, 27.99, 27.22, 29.82, 36.46, 31.24, 35.08, 29.59, 26.9, 29.47, 29.28, 34.64, 39.88, 31.23, 33.88, 38.69, 40.31, 28.98, 30.62, 39.26, 46.27, 32.04, 40.42, 48.86];
+  const geometry = getChart('variance')!.layout({
+    categories: actual.map((_, i) => ({ id: `m${i}`, label: `M${i + 1}` })),
+    series: [{ id: 'ac', label: 'Actual', values: actual }, { id: 'pl', role: 'reference' as const, scenario: 'PL' as const, values: plan }],
+  }, { variant: 'integrated', variance: { of: 'ac', vs: 'pl' }, target: 'dashboard', size: { width: 480 } }) as any;
+  const points = geometry.labels.filter((label: any) => label.kind === 'point');
+  expect(points.some((label: any) => !label.hidden)).toBe(true);
+  // M22: actual 39.96 against plan 32.04, the largest variance of the chart.
+  expect(points.find((label: any) => label.owner.categoryId === 'm21').hidden).toBeUndefined();
+});
+
 // A last value with a key of names could take a shifted seat two rows away from its point.
 it('keeps last line values next to their own point', () => {
   const geometry = getChart('line')!.layout({
