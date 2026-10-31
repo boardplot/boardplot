@@ -257,6 +257,16 @@ describe('refusal contract', () => {
     expect(render({ spec: { type: 'line', data, options: { window: { last: 100 } } } }).body.errors ?? []).toEqual([]);
   });
 
+  // A combo of 1,000 categories by 101 series ran the CLI out of memory at half the line limit; it must refuse at once, and a window.last that draws less must still draw.
+  it('refuses a combo above its point budget and draws the same data under window.last', () => {
+    const categories = Array.from({ length: 200 }, (_, i) => `c${i}`);
+    const series = Array.from({ length: 76 }, (_, k) => ({ id: `s${k}`, ...(k > 0 ? { kind: 'line' } : {}), values: categories.map((_, i) => (i * (k + 1)) % 97) }));
+    const data = { categories, series };
+    const { body } = render({ spec: { type: 'combo', data } });
+    expect((body.errors as Finding[]).map(({ code, path }) => ({ code, path }))).toEqual([{ code: 'too-many-items', path: '/data/series' }]);
+    expect(render({ spec: { type: 'combo', data, options: { window: { last: 20 } } } }).body.errors ?? []).toEqual([]);
+  });
+
   // The budget must not refuse long lists that the chart itself cuts to a few drawn items.
   it('draws a long list that topN, its threshold, window.last or the Pareto tail fold reduces', () => {
     const n = 2_001;

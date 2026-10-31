@@ -29,20 +29,26 @@ export const TOO_MANY_ITEMS = 'too-many-items';
  */
 export const POINT_BUDGET = 200_000;
 
-/** Throws the `too-many-items` refusal when a line or area draws more points than POINT_BUDGET. */
-export function checkPointBudget(categories: number, series: number): void {
-  if (categories * series <= POINT_BUDGET) return;
+/**
+ * The same limit for a combo, which labels and stacks every point: 2,000 categories by 4 series
+ * take 9 s and 2.3 GB, 300 by 50 take 6 to 21 s and up to 2.7 GB, and 1,000 by 101 ran out of memory.
+ */
+export const COMBO_POINT_BUDGET = 15_000;
+
+/** Throws the `too-many-items` refusal when a chart draws more points than its budget (a line or area by default). */
+export function checkPointBudget(categories: number, series: number, budget = POINT_BUDGET, chart = 'a line or area chart'): void {
+  if (categories * series <= budget) return;
   throw new NormalizeError(
     TOO_MANY_ITEMS,
     'series',
-    `${series} series of ${categories} categories are ${categories * series} points, over the ${POINT_BUDGET} a line or area chart draws; it would run out of memory`,
+    `${series} series of ${categories} categories are ${categories * series} points, over the ${budget} ${chart} draws; it would take minutes or run out of memory`,
     'draw fewer series, aggregate the periods first (weeks or months), or set window.last or viewDomain to draw part of the periods',
     undefined,
     ['data', 'series'],
   );
 }
 
-/** The data lists whose length sets what a type draws. Line and area count points in checkPointBudget, tables scroll, and the other types draw aggregates. */
+/** The data lists whose length sets what a type draws. Line, area and combo count points in checkPointBudget, tables scroll, and the other types draw aggregates. */
 const BUDGETED_LISTS: Readonly<Record<string, readonly string[]>> = {
   column: ['categories'], bar: ['categories'], combo: ['categories'], dot: ['categories'], variance: ['categories'],
   butterfly: ['categories'], funnel: ['categories'], mekko: ['categories'], waffle: ['categories'],
