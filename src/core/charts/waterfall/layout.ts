@@ -59,6 +59,7 @@ import {
   panelTypeClass,
   seriesPaint as themeSeriesPaint,
   signedFillPaint,
+  emphasisLabelTheme,
   emphasisWeight,
   dashToken,
   strokeToken,
@@ -1945,7 +1946,9 @@ function layoutWaterfallWithPad(
           : undefined,
     occupied,
     plot: annPlot,
-    theme,
+    // Annotation labels draw bold (see labelsToNodes below), so the pass measures them bold.
+    theme: emphasisLabelTheme(theme),
+    plainLabelWeight: theme.type.label.weight,
     measure,
     format: options.format,
     locale: options.locale?.language,
