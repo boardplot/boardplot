@@ -146,7 +146,12 @@ export function createOccupiedIndex(_plot: Rect): OccupiedIndex {
       return found.sort((a, b) => a - b).map((i) => rects[i]!);
     },
     snapshot() {
-      return rects.flatMap((entry, index) => released.has(index) ? [] : [{ ...entry, rect: { ...entry.rect } }]);
+      const copy = (entry: OccupiedClaim): OccupiedClaim => ({ ...entry, rect: { ...entry.rect } });
+      // Most layouts release nothing: copy in one pass, as before release existed.
+      if (released.size === 0) return rects.map(copy);
+      const kept: OccupiedClaim[] = [];
+      rects.forEach((entry, index) => { if (!released.has(index)) kept.push(copy(entry)); });
+      return kept;
     },
     release(claim) {
       const index = rects.indexOf(claim);
