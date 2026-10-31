@@ -28,6 +28,7 @@ import { usePrinting, watchPrint } from './printLayout';
 import { rebindable } from './linkedBinding';
 import { useExportLink, type DrawnChart, type ExportLink } from './exportLink';
 import { checkedIdPrefix, IdPrefixContext, useScopedId } from './idPrefix';
+import { frameSize, RefusalBoundary } from './RefusalBoundary';
 import { LayoutRefusal, LoadingPlaceholder, SizePlaceholder, type RefusalProps } from './SizePlaceholder';
 import { chartRefusals, isSizeDependentRefusal, optionRefusals, refusalFindings } from '../core/schema/refusals';
 import { useRefusalSettle } from './useRefusalSettle';
@@ -109,7 +110,7 @@ import { useRowsGate } from './rowsGate';
 import type { RowsProps } from './rowsInput';
 import type { InteractionScope } from '../core/a11y/types';
 import type { RenderTarget } from '../core/types/options';
-import type { Theme } from '../core/types/theme';
+import type { Theme, ThemeRef } from '../core/types/theme';
 import type { ChartRequest } from '../core/request';
 import { TableHoverFrame } from './hover/TableHoverFrame';
 import { hoverFlags, type HoverOption } from './useHover';
@@ -482,11 +483,17 @@ function columnVisibilityDefaults(table: ResolvedTable, authored?: Record<Id, bo
  * before the check.
  */
 export function createTableChart(checkKeys?: OptionKeyCheck, linked?: readonly DeferredName[]) {
-  function TableChart(props: TableChartProps): ReactElement {
+  function GatedTable(props: TableChartProps): ReactElement {
     // Rows answer before the table resolves: a table has no data while the rows chunk loads or after it refuses them.
     const { rows, columns, onRowsReading, ...table } = props;
     const gate = useRowsGate({ type: 'table', data: table.data }, { rows, columns, onRowsReading }, table);
     return gate.element ?? <DrawnTable table={{ ...table, data: gate.data! }} checkKeys={checkKeys} linked={linked} />;
+  }
+  // A bad value draws the refusal card in the table's own frame and never unmounts the host's root (RefusalBoundary).
+  function TableChart(props: TableChartProps): ReactElement {
+    const { size, fallbackSize, target, title, theme } = props as TableChartProps & { title?: unknown; theme?: ThemeRef };
+    return <RefusalBoundary watch={props} fallback={(finding) => <LayoutRefusal refusals={[finding]} theme={theme}
+      size={frameSize(size === 'container' ? fallbackSize : size as Parameters<typeof frameSize>[0], target)} options={typeof title === 'string' ? { title } : {}} />}><GatedTable {...props} /></RefusalBoundary>;
   }
   // The registry type this component renders, stated by the component itself —
   // the same stamp createChartComponent writes, so the public API check resolves
@@ -603,7 +610,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: TableChartProp
   // so `usePrepared` has nothing to reject and the table is not resolved
   // against a theme the caller did not ask for.
   const tableOptions = layoutRequest?.options as TableOptions | undefined;
-  const initialPrepared = usePrepared(prepared, fullLayoutRequest, 'table', size === 'container' ? fit : undefined);
+  const initialPrepared = usePrepared(prepared, fullLayoutRequest, 'table', size === 'container' ? fit : undefined, size === 'container' ? container.fallback : undefined);
   // The values, formats and judgements do not depend on the frame size: a container that reports its width after the
   // first pass does not resolve the table again.
   const { size: _resolveSize, ...sizeFreeOptions } = tableOptions ?? {};
@@ -644,11 +651,13 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: TableChartProp
   const themeScope = stylesheet === undefined ? '' : stylesheetHash(stylesheet);
 
   const floorRevision = useDeferredRevision();
+  // By content: an inline `size={{ … }}` is a new object on every render and must not remake the refusal.
+  const sizeProp = useStableValue(size);
   const floorAttempt = useMemo<{ result?: RefusedLayout; deferred?: DeferredName }>(() => {
     if (!fullLayoutRequest || !belowTableViewportFloor(fullLayoutRequest.options.size)) return {};
     // The server's first frame and the hydrating one count only the modules this entry links.
     return floorRevision === 0 ? asFirstFrame(linked ?? [], attemptFloor) : attemptFloor();
-  }, [fullLayoutRequest, originalFloorRequest, provider, scope, fontMetrics, floorRevision, size, container.pinnedHeight, data, target, stableOptions, linked]);
+  }, [fullLayoutRequest, originalFloorRequest, provider, scope, fontMetrics, floorRevision, sizeProp, container.pinnedHeight, data, target, stableOptions, linked]);
   function attemptFloor(): { result?: RefusedLayout; deferred?: DeferredName } {
     if (!fullLayoutRequest) return {};
     try {

@@ -1,0 +1,3 @@
+### Fixed
+
+- A PNG with emoji or CJK in a label no longer loses the whole label. The PNG renderer resvg draws a text run with a character the theme font lacks as boxes and drops the Latin words next to it, so `🇩🇪 Germany` came out as boxes only. A chart with such a character is now drawn by Chrome when Chrome is installed, and on macOS and Windows, which ship CJK and emoji fonts, the warning `png-glyph-coverage` is gone for it. On other systems the warning stays and says that Chrome drew the PNG and characters can still print as boxes when no installed font covers them. Without Chrome the PNG is unchanged, and the warning now names the labels that can be lost. SVG output is unchanged.

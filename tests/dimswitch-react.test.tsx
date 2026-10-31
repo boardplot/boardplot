@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from 'react';
+import { act, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ChartFooter } from '../src/react/ChartFooter';
@@ -151,4 +151,20 @@ it('keeps the compiled table tracks in a narrow scrolling dimswitch', async () =
  expect(tracks.slice(1)).toEqual(svgTracks.slice(1));
  // A scrolling host keeps the label's line floor; the fixed SVG frame narrows the label instead.
  expect(tracks[0]).toBeGreaterThanOrEqual(svgTracks[0]!);
+});
+
+// A DimSwitch chart refused at an inline `size={{ … }}` re-rendered without end: the new size object remade the refusal on every render.
+it('calls onRefused once when refused at an inline size',async()=>{
+ const host=document.createElement('div');document.body.append(host);const root=createRoot(host);
+ let renders=0,calls=0;
+ function Host(){
+  const [,setBox]=useState<object>();
+  if(++renders>40) throw new Error('render loop');
+  return <DimSwitchChart data={exampleData} size={{width:40,height:40}} onRefused={r=>{calls++;setBox({r:r.warnings.length});}}/>;
+ }
+ await act(async()=>{root.render(<Host/>);});
+ for(let i=0;i<4;i++) await act(async()=>{await new Promise(r=>setTimeout(r,25));});
+ expect(calls).toBe(1);
+ expect(renders).toBeLessThan(10);
+ act(()=>root.unmount());host.remove();
 });

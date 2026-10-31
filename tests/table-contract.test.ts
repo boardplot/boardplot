@@ -158,6 +158,22 @@ describe('parents re-derive ratio-of-sums (gross-margin-proof)', () => {
   });
 });
 
+// A cell format on a share dropped the largest-remainder override, so three equal shares printed 33.3% and summed to 99.9% beside a record that claimed 33.4%.
+it('leaf shares with a cell format of the column precision still reconcile to 100.0, and a record names what the cell prints', () => {
+  const data = (format: string): TableData => ({
+    columns: [{ id: 'l', kind: 'rowLabel' }, { id: 'v', kind: 'value' }, { id: 'share', kind: 'computed', calc: { op: 'share', of: 'v' } }],
+    rows: ['a', 'b', 'c'].map((id) => ({ id, cells: { v: 10, share: { format } } })),
+  });
+  const same = resolveTable(data('1.2%'));
+  expect(same.table.rows.map((row) => row.cells.share!.displayed)).toEqual(['33.4%', '33.3%', '33.3%']);
+  const adjustment = same.computedCells.find((c) => c.kind === 'rounding-adjustment')!;
+  expect(adjustment.displayed).toBe(same.table.rows.find((row) => row.id === adjustment.rowId)!.cells.share!.displayed);
+  // Another precision reconciles at no unit: the cell prints its own rounding and leaves no adjustment record.
+  const other = resolveTable(data('1.23%'));
+  expect(other.table.rows.map((row) => row.cells.share!.displayed)).toEqual(['33.33%', '33.33%', '33.33%']);
+  expect(other.computedCells.some((c) => c.kind === 'rounding-adjustment')).toBe(false);
+});
+
 describe('hierarchy honesty', () => {
   it('ofWhich rows are excluded from the parent sum and stay neutral', () => {
     const r = resolveTable(steering());

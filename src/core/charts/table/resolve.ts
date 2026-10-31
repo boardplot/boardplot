@@ -59,7 +59,7 @@ import type {
   TotalPolicy,
 } from '../../types/table';
 import { previousColumnInGroup, readCalcInput, resolveCalcRef } from './calcRef';
-import { calcPreservesScale } from '../../tableCalc';
+import { calcIsLinear, calcPreservesScale, calcYieldsPoints, columnOwnsFormat } from '../../tableCalc';
 import {
   additiveRankKey,
   assertTableRankOptions,
@@ -491,9 +491,15 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
    */
   // A cell's own format counts where it sits: a pp change among summands does not add either.
   const formatAt = (row: FlatRow, colId: Id): string | undefined => cellFormat(row.cells[colId]) ?? row.format;
+  // Decimals are no unit: "$1.2m" and "$1.23m" add, "$1.2m" and "$500k" do not.
+  const unitOf = (format: string): string => {
+    if (!format) return '';
+    const spec = parseFormatExample(format);
+    return `${spec.prefix}\u0000${spec.suffix}\u0000${spec.magnitude}`;
+  };
   const nonAdditiveSum = (col: Extract<TableColumn, { kind: 'value' }>, row: FlatRow, kids: readonly FlatRow[]): boolean =>
     nonAdditiveFormat(col.format) || [row, ...kids].some((k) => nonAdditiveFormat(formatAt(k, col.id))) ||
-    new Set(kids.map((k) => formatAt(k, col.id) ?? col.format ?? '')).size > 1;
+    new Set(kids.map((k) => unitOf(formatAt(k, col.id) ?? col.format ?? ''))).size > 1;
   const aggregateFor = (col: Extract<TableColumn, { kind: 'value' }>, row: FlatRow): 'sum' | 'none' | 'source' =>
     col.aggregate ?? (nonAdditiveSum(col, row, summandsOf(row.id)) ? 'none' : 'sum');
   const warnedNonAdditive = new Set<Id>();
@@ -758,12 +764,17 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     }
   };
   collectLeafSummands(null);
+  partitionLeafIds.set(rawState, leafRows.map((r) => r.id));
+  // Rows that topN.rest false omits still belong to the partition, so hiding a row leaves the other shares as they were.
+  const hiddenLeaves = [...folded.hidden].filter(([, h]) => h.leaf);
   const leafTotal = (colId: Id): number | null => {
     let t = 0;
-    for (const r of leafRows) {
-      const s = rawState.get(r.id)!.get(colId);
+    for (const [s, sign] of [
+      ...leafRows.map((r) => [rawState.get(r.id)!.get(colId), signTo(r, null)] as const),
+      ...hiddenLeaves.map(([, h]) => [h.states.get(colId), h.sign] as const),
+    ]) {
       if (!s || s.state !== 'value' || typeof s.raw !== 'number') return null;
-      t += signTo(r, null) * s.raw;
+      t += sign * s.raw;
     }
     return t;
   };
@@ -937,12 +948,13 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
       rowSpecs.set(row.id, spec);
     }
   }
-  // A value cell's own format beats its row's and its column's: the YoY
+  // A value or computed cell's own format beats its row's and its column's: the YoY
   // column prints percent, and a share KPI's change in it prints points.
   // Separate row and column keys avoid pair-string allocation and id collisions.
   const cellSpecs = new Map<Id, Map<Id, NumberFormatSpec>>();
+  const cellFormatCols = [...valueCols, ...computedCols];
   for (const row of flat) {
-    for (const col of valueCols) {
+    for (const col of cellFormatCols) {
       const example = cellFormat(row.cells[col.id]);
       if (example !== undefined) {
         const sourceRow = sourceRows.get(row.id);
@@ -983,12 +995,15 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
   // header: each cell carries its row's unit.
   // A computed column's own format counts too: an authored '+1.1%'
   // YoY calc column on a row that prints its months in $M keeps its percent.
-  const authoredColumnFormat = new Set<Id>([...valueCols, ...computedCols].filter(col => col.format !== undefined).map(col => col.id));
+  // So does the kind of its calculation: a percent change or a share is points
+  // whatever its row prints in, and a row's '$1.2m' never turns it into "$0.0M".
+  // A mul or div by a literal keeps its row's scale and currency.
+  const ownFormatColumns = new Set<Id>([...valueCols, ...computedCols].filter(columnOwnsFormat).map(col => col.id));
   const rowFormattedColumns = new Set<Id>();
   for (const row of flat) {
     if (row.calc || !rowSpecs.has(row.id)) continue;
     for (const col of valueCols) {
-      if (!authoredColumnFormat.has(col.id) && typeof rawState.get(row.id)?.get(col.id)?.raw === 'number') rowFormattedColumns.add(col.id);
+      if (!ownFormatColumns.has(col.id) && typeof rawState.get(row.id)?.get(col.id)?.raw === 'number') rowFormattedColumns.add(col.id);
     }
   }
   /**
@@ -1038,7 +1053,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
   // rolls to "1.1M" prints each cell with its own letter, not "1.1M" under "(k)".
   const rollsOff = (colId: Id, spec: NumberFormatSpec): boolean => spec.magnitude !== 'none' && flat.some((row) => {
     // Only a cell that prints through the column's spec: a row or cell format carries its own unit.
-    const rowPath = rowSpecs.has(row.id) && (row.calc !== undefined || row.inline === true || !authoredColumnFormat.has(colId));
+    const rowPath = rowSpecs.has(row.id) && (row.calc !== undefined || row.inline === true || !ownFormatColumns.has(colId));
     if (rowPath || cellSpecs.get(row.id)?.has(colId)) return false;
     const raw = rawState.get(row.id)?.get(colId)?.raw;
     return typeof raw === 'number' && raw !== 0 && effectiveScale(Math.abs(raw), spec).magnitude !== spec.magnitude;
@@ -1092,7 +1107,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     const cellSpec = rowId ? cellSpecs.get(rowId)?.get(colId) : undefined;
     if (cellSpec) return cellSpec;
     const rowSpec = rowId ? rowSpecs.get(rowId) : undefined;
-    return rowSpec && (rowOverridesColumn(rowId!) || !authoredColumnFormat.has(colId)) ? rowSpec : specs.get(colId)!;
+    return rowSpec && (rowOverridesColumn(rowId!) || !ownFormatColumns.has(colId)) ? rowSpec : specs.get(colId)!;
   };
   // `lift: false` prints the plain rounded text, which the near-zero base check reads.
   const formatNumber = (raw: number, colId: Id, rowId?: Id, lift = true): string => {
@@ -1102,7 +1117,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     // the column names no format of its own (an authored '+1.1%' YoY column
     // keeps its percent on a row that prints its months in $M; a chart-level
     // `options.format` yields to the row).
-    const rowPath = rowSpec !== undefined && (rowOverridesColumn(rowId!) || !authoredColumnFormat.has(colId));
+    const rowPath = rowSpec !== undefined && (rowOverridesColumn(rowId!) || !ownFormatColumns.has(colId));
     // A cell's own format prints whole: its unit is not the one the column
     // or the row hoists. One that names the same unit and changes only the
     // decimals prints as its row or column does, so a hoisted unit is not
@@ -1157,17 +1172,28 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     reconcileShares(col.id, spec);
   }
   function reconcileShares(colId: Id, spec: NumberFormatSpec) {
-    const entries = leafRows
-      .map((r) => ({ r, s: rawState.get(r.id)!.get(colId)! }))
-      .filter((e) => e.s.state === 'value' && typeof e.s.raw === 'number');
-    if (entries.length !== leafRows.length || entries.length === 0) return;
+    // Rows topN.rest false omits take their units too, so the shown shares stay what they are with all rows shown.
+    const entries = [
+      ...leafRows.map((r) => ({ r, s: rawState.get(r.id)!.get(colId)!, shown: true })),
+      ...hiddenLeaves.map(([id, h]) => ({ r: { id }, s: h.states.get(colId)!, shown: false })),
+    ].filter((e) => e.s?.state === 'value' && typeof e.s.raw === 'number');
+    const LAST = Number.MAX_SAFE_INTEGER;
+    // The full table breaks equal remainders by its own row order, so shown and hidden rows keep that order.
+    entries.sort((a, b) => (folded.leafOrder.get(a.r.id) ?? LAST) - (folded.leafOrder.get(b.r.id) ?? LAST));
+    if (entries.length !== leafRows.length + hiddenLeaves.length || entries.length === 0) return;
     const decimals = spec.decimals ?? 1;
     const unit = Math.pow(10, -decimals);
     const floors = entries.map((e) => Math.floor((e.s.raw as number) / unit) * unit);
     const remainders = entries.map((e, i) => (e.s.raw as number) - floors[i]!);
     let deficit = Math.round((100 - floors.reduce((a, b) => a + b, 0)) / unit);
+    // A cell whose own format has another precision prints its own rounding: it takes no unit of the column's total.
+    const ownPrecision = entries.map((e) => {
+      const cellSpec = cellSpecs.get(e.r.id)?.get(colId);
+      return cellSpec !== undefined && (cellSpec.decimals ?? 1) !== decimals;
+    });
     const order = entries
       .map((_, i) => i)
+      .filter((i) => !ownPrecision[i])
       .sort((a, b) => remainders[b]! - remainders[a]! || a - b); // larger remainder first, then row order
     const adjusted = new Set<number>();
     for (const i of order) {
@@ -1176,9 +1202,12 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
       deficit--;
     }
     entries.forEach((e, i) => {
+      if (ownPrecision[i] || !e.shown) return;
       const shown = floors[i]! + (adjusted.has(i) ? unit : 0);
+      // A cell format of the column's precision prints the reconciled amount through itself.
+      const cellSpec = cellSpecs.get(e.r.id)?.get(colId);
       // A nonzero share the reconciled unit floors to 0 reads "<0.1%", as formatShare prints it in a chart.
-      displayOverride.set(tableCellKey(e.r.id, colId), shown === 0 && (e.s.raw as number) > 0 && spec.automatic ? `<${formatNumber(unit, colId)}` : formatNumber(shown, colId));
+      displayOverride.set(tableCellKey(e.r.id, colId), shown === 0 && (e.s.raw as number) > 0 && spec.automatic && !cellSpec ? `<${formatNumber(unit, colId)}` : formatNumber(shown, colId, e.r.id));
       overrideAmount.set(tableCellKey(e.r.id, colId), shown);
       if (adjusted.has(i) && Math.abs(shown - (e.s.raw as number)) > 1e-9) {
         records.push({
@@ -1194,7 +1223,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
           ],
           raw: shown,
           state: 'value',
-          displayed: formatNumber(shown, colId),
+          displayed: formatNumber(shown, colId, e.r.id),
           kind: 'rounding-adjustment',
         });
       }
@@ -1232,7 +1261,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     const rowSpec = rowSpecs.get(row.id);
     if (!rowSpec || row.calc || !(rowSpec.suffix ?? '').includes('%')) continue;
     const vals = valueCols
-      .filter((col) => !authoredColumnFormat.has(col.id) && col.percentScale !== 'points')
+      .filter((col) => !ownFormatColumns.has(col.id) && col.percentScale !== 'points')
       .map((col) => rawState.get(row.id)!.get(col.id))
       .filter((s): s is { raw: number; state: CellState } => !!s && typeof s.raw === 'number');
     if (vals.length > 0 && vals.every((v) => Math.abs(v.raw) <= 1.5)) {
@@ -1484,7 +1513,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
       ...(obj?.heat === false ? { heat: false as const } : {}),
       ...(obj?.strong === true && obj.tone !== undefined && obj.tone !== 'neutral' ? { strong: true as const } : {}),
       ...(typeof obj?.bar === 'number' && Number.isFinite(obj.bar) ? { bar: Math.min(1, Math.max(0, obj.bar)) } : {}),
-      ...(col.kind === 'value' && obj?.format !== undefined ? { format: obj.format } : {}),
+      ...((col.kind === 'value' || col.kind === 'computed') && obj?.format !== undefined ? { format: obj.format } : {}),
       scenario: col.kind === 'value' ? col.scenario : undefined,
       role: row.role,
       relation: row.relation,
@@ -1770,25 +1799,30 @@ function resolveCellEncoding(encoding: TableCellEncoding | undefined, percent: b
 
 /** The evaluated cell states of a resolve, kept for the top-N pass that resolves the full table first. */
 const evaluatedStates = new WeakMap<ResolveResult, Map<Id, Map<Id, CellEval>>>();
+/** The ids of the share partition (the leaves the column total sums), in row order, keyed by the evaluated states of their resolve. */
+const partitionLeafIds = new WeakMap<Map<Id, Map<Id, CellEval>>, Id[]>();
 
 /** A row topN.rest false omits: calcs of the rows it keeps still read it. */
 interface HiddenRow {
   sign: number;
   states: Map<Id, CellEval>;
+  /** The row is a leaf of the full table's share partition: the part of the share denominator it carries. */
+  leaf: boolean;
 }
 
 function applyTableTopN(
   data: TableData,
   options: TableOptions,
-): { data: TableData; generatedOthers: Set<Id>; hidden: Map<Id, HiddenRow> } {
+): { data: TableData; generatedOthers: Set<Id>; hidden: Map<Id, HiddenRow>; leafOrder: Map<Id, number> } {
   const topN = options.topN;
-  if (!topN || topN.n <= 0) return { data, generatedOthers: new Set(), hidden: new Map() };
+  if (!topN || topN.n <= 0) return { data, generatedOthers: new Set(), hidden: new Map(), leafOrder: new Map() };
   const inner = resolveTable(data, { ...options, topN: undefined });
   const folded = foldTableTopN(data, inner.table, options);
   // Values come from the full table, so a kept result reads an omitted row as the untruncated table shows it.
   const kept = new Set(flattenRows(folded.data.rows).map((row) => row.id));
   const innerById = new Map(inner.table.rows.map((row) => [row.id, row]));
   const hidden = new Map<Id, HiddenRow>();
+  const leafOrder = new Map((partitionLeafIds.get(evaluatedStates.get(inner)!) ?? []).map((id, i) => [id, i] as const));
   for (const row of inner.table.rows) {
     if (kept.has(row.id)) continue;
     // The evaluated states keep which rows a partial total skipped, so a kept calc reading it still compares like with like.
@@ -1798,9 +1832,9 @@ function applyTableTopN(
       const own = evaluated?.get(colId);
       states.set(colId, { raw: cell.raw, state: cell.state, ...(own?.partial ? { partial: true as const, skipped: own.skipped } : {}) });
     }
-    hidden.set(row.id, { sign: contributionSignOf(row, (id) => innerById.get(id), null), states });
+    hidden.set(row.id, { sign: contributionSignOf(row, (id) => innerById.get(id), null), states, leaf: leafOrder.has(row.id) });
   }
-  return { ...folded, hidden };
+  return { ...folded, hidden, leafOrder };
 }
 
 /**
@@ -1814,13 +1848,13 @@ function applyTableTopN(
 function stampRecordDisplay(
   records: ComputedCellRecord[],
   resolvedRows: ResolvedRow[],
-  formatNumber: (raw: number, colId: Id) => string,
+  formatNumber: (raw: number, colId: Id, rowId?: Id) => string,
 ): void {
   const cellIndex = new Map<string, ResolvedCell>();
   for (const r of resolvedRows) for (const c of Object.values(r.cells)) cellIndex.set(tableCellKey(c.rowId, c.colId), c);
   for (const rec of records) {
     if (rec.kind === 'reconciliation' || rec.kind === 'rounding-adjustment') {
-      rec.displayed = typeof rec.raw === 'number' ? formatNumber(rec.raw, rec.colId) : '';
+      rec.displayed = typeof rec.raw === 'number' ? formatNumber(rec.raw, rec.colId, rec.kind === 'rounding-adjustment' ? rec.rowId : undefined) : '';
       continue;
     }
     rec.displayed = cellIndex.get(tableCellKey(rec.rowId, rec.colId))?.displayed ?? rec.displayed;
@@ -2299,14 +2333,6 @@ function validateCalcRefs(columns: TableColumn[], colById: Map<Id, TableColumn>)
 }
 
 /**
- * Calcs the engine itself produces in percentage POINTS — the
- * only computed columns whose scale is guaranteed by construction.
- */
-function calcYieldsPoints(calc: Calc): boolean {
-  return 'op' in calc && (calc.op === 'share' || calc.op === 'percentDelta');
-}
-
-/**
  * The row id a share denominator is filed under in a claim's inputs. It is not
  * a row in the table — it is the exhaustive leaf partition the share is taken
  * over — so it gets a reserved, non-colliding id rather than borrowing one.
@@ -2515,23 +2541,33 @@ function evaluateTableCalcs(
     const sourceStates = new Map(states);
     for (const col of numericCols) {
       if (col.kind === 'computed' && !calcPreservesScale(col.calc)) continue;
-      let res = evalCalc(row.calc!, row, sourceStates, leafTotal, {
+      // A delta column, or a sub column of two cells, takes the change of a nonlinear row calc's own cells
+      // (a margin), not the ratio of the changes. A sum column keeps running the row calc on the sums: a YTD growth is the ratio of sums.
+      const ownCalc = col.kind === 'computed' && isChangeCalc(col.calc) && !calcIsLinear(row.calc!);
+      const calc = ownCalc ? col.calc : row.calc!;
+      const read = ownCalc ? states : sourceStates;
+      let res = evalCalc(calc, row, read, leafTotal, ownCalc ? undefined : {
         currentCol: col.id,
         rawState,
         previousCol,
         noPrevious,
       }, contributionSign);
       // A row calc compares rows the way a column calc compares columns.
-      if (res.state === 'value' && comparesMixedRows(row.calc!, coverageOf(row.id, sourceStates, col.id))) {
+      if (res.state === 'value' && comparesMixedRows(calc, coverageOf(row.id, read, col.id))) {
         res = { ...res, raw: null, state: 'nm' };
         mixedCoverage = true;
       }
-      states.set(col.id, { raw: res.raw, state: res.state, ...partialFrom(res, row.id, sourceStates) });
+      states.set(col.id, { raw: res.raw, state: res.state, ...partialFrom(res, row.id, read) });
       if (res.nearZero) nearZero = true;
       pushCalcRecord(records, row.id, col.id, res);
     }
   }
   return { nearZero, mixedCoverage };
+}
+
+/** A column calc that is the change between two cells: delta, or sub of two column references. */
+function isChangeCalc(calc: Calc): boolean {
+  return 'op' in calc && (calc.op === 'delta' || (calc.op === 'sub' && 'ref' in calc.a && 'ref' in calc.b));
 }
 
 /**
