@@ -899,6 +899,48 @@ it('keeps the column when a category is a total', () => {
   expect(draw('total').type).toBe('column');
 });
 
+// The step lost one more column setting in each review round, so a column steps to bars only when every setting and data key of the request is one a bar draws as a column does.
+it('keeps the column for every setting a bar draws differently, drops or has not been checked', () => {
+  const names = Array.from({ length: 20 }, (_, i) => `Sector number ${i + 1} of the survey`);
+  const categories = names.map((label, i) => ({ id: `c${i}`, label }));
+  const values = (k: number) => names.map((_, i) => 8 + ((i * k) % 23));
+  const single = [{ id: 's', label: 'Margin', values: values(7) }];
+  const stack = [{ id: 'a', label: 'Online', values: values(7) }, { id: 'b', label: 'Stores', values: values(5) }];
+  const draw = (series: object[], options: object = {}, cats: object[] = categories) => {
+    barLayoutCalls.count = 0;
+    const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'column', data: { categories: cats, series }, options: { title: 'Margin by sector', unit: '%', size: { width: 320 }, ...options } } as never)) as Geometry;
+    return { type: geometry.type, layouts: barLayoutCalls.count };
+  };
+  const at = (categoryId: string, seriesId = 's') => ({ categoryId, seriesId });
+  const kept: [string, object[], object][] = [
+    ['labels.segment content', stack, { variant: 'stacked', labels: { segment: ['absolute', 'percent'] } }],
+    ['labels.point content', single, { labels: { point: ['absolute', 'category'] } }],
+    ['labels.annotation off', single, { labels: { annotation: false }, annotations: [{ kind: 'note', at: at('c3'), text: 'A note' }] }],
+    ['labels.growth', stack, { variant: 'stacked', labels: { growth: true } }],
+    ['strings.range', single, { strings: { range: 'Spread' } }],
+    ['two cagr annotations', single, { annotations: [{ kind: 'cagr', from: 'c0', to: 'c9' }, { kind: 'cagr', from: 'c9', to: 'c19' }] }],
+    ['value line with a value and a span', single, { annotations: [{ kind: 'valueLine', value: 20, from: 'c3', to: 'c12' }] }],
+    ['indicator100 on a raw stack', stack, { variant: 'stacked', annotations: [{ kind: 'indicator100' }] }],
+    ['valueAxis.max', stack, { variant: 'stacked', valueAxis: { max: 50 } }],
+    ['netLine.connectors', stack, { variant: 'stacked', netLine: { connectors: true } }],
+    ['stacked100', stack, { variant: 'stacked100' }],
+    ['scaleGroup', single, { scaleGroup: { y: 'g1' } }],
+    ['story', single, { story: { steps: [{ id: 's1', title: 'One', highlight: 'c3' }] } }],
+    ['embed', single, { embed: { width: 320 } }],
+    ['cell range', [{ id: 's', label: 'Margin', values: values(7).map((v, i) => (i === 3 ? { number: v, range: { low: v - 3, high: v + 4 } } : v)) }], {}],
+    ['cell details', [{ id: 's', label: 'Margin', values: values(7).map((v, i) => (i === 3 ? { number: v, details: { orders: 12 } } : v)) }], { detailFields: [{ key: 'orders' }] }],
+  ];
+  for (const [name, series, options] of kept) expect(draw(series, options), name).toEqual({ type: 'column', layouts: 0 });
+  // What a bar draws as a column does still steps, so the list does not block the plain case.
+  for (const [name, series, options] of [
+    ['plain', single, {}],
+    ['one cagr', single, { annotations: [{ kind: 'cagr' }] }],
+    ['value line without a span', single, { annotations: [{ kind: 'valueLine', value: 20 }] }],
+    ['value axis minimum', single, { valueAxis: { min: 5 } }],
+    ['stack with labels', stack, { variant: 'stacked', labels: { restSeries: false }, strings: { net: 'Net' }, netLine: true }],
+  ] as [string, object[], object][]) expect(draw(series, options).type, name).toBe('bar');
+});
+
 // The reading of a column that stepped to bars said column, so an agent reading it took the wrong chart type.
 it('reports the drawn type in the reading of a column that stepped to bars', () => {
   const names = ['Automotive OEM', 'Automotive suppliers', 'Chemicals', 'Consumer goods', 'Energy utilities', 'Financial services', 'Food and beverage', 'Healthcare providers', 'Industrial machinery', 'Insurance',
