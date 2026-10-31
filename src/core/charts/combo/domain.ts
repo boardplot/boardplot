@@ -37,7 +37,7 @@ import type { ComboDomain, ComboEnv, NormSer } from './model';
 import { disclosuresShown } from '../../notes';
 import { maxOf } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
-import { checkPointBudget, COMBO_POINT_BUDGET } from '../../itemBudget';
+import { checkPointBudget, COMBO_LIMIT } from '../../itemBudget';
 
 /** Resolve the options once: theme, palette, size, measurer and highlights. */
 export function resolveComboEnv(options: ComboOptions, warnings: LintWarning[]): ComboEnv {
@@ -698,7 +698,7 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
     : undefined;
   const population = applyCategoryViewport({ domain: options.viewDomain, window: options.window, categories: cats, series: seriesNorm,
     plotted: [], basis: [], targets: [], annotations: options.annotations });
-  checkPointBudget(cats.length, seriesNorm.length, COMBO_POINT_BUDGET, 'a combo chart');
+  checkPointBudget(cats.length, seriesNorm.length, COMBO_LIMIT, 'a combo chart');
   // A mean keeps every source period, and its label names them where the plot draws fewer.
   const meanSpan = viewportMeanSpan(population);
   const shown = population ? population.annotations : options.annotations;

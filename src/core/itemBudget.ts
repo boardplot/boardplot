@@ -22,26 +22,33 @@ const TYPE_BUDGETS: Readonly<Record<string, number>> = { likert: 500, mekko: 20_
 
 export const TOO_MANY_ITEMS = 'too-many-items';
 
-/**
- * The most points (drawn categories times series) one line or area draws. A line of 1,000 categories
- * by 100 series draws in 3 s and uses 1.8 GB; 1,999 by 200 ran out of memory at 4 GB. The line
- * counts after its viewport and its sampling, so a dated line that samples keeps drawing.
- */
-export const POINT_BUDGET = 200_000;
+/** What a point-drawing chart may cost: points (drawn categories times series) plus `perSeries` for each series. */
+interface PointLimit { budget: number; perSeries: number }
 
 /**
- * The same limit for a combo, which labels and stacks every point: 2,000 categories by 4 series
- * take 9 s and 2.3 GB, 300 by 50 take 6 to 21 s and up to 2.7 GB, and 1,000 by 101 ran out of memory.
+ * A line or area costs its points plus 100 per series, up to 300,000. Memory follows the points
+ * (about 7 KB each: 1,000 categories by 201 series use 1.4 GB, 1,999 by 200 ran out of memory),
+ * and time grows faster than linearly with the series (100 categories by 2,000 series take 11 s and
+ * 2 GB, by 4,000 take 78 s). The line counts after its viewport and its sampling, so a dated line
+ * that samples keeps drawing.
  */
-export const COMBO_POINT_BUDGET = 15_000;
+export const LINE_LIMIT: PointLimit = { budget: 300_000, perSeries: 100 };
 
-/** Throws the `too-many-items` refusal when a chart draws more points than its budget (a line or area by default). */
-export function checkPointBudget(categories: number, series: number, budget = POINT_BUDGET, chart = 'a line or area chart'): void {
-  if (categories * series <= budget) return;
+/**
+ * A combo labels and stacks every point, so it costs its points plus 40 per series, up to 20,000:
+ * 300 categories by 51 series take 10 s and 2.1 GB, 10 by 600 take 22 s, and 10 by 1,000 did not
+ * finish in 150 s.
+ */
+export const COMBO_LIMIT: PointLimit = { budget: 20_000, perSeries: 40 };
+
+/** Throws the `too-many-items` refusal when a chart costs more than its limit (a line or area by default). */
+export function checkPointBudget(categories: number, series: number, limit: PointLimit = LINE_LIMIT, chart = 'a line or area chart'): void {
+  const cost = categories * series + limit.perSeries * series;
+  if (cost <= limit.budget) return;
   throw new NormalizeError(
     TOO_MANY_ITEMS,
     'series',
-    `${series} series of ${categories} categories are ${categories * series} points, over the ${budget} ${chart} draws; it would take minutes or run out of memory`,
+    `${series} series of ${categories} categories cost ${cost} (the points plus ${limit.perSeries} for each series), over the ${limit.budget} ${chart} draws; it would take minutes or run out of memory`,
     'draw fewer series, aggregate the periods first (weeks or months), or set window.last or viewDomain to draw part of the periods',
     undefined,
     ['data', 'series'],
