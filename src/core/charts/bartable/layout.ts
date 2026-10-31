@@ -66,6 +66,7 @@ import type {
   BarTablePanelDerived,
 } from './types';
 import { disclosureNote } from '../../notes';
+import { shareRoundingNotes } from '../../shareRounding';
 import { footerType } from '../../footer';
 import { textScaleOf } from '../../typeFloors';
 import { maxOf, minOf, pushAll } from '../../arrays';
@@ -499,6 +500,7 @@ function layoutBarTableOnce(
     ...(cascade ? [] : shareNotes),
     ...(blanks.length > 0 ? [disclosureNote(twoLineNote(chartString(options, single ? 'bartableMissingHeading' : 'bartableBlankHeading', { v1: glyph }), blanks, showTotal ? chartString(options, 'bartableBlankTotal') : '', noteFont, noteW, measure, options))] : []),
     ...((options as { [SLIVER_NOTE]?: string[] })[SLIVER_NOTE] ?? []),
+    ...shareRoundingNotes(options, cascade?.adjustments ?? []),
   ];
 
   // ---- paints and the key ----

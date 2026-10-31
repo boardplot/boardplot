@@ -10,7 +10,7 @@ import { breakUnsupported, chartPalette, chartTheme } from '../chartEnv';
 import { defaultMeasurer } from '../../text';
 import { tickFormatter } from '../../axis';
 import { formatAutomaticPercent, formatShare } from '../../format';
-import { roundingUnavailable, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
+import { roundingUnavailable, shareRoundingNotes, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
 import { comboValueLabels, FIRST_END_BELOW_TOTALS } from './endpoints';
 import { unitConflict, unitConflictRefusal } from '../../schema/units';
 import { formatStatWithSpec, formatterFromExample, memoFormatterFromExample, percentRasterFormatter, seriesRasterFormatter } from '../../formatSpec';
@@ -683,8 +683,10 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
   const rasterFor = (axis: 'primary' | 'secondary') => {
     const group = seriesNorm.filter((s) => (s.axis ?? 'primary') === axis);
     const units = new Set(group.map((s) => s.unit));
+    // An authored format holds both axes' labels to one scale and one decimal count (exampleSpec).
+    const printed = axis === 'primary' && options.format ? seriesNorm.filter((s) => !s.format) : group;
     const shared = units.size === 1 ? [...units][0] : undefined;
-    return seriesRasterFormatter(axis === 'primary' ? options.format : undefined, group.flatMap((s) => s.vals.filter((val) => !val.isPct).map((val) => val.v)),
+    return seriesRasterFormatter(axis === 'primary' ? options.format : undefined, printed.flatMap((s) => s.vals.filter((val) => !val.isPct).map((val) => val.v)),
       options.locale?.language, axis === 'primary' ? (options.unit ?? shared) : shared, options.target,
       axis === 'primary' ? (options as { defaultFormat?: string }).defaultFormat : undefined, columns.length > 1);
   };
@@ -877,6 +879,7 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
     stackTotals,
     shareTexts,
     roundingAdjustments,
+    shareNotes: shareRoundingNotes(options, roundingAdjustments),
     incompleteCats,
     columnsAdd,
     posTop,

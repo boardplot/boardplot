@@ -459,7 +459,7 @@ export function layoutPareto(
   const sharedFormat = options.format ?? sharedFormatExample(ranked.map((p) => p.value));
   const fmt = currencyDefault
     ? seriesRasterFormatter(undefined, ranked.map((p) => p.value), options.locale?.language, options.unit, options.target, sharedFormat).fmt
-    : fmtOf({ ...options, format: sharedFormat });
+    : fmtOf({ ...options, format: sharedFormat }, plotted.map((p) => p.value));
   // A zero prints as 0, not in the shared decimals ("0.0" reads as a rounded value).
   const hideRestColumn = topN?.rest === false && restColumnId !== undefined;
   const columnCells: Cell[] = plotted.map(p => hideRestColumn && p.id === restColumnId ? null : (p.fill || p.value === 0
@@ -935,8 +935,8 @@ function sharedFormatExample(values: number[]): string | undefined {
 }
 
 /** Business default matching combo's: whole numbers get no decimals. */
-function fmtOf(options: ParetoOptions): (v: number) => string {
-  if (options.format) return formatterFromExample(options.format, options.locale?.language);
+function fmtOf(options: ParetoOptions, values: readonly number[]): (v: number) => string {
+  if (options.format) return formatterFromExample(options.format, options.locale?.language, undefined, values);
   return (v: number) =>
     formatAutomaticNumber(v, { locale: options.locale?.language, decimals: autoDecimals(v) });
 }

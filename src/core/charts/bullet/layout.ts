@@ -49,13 +49,11 @@ import { frameTextOptions, normalizeLegendOption, solveFrame, type FrameInput, t
 import { defaultMeasurer, type FontSpec } from '../../text';
 import {
   contrastInkPaint,
-  markRolePaint,
   mixedPaint,
   paintColor,
   resolveSemanticPaletteTheme,
   resolveTheme,
   semanticPalettePaint,
-  signedFillPaint,
   emphasisWeight,
   secondaryType,
   strokeToken,
@@ -169,10 +167,21 @@ function bandAmount(row: NormRow, index: number, count: number): number {
   return count === 1 ? 0.5 : semanticIndex / (count - 1);
 }
 
-function bandLadder(theme: Theme, count: number, palette: string | undefined, warnings: LintWarning[], light: boolean): Paint[] {
+function ladderEnds(theme: Theme, palette: string | undefined): { poor: Paint; good: Paint } {
   const measure = semanticPalettePaint(theme, palette, 'neutral');
   const good = semanticPalettePaint(theme, palette, 'neutralLight');
-  const poor = mixedPaint(measure, good, 0.75);
+  return { poor: mixedPaint(measure, good, 0.75), good };
+}
+
+/** A band with a tone, or an attainment wash: the tone's fill washed toward the page in the painting theme (bulletBandPaints). */
+function tonePaint(theme: Theme, palette: string | undefined, tone: NonNullable<NormBand['tone']>): Paint {
+  const { poor, good } = ladderEnds(theme, palette);
+  const [paint] = bulletBandPaints(theme, 1, poor, good, [], false, [tone]);
+  return { token: paint && 'token' in paint ? paint.token : 'neutral', theme: { kind: 'bullet-band', poor, good, count: 1, index: 0, tones: [tone] } };
+}
+
+function bandLadder(theme: Theme, count: number, palette: string | undefined, warnings: LintWarning[], light: boolean): Paint[] {
+  const { poor, good } = ladderEnds(theme, palette);
   return bulletBandPaints(theme, count, poor, good, warnings, light).map((paint, index) => ({
     token: 'token' in paint ? paint.token : 'neutral',
     theme: { kind: 'bullet-band', poor, good, count, index, ...(light ? { light: true as const } : {}) },
@@ -271,15 +280,15 @@ function rampItems(rows: NormRow[], options: BulletOptions, paint: (row: NormRow
  * An attainment band paints each row good or bad against its plan; the key
  * names both tones, and a lower-is-better plan says so.
  */
-function attainmentKey(options: BulletOptions): LegendItemInput[] {
+function attainmentKey(options: BulletOptions, theme: Theme): LegendItemInput[] {
   const band = (options.annotations ?? []).find((ann) => ann.kind === 'band' && ann.style === 'attainment');
   if (!band || band.kind !== 'band') return [];
   const lower = band.direction === 'lowerIsBetter';
   const target = targetWord(options);
   return [
     // The key draws the band's own fill.
-    { id: 'attainment:good', label: lower ? chartString(options, 'bulletBelowLower', { v1: target }) : chartString(options, 'aboveTarget', { v1: target }), paint: signedFillPaint('good') },
-    { id: 'attainment:bad', label: lower ? chartString(options, 'aboveTarget', { v1: target }) : chartString(options, 'belowTarget', { v1: target }), paint: signedFillPaint('bad') },
+    { id: 'attainment:good', label: lower ? chartString(options, 'bulletBelowLower', { v1: target }) : chartString(options, 'aboveTarget', { v1: target }), paint: tonePaint(theme, options.palette, 'good') },
+    { id: 'attainment:bad', label: lower ? chartString(options, 'aboveTarget', { v1: target }) : chartString(options, 'belowTarget', { v1: target }), paint: tonePaint(theme, options.palette, 'bad') },
   ];
 }
 
@@ -390,9 +399,6 @@ export function layoutBullet(
   const measure = options.measure ?? defaultMeasurer;
   // Business default (copied from waterfall): whole numbers get 0 decimals;
   // small non-integers keep one, so a 0.4 sliver never prints as "0".
-  const fmt = options.format
-    ? formatterFromExample(options.format, options.locale?.language)
-    : (v: number) => formatAutomaticNumber(v, { locale: options.locale?.language, decimals: autoDecimals(v) });
   const highlights = new Set(resolveHighlight(options.highlight));
   const labelOn = (kind: LabelKind): boolean => !compact && chartLabelOn(options, kind);
 
@@ -510,6 +516,9 @@ export function layoutBullet(
   }
 
   // ---- per-row formatting (cell format override > pct > chart format) ----
+  const fmt = options.format
+    ? formatterFromExample(options.format, options.locale?.language, undefined, rows.flatMap((row) => row.isPct ? [] : [row.value, row.target]))
+    : (v: number) => formatAutomaticNumber(v, { locale: options.locale?.language, decimals: autoDecimals(v) });
   const rowFmt = (row: NormRow) => (v: number): string => {
     if (row.meta?.format) return formatterFromExample(row.meta.format, options.locale?.language)(v);
     if (row.isPct) return formatAutomaticPercent(v, autoDecimals(v), false, options.locale?.language);
@@ -620,7 +629,7 @@ export function layoutBullet(
   }
   const { ladders, paintWarningRules } = buildBandLadders(rows, theme, options.palette, warnings, rowWanted);
   const bandPaint = (row: NormRow, index: number): Paint =>
-    row.bands[index]!.tone ? markRolePaint(row.bands[index]!.tone!, true)
+    row.bands[index]!.tone ? tonePaint(theme, options.palette, row.bands[index]!.tone!)
       : ladders.get(row.bands.length)![row.direction === 'lowerIsBetter' ? row.bands.length - 1 - index : index]!;
   const labelsKey = legendItemsForBands(rows, bandPaint);
   // An authored target word heads its column and keys the tick as written; the built-in word has its own head.
@@ -635,7 +644,7 @@ export function layoutBullet(
         ...(rampApplies(rows) ? rampItems(rows, options, bandPaint) : []),
       ]
       : rampKey(rows, options, bandPaint, labelsKey, warnings) ?? labelsKey),
-    ...attainmentKey(options),
+    ...attainmentKey(options, theme),
   ];
   let legendInput: FrameInput['legend'];
   if (bandLegendItems.length > 0 && options.legend !== 'none' && !compact) {
@@ -1506,6 +1515,11 @@ export function layoutBullet(
       }));
     }
     nodes.splice(frameResult.nodes.length, 0, ...ruleNodes);
+  }
+  // An attainment wash takes the band tones' wash, as its key does.
+  for (const node of annResult.nodes) {
+    if (node.t !== 'rect' || node.part !== 'attainment' || !('token' in node.fill)) continue;
+    if (node.fill.token === 'goodFill' || node.fill.token === 'badFill') node.fill = tonePaint(theme, options.palette, node.fill.token === 'goodFill' ? 'good' : 'bad');
   }
   spliceAnnotationNodes(nodes, annResult.nodes);
   // attainment paints after placement; outside values read against the actual wash.

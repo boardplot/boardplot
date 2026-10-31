@@ -172,8 +172,12 @@ it('paints the bullet bar in the mark ink and outlines it only below 3:1 on the 
   const bar = (id: string) => node(`bar:${id}`) as Extract<SceneNode, { t: 'rect' }>;
   expect(resolvePaint(bar('four').fill, theme)).toBe(paintColor(theme, { token: 'markInk' }));
   expect(bar('four').stroke).toBeUndefined();
-  expect(bar('five').stroke).toBeDefined();
+  expect(bar('five').stroke).toBeUndefined();
   expect(bar('light').stroke).toBeUndefined();
+  // The full band fill steps the five bands 0.12 apart: the darkest misses 3:1 under the bar.
+  const full = layoutResolvedRequest(resolveChartRequest({ ...request, theme: { preset: 'boardroom', overrides: { marks: { bulletBandFill: 'full' } } } }));
+  if (full.refused) throw new Error('refused');
+  expect((full.scene.find(n => n.id === 'bar:five') as Extract<SceneNode, { t: 'rect' }>).stroke).toBeDefined();
   expect((node('target:four') as Extract<SceneNode, { t: 'line' }>).width).toBe(2);
   const weight = (id: string) => (node(id) as Extract<SceneNode, { t: 'text' }>).font.weight;
   expect(weight('label:category:four')).toBe(600);

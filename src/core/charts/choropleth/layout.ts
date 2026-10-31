@@ -242,10 +242,10 @@ export function layoutChoropleth(
     if (compactCard) margin.top = margin.bottom = Math.min(5, margin.top, margin.bottom);
   }
   const measure = options.measure ?? defaultMeasurer;
-  const fmt = options.format
-    ? formatterFromExample(options.format, options.locale?.language)
-    : (value: number) => formatAutomaticNumber(value, { locale: options.locale?.language, decimals: autoDecimals(value) });
   const numericValues = [...valuesById.values()].filter((value): value is number => value !== null);
+  const fmt = options.format
+    ? formatterFromExample(options.format, options.locale?.language, undefined, numericValues)
+    : (value: number) => formatAutomaticNumber(value, { locale: options.locale?.language, decimals: autoDecimals(value) });
   if (numericValues.length === 0) {
     warnings.push({
       code: 'choropleth-no-values',

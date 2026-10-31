@@ -233,11 +233,13 @@ export function layoutCenteredFunnel(
       suggest: "Set variant: 'rows' to show the cell labels, or remove values[].label.",
     });
   }
+  // An authored format holds the whole chart to one scale and one decimal count (exampleSpec).
+  const authoredRaster = options.format ? [...numbers.values.flat(), ...Object.values(stageTotals)] : undefined;
   // One raster per stage: the values of one stage share one decimal count, and a stage of whole counts prints none.
   // A single series is one raster down its stages (one decimal count within a series).
-  const formats = stages.map((_, ci) => seriesRasterFormatter(options.format, plotted.length === 1 ? numbers.values[0]! : plotted.map((_, si) => numbers.values[si]![ci]), options.locale?.language, options.unit, options.target, undefined, true));
+  const formats = stages.map((_, ci) => seriesRasterFormatter(options.format, authoredRaster ?? (plotted.length === 1 ? numbers.values[0]! : plotted.map((_, si) => numbers.values[si]![ci])), options.locale?.language, options.unit, options.target, undefined, true));
   // Totals and series without format metadata print through the shared raster (one decimal count, engine scale).
-  const totalRaster = seriesRasterFormatter(options.format, Object.values(stageTotals), options.locale?.language, options.unit, options.target);
+  const totalRaster = seriesRasterFormatter(options.format, authoredRaster ?? Object.values(stageTotals), options.locale?.language, options.unit, options.target);
   // A whole count prints whole beside fractional values of its stage ("140", "1" beside "0.6"); an amount like 100.4 keeps its decimals.
   if (!options.format) for (const format of [...formats, totalRaster]) format.spec.wholeCounts = true;
   const { valueText, totalFmt } = funnelValueFormats(plotted, cells, formats, totalRaster);

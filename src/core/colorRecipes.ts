@@ -1,6 +1,6 @@
 import { apcaContrast, contrastRatio, tint } from './color';
 import { NormalizeError } from './normalize/shared';
-import { mixedPaint, paintColor, seriesPaint } from './theme';
+import { markRolePaint, mixedPaint, paintColor, seriesPaint } from './theme';
 import { MARK_CONTRAST_FLOOR, oklabLightness, PALETTE_NORMAL_FLOOR, palettePerceptualDistance } from './themeRules';
 import type { Paint, ThemePaintSource, LintWarning } from './types/scene';
 import type { Theme } from './types/theme';
@@ -207,24 +207,70 @@ export function fanPaintSteps(theme: Theme, centrePaint: Paint, bandCount: numbe
  * clears that band, and its lightest band stays 0.06 lightness from the page;
  * a ladder that cannot clear stays where it was and the bar keeps its outline
  * (separationStroke). A range the ink cannot widen warns and keeps its mix.
- * `light`: every band prints its own name on its row, so the shade only groups
- * and the key no longer decodes it. The good end then sits 0.06 lightness from
- * the page and the bands step 0.06 apart (the warning floor), not 0.12.
+ * The light ladder is the default: the good end sits 0.06 lightness from the
+ * page and the bands step 0.06 apart (the warning floor), not 0.12, so the
+ * bands stay behind the bar at every row count. `light` marks rows that print
+ * every band's name; with the theme's `marks.bulletBandFill: 'full'` only
+ * those rows keep the light ladder and the rest step 0.12 apart.
+ * `tones`: a band with a tone takes its tone's fill washed toward the page
+ * (bulletToneTint) in place of its ladder step.
  */
-export function bulletBandPaints(theme: Theme, count: number, poor: Paint, good: Paint, warnings: LintWarning[] = [], light = false): Paint[] {
+export function bulletBandPaints(theme: Theme, count: number, poor: Paint, good: Paint, warnings: LintWarning[] = [], light = false,
+  tones?: readonly (BulletBandTone | null | undefined)[]): Paint[] {
   // Every band node and key swatch resolves the ladder again at paint time; the searches run once per
   // ladder. The key holds the colours the ladder reads, so a theme edited in place misses it.
-  const key = JSON.stringify([count, light, poor, good, paintColor(theme, poor), paintColor(theme, good),
-    paintColor(theme, { token: 'background' }), paintColor(theme, { token: 'markInk' })]);
+  const full = theme.marks?.bulletBandFill === 'full';
+  const toned = tones?.some((tone) => tone) ? tones : undefined;
+  const key = JSON.stringify([count, light, full, poor, good, paintColor(theme, poor), paintColor(theme, good),
+    paintColor(theme, { token: 'background' }), paintColor(theme, { token: 'markInk' }),
+    toned ? [toned, ...toned.map((tone) => tone && paintColor(theme, markRolePaint(tone, true)))] : null]);
   let ladder = bulletLadders.get(key);
   if (!ladder) {
     const own: LintWarning[] = [];
-    ladder = { paints: bulletLadder(theme, count, poor, good, own, light), warnings: own };
+    const steps = bulletLadder(theme, count, poor, good, own, light || !full);
+    ladder = { paints: toned ? steps.map((step, index) => toned[index] ? bulletToneTint(theme, toned[index]!, full) : step) : steps, warnings: own };
     if (bulletLadders.size >= 256) bulletLadders.clear();
     bulletLadders.set(key, ladder);
   }
   for (const warning of ladder.warnings) warnings.push({ ...warning });
   return [...ladder.paints];
+}
+
+export type BulletBandTone = 'good' | 'warn' | 'bad' | 'neutral';
+
+/**
+ * How far each band tone sits from the page, in OKLab lightness. Good sits
+ * furthest, as the percentOfTarget scale's good band does (goodFill at 68 %
+ * toward white), so the zone the bar should reach reads first. Bad sits
+ * nearest: a wide off-plan zone stays a pale wash and the bar, not the zone,
+ * carries the alarm. The steps keep good and bad apart in lightness, also for
+ * red-green colour vision, where their hues meet.
+ */
+const BULLET_TONE_STEP: Record<BulletBandTone, number> = { good: 0.13, warn: 0.11, bad: 0.09, neutral: 0.15 };
+
+/**
+ * A toned bullet band (or an attainment wash): the tone's fill washed toward
+ * the page until it sits its step (BULLET_TONE_STEP) from the page, decided in
+ * the theme the scene is painted in. A fill already within its step keeps its
+ * colour. `full` (the theme's `marks.bulletBandFill: 'full'`) keeps the fill.
+ */
+function bulletToneTint(theme: Theme, tone: BulletBandTone, full: boolean): Paint {
+  const base = markRolePaint(tone, true);
+  if (full) return base;
+  const page = theme.color.background;
+  const baseCss = paintColor(theme, base);
+  const pageL = oklabLightness(page) ?? 1;
+  const distance = (amount: number) => Math.abs((oklabLightness(tint(baseCss, amount, page)) ?? pageL) - pageL);
+  const step = BULLET_TONE_STEP[tone];
+  if (distance(0) <= step) return base;
+  let low = 0;
+  let high = 1;
+  for (let i = 0; i < 20; i++) {
+    const amount = (low + high) / 2;
+    if (distance(amount) >= step) low = amount;
+    else high = amount;
+  }
+  return { ...base, tint: low };
 }
 
 const bulletLadders = new Map<string, { paints: Paint[]; warnings: LintWarning[] }>();
@@ -464,6 +510,6 @@ export function adaptivePaintColor(theme: Theme, source: Extract<ThemePaintSourc
     case 'line-context': return paintColor(theme, lineContextPaint(theme, source.rank, source.rungCount, source.seriesId));
     case 'line-forecast': return paintColor(theme, lineForecastPaint(source.base, theme, source.crossesBand));
     case 'fan-step': return paintColor(theme, fanPaintSteps(theme, source.base, source.bandCount, source.showBounds, source.seriesId, source.deEmphasized)[source.index]!.paint);
-    case 'bullet-band': return paintColor(theme, bulletBandPaints(theme, source.count, source.poor, source.good, [], source.light === true)[source.index]!);
+    case 'bullet-band': return paintColor(theme, bulletBandPaints(theme, source.count, source.poor, source.good, [], source.light === true, source.tones)[source.index]!);
   }
 }

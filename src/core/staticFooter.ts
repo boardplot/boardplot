@@ -2,7 +2,7 @@
 import { footnoteMark } from './footnoteMark';
 import { INTERACTIVE_LAYOUT, footerPlans, footerType, staticFrame, wrapFootnote } from './footer';
 import { publishDeferred } from './deferred';
-import { chartNotes, copyNote, engineNoteMeta, keepNoteMeta, printsNote, shownNoteKinds, sourceLine, unprintedNotes, type ChartNote } from './notes';
+import { allQuiet, isQuiet, chartNotes, copyNote, engineNoteMeta, keepNoteMeta, printsNote, shownNoteKinds, sourceLine, unprintedNotes, type ChartNote } from './notes';
 import { fittedNote } from './frame';
 import { panelTypeClass, spaceTokens } from './theme';
 import { chartString, localeStrings } from './strings/frame';
@@ -89,7 +89,7 @@ function staticFooterLayout<D, O extends object, M extends object, DV extends ob
     if (current.live || geometry.refused) return geometry;
     const notesOff = (options as { footnotes?: unknown } | undefined)?.footnotes === false;
     const show = shownNoteKinds(options as Parameters<typeof shownNoteKinds>[0]);
-    if (!footerPlans.has(geometry.frame) && geometry.frame.noteList?.some(note => !note.inFrame && printsNote(note, show)
+    if (!footerPlans.has(geometry.frame) && geometry.frame.noteList?.some(note => !note.inFrame && printsNote(note, show) && !isQuiet(note)
       && (!notesOff || note.kind === 'source' || note.kind === 'credit'))) {
       const warning = { code: 'static-footer-plan-missing', severity: 'error' as const,
         message: 'Static output cannot print all enabled notes because its footer plan is missing.' };
@@ -155,7 +155,7 @@ function allNotes(plan: StaticFooterPlan): ChartNote[] {
   });
   return [...authored, ...plan.notes.filter((_, i) => !used.has(i)).map(fit)].map((note, i) => copyNote(note, { n: i + 1 }));
 }
-const enabledNotes = (plan: StaticFooterPlan) => allNotes(plan).filter(note => printsNote(note, plan.input.notes?.show)
+const enabledNotes = (plan: StaticFooterPlan) => allNotes(plan).filter(note => printsNote(note, plan.input.notes?.show) && !isQuiet(note)
   && (!plan.input.footnotesOff || note.inFrame || note.kind === 'source' || note.kind === 'credit'));
 function needsFooter(geometry: Geometry<object, object>, plan: StaticFooterPlan): boolean {
   const source = geometry.scene.find(node => node.id === geometry.frame.sourceNodeId);
@@ -169,16 +169,16 @@ function needsFooter(geometry: Geometry<object, object>, plan: StaticFooterPlan)
  * button's width free after its source line or its last line, else an empty row under it, so the image and
  * the live chart break their lines the same and stand equally tall. The width, gap included.
  */
-function notesButtonWidth(geometry: Geometry<object, object>, plan: StaticFooterPlan): number | undefined {
+function notesButtonWidth(geometry: Geometry<object, object>, plan: StaticFooterPlan): { width: number; quiet: boolean } | undefined {
   // A table (footerInset) draws in React as an HTML table with its own footer (TableChart), never this one.
   if (geometry.frame.notePlacement !== 'info' || plan.input.footnotesOff || plan.input.notes?.pointer === false || plan.input.footerInset !== undefined) return undefined;
   const printed = new Set(enabledNotes(plan).map(note => note.n));
   // As ChartFooter lists them (chartNotes): the notes list, then the compact notes.
-  const count = unprintedNotes([...allNotes(plan).map(note => copyNote(note, { inFrame: printed.has(note.n) })),
-    ...(geometry.a11y?.compactNotes ?? []).map((text): ChartNote => ({ n: 0, kind: 'note', text, inFrame: false }))]).length;
-  if (!count) return undefined;
-  // ChartFooter sets the button 0.75em after the line.
-  return plan.font.size * 0.75 + plan.measure(`${chartString(plan.input, 'notesAndSources')} (${count})`, plan.font).width;
+  const hidden = unprintedNotes([...allNotes(plan).map(note => copyNote(note, { inFrame: printed.has(note.n) })),
+    ...(geometry.a11y?.compactNotes ?? []).map((text): ChartNote => ({ n: 0, kind: 'note', text, inFrame: false }))]);
+  if (!hidden.length) return undefined;
+  // ChartFooter sets the button 0.75em after the line. Quiet: only quiet method notes sit behind it, so it never takes a row of its own.
+  return { width: plan.font.size * 0.75 + plan.measure(`${chartString(plan.input, 'notesAndSources')} (${hidden.length})`, plan.font).width, quiet: allQuiet(hidden) };
 }
 const buttonFits = (lines: readonly string[], button: number, plan: StaticFooterPlan) =>
   lines.length > 0 && plan.measure(lines[lines.length - 1]!, plan.font).width + button <= plan.width;
@@ -237,7 +237,9 @@ function withStaticFooter<G extends Geometry<object, object>>(geometry: G, minim
     }) } };
   };
   const collected = collectPanels(geometry);
-  const button = notesButtonWidth(geometry, plan);
+  const buttonAsk = notesButtonWidth(geometry, plan);
+  const button = buttonAsk?.width;
+  const quiet = buttonAsk?.quiet === true;
   if (!groups.length && !needsFooter(geometry, plan) && minimumHeight <= geometry.size.height) {
     if (button === undefined) return geometry;
     // The frame's own footer stays: the button goes after its source line, else after its last line, else in a row under it.
@@ -246,6 +248,7 @@ function withStaticFooter<G extends Geometry<object, object>>(geometry: G, minim
     const last = drawn.at(-1);
     const host = [drawn.find(node => node.id === geometry.frame.sourceNodeId), last].find(node => node && buttonFits(node.lines, button, plan));
     if (host) return { ...geometry, frame: { ...geometry.frame, notesButton: { nodeId: host.id } } };
+    if (quiet) return geometry;
     if (last) return withNotesRow(geometry, last.y + last.font.size * (last.font.lineHeight ?? 1.3) * last.lines.length, button, plan);
   }
   const notes = enabledNotes(plan);
@@ -273,7 +276,7 @@ function withStaticFooter<G extends Geometry<object, object>>(geometry: G, minim
   const lastAt = parts.reduce((at, part, i) => part.panel ? at : i, -1);
   const hostAt = button === undefined ? -1 : [sourceAt, lastAt].find(at => at >= 0 && buttonFits(parts[at]!.lines, button, plan)) ?? -1;
   const inline = hostAt >= 0;
-  const row = button !== undefined && !inline;
+  const row = button !== undefined && !inline && !quiet;
   let hostId: string | undefined;
   let y = row ? -lineH : 0;
   for (let i = parts.length - 1; i >= 0; i--) {

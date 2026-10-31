@@ -176,7 +176,7 @@ export function layoutSlope(
   const seriesKeys = new Map<NormSer, { unit?: string; values: number[] }>();
   const seriesKey = (s: NormSer) => seriesKeys.get(s) ?? seriesKeys.set(s, { unit: s.unit, values: [s.a, s.b].flatMap((end) => (end.isPct || end.v === null ? [] : [end.v])) }).get(s)!;
   const fmtVal = (v: number, isPct: boolean, example: string | undefined, s: NormSer): string =>
-    example ? formatterFromExample(example, options.locale?.language, s.unit ?? options.unit)(v)
+    example ? (example === options.format && !s.unit ? formats.fmt(v) : formatterFromExample(example, options.locale?.language, s.unit ?? options.unit)(v))
       : (isPct ? formatAuthoredPercent(v, options.locale?.language) : formats.forSeries(seriesKey(s))(v));
   const highlights = new Set(resolveHighlight(options.highlight));
   const density = options.labelDensity ?? 'smart';
@@ -280,7 +280,7 @@ export function layoutSlope(
     : planSlopeFold(plottedSeries, seriesNorm, options.foldBelowShare, {
       othersLabel: chartWording(options, 'others', 'Other'),
       highlights: kept, warnings,
-      format: (v, isPct) => options.format ? formatterFromExample(options.format, options.locale?.language, options.unit)(v) : isPct ? formatAuthoredPercent(v, options.locale?.language) : formats.fmt(v),
+      format: (v, isPct) => isPct && !options.format ? formatAuthoredPercent(v, options.locale?.language) : formats.fmt(v),
       ...(typeof options.unit === 'string' ? { chartUnit: options.unit } : {}),
       categories: { from: c0.label ?? c0.id, to: c1.label ?? c1.id },
       ...(options.locale?.language !== undefined ? { language: options.locale.language } : {}),

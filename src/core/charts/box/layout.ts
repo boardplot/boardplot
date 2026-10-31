@@ -36,7 +36,7 @@ import { rowLabelBand } from '../../label/rowLabels';
 import { fittedLabel, gutterBudget, stepDownFont } from '../../label/rowFit';
 import { applyValueAxisTitleInk, layoutValueAxis, straightBreakGlyph, planValueAxisTitle, valueAxisTitleRequest } from '../../axis';
 import { formatAutomaticNumber, numberRange, seriesValueFormatter } from '../../format';
-import { formatterFromExample } from '../../formatSpec';
+import { formatterFromExample, seriesRasterFormatter } from '../../formatSpec';
 import { rowLabelX, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
@@ -123,10 +123,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   );
   const size = resolveSize(options.size);
   const measure = options.measure ?? defaultMeasurer;
-  const axisFmt = options.format
-    ? formatterFromExample(options.format, options.locale?.language)
-    : (value: number) =>
-        formatAutomaticNumber(value, { locale: options.locale?.language, decimals: autoDecimals(value) });
+  const authoredFmt = options.format ? formatterFromExample(options.format, options.locale?.language) : undefined;
   const labelsOff = options.labels === false;
   const labelOn = (kind: LabelKind): boolean => chartLabelOn(options, kind);
   const highlights = new Set(resolveHighlight(options.highlight));
@@ -175,11 +172,27 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
     });
   }
   const rows = order.map((index) => summaries[index]!);
-  // The statistic and point labels are one series: one precision for them all (seriesValueFormatter), not one per value.
-  const fmt = options.format ? axisFmt : seriesValueFormatter([
+  const printed = [
     ...data.groups.flatMap((group) => group.observations ?? []),
     ...rows.flatMap((row) => [row.min, row.q1, row.median, row.q3, row.max, row.whiskerLow, row.whiskerHigh]),
-  ], options.locale?.language);
+  ];
+  // From a million the chart takes the engine scale bar takes, chosen once
+  // from its largest value: labels and ticks print 2.78B, not 2,778,700,000.
+  // Its precision comes from the values that print (statistics, drawn
+  // outliers and small-n points), so 160 raw observations do not lift every
+  // label to "2.7787B". An authored format keeps its digits.
+  const labelled = rows.flatMap((row, index) => [
+    row.min, row.q1, row.median, row.q3, row.max, row.whiskerLow, row.whiskerHigh,
+    ...(showOutliers ? row.beyondWhiskers : []),
+    ...(row.state === 'points' && showObservations === 'small-n' ? data.groups[order[index]!]!.observations ?? [] : []),
+  ]);
+  const engine = authoredFmt || options.target === undefined || !labelled.some((value) => value != null && Math.abs(value) >= 1e6)
+    ? undefined : seriesRasterFormatter(undefined, labelled, options.locale?.language, options.unit, options.target);
+  const scaled = engine?.spec.autoMagnitude ? engine : undefined;
+  const axisFmt = authoredFmt ?? scaled?.fmt ?? ((value: number) =>
+    formatAutomaticNumber(value, { locale: options.locale?.language, decimals: autoDecimals(value) }));
+  // The statistic and point labels are one series: one precision for them all (seriesValueFormatter), not one per value.
+  const fmt = authoredFmt ?? scaled?.fmt ?? seriesValueFormatter(printed, options.locale?.language);
 
   // ---- the median COLUMN gets ONE decimal convention ------------------------
   // The default formatter decides decimals per value, which printed 107 / 97.6
@@ -188,7 +201,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   // decide once, from the whole column, and give every median the same number
   // of decimals. An authored `format` already
   // fixes the decimals, so it is left alone.
-  const fmtMedian = options.format
+  const fmtMedian = authoredFmt || scaled
     ? fmt
     : seriesValueFormatter(rows.map((row) => row.median), options.locale?.language, options.unit, options.target);
 
@@ -597,6 +610,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
         ...(scaleEnd - plot.x < 320 ? { tickCount: 3 } : {}),
         gridlines: options.valueAxis?.gridlines ?? false,
         format: axisFmt,
+        ...(scaled ? { formatSpec: scaled.spec } : {}),
         theme,
         measure,
         canvasWidth: size.width,

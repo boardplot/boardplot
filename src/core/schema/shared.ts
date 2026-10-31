@@ -1165,6 +1165,7 @@ export const baseOptionsSchema = z.object({
   textSize: textSizeSchema.optional(),
   a11y: z.strictObject({
     title: z.boolean().optional().describe('Emit an SVG title element for hover text; default false. Accessible naming remains available.'),
+    description: z.string().min(1).optional().describe('Accessible description of the chart, in place of the generated one, in the SVG desc element and the React chart. Omitted: the description comes from the chart.'),
     table: z.enum(['hidden', 'toggle', 'below']).optional().describe("Record-derived accessible data table rendered by the React chart components: 'hidden' keeps it available to assistive technology only, 'toggle' adds a disclosure control, 'below' renders it visibly under the chart. BoardplotChart includes it in the server output; a per-type component adds it after mount. Omitted: no table. The SVG is unchanged."),
   }).optional().describe('Accessible presentation options; visible chart title is controlled separately by title.'),
   mode: z.enum(['full', 'compact']).optional().describe('Presentation framing. Omitted: full at or above the chart minimum width, compact below it where the type draws there. Compact keeps the title at the theme smallest title size. Some chart-specific schemas use a different mode vocabulary.'),

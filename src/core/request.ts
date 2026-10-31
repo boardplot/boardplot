@@ -1,6 +1,7 @@
 import { fractionLineWarnings, prepareFractionAnnotations, percentScaleWarnings } from './normalize/fraction';
 import { readFormatExamples } from './formatSpec';
 import { colorVariableWarnings } from './colorVariables';
+import { drawnRequest } from './drawnRequest';
 import { shownNoteKinds } from './notes';
 import { getChart } from './registry';
 import { chartSizing, compactFallbackApplies, declaredSizing, fitsSize, FIXED_SIZE_PROBE, FULL_LAYOUT_PROBE, SIZE_TOLERANCE, LAYOUT_CALL, type LayoutCall, plotFloorHeight, plotRepairHeight, resolveSizing, sizeRefusal, VERIFY_ADVICE, verifiedSizeRepair, WIDTH_PROBE } from './sizing';
@@ -662,6 +663,15 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
   // Size advice uses whole pixels; the authored canvas can have a fractional width.
   if (!result.refused && result.sizing?.fit === 'content' && Math.ceil(result.size.width) === sizing.naturalWidth) {
     sizing = { ...sizing, naturalHeight: result.sizing.naturalHeight };
+  }
+  // A column that stepped to bars drew a bar, whose natural and comfortable sizes hold only at this
+  // width. Those sizes are advice for the natural width, so they come from the chart drawn there.
+  if (!result.refused && !isRefused(result) && drawnRequest(request, result) !== request && Math.ceil(result.size.width) !== sizing.naturalWidth) {
+    const wide = layoutAt.probe({ ...request.options, size: { width: sizing.naturalWidth } });
+    if (!isRefused(wide) && wide.sizing) {
+      const { fit, aspect, naturalHeight, comfortableWidth, comfortableHeight } = wide.sizing;
+      sizing = { ...sizing, fit, aspect, naturalHeight, comfortableWidth, comfortableHeight };
+    }
   }
   // All measurement fields and repair advice describe the verified floor. A canvas below the full
   // floor that falls back to compact keeps the size compact needs, which the layout named (the

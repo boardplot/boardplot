@@ -333,7 +333,7 @@ export function layoutHeatmap(
   const rasterSpec = defaultFormatSpec(options.locale?.language);
   const decimals = rasterDecimals(allValues, rasterSpec);
   const fmt = options.format
-    ? formatterFromExample(options.format, options.locale?.language)
+    ? formatterFromExample(options.format, options.locale?.language, undefined, allValues)
     : (v: number) => formatAutomaticNumber(v, { locale: options.locale?.language, decimals: defaultNumberDecimals(v, nonzeroDecimals(v, decimals), options.unit, options.target) });
   const formats = seriesRasterFormatter(options.format, allValues, options.locale?.language, options.unit, options.target);
   const vMax = allValues.length > 0 ? maxOf(allValues) : 0;

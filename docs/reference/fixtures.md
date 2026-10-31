@@ -46,7 +46,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | consensus-surprise-threshold | column.grouped | example | Authored surprise corridor: no statistics at all |
 | anomaly-small-sample | column.grouped | torture | Torture: five periods refuse to produce an outlier verdict |
 | anomaly-torture | column.grouped | torture | Torture: 60 periods, MAD = 0, an all-negative series and a 40× tail |
-| accessible-title-opt-in | column.grouped | example | Optional SVG hover title |
+| accessible-title-opt-in | column.grouped | example | Optional SVG hover title and authored accessible description |
 | minimum-frame | column.grouped | example | Column at the standalone size floor |
 | compact-frame | column.grouped | example | Compact column with source and note marker |
 | hatched-stack-labels | column.stacked | example | Forecast stack with protected inside values |
@@ -559,6 +559,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | band-key-labels | bullet | torture | bandKey labels keeps every label and shade |
 | band-key-ramp | bullet | example | bandKey ramp forces the worse-to-better key |
 | two-sided-spend | bullet | example | Both low and high spend are off plan |
+| two-sided-spend-full-fill | bullet | torture | Toned bands in their full fills |
 | tone-spectrum | bullet | torture | Band tones carry the range judgment |
 | neutral-change | bullet | example | A neutral comparison with a target |
 | plan-wording | bullet | example | strings.target words the comparison as plan |

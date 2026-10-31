@@ -97,8 +97,11 @@ export function layoutDivergingSlope(
   const measure = options.measure ?? defaultMeasurer;
   const opt = options.diverging ?? {};
   const language = options.locale?.language;
+  // An authored chart format holds every panel to one scale and one decimal count (exampleSpec).
+  let chartFormat: ((v: number) => string) | undefined;
   const fmtVal = (v: number, isPct: boolean, example = options.format): string =>
-    example ? formatterFromExample(example, options.locale?.language)(v)
+    example && example === options.format ? (chartFormat ??= formatterFromExample(example, language, undefined, panels.flatMap((p) => [...p.g.positive, ...p.g.negative])))(v)
+    : example ? formatterFromExample(example, options.locale?.language)(v)
       : isPct ? formatAuthoredPercent(v, language) : formatAutomaticNumber(v, { locale: language, decimals: autoDecimals(v) });
   const signed = (v: number): string => formatAutomaticNumber(v, { locale: language, signed: true, decimals: autoDecimals(v) });
 

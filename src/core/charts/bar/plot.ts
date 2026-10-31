@@ -19,9 +19,11 @@ import { axisBreakInvalid } from '../../axisBreakInvalid';
 import { axisBreakHeightOrderWarning } from '../../axisBreakOrder';
 import { breakStyleRefusal, stackBreakReversesOrder } from '../band/breakOrder';
 import { bandScale, brokenLinearScale, invalidLinearBreakReason, linearScale, niceDomain, type LinearBreak } from '../../scale';
-import type { FontSpec } from '../../text';
-import { canvasMargin, panelTypeClass, emphasisWeight, strokeToken, dashToken } from '../../theme';
-import type { LegendOptions } from '../../types/options';
+import { resolveSize } from '../../normalize/shared';
+import { COLLECT_IDENTITIES } from '../../seriesIdentity';
+import { defaultMeasurer, type FontSpec } from '../../text';
+import { canvasMargin, panelTypeClass, emphasisWeight, resolveTheme, strokeToken, dashToken, themeForWidth } from '../../theme';
+import type { BarOptions, LegendOptions } from '../../types/options';
 import type { LintWarning } from '../../types/scene';
 import { groupedOffsets } from '../band/groups';
 import { netLineName } from '../band/stacks';
@@ -175,7 +177,7 @@ export function solveBarFrame(domain: BarDomain, paints: BarLegendPaints, warnin
           ? [disclosureNote(stringFields(options.strings!.knownPartsShares!, {
             categories: cappedItems(cats.filter(c => c.total100 === undefined && domain.incompleteRows.has(c.id)).map(c => c.label ?? c.id), options).join(', '),
           }))] : []),
-        ...authoredNotes(options), ...((options as { [CUT_NOTES]?: string[] })[CUT_NOTES] ?? [])],
+        ...authoredNotes(options), ...((options as { [CUT_NOTES]?: string[] })[CUT_NOTES] ?? []), ...domain.shareNotes],
       legend,
       theme,
       measure,
@@ -183,6 +185,31 @@ export function solveBarFrame(domain: BarDomain, paints: BarLegendPaints, warnin
     claims,
   );
   return { frame, claims };
+}
+
+/** The least a standard bar reserves above its value-axis row in the plot band: its top annotation strip (barPlotArea). */
+const MIN_ANNOTATION_STRIP = 8;
+/** The smallest plot the frame hands a chart (plotHeightAfter). */
+const MIN_PLOT_BAND = 10;
+
+/**
+ * A lower bound on the height a standard bar takes above and below its rows, from the frame alone: the
+ * title, subtitle, source and authored notes, with no key and none of the bar's own notes. Those can
+ * only add height, so the bar's real chrome is never below this. It costs one frame, not a bar layout.
+ */
+export function barChromeFloor(options: BarOptions): number {
+  const size = resolveSize(options.size);
+  const theme = themeForWidth(resolveTheme(options.theme), size.width);
+  const frame = solveFrame({
+    size,
+    margin: { ...canvasMargin(theme, size.width), ...options.margin },
+    ...frameTextOptions(options),
+    [COLLECT_IDENTITIES]: undefined,
+    footnotes: authoredNotes(options),
+    theme,
+    measure: options.measure ?? defaultMeasurer,
+  }, createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height }));
+  return size.height - Math.max(MIN_PLOT_BAND, frame.plot.h - MIN_ANNOTATION_STRIP);
 }
 
 /** The widest outside-end label on each side, measured BEFORE the scale so the headroom fits them. */

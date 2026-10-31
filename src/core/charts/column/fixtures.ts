@@ -1270,13 +1270,13 @@ export const fixtures: Fixture<RangeChartData, AnomalyColumnOptions>[] = [
   },
   {
     id: 'accessible-title-opt-in',
-    title: 'Optional SVG hover title',
+    title: 'Optional SVG hover title and authored accessible description',
     kind: 'example',
     data: {
       categories: [{ id: 'q1', label: 'Q1' }, { id: 'q2', label: 'Q2' }],
       series: [{ id: 'revenue', label: 'Revenue', values: [100, 120] }],
     },
-    options: { title: 'Quarterly revenue', a11y: { title: true } },
+    options: { title: 'Quarterly revenue', a11y: { title: true, description: 'Revenue grew 20% from the first to the second quarter.' } },
   },
   {
     id: 'minimum-frame',
