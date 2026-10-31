@@ -76,7 +76,7 @@ export interface GroupHeadingCell {
  * The width a heading's cell needs: the label and its note as drawn, plus
  * what the cell itself takes. Rounded up to a whole pixel.
  */
-function groupHeadingNeed(
+export function groupHeadingNeed(
   group: { id: Id; label: string; note?: string },
   faces: GroupHeadingFaces,
   measure: TextMeasurer,
