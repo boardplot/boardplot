@@ -233,6 +233,17 @@ describe('note rules', () => {
     expect(noteTexts(geo, ['disclosure'])).toEqual(['Not drawn (negative value, so no total shown): Loss.']);
   });
 
+  // A 280 px dashboard doughnut gave its width to the slice labels, so the hole was too small and the total moved to the notes.
+  it('a 280 px doughnut keeps its centre total inside the hole', () => {
+    const categories = ['Cloud infrastructure & tools', 'People and contractors', 'Facilities and building lease', 'Marketing & brand campaigns', 'Travel and events', 'Professional services & legal', 'Training and development']
+      .map((label, i) => ({ id: `c${i + 1}`, label }));
+    const geo = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'pie', data: { categories, series: [{ id: 's', label: 'Spend', values: [1.428, 0.882, 0.672, 0.504, 0.378, 0.21, 0.126] }] },
+      options: { target: 'dashboard', size: { width: 280, height: 420 }, doughnut: 0.6, legend: 'bottom', unit: 'EUR m', format: '1.0' } } as never)));
+    const total = geo.labels.find((label) => label.kind === 'total')!;
+    expect(total.hidden).not.toBe(true);
+    expect(total.noted).not.toBe(true);
+  });
+
   it('an open height gives hidden values the room their unprinted note took', () => {
     const fixture = getFixtures('pie').find((entry) => entry.id === 'ten-tiny-slices')!;
     const geo = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'pie', data: fixture.data, options: fixture.options } as never)));
