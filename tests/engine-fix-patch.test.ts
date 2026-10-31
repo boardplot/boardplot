@@ -70,6 +70,25 @@ describe('engine fix patches', () => {
   });
 });
 
+describe('root key fixes', () => {
+  const chart = { type: 'column', data: { categories: [{ id: 'a', label: 'Alpha' }, { id: 'b', label: 'Beta' }], series: [{ id: 'rev', label: 'Revenue', values: [12, 19] }] } };
+
+  // A chart sent beside a root version got remove patches for its type and data, and a root title got a remove that dropped it unseen.
+  it('applies to a drawing chart that keeps its data, title and unit', () => {
+    for (const [spec, kept] of [
+      [{ version: 1, ...chart, options: { title: 'Revenue' } }, { title: 'Revenue' }],
+      [{ ...chart, title: 'Revenue', unit: 'EUR m' }, { title: 'Revenue', unit: 'EUR m' }],
+      [{ ...chart, options: { unit: 'EUR m' }, title: 'Revenue' }, { title: 'Revenue', unit: 'EUR m' }],
+    ] as const) {
+      const refused = render({ spec, format: 'svg' }).body as any;
+      expect(refused.ok).toBe(false);
+      const fixed = applyPatch(spec, refused.errors.flatMap((error: any) => error.fix));
+      expect(fixed).toMatchObject({ type: 'column', data: chart.data, options: kept });
+      expect(render({ spec: fixed, format: 'svg' }).body).toMatchObject({ ok: true });
+    }
+  });
+});
+
 const fixtureSpec = (type: string, id: string) => {
   const { data, options, annotations } = getFixtures(type).find((entry) => entry.id === id)!;
   return structuredClone({ type, data, options, ...(annotations ? { annotations } : {}) }) as any;

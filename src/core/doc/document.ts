@@ -143,14 +143,31 @@ export function bareFinding<T extends DocumentFinding>(finding: T): T {
   };
 }
 
-function unknownField(input: Record<string, unknown>, segments: (string | number)[], where: string): DocumentFinding {
-  const key = String(segments[segments.length - 1]);
+function unknownField(
+  input: Record<string, unknown>, segments: (string | number)[], where: string,
+  edit: Pick<DocumentFinding, 'suggest' | 'fix'> = { suggest: `Remove '${segments[segments.length - 1]}'.`, fix: [{ op: 'remove', path: toJsonPointer(segments) }] },
+): DocumentFinding {
   return completeDiagnostic({
     code: 'unknown-field',
-    message: `${where} field '${key}' is not part of the spec.`,
-    suggest: `Remove '${key}'.`,
-    fix: [{ op: 'remove', path: toJsonPointer(segments) }],
+    message: `${where} field '${segments[segments.length - 1]}' is not part of the spec.`,
+    ...edit,
   }, input, segments, 'docs/manual.md#the-spec');
+}
+
+/**
+ * A top-level key a chart does not take, like `title` or `unit`, holds what
+ * the author meant for the chart. Its fix moves it into options, because a
+ * remove would drop it without a word; the options check then judges it by name.
+ */
+function strayKey(input: Record<string, unknown>, key: string, where: string, strays: readonly string[]): DocumentFinding {
+  const { options } = input;
+  // Without options, every fix adds the same whole object: two adds of /options would otherwise overwrite each other.
+  const append = options === undefined ? { op: 'add' as const, path: '/options', value: Object.fromEntries(strays.map(name => [name, input[name]])) }
+    : isRecord(options) && !Object.hasOwn(options, key) ? { op: 'add' as const, path: toJsonPointer(['options', key]), value: input[key] }
+      : undefined;
+  return unknownField(input, [key], where, append
+    ? { suggest: `Move '${key}' into options.`, fix: [append, { op: 'remove', path: toJsonPointer([key]) }] }
+    : { suggest: `Move '${key}' into options, or remove it.` });
 }
 
 /**
@@ -171,8 +188,18 @@ function unknownDocFields(raw: unknown): { errors: DocumentFinding[]; warnings: 
       code: 'schema-hint-unusable', severity: 'warn', message: hintMessage,
     }, raw, ['$schema']));
   }
+  // `version` beside chart keys and no `charts`: the keys are one chart and the version is the stray one.
+  const oneChart = !Object.hasOwn(raw, 'charts') && ['type', 'data', 'options', 'annotations'].some(key => Object.hasOwn(raw, key));
+  const strays = Object.keys(raw).filter(key => !DOC_ROOT_FIELDS.has(key) && !(oneChart && BARE_FIELDS.has(key)));
   for (const key of Object.keys(raw)) {
-    if (!DOC_ROOT_FIELDS.has(key)) errors.push(unknownField(raw, [key], 'Root'));
+    if (oneChart && key === 'version') {
+      errors.push(completeDiagnostic({
+        code: 'unknown-field',
+        message: "Root field 'version' belongs to a document with 'charts'; one chart takes none.",
+        suggest: "Remove 'version', or put the chart into 'charts'.",
+        fix: [{ op: 'remove', path: '/version' }],
+      }, raw, ['version'], 'docs/manual.md#the-spec'));
+    } else if (strays.includes(key)) errors.push(strayKey(raw, key, 'Root', strays));
   }
   if (Object.hasOwn(raw, 'locale') && typeof raw.locale !== 'string') {
     warnings.push(completeDiagnostic({
@@ -193,7 +220,8 @@ function unknownDocFields(raw: unknown): { errors: DocumentFinding[]; warnings: 
 }
 
 function bareFieldErrors(spec: Record<string, unknown>): DocumentFinding[] {
-  const errors = Object.keys(spec).filter((key) => !BARE_FIELDS.has(key)).map((key) => unknownField(spec, [key], 'Top-level'));
+  const strays = Object.keys(spec).filter((key) => !BARE_FIELDS.has(key));
+  const errors = strays.map((key) => strayKey(spec, key, 'Top-level', strays));
   if (Object.hasOwn(spec, 'name') && !(typeof spec.name === 'string' && FILE_STEM.test(spec.name))) {
     errors.push(completeDiagnostic({
       code: 'invalid-name',
