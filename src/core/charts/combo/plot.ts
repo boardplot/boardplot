@@ -531,6 +531,8 @@ export function solveComboFrame(
         ...(growthNote === undefined ? [] : [growthNote]),
         // Two scales without tick columns: the note says each series reads on its own.
         ...(domain.secondaryActive && domain.ticksFromLabels === true ? [disclosureNote(chartString(options, 'comboOwnScale'))] : []),
+        // Moved shares matter only where the segments print them.
+        ...(contentOf(domain, 'segment', ['absolute'])?.includes('percent') ? domain.shareNotes : []),
       ],
       legend,
       ...(eventKey ? { eventKey } : {}),

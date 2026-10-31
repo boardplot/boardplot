@@ -14,7 +14,7 @@ import { formatStatWithSpec, seriesRasterFormatter } from '../../formatSpec';
 import { anomalyCorridor, anomalyModel, refuseAnomalySpec } from '../column/anomaly';
 import { isIncomplete, warnIncompleteComposition, warnShareRoundingDrift } from '../../dataGaps';
 import { cleanFloat } from '../../geometry';
-import { roundWholes } from '../../shareRounding';
+import { roundWholes, shareRoundingNotes } from '../../shareRounding';
 import { parseISODate } from '../../isoDate';
 import { fitLineTrends, trendTimeline } from './trend';
 import { lineXModel, resolveLineXOptions, unmatchedPartial, type LineXModel } from './continuous';
@@ -774,18 +774,6 @@ export function resolveLineDomain(data: LineChartData, input: LineOptions, env: 
     }), options.locale?.language, undefined, true)
     : undefined;
   if (rounded) pushAll(warnings, rounded.warnings);
-  // The printed stacked100-area shares (both ends, every category under 'all') sum to
-  // 100, or the drift is disclosed. Computed shares only.
-  const printedValues = lineLabelModes(options, variant, 0).values;
-  if (variant === 'stacked100-area' && options.rounding === 'nearest' && printedValues !== 'none' && options.labels !== false) {
-    const printedAt = printedValues === 'all' ? cats.map((_, ci) => ci) : printedValues === 'last' ? [cats.length - 1] : [...new Set([0, cats.length - 1])];
-    warnShareRoundingDrift(warnings, printedAt.flatMap((ci) => {
-      const c = cats[ci]!;
-      return compositionInvalidAt(ci) || sharesWithheld.has(c.id) || c.total100 !== undefined || dataSeries.some((s) => s.vals[ci]!.isPct)
-        ? []
-        : [{ name: c.label ?? c.id, shares: dataSeries.flatMap((s) => pv[rowOf.get(s)!]![ci] ?? []) }];
-    }));
-  }
   // Bump: derive ranks (standard competition ranking, "1224") and PLOT THEM IN
   // PLACE OF THE VALUES. The rank is written back into `pv`, so everything
   // below operates on rank without knowing it; `s.vals` keeps the metric, and
@@ -853,6 +841,23 @@ export function resolveLineDomain(data: LineChartData, input: LineOptions, env: 
   checkPointBudget(cats.length, seriesNorm.length);
   if (population) projectLineViewport({ ...population, bump: bumpDerived, fan, phases });
   if (population) options = liveWindowOptions({ ...options, annotations: population.annotations }, population.sampling);
+  // The printed stacked100-area shares (both ends of the drawn window, every drawn category under 'all') sum to
+  // 100, or the drift is disclosed. Computed shares only.
+  const printedValues = lineLabelModes(options, variant, 0).values;
+  const printedAt = variant === 'stacked100-area' && printedValues !== 'none' && options.labels !== false
+    ? printedValues === 'all' ? cats.map((_, ci) => ci) : printedValues === 'last' ? [cats.length - 1] : [...new Set([0, cats.length - 1])]
+    : [];
+  if (options.rounding === 'nearest' && printedAt.length > 0) {
+    warnShareRoundingDrift(warnings, printedAt.flatMap((ci) => {
+      const c = cats[ci]!;
+      return compositionInvalidAt(ci) || sharesWithheld.has(c.id) || c.total100 !== undefined || dataSeries.some((s) => s.vals[ci]!.isPct)
+        ? []
+        : [{ name: c.label ?? c.id, shares: dataSeries.flatMap((s) => pv[rowOf.get(s)!]![ci] ?? []) }];
+    }));
+  }
+  // The method note speaks only of moved shares that print: the categories whose labels show.
+  const printedNames = new Set(printedAt.map((ci) => cats[ci]!.label ?? cats[ci]!.id));
+  const shareNotes = shareRoundingNotes(options, rounded?.adjustments.filter((adjustment) => printedNames.has(adjustment.whole)) ?? []);
   // After the viewport: the rounded shares are keyed by category, so they follow its projection.
   const labelPv = rounded ? seriesNorm.map((s, si) => cats.map((c, ci) => rounded.values.get(`${c.id}\0${s.id}`) ?? pv[si]![ci]!)) : pv;
 
@@ -893,7 +898,7 @@ export function resolveLineDomain(data: LineChartData, input: LineOptions, env: 
     ...core,
     refSeries, drawnSeries, bumpOmitted, valueSpec, fmt: valueSpec.fmt, interpolationFor, labelModes, labelOnly: labelModes.only, gapFillSeries, fan, phases, rebased,
     population, timeline, ...(xModel ? { x: { model: xModel, lo: xRange!.lo, hi: xRange!.hi, shown: population ? population.indexes.map((i) => xModel.xs[i]!) : xModel.xs, ...(range ? { range } : {}) } } : {}), autoSampled: live.auto === true, absOf, compositionInvalidAt, nmCats100, overfullCats100, naCats100, sharesWithheld, incompleteStack, rebaseSuppressed, cumTop, cumBot, endpoints, lastIdxOf,
-    labelPv, shareTexts: rounded?.texts ?? new Map(), ...(rounded ? { roundingAdjustments: rounded.adjustments } : {}),
+    labelPv, shareTexts: rounded?.texts ?? new Map(), ...(rounded ? { roundingAdjustments: rounded.adjustments } : {}), shareNotes,
     ...values,
     anomaly,
   };

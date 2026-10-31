@@ -738,6 +738,11 @@ export interface FrameGeometry {
    * the last line of `nodeId`, or in an empty row at `y`. The image leaves that space empty.
    */
   notesButton?: { nodeId?: Id; y?: number };
+  /**
+   * True when the layout left React's notes button off: every note behind it is a quiet method
+   * note and its row would have made the footer taller than without that note (core/notes `quietMethodNote`).
+   */
+  notesButtonOff?: true;
   /** The node of a map credit drawn in the frame. */
   creditNodeId?: Id;
   footnoteNodeIds?: Id[];

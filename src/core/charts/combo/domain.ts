@@ -10,7 +10,7 @@ import { breakUnsupported, chartPalette, chartTheme } from '../chartEnv';
 import { defaultMeasurer } from '../../text';
 import { tickFormatter } from '../../axis';
 import { formatAutomaticPercent, formatShare } from '../../format';
-import { roundingUnavailable, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
+import { roundingUnavailable, shareRoundingNotes, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
 import { comboValueLabels, FIRST_END_BELOW_TOTALS } from './endpoints';
 import { unitConflict, unitConflictRefusal } from '../../schema/units';
 import { formatStatWithSpec, formatterFromExample, memoFormatterFromExample, percentRasterFormatter, seriesRasterFormatter } from '../../formatSpec';
@@ -879,6 +879,7 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
     stackTotals,
     shareTexts,
     roundingAdjustments,
+    shareNotes: shareRoundingNotes(options, roundingAdjustments),
     incompleteCats,
     columnsAdd,
     posTop,

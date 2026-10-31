@@ -101,7 +101,7 @@ export function ChartFooter({ geometry, notes, theme, sourceWord, strings, rende
   const rect = geometry.frame?.footerRect;
   const font = footerFont(geometry, theme);
   // The rows the layout reserved for this footer (footerParts).
-  const { info, source, credit, shown, panel } = footerParts(notes, geometry.frame?.notePlacement, show, pointer);
+  const { info, source, credit, shown, panel } = footerParts(notes, geometry.frame?.notePlacement, show, pointer && !geometry.frame?.notesButtonOff);
   const width = geometry.size.width;
   const cap = Math.min((rect?.y ?? 480) * 0.5, 240);
   useLayoutEffect(() => {

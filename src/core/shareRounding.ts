@@ -4,8 +4,11 @@
  * implement the option (mekko, pie) carry it.
  */
 import { formatPercent, shareText } from './format';
+import { quietMethodNote } from './notes';
+import { chartString } from './strings/shareRounding';
 import { roundHalfUp, shareSetDecimals } from './formatPrecision';
 import { formatWithSpec, withChartMarks, type NumberFormatSpec } from './formatSpec';
+import type { BaseOptions } from './types/options';
 import type { LintWarning } from './types/scene';
 
 // Percent-point noise below one tenth of the finest safe display step (1e-13).
@@ -30,6 +33,24 @@ export interface RoundingAdjustment {
   nearest: string;
   /** What it prints as, so the whole's shares add up to 100%. */
   printed: string;
+}
+
+/**
+ * The one hidden method note for a chart whose printed shares were moved to add up
+ * to 100%, or whose stacks take their shares of their own total because the authored
+ * parts miss 100 (`rescaled` names those stacks). It prints nowhere under the chart
+ * by default and joins the notes list.
+ */
+export function shareRoundingNotes(
+  options: Pick<BaseOptions, 'locale' | 'strings'>,
+  adjustments: readonly RoundingAdjustment[],
+  rescaled: readonly string[] = [],
+): string[] {
+  const sentences = [
+    ...(adjustments.length > 0 ? [chartString(options, 'shareRoundingMoved')] : []),
+    ...(rescaled.length > 0 ? [chartString(options, 'shareRoundingRescaled', { v1: rescaled.join(', ') })] : []),
+  ];
+  return sentences.length > 0 ? [quietMethodNote(sentences.join(' '))] : [];
 }
 
 /**
