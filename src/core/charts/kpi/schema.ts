@@ -48,7 +48,7 @@ export const kpiDataSchema = z.strictObject({
   spark: z
     .strictObject({
       kind: z.enum(['line', 'area', 'column'])
-        .describe("Shape-only sparkline. 'column' is zero-anchored. The last observed value is labelled unless the card's figure already prints it. No axes."),
+        .describe("Shape-only sparkline. 'column' and 'area' are zero-anchored. 'line' spans the series range. The last observed value is labelled unless the card's figure already prints it. No axes."),
       values: z.array(cellSchema).min(1).describe("Trend observations in chronological order, in the same base units as the main value; the card format labels the last observed value unless it reads the same as the card's figure. A last value 1000 times or more off the main value is refused (spark-scale-mismatch). Missing cells create gaps."),
       labels: z.array(z.string()).optional().describe("One period name per value, such as 'W1' or 'Jan'. The card prints the first and the last under the spark's ends, so the reader sees the span."),
     })
