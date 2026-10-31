@@ -1,3 +1,4 @@
 ### Fixed
 
 - Following the size fixes no longer loops or turns a drawn chart into a refusal. A `plot-under-floor` fix and an `aspect-cap` fix each named a height from their own rule, so a column at 480 px wide went from 463 to 361 to 484 and back to 361, and a diagram went from a drawn 416 to a refused 241. The height fixes of `aspect-cap` and `height-off-ladder` are now drawn at the named size before they are offered, and the fix is dropped when that size still needs a size fix or is refused. `height-off-ladder` moves up to the next step when the nearest step is too low. When the estimated plot floor needs more height than the aspect cap allows, `plot-under-floor` offers the cap height when that size draws clean, and otherwise offers no height patch and says to widen the chart or leave the height out.
+- `boardplot_measure` and the `measure` command apply the same rule: they no longer replace a size fix they verified with a smaller height they did not draw.

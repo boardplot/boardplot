@@ -475,17 +475,21 @@ interface SvgWriteOptions { idScope?: string; background?: false }
 /** The size codes that tell a probed height still needs a size fix. */
 const PROBE_REJECTS: ReadonlySet<string> = new Set(['plot-under-floor', 'size-below-floor', 'aspect-cap', 'height-off-ladder']);
 
-function drawn(doc: BoardplotDoc, chart: DocChart, envelope: DocumentEnvelope, write: SvgWriteOptions = {}, target?: RenderTarget, probing = false) {
-  const resolved = resolveRequest(doc, chart, envelope, target);
-  if (!resolved) return null;
-  // A size fix of the aspect lints is checked by drawing the chart at that size. The probe offers no further fixes.
-  const fits = probing ? undefined : (size: Size) => {
+/** Whether the chart draws clean at a size: the check a size fix of the aspect lints needs. The probe offers no further fixes. */
+function sizeProbe(doc: BoardplotDoc, chart: DocChart, target?: RenderTarget) {
+  return (size: Size) => {
     const scratch: DocumentEnvelope = { ok: true, errors: [], warnings: [] };
     try {
       return drawn(doc, { ...chart, options: { ...chart.options, size } }, scratch, {}, target, true) !== null
         && scratch.errors.length === 0 && !scratch.warnings.some(w => PROBE_REJECTS.has(w.code) && w.severity !== 'info');
     } catch { return false; }
   };
+}
+
+function drawn(doc: BoardplotDoc, chart: DocChart, envelope: DocumentEnvelope, write: SvgWriteOptions = {}, target?: RenderTarget, probing = false) {
+  const resolved = resolveRequest(doc, chart, envelope, target);
+  if (!resolved) return null;
+  const fits = probing ? undefined : sizeProbe(doc, chart, target);
   return judged(chart, resolved, requireGeometry(layoutResolvedRequest(resolved.request)) as Geometry, envelope, true, write, fits);
 }
 
@@ -630,7 +634,7 @@ export function measureChart(doc: BoardplotDoc, chart: DocChart, envelope: Docum
     const measured = measureLayout(request, layout);
     if (measured.refused) verifySizeAdvice(doc, chart, measured.refused.warnings, target);
     pushAll(envelope.warnings, measured.warnings.filter((warning) => warning.severity !== 'error'));
-    if (!layout.refused && !judged(chart, resolved, layout, envelope, false)) return null;
+    if (!layout.refused && !judged(chart, resolved, layout, envelope, false, {}, sizeProbe(doc, chart, target))) return null;
     return { ...measured, target: resolved.request.target };
   });
 }

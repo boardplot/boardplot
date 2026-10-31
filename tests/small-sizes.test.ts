@@ -635,6 +635,16 @@ describe('size advice', () => {
     const diagram = { type: 'diagram', data: { nodes: labels.map((label, i) => ({ id: `n${i}`, kind: 'entity', shape: { kind: 'roundedRect' }, label, role: i ? 'primary' : 'accent', order: i })),
       edges: [[0, 1], [0, 2], [1, 3], [2, 4], [1, 5], [2, 6], [1, 7]].map(([s, t], i) => ({ id: `e${i}`, source: { nodeId: `n${s}` }, target: { nodeId: `n${t}` } })) },
     options: { variant: 'hierarchy', title: 'Structure of the programme', source: 'Invented data', size: { width: 320, height: 200 } } };
+    // Measure names a size fix by the same rule: a size it names must draw with no size fix, or it names none.
+    for (const start of [column, diagram]) {
+      const body = cliMeasure({ spec: start }).body as any;
+      for (const item of [...(body.errors ?? []), ...(body.warnings ?? [])]) {
+        if (!item.fix?.some((op: any) => op.path === '/options/size')) continue;
+        const after = render({ spec: applyRepair(start, item.fix) }).body as any;
+        expect(after.ok, `${start.type} measure fix refuses a drawn chart`).toBe(true);
+        expect([...(after.errors ?? []), ...(after.warnings ?? [])].filter((w: any) => w.code === item.code), `${start.type} measure fix ${item.code} still raised`).toEqual([]);
+      }
+    }
     for (const start of [column, diagram]) {
       let spec: any = start;
       const seen = new Set<string>();
