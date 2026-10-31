@@ -104,7 +104,7 @@ const EN = {
     missingStack: "Missing values at {categories}: 0 used; totals partial.",
     incompleteStacks: "{categories}: incomplete stacks; missing parts are not drawn.",
     knownPartsShares: "{categories}: shares of known parts only.",
-    rebaseZero: "{series} not shown: zero base at {period}.",
+    rebaseZero: "{series} not shown: zero or negative base at {period}.",
     rebaseMissing: "{series} not shown: missing base at {period}.",
   }
 } as const satisfies Record<string, string>;
@@ -210,7 +210,7 @@ const DE: { [K in keyof typeof EN]: string } = {
     missingStack: "Fehlende Werte bei {categories}: als 0 gezeichnet; Summen unvollständig.",
     incompleteStacks: "{categories}: unvollständige Stapel; fehlende Teile nicht gezeichnet.",
     knownPartsShares: "{categories}: Anteile nur der bekannten Teile.",
-    rebaseZero: "{series} nicht gezeigt: Basis ist 0 bei {period}.",
+    rebaseZero: "{series} nicht gezeigt: Basis ist 0 oder negativ bei {period}.",
     rebaseMissing: "{series} nicht gezeigt: Basis fehlt bei {period}.",
   }
 };

@@ -10,6 +10,7 @@ import { baseOptionsSchema } from './schema/shared';
 import { WORDING_KEYS } from './schema/unknownKeyWords';
 import { schemaReference, type SchemaFieldReference } from './schema/reference';
 import { themes } from './theme';
+import { PNG_PIXELS_MAX } from './pngPhysicalSize';
 import { API_VERSION } from '../version';
 import { gridFormOf } from './charts/grid/layout';
 import { comboDrawsSecondaryAxis } from './charts/combo/domain';
@@ -403,6 +404,6 @@ export function buildCatalog() {
       },
     })),
     forms: { drawn: ['svg', 'png'], notDrawn: ['html report', 'slide deck', 'pdf', 'scrolling dashboard'] },
-    limits: { requestBytes: 10 * 1024 * 1024, errorsPerResponse: 10, fixturesPerPage: 25, pngScaleMax: 8 },
+    limits: { requestBytes: 10 * 1024 * 1024, errorsPerResponse: 10, fixturesPerPage: 25, pngScaleMax: 8, pngPixelsMax: PNG_PIXELS_MAX },
   };
 }

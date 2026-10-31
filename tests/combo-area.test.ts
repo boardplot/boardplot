@@ -126,3 +126,16 @@ it('draws a combo area behind the columns, with the shadings read through it', (
   expect(parts.filter((part) => part === 'bandEdge')).toHaveLength(2);
   expect(parts.filter((part) => part === 'columnGap')).toHaveLength(6);
 });
+
+// A pinned secondary minimum above zero was pulled back to zero, so the right axis ignored the authored scale.
+it('keeps a pinned secondary line domain above zero and widens it only for data below', () => {
+  const draw = (values: number[]) => requireGeometry(layoutCombo({
+    categories: ['a', 'b', 'c'].map((id) => ({ id })),
+    series: [
+      { id: 'sales', label: 'Sales', kind: 'column', values: [520, 480, 560] },
+      { id: 'count', label: 'Count', kind: 'line', axis: 'secondary', values },
+    ],
+  }, { size: { width: 720, height: 404 }, title: 'Pinned secondary', secondaryAxis: { acknowledge: true, domain: [30, 50] } }));
+  expect(draw([40, 41, 42]).derived.secondaryDomain).toEqual([30, 50]);
+  expect(draw([25, 41, 42]).derived.secondaryDomain).toEqual([25, 50]);
+});

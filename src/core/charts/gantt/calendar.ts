@@ -61,7 +61,7 @@ export interface Tier {
 }
 
 export const TIERS: Record<GanttGranularity, Tier> = {
-  quarters: { major: 'year', minor: 'quarter', majorFmts: ['yyyy'], minorFmts: ['QQ'] },
+  quarters: { major: 'year', minor: 'quarter', majorFmts: ['yyyy', 'yy'], minorFmts: ['QQ'] },
   months: { major: 'quarter', minor: 'month', majorFmts: ['QQ yyyy', 'QQ'], minorFmts: ['MMM', 'MMMMM'] },
   // A bare week number under a month reads as a day ("7" under Feb); 'W7' does not.
   weeks: { major: 'month', minor: 'week', majorFmts: ['MMM yyyy', 'MMM'], minorFmts: ["'W'w"] },

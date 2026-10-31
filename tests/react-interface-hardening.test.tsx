@@ -2,7 +2,7 @@
 
 // Patched themes are checked by `core/themeShape`, which a CLI-shaped graph links and a chart entry fetches (core/deferred).
 import '../src/core/themeShapeRules';
-import { act, createElement } from 'react';
+import { act, createElement, useState, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -16,7 +16,12 @@ import { renderSvg } from '../src/core/svg/renderSvg';
 import type { Geometry, SceneNode } from '../src/core/types/scene';
 import { BarChart } from '../src/react/charts/bar';
 import { CohortChart } from '../src/react/charts/cohort';
+import { ChoroplethChart } from '../src/react/charts/choropleth';
 import { ColumnChart } from '../src/react/charts/column';
+import { DimSwitchChart } from '../src/react/DimSwitchChart';
+import { exampleData as dimSwitchData } from '../src/core/charts/dimswitch/example';
+import { BoardplotChart } from '../src/react/spec';
+import { BoardplotTheme } from '../src/react/BoardplotTheme';
 import { createChartComponent } from '../src/react/createChartComponent';
 import { DotChart } from '../src/react/charts/dot';
 import { KpiChart } from '../src/react/charts/kpi';
@@ -192,6 +197,51 @@ describe('React adapter boundary', () => {
     for (const callback of resized) expect(() => callback([], {} as ResizeObserver)).not.toThrow();
   });
 
+  // A host that stores a new object from an inline callback re-rendered the chart without end, because each new callback fired its effect again.
+  it('calls an inline onGeometry, onNotes and onRefused once, even when each stores a new object', async () => {
+    const calls = { geometry: 0, notes: 0, refused: 0 };
+    let renders = 0;
+    function Host({ size }: { size: { width: number; height: number } }) {
+      const [, setBox] = useState<object>();
+      if (++renders > 40) throw new Error('render loop');
+      return <ColumnChart data={DATA} size={size} source="Invented source" notes={{ placement: 'list' }}
+        onGeometry={g => { calls.geometry++; setBox({ w: g.size.width }); }}
+        onNotes={n => { calls.notes++; setBox({ n: n.length }); }}
+        onRefused={r => { calls.refused++; setBox({ r: r.warnings.length }); }} />;
+    }
+    const settle = async () => { for (let i = 0; i < 6; i++) await act(async () => { await new Promise(r => setTimeout(r, 25)); }); };
+    await act(async () => { root.render(<Host size={{ width: 480, height: 270 }} />); });
+    await settle();
+    expect(calls.geometry).toBe(1);
+    expect(calls.notes).toBe(1);
+    await act(async () => { root.render(<Host size={{ width: 200, height: 120 }} />); });
+    await settle();
+    expect(calls.refused).toBe(1);
+    expect(renders).toBeLessThan(10);
+  });
+
+  // A table refused at an inline `size={{ … }}` re-rendered without end: the new size object remade the refusal on every render.
+  it('calls onRefused once for a table refused at an inline size', async () => {
+    const data = {
+      columns: [
+        { id: 'label', kind: 'rowLabel' as const, label: 'Item' },
+        { id: 'value', kind: 'value' as const, label: 'Value' },
+      ],
+      rows: [{ id: 'a', label: 'A', cells: { value: 12 } }],
+    };
+    let renders = 0;
+    let calls = 0;
+    function Host() {
+      const [, setBox] = useState<object>();
+      if (++renders > 40) throw new Error('render loop');
+      return <TableChart data={data} size={{ width: 40, height: 40 }} onRefused={r => { calls++; setBox({ r: r.warnings.length }); }} />;
+    }
+    await act(async () => { root.render(<Host />); });
+    for (let i = 0; i < 4; i++) await act(async () => { await new Promise(r => setTimeout(r, 25)); });
+    expect(calls).toBe(1);
+    expect(renders).toBeLessThan(10);
+  });
+
   // A host that handled the refusal through onRefused still got console noise for it.
   it('keeps the console quiet for a refusal the host takes through onRefused', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -202,6 +252,65 @@ describe('React adapter boundary', () => {
     expect(onRefused).toHaveBeenCalled();
     expect(warn.mock.calls.filter(([text]) => String(text).startsWith('Boardplot refused'))).toEqual([]);
     warn.mockRestore();
+  });
+
+  // A bad axis bound, size, theme name or geo pack threw during render and unmounted the host's whole React root, with its good charts.
+  it('draws a refusal card for a bad value and keeps its sibling chart', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const sparse: number[] = []; sparse[0] = 1; sparse[2] = 3;
+    const bad: Record<string, ReactElement> = {
+      'invalid-geometry': <ColumnChart data={DATA} size={{ width: 480, height: 270 }} valueAxis={{ min: 'low' } as never} />,
+      'invalid-size': <ColumnChart data={DATA} size={{ width: '480', height: '270' } as never} />,
+      'unknown-theme': <ColumnChart data={DATA} size={{ width: 480, height: 270 }} theme={'nope' as never} />,
+      'geo-pack-not-registered': <ChoroplethChart data={{ pack: 'eu27', regions: [{ id: 'DE', value: 1 }] } as never} size={{ width: 480, height: 270 }} />,
+    };
+    for (const [code, element] of Object.entries(bad)) {
+      await act(async () => { root.render(<div><ColumnChart data={DATA} size={{ width: 480, height: 270 }} />{element}</div>); });
+      for (let i = 0; i < 20 && container.querySelector('[data-bp-loading]'); i++) await act(async () => { await new Promise(r => setTimeout(r, 25)); });
+      expect(container.querySelectorAll('svg').length, code).toBe(1);
+      expect(container.querySelector(`[data-bp-error-code="${code}"]`), code).not.toBeNull();
+    }
+    // A hole in a sparse values array reads as a missing value, as the null of a JSON spec does.
+    await act(async () => { root.render(<ColumnChart data={{ ...DATA, categories: [...DATA.categories, { id: 'c', label: 'C' }], series: [{ id: 's', label: 'S', values: sparse }] }} size={{ width: 480, height: 270 }} />); });
+    expect(container.querySelector('svg')).not.toBeNull();
+  });
+
+  // A bad theme from a BoardplotTheme provider that is later fixed left the refusal card up, because the chart's own props did not change.
+  it('draws the chart again when the inherited theme is fixed', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const chart = <ColumnChart data={DATA} size={{ width: 480, height: 270 }} />;
+    let setTheme: (theme: string) => void = () => {};
+    function Host() {
+      const [theme, set] = useState('nope');
+      setTheme = set;
+      return <BoardplotTheme theme={theme as never}>{chart}</BoardplotTheme>;
+    }
+    await act(async () => { root.render(<Host />); });
+    for (let i = 0; i < 20 && container.querySelector('[data-bp-loading]'); i++) await act(async () => { await new Promise(r => setTimeout(r, 25)); });
+    expect(container.querySelector('[data-bp-error-code="unknown-theme"]')).not.toBeNull();
+    await act(async () => { setTheme('standard'); });
+    for (let i = 0; i < 20 && container.querySelector('[data-bp-loading]'); i++) await act(async () => { await new Promise(r => setTimeout(r, 25)); });
+    expect(container.querySelector('svg')).not.toBeNull();
+    expect(container.querySelector('[data-bp-error-code]')).toBeNull();
+  });
+
+  // A table is not built by createChartComponent: it threw on the same bad values and unmounted the host's root.
+  it('draws a refusal card for a bad value in a table and keeps its sibling chart', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const table = getFixtures('table').find(f => f.id === 'management-report')!.data;
+    const bad: Record<string, ReactElement> = {
+      'unknown-theme': <TableChart data={table} theme={'nope' as never} />,
+      'invalid-size': <TableChart data={table} size={{ width: '800' } as never} />,
+      'invalid-theme-override': <BoardplotChart spec={{ type: 'table', data: table, options: { theme: { preset: 'standard', overrides: { color: { ink: 'zzz' } } } } } as never} />,
+      'unknown-theme-spec': <BoardplotChart spec={{ type: 'table', data: table, options: { theme: 'nope' } } as never} />,
+      'unknown-theme-dimswitch': <DimSwitchChart data={dimSwitchData} variant="by-measure" depth={1} theme={'nope' as never} />,
+    };
+    for (const [code, element] of Object.entries(bad)) {
+      await act(async () => { root.render(<div><ColumnChart data={DATA} size={{ width: 480, height: 270 }} />{element}</div>); });
+      for (let i = 0; i < 20 && container.querySelector('[data-bp-loading]'); i++) await act(async () => { await new Promise(r => setTimeout(r, 25)); });
+      expect(container.querySelectorAll('svg').length, code).toBe(1);
+      expect(container.querySelector('[data-bp-error-code]'), code).not.toBeNull();
+    }
   });
 
   // An annotation added after the first draw waits for the annotation chunk: the busy placeholder
