@@ -19,7 +19,7 @@ import type { LintWarning, Paint } from '../types/scene';
 import type { Theme } from '../types/theme';
 import { intervalText } from '../format';
 import { exampleSpec, formatWithSpec, MAGNITUDE_DIVISOR, parseFormatExample } from '../formatSpec';
-import { autoDecimals } from '../formatPrecision';
+import { autoDecimals, MAX_FORMAT_DECIMALS } from '../formatPrecision';
 import { NormalizeError } from '../normalize/shared';
 import { claimedRegionIds, resolveGeoRegionId, type GeoRegionIdIndex } from '../geo/resolveRegionId';
 import type { FontSpec } from '../text';
@@ -123,14 +123,15 @@ const MIDPOINT_PAINT: Paint = {
  * the key states the edge the classes apply: one number, printed and
  * applied. A format with a magnitude ('$1.2M') rounds in its own unit.
  */
-function printedEdge(value: number, format: string | undefined): number {
+function printedEdge(value: number, format: string | undefined, decimals?: number): number {
   if (format === undefined) {
     const decimals = autoDecimals(value);
     return Math.round(value * 10 ** decimals) / 10 ** decimals;
   }
   const spec = parseFormatExample(format);
   const unit = MAGNITUDE_DIVISOR[spec.magnitude];
-  return Math.round(value / unit * 10 ** spec.decimals) / 10 ** spec.decimals * unit;
+  const places = decimals ?? spec.decimals;
+  return Math.round(value / unit * 10 ** places) / 10 ** places * unit;
 }
 
 /** Digits after the point that `value` prints with (12 significant digits). */
@@ -284,21 +285,37 @@ export function buildGeoScale(
   const nice = !options.steps && classCount && min !== null && max !== null && max !== min
     ? niceClassBreaks(values, classCount, declaredMidpoint ?? 0, roundingStep(max - min))
     : undefined;
+  // Equal intervals fall back to edges rounded to the format's decimals. A format
+  // coarser than the class width collapses them into equal or descending edges,
+  // so the key would print '$1M-<$1M' and every region would take one class: the
+  // edges then take the fewest extra decimals that keep them apart.
+  let keyDecimals: number | undefined;
+  const equalEdges = (): number[] | undefined => {
+    if (!(classCount && min !== null && max !== null && max !== min)) return undefined;
+    const base = options.format === undefined ? 0 : parseFormatExample(options.format).decimals;
+    for (let decimals = base; ; decimals++) {
+      const rounded = Array.from({ length: classCount + 1 }, (_, index) =>
+        index === 0 ? min : index === classCount ? max : printedEdge(min + (index / classCount) * (max - min), options.format, decimals));
+      if (options.format === undefined || decimals >= MAX_FORMAT_DECIMALS || rounded.every((edge, index) => index === 0 || edge > rounded[index - 1]!)) {
+        if (decimals > base) keyDecimals = decimals;
+        return rounded;
+      }
+    }
+  };
   const edges = options.steps
     ? [Math.min(min ?? options.steps[0], options.steps[0]), ...options.steps, Math.max(max ?? options.steps[3], options.steps[3])]
     : nice
     ? [min!, ...nice, max!]
-    : classCount && min !== null && max !== null && max !== min
-    ? Array.from({ length: classCount + 1 }, (_, index) =>
-        index === 0 ? min : index === classCount ? max : printedEdge(min + (index / classCount) * (max - min), options.format))
-    : undefined;
+    : equalEdges();
   const paint = (value: number | null): Paint => {
     if (value === null || !edges) return continuousPaint(value);
     // The class whose printed lower edge the value reaches; the top class holds the maximum.
     const index = Math.max(0, edges.slice(1, -1).filter((edge) => value >= edge).length);
     return classPaint(index);
   };
-  const legend = geoScaleLegend({ min, max, kind, declaredMidpoint, edges, hasNoDataRegion, polarity }, options, fmt, classPaint, continuousPaint);
+  const spec = options.format === undefined ? undefined : exampleSpec(options.format, options.locale?.language);
+  const keyFmt = keyDecimals === undefined ? fmt : (value: number) => formatWithSpec(value, { ...spec!, decimals: keyDecimals! });
+  const legend = geoScaleLegend({ min, max, kind, declaredMidpoint, edges, hasNoDataRegion, polarity }, options, keyFmt, classPaint, continuousPaint);
   // A round break prints round: '20' under a '1.1' format, not '20.0'.
   const edgeFmt = nice && options.format !== undefined
     ? (() => {
@@ -306,7 +323,7 @@ export function buildGeoScale(
         const decimals = Math.min(spec.decimals, Math.max(0, maxOf(nice.map((edge) => decimalsOf(edge / MAGNITUDE_DIVISOR[spec.magnitude])))));
         return (value: number) => formatWithSpec(value, { ...spec, decimals });
       })()
-    : fmt;
+    : keyFmt;
   return { min, max, midpoint: declaredMidpoint, polarity, paint, legend, edgeFmt, ...(edges ? { edges } : {}), ...(options.steps ? { explicitSteps: true } : {}) };
 }
 
