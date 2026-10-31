@@ -5,7 +5,7 @@ import { getFixtures } from '../src/fixtures';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { requireGeometry } from '../src/core/sizing';
 import { runDocLints } from '../src/core/lint';
-import { paintColor } from '../src/core/theme';
+import { paintColor, resolveTheme } from '../src/core/theme';
 import { normalizeGridData } from '../src/core/charts/grid/normalize';
 
 // A dense key must leave the plot its furniture budget while keeping every series identifiable.
@@ -237,4 +237,36 @@ it('keeps the panel colours of a written-out grid with more series than the ramp
     if (node.t === 'rect' && node.part === 'segment' && node.owner?.seriesId && node.fill && node.id.startsWith('p1/')) colours.add(paintColor(request.theme, node.fill));
   }
   expect(colours.size).toBe(12);
+});
+
+// A colour role outranks a theme's ink lead line, so locking combo panels in such a theme turned the ink line blue and dropped its latest-point markers.
+it('keeps the ink lead line of combo panels in a written-out grid under a theme that inks it', () => {
+  const categories = ['2019', '2020', '2021'].map(id => ({ id, label: id }));
+  const panel = (id: string, column: number, order: 'column-first' | 'line-first') => {
+    const bars = { id: 'revenue', label: 'Revenue', values: [3, 4, 5] };
+    const line = { id: 'units', label: 'Units', kind: 'line', axis: 'secondary', values: [2, 3, 5] };
+    return { id, type: 'combo', row: 0, column, options: { secondaryAxis: { acknowledge: true } },
+      data: { categories, series: order === 'column-first' ? [bars, line] : [line, bars] } };
+  };
+  const theme = { preset: 'boardroom', overrides: { marks: { comboLine: 'ink', lineMarkers: 'none' } } } as const;
+  const markers = (panels: object[]) => requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'grid',
+    data: { panels }, options: { columns: 2, theme } }))).scene.filter(node => node.part === 'marker').length;
+  const agree = markers([panel('p1', 0, 'column-first'), panel('p2', 1, 'column-first')]);
+  expect(agree).toBeGreaterThan(0);
+  expect(markers([panel('p1', 0, 'column-first'), panel('p2', 1, 'line-first')])).toBe(agree);
+});
+
+// A panel's own theme can have a shorter series ramp than the grid's, so a role capped by the grid's ramp repeated a colour in that panel.
+it('keeps the panel colours of a written-out grid when a panel theme has fewer series colours', () => {
+  const panel = (id: string, column: number, list: string[]) => ({
+    id, type: 'column', row: 0, column, options: { variant: 'stacked', theme: 'notation' },
+    data: { categories: [{ id: 'a' }], series: list.map((sid, k) => ({ id: sid, label: sid, values: [5 + k] })) },
+  });
+  const request = resolveChartRequest({ type: 'grid', options: { columns: 2 },
+    data: { panels: [panel('p1', 0, ['a', 'b', 'c', 'd', 'e']), panel('p2', 1, ['f', 'e'])] } });
+  const fills = new Set<string>();
+  for (const node of requireGeometry(layoutResolvedRequest(request)).scene) {
+    if (node.t === 'rect' && node.part === 'segment' && node.fill && node.id.startsWith('p2/')) fills.add(paintColor(resolveTheme('notation'), node.fill));
+  }
+  expect(fills.size).toBe(2);
 });

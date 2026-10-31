@@ -79,6 +79,7 @@ import {
   parseGridTextPanelData,
   type ExplicitGridData,
   type GridInput,
+  type GridThemeFacts,
   type GridLayoutOptions,
   type GridPanelSpec,
   type GridTrackScope,
@@ -133,9 +134,28 @@ function assertTrackLimits(options: GridLayoutOptions, panels: readonly GridPane
   });
 }
 
-/** Normalizes grid data with the ramp length of the theme the grid renders in. */
+/**
+ * Normalizes grid data with the facts of the themes the panels render in: a
+ * panel's own `options.theme` replaces the grid's. A theme that does not
+ * resolve reports neutral facts here and fails where the panel is laid out.
+ */
 export function normalizeGridWithTheme(data: unknown, options: GridLayoutOptions): ExplicitGridData {
-  return normalizeGridData(data, { palette: options.palette, seriesRampLength: () => resolveTheme(options.theme).color.series.length });
+  const facts = new Map<unknown, GridThemeFacts>();
+  const themeFacts = (panelTheme: unknown): GridThemeFacts => {
+    const ref = panelTheme ?? options.theme;
+    let found = facts.get(ref);
+    if (!found) {
+      try {
+        const theme = resolveTheme(ref as ThemeRef);
+        found = { seriesCount: theme.color.series.length, stylesSeries: theme.marks?.comboLine === 'ink' || theme.marks?.comboColumnTint !== undefined };
+      } catch {
+        found = { seriesCount: Infinity, stylesSeries: false };
+      }
+      facts.set(ref, found);
+    }
+    return found;
+  };
+  return normalizeGridData(data, { palette: options.palette, themeFacts });
 }
 
 export function layoutGrid(
