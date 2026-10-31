@@ -289,6 +289,26 @@ it('labels the largest integrated variance when smaller ones keep their labels',
   expect(points.find((label: any) => label.owner.categoryId === 'm21').hidden).toBeUndefined();
 });
 
+// At a narrow height the lifted seats of the two larger variances ran into the key, so +22.6 and -17.2 lost
+// their values while +8.1 kept its own.
+it('gives a larger integrated variance a value row over the key instead of dropping it', () => {
+  const names = ['North region (coastal)', 'Recurring revenue, enterprise', 'Other operating expenses', 'Interest and similar expenses',
+    'Purchased goods and services', 'Western region and harbour', 'Pension provisions, home', 'Research and development expenses',
+    'Other operating income', 'Logistics services abroad', 'Maintenance and repairs', 'Eastern region'];
+  const geometry = getChart('variance')!.layout({
+    categories: names.map((label, i) => ({ id: `c${i}`, label })),
+    series: [
+      { id: 'ac', label: 'Maintenance', values: [178, 173.7, 182.1, 193.8, 204.9, 223.9, 243.9, 224.9, null, 195.7, null, 172.6] },
+      { id: 'py', label: 'Prior year', role: 'reference' as const, scenario: 'PY' as const, values: [145.6, 190.1, 165.5, 215.2, 245.5, 201.3, 221, 242.1, null, 168.3, null, 164.5] },
+    ],
+  }, { title: 'Actual against reference', subtitle: { measure: 'Actual against reference', period: 'FY26' }, unit: 'EUR m',
+    variant: 'integrated', variance: { of: 'ac', vs: 'py' }, target: 'slide', size: { width: 576, height: 528 } } as any) as any;
+  const drawn = (id: string) => geometry.labels.find((label: any) => label.kind === 'point' && label.owner.categoryId === id).hidden === undefined;
+  expect(drawn('c11')).toBe(true); // +8.1
+  expect(drawn('c5')).toBe(true); // +22.6
+  expect(drawn('c7')).toBe(true); // -17.2
+});
+
 // A last value with a key of names could take a shifted seat two rows away from its point.
 it('keeps last line values next to their own point', () => {
   const geometry = getChart('line')!.layout({
