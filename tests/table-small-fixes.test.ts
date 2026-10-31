@@ -341,6 +341,8 @@ it('keeps two significant digits of every figure when it fits formats', () => {
     rows: values.map((v, i) => ({ id: `r${i}`, label: `Row ${i}`, cells: { v } })) });
   expect(column([80_000, 100_000, 1_234_567], '1,234')).toEqual(['80', '100', '1,235']);
   expect(column([2_470_000, 2_630_000], '$1.23M')).toEqual(['2.5', '2.6']);
+  // A figure the authored format prints in one digit keeps that digit: 80,000 read as "0.1" under (M), 25% off.
+  expect(column([80_000, 1_230_000], '$1.23M')).toEqual(['0.08', '1.23']);
   // A small figure blocks a magnitude that would print it as zero: 12 never reads "0.00001" under M.
   expect(column([12, 100_000, 1_234_567], '1,234').every((text) => !/^0[.,]0/.test(text))).toBe(true);
   // So does a chart-level format, and a shorter decimal keeps one magnitude: 950 and 1,000 under (k), not 950 and 1.0M.

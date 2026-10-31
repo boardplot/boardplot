@@ -77,15 +77,27 @@ function keptDigits(value: number, magnitude: NumberFormatSpec['magnitude'], dec
   return roundHalfUp(Math.abs(value) / MAGNITUDE_DIVISOR[magnitude], decimals).replace('.', '').replace(/^0+/, '').length;
 }
 
+/** How far a figure down to one digit may print from its value: "0.1" for 80,000 under (M) is 25% off. */
+const ONE_DIGIT_TOLERANCE = 0.05;
+
+/** Whether the figure prints near its value at a magnitude and decimals. */
+function printsNear(value: number, magnitude: NumberFormatSpec['magnitude'], decimals: number): boolean {
+  const scaled = Math.abs(value) / MAGNITUDE_DIVISOR[magnitude];
+  return Math.abs(Number(roundHalfUp(scaled, decimals)) / scaled - 1) <= ONE_DIGIT_TOLERANCE;
+}
+
 /**
  * Whether every figure keeps two significant digits under `next` (all of its own where `spec`
- * prints fewer). A figure that would print as zero passes only under an automatic format, which
- * prints the bound ("<0.1"); an authored one lifts it to one digit ("0.00001"), so it fails.
+ * prints fewer, and then near its value). A figure that would print as zero passes only under an
+ * automatic format, which prints the bound ("<0.1"); an authored one lifts it to one digit
+ * ("0.00001"), so it fails.
  */
 function keepsDigits(figures: readonly number[], spec: NumberFormatSpec, next: Pick<NumberFormatSpec, 'magnitude' | 'decimals'>): boolean {
   return figures.every((value) => {
     const kept = keptDigits(value, next.magnitude, next.decimals);
-    return (kept === 0 && spec.automatic) || kept >= Math.min(FIT_DIGITS, keptDigits(value, spec.magnitude, spec.decimals));
+    if (kept === 0 && spec.automatic) return true;
+    if (kept < Math.min(FIT_DIGITS, keptDigits(value, spec.magnitude, spec.decimals))) return false;
+    return kept === 0 || kept >= FIT_DIGITS || printsNear(value, next.magnitude, next.decimals);
   });
 }
 
