@@ -55,7 +55,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | bands[].label | string |  | Visible name of this band. |
 | note | string |  | Authored caption under the value: the basis, filter or scope the number is true of. Printed as written; the card never composes it. |
 | spark | object |  | Small trend chart displayed beneath the KPI comparison content. |
-| spark.kind | string | yes | Shape-only sparkline. 'column' is zero-anchored. The last observed value is labelled unless the card's figure already prints it. No axes. One of `'line'`, `'area'`, `'column'`. |
+| spark.kind | string | yes | Shape-only sparkline. 'column' and 'area' are zero-anchored. 'line' spans the series range. The last observed value is labelled unless the card's figure already prints it. No axes. One of `'line'`, `'area'`, `'column'`. |
 | spark.values | cell[] | yes | Trend observations in chronological order, in the same base units as the main value; the card format labels the last observed value unless it reads the same as the card's figure. A last value 1000 times or more off the main value is refused (spark-scale-mismatch). Missing cells create gaps. |
 | spark.labels | array |  | One period name per value, such as 'W1' or 'Jan'. The card prints the first and the last under the spark's ends, so the reader sees the span. |
 
