@@ -333,6 +333,16 @@ it('gantt calendar span data runs from the first item to the later of the last e
   expect(Math.max(...xs)).toBeLessThanOrEqual(wide.plot.x + wide.plot.w);
 });
 
+// Date.UTC reads years 0-99 as 19xx, so bars dated in year 50 printed heads and a description for 1950.
+it('keeps the years 0 to 99 in the calendar heads and the description', () => {
+  const svg = render({ spec: { type: 'gantt', data: { rows: [{ id: 'a', label: 'Phase', items: [
+    { id: 'i', label: 'Build', start: '0050-03-01', end: '0051-02-28', kind: 'bar' },
+  ] }] } }, return: ['svg'] }).body.svg as string;
+  expect(svg).toContain('Q2 0050');
+  expect(svg).toContain('1 Mar 0050');
+  expect(svg).not.toContain('195');
+});
+
 // A year cell too narrow for "2010" stayed empty, so a 20-year head showed no dates and nothing said so.
 it('gantt calendar head falls back to two-digit years and warns when no date fits', () => {
   const spec = (start: string, end: string, width?: number) => ({ type: 'gantt', data: { rows: [{ id: 'r', label: 'Row', items: [

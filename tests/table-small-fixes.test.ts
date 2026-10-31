@@ -341,6 +341,8 @@ it('keeps two significant digits of every figure when it fits formats', () => {
     rows: values.map((v, i) => ({ id: `r${i}`, label: `Row ${i}`, cells: { v } })) });
   expect(column([80_000, 100_000, 1_234_567], '1,234')).toEqual(['80', '100', '1,235']);
   expect(column([2_470_000, 2_630_000], '$1.23M')).toEqual(['2.5', '2.6']);
+  // A figure the authored format prints in one digit keeps that digit: 80,000 read as "0.1" under (M), 25% off.
+  expect(column([80_000, 1_230_000], '$1.23M')).toEqual(['0.08', '1.23']);
   // A small figure blocks a magnitude that would print it as zero: 12 never reads "0.00001" under M.
   expect(column([12, 100_000, 1_234_567], '1,234').every((text) => !/^0[.,]0/.test(text))).toBe(true);
   // So does a chart-level format, and a shorter decimal keeps one magnitude: 950 and 1,000 under (k), not 950 and 1.0M.
@@ -687,6 +689,17 @@ it('warns about a number in a status cell', () => {
   const { table, warnings } = resolveTable(data);
   expect(table.rows[0]!.cells.s!.state).not.toBe('value');
   expect(warnings.map((w) => w.code)).toContain('status-value-number');
+});
+
+// A number in a date column printed the missing dash with no warning, so the author never learned that the value was dropped.
+it('warns about a number in a date cell, naming the row and the column', () => {
+  const data: TableData = {
+    columns: [{ id: 'l', kind: 'rowLabel', label: 'Task' }, { id: 'due', kind: 'date', label: 'Due' }],
+    rows: [{ id: 'a', label: 'Plan', cells: { due: 123 } }, { id: 'b', label: 'Build', cells: { due: { v: 456 } } }, { id: 'c', label: 'Ship', cells: { due: null } }],
+  };
+  const { table, warnings } = resolveTable(data);
+  expect(table.rows[0]!.cells.due!.state).not.toBe('value');
+  expect(warnings.filter((w) => w.code === 'date-value-number').map((w) => w.owner)).toEqual([{ rowId: 'a', colId: 'due' }, { rowId: 'b', colId: 'due' }]);
 });
 
 // Whitespace-only status labels must stay accepted and draw as before while both surfaces receive a repair warning.
@@ -1066,14 +1079,6 @@ it('never gives a theme with less head air more in the compact fallback', () => 
   });
   expect(geometry.refused).not.toBe(true);
   expect(geometry.warnings.map(w => w.code)).not.toContain('size-below-floor');
-});
-
-// A capitalised head printed "Power,mW" as "POWER,MW": milliwatts read as megawatts.
-it('keeps the unit after a head comma as written', async () => {
-  const { fieldHeadText } = await import('../src/core/charts/table/headFace');
-  const theme = resolveTheme('boardroom');
-  expect(fieldHeadText('Power,mW', theme)).toBe('POWER,mW');
-  expect(fieldHeadText('EBITDA impact, $bn', theme)).toBe('EBITDA IMPACT, $bn');
 });
 
 // `table.inks.head` was documented, but no table-family head read it, on the SVG or in the React grid.

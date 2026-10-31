@@ -64,6 +64,7 @@ export const dimswitchDataSchema: z.ZodType<DimSwitchData> = z.strictObject({
 });
 export const dimswitchOptionsSchema = tableOptionsObject.safeExtend({
  topN:refusedBaseOptions('dimswitch').topN,
+ encodings:tableOptionsObject.shape.encodings.describe('Per-column opt-in visual encodings. A key is a column id: range, pp (the vs prior column), pl (the vs plan column, with a plan) or the id of a displayed period. Any other key draws nothing and warns dimswitch-encoding-column.'),
  density:z.enum(['compact','regular','relaxed']).optional().describe("Cell spacing: 'compact', 'regular' or 'relaxed'. The cohort densities do not apply: every cell holds a value and a change line, and cohort rows are fixed one-liners."),
  // The table's own variant is fixed to steering here, so this key names the dimswitch form (the cast only quiets safeExtend's same-type rule).
  variant:z.enum(['by-measure','by-member']).optional().describe('by-measure: KPI rows over members (by-member: members over KPIs, Total first). In by-member the Total block is always open.') as unknown as (typeof tableOptionsObject.shape)['variant'],

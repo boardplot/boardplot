@@ -48,6 +48,18 @@ const NUMBER_ONLY_SHAPES: readonly RowsShape[] = ['table', 'histogram', 'box'];
 /** Table column kinds that take their cells from the source field named like the column id. */
 const TABLE_INPUT_KINDS: ReadonlySet<unknown> = new Set(['value', 'text', 'status', 'date']);
 
+/** Roles that read a number; every other role reads text. */
+const NUMBER_ROLES: ReadonlySet<string> = new Set(['value', 'x', 'y', 'size']);
+
+/** A number in a text role reads as its text, as the same cell of a CSV does: SQL keys and years often arrive as numbers. */
+function numbersAsText(rows: Row[], contract: RowContract): Row[] {
+  const columns = Object.entries(contract).filter(([role]) => !NUMBER_ROLES.has(role)).map(([, column]) => column);
+  return rows.map((row) => {
+    const numbers = columns.filter((column) => typeof own(row, column) === 'number');
+    return numbers.length ? { ...row, ...Object.fromEntries(numbers.map((column) => [column, String(row[column])])) } : row;
+  });
+}
+
 /** Where the rows come from: the argument a refusal points at, and the read that yields them. */
 export interface RowsSource {
   argument: '/rows' | '/rowsFile';
@@ -213,9 +225,6 @@ function adaptItemRows(
           ...(WRITTEN_NUMBER.test(value) ? { suggest: plainNumberAdvice(value, kind, decimalComma) } : {}),
         });
         entry[role] = value;
-      } else if (shape === 'flow' && typeof raw === 'number') {
-        // SQL keys are often integers; a node or stage id is text.
-        entry[role] = String(raw);
       } else {
         if (role === 'label' && shape === 'waterfall' && (typeof raw !== 'string' || !raw)) {
           throw new InputError('invalid-identity', `${source.displayPath}: item label must be a non-empty string`, source);
@@ -596,17 +605,18 @@ export function adaptRows(spec: unknown, columns: unknown, source: RowsSource): 
     throw new InputError('invalid-rows', 'rows must be an array of objects', { path: rowsArgument });
   }
   const decimalComma = loaded.decimalComma === true;
+  const sourceRows = numbersAsText(loaded.rows, rowContract);
   if (shape === 'waterfall' || shape === 'scatter' || shape === 'flow' || shape === 'table' || shape === 'histogram' || shape === 'box') {
     const adapted = shape === 'table'
-      ? adaptTableRows(loaded.rows, rowContract, template, tableInputs, decimalComma, rowsArgument)
+      ? adaptTableRows(sourceRows, rowContract, template, tableInputs, decimalComma, rowsArgument)
       : shape === 'histogram' || shape === 'box'
-        ? adaptObservationRows(shape, loaded.rows, rowContract, template, decimalComma, rowsArgument)
-        : adaptItemRows(shape, loaded.rows, rowContract, template, valueKind, decimalComma, rowsArgument);
+        ? adaptObservationRows(shape, sourceRows, rowContract, template, decimalComma, rowsArgument)
+        : adaptItemRows(shape, sourceRows, rowContract, template, valueKind, decimalComma, rowsArgument);
     return { spec: { ...spec, data: adapted.data }, pathMap: adapted.pathMap, rows: loaded.rows.length, ignoredColumns: adapted.ignoredColumns, states: [] };
   }
   const contract = rowContract as NamedColumnContract;
   // A row without the value column stays without it, so the adapter names the column as missing.
-  const rows = loaded.rows.map((row, index) => (Object.hasOwn(row, contract.value)
+  const rows = sourceRows.map((row, index) => (Object.hasOwn(row, contract.value)
     ? { ...row, [contract.value]: valueCell(row[contract.value], valueKind, decimalComma, `rows[${index}].${contract.value}`) }
     : row));
   // Reuse the existing single-series adapter, including value, duplicate and state checks.

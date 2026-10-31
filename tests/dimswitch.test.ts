@@ -313,3 +313,19 @@ it('advises a size at which compact spacing holds', () => {
   if (advice?.op !== 'replace') throw new Error('no size advice at 400 px');
   expect(tight(advice.value as { width: number; height?: number })).toBeUndefined();
 });
+
+// A displayed period with no ref printed n/a under every figure, and an encodings key that names no column was dropped without a word.
+it('leaves out the change line of periods with no ref and warns on an encodings key that names no column', () => {
+  const periods = [{ id: 'range', label: 'Range', kind: 'range' as const }, { id: 'prior', label: 'vs prior', kind: 'prior' as const }, { id: 'w1', label: 'W1' }, { id: 'w2', label: 'W2' }];
+  const facts = (ref: boolean) => ['range', 'prior', 'w1', 'w2'].map(periodId => ({ memberId: 'total', periodId, sums: { orders: 100 }, ...(ref && periodId === 'w2' ? { ref: { orders: 90 } } : {}) }));
+  const data = (withRef: boolean): DimSwitchData => ({ dimension: { label: 'Segment', total: { id: 'total', label: 'Total' }, members: [], headline: ['orders'] },
+    measures: [{ id: 'orders', label: 'Orders', scale: 'count', value: { field: 'orders' }, change: 'relative' }], periods, facts: facts(withRef) });
+  const none = resolveDimSwitch(data(false), { encodings: { prior: { type: 'arrow', scale: 'relative' } } });
+  const changeRow = (r: typeof none) => r.table.rows.find(x => x.id === dimswitchRowId('by-measure', 'total', 'orders') + ':change');
+  expect(changeRow(none)).toBeUndefined();
+  expect(none.compileWarnings.find(w => w.code === 'dimswitch-encoding-column')).toMatchObject({ suggest: expect.stringContaining("Use 'pp'. The column ids are 'range', 'pp', 'w1', 'w2'") });
+  const some = resolveDimSwitch(data(true), { encodings: { pp: 'arrow' } });
+  expect(changeRow(some)!.cells.w1!.displayed).toBe('');
+  expect(changeRow(some)!.cells.w2!.displayed).toContain('+11%');
+  expect(some.compileWarnings.map(w => w.code)).not.toContain('dimswitch-encoding-column');
+});
