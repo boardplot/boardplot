@@ -111,4 +111,4 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 
 ## Not for
 
-Negative parts; pie divides a nonnegative whole.
+Negative parts; pie divides a nonnegative whole. A negative slice is not drawn and the centre total is left out.

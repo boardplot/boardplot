@@ -216,6 +216,15 @@ describe('note rules', () => {
     expect(x('b')).toBeGreaterThan(360);
   });
 
+  // A doughnut that dropped negative slices printed the sum of the rest as the total of the data.
+  it('a doughnut with negative slices prints no centre total and names the dropped slices', () => {
+    const geo = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'pie', data: { categories: [{ id: 'a', label: 'Gain' }, { id: 'b', label: 'Loss' }, { id: 'c', label: 'Rest' }],
+      series: [{ id: 's', values: [84.9, -12.3, 43.8] }] }, options: { title: 'Split', doughnut: 0.55 } } as never)));
+    expect(geo.labels.some((label) => label.kind === 'total')).toBe(false);
+    expect(geo.a11y.desc).not.toContain('total');
+    expect(noteTexts(geo, ['disclosure'])).toEqual(['Not drawn (negative value, so no total shown): Loss.']);
+  });
+
   it('an open height gives hidden values the room their unprinted note took', () => {
     const fixture = getFixtures('pie').find((entry) => entry.id === 'ten-tiny-slices')!;
     const geo = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'pie', data: fixture.data, options: fixture.options } as never)));
@@ -493,6 +502,17 @@ it('names intentional label choices without warning and keeps explicit value los
 });
 
 // A series name printed in the key or legend is readable and must not be reported as lost.
+// A pie folds slices into Others by default, and reading.omissions must name the folded categories as it does for an authored topN.
+it('names the categories a default pie cut folds into Others', () => {
+  const ids = 'abcdefghij'.split('');
+  const data = { categories: ids.map(id => ({ id, label: id.toUpperCase() })), series: [{ id: 's', label: 'Series', values: ids.map((_, i) => 100 - i) }] };
+  const omitted = (categoryCount: number) => (render({ spec: { type: 'pie', data: { ...data, categories: data.categories.slice(0, categoryCount),
+    series: [{ ...data.series[0]!, values: data.series[0]!.values.slice(0, categoryCount) }] } }, return: ['reading'] }).body as { reading: ChartReading })
+    .reading.omissions.filter(item => item.reason === 'topN').map(item => item.labelId);
+  expect(omitted(10)).toEqual(['category:h', 'category:i', 'category:j']);
+  expect(omitted(9)).toEqual([]);
+});
+
 it('recognizes series names printed in a key, legend or replacement label', () => {
   for (const legend of [undefined, 'bottom'] as const) {
     const body = render({ spec: { type: 'line', data: {

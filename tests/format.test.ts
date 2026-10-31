@@ -221,6 +221,12 @@ describe('a figure never breaks across lines ', () => {
   it('groups a space-separated format with a no-break space and signs it with a true minus', () => {
     expect(formatWithSpec(-1234567, parseFormatExample('1 234'))).toBe('\u22121\u00a0234\u00a0567');
   });
+
+  // An example from Intl fr-FR holds U+202F, which was read as text, so every value printed a stray "234,5" after it.
+  it.each(['\u202f', '\u2009'])('reads a group space %j in a format example as a thousands separator', (space) => {
+    expect(formatWithSpec(1234567, parseFormatExample(`1${space}234`))).toBe('1\u00a0234\u00a0567');
+    expect(parseFormatExample(`1${space}234,5`)).toEqual(parseFormatExample('1\u00a0234,5'));
+  });
 });
 
 describe('no nonzero value prints as 0 ', () => {

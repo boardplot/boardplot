@@ -263,7 +263,10 @@ export function formatExampleProblem(example: string): { message: string; replac
 }
 
 /** A number run; a leading separator counts when a digit follows and no letter precedes (".5", not "Fr.5"). */
-const NUMBER_RUN = /(?:(?<!\p{L})[.,](?=[0-9]))?[0-9][0-9.,'  ]*/u;
+/** The spaces a format example groups digits with: space, no-break space, narrow no-break space (what `Intl` prints for fr-FR) and thin space. */
+const GROUP_SPACES = ' \u00a0\u202f\u2009';
+
+const NUMBER_RUN = new RegExp(`(?:(?<!\\p{L})[.,](?=[0-9]))?[0-9][0-9.,'${GROUP_SPACES}]*`, 'u');
 
 /**
  * The example's number. Digits after a letter belong to a unit name
@@ -293,7 +296,7 @@ function numericBody(s: string): { index: number; text: string } | null {
 }
 
 function analyzeBody(body: string, spec: NumberFormatSpec): void {
-  const seps = body.match(/[.,'  ]/g) ?? [];
+  const seps = body.match(new RegExp(`[.,'${GROUP_SPACES}]`, 'g')) ?? [];
   if (seps.length === 0) {
     spec.decimals = 0;
     return;
@@ -328,12 +331,12 @@ function analyzeBody(body: string, spec: NumberFormatSpec): void {
   // Space/prime, repeated separators and three trailing digits imply grouping,
   // except after a zero or empty integer part: "0.125" and ".125" are decimals.
   const fractionOnly = /^0?$/.test(body.slice(0, lastIdx));
-  if (ch === ' ' || ch === ' ' || ch === "'" || seps.length > 1 || (digitsAfterLast === 3 && !fractionOnly)) asThousands(ch);
+  if (GROUP_SPACES.includes(ch) || ch === "'" || seps.length > 1 || (digitsAfterLast === 3 && !fractionOnly)) asThousands(ch);
   else asDecimal(ch);
 }
 
 function normalizeSep(ch: string): NumberFormatSpec['thousandsSep'] {
-  if (ch === ' ') return ' ';
+  if (GROUP_SPACES.includes(ch)) return ' ';
   return ch as NumberFormatSpec['thousandsSep'];
 }
 
@@ -396,6 +399,15 @@ export function specUnitKind(spec: NumberFormatSpec): 'percent' | 'pp' | 'number
   if (suffix === 'pp' || suffix === 'p.p.') return 'pp';
   if (spec.suffix.includes('%')) return 'percent';
   return 'number';
+}
+
+/** A percentage, percentage points or a multiple ("1.0x"): a figure that does not add. */
+export function nonAdditiveSpec(spec: NumberFormatSpec): boolean {
+  return specUnitKind(spec) !== 'number' || /^[x×]$/i.test(spec.suffix.trim());
+}
+
+export function nonAdditiveFormat(format: string | undefined): boolean {
+  return !!format && nonAdditiveSpec(parseFormatExample(format));
 }
 
 const MAGNITUDE_PREVIOUS: Record<Scale, NumberFormatSpec['magnitude']> = { k: 'none', m: 'k', bn: 'm', t: 'bn' };
@@ -953,12 +965,11 @@ export function rasterDecimals(
  * bound to full precision ("23.4", not "23.35").
  */
 export function formatStatWithSpec(value: number, spec: NumberFormatSpec): string {
-  return formatWithSpec(value, {
-    ...spec,
-    // The unit rule is for plotted values; a mean of 100.5 stays 100.5.
-    wholeFrom: undefined,
-    decimals: Math.max(spec.decimals, neededDecimals(value, spec.decimals + 1)),
-  });
+  // The unit rule is for plotted values; a mean of 100.5 stays 100.5.
+  const own = { ...spec, wholeFrom: undefined };
+  // Decimals count at the scale the label prints in: 1.25M under "1M" needs one, not the none of 1,250,000.
+  const scaled = value / MAGNITUDE_DIVISOR[effectiveScale(value, own).magnitude];
+  return formatWithSpec(value, { ...own, decimals: Math.max(spec.decimals, neededDecimals(scaled, spec.decimals + 1)) });
 }
 
 /** Trend rates choose their own magnitude and precision; they never use the small-value bound policy. */

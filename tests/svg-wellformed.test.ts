@@ -42,4 +42,24 @@ describe('SVG XML contract', () => {
     const doc = new window.DOMParser().parseFromString(svg, 'image/svg+xml');
     expect(doc.querySelector('[data-bp-category-label]')?.getAttribute('data-bp-category-label')).toBe(label);
   });
+
+  // LibreOffice paints an 8-digit hex fill opaque black, so a sankey flow became a black block.
+  it('writes an alpha fill as a plain colour plus fill-opacity', () => {
+    const fill = (css: string) => ({ css });
+    const geometry = {
+      ...column('Q1'),
+      scene: [
+        { t: 'rect', id: 'r', part: 'mark', rect: { x: 0, y: 0, w: 10, h: 10 }, fill: fill('#12395e59') },
+        { t: 'path', id: 'p', part: 'mark', d: 'M0 0L10 10', fill: fill('#12395e80') },
+        { t: 'circle', id: 'c', part: 'mark', cx: 5, cy: 5, r: 3, fill: fill('#1238') },
+        { t: 'rect', id: 'o', part: 'mark', rect: { x: 0, y: 0, w: 10, h: 10 }, fill: fill('#12395eff') },
+      ] as never,
+    };
+    const svg = renderSvg(geometry as never, theme);
+    expect(svg).not.toMatch(/="#[0-9a-f]{8}"|="#1238"/i);
+    expect(svg).toContain('fill="#12395e" fill-opacity="0.349"');
+    expect(svg).toContain('fill="#12395e" fill-opacity="0.502"');
+    expect(svg).toContain('fill="#123" fill-opacity="0.533"');
+    expect(svg.match(/fill="#12395e"(?! fill-opacity)/g)).toHaveLength(1);
+  });
 });

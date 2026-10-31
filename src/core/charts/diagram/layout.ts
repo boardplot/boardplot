@@ -942,7 +942,7 @@ function addBoxLabelRequest(
   insidePaint?: Paint,
   role?: TextRole,
 ): void {
-  const wrapped = fitText(text, font, Math.max(1, box.w - 8), 2, measure, { target, typeRole: kind === 'diagramBadge' || kind === 'diagramEdge' ? 'label' : 'axis' });
+  const wrapped = fitText(text, font, Math.max(1, box.w - (kind === 'diagramEdge' ? 0 : 8)), 2, measure, { target, typeRole: kind === 'diagramBadge' || kind === 'diagramEdge' ? 'label' : 'axis' });
   const lineH = font.size * (font.lineHeight ?? 1.2);
   const width = Math.max(1, ...wrapped.lines.map((line) => measure(line, font).width));
   const height = wrapped.lines.length * lineH;

@@ -20,6 +20,7 @@ import {
   parseFormatExample as parseExample,
   effectiveScale,
   roundedNumber,
+  nonAdditiveSpec,
   specUnitKind,
   unitOfSpec,
   MAGNITUDE_DIVISOR,
@@ -32,6 +33,7 @@ import { NormalizeError, resolveHighlight, resolveSubtitle } from '../../normali
 import { resolveTheme } from '../../theme';
 import { localeStrings } from '../../strings';
 import type { Theme } from '../../types/theme';
+import { closestKey } from '../../schema/unknownKeyWords';
 import { tableCellKey } from './cellKey';
 import { isCohortDensity } from './ladder';
 import { presetLanguage } from './presets';
@@ -60,7 +62,7 @@ import type {
   TotalPolicy,
 } from '../../types/table';
 import { previousColumnInGroup, readCalcInput, resolveCalcRef } from './calcRef';
-import { calcPreservesScale, calcYieldsPoints, columnOwnsFormat } from '../../tableCalc';
+import { calcIsLinear, calcPreservesScale, calcYieldsPoints, columnOwnsFormat } from '../../tableCalc';
 import {
   additiveRankKey,
   assertTableRankOptions,
@@ -329,6 +331,53 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
       });
     }
   });
+  // A cell key that names a column almost, but not quite, draws nothing: the number vanishes without a word.
+  // A key far from every column, or beside a column the row also fills, is data the author left out of the columns on purpose, so it stays quiet.
+  // One warning per key keeps the response small on a wide row set.
+  const columnIds = data.columns.map((column) => column.id);
+  const columnIdSet = new Set(columnIds);
+  // closestKey depends on the key alone, so each distinct key is measured once, not once per row.
+  const nearColumn = new Map<string, string | undefined>();
+  const unknownKeys = new Map<string, { row: TableData['rows'][number]; rowPath: (string | number)[]; near: string; rows: number }>();
+  const checkCellKeys = (rows: TableData['rows'], path: (string | number)[]): void => {
+    rows.forEach((row, index) => {
+      const rowPath = [...path, index];
+      for (const key of Object.keys(row.cells ?? {})) {
+        if (columnIdSet.has(key)) continue;
+        if (!nearColumn.has(key)) {
+          const nearest = closestKey(key, columnIds);
+          nearColumn.set(key, nearest?.near ? nearest.key : undefined);
+        }
+        const near = nearColumn.get(key);
+        // The near column holds a cell in this row too: the key is another column, left out on purpose.
+        if (near === undefined || Object.hasOwn(row.cells!, near)) continue;
+        const seen = unknownKeys.get(key);
+        if (seen) seen.rows += 1;
+        else unknownKeys.set(key, { row, rowPath, near, rows: 1 });
+      }
+      if (row.children) checkCellKeys(row.children, [...rowPath, 'children']);
+    });
+  };
+  // The authored rows: a fitted resolution rewrites cell formats, which the repair patch must not test.
+  checkCellKeys(magnitudeSource.rows, []);
+  for (const [key, { row, rowPath, near, rows }] of unknownKeys) {
+    const cells = row.cells!;
+    warnings.push({
+      code: 'cell-column-unknown',
+      severity: 'warn',
+      message: `cell '${key}' in row '${row.id}'${rows > 1 ? ` and ${rows - 1} more` : ''} names no column, so its value is not drawn; did you mean '${near}'?`,
+      owner: { rowId: row.id },
+      field: ['data', 'rows', ...rowPath, 'cells', key],
+      suggest: `Rename the cell key to '${near}'.`,
+      // A patch for the first row only would leave the others; a key in several rows gets the suggestion alone.
+      ...(rows > 1 ? {} : {
+        fix: [
+          { op: 'test', path: `/data/rows/${rowPath.join('/')}/cells`, value: cells },
+          { op: 'replace', path: `/data/rows/${rowPath.join('/')}/cells`, value: Object.fromEntries(Object.entries(cells).map(([name, value]) => [name === key ? near : name, value])) },
+        ],
+      }),
+    });
+  }
   const records: ComputedCellRecord[] = [];
   const autoFootnotes = new Set<string>();
   /** Row labels whose changes took a tone, by the direction that judged them. */
@@ -490,16 +539,19 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
    * 'none' unless the author asks for a sum, and an authored sum there is
    * warned once per column.
    */
-  const nonAdditiveFormat = (format: string | undefined): boolean => {
-    if (!format) return false;
-    const spec = parseFormatExample(format);
-    return specUnitKind(spec) !== 'number' || /^[x\u00d7]$/i.test(spec.suffix.trim());
-  };
+  // The table's cached parse feeds the shared predicate: it runs for every summand cell.
+  const nonAdditiveFormat = (format: string | undefined): boolean => !!format && nonAdditiveSpec(parseFormatExample(format));
   // A cell's own format counts where it sits: a pp change among summands does not add either.
   const formatAt = (row: FlatRow, colId: Id): string | undefined => cellFormat(row.cells[colId]) ?? row.format;
+  // Decimals are no unit: "$1.2m" and "$1.23m" add, "$1.2m" and "$500k" do not.
+  const unitOf = (format: string): string => {
+    if (!format) return '';
+    const spec = parseFormatExample(format);
+    return `${spec.prefix}\u0000${spec.suffix}\u0000${spec.magnitude}`;
+  };
   const nonAdditiveSum = (col: Extract<TableColumn, { kind: 'value' }>, row: FlatRow, kids: readonly FlatRow[]): boolean =>
     nonAdditiveFormat(col.format) || [row, ...kids].some((k) => nonAdditiveFormat(formatAt(k, col.id))) ||
-    new Set(kids.map((k) => formatAt(k, col.id) ?? col.format ?? '')).size > 1;
+    new Set(kids.map((k) => unitOf(formatAt(k, col.id) ?? col.format ?? ''))).size > 1;
   const aggregateFor = (col: Extract<TableColumn, { kind: 'value' }>, row: FlatRow): 'sum' | 'none' | 'source' =>
     col.aggregate ?? (nonAdditiveSum(col, row, summandsOf(row.id)) ? 'none' : 'sum');
   const warnedNonAdditive = new Set<Id>();
@@ -764,12 +816,17 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     }
   };
   collectLeafSummands(null);
+  partitionLeafIds.set(rawState, leafRows.map((r) => r.id));
+  // Rows that topN.rest false omits still belong to the partition, so hiding a row leaves the other shares as they were.
+  const hiddenLeaves = [...folded.hidden].filter(([, h]) => h.leaf);
   const leafTotal = (colId: Id): number | null => {
     let t = 0;
-    for (const r of leafRows) {
-      const s = rawState.get(r.id)!.get(colId);
+    for (const [s, sign] of [
+      ...leafRows.map((r) => [rawState.get(r.id)!.get(colId), signTo(r, null)] as const),
+      ...hiddenLeaves.map(([, h]) => [h.states.get(colId), h.sign] as const),
+    ]) {
       if (!s || s.state !== 'value' || typeof s.raw !== 'number') return null;
-      t += signTo(r, null) * s.raw;
+      t += sign * s.raw;
     }
     return t;
   };
@@ -1179,10 +1236,15 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     reconcileShares(col.id, spec);
   }
   function reconcileShares(colId: Id, spec: NumberFormatSpec) {
-    const entries = leafRows
-      .map((r) => ({ r, s: rawState.get(r.id)!.get(colId)! }))
-      .filter((e) => e.s.state === 'value' && typeof e.s.raw === 'number');
-    if (entries.length !== leafRows.length || entries.length === 0) return;
+    // Rows topN.rest false omits take their units too, so the shown shares stay what they are with all rows shown.
+    const entries = [
+      ...leafRows.map((r) => ({ r, s: rawState.get(r.id)!.get(colId)!, shown: true })),
+      ...hiddenLeaves.map(([id, h]) => ({ r: { id }, s: h.states.get(colId)!, shown: false })),
+    ].filter((e) => e.s?.state === 'value' && typeof e.s.raw === 'number');
+    const LAST = Number.MAX_SAFE_INTEGER;
+    // The full table breaks equal remainders by its own row order, so shown and hidden rows keep that order.
+    entries.sort((a, b) => (folded.leafOrder.get(a.r.id) ?? LAST) - (folded.leafOrder.get(b.r.id) ?? LAST));
+    if (entries.length !== leafRows.length + hiddenLeaves.length || entries.length === 0) return;
     const decimals = spec.decimals ?? 1;
     const unit = Math.pow(10, -decimals);
     const floors = entries.map((e) => Math.floor((e.s.raw as number) / unit) * unit);
@@ -1204,7 +1266,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
       deficit--;
     }
     entries.forEach((e, i) => {
-      if (ownPrecision[i]) return;
+      if (ownPrecision[i] || !e.shown) return;
       const shown = floors[i]! + (adjusted.has(i) ? unit : 0);
       // A cell format of the column's precision prints the reconciled amount through itself.
       const cellSpec = cellSpecs.get(e.r.id)?.get(colId);
@@ -1801,25 +1863,30 @@ function resolveCellEncoding(encoding: TableCellEncoding | undefined, percent: b
 
 /** The evaluated cell states of a resolve, kept for the top-N pass that resolves the full table first. */
 const evaluatedStates = new WeakMap<ResolveResult, Map<Id, Map<Id, CellEval>>>();
+/** The ids of the share partition (the leaves the column total sums), in row order, keyed by the evaluated states of their resolve. */
+const partitionLeafIds = new WeakMap<Map<Id, Map<Id, CellEval>>, Id[]>();
 
 /** A row topN.rest false omits: calcs of the rows it keeps still read it. */
 interface HiddenRow {
   sign: number;
   states: Map<Id, CellEval>;
+  /** The row is a leaf of the full table's share partition: the part of the share denominator it carries. */
+  leaf: boolean;
 }
 
 function applyTableTopN(
   data: TableData,
   options: TableOptions,
-): { data: TableData; generatedOthers: Set<Id>; hidden: Map<Id, HiddenRow> } {
+): { data: TableData; generatedOthers: Set<Id>; hidden: Map<Id, HiddenRow>; leafOrder: Map<Id, number> } {
   const topN = options.topN;
-  if (!topN || topN.n <= 0) return { data, generatedOthers: new Set(), hidden: new Map() };
+  if (!topN || topN.n <= 0) return { data, generatedOthers: new Set(), hidden: new Map(), leafOrder: new Map() };
   const inner = resolveTable(data, { ...options, topN: undefined });
   const folded = foldTableTopN(data, inner.table, options);
   // Values come from the full table, so a kept result reads an omitted row as the untruncated table shows it.
   const kept = new Set(flattenRows(folded.data.rows).map((row) => row.id));
   const innerById = new Map(inner.table.rows.map((row) => [row.id, row]));
   const hidden = new Map<Id, HiddenRow>();
+  const leafOrder = new Map((partitionLeafIds.get(evaluatedStates.get(inner)!) ?? []).map((id, i) => [id, i] as const));
   for (const row of inner.table.rows) {
     if (kept.has(row.id)) continue;
     // The evaluated states keep which rows a partial total skipped, so a kept calc reading it still compares like with like.
@@ -1829,9 +1896,9 @@ function applyTableTopN(
       const own = evaluated?.get(colId);
       states.set(colId, { raw: cell.raw, state: cell.state, ...(own?.partial ? { partial: true as const, skipped: own.skipped } : {}) });
     }
-    hidden.set(row.id, { sign: contributionSignOf(row, (id) => innerById.get(id), null), states });
+    hidden.set(row.id, { sign: contributionSignOf(row, (id) => innerById.get(id), null), states, leaf: leafOrder.has(row.id) });
   }
-  return { ...folded, hidden };
+  return { ...folded, hidden, leafOrder };
 }
 
 /**
@@ -2538,23 +2605,33 @@ function evaluateTableCalcs(
     const sourceStates = new Map(states);
     for (const col of numericCols) {
       if (col.kind === 'computed' && !calcPreservesScale(col.calc)) continue;
-      let res = evalCalc(row.calc!, row, sourceStates, leafTotal, {
+      // A delta column, or a sub column of two cells, takes the change of a nonlinear row calc's own cells
+      // (a margin), not the ratio of the changes. A sum column keeps running the row calc on the sums: a YTD growth is the ratio of sums.
+      const ownCalc = col.kind === 'computed' && isChangeCalc(col.calc) && !calcIsLinear(row.calc!);
+      const calc = ownCalc ? col.calc : row.calc!;
+      const read = ownCalc ? states : sourceStates;
+      let res = evalCalc(calc, row, read, leafTotal, ownCalc ? undefined : {
         currentCol: col.id,
         rawState,
         previousCol,
         noPrevious,
       }, contributionSign);
       // A row calc compares rows the way a column calc compares columns.
-      if (res.state === 'value' && comparesMixedRows(row.calc!, coverageOf(row.id, sourceStates, col.id))) {
+      if (res.state === 'value' && comparesMixedRows(calc, coverageOf(row.id, read, col.id))) {
         res = { ...res, raw: null, state: 'nm' };
         mixedCoverage = true;
       }
-      states.set(col.id, { raw: res.raw, state: res.state, ...partialFrom(res, row.id, sourceStates) });
+      states.set(col.id, { raw: res.raw, state: res.state, ...partialFrom(res, row.id, read) });
       if (res.nearZero) nearZero = true;
       pushCalcRecord(records, row.id, col.id, res);
     }
   }
   return { nearZero, mixedCoverage };
+}
+
+/** A column calc that is the change between two cells: delta, or sub of two column references. */
+function isChangeCalc(calc: Calc): boolean {
+  return 'op' in calc && (calc.op === 'delta' || (calc.op === 'sub' && 'ref' in calc.a && 'ref' in calc.b));
 }
 
 /**

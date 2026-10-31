@@ -1,4 +1,5 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
+import { closestKey } from '../src/core/schema/unknownKeyWords';
 import '../src/core/charts';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { requireGeometry } from '../src/core/sizing';
@@ -20,6 +21,11 @@ import type { TableData } from '../src/core/types/table';
 import type { Paint, SceneNode } from '../src/core/types/scene';
 import { getFixtures } from '../src/fixtures';
 import { render } from '../src/cli/render';
+
+vi.mock('../src/core/schema/unknownKeyWords', async (importActual) => {
+  const actual = await importActual<typeof import('../src/core/schema/unknownKeyWords')>();
+  return { ...actual, closestKey: vi.fn(actual.closestKey) };
+});
 
 type TextNode = Extract<SceneNode, { t: 'text' }>;
 
@@ -520,6 +526,44 @@ it('prints n.m. where a kept row calc compares a full total with a partial total
   const gap = resolved.table.rows.find(row => row.id === 'gap')!.cells;
   expect(gap.out!.displayed).toBe('n.m.');
   expect(gap.pace!.displayed).not.toBe('n.m.');
+});
+
+// Shares kept the omitted rows out of their denominator, so topN.rest false printed 62.5%, 37.5% and a total of 125.0%.
+it('keeps the shares of the kept rows when topN.rest false omits rows', () => {
+  const data = tableDataSchema.parse({
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'rev', kind: 'value' }, { id: 'share', kind: 'computed', calc: { op: 'share', of: 'rev' }, format: '1.1%' }],
+    rows: [{ id: 'a', cells: { rev: 500 } }, { id: 'b', cells: { rev: 300 } }, { id: 'c', cells: { rev: 150 } }, { id: 'd', cells: { rev: 50 } },
+      { id: 'tot', role: 'total', cells: { rev: 1000 } }],
+  });
+  const shares = (topN?: { n: number; rest: boolean }) =>
+    Object.fromEntries(resolveTable(data, { target: 'report', topN }).table.rows.map(row => [row.id, row.cells.share!.displayed]));
+  expect(shares({ n: 2, rest: false })).toEqual({ a: '50.0%', b: '30.0%', tot: '100.0%' });
+  expect(shares()).toMatchObject({ a: '50.0%', b: '30.0%', tot: '100.0%' });
+});
+
+// An omitted row's of-which detail was counted in the share denominator, so the kept share read 58.8% against 62.5% in the full table.
+it('leaves the detail under an omitted row out of the share denominator', () => {
+  const data = tableDataSchema.parse({
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'rev', kind: 'value' }, { id: 'share', kind: 'computed', calc: { op: 'share', of: 'rev' }, format: '1.1%' }],
+    rows: [{ id: 'a', cells: { rev: 500 } }, { id: 'b', cells: { rev: 300 } },
+      { id: 'b1', parentId: 'b', relation: 'ofWhich', cells: { rev: 100 } }, { id: 'b1x', parentId: 'b1', cells: { rev: 50 } }],
+  });
+  const share = (topN?: { n: number; rest: boolean }) =>
+    resolveTable(data, { target: 'report', topN }).table.rows.find(row => row.id === 'a')!.cells.share!.displayed;
+  expect(share()).toBe('62.5%');
+  expect(share({ n: 1, rest: false })).toBe('62.5%');
+});
+
+// Hidden rows were placed after every shown row, so an equal-remainder tie went to different rows than in the full table (26.7% against 26.6%).
+it('breaks equal share remainders in full-table row order when rows are hidden', () => {
+  const data = tableDataSchema.parse({
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'rev', kind: 'value' }, { id: 'share', kind: 'computed', calc: { op: 'share', of: 'rev' }, format: '1.1%' }],
+    rows: [{ id: 'a', cells: { rev: 1 } }, { id: 'b', cells: { rev: 1 } }, { id: 'c', cells: { rev: 4 } }, { id: 'd', cells: { rev: 9 } }],
+  });
+  const share = (topN?: { n: number; rest: boolean }) =>
+    resolveTable(data, { target: 'report', topN }).table.rows.find(row => row.id === 'c')!.cells.share!.displayed;
+  expect(share()).toBe('26.6%');
+  expect(share({ n: 2, rest: false })).toBe('26.6%');
 });
 
 // Tone text printed in the raw tone read 2.96:1 on the standard total ground of this fixture.
@@ -1087,4 +1131,78 @@ it('reads a percent change under a row format as a percent, as it reads one with
   expect(table.rows[0]!.cells.yoy!.displayed).toBe('25.0%');
   // The accessible table reads a derived percent at two decimals.
   expect(interactionValueText(value)).toBe('25.00%');
+});
+
+// A cell key that names no column dropped its value with no warning, so a typo such as `amunt` made a number vanish unseen.
+it('warns about a cell key that names no column and offers the nearest column id', () => {
+  const data: TableData = {
+    columns: [{ id: 'l', kind: 'rowLabel', label: 'Unit' }, { id: 'amount', kind: 'value', label: 'Amount' }],
+    rows: [{ id: 'all', label: 'All', children: [{ id: 'a', label: 'North', cells: { amunt: 63.9 } }, { id: 'b', label: 'South', cells: { amount: 41.2 } }] }],
+  };
+  const { warnings } = resolveTable(data);
+  const found = warnings.filter((w) => w.code === 'cell-column-unknown');
+  expect(found).toHaveLength(1);
+  expect(found[0]!.owner).toEqual({ rowId: 'a' });
+  expect(found[0]!.suggest).toContain("'amount'");
+});
+
+// A table that filters its columns on purpose got one cell-column-unknown warning per row and key, so the response grew with the row count.
+it('warns once per cell key and stays quiet for keys that are not a typo of an empty column', () => {
+  const data: TableData = {
+    columns: [{ id: 'l', kind: 'rowLabel', label: 'Unit' }, { id: 'amountPlan', kind: 'value', label: 'Plan' }, { id: 'amount', kind: 'value', label: 'Amount' }],
+    rows: Array.from({ length: 20 }, (_, i) => ({ id: `r${i}`, label: `Row ${i}`, cells: { amountPlan: 2, amountPlans: 3, region: 4, amunt: 5 } })),
+  };
+  const found = resolveTable(data).warnings.filter((w) => w.code === 'cell-column-unknown');
+  expect(found.map((w) => w.field?.at(-1))).toEqual(['amunt']);
+  expect(found[0]!.message).toContain('19 more');
+  expect(found[0]!.fix).toBeUndefined();
+});
+
+// The near-key search ran again for every row and unknown key, so a long table with a few far keys rendered much slower.
+it('measures each unknown cell key once, however many rows carry it', () => {
+  const data: TableData = {
+    columns: [{ id: 'l', kind: 'rowLabel', label: 'Unit' }, { id: 'amount', kind: 'value', label: 'Amount' }],
+    rows: Array.from({ length: 50 }, (_, i) => ({ id: `r${i}`, label: `Row ${i}`, cells: { amount: 1, region: 2, owner: 3 } })),
+  };
+  vi.mocked(closestKey).mockClear();
+  resolveTable(data);
+  expect(vi.mocked(closestKey)).toHaveBeenCalledTimes(2);
+});
+
+// A repair patch built from the fitted rows tested a cell format the author never wrote, so applying it to the authored spec failed.
+it('builds the cell-column-unknown repair from the authored cells when fitFormats shortens a cell format', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel', label: 'Region', width: 120 }, { id: 'amount', kind: 'value', label: 'Amount', width: 44 }, { id: 'orders', kind: 'value', label: 'Orders', width: 44 }],
+    rows: [{ id: 'a', label: 'North', cells: { orders: { v: 1_234_567, format: '1,234,567' }, amunt: 5 } }],
+  };
+  const { warnings } = layout('table', data, { fitFormats: true, size: { width: 320 } });
+  const fix = warnings.find((w) => w.code === 'cell-column-unknown')!.fix!;
+  expect(fix[0]).toEqual({ op: 'test', path: '/data/rows/0/cells', value: data.rows[0]!.cells });
+});
+
+// fitFormats wrote the example "$1.234M" for a lifted cell, which reads back as a thousands group, so 3,000 printed "$0M".
+it('keeps three lifted decimals as decimals when fitFormats writes the cell format', () => {
+  const g = layout('table', { columns: [{ id: 'l', kind: 'rowLabel' }, { id: 'v', kind: 'value', format: '$1.23M', width: 62 }],
+    rows: [{ id: 'a', cells: { v: 123_456_789 } }, { id: 'b', cells: { v: 3000 } }] }, { fitFormats: true });
+  const cell = g.scene.find((node): node is TextNode => node.t === 'text' && node.id === 'cell:b:v');
+  expect(cell!.lines.join('')).toBe('$0.003M');
+});
+
+// A margin row (gp / rev * 100) in a delta column printed the ratio of the changes (30.0%) and not the change of the margins (10.0%).
+it('prints the change of a nonlinear row calc in a delta or sub column, and keeps a linear one', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'ac', kind: 'value' }, { id: 'py', kind: 'value' },
+      { id: 'd', kind: 'computed', calc: { op: 'delta', a: 'ac', b: 'py' } },
+      { id: 's', kind: 'computed', calc: { op: 'sub', a: { ref: 'ac' }, b: { ref: 'py' } } }],
+    rows: [
+      { id: 'rev', label: 'Revenue', cells: { ac: 200, py: 100 } },
+      { id: 'gp', label: 'Gross profit', cells: { ac: 40, py: 10 } },
+      { id: 'margin', label: 'Margin', relation: 'displayOnly', format: '1.2%',
+        calc: { op: 'mul', a: { op: 'div', a: { ref: { row: 'gp' } }, b: { ref: { row: 'rev' } } }, b: { lit: 100 } } },
+      { id: 'sum', label: 'Sum', relation: 'displayOnly', calc: { op: 'add', a: { ref: { row: 'gp' } }, b: { ref: { row: 'rev' } } } },
+    ],
+  };
+  const table = resolveTable(data, {}).table;
+  const cell = (row: string, col: string) => table.rows.find((r) => r.id === row)!.cells[col]!.displayed;
+  expect([cell('margin', 'ac'), cell('margin', 'py'), cell('margin', 'd'), cell('margin', 's'), cell('sum', 'd')]).toEqual(['20.0%', '10.0%', '10.0%', '10.0%', '130']);
 });
