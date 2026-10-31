@@ -50,7 +50,7 @@ export function tablePresentation(request: ResolvedChartRequest, table: Resolved
     tableFrame(table, request.options as TableOptions));
 }
 
-interface RenderTableHtmlOptions extends Pick<BaseOptions, 'title' | 'subtitle' | 'unit' | 'source' | 'footnotes' | 'notes' | 'target' | 'mode' | 'size' | 'margin' | 'canvas' | 'strings' | 'locale'> {
+interface RenderTableHtmlOptions extends Pick<BaseOptions, 'title' | 'subtitle' | 'unit' | 'source' | 'footnotes' | 'notes' | 'target' | 'mode' | 'size' | 'margin' | 'canvas' | 'strings' | 'locale' | 'a11y'> {
   caption?: string;
   interactive?: boolean;
   stickyLabels?: StickyLabels;
@@ -136,7 +136,8 @@ export function tableFrame(
     listed,
     pointer: listed.length === 0 ? undefined : placement === 'info' ? `${words.notesAndSources} (${listed.length})` : notesPointer(listed.length, words),
     markerNotes: markerNotes.join(' '),
-    summary: options.caption ?? [title, subtitle,
+    // The author's accessible description replaces the generated summary, as it does in the SVG.
+    summary: options.a11y?.description ?? options.caption ?? [title, subtitle,
       `Table with ${table.rows.length} rows and ${table.columns.length} columns.`]
       .filter((part): part is string => Boolean(part)).join(' · '),
   };

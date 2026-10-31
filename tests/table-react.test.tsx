@@ -1522,6 +1522,15 @@ describe('TableChart in the host document', () => {
     expect(summaryIds[1]).toMatch(/^bp-table-summary-right-/);
   });
 
+  // An authored a11y.description reached the SVG table but not the React table, whose grid read only options.caption.
+  it('describes the grid with options.a11y.description when the author writes one', () => {
+    const selected = managementFixture();
+    const description = 'Revenue grew in every region. The south region grew fastest.';
+    const html = renderToString(<TableChart data={selected.data} {...selected.options} size={{ width: 720, height: 420 }} a11y={{ description }} />);
+    expect(/<p id="[^"]+" class="bp-summary">([^<]*)<\/p>/.exec(html)![1]).toBe(description);
+    expect(renderToString(<TableChart data={selected.data} {...selected.options} size={{ width: 720, height: 420 }} />)).not.toContain(description);
+  });
+
   it('mounts its stylesheet in the head of the iframe document it renders in', () => {
     const frame = document.createElement('iframe');
     document.body.append(frame);
