@@ -731,6 +731,12 @@ function schemaNodeAtPath(schema: z.ZodType, path: readonly (string | number)[])
   return nodes;
 }
 
+/** Whether the options schema of a chart type (or alias) lists `key`; false for an unknown type. */
+export function optionsTake(type: string, key: string): boolean {
+  const def = getChartSchemas(type);
+  return !!def && expectedObjectKeys(def.optionsSchema as z.ZodType, []).includes(key);
+}
+
 /** The keys the object at `path` accepts; a key it refuses by name (`not: {}`) is not one of them. */
 function expectedObjectKeys(schema: z.ZodType, path: readonly (string | number)[]): string[] {
   const keys = new Set<string>();

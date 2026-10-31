@@ -6,6 +6,7 @@ import { documentSchemaHint, documentSchemaHintWarning } from '../schema/documen
 import { flattenIssues } from '../schema/flattenIssues';
 import type { LintWarning } from '../types/scene';
 import type { ThemeRef } from '../types/theme';
+import { optionsTake } from './chartValidation';
 import { DocExpansionError, expandDoc, missingChartName, ownedDocumentCopy } from './docExpand';
 import { completeDiagnostic, rememberDiagnosticSource, sourceSchemaDiagnostic, type DocumentFinding } from './diagnostics';
 import { toJsonPointer } from '../diagnostics/jsonPatch';
@@ -156,7 +157,9 @@ function unknownField(
 
 /** Chart furniture an author often puts at the top level; options takes each of these as a string. */
 const MOVABLE_KEYS = ['title', 'subtitle', 'unit', 'source'] as const;
-const isMovable = (input: Record<string, unknown>, key: string): boolean => (MOVABLE_KEYS as readonly string[]).includes(key) && typeof input[key] === 'string';
+/** Movable only when the chart type's options schema lists the key: diagram and creative take no `unit`, and a moved key there would be refused again. */
+const isMovable = (input: Record<string, unknown>, key: string): boolean => (MOVABLE_KEYS as readonly string[]).includes(key) && typeof input[key] === 'string'
+  && typeof input.type === 'string' && optionsTake(input.type, key);
 
 /**
  * A top-level `title`, `subtitle`, `unit` or `source` string holds what the

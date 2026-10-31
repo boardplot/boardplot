@@ -99,6 +99,21 @@ describe('root key fixes', () => {
     }
   });
 
+  // Diagram and creative options take no `unit`: the move fix left a chart that was refused again, with no fix. Their unit is removed, their title still moves.
+  it('moves a root key only into options that list it', () => {
+    for (const [type, id] of [['creative', 'creative-placeholder'], ['diagram', 'org-structure']] as const) {
+      const base = fixtureSpec(type, id);
+      for (const extra of [{ unit: 'EUR m' }, { title: 'Revenue', unit: 'EUR m', source: 'Finance' }]) {
+        const spec = { ...base, ...extra };
+        const refused = render({ spec, format: 'svg' }).body as any;
+        expect(refused.ok).toBe(false);
+        const fixed = applyPatch(spec, refused.errors.flatMap((error: any) => error.fix));
+        expect(fixed.options).not.toHaveProperty('unit');
+        expect(render({ spec: fixed, format: 'svg' }).body).toMatchObject({ ok: true });
+      }
+    }
+  });
+
   // A stray root key beside charts got a move into a root options that an envelope does not have; the fixed document was refused.
   it('draws an envelope after its stray root key is removed', () => {
     for (const extra of [{ title: 'Revenue' }, { unit: 'EUR m' }, { foo: 1 }, { type: 'column' }]) {
