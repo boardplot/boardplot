@@ -322,7 +322,7 @@ describe('histogram disclosures', () => {
       const noTitle = fixtures.find((candidate) => candidate.id === id)!;
       const withoutAxis = layoutHistogram(noTitle.data, { ...noTitle.options, axisTitles: undefined, footnotes: false, ...SHOW_NOTES, size: { width: 720, height: 405 } });
       // Whole days get one bin per value, so that line names the values instead of a width.
-      expect(withoutAxis.scene.map(node2text).join(' ')).toMatch(/(Bins of [\d,.]+|per [\d,.]+ bin), lower edge included · n = \d+|n = \d+ · one bin per value from \d+ to \d+/);
+      expect(withoutAxis.scene.map(node2text).join(' ')).toMatch(/(Bins of [\d,.]+|per [\d,.]+ bin), lower edge included · n = \d+|One bin per value · n = \d+/);
     }
   });
 

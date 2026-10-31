@@ -345,7 +345,8 @@ export function layoutHistogram(
   // Every bin count prints; past twelve bins, where only a few bins
   // hold observations, the empty ones stay blank.
   const filled = counts.filter((count) => count > 0).length;
-  const sparseLabels = k > POINT_LABEL_MAX_BINS && filled <= POINT_LABEL_MAX_BINS;
+  // One bin per value names every bin, so an empty slot above its value reads as zero without a 0.
+  const sparseLabels = perValue || (k > POINT_LABEL_MAX_BINS && filled <= POINT_LABEL_MAX_BINS);
 
   const shares = counts.map((count) => count / n * 100);
   const shareFormat = shareSetFormatter(shares, options.locale?.language);
@@ -463,7 +464,7 @@ export function layoutHistogram(
   const size = resolveSize(options.size);
   let columnOptions = delegateOptions(true);
   let column = layoutColumn(delegateData, columnOptions, true);
-  const allValuesLabelled = (geometry: typeof column) => counts.every((_, index) => geometry.labels.some((label) => label.kind === 'point' && label.owner.categoryId === binId(index) && !label.hidden));
+  const allValuesLabelled = (geometry: typeof column) => counts.every((count, index) => (perValue && count === 0) || geometry.labels.some((label) => label.kind === 'point' && label.owner.categoryId === binId(index) && !label.hidden));
 
   // An instrument, not a prediction: the tick values are read back off the
   // geometry the engine actually produced. Counts are whole numbers, and a
