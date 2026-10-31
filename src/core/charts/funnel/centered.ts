@@ -78,7 +78,10 @@ function stageLabelInfo(name: string, value: string, font: FontSpec, measure: Te
     h: font.size * (font.lineHeight ?? 1.2) * lines.length };
 }
 
-function centeredLabelNodes(theme: Theme, labels: PlacedLabel[], strong: FontSpec, header: FontSpec, labelFont: FontSpec, marks: SceneNode[]): SceneNode[] {
+/** Space between the name and the value of a one-line stage label. */
+const ONE_LINE_VALUE_GAP = 16;
+
+function centeredLabelNodes(theme: Theme, labels: PlacedLabel[], strong: FontSpec, header: FontSpec, labelFont: FontSpec, marks: SceneNode[], oneLine: boolean): SceneNode[] {
   const emitted = labelsToNodes(theme, labels, (label) =>
     label.id.startsWith('stage:') ? strong : label.id === 'total-cvr:header' || label.id === 'step-cvr:header' || label.id === CVR_SPAN_HEADER ? header : labelFont, marks);
   // a stage label prints its name bold over its value in
@@ -89,13 +92,27 @@ function centeredLabelNodes(theme: Theme, labels: PlacedLabel[], strong: FontSpe
     if (node.t !== 'text' || !node.id.endsWith(':body')) continue;
     const label = byNode.get(node.id.slice(0, -':body'.length));
     if (!label?.align) continue;
+    const head = emitted.find((item) => item.id === label.nodeId);
+    // A one-line stage label is a row of a table: the name flush left in the
+    // outside column, the value flush right on the same baseline.
+    if (oneLine && label.id.startsWith('stage:')) {
+      node.x = label.rect.x + label.rect.w;
+      node.align = 'end';
+      node.role = composedTextRole(node.lines.join(' '));
+      if (head?.t === 'text') {
+        head.x = label.rect.x;
+        head.align = 'start';
+        head.y = Math.round(head.y * 100) / 100;
+        node.y = head.y;
+      }
+      continue;
+    }
     node.x = label.align === 'middle' ? label.rect.x + label.rect.w / 2 : label.rect.x + label.rect.w;
     node.align = label.align;
     // The value line under the name reads as a value.
     node.role = composedTextRole(node.lines.join(' '));
     // Both lines sit on the 0.01 px raster the SVG prints, one line apart, so
     // rounding never lets the two line boxes overlap.
-    const head = emitted.find((item) => item.id === label.nodeId);
     if (head?.t === 'text') {
       const round = (v: number): number => Math.round(v * 100) / 100;
       head.y = round(head.y);
@@ -391,8 +408,17 @@ export function layoutCenteredFunnel(
     setTableForm(true);
     allInside = fitAllInside();
   }
-  const labelColumnW = labelOn('total') && !allInside
-    ? maxOf(stageLabelInfos.map((label) => label.w)) + LABEL_COLUMN_GAP : 0;
+  // Outside labels keep their two lines while each band holds them. In
+  // shorter bands the name and the value share one line in the outside
+  // column, so the rows need only one line height.
+  const lineH = strongFont.size * (strongFont.lineHeight ?? 1.2);
+  const twoLineH = Math.max(0, maxOf(stageLabelInfos.map((label) => label.h)));
+  const hasValueLine = stageLabelInfos.some((label) => label.lines.length > 1);
+  const oneLine = labelOn('total') && !allInside && hasValueLine && bandHeight < twoLineH + 6;
+  const nameColumnW = maxOf(stageLabelInfos.map((label) => measure(label.lines[0]!, strongFont).width));
+  const valueColumnW = maxOf(stageLabelInfos.map((label) => label.lines[1] ? measure(label.lines[1], labelFont).width : 0));
+  const stageColumnW = oneLine ? nameColumnW + ONE_LINE_VALUE_GAP + valueColumnW : maxOf(stageLabelInfos.map((label) => label.w));
+  const labelColumnW = labelOn('total') && !allInside ? stageColumnW + LABEL_COLUMN_GAP : 0;
   const funnelWidth = Math.max(10, inner.w - stepBlockWidth - cvrBlockWidth - cagrReserve - labelColumnW);
   const funnelLeft = inner.x + labelColumnW;
   // A wider funnel can take its labels inside, so the measured floor is
@@ -401,7 +427,7 @@ export function layoutCenteredFunnel(
   let narrowestFunnel = Infinity;
   // The new placement: the narrowest funnel that holds every label inside, or
   // the minimum funnel with the label column beside it.
-  const columnW = labelOn('total') ? maxOf(stageLabelInfos.map((label) => label.w)) + LABEL_COLUMN_GAP : 0;
+  const columnW = labelOn('total') ? stageColumnW + LABEL_COLUMN_GAP : 0;
   for (let w = minFunnelW; w <= Math.max(minFunnelW, 640); w += 4) {
     const outside = stageLabelInfos.every((label, ci) => fitsInside(ci, w, label)) ? 0 : columnW;
     narrowestFunnel = Math.min(narrowestFunnel, w + outside);
@@ -511,11 +537,17 @@ export function layoutCenteredFunnel(
               ? insideStagePaint(stagePaint(plotted[0]!, 0, categoryIndex), centeredPattern(plotted[0]!), theme)
               : { needsBacking: true }),
           }]
-        : [{
-            slot: 'outsideLeft',
-            rect: { x: funnelLeft - LABEL_COLUMN_GAP - info.w, y: rowCenterY - info.h / 2, w: info.w, h: info.h },
-            penalty: 0,
-          }];
+        : oneLine
+          ? [{
+              slot: 'outsideLeft',
+              rect: { x: funnelLeft - LABEL_COLUMN_GAP - stageColumnW, y: rowCenterY - lineH / 2, w: stageColumnW, h: lineH },
+              penalty: 0,
+            }]
+          : [{
+              slot: 'outsideLeft',
+              rect: { x: funnelLeft - LABEL_COLUMN_GAP - info.w, y: rowCenterY - info.h / 2, w: info.w, h: info.h },
+              penalty: 0,
+            }];
       labelRequests.push({
         id: `stage:${stage.id}`,
         kind: 'total',
@@ -524,7 +556,7 @@ export function layoutCenteredFunnel(
         text: info.text,
         lines: info.lines,
         font: strongFont,
-        align: inside ? 'middle' as const : 'end' as const,
+        align: inside ? 'middle' as const : oneLine ? 'start' as const : 'end' as const,
         priority:
           PRIORITY.total +
           (highlights.has(stage.id) ? PRIORITY.highlightBonus : 0),
@@ -777,7 +809,7 @@ export function layoutCenteredFunnel(
 
   const allLabels: PlacedLabel[] = [...solved.placed, ...annotationResult.labels];
   pushAll(nodes, annotationResult.nodes);
-  pushAll(nodes, centeredLabelNodes(theme, allLabels, strongFont, headerFont, labelFont, nodes));
+  pushAll(nodes, centeredLabelNodes(theme, allLabels, strongFont, headerFont, labelFont, nodes, oneLine));
   // a hairline under the column heads closes the table head.
   const heads = allLabels.filter((label) => !label.hidden && (label.id === 'step-cvr:header' || label.id === 'total-cvr:header'));
   if (heads.length > 0) {
@@ -795,7 +827,7 @@ export function layoutCenteredFunnel(
   const first = stages[0]!;
   const last = stages[stages.length - 1]!;
 
-  const tallestStageLabelH = Math.max(0, maxOf(stageLabelInfos.map((label) => label.h)));
+  const tallestStageLabelH = twoLineH;
   const paintWarningRules: PaintWarningRule[] = [];
   pushAll(warnings, centeredAdjacentWarnings(marks, nodes, values, plotted, theme, { rules: paintWarningRules, before: warnings.filter(warning => !['pie-ramp-crowded', 'likert-ramp-invisible', 'band-lightness-insufficient', 'series-adjacent-similar', 'highlight-reads-as-loss'].includes(warning.code)).length }));
   return {
@@ -804,7 +836,8 @@ export function layoutCenteredFunnel(
     // Rows share one pitch, so the tallest stage label sizes them: a hidden value makes only its own label one line.
     sizing: rowSizing('funnel', size, {
       chromeH: size.height - rowsHeight,
-      minimumRowsH: stages.length * Math.max(28, labelOn('total') ? tallestStageLabelH + 6 : 0),
+      // The floor is one line per stage: shorter bands set name and value on one line.
+      minimumRowsH: stages.length * Math.max(28, labelOn('total') ? (hasValueLine ? lineH : tallestStageLabelH) + 6 : 0),
       // A wide card gets air around each stage (pitch 56 at 960, 52 at 720, 40 at 480, 36 at 400): 0.05 px of air
       // per px of canvas over 400, up to 19 px.
       naturalRowsH: stages.length * (Math.max(28, labelOn('total') ? tallestStageLabelH + 6 : 0)
