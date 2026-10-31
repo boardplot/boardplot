@@ -76,7 +76,7 @@ export function createOccupiedIndex(_plot: Rect): OccupiedIndex {
   const polygonTests: ReturnType<typeof prepareConvexPolygon>[] = [];
   const hit = (index: number, rect: Rect, pad: number): boolean => {
     const claim = rects[index]!;
-    return (released.size === 0 || !released.has(index)) && rectsOverlap(claim.rect, rect, pad) && (claim.polygon === undefined
+    return rectsOverlap(claim.rect, rect, pad) && (claim.polygon === undefined
       || (polygonTests[index] ??= prepareConvexPolygon(claim.polygon))(rect, pad));
   };
   // A claim spans several cells; `seen` stamps it once per query.
@@ -150,7 +150,11 @@ export function createOccupiedIndex(_plot: Rect): OccupiedIndex {
     },
     release(claim) {
       const index = rects.indexOf(claim);
-      if (index >= 0) released.add(index);
+      if (index < 0) return;
+      released.add(index);
+      // The claim stays in its cells, but its rect now lies where no query reaches.
+      claim.rect = { x: -1e9, y: -1e9, w: 0, h: 0 };
+      claim.polygon = undefined;
     },
   };
 }
