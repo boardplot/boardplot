@@ -344,3 +344,13 @@ it('leaves out the change line of periods with no ref and warns on an encodings 
   expect(changeRow(some)!.cells.w2!.displayed).toContain('+11%');
   expect(some.compileWarnings.map(w => w.code)).not.toContain('dimswitch-encoding-column');
 });
+// A multiple of a negative base (revenue over a negative order count) printed a plain ratio with no word that it is arithmetic, not n.m.
+it('warns once per measure when a ratio divides by a negative sum', () => {
+  const flip=(sums:DimSwitchSums|undefined)=>sums && {...sums,orders:-Math.abs(sums.orders!)};
+  const data:DimSwitchData={...exampleData,
+    facts:exampleData.facts.map(fact=>({...fact,sums:flip(fact.sums)!,...(fact.ref ? {ref:flip(fact.ref)} : {})})),
+    measures:[...exampleData.measures,{id:'neg',label:'Revenue per order',value:{op:'div',a:{field:'rev'},b:{field:'orders'}}}]};
+  const found=resolveDimSwitch(data).compileWarnings.filter(w=>w.code==='ratio-negative-base');
+  expect(found.map(w=>w.severity)).toEqual(['info']);
+  expect(found[0]!.message).toContain("Measure 'neg'");
+});
