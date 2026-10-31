@@ -1088,3 +1088,11 @@ it('reads a percent change under a row format as a percent, as it reads one with
   // The accessible table reads a derived percent at two decimals.
   expect(interactionValueText(value)).toBe('25.00%');
 });
+
+// fitFormats wrote the example "$1.234M" for a lifted cell, which reads back as a thousands group, so 3,000 printed "$0M".
+it('keeps three lifted decimals as decimals when fitFormats writes the cell format', () => {
+  const g = layout('table', { columns: [{ id: 'l', kind: 'rowLabel' }, { id: 'v', kind: 'value', format: '$1.23M', width: 62 }],
+    rows: [{ id: 'a', cells: { v: 123_456_789 } }, { id: 'b', cells: { v: 3000 } }] }, { fitFormats: true });
+  const cell = g.scene.find((node): node is TextNode => node.t === 'text' && node.id === 'cell:b:v');
+  expect(cell!.lines.join('')).toBe('$0.003M');
+});
