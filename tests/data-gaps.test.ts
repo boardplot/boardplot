@@ -15,6 +15,7 @@ import { SceneRenderer } from '../src/react/SceneRenderer';
 import { interactionRecords } from '../src/core/a11y/records';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { render } from '../src/cli/render';
+import { specFromRows } from '../src/rows';
 import { claimsForChart } from '../src/core/claims';
 import { chartReading } from '../src/core/reading';
 import type { Geometry, LintWarning } from '../src/core/types/scene';
@@ -515,5 +516,19 @@ describe('a lone valid 100% category', () => {
     // Footer rule: the note is in the notes list, not drawn.
     const note = noteTexts(geometry).some((text) => text.startsWith('A: n.m.'));
     expect([columns.length, note]).toEqual([2, true]);
+  });
+});
+
+// A heatmap cell the rows mark suppressed was drawn, keyed and counted as plain no data, so a reader could not tell withheld from absent.
+describe('heatmap cell states', () => {
+  it('names a suppressed cell in the key and the reading, and keeps a plain empty cell no data', () => {
+    const rows = [
+      { m: 'm1', d: 'a', v: 1.5, s: '' }, { m: 'm2', d: 'a', v: null, s: '' },
+      { m: 'm1', d: 'b', v: null, s: 'suppressed' }, { m: 'm2', d: 'b', v: null, s: 'nm' },
+    ];
+    const { spec } = specFromRows({ type: 'heatmap', options: { title: 't' } }, { rows, columns: { category: 'm', series: 'd', value: 'v', state: 's' } });
+    const body = render({ spec, return: ['reading'] }).body as { reading: { values: { byState: Record<string, number> } } };
+    const keys = lay('heatmap', (spec as { data: unknown }).data, { title: 't' }).legend?.items.map((item) => item.id).filter((id) => /^scale:\D/.test(id));
+    expect([body.reading.values.byState, keys]).toEqual([{ value: 1, missing: 1, suppressed: 1, nm: 1 }, ['scale:none', 'scale:nm', 'scale:suppressed']]);
   });
 });

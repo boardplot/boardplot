@@ -717,7 +717,7 @@ export function adaptRows(spec: unknown, columns: unknown, source: RowsSource): 
           return { ...template, id: category.id, ...authored, ...(named('date') && category.date !== undefined ? { date: category.date } : {}) };
         }),
         ...(bartable ? bartablePanel(data, adapted.data.series, series, contract.value, (generated) => pathMap.get(generated)) : {
-          series: adapted.data.series.map((entry) => ({ ...series.get(entry.id), ...entry })),
+          series: adapted.data.series.map((entry) => ({ ...series.get(entry.id), ...entry, ...(type === 'heatmap' ? cellStates(entry.id, adapted.data.categories, adapted.states) : {}) })),
         }),
         }),
       },
@@ -727,6 +727,12 @@ export function adaptRows(spec: unknown, columns: unknown, source: RowsSource): 
     ignoredColumns: adapted.ignoredColumns,
     states: adapted.states,
   };
+}
+
+/** A heatmap row's states in category order, or nothing when none of its cells has one. */
+function cellStates(seriesId: string, categories: readonly { id: string }[], states: readonly NamedColumnStateEntry[]) {
+  const own = states.filter((entry) => entry.seriesId === seriesId);
+  return own.length ? { states: categories.map((category) => own.find((entry) => entry.categoryId === category.id)?.state ?? null) } : {};
 }
 
 /**
