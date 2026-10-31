@@ -415,4 +415,20 @@ describe('chart layout edge cases', () => {
     expect(ids).toContain('axis:y:arrow-high');
     expect(ids).toContain('axis:y:arrow-low');
   });
+  // A card that drops most value labels showed bare columns with no number and no scale to read them off.
+  it('a column whose value labels drop draws the value axis unless valueAxis.show is false', () => {
+    const cats = Array.from({ length: 12 }, (_, i) => ({ id: `u${i}`, label: `Unit ${i + 1}` }));
+    const request = (valueAxis?: { show: boolean }) => ({
+      type: 'column',
+      data: { categories: cats, series: [
+        { id: 'a', label: 'North', values: cats.map((_, i) => (i % 4 === 1 ? 1000 : 750)) },
+        { id: 'b', label: 'South', values: cats.map((_, i) => (i % 3 === 0 ? 1250 : 1500)) },
+      ] },
+      options: { target: 'dashboard', title: 'Revenue by unit', unit: 'EUR', format: '1.2bn', size: { width: 480 }, ...(valueAxis ? { valueAxis } : {}) },
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ticks = (r: unknown) => (layoutResolvedRequest(resolveChartRequest(r as any) as any) as any).scene.filter((n: { id?: string }) => String(n.id).startsWith('axis:y:tick:')).length;
+    expect(ticks(request())).toBeGreaterThan(1);
+    expect(ticks(request({ show: false }))).toBe(0);
+  });
 });

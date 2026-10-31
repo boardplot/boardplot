@@ -46,12 +46,12 @@ import { addRatioTierRequests, finalizeRatioTier, ratioTierA11y, ratioTierSpacin
 import type { FontSpec } from '../../text';
 import { colorblindPaint, joinHatchPeers, panelTypeClass, emphasisWeight, strokeToken } from '../../theme';
 import type { AnchorRef } from '../../types/annotations';
-import type { Id } from '../../types/cell';
+import { cellMeta, type Id } from '../../types/cell';
 import type { ChartData } from '../../types/data';
 import type { Geometry, LintWarning, PaintWarningRule, PlacedLabel, SceneNode } from '../../types/scene';
 import { bandValueLabelUniformity, haloOverRules, keepValuesWithoutAxis, raiseOverRules, warnSliverLabels } from '../band/labels';
 import { anomalyReceipt } from './anomaly';
-import { edgeNameFont, KEY_EDGE_SERIES, resolveColumnDomain, toDateOnValues } from './domain';
+import { edgeNameFont, KEY_EDGE_SERIES, kindSetting, resolveColumnDomain, toDateOnValues } from './domain';
 import { cellValueText, planColumnLabels, planColumnValueLabels, type DigitSeats } from './labels';
 import { layoutColumnMarks } from './marks';
 import { PY_TICK_LEAD, TICK_LABEL_RESERVE, type ColumnArea, type ColumnDomain, type ColumnMarkGeometry, type ComputedTotal } from './model';
@@ -575,14 +575,58 @@ export function layoutColumn(
   keepEachValue = false,
 ): Geometry<ColumnMarks, ColumnDerived> {
   const resolved = withValueLabelDefaults(ribbonDefaults(withLocaleStrings(options)), 'column', options.valueAxis?.percent ? 'stacked100' : options.variant);
-  const geometry = withBandValueNotes(data, resolved, next => layoutColumnWithNotes(data, next, keepEachValue));
+  return layoutColumnKeyed(data, resolved, keepEachValue);
+}
+
+/** Whether the value axis was turned on for columns left with no number: decided once per chart. */
+interface AxisFallback { on: boolean }
+
+const withValueAxis = (options: AnomalyColumnOptions): AnomalyColumnOptions => ({ ...options, valueAxis: { ...options.valueAxis, show: true } });
+
+/**
+ * Whether automatic value labels leave a column with no number while the
+ * value axis is off by default: a grouped column with no value label, or a
+ * stack that lost every segment value and its total. A value the author
+ * turned off (labels.point false, a cell's label false) leaves no gap to
+ * fill. An authored valueAxis.show and a grid panel keep their axis.
+ */
+function unnumberedColumn(data: ChartData, options: AnomalyColumnOptions, geometry: Geometry<ColumnMarks, ColumnDerived>): boolean {
+  if (options.valueAxis?.show !== undefined || panelTypeClass(options) !== undefined) return false;
+  const shown = (label: PlacedLabel) => label.hidden === undefined || label.printedIn !== undefined;
+  // A label the engine dropped; a 'redundant' one that owes nothing is the author's label: false.
+  const dropped = (label: PlacedLabel) => !shown(label) && (label.hidden !== 'redundant' || label.owed === true);
+  const values = new Map<string, PlacedLabel[]>();
+  for (const label of geometry.labels) {
+    if (!['point', 'segment', 'grandTotal', 'total'].includes(label.kind)) continue;
+    for (const key of [`${label.owner.seriesId}|${label.owner.categoryId}`, `|${label.owner.categoryId}`]) {
+      values.set(key, [...(values.get(key) ?? []), label]);
+    }
+  }
+  const pointsOn = kindSetting(options, 'point') !== false;
+  const cellOff = new Set(data.series.flatMap((s) => s.values.flatMap((cell, ci) =>
+    cellMeta(cell)?.label === false ? [`${s.id}|${data.categories[ci]?.id}`] : [])));
+  return geometry.marks.bars.some((bar) => {
+    if (bar.segments) {
+      const own = values.get(`|${bar.categoryId}`) ?? [];
+      return own.some(dropped) && !own.some(shown);
+    }
+    const key = `${bar.seriesId}|${bar.categoryId}`;
+    // Thinning offers no label to a grouped column at all, so a missing label counts as dropped.
+    return pointsOn && !cellOff.has(key) && !(values.get(key) ?? []).some(shown);
+  });
+}
+
+/** The column laid out with its value notes, and again with every series keyed when an edge name lost its seat. */
+function layoutColumnKeyed(data: ChartData, resolved: AnomalyColumnOptions, keepEachValue: boolean): Geometry<ColumnMarks, ColumnDerived> {
+  const axis: AxisFallback = { on: false };
+  const geometry = withBandValueNotes(data, resolved, next => layoutColumnWithNotes(data, next, keepEachValue, axis));
   // An edge name that lost its seat leaves its series to the key: lay out again with every series keyed.
   const keyed = new Set(geometry.legend?.items.map((item) => item.id));
   const lost = geometry.labels.some((label) => label.hidden && label.id.startsWith('seriesEdge:') && !keyed.has(label.owner.seriesId!));
   const keyAsked = resolved.legend !== undefined && resolved.legend !== 'none';
   if (!lost || !keyAsked || (resolved as { [KEY_EDGE_SERIES]?: true })[KEY_EDGE_SERIES]) return geometry;
   const again = { ...resolved, [KEY_EDGE_SERIES]: true } as AnomalyColumnOptions;
-  return withBandValueNotes(data, again, next => layoutColumnWithNotes(data, next, keepEachValue));
+  return withBandValueNotes(data, again, next => layoutColumnWithNotes(data, next, keepEachValue, axis));
 }
 
 /** A ribbon chart names its series at the right edge of the last column, not in a legend. */
@@ -593,11 +637,33 @@ function ribbonDefaults(options: AnomalyColumnOptions): AnomalyColumnOptions {
   return { ...options, seriesLabels: { at: 'right-edge' } };
 }
 
+/**
+ * A column the value labels leave with no number reads off the value axis, as
+ * under valueLabels. Once a pass turns the axis on, the later note passes of
+ * the same chart start with it.
+ */
 function layoutColumnWithNotes(
   data: ChartData,
   options: AnomalyColumnOptions,
   keepEachValue: boolean,
+  axis: AxisFallback = { on: false },
 ): Geometry<ColumnMarks, ColumnDerived> {
+  if (!axis.on) {
+    // The first pass usually shows the gap already, so the settling passes are not spent on it.
+    const geometry = layoutColumnSettled(data, options, keepEachValue, (first) => unnumberedColumn(data, options, first));
+    if (geometry && !unnumberedColumn(data, options, geometry)) return geometry;
+    axis.on = true;
+  }
+  return layoutColumnSettled(data, withValueAxis(options), keepEachValue)!;
+}
+
+/** The settled column; undefined when `stopAfterFirst` says so after the first pass. */
+function layoutColumnSettled(
+  data: ChartData,
+  options: AnomalyColumnOptions,
+  keepEachValue: boolean,
+  stopAfterFirst?: (geometry: Geometry<ColumnMarks, ColumnDerived>) => boolean,
+): Geometry<ColumnMarks, ColumnDerived> | undefined {
   let named = new Map<string, string>();
   // options.categoryLabels 'staircase': the names take the height they need, or the chart falls back to the row.
   // Every re-layout settles them again, as each later pass (CAGR pad, value-line reserve, notes) moves the plot.
@@ -618,6 +684,7 @@ function layoutColumnWithNotes(
     return next;
   };
   options = run(options);
+  if (stopAfterFirst?.(pass.geometry)) return undefined;
   // A CAGR arm too low to give its arrow end the minimum shaft (MIN_LEG)
   // gets the room it lacked over the plot, and the chart is laid out again.
   for (let round = 0, pad = 0; round < 3 && pass.legDeficit > 0.5; round++) {
