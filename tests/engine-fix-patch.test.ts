@@ -96,6 +96,47 @@ describe('football-field row without a range', () => {
   });
 });
 
+describe('football-field row fix and the series that share its categories', () => {
+  const range = (low: number, high: number) => ({ number: (low + high) / 2, range: { low, high } });
+  const template = {
+    type: 'bar',
+    options: { variant: 'football-field', currentValue: { value: 15, label: 'Current' }, title: 'Football field', unit: 'USD per share' },
+  };
+
+  // A reference series shares the categories: the fix must shorten it too, or the chart loses its interaction records for a length mismatch.
+  it('removes the row from a reference series as well', () => {
+    const spec = {
+      ...template,
+      data: {
+        categories: ['a', 'b', 'c', 'd'].map((id) => ({ id, label: `Method ${id}` })),
+        series: [
+          { id: 'v', label: 'Value', values: [range(17, 23), null, range(10, 14), null] },
+          { id: 'ref', label: 'Reference', role: 'reference', values: [1, 2, 3, 4] },
+        ],
+      },
+    };
+    const refused = (render({ spec, format: 'svg' }).body as any).errors.find((item: any) => item.code === 'football-field-range-required');
+    const fixed = applyPatch(spec, refused.fix);
+    expect(fixed.data.series[1].values).toEqual([1, 3]);
+    const drawn = render({ spec: fixed, format: 'svg' }).body as any;
+    expect(drawn.ok).toBe(true);
+    expect(JSON.stringify(drawn.reading.notes)).not.toContain('interaction record');
+  });
+
+  // Rows generate the categories, so a fix that removes one has no source row to patch and must not reach the caller.
+  it('offers no fix for rows-backed input', () => {
+    const rows = [
+      { method: 'a', series: 'Value', value: range(17, 23) },
+      { method: 'b', series: 'Value', value: null },
+      { method: 'c', series: 'Value', value: range(10, 14) },
+    ];
+    const body = render({ spec: template, rows, columns: { category: 'method', series: 'series', value: 'value' }, format: 'svg' } as any).body as any;
+    const error = body.errors.find((item: any) => item.code === 'football-field-range-required');
+    expect(error.fix).toBeUndefined();
+    expect(error.suggest).toContain('Remove the method');
+  });
+});
+
 const fixtureSpec = (type: string, id: string) => {
   const { data, options, annotations } = getFixtures(type).find((entry) => entry.id === id)!;
   return structuredClone({ type, data, options, ...(annotations ? { annotations } : {}) }) as any;

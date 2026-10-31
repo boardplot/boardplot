@@ -1655,20 +1655,22 @@ function planFootballField(
   });
   if (missingRange.length > 0) {
     // A method with no range has no bar and no text the engine could compose
-    // for it, so it is refused. The fix removes every such method, highest
+    // for it, so it is refused. The fix removes every such method from every
+    // series, reference series included (they share the categories), highest
     // index first so earlier indices stay valid.
     const first = missingRange[0]!;
-    const values = series.values as unknown[];
-    const seriesPath = `/data/series/${data.series.indexOf(series)}/values`;
-    const seriesOps = missingRange
-      .map((ci) => values.findIndex((entry, index) => (
-        typeof entry === 'object' && entry !== null && 'categoryId' in entry
-          ? (entry as { categoryId: unknown }).categoryId === cats[ci]!.id
-          : index === ci
-      )))
-      .filter((index) => index >= 0)
-      .sort((a, b) => b - a)
-      .map((index) => ({ op: 'remove' as const, path: `${seriesPath}/${index}` }));
+    const seriesOps = data.series.flatMap((entry, seriesIndex) => {
+      const values = Array.isArray(entry.values) ? entry.values as unknown[] : [];
+      return missingRange
+        .map((ci) => values.findIndex((cell, index) => (
+          typeof cell === 'object' && cell !== null && 'categoryId' in cell
+            ? (cell as { categoryId: unknown }).categoryId === cats[ci]!.id
+            : index === ci
+        )))
+        .filter((index) => index >= 0)
+        .sort((a, b) => b - a)
+        .map((index) => ({ op: 'remove' as const, path: `/data/series/${seriesIndex}/values/${index}` }));
+    });
     const categoryOps = [...missingRange].reverse()
       .map((ci) => ({ op: 'remove' as const, path: `/data/categories/${ci}` }));
     throw new NormalizeError(
