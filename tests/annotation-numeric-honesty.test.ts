@@ -342,6 +342,36 @@ describe('yearSpan — the date math nothing covered', () => {
   it('counts an end-of-month anniversary as a whole year', () => {
     expect(yearSpan('2024-02-29', '2025-02-28')).toBe(1);
   });
+
+  it('counts the same month and day as whole years, also 28 February across a leap year', () => {
+    expect(yearSpan('2023-02-28', '2024-02-28')).toBe(1);
+    expect(yearSpan('2024-02-28', '2025-02-28')).toBe(1);
+  });
+});
+
+// A label that names a month, a quarter or a half read as a bare last-word year, so the rate ran over the wrong span and no warning said so.
+it.each([
+  [['Jan 2023', 'Jul 2024'], '+36.8% p.a.'],
+  [['January 2023', 'July 2024'], '+36.8% p.a.'],
+  [["Jan '23", "Jul '24"], '+36.8% p.a.'],
+  [['Mär 2023', 'Sep 2024'], '+36.8% p.a.'],
+  [['Q1 FY23', 'Q3 FY24'], '+36.8% p.a.'],
+  [['1H 2023', '2H 2024'], '+36.8% p.a.'],
+  [['Revenue Q4 2023', 'Revenue Q1 2025'], '+45.6% p.a.'],
+  [['FY98', 'FY02'], '+12.5% p.a.'],
+  [['2023-01-01', '2024-07-01'], '+36.8% p.a.'],
+  [['Plan 2024', 'Actual 2026'], undefined],
+  [['W1 2023', 'W27 2024'], undefined],
+  [['Jan-23', 'Jul-24'], undefined],
+])('reads the years of %j from the whole period, or prints no rate', (labels, text) => {
+  const data = {
+    // An ISO date is the category id alone, as a time series carries it.
+    categories: labels.map((label, i) => (/^\d{4}-\d\d-\d\d$/.test(label) ? { id: label } : { id: `c${i}`, label })),
+    series: [{ id: 'a', label: 'A', values: [100, 160] }],
+  };
+  const geometry = layoutColumn(data as never, { annotations: [{ kind: 'cagr' }] } as never);
+  expect(annOf(geometry, 'cagr')?.computedText).toBe(text);
+  if (text === undefined) expect(codes(geometry)).toContain('cagr-no-dates');
 });
 
 // The ends of an arrow show its span, so years in the oval only widen it and cover more of the line.

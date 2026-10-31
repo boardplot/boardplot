@@ -668,7 +668,7 @@ function placeCagr(s: AnnotationScope, ann: Extract<Annotation, { kind: 'cagr' }
       `use {kind:'diff', mode:'absolute'} to report the change across the span, or a labelled note for a loss-reduction figure`);
   }
   const elapsed = input.elapsedYears?.(a, b);
-  let years = elapsed ?? yearSpan(a.date, b.date);
+  let years = elapsed ?? yearSpan(a.date ?? a.owner.categoryId, b.date ?? b.owner.categoryId);
   if (years === null) {
     // No dates: a label that names a year ("FY24", "2025", "Q1 2024")
     // carries the period too. Read it, and say so.
