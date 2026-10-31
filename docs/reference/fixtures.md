@@ -747,6 +747,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | torture-long-labels | funnel.rows | torture | Torture: long names at a generous size read whole, never cut |
 | ramp-outcomes | funnel.rows | example | Outcome funnel filled from the series ramp, the lost share in badFill at 45 % |
 | signup-options | funnel.rows | example | The sign-up funnel with an authored format, a named palette, narrower bands and explicit label kinds |
+| centered-eight-stages-slide | funnel.centered | example | Eight-stage centered funnel on a full slide, stage name and value on one line |
 
 ## pareto
 

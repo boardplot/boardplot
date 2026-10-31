@@ -1,0 +1,3 @@
+### Changed / may need action
+
+- A pvm bridge now breaks its value axis by default when the two totals would fill the plot and leave the steps as slivers: when the smaller total is over 10 times the largest step, or when the running levels span under 20% of the larger total. An absent `valueAxis.break` then resolves to `'auto'`, which still draws a break only where it is safe, and the break is disclosed on the exhibit. Before, a bridge with a 90,000 base and steps near 3,000 drew its steps on about 3% of the axis height. The fy-revenue fixtures and goldens change. To bring back the old look, set `valueAxis: { break: false }`.

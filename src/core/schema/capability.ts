@@ -196,7 +196,7 @@ export const VALUE_AXIS_ONLY = {
     keys: ['break'],
   },
   // The waterfall host draws authored breaks and explicit break: 'auto'.
-  // Absent or false keeps a pvm bridge whole, as it does a waterfall.
+  // False keeps a pvm bridge whole; absent resolves to 'auto' when the base swamps the steps.
   pvm: {
     keys: ['break'],
   },

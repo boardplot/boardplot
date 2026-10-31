@@ -341,6 +341,9 @@ export interface ValueAxisOptions {
    * wiggle ships is not a breaking change. Absent or `false` keeps the axis whole.
    * Waterfall and pvm alone accept `'auto'`: choose a safe break when the smallest
    * total is at least twice the running span and the steps would be small.
+   * A pvm bridge resolves an absent break to `'auto'` when its smaller total is
+   * over 10 times its largest step or its running levels span under 20% of the
+   * larger total; `false` keeps its axis whole.
    * Totals stay visibly taller than smaller steps and no shorter than equal steps.
    * Unsafe automatic breaks move down when valid; unsafe authored breaks are ignored with a warning.
    */
