@@ -148,7 +148,7 @@ export function logSpecFormat(spec: NumberFormatSpec, domain?: readonly number[]
       const magnitude = own(value);
       const scaled = value / MAGNITUDE_DIVISOR[magnitude];
       const decimals = Math.max(neededDecimals(scaled, 12), lowest !== undefined && magnitude !== lowest && Math.abs(scaled) < 10 ? 1 : 0);
-      return formatWithSpec(value, { ...spec, autoMagnitude: undefined, stepDecimals: undefined, rollMagnitude: false, wholeFrom: undefined, magnitude, decimals });
+      return formatWithSpec(value, { ...spec, automatic: false, autoMagnitude: undefined, stepDecimals: undefined, rollMagnitude: false, wholeFrom: undefined, magnitude, decimals });
     };
   }
   const divisor = MAGNITUDE_DIVISOR[spec.magnitude];

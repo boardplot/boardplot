@@ -3,6 +3,7 @@ import '../src/core/charts';
 import { tickFormatter } from '../src/core/axis';
 import { compositeColor } from '../src/core/color';
 import { layoutScatter } from '../src/core/charts/scatter/layout';
+import { logSpecFormat } from '../src/core/charts/scatter/logAxis';
 import { formatAutomaticNumber as formatAutomaticNumberSync, formatNumber } from '../src/core/format';
 import { shareSetDecimals } from '../src/core/formatPrecision';
 import { shareSetFormatter } from '../src/core/format';
@@ -355,6 +356,15 @@ describe('an example is read as its author wrote it', () => {
     expect(ticks(de, 'y')).toEqual(expect.arrayContaining(['500 Mio.', '1,0 Mrd.']));
     // An authored format keeps its digits.
     expect(ticks(layoutScatter({ points }, { target: 'slide', size: { width: 1184, height: 528 }, format: '1,000' }), 'y')).toContain('1,000,000,000');
+    // A log axis from fractions to millions prints each small tick at its value: 0.00005, not a capped 0.0001.
+    const wide = layoutScatter({ points: [{ id: 'a', label: 'A', x: 1e-6, y: 1e-6 }, { id: 'b', label: 'B', x: 1, y: 1 }, { id: 'c', label: 'C', x: 2e6, y: 2e6 }] },
+      { target: 'slide', size: { width: 1184, height: 528 }, valueAxis: { log: 'both' } });
+    expect(ticks(wide, 'y')).toContain('0.00001');
+    // A y value label prints at the axis scale: "b 2M", not "b 2,000,000".
+    const valued = layoutScatter({ points: [{ id: 'a', label: 'a', x: 1e6, y: 1e6 }, { id: 'b', label: 'b', x: 2e6, y: 2e6 }] }, { target: 'slide', size: { width: 1184, height: 528 }, labels: { value: true } });
+    expect(valued.scene.some((node) => node.t === 'text' && node.lines.join(' ') === 'b 2M')).toBe(true);
+    const engine = seriesRasterFormatter(undefined, [1e-6, 1, 2e6], 'en', undefined, 'slide').spec;
+    expect([5e-5, 1e-4].map(logSpecFormat(engine, [1e-6, 2e6]))).toEqual(['0.00005', '0.0001']);
   });
 
   it('distinguishes thousands grouping from three decimal places', () => {
