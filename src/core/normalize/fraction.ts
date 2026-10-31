@@ -2,6 +2,7 @@ import { normalizeCell, normalizedNumber, NormalizeError } from './shared';
 import type { Annotation } from '../types/annotations';
 import type { LintWarning } from '../types/scene';
 import type { RangeCell } from '../types/cell';
+import { maxOf } from '../arrays';
 
 /** Shift the authored decimal two places without introducing a multiplication residue. */
 function percentValue(value: number, path: string): number {
@@ -74,6 +75,33 @@ export function prepareFractionAnnotations(annotations: Annotation[] | undefined
         ? percentValue(tolerance, `${path}.tolerance`)
         : { low: percentValue(tolerance.low, `${path}.tolerance.low`), high: percentValue(tolerance.high, `${path}.tolerance.high`) } }),
     };
+  });
+}
+
+/**
+ * A numeric value line stays in percent units on a fraction chart, so a target written as a
+ * fraction draws at 0.05% beside bars of 4%. Warns where the line as a fraction sits nearer the
+ * values than as written: 100 × |value| / largest < largest / |value|, so largest > 10 × |value|.
+ */
+export function fractionLineWarnings(data: unknown, annotations: readonly Annotation[] | undefined, fixBase: string): LintWarning[] {
+  const input = data as { valueKind?: string; values?: unknown[]; series?: { valueKind?: string; values?: unknown[] }[] } | null;
+  const series = Array.isArray(input?.series) ? input.series : Array.isArray(input?.values) ? [input] : [];
+  if (series.length === 0 || !series.every(item => (item.valueKind ?? input?.valueKind) === 'fraction')) return [];
+  const cells = series.flatMap(item => (Array.isArray(item.values) ? item.values : []).flatMap(raw => {
+    const cell = (raw as { value?: unknown } | null)?.value ?? raw;
+    const value = typeof cell === 'number' ? cell : (cell as { number?: unknown } | null)?.number;
+    return typeof value === 'number' && Number.isFinite(value) ? [Math.abs(value)] : [];
+  }));
+  const largest = percentValue(Math.max(0, maxOf(cells)), 'value');
+  return (annotations ?? []).flatMap((ann, index) => {
+    if (ann.kind !== 'valueLine' || ann.valueKind !== undefined || typeof ann.value !== 'number') return [];
+    const size = Math.abs(ann.value);
+    if (size === 0 || size > 1 || largest <= 10 * size) return [];
+    return [{ code: 'percent-scale-suspect', severity: 'warn' as const, ...(ann.id === undefined ? {} : { owner: { annotationId: ann.id } }),
+      message: `valueLine ${ann.id === undefined ? index + 1 : `'${ann.id}'`}: ${ann.value} draws at ${ann.value}% beside values up to ${largest}%, because a numeric valueLine stays in percent units on fraction data`,
+      suggest: `Set valueKind: "fraction" on the valueLine to draw it at ${percentValue(ann.value, 'value')}%, or keep it if ${ann.value}% is meant.`,
+      fix: [{ op: 'add' as const, path: `${fixBase}/${index}/valueKind`, value: 'fraction' }],
+    }];
   });
 }
 
