@@ -1,4 +1,5 @@
-import { prepareFractionAnnotations, percentScaleWarnings } from './normalize/fraction';
+import { fractionLineWarnings, prepareFractionAnnotations, percentScaleWarnings } from './normalize/fraction';
+import { readFormatExamples } from './formatSpec';
 import { colorVariableWarnings } from './colorVariables';
 import { shownNoteKinds } from './notes';
 import { getChart } from './registry';
@@ -189,7 +190,7 @@ export function resolveChartRequest<D, O extends object>(
   const retired = retireChartSettings(def.type, input, (name) => getChart(name)?.type);
   input = retired.chart;
   const inheritedLocale = typeof context.locale === 'string' ? { language: context.locale } : context.locale;
-  const options = Object.assign(Object.create(null) as O & RequestOptions, def.defaults, {
+  const authoredOptions = Object.assign(Object.create(null) as O & RequestOptions, def.defaults, {
     ...(context.theme === undefined ? {} : { theme: context.theme }),
     ...(inheritedLocale ? { locale: inheritedLocale } : {}),
     ...Object.fromEntries(Object.entries(input.options ?? {}).filter(([, value]) => value !== undefined)),
@@ -201,10 +202,13 @@ export function resolveChartRequest<D, O extends object>(
     ...(input.annotations === undefined ? {} : { annotations: input.annotations }),
     ...(input.fontMetrics === undefined ? {} : { measure: input.fontMetrics === 'bundled' ? defaultMeasurer : input.fontMetrics }),
   });
+  const read = readFormatExamples(input.data, authoredOptions);
+  const options = read.options;
   if (def.type === 'line' && (options as { xAxis?: { type?: string } }).xAxis?.type === 'time' && options.annotations) {
     // Records and hover cards read this request too, before the layout resolves its own anchors.
     options.annotations = options.annotations.map(annotation => timeAnnotationAnchors(annotation) as Annotation);
   }
+  const authoredAnnotations = options.annotations;
   options.annotations = prepareFractionAnnotations(options.annotations);
   const target = input.target ?? input.options?.target ?? context.target ?? DEFAULT_TARGET;
   options.target = target;
@@ -240,8 +244,9 @@ export function resolveChartRequest<D, O extends object>(
   else options.strings = strings;
   const fontMetrics = options.measure ?? defaultMeasurer;
   options.measure = fontMetrics;
-  const data = prepared(def, input.data, options) as D;
-  const inputWarnings = [...retired.warnings, ...requestInputWarnings(def.type, def.type === 'grid' ? data : input.data, options),
+  const data = prepared(def, read.data, options) as D;
+  const inputWarnings = [...retired.warnings, ...read.warnings, ...requestInputWarnings(def.type, def.type === 'grid' ? data : input.data, { ...options, annotations: authoredAnnotations },
+    input.annotations === undefined ? '/options/annotations' : '/annotations'),
     ...colorVariableWarnings(input.data, options.theme)];
   return {
     ...(inputWarnings.length ? { inputWarnings } : {}),
@@ -340,13 +345,13 @@ function inputPanels(data: unknown): { id: string; type: string; data: unknown; 
   return Array.isArray(normalized?.panels) ? normalized.panels : [];
 }
 
-function requestInputWarnings(type: string, data: unknown, options: RequestOptions): LintWarning[] {
-  if (type !== 'grid') return percentScaleWarnings(data, options, type);
+function requestInputWarnings(type: string, data: unknown, options: RequestOptions, annotationsPath = ''): LintWarning[] {
+  if (type !== 'grid') return [...percentScaleWarnings(data, options, type), ...fractionLineWarnings(data, options.annotations, annotationsPath)];
   return inputPanels(data).flatMap(panel => {
     const definition = getChart(panel.type);
     // Resolve defaults while the alias is still known, as the child layout does.
     return requestInputWarnings(definition?.type ?? panel.type, panel.data, { ...definition?.defaults, ...panel.options })
-      .map(warning => ({ ...warning, message: `[${panel.id}] ${warning.message}` }));
+      .map(({ fix: _fix, ...warning }) => ({ ...warning, message: `[${panel.id}] ${warning.message}` }));
   });
 }
 
@@ -546,16 +551,29 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
   // so the size a refusal names draws too. Find the first whole pixel that draws.
   const staticMinWidth = def === undefined ? 0 : declaredSizing(def, request.options).minWidth;
   if (!request.fixed.height && (!result.refused || sizeRepair) && sizing.minWidth > staticMinWidth) {
+    // The same floor rule as probeAt: a table draws below its natural width on its ladder.
+    const widthOnly = (width: number): LayoutResult => layoutAt.probe({ ...request.options, ...floorOptions, size: { width }, [WIDTH_PROBE]: request.type });
     const fullAt = (width: number): LayoutResult | undefined => {
-      // The same floor rule as probeAt: a table draws below its natural width on its ladder.
-      const options = { ...request.options, ...floorOptions, size: { width }, [WIDTH_PROBE]: request.type };
-      const probe = layoutAt.probe(options);
+      const probe = widthOnly(width);
       return !isRefused(probe) && (probe as Geometry).mode !== 'compact' ? probe : undefined;
     };
     let drawn = fullAt(sizing.minWidth - 1);
+    // Width acceptance can change with labels. Keep a verified accepted upper end.
+    let [lo, hi] = [staticMinWidth - 1, sizing.minWidth - 1];
+    // A pinned pair can draw at a width where a width-only request refuses, because that takes
+    // its own height. Follow the widths the refusals name up to one that draws, then search down.
+    if (!drawn && !fullAt(sizing.minWidth)) {
+      let width = sizing.minWidth;
+      for (let pass = 0; !drawn && pass < 8; pass++) {
+        const probe = widthOnly(width);
+        if (!isRefused(probe) || probe.warnings[0]?.code !== 'size-below-floor' || !probe.sizing || probe.sizing.minWidth <= width) break;
+        lo = width;
+        width = Math.ceil(probe.sizing.minWidth);
+        hi = width;
+        drawn = fullAt(width);
+      }
+    }
     if (drawn) {
-      // Width acceptance can change with labels. Keep a verified accepted upper end.
-      let [lo, hi] = [staticMinWidth - 1, sizing.minWidth - 1];
       while (hi - lo > 1) {
         const mid = Math.floor((lo + hi) / 2);
         const probe = fullAt(mid);

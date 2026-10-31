@@ -723,6 +723,20 @@ it('keeps bullet row names whole by giving up their bold weight', () => {
   expect(geometry.scene.filter(node => node.t === 'text' && node.id.startsWith('label:category:')).map(node => node.t === 'text' && node.font.weight)).not.toContain(600);
 });
 
+// measure named a width that draws only at a pinned height, so a host sizing a card from minWidth got a refusal.
+it('names a minimum width that draws at the automatic height', () => {
+  const series = ['Coastal freight, harbour logistics and bonded warehouse handling for bulk importers', 'Regional rail signalling, track renewal and level-crossing upkeep across older lines',
+    'Municipal water treatment, sewer relining and storm-drain mapping for smaller towns', 'Orchard irrigation, frost protection and packing-shed cold chains for fruit growers',
+    'Community library lending, archive scanning and reading rooms for rural districts', 'Ferry timetabling, pier maintenance and winter crew rosters for island crossings'];
+  const data = {
+    categories: ['Northern upland districts and hill farms', 'Southern river valleys and flood plains', 'Eastern coastal plains', 'Western forest foothills'].map((label, index) => ({ id: `c${index}`, label })),
+    series: series.map((label, index) => ({ id: `s${index}`, label, values: [0, 1, 2, 3].map((value) => (value + index) % 5) })),
+  };
+  const options = { variant: 'harvey', scale: 'discrete', title: 'Long names read whole at a generous size', subtitle: { company: 'Invented Group', measure: 'Maturity, 0 = absent to 4 = leading', period: 'May 2026' }, source: 'Invented capability assessment, May 2026' };
+  const { minWidth } = measure({ type: 'heatmap', data, options } as never);
+  expect(canDraw({ type: 'heatmap', data, options: { ...options, size: { width: minWidth } } } as never)).toMatchObject({ ok: true });
+});
+
 // Prevents circular-process arrow labels from losing their last letters: the label box is as wide as its text, so no side padding may be taken from it.
 it('prints a circular-process arrow label in full', () => {
   const names = ['Share results', 'Refer leads', 'Qualify fast', 'Deliver value'];

@@ -49,6 +49,41 @@ export function calcIsLinear(calc: Calc): boolean {
 }
 
 /**
+ * False only when negating every cell the calc reads leaves its result unchanged: a ratio or
+ * product of two cells, a literal, abs, percentDelta, share, and sums of such terms. A linear
+ * calc flips, a literal over a cell flips (only one side flips), and a sum or difference of an
+ * invariant term and a flipping term flips too, whichever operand comes first.
+ */
+export function calcFlipsWithInputs(calc: Calc): boolean {
+  if (calcIsLinear(calc)) return true;
+  type Parity = 'odd' | 'even' | 'mixed';
+  const parity = (c: Calc): Parity => {
+    if ('ref' in c) return 'odd';
+    if ('lit' in c) return 'even';
+    switch (c.op) {
+      case 'add':
+      case 'sub': {
+        const a = parity(c.a);
+        return a === parity(c.b) ? a : 'mixed';
+      }
+      case 'mul':
+      case 'div': {
+        const a = parity(c.a);
+        const b = parity(c.b);
+        return a === 'mixed' || b === 'mixed' ? 'mixed' : a === b ? 'even' : 'odd';
+      }
+      case 'delta':
+        return 'odd';
+      case 'abs':
+      case 'percentDelta':
+      case 'share':
+        return 'even';
+    }
+  };
+  return parity(calc) !== 'even';
+}
+
+/**
  * Calcs the engine itself produces in percentage POINTS — the
  * only computed columns whose scale is guaranteed by construction.
  */

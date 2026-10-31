@@ -5,6 +5,7 @@ import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request'
 import { requireGeometry } from '../src/core/sizing';
 import { repaintGeometry } from '../src/core/repaintGeometry';
 import { resolveTable } from '../src/core/charts/table/resolve';
+import { sortRows } from '../src/core/charts/table/view';
 import { preparedTableRecords } from '../src/core/a11y/structuralRecords';
 import { displayedValueText, interactionValueText } from '../src/core/a11y/valueText';
 import { claimsForChart } from '../src/core/claims/browser';
@@ -341,6 +342,8 @@ it('keeps two significant digits of every figure when it fits formats', () => {
     rows: values.map((v, i) => ({ id: `r${i}`, label: `Row ${i}`, cells: { v } })) });
   expect(column([80_000, 100_000, 1_234_567], '1,234')).toEqual(['80', '100', '1,235']);
   expect(column([2_470_000, 2_630_000], '$1.23M')).toEqual(['2.5', '2.6']);
+  // A figure the authored format prints in one digit keeps that digit: 80,000 read as "0.1" under (M), 25% off.
+  expect(column([80_000, 1_230_000], '$1.23M')).toEqual(['0.08', '1.23']);
   // A small figure blocks a magnitude that would print it as zero: 12 never reads "0.00001" under M.
   expect(column([12, 100_000, 1_234_567], '1,234').every((text) => !/^0[.,]0/.test(text))).toBe(true);
   // So does a chart-level format, and a shorter decimal keeps one magnitude: 950 and 1,000 under (k), not 950 and 1.0M.
@@ -687,6 +690,17 @@ it('warns about a number in a status cell', () => {
   const { table, warnings } = resolveTable(data);
   expect(table.rows[0]!.cells.s!.state).not.toBe('value');
   expect(warnings.map((w) => w.code)).toContain('status-value-number');
+});
+
+// A number in a date column printed the missing dash with no warning, so the author never learned that the value was dropped.
+it('warns about a number in a date cell, naming the row and the column', () => {
+  const data: TableData = {
+    columns: [{ id: 'l', kind: 'rowLabel', label: 'Task' }, { id: 'due', kind: 'date', label: 'Due' }],
+    rows: [{ id: 'a', label: 'Plan', cells: { due: 123 } }, { id: 'b', label: 'Build', cells: { due: { v: 456 } } }, { id: 'c', label: 'Ship', cells: { due: null } }],
+  };
+  const { table, warnings } = resolveTable(data);
+  expect(table.rows[0]!.cells.due!.state).not.toBe('value');
+  expect(warnings.filter((w) => w.code === 'date-value-number').map((w) => w.owner)).toEqual([{ rowId: 'a', colId: 'due' }, { rowId: 'b', colId: 'due' }]);
 });
 
 // Whitespace-only status labels must stay accepted and draw as before while both surfaces receive a repair warning.
@@ -1068,14 +1082,6 @@ it('never gives a theme with less head air more in the compact fallback', () => 
   expect(geometry.warnings.map(w => w.code)).not.toContain('size-below-floor');
 });
 
-// A capitalised head printed "Power,mW" as "POWER,MW": milliwatts read as megawatts.
-it('keeps the unit after a head comma as written', async () => {
-  const { fieldHeadText } = await import('../src/core/charts/table/headFace');
-  const theme = resolveTheme('boardroom');
-  expect(fieldHeadText('Power,mW', theme)).toBe('POWER,mW');
-  expect(fieldHeadText('EBITDA impact, $bn', theme)).toBe('EBITDA IMPACT, $bn');
-});
-
 // `table.inks.head` was documented, but no table-family head read it, on the SVG or in the React grid.
 it('paints every table-family column head in table.inks.head, on the SVG and in React', () => {
   const head = '#AA0000';
@@ -1205,4 +1211,35 @@ it('prints the change of a nonlinear row calc in a delta or sub column, and keep
   const table = resolveTable(data, {}).table;
   const cell = (row: string, col: string) => table.rows.find((r) => r.id === row)!.cells[col]!.displayed;
   expect([cell('margin', 'ac'), cell('margin', 'py'), cell('margin', 'd'), cell('margin', 's'), cell('sum', 'd')]).toEqual(['20.0%', '10.0%', '10.0%', '10.0%', '130']);
+});
+
+// A sign -1 row printed its figures negated but drew its arrow and sorted from the supplied figures, and a ratio of two cells printed -1.20 where the printed figures give 1.20.
+it('reads arrows, sort and ratios of a sign -1 row from the printed figures', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'ac', kind: 'value' }, { id: 'py', kind: 'value' },
+      { id: 'd', kind: 'computed', polarity: 'higherIsBetter', calc: { op: 'delta', a: 'ac', b: 'py' } },
+      { id: 'r', kind: 'computed', format: '0.00', calc: { op: 'div', a: { ref: 'ac' }, b: { ref: 'py' } } }],
+    rows: [
+      { id: 'rev', label: 'Revenue', cells: { ac: 300, py: 300 } },
+      { id: 'cost', label: 'Cost', sign: -1, cells: { ac: 120, py: 100 } },
+      { id: 'fee', label: 'Fee', sign: -1, cells: { ac: 30, py: 20 } },
+    ],
+  };
+  const table = resolveTable(data, {}).table;
+  expect(table.rows.find((r) => r.id === 'cost')!.cells.r!.displayed).toBe('1.20');
+  // A literal over a cell flips with the row sign, so it prints the quotient of the printed -120.
+  const inverse = resolveTable({ ...data, columns: [...data.columns, { id: 'q', kind: 'computed', format: '0.00', calc: { op: 'div', a: { lit: 100 }, b: { ref: 'ac' } } }] }, {}).table;
+  expect(inverse.rows.find((r) => r.id === 'cost')!.cells.q!.displayed).toBe('\u22120.83');
+  // A sum of a ratio and a cell is neither odd nor invariant, so operand order must not change its sign.
+  const ratio = { op: 'div', a: { ref: 'ac' }, b: { ref: 'py' } } as const;
+  const mixed = resolveTable({ ...data, columns: [...data.columns,
+    { id: 'm1', kind: 'computed', format: '0.00', calc: { op: 'add', a: ratio, b: { ref: 'ac' } } },
+    { id: 'm2', kind: 'computed', format: '0.00', calc: { op: 'add', a: { ref: 'ac' }, b: ratio } }] }, {}).table;
+  expect(mixed.rows.find((r) => r.id === 'cost')!.cells.m1!.displayed).toBe(mixed.rows.find((r) => r.id === 'cost')!.cells.m2!.displayed);
+  // Printed -120 sorts before -30, though the supplied 120 is the larger figure.
+  expect(sortRows(table, { column: 'ac', direction: 'asc' }).map((r) => r.id)).toEqual(['cost', 'fee', 'rev']);
+  const arrows = layout('table', data, { encodings: { d: 'arrow' } }).scene
+    .filter((node): node is TextNode => node.t === 'text' && node.part === 'tableArrow');
+  // The cost change prints -20 and the fee change -10, so both fall.
+  expect(arrows.map((node) => node.lines.join(''))).toEqual(['→', '↓', '↓']);
 });

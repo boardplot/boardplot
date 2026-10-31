@@ -652,6 +652,8 @@ export interface ResolvedCell {
   strong?: true;
   /** The authored size mark, 0 to 1 (`TableCellObject.bar`). */
   bar?: number;
+  /** The cell prints the negative of `raw`, because its row carries sign -1. An arrow and a sort read the printed figure. */
+  negated?: true;
   /**
    * The direction that judges this figure, where one does: the row's over
    * the column's in a judged column, the row's on a change. A heat ground and

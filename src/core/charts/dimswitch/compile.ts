@@ -5,6 +5,7 @@ import { formatAutomaticPercent, formatPercentagePoints } from '../../format';
 import { ENGINE_NOTES, LABEL_WRAP_FLOOR, SOFT_LABEL_CAP } from '../table/tracks';
 import { disclosureNote, disclosuresShown, engineNote } from '../../notes';
 import { saysToDate } from '../../partialPeriod';
+import { closestKey } from '../../schema/unknownKeyWords';
 import { cappedItems } from '../../frame';
 import { localeStrings, stringFields } from '../../strings';
 import { AUTOMATIC_FORMAT, MAGNITUDE_GROUP, parseFormatExample, specUnitKind } from '../../formatSpec';
@@ -189,6 +190,15 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     return m;
   };
   const warnings: CompiledDimSwitch['warnings'] = [];
+  // The table resolver ignores an encodings key that names no column; here the columns are range, pp, pl (with a plan) and the displayed period ids.
+  const columnIds = ['range', 'pp', ...(plan ? ['pl'] : []), ...authoredPeriods.map(p => p.id)];
+  for (const id of Object.keys(options.encodings ?? {})) if (!columnIds.includes(id)) {
+    const asKind = data.periods.find(p => p.kind && p.id === id);
+    const guess = asKind ? { key: asKind.kind === 'prior' ? 'pp' : asKind.kind === 'plan' ? 'pl' : 'range', near: true } : closestKey(id, columnIds);
+    warnings.push({ code: 'dimswitch-encoding-column', severity: 'warn', field: ['options', 'encodings', id],
+      message: `options.encodings key '${id}' names no column of this dimswitch, so it draws nothing.`,
+      suggest: `${guess?.near ? `Use '${guess.key}'. ` : ''}The column ids are ${columnIds.map(c => `'${c}'`).join(', ')}.` });
+  }
   const warned = new Set<string>();
   const warn = (code: string, id: string, message: string) => { if (!warned.has(code + id)) { warned.add(code + id); warnings.push({ code, severity: 'warn', field: ['data', 'measures', data.measures.findIndex(m => m.id === id)], message }); } };
 
@@ -450,6 +460,9 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     };
     assign(m.drivers);
   }
+  // A displayed period whose facts carry no ref has no change to print: its change cell stays blank, never n/a.
+  const withRef = new Set(data.facts.filter(f => f.ref).map(f => f.periodId));
+  const noChangeLine = periods.length > 0 && periods.every(p => !withRef.has(p.id));
   const addMeasure = (m:DimSwitchMeasure,member:string,parentId:string|undefined,rung:number,label=m.label,kind:TableRow['kind']='measure') => {
     const id=dimswitchRowId(variant,member,m.id);
     // Keyed by period id too: a period named __proto__ keeps its cell.
@@ -488,7 +501,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
       const rounded=Math.round(Math.abs(delta.raw ?? 0)*10)/10;
       const relative=m.change!=='pp' && m.change!=='absolute';
       const changeFormat=m.change==='pp' ? formatPercentagePoints(1.2,1,true) : m.change==='absolute' ? signedFormat(ownFormat) : formatAutomaticPercent(1.2,rounded>=5 || rounded===0 ? 0 : 1,true);
-      const changeCell:TableCell=delta.state==='missing' ? {missing:delta.blank ? 'blank' : 'dash'} : cell(delta,judgement,changeFormat);
+      const changeCell:TableCell=!p.kind && !withRef.has(p.id) ? {missing:'blank'} : delta.state==='missing' ? {missing:delta.blank ? 'blank' : 'dash'} : cell(delta,judgement,changeFormat);
       const effectCell:TableCell=effect === null ? null : {v:effect,format:effectFormat};
       if (m.format === undefined && m.unit === undefined && changeCell && typeof changeCell === 'object') Object.assign(changeCell, { [AUTOMATIC_FORMAT]: true });
       if ((owner ?? m).format === undefined && (owner ?? m).unit === undefined && effectCell) Object.assign(effectCell, { [AUTOMATIC_FORMAT]: true });
@@ -499,7 +512,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
         record(id,comparison,m,member,p.id,delta,ref,true,refTotal,reference?.id);
         effects[comparison]=effectCell;
       }
-      else {changes[p.id]=changeCell; effects[p.id]=effectCell; record(`${id}:change`,p.id,m,member,p.id,delta,ref,true,refTotal); if (relative) relativeChanges.push({cell:changeCell,col:p.id,rounded});}
+      else {changes[p.id]=changeCell; effects[p.id]=effectCell; if (withRef.has(p.id)) {record(`${id}:change`,p.id,m,member,p.id,delta,ref,true,refTotal); if (relative) relativeChanges.push({cell:changeCell,col:p.id,rounded});}}
     }
     // An unjudged volume (a sum of money or counts) shows its size as a bar, not a colour; a statement line never does.
     const sized = !m.judge && (m.scale === 'money' || m.scale === 'count') && !inStatement(m);
@@ -516,7 +529,9 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     // A member's bar compares it with the other members in that column (the Total would always win).
     if (sized && member!==totalId) for (const col of ['range',...periods.map(p=>p.id)]) {const value=values.get(col)?.raw; if (typeof value==='number') bars.push({row,measure:m.id,col,value});}
     if (m.divider && (kind==='measure' || kind==='split')) row.divider=true;
-    rows.push(row,{id:`${id}:change`,label:data.changeLabel ?? '',parentId:id,inline:true,inlineGroup:'change',relation:'displayOnly',missing:'blank',cells:changes});
+    rows.push(row);
+    // No displayed period has a ref: the change line would be empty, so it is left out.
+    if (!noChangeLine) rows.push({id:`${id}:change`,label:data.changeLabel ?? '',parentId:id,inline:true,inlineGroup:'change',relation:'displayOnly',missing:'blank',cells:changes});
     if (owner && data.effectLabel) rows.push({id:`${id}:effect`,label:data.effectLabel,parentId:id,inline:true,inlineGroup:'effect',relation:'displayOnly',missing:'blank',cells:effects});
     return row;
   };

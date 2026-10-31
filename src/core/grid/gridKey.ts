@@ -1,6 +1,6 @@
 /**
- * a grid under legend 'none' keys only the series
- * no panel names. A titled single-series panel, and a line or combo
+ * a grid under legend 'none', and a grid with no legend set where a panel draws
+ * two or more series, keys only the series no panel names. A titled single-series panel, and a line or combo
  * panel whose end labels or own key row name every series, are keyed already.
  * The grid's key row lists the rest, and the grid draws none when every panel
  * is keyed. The code lives in the grid core (ChartCore.requiredKey), outside
@@ -11,7 +11,7 @@ import type { FrameInput, LegendItemInput } from '../frame';
 import { keysNeedNames, legendIsCovered, normalizedName } from '../legendPolicy';
 import { NormalizeError, resolveSize } from '../normalize/shared';
 import { getChart } from '../registry';
-import { collectSeriesIdentities, identityAppearance } from '../seriesIdentity';
+import { collectSeriesIdentities, identityAppearance, needsSeriesKey } from '../seriesIdentity';
 import { prepareFitLayout, type FitLayout } from '../sizing';
 import { authoredStrings } from '../strings';
 import { panelTypeClass, resolveTheme, typeWidthClass } from '../theme';
@@ -104,6 +104,12 @@ function hasLegendPanel(data: unknown): boolean {
   return Array.isArray(panels) && panels.some((panel) => panel?.type === 'legend');
 }
 
+/** Whether a chart panel draws two or more series that only a key can name. */
+function panelNeedsKey(data: unknown): boolean {
+  const panels = (data as { panels?: { type?: string; data?: unknown; options?: object }[] } | undefined)?.panels;
+  return Array.isArray(panels) && panels.some((panel) => typeof panel.type === 'string' && needsSeriesKey(getChart(panel.type)?.type ?? panel.type, panel.data, panel.options));
+}
+
 /** The key row text of one candidate key item, as the reader reads it. */
 function keyName(candidate: Geometry<object, object>, labelId: string): string {
   const label = candidate.scene.find((node) => node.id === labelId);
@@ -119,7 +125,9 @@ function keyName(candidate: Geometry<object, object>, labelId: string): string {
 export function gridRequiredKey<D, O extends ChartOptions, M extends object, DV extends object>(
   this: ChartCore<D, O, M, DV>, baseline: Geometry<M, DV>, data: D, options: O, fitKeyed: FitLayout<O, M, DV>,
 ): LayoutResult<M, DV> {
-  if (hasLegendPanel(data)) return baseline;
+  // With no legend set, the title of a single-series panel names it, also in other words.
+  const hidden = options.legend === 'none';
+  if (hasLegendPanel(data) || (!hidden && !panelNeedsKey(this.prepare?.(data) ?? data))) return baseline;
   const candidateOptions = { ...options, legend: resolveTheme(options.theme).legend?.required ?? 'top' } as O;
   // A grid whose panels do not fit beside the key throws; it then keeps
   // the layout it has, without the key.
@@ -157,7 +165,7 @@ export function gridRequiredKey<D, O extends ChartOptions, M extends object, DV 
     }
   }
   const names = keyed === candidate ? [] : (keyed.legend?.items ?? []).map((item) => keyName(keyed, item.labelId) || item.id);
-  keyed.warnings.push({
+  if (hidden) keyed.warnings.push({
     code: 'grid-legend-required',
     severity: 'info',
     message: names.length > 0

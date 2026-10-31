@@ -3,7 +3,7 @@
  * count, or from two category labels that name a year. Its own module, so a
  * chart that only parses dates does not load the label grammar.
  */
-import { parseISODate } from './isoDate';
+import { parseISODate, utcDate } from './isoDate';
 
 /** A year token: "2024", "FY2024", "FY24", "'24". A bare "24" counts only next to a quarter or half, which shows it is a year. */
 function yearOf(token: string, bare = false): { year: number; short: boolean } | null {
@@ -87,7 +87,7 @@ export function yearSpan(from?: string, to?: string): number | null {
   // The same month and day is whole years, also on 28 February, a month end in only some years.
   if (a.getUTCMonth() === b.getUTCMonth() && a.getUTCDate() === b.getUTCDate()) return b.getUTCFullYear() - a.getUTCFullYear();
   const day = (d: Date): number => {
-    const monthEnd = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+    const monthEnd = utcDate(d.getUTCFullYear(), d.getUTCMonth() + 1, 0).getUTCDate();
     return d.getUTCDate() === monthEnd ? 30 : Math.min(d.getUTCDate(), 30);
   };
   const days =
