@@ -1,4 +1,4 @@
-import { contrastRatio, tint } from './color';
+import { apcaContrast, contrastRatio, tint } from './color';
 import { NormalizeError } from './normalize/shared';
 import { mixedPaint, paintColor, seriesPaint } from './theme';
 import { MARK_CONTRAST_FLOOR, oklabLightness, PALETTE_NORMAL_FLOOR, palettePerceptualDistance } from './themeRules';
@@ -383,8 +383,80 @@ export function bumpStoryPaints(theme: Theme, count: number): Paint[] {
   return result.slice(0, count);
 }
 
-export function adaptivePaintColor(theme: Theme, source: Extract<ThemePaintSource, {kind: 'line-band' | 'line-context' | 'line-apart' | 'line-forecast' | 'fan-step' | 'bullet-band' | 'segment-apart' | 'bump-story'}>): string {
+/** How far each status tone washes toward the page before it has to step back. */
+const STATUS_TONE_WASH = { good: 0.78, neutral: 0.67 } as const;
+/**
+ * The OKLab step a washed status cell keeps from every other cell colour, for
+ * normal and for red-green colour vision: a ramp class step, the distance at
+ * which neighbouring classes of a sequential ramp still read apart.
+ */
+const STATUS_TONE_APART = 6;
+function statusToneApart(a: string, b: string): boolean {
+  return Math.min(palettePerceptualDistance(a, b), palettePerceptualDistance(a, b, 'protan'), palettePerceptualDistance(a, b, 'deutan')) >= STATUS_TONE_APART;
+}
+
+/**
+ * A good or neutral status cell (the status-tone recipe): the tone washed
+ * toward the page, stepped back toward the full tone until it reads further
+ * from the page than the cell with no status and a palette step
+ * (STATUS_TONE_APART, red-green vision included) from it and from every
+ * other state colour, and a step further from the page than the hatch
+ * ground of a hatched state in the same tone, so an actual reads stronger
+ * than its forecast. On a dark page it also draws the APCA contrast the
+ * same wash draws on white.
+ */
+const statusToneByTheme = new WeakMap<Theme, WeakMap<object, string>>();
+// The recipe reads only the theme's colours, hatch pattern and mark switches.
+// The themes one render builds per width share those parts, so a state
+// resolves once per set of them.
+const statusToneByParts = new WeakMap<object, WeakMap<object, WeakMap<object, Map<string, string>>>>();
+const NO_MARKS = {};
+function statusToneColor(theme: Theme, source: Extract<ThemePaintSource, { kind: 'status-tone' }>): string {
+  let byTheme = statusToneByTheme.get(theme);
+  if (!byTheme) statusToneByTheme.set(theme, byTheme = new WeakMap());
+  const known = byTheme.get(source);
+  if (known !== undefined) return known;
+  let byPattern = statusToneByParts.get(theme.color);
+  if (!byPattern) statusToneByParts.set(theme.color, byPattern = new WeakMap());
+  let byMarks = byPattern.get(theme.pattern);
+  if (!byMarks) byPattern.set(theme.pattern, byMarks = new WeakMap());
+  const marks = theme.marks ?? NO_MARKS;
+  let bySource = byMarks.get(marks);
+  if (!bySource) byMarks.set(marks, bySource = new Map());
+  const key = JSON.stringify(source);
+  let color = bySource.get(key);
+  if (color === undefined) bySource.set(key, color = statusToneSearch(theme, source));
+  byTheme.set(source, color);
+  return color;
+}
+
+function statusToneSearch(theme: Theme, source: Extract<ThemePaintSource, { kind: 'status-tone' }>): string {
+  const page = theme.color.background;
+  const base = paintColor(theme, source.base);
+  if (theme.marks?.statusFill === 'full') return base;
+  const empty = paintColor(theme, source.empty);
+  const under = (source.under ?? []).map((paint) => paintColor(theme, paint));
+  const others = [empty, ...under, ...(source.apartFrom ?? []).map((paint) => paintColor(theme, paint))];
+  const emptyContrast = contrastRatio(empty, page);
+  const underContrast = Math.max(1, ...under.map((color) => contrastRatio(color, page)));
+  const wash = STATUS_TONE_WASH[source.role];
+  // A wash toward a dark page darkens a cell more, to the eye, than the same
+  // wash lightens it on white: there the wash also steps back until its APCA
+  // contrast with the page reaches what the same wash draws on a white page.
+  const darkPage = contrastRatio(page, '#FFFFFF') > contrastRatio(page, '#000000');
+  const lightContrast = darkPage ? apcaContrast(tint(base, wash, '#FFFFFF'), '#FFFFFF') : 0;
+  for (let step = Math.round(wash * 50); step > 0; step--) {
+    const washed = tint(base, step / 50, page);
+    if (contrastRatio(washed, page) > emptyContrast && contrastRatio(washed, page) >= underContrast
+      && apcaContrast(washed, page) >= lightContrast
+      && others.every((other) => statusToneApart(washed, other))) return washed;
+  }
+  return base;
+}
+
+export function adaptivePaintColor(theme: Theme, source: Extract<ThemePaintSource, {kind: 'line-band' | 'line-context' | 'line-apart' | 'line-forecast' | 'fan-step' | 'bullet-band' | 'segment-apart' | 'bump-story' | 'status-tone'}>): string {
   switch (source.kind) {
+    case 'status-tone': return statusToneColor(theme, source);
     case 'bump-story': return paintColor(theme, bumpStoryPaints(theme, source.count)[source.index]!);
     case 'segment-apart': return paintColor(theme, segmentApartPaints(theme, source.plain, source.others)[source.index]!);
     case 'line-apart': return paintColor(theme, lineApartPaint(theme, source.share, source.top, source.apartFrom, source.darker));
