@@ -251,6 +251,7 @@ function combinedShareNotes(
   rows: readonly { id: string; label: string }[],
   panels: readonly { panel: BarTablePlainData['panels'][number]; rowSums: (number | null)[]; ranges: (BarTableEnd | undefined)[]; fmt: (v: number) => string }[],
   locale: string | undefined,
+  authored: BarTablePlainData['panels'],
 ): string[] {
   const combined = options.combinedShare;
   if (!combined) return [];
@@ -273,8 +274,9 @@ function combinedShareNotes(
   const pct = (part: number, whole: number) => (whole === 0
     ? chartString(options, 'combinedShareZero')
     : formatShare((part / whole) * 100, locale));
-  return panels.flatMap((entry) => {
-    if (entry.panel.aggregate === 'none' || entry.rowSums.some((sum) => sum === null)) return [];
+  return panels.flatMap((entry, p) => {
+    // Only an authored 'none' drops the readout: a defaulted 'none' (a % unit) still has rows that add.
+    if (authored[p]?.aggregate === 'none' || entry.rowSums.some((sum) => sum === null)) return [];
     const unit = entry.panel.unit ? ` ${entry.panel.unit}` : '';
     const at = (end: 'low' | 'high', r: number) => entry.ranges[r]?.[end] ?? entry.rowSums[r]!;
     const sumAt = (end: 'low' | 'high', of: readonly number[]) => of.reduce((sum, r) => sum + at(end, r), 0);
@@ -460,7 +462,7 @@ function layoutBarTableOnce(
   );
   // ---- cascade: starts, shares, the bracket and the growth column ----
   // The note also checks the rows: each once, each a row of the table.
-  const shareNotes = combinedShareNotes(options, rows, panels, locale);
+  const shareNotes = combinedShareNotes(options, rows, panels, locale, split.data.panels);
   let bracketRows: number[] | undefined;
   if (cascadeOptions && options.combinedShare) {
     // The bracket spans its rows, so they must stand together.

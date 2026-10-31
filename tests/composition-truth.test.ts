@@ -407,6 +407,9 @@ describe('bartable Total row', () => {
     expect(totals({ ...base, panels: [panel({})], columns: [column({ format: '1.0' }), { ...column({ format: '1.0x' }), id: 'm' }] }).text).toEqual(['total:c=9.0', 'total:p=30.5']);
     // A cascade splits its panel total, so a percent format there keeps the sum.
     expect(totals({ ...base, series: [{ id: 's' }], panels: [panel({ format: '1.0%' })] }, { variant: 'cascade' }).text).toEqual(['total:p=30.5%']);
+    // The defaulted empty Total of a '%' unit must not drop the combined-share readout the author asked for.
+    const shares = getChart('bartable')!.layout({ ...base, panels: [panel({ unit: '%', values: { s: [50, 30, 20] } })] } as BarTableData, { size: { width: 900 }, combinedShare: { rows: ['a', 'b'] } });
+    expect(noteTexts(requireGeometry(shares)).join(' ')).toContain('80 of 100');
   });
 
   it('lists the rows the shared scale leaves as a sliver, with their parts, in one note ', () => {
