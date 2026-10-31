@@ -9,6 +9,7 @@ import { getChart } from '../src/core/registry';
 import { getFixtures, getRefusalExamples } from '../src/fixtures';
 import { canDraw, measure } from '../src/index';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
+import { interactionRecords } from '../src/core/a11y/records';
 import { BoardplotTheme } from '../src/react/BoardplotTheme';
 import { layoutDiagram } from '../src/core/charts/diagram/layout';
 import type { DiagramData } from '../src/core/types/diagram';
@@ -37,9 +38,10 @@ it('renders a short scatter without extra layouts for plot-height advice', () =>
   const result = layoutResolvedRequest(resolveChartRequest(request));
   expect(result.warnings.some(w => w.code === 'plot-under-floor')).toBe(true);
   expect(scatterCalls.count).toBe(1);
-  const warning = result.warnings.find(w => w.code === 'plot-under-floor')!;
-  expect(warning.fix).toBeDefined();
-  const repaired = render({ spec: applyRepair(request, warning.fix) }).body as any;
+  // The layout draws and estimates a height: a patch that was not drawn is left to measure.
+  expect(result.warnings.find(w => w.code === 'plot-under-floor')!.fix).toBeUndefined();
+  const verified = measure(request).warnings.find(w => w.code === 'plot-under-floor')!;
+  const repaired = render({ spec: applyRepair(request, verified.fix) }).body as any;
   expect(repaired.ok).toBe(true);
   expect(repaired.warnings.some((w: any) => w.code === 'plot-under-floor')).toBe(false);
 });
@@ -110,7 +112,8 @@ it('verifies the complete frame at the height offered for a short plot', () => {
   for (const [type, id] of [['scatter', 'option-info-grid'], ['pareto', 'revenue-concentration']]) {
     const fixture = getFixtures(type!).find(f => f.id === id)!;
     const request = { type: type!, data: fixture.data, options: { ...fixture.options, size: { width: 400, height: 300 } } };
-    for (const result of [measure(request), getChart(type!)!.layout(request.data, request.options)]) {
+    expect(getChart(type!)!.layout(request.data, request.options).warnings.find(w => w.code === 'plot-under-floor')!.fix).toBeUndefined();
+    for (const result of [measure(request)]) {
       const warning = result.warnings.find(w => w.code === 'plot-under-floor')!;
       expect(warning).toBeDefined();
       expect(warning.fix).toBeDefined();
@@ -252,11 +255,11 @@ describe('below the minimum', () => {
     expect(short.refused).toBeUndefined();
     expect(short.size.height).toBe(200);
     const estimate = short.warnings.find((warning) => warning.code === 'plot-under-floor')!;
-    expect(estimate.fix).toBeDefined();
+    expect(estimate.fix).toBeUndefined();
     expect(estimate.message).toContain('estimated height');
     expect(estimate.suggest).toContain('measure');
     const request = { type: 'line', data: fixture.data, options: { ...fixture.options, size: { width: 480, height: 200 } } };
-    const repaired = render({ spec: applyRepair(request, estimate.fix) }).body as any;
+    const repaired = render({ spec: applyRepair(request, measure(request).warnings.find((warning) => warning.code === 'plot-under-floor')!.fix) }).body as any;
     expect(repaired.ok).toBe(true);
     expect(repaired.warnings.some((warning: any) => warning.code === 'plot-under-floor')).toBe(false);
     const tiny = at(480, 150);
@@ -693,6 +696,99 @@ describe('size advice', () => {
     expect(fix.value.height).toBeUndefined();
     expect(layout(fix.value).refused).toBeUndefined();
   });
+
+  // Prevents a size patch that loops or turns a drawn chart into a refusal: a size warning on a chart that
+  // draws carries no height patch, and every patch from render and measure leads to a drawn chart at a new size,
+  // also when the size came from a width or height argument that a spec patch would not change.
+  it('names a size patch only at a drawn size, and following the patches never repeats a size', () => {
+    const names = ['Field service', 'Net revenue', 'Order intake', 'Rhein-Main', 'Warehouse costs', 'Personnel costs', 'Turnover', 'Black Forest', 'Churn rate', 'Cost of sales', 'Saxony-Anhalt', 'Retail stores'];
+    const column = (size: object) => ({ type: 'column', data: { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [
+      { id: 'a', label: 'Partner channel', values: names.map((_, i) => (i % 5 === 0 ? 1e9 : 7.5e8)) },
+      { id: 'b', label: 'Mid market', values: names.map((_, i) => (i % 3 === 0 ? 1.25e9 : 1.5e9)) },
+    ] }, options: { title: 'Revenue by unit', unit: 'EUR', source: 'Invented data', variant: 'grouped', format: '1.2bn', size } });
+    const labels = ['Schleswig-Holstein and Hamburg', 'Depreciation of fixed assets', 'Rebilled freight costs', 'Mecklenburg-Western Pomerania', 'Research and development expenses', 'Income from equity-accounted firms', 'Thuringia and Saxony-Anhalt', 'Pension provisions, domestic'];
+    const diagram = (size?: object) => ({ type: 'diagram', data: { nodes: labels.map((label, i) => ({ id: `n${i}`, kind: 'entity', shape: { kind: 'roundedRect' }, label, role: i ? 'primary' : 'accent', order: i })),
+      edges: [[0, 1], [0, 2], [1, 3], [2, 4], [1, 5], [2, 6], [1, 7]].map(([s, t], i) => ({ id: `e${i}`, source: { nodeId: `n${s}` }, target: { nodeId: `n${t}` } })) },
+    options: { variant: 'hierarchy', title: 'Structure of the programme', source: 'Invented data', ...(size ? { size } : {}) } });
+    const fixture = (type: string, id: string, size: object) => {
+      const found = getFixtures(type as never).find(f => f.id === id)!;
+      return { type, data: found.data, options: { ...found.options, size } };
+    };
+    // A request is a spec plus the CLI width and height. A patch aims at the spec or at one of those arguments.
+    type Request = { spec: any; width?: number; height?: number };
+    const apply = (request: Request, fix: { path: string }[]): Request => {
+      const next = { ...request };
+      const toSpec = fix.filter(op => !/^\/(width|height)$/.test(op.path));
+      for (const op of fix.filter(op => /^\/(width|height)$/.test(op.path)) as { path: string; value: number }[]) (next as any)[op.path.slice(1)] = op.value;
+      return toSpec.length ? { ...next, spec: applyRepair(next.spec, toSpec as never) } : next;
+    };
+    const sizePatches = (body: any) => [...(body.errors ?? []), ...(body.warnings ?? [])]
+      .filter((item: any) => item.fix?.some((op: any) => op.path.endsWith('/options/size') || /^\/(width|height)$/.test(op.path)));
+    const requests: [string, Request][] = [
+      ['column 480x213', { spec: column({ width: 480, height: 213 }) }],
+      ['column 480x270', { spec: column({ width: 480, height: 270 }) }],
+      ['column 480x361', { spec: column({ width: 480, height: 361 }) }],
+      ['column 360x202.5pt', { spec: column({ width: 360, height: 202.5, unit: 'pt' }) }],
+      ['diagram 320x200', { spec: diagram({ width: 320, height: 200 }) }],
+      ['diagram 320x200 by argument', { spec: diagram({ width: 800, height: 600 }), width: 320, height: 200 }],
+      ['heatmap survey-journey-long-names 480x200', { spec: fixture('heatmap', 'survey-journey-long-names', { width: 480, height: 200 }) }],
+      ['heatmap survey-journey-long-names 480x200 by argument', { spec: fixture('heatmap', 'survey-journey-long-names', { width: 800, height: 600 }), width: 480, height: 200 }],
+      ['line recession-era-band 1200x200', { spec: fixture('line', 'recession-era-band', { width: 1200, height: 200 }) }],
+    ];
+    const sizeOf = (request: Request) => JSON.stringify([request.width, request.height, request.spec.options.size]);
+    for (const [name, start] of requests) {
+      const first = render(start).body as any;
+      if (first.ok) expect(sizePatches(first), `${name}: render of a drawn chart names a size patch`).toEqual([]);
+      // Every patch of render and of measure, applied once to the request, draws and names no size patch again.
+      const patches = [...sizePatches(first), ...sizePatches(cliMeasure(start).body)];
+      for (const item of patches) {
+        const patched = apply(start, item.fix);
+        expect(sizeOf(patched), `${name}: ${item.code} patch changes nothing`).not.toBe(sizeOf(start));
+        const after = render(patched).body as any;
+        expect(after.ok, `${name}: ${item.code} patch ${sizeOf(patched)} is refused`).toBe(true);
+        expect(sizePatches(after), `${name}: ${item.code} patch ${sizeOf(patched)} draws with a size patch`).toEqual([]);
+      }
+      // Measure's own patches, followed one after another, end without a repeated size.
+      let current = start;
+      const seen = new Set<string>();
+      for (let step = 0; step < 6; step++) {
+        expect(seen.has(sizeOf(current)), `${name}: measure came back to ${sizeOf(current)}`).toBe(false);
+        seen.add(sizeOf(current));
+        const [next] = sizePatches(cliMeasure(current).body);
+        if (!next) break;
+        current = apply(current, next.fix);
+      }
+      expect(seen.size, `${name}: measure advice still going after 6 patches`).toBeLessThan(6);
+    }
+  });
+
+  // Prevents the layout of a card (what React reports) from naming an estimated plot-floor height that refuses:
+  // a heatmap at 414 px drew with an estimate of 518 px, and 518 px needs 566 px.
+  it('reports the plot-floor estimate of a drawn layout with no patch', () => {
+    const found = getFixtures('heatmap').find(f => f.id === 'survey-journey-long-names')!;
+    const drawn = layoutResolvedRequest(resolveChartRequest({ type: 'heatmap', data: found.data, options: { ...found.options, size: { width: 480, height: 414 } } } as never));
+    expect(drawn.refused).toBeUndefined();
+    const floor = drawn.warnings.find(w => w.code === 'plot-under-floor')!;
+    expect(floor.message).toContain('estimated height');
+    expect(floor.fix).toBeUndefined();
+  });
+
+  // Prevents a plain render of a table from laying out a second, wider frame (1.6x to 2x slower than main) to name a
+  // patch: a drawn table with a fixed height reports table-overflow with no patch, and measure names the height that draws.
+  it('names the table-overflow height in measure, not in a plain render', () => {
+    const found = getFixtures('table').find(f => f.id === 'cohort-heat-relative')!;
+    const spec = { type: 'table', data: found.data, options: { ...found.options, size: { width: 1048, height: 379 } } };
+    const drawn = render({ spec }).body as any;
+    expect(drawn.ok).toBe(true);
+    const plain = drawn.warnings.find((warning: any) => warning.code === 'table-overflow');
+    expect(plain.fix).toBeUndefined();
+    expect(plain.suggest).toContain('measure');
+    const overflow = measure(spec).warnings.find(warning => warning.code === 'table-overflow')!;
+    expect(overflow.fix).toBeDefined();
+    const after = render({ spec: applyRepair(spec, overflow.fix) }).body as any;
+    expect(after.ok).toBe(true);
+    expect(after.warnings.map((warning: any) => warning.code)).not.toContain('table-overflow');
+  });
 });
 
 describe('textScale under 1', () => {
@@ -829,4 +925,49 @@ it('draws compact on the default slide canvas as it does on the same size writte
   expect(slide.reading.mode).toBe('compact');
   expect(slide.size).toEqual(draw({ target: 'slide', size: { width: 888, height: 396, unit: 'pt' } }).size);
   expect(draw({ target: 'slide', belowMinimum: 'refuse' }).errors[0].code).toBe('size-below-floor');
+});
+
+// A roadmap milestone is a small circle with its name outside, so its secondary text had no seat inside the circle and went to an off-page note.
+it('draws a roadmap milestone secondary text under its name', () => {
+  const lanes = [{ id: 'w1', label: 'Wave 1', orientation: 'vertical', role: 'category', paletteKey: 'w1', order: 1 }, { id: 'w2', label: 'Wave 2', orientation: 'vertical', role: 'category', paletteKey: 'w2', order: 2 }];
+  const names = ['Pilot live', 'First ten sites', 'Platform v2 live', 'All sites live'];
+  const nodes = names.map((label, i) => ({ id: `m${i}`, kind: 'milestone', shape: { kind: 'circle' }, label, secondaryLabel: `Q${i + 1} FY27`, laneId: i < 2 ? 'w1' : 'w2', role: 'category', paletteKey: i < 2 ? 'w1' : 'w2', order: i + 1 }));
+  const body = render({ spec: { type: 'diagram', data: { lanes, nodes }, options: { variant: 'roadmap', title: 'Four milestones in two waves', source: 'Invented' } } }).body as any;
+  expect(body.ok).toBe(true);
+  expect(body.reading.omissions).toEqual([]);
+  expect(body.warnings.filter((warning: { code: string }) => warning.code === 'diagram-secondary-label-unplaced')).toEqual([]);
+});
+
+// A milestone whose secondary text prints under its name must not open a hover card that only repeats that text.
+it('opens no hover card for a roadmap secondary text printed under the name', () => {
+  const lanes = [{ id: 'w1', label: 'Wave 1', orientation: 'vertical', role: 'category', paletteKey: 'w1', order: 1 }];
+  const nodes = ['Pilot live', 'First ten sites', 'Platform v2 live', 'All sites live'].map((label, i) => ({ id: `m${i}`, kind: 'milestone', shape: { kind: 'circle' }, label, secondaryLabel: `Q${i + 1} FY27`, laneId: 'w1', role: 'category', paletteKey: 'w1', order: i + 1 }));
+  const request = resolveChartRequest({ type: 'diagram', data: { lanes, nodes }, options: { variant: 'roadmap', title: 'Four milestones', source: 'Invented' } } as never);
+  const geometry = layoutResolvedRequest(request) as Geometry;
+  expect(geometry.labels.filter(label => label.id.startsWith('node-label:') && label.text.includes('\n') && !label.hidden).length).toBe(4);
+  const records = interactionRecords({ request, geometry, scope: request.scope, claims: [] });
+  expect(records.map(record => record.cardFields)).toEqual([[], [], [], []]);
+  expect(records[0]!.fields.map(field => field.key)).toContain('secondaryLabel');
+});
+
+// Twelve milestones in three waves on a small canvas: every name must draw, as it does without secondary text.
+it('keeps every roadmap milestone name when secondary text crowds the canvas', () => {
+  const lanes = [0, 1, 2].map(i => ({ id: `w${i}`, label: `Wave ${i}`, orientation: 'vertical', role: 'category', paletteKey: `w${i}`, order: i + 1 }));
+  const nodes = Array.from({ length: 12 }, (_, i) => ({ id: `m${i}`, kind: 'milestone', shape: { kind: 'circle' }, label: `Milestone ${i} reached`, secondaryLabel: `Q${i % 4} FY27 delivery`, laneId: `w${i % 3}`, role: 'category', paletteKey: `w${i % 3}`, order: i + 1 }));
+  const result = layoutDiagram({ lanes, nodes } as never, { variant: 'roadmap', size: { width: 700, height: 400 } } as never, false);
+  expect(result.labels.filter(label => label.id.startsWith('node-label:') && label.hidden)).toEqual([]);
+  expect(result.warnings.filter(warning => warning.code === 'diagram-node-label-unplaced')).toEqual([]);
+});
+
+// A cycle step whose node is tall enough keeps its secondary text inside, so the text must fit the node's own width, not the wider outside label.
+it('keeps a cycle step secondary text inside its node', () => {
+  const nodes = ['Share results', 'Refer leads', 'Qualify fast', 'Deliver value'].map((label, i) => ({ id: `s${i}`, kind: 'step', shape: { kind: 'circle' }, label, secondaryLabel: 'Customer reply within twenty-four hours', role: 'primary', order: i + 1 }));
+  const edges = nodes.map((node, i) => ({ id: `e${i}`, source: { nodeId: node.id }, target: { nodeId: `s${(i + 1) % 4}` }, arrowEnd: true }));
+  const result = layoutDiagram({ nodes, edges } as never, { variant: 'circular-process', size: { width: 700, height: 700 } } as never, false);
+  const inside = result.labels.filter(label => label.slot === 'inside-secondary' && !label.hidden);
+  expect(inside.length).toBeGreaterThan(0);
+  for (const label of inside) {
+    const node = result.marks.nodes.find(mark => mark.id === label.owner.pointId)!;
+    expect(label.rect.w).toBeLessThanOrEqual(node.contentRect.w);
+  }
 });

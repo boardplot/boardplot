@@ -77,7 +77,7 @@ The MCP server `boardplot` has six tools. Each answers with JSON; a rejected cal
 | `boardplot_fixtures` | start from a complete example | runnable specs with real-looking data, by `type` or `id` |
 | `boardplot_feedback` | report a Boardplot problem | a draft report and `issueUrl`, a prefilled GitHub issue the user opens and submits; it sends nothing |
 
-A render refusal keeps its size estimate in `expected.minimum` and `fix`. Library `canDraw()` returns it as `minimum`. Measurement verifies a size that draws without a size warning. CLI and MCP measurement return that size as `required`. A data warning such as `dual-axis`, or a proportion lint such as `height-off-ladder` or `aspect-cap`, does not reject that size. The height search is bounded. If no tested size draws within the bound, `suggest` names the bound and asks for less content or changed settings.
+A render refusal keeps its size estimate in `expected.minimum` and `fix`. Library `canDraw()` returns it as `minimum`. A render that draws reports `plot-under-floor`, `aspect-cap`, `height-off-ladder` and `plot-under-min` with no `fix`, because render has not drawn the height a patch would name. Their `suggest` says to call `measure` for a verified size or to leave the height out, and for the aspect warnings also to widen the chart. Measurement draws each size it names. For `plot-under-floor` and a refusal it names a size that draws without a size warning, and CLI and MCP measurement return the refusal size as `required`. For `aspect-cap`, `height-off-ladder` and `plot-under-min` it tries the heights of the standard ladder that the aspect cap allows, nearest first, and names the first that draws with no size warning. A table with a fixed height that draws wider than its frame reports `table-overflow` with no `fix` in a render, and measurement names the width and the height the wider frame needs. A data warning such as `dual-axis` does not reject a size. The height search is bounded. If no tested size draws within the bound, the warning carries no `fix`, and `suggest` asks for less content, a wider chart or a changed setting.
 
 A worked example, an EBIT bridge. Ask for the waterfall contract:
 
@@ -528,7 +528,7 @@ On a fixed compact card, the plot first tries its hard minimum with the source l
 6. The subtitle moves into the notes list (warning `subtitle-moved-to-notes`). It stays readable there and in the React notes panel. The source line stays with the host, as step 3 left it. A unit line ("Revenue in $m" without the measure) can stay on the canvas.
 7. The plot goes under its floor, down to the type's hard minimum: a bar's rows get thinner than its segment labels need, and labels that do not fit are hidden. A column, line, combo, histogram, scatter or band chart keeps a plot of at least 40 px with room for two value-label rows, which holds two labelled value ticks; its other measured needs (end labels, rows) still apply. A value label that loses its seat goes to the note, as the note rules say.
 
-The title is never cut and the key is never dropped. When the plot ends under its floor (160 px, `dashboard` 140 px), or a row type draws at its hard minimum, the chart is still drawn and warns `plot-under-floor`. Rendering gives an estimated height from the drawn frame and a `fix` that sets it. Use `measure` for the exact verified size. Only when step 7 still misses is the chart refused with the size it needs (`size-below-floor`). Steps 6 and 7 apply on a fixed width and height in compact mode. At step 7 a heatmap row drops its 28 px comfort height to its text line and 2 px, and a dot row keeps 1 px of air instead of 4.
+The title is never cut and the key is never dropped. When the plot ends under its floor (160 px, `dashboard` 140 px), or a row type draws at its hard minimum, the chart is still drawn and warns `plot-under-floor`. The message gives an estimated height from the drawn frame, and the warning carries no `fix`. Use `measure` for the exact verified size. Only when step 7 still misses is the chart refused with the size it needs (`size-below-floor`). Steps 6 and 7 apply on a fixed width and height in compact mode. At step 7 a heatmap row drops its 28 px comfort height to its text line and 2 px, and a dot row keeps 1 px of air instead of 4.
 
 In React the HTML footer takes exactly the height the layout reserved for the footer it replaces, and the notes panel opens over the chart, so a chart in a fixed-height slot never grows past it. A React container without a host height hands the engine its width alone, so it takes the same automatic height and plot floor as the CLI.
 
@@ -675,7 +675,7 @@ EOF
 ```
 
 - `path` is a JSON Pointer into the spec you sent.
-- `fix` is a JSON Patch. Apply it to that spec as it is, or read `suggest` and change the field yourself. It is absent when the engine has no single repair.
+- `fix` is a JSON Patch. Apply it to that spec as it is, or read `suggest` and change the field yourself. It is absent when the engine has no single repair. A size warning on a chart that draws never carries one, and `measure` names a drawn size instead.
 - `docs` names the reference section that describes the field.
 - Errors come sorted by path, at most ten, then one `more-errors` entry with the count.
 

@@ -41,7 +41,10 @@ import { pushAll } from './arrays';
 /** Chart types may refine shared mode names and label content. */
 export type ChartOptions = Omit<BaseOptions, 'mode' | 'labels'> & { mode?: unknown; labels?: false | Partial<Record<import('./types/options').LabelKind, boolean | string[]>> };
 
-/** Render uses its measured frame; exact repair verification belongs to measure. */
+/**
+ * A layout that draws reports an estimated height and no patch: the estimate was never drawn, and a patch that
+ * was not drawn can end in a refusal. Exact repair verification belongs to measure.
+ */
 function estimatedPlotAdvice<M extends object, DV extends object>(result: LayoutResult<M, DV>, options: ChartOptions | undefined): void {
   const warning = result.warnings.find(w => w.code === 'plot-under-floor');
   if (!warning || isRefused(result) || result.refused) return;
@@ -51,7 +54,6 @@ function estimatedPlotAdvice<M extends object, DV extends object>(result: Layout
   result.warnings = result.warnings.map(w => w === warning ? { ...rest,
     message: `${rest.message.replace(/; (?:the chart needs|the estimated height is) .*$/, '')}; the estimated height is ${height} px; use measure for the exact verified size`,
     suggest: 'Use measure for the exact verified size, or leave options.size.height out.',
-    fix: [{ op: 'replace', path: '/options/size', value: { width: result.size.width, height } }],
   } : w);
 }
 

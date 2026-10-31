@@ -335,7 +335,11 @@ function layoutHorizontalWaterfall(
   // height of two lines, may widen the column to the gutter share, and the
   // column takes its one type step as a whole.
   const barCenters = source.marks.bars.map((bar) => bar.rect.x + bar.rect.w / 2).sort((a, b) => a - b);
-  const rowPitch = barCenters.length > 1 ? ((barCenters[1]! - barCenters[0]!) * plot.h) / plot.w : plot.h;
+  // A name's row is the whole step, so under cases its pitch spans the step's bars.
+  const cases = data.cases ?? [];
+  const stepBars = Math.max(1, cases.length);
+  const stepPitch = barCenters.length > stepBars ? barCenters[stepBars]! - barCenters[0]! : undefined;
+  const rowPitch = stepPitch !== undefined ? (stepPitch * plot.h) / plot.w : plot.h;
   const nameLines = rowPitch >= 2 * lineBox(nameFont) + 2 ? 2 : 1;
   const nameColumn = fitColumn(categoryLabels.map((label) => ({
     text: label.title ?? label.text, font: nameFont, maxWidth: nameBudget, maxLines: nameLines,
@@ -477,12 +481,18 @@ function layoutHorizontalWaterfall(
     const name = label.kind === 'category' ? names.get(label.id)! : undefined;
     const textSize = measure(label.text, fontForLabel(label));
     const transformed = { ...transformRectKeepSize(label.rect), w: name?.w ?? textSize.width, h: name?.h ?? textSize.height };
-    const bar = label.owner.categoryId
-      ? barById.get(label.owner.categoryId)
+    // A case's bar is '<item>:<case>'; a step's name centres on all the step's bars.
+    const { categoryId, seriesId } = label.owner;
+    const bar = categoryId
+      ? barById.get(seriesId === undefined ? categoryId : `${categoryId}:${seriesId}`)
       : undefined;
+    const firstCase = categoryId !== undefined && cases.length > 0 ? barById.get(`${categoryId}:${cases[0]!.id}`) : undefined;
+    const lastCase = categoryId !== undefined && cases.length > 0 ? barById.get(`${categoryId}:${cases.at(-1)!.id}`) : undefined;
     const rowCenter = bar
       ? bar.rect.y + bar.rect.h / 2
-      : transformed.y + transformed.h / 2;
+      : firstCase && lastCase
+        ? (firstCase.rect.y + lastCase.rect.y + lastCase.rect.h) / 2
+        : transformed.y + transformed.h / 2;
     const categoryRect: Rect = {
       x: horizontalPlot.x - transformed.w - 8,
       y: rowCenter - transformed.h / 2,
@@ -513,7 +523,8 @@ function layoutHorizontalWaterfall(
       label.kind === 'category'
         ? [{ slot: 'left', rect: categoryRect, penalty: 0 }]
         : [
-            { slot: 'outsideRight', rect: outsideRight, penalty: 0 },
+            // Case rows stand 1-2 px apart, so a value beside a shorter bar sits within the context pad of the longer one.
+            { slot: 'outsideRight', rect: outsideRight, penalty: 0, ...(seriesId === undefined ? {} : { pad: 0 }) },
             // A value sits inside only with 4 px per side; wider, it would cross the bar's edge.
             ...(!bar || transformed.w + 8 <= bar.rect.w ? [{ slot: 'insideCenter' as const, rect: insideCenter, penalty: 1, needsBacking: true }] : []),
             { slot: 'outsideLeft', rect: outsideLeft, penalty: 2 },
@@ -550,7 +561,7 @@ function layoutHorizontalWaterfall(
     for (const label of labels) {
       const id = label.id.startsWith('sum:') ? label.id.slice('sum:'.length) : undefined;
       const level = id === undefined ? undefined : source.derived.levels[id];
-      const tone = level ? stepTone(level.end - level.start, data.items.find((it) => it.id === id)?.direction) : 'neutral';
+      const tone = level ? stepTone(level.end - level.start, data.items.find((it) => it.id === label.owner.categoryId)?.direction) : 'neutral';
       if (tone !== 'neutral' && label.slot !== 'insideCenter') label.ink = { token: tone };
     }
   }
@@ -595,7 +606,11 @@ function layoutHorizontalWaterfall(
   const nameNeed = Math.max(0, maxOf(categoryLabels.map((label) => uncutWidth(label, 2))));
   const minPlotW = Math.max(Math.max(48, nameNeed + 20) + 80 + Math.max(32, valueLabelWidth + 20), (nameNeed + 20) / GUTTER_MAX_SHARE);
   // The row pitch is the band step turned on its side (rowPitch above), so the plot height scales with it.
-  const rowsNeed = ((twoLines ? 2 : 1) * lineBox(nameFont) + 2) * (barCenters.length > 1 ? plot.w / (barCenters[1]! - barCenters[0]!) : 1) + 1;
+  const rowsNeed = Math.max(
+    ((twoLines ? 2 : 1) * lineBox(nameFont) + 2) * (stepPitch !== undefined ? plot.w / stepPitch : 1),
+    // Each case bar is a row of its own for its value.
+    cases.length > 0 && barCenters.length > 1 ? (lineBox(nameFont) + 2) * (plot.w / (barCenters[1]! - barCenters[0]!)) : 0,
+  ) + 1;
   const measured = bandSizing('waterfall', source.size, plot.w, NATURAL_BAND_STEP, minPlotW);
   if (source.sizing?.[HEIGHT_STRUCTURE]) measured[HEIGHT_STRUCTURE] = true;
   return {
@@ -719,9 +734,6 @@ function layoutWaterfallWithPad(
   // whose one segment is the case; `items` keeps one per step for the band,
   // the names and the ids.
   const cases = data.cases ?? [];
-  if (cases.length > 0 && options.variant === 'horizontal') {
-    throw new NormalizeError('waterfall-cases-horizontal', 'options.variant', 'a bridge with cases draws vertically: its cases stand side by side in each step', "drop variant: 'horizontal', or draw one bridge per case");
-  }
   // A case bar's id is '<item>:<case>'. With no colon in a case id the case
   // is what follows the last colon, so no two bars share an id: item 'a' in
   // case 'b:c' and item 'a:b' in case 'c' would both be 'a:b:c'.
@@ -1470,12 +1482,27 @@ function layoutWaterfallWithPad(
   // A multi-case bridge splits each step's band among its cases, 2 px apart.
   const CASE_GAP = 2;
   const CASE_LABEL_SHIFT = (SERIES_VALUE_GAP - CASE_GAP) / 2;
+  /** Each step's case values in case order, for the seat check after the bars are drawn. */
+  const caseValues: LabelRequest[][] = items.map(() => []);
   const boldValueIds = new Set<string>();
   // Values with an authored label string: no value row thins them as density.
   const authoredValueIds = new Set<string>();
   const caseW = cases.length > 0 ? (band.bandwidth - CASE_GAP * (cases.length - 1)) / cases.length : 0;
   if (cases.length === 0) items.forEach((it, i) => drawStep(it, i, band.position(i), band.bandwidth));
   else items.forEach((_, i) => cases.forEach((__, k) => drawStep(caseItems[k]![i]!, i, band.position(i) + k * (caseW + CASE_GAP), caseW, k)));
+  // A case's value centres on its bar. Two centred values on one height nearer than the series
+  // value gap read as one number, and a value wider than its bar that hangs over its neighbour's
+  // seat blocks it, so the outer of them give that seat up for their inner-edge seats.
+  for (const row of caseValues) {
+    const crowded = row.map((request, k) => [row[k - 1], row[k + 1]].some((other) => {
+      if (!other) return false;
+      const [a, b] = [request.candidates[0]!.rect, other.candidates[0]!.rect];
+      return a.y - 2 < b.y + b.h && b.y - 2 < a.y + a.h && Math.max(a.x, b.x) - Math.min(a.x + a.w, b.x + b.w) < SERIES_VALUE_GAP;
+    }));
+    row.forEach((request, k) => {
+      if (crowded[k] && (k === 0 || k === row.length - 1)) request.candidates.shift();
+    });
+  }
 
   /** One bar of the bridge: a step, or one case's bar within it, with its labels and connector. */
   function drawStep(it: NormItem, i: number, bx: number, bw: number, caseIndex?: number): void {
@@ -1727,7 +1754,10 @@ function layoutWaterfallWithPad(
     const insidePattern = scenarioPattern(stackedTotal
       ? drawSegments[drawSegments.length - 1]!.scenario ?? it.scenario
       : it.scenario ?? (it.segments.length === 1 ? it.segments[0]!.scenario : undefined));
-    labelRequests.push({
+    const centredX = bx + bw / 2 - tsize.width / 2;
+    const outerCase = caseIndex === 0 || (caseIndex !== undefined && caseIndex === cases.length - 1);
+    const outsideSlot = negative ? 'outsideBottom' as const : 'outsideTop' as const;
+    const valueRequest: LabelRequest = {
       id: isTotal ? `total:${it.id}` : `sum:${it.id}`,
       kind: isTotal ? 'total' : 'segment',
       // A one-part value names its segment back, so a pinned segment placed first takes the value; an authored text keeps its seat.
@@ -1745,19 +1775,18 @@ function layoutWaterfallWithPad(
       // An authored value passes the density gate, as on column and bar.
       ...(typeof valueMeta?.valueLabel === 'string' ? { keepWhenDense: true as const } : {}),
       candidates: [
-        {
-          slot: negative ? 'outsideBottom' : 'outsideTop',
-          rect: { x: caseIndex === undefined ? bx + bw / 2 - tsize.width / 2
-            // The outer cases' totals stand the series value gap apart over the 2 px case gap, or two equal totals read as one number.
-            : caseIndex === 0 ? bx + bw - tsize.width - (isTotal ? CASE_LABEL_SHIFT : 0) : caseIndex === cases.length - 1 ? bx + (isTotal ? CASE_LABEL_SHIFT : 0) : bx + bw / 2 - tsize.width / 2,
-          y: outsideY, w: tsize.width, h: tsize.height },
+        { slot: outsideSlot, rect: { x: centredX, y: outsideY, w: tsize.width, h: tsize.height }, penalty: 0 },
+        // Crowded, the outer cases' totals stand the series value gap apart over the 2 px case gap, or two equal totals read as one number.
+        ...(outerCase && isTotal ? [{
+          slot: outsideSlot,
+          rect: { x: caseIndex === 0 ? bx + bw - tsize.width - CASE_LABEL_SHIFT : bx + CASE_LABEL_SHIFT, y: outsideY, w: tsize.width, h: tsize.height },
           penalty: 0,
-        },
-        // Where the shifted seat is blocked, an outer case's total keeps the seat at its bar's inner edge.
-        ...(isTotal && caseIndex !== undefined && (caseIndex === 0 || caseIndex === cases.length - 1) ? [{
-          slot: negative ? 'outsideBottom' as const : 'outsideTop' as const,
+        }] : []),
+        // Where that seat is blocked too, an outer case's value keeps the seat at its bar's inner edge.
+        ...(outerCase ? [{
+          slot: outsideSlot,
           rect: { x: caseIndex === 0 ? bx + bw - tsize.width : bx, y: outsideY, w: tsize.width, h: tsize.height },
-          penalty: 1,
+          penalty: isTotal ? 1 : 0,
         }] : []),
         ...(tsize.height + 4 <= barRect.h && tsize.width + 4 <= bw ? [{
           slot: 'insideEnd' as const,
@@ -1780,7 +1809,9 @@ function layoutWaterfallWithPad(
           penalty: 3,
         }] : []),
       ],
-    });
+    };
+    labelRequests.push(valueRequest);
+    if (caseIndex !== undefined) caseValues[i]!.push(valueRequest);
 
     // ---- category label: once per step ----
     if (caseIndex !== undefined && caseIndex > 0) return;
