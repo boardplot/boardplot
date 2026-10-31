@@ -378,12 +378,12 @@ export function scatterPlotArea(
   const yBandW = yBandLines
     ? maxOf(yBandLines.flat().map((line) => measure(line, fonts.tick).width)) + ZONE_BAND_GAP
     : 0;
-  // A log y axis is measured over its densest tick set, in its own tick text.
+  // A log y axis is measured over its densest tick set, in its own tick text. A dot scatter measures the ticks it draws (domain.ticks), which can be finer than the default five.
   const yFmt = env.log.y ? logSpecFormat(env.axisSpec.y) : fmt;
   const axisTitles = options.axisTitles ?? {};
   const qualitative = showAxes && options.qualitativeAxes === true;
   const yAxisW = qualitative ? qualitativeColumn(env, fonts, frame.plot.w).width + QUALITATIVE_GAP : showAxes && !banded.y
-    ? measureValueAxisWidth([dyLo, dyHi], yFmt, theme, measure, 5, env.log.y ? undefined : env.axisSpec.y, env.log.y ? logTickTiers(dyLo, dyHi)[0] : undefined) : 0;
+    ? measureValueAxisWidth([dyLo, dyHi], yFmt, theme, measure, 5, env.log.y ? undefined : env.axisSpec.y, env.log.y ? logTickTiers(dyLo, dyHi)[0] : domain.ticks?.y) : 0;
   // A banded axis prints no numbers, so it reserves no tick row or column (scatter.matrix).
   const xAxisH = showAxes && !banded.x ? tickH + 6 : 0;
   // A qualitative x title shares the row of its ends; the y title sits in the axis column.

@@ -275,4 +275,20 @@ describe('chart layout edge cases', () => {
     };
     expect(Math.abs(dataPlot('area') / dataPlot('line') - 1)).toBeLessThanOrEqual(0.02);
   });
+
+  // A dot scatter reserved its y column for five round ticks but drew half-steps (5.5), so on a 280 pt slide the tick text started left of the canvas.
+  it('scatter y ticks stay inside the canvas on a narrow slide', () => {
+    const points = [[4, 3], [2, 5], [3, 5], [5, 2], [3, 4], [1, 5], [4, 4], [5, 1], [1, 3], [2, 2], [2, 4], [4, 1]]
+      .map(([x, y], i) => ({ id: `p${i}`, label: `Risk ${i}`, x, y }));
+    const request = {
+      type: 'scatter',
+      data: { points },
+      options: { size: { width: 280, height: 396, unit: 'pt' }, title: 'T', unit: 'rating', axisTitles: { x: 'Likelihood', y: 'Impact' }, target: 'slide', quadrants: { x: { stat: 'median' }, y: { stat: 'median' } } },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+    const ticks = geometry.scene.filter((node: { id?: string }) => String(node.id).startsWith('axis:y:tick:'));
+    expect(ticks.length).toBeGreaterThan(0);
+    for (const tick of ticks) expect(tick.x).toBeGreaterThanOrEqual(0);
+  });
 });

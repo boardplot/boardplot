@@ -245,6 +245,36 @@ describe('refusal contract', () => {
     expect((body.errors as Finding[]).map(({ code, path, suggest }) => ({ code, path, line: suggest?.includes('line') }))).toEqual([{ code: 'too-many-items', path: '/data/categories', line: true }]);
   });
 
+  // A line of 1,999 categories by 200 series (about 400,000 points) ran the CLI and the MCP server out of memory, and 100 categories by 2,000 series took 11 s and 2 GB because the series cost more than their points; above the budget both must refuse at once, and a window.last that draws less must still draw.
+  it('refuses a line or area above the point and series budget and draws the same data under window.last', () => {
+    const wide = (length: number, count: number) => {
+      const categories = Array.from({ length }, (_, i) => `c${i}`);
+      return { categories, series: Array.from({ length: count }, (_, k) => ({ id: `s${k}`, values: categories.map((_, i) => (i * (k + 1)) % 97) })) };
+    };
+    // 401 by 500 costs 250,000 (under the point budget) but its 100.25 million of categories times series times series is over the cap that stops the heap abort (300 by 700 aborted at 280,000 points).
+    for (const data of [wide(1_000, 300), wide(100, 2_000), wide(401, 500)]) {
+      for (const variant of ['line', 'stacked-area'] as const) {
+        const { body } = render({ spec: { type: 'line', data, options: { variant } } });
+        expect((body.errors as Finding[]).map(({ code, path }) => ({ code, path }))).toEqual([{ code: 'too-many-items', path: '/data/series' }]);
+      }
+    }
+    expect(render({ spec: { type: 'line', data: wide(1_000, 300), options: { window: { last: 10 } } } }).body.errors ?? []).toEqual([]);
+    expect(render({ spec: { type: 'line', data: wide(401, 500), options: { window: { last: 5 } } } }).body.errors ?? []).toEqual([]);
+  });
+
+  // A combo of 10 categories by 1,000 series did not finish in 150 s with only 10,000 points, and 1,000 by 101 ran out of memory; it must refuse at once, and a window.last that draws less must still draw.
+  it('refuses a combo above its point and series budget and draws the same data under window.last', () => {
+    const wide = (length: number, count: number) => {
+      const categories = Array.from({ length }, (_, i) => `c${i}`);
+      return { categories, series: Array.from({ length: count }, (_, k) => ({ id: `s${k}`, ...(k > 0 ? { kind: 'line' } : {}), values: categories.map((_, i) => (i * (k + 1)) % 97) })) };
+    };
+    for (const data of [wide(10, 1_000), wide(300, 70)]) {
+      const { body } = render({ spec: { type: 'combo', data } });
+      expect((body.errors as Finding[]).map(({ code, path }) => ({ code, path }))).toEqual([{ code: 'too-many-items', path: '/data/series' }]);
+    }
+    expect(render({ spec: { type: 'combo', data: wide(300, 70), options: { window: { last: 20 } } } }).body.errors ?? []).toEqual([]);
+  });
+
   // The budget must not refuse long lists that the chart itself cuts to a few drawn items.
   it('draws a long list that topN, its threshold, window.last or the Pareto tail fold reduces', () => {
     const n = 2_001;

@@ -401,6 +401,15 @@ export function specUnitKind(spec: NumberFormatSpec): 'percent' | 'pp' | 'number
   return 'number';
 }
 
+/** A percentage, percentage points or a multiple ("1.0x"): a figure that does not add. */
+export function nonAdditiveSpec(spec: NumberFormatSpec): boolean {
+  return specUnitKind(spec) !== 'number' || /^[x×]$/i.test(spec.suffix.trim());
+}
+
+export function nonAdditiveFormat(format: string | undefined): boolean {
+  return !!format && nonAdditiveSpec(parseFormatExample(format));
+}
+
 const MAGNITUDE_PREVIOUS: Record<Scale, NumberFormatSpec['magnitude']> = { k: 'none', m: 'k', bn: 'm', t: 'bn' };
 
 const MAGNITUDE_NEXT: Record<NumberFormatSpec['magnitude'], NumberFormatSpec['magnitude'] | null> = {
@@ -956,12 +965,11 @@ export function rasterDecimals(
  * bound to full precision ("23.4", not "23.35").
  */
 export function formatStatWithSpec(value: number, spec: NumberFormatSpec): string {
-  return formatWithSpec(value, {
-    ...spec,
-    // The unit rule is for plotted values; a mean of 100.5 stays 100.5.
-    wholeFrom: undefined,
-    decimals: Math.max(spec.decimals, neededDecimals(value, spec.decimals + 1)),
-  });
+  // The unit rule is for plotted values; a mean of 100.5 stays 100.5.
+  const own = { ...spec, wholeFrom: undefined };
+  // Decimals count at the scale the label prints in: 1.25M under "1M" needs one, not the none of 1,250,000.
+  const scaled = value / MAGNITUDE_DIVISOR[effectiveScale(value, own).magnitude];
+  return formatWithSpec(value, { ...own, decimals: Math.max(spec.decimals, neededDecimals(scaled, spec.decimals + 1)) });
 }
 
 /** Trend rates choose their own magnitude and precision; they never use the small-value bound policy. */

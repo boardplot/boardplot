@@ -42,6 +42,7 @@ import type { RenderGeometry } from './prepared';
 import { markScrollRegion, scrollStateOf, type TableScrollState } from './scrollState';
 import { useChartExport, type ExportLink } from './exportLink';
 import { useRowsInput, type RowsProps } from './rowsInput';
+import { frameSize, RefusalBoundary } from './RefusalBoundary';
 
 export type { HoverContentContext, HoverOption, RenderHoverContent } from './useHover';
 
@@ -178,7 +179,7 @@ const OWN_ROWS_OPTIONS = new Set(['grid']);
  * count in the server's first frame and the hydrating one (`asFirstFrame`).
  */
 export function createChartComponent<D, O extends ChartOptionsLike>(type: string, checkKeys?: OptionKeyCheck, linked?: readonly DeferredName[]) {
-  function Chart(props: ChartProps<D, O>): ReactElement {
+  function Drawn(props: ChartProps<D, O>): ReactElement {
     const { data: authored, annotations, fixedSize, onGeometry, onWarnings, onRefused, renderRefused, onEmpty, target, size, fit, fallbackSize, prepared, hover, onSeriesClick, onRecordClick, renderHoverContent, zoom, styleNonce, idPrefix,
       storyLink, onNotes, renderNotes, onScrollChange, deferLayout = true, exporter, rows: rowsProp, columns: columnsProp, onRowsReading, ...rest } = props;
     // A grid's rows and columns are its panel layout options.
@@ -409,6 +410,13 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
       </div>
     );
     return frame(scrollBox ? <div ref={setScroller} data-bp-scroll="" className="bp-scroll" style={{ overflowX: fitted ? 'visible' : 'auto', maxWidth: '100%' }}>{chart}</div> : chart);
+  }
+  const DrawnChart = Drawn as (props: object) => ReactElement;
+  // A bad value draws the refusal card in the chart's own frame and never unmounts the host's root (RefusalBoundary).
+  function Chart(props: ChartProps<D, O>): ReactElement {
+    const { size, fallbackSize, target, fixedSize, title, theme } = props as ChartHostProps & { title?: unknown; theme?: ThemeRef };
+    return <RefusalBoundary watch={props} fallback={(finding) => <LayoutRefusal fixedSize={fixedSize} refusals={[finding]} theme={theme}
+      size={frameSize(size === 'container' ? fallbackSize : size, target)} options={typeof title === 'string' ? { title } : {}} />}><DrawnChart {...props} /></RefusalBoundary>;
   }
   Chart.displayName = `${type[0]!.toUpperCase()}${type.slice(1)}Chart`;
   // First-class, not name-shaped: the public API check resolves type → component

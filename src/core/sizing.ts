@@ -1272,15 +1272,15 @@ function fitAt<D, O extends ChartOptions, M extends object, DV extends object>(
 }
 
 /**
- * Whether a full-mode size refusal falls back to compact: a pinned canvas, a type with a compact
- * floor, no `belowMinimum: 'refuse'`. A pinned width alone counts too:
- * full runs first, and with the height left to the chart its size refusal can only be on width.
+ * Whether a full-mode size refusal falls back to compact: a pinned canvas (an authored size, or the
+ * fixed default canvas of the slide and print targets), a type with a compact floor, no
+ * `belowMinimum: 'refuse'`. A pinned width alone counts too: full runs first, and with the height left to the chart its size refusal can only be on width.
  */
 export function compactFallbackApplies<D, O extends ChartOptions, M extends object, DV extends object>(
   definition: ChartCore<D, O, M, DV>, options?: O, data?: D,
 ): boolean {
   return declaredSizing(definition, options).compactFloor !== undefined && options?.belowMinimum !== 'refuse'
-    && options?.size !== undefined
+    && ((options as TargetSizeOptions | undefined)?.[TARGET_SIZE] ?? resolveTargetSize(options?.target ?? DEFAULT_TARGET, options?.size)).fixed.width
     && panelTypeClass(options) === undefined && definition.type !== 'mekko' && options?.mode !== 'full'
     && (data === undefined || definition.compactForm?.(data, options) !== false);
 }

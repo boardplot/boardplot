@@ -19,7 +19,7 @@ import { emphasisWeight, strokeToken, dashToken } from './theme';
 
 import type { RenderTarget } from './types/options';
 import { cagr, formatAutomaticNumber, formatAutomaticPercent, PERCENTAGE_POINTS } from './format';
-import { differenceExample, exampleSpec, formatWithSpec, formatterFromExample, neededDecimals, parseFormatExample, roundedNumber, specUnitKind, withChartMarks } from './formatSpec';
+import { differenceExample, exampleSpec, formatStatWithSpec, formatWithSpec, formatterFromExample, neededDecimals, parseFormatExample, roundedNumber, specUnitKind, withChartMarks } from './formatSpec';
 import { autoDecimals, roundHalfUp, roundsToZero, typicalDecimals } from './formatPrecision';
 import { yearSpan, yearSpanFromLabels } from './periodYears';
 
@@ -381,6 +381,8 @@ function comparisonAnchor(anchor: AnchorResolution | null): AnchorResolution | n
  */
 interface AnnotateRun {
   fmt: (v: number) => string;
+  /** A derived statistic (a mean) prints one decimal step past the raster, so it never rounds to another number than it is. */
+  statFmt: (v: number) => string;
   fmtSigned: (v: number) => string;
   /** True where a difference prints as zero under `fmtSigned`. */
   printsZero: (v: number) => boolean;
@@ -453,6 +455,7 @@ export function runAnnotatePass(input: AnnotatePassInput): AnnotatePassResult {
   const differenceSpec = differenceFormat ? { ...exampleSpec(differenceFormat, locale), signed: true } : undefined;
   const run: AnnotateRun = {
     fmt,
+    statFmt: input.format ? (v: number) => formatStatWithSpec(v, exampleSpec(input.format!, locale)) : fmt,
     fmtSigned: differenceSpec ? (v: number) => formatWithSpec(v, differenceSpec) : plain(percent ? PERCENTAGE_POINTS : '', true),
     printsZero: differenceSpec ? (v: number) => roundedNumber(v, differenceSpec) === 0 : (v: number) => roundsToZero(v, autoDecimals(v)),
     calloutGlyphPlans: new Map(),
@@ -487,6 +490,24 @@ export function runAnnotatePass(input: AnnotatePassInput): AnnotatePassResult {
         : plain(referenceUnit, false) }
       : ann.kind === 'valueLine' && !referenceFormat && (secondaryLine || referencePercent !== percent)
       ? { ...run, fmt: plain(referencePercent ? '%' : '', false) } : run;
+    const fmtRun: AnnotateRun = own
+      ? {
+          ...baseRun,
+          fmt: referenceUnit ? (v: number) => formatWithSpec(v, { ...own, prefix: '', suffix: referenceUnit }) : formatterFromExample(example!, input.locale),
+          fmtSigned: (v: number) => formatWithSpec(v, signed!),
+          printsZero: (v: number) => roundedNumber(v, signed!) === 0,
+        }
+      // Change a typed reference's precision only when its current format rounds the value.
+      : ann.kind === 'valueLine' && typeof ann.value === 'number' && !id.startsWith('averageMarker') && !referenceFormat
+        ? { ...baseRun, fmt: (v: number) => Number(roundHalfUp(Math.abs(v), autoDecimals(v))) === Math.abs(v)
+          ? baseRun.fmt(v)
+          : formatAutomaticNumber(v, { locale, decimals: Math.max(autoDecimals(v), neededDecimals(v)), suffix: referenceUnit ?? (referencePercent ? '%' : '') }) }
+        : baseRun;
+    // An authored annotation format wins; otherwise the format the line's number prints in, one step finer.
+    const statExample = ann.format ? undefined : example ?? referenceFormat;
+    const statFmt = statExample
+      ? (v: number) => formatStatWithSpec(v, referenceUnit ? { ...exampleSpec(statExample, locale), prefix: '', suffix: referenceUnit } : exampleSpec(statExample, locale))
+      : fmtRun.fmt;
     const scope: AnnotationScope = {
       input,
       nodes,
@@ -495,19 +516,7 @@ export function runAnnotatePass(input: AnnotatePassInput): AnnotatePassResult {
       warnings,
       bandSpans,
       eraBands: run.eraBands,
-      run: own
-        ? {
-            ...baseRun,
-            fmt: referenceUnit ? (v: number) => formatWithSpec(v, { ...own, prefix: '', suffix: referenceUnit }) : formatterFromExample(example!, input.locale),
-            fmtSigned: (v: number) => formatWithSpec(v, signed!),
-            printsZero: (v: number) => roundedNumber(v, signed!) === 0,
-          }
-        // Change a typed reference's precision only when its current format rounds the value.
-        : ann.kind === 'valueLine' && typeof ann.value === 'number' && !id.startsWith('averageMarker') && !referenceFormat
-          ? { ...baseRun, fmt: (v: number) => Number(roundHalfUp(Math.abs(v), autoDecimals(v))) === Math.abs(v)
-            ? baseRun.fmt(v)
-            : formatAutomaticNumber(v, { locale, decimals: Math.max(autoDecimals(v), neededDecimals(v)), suffix: referenceUnit ?? (referencePercent ? '%' : '') }) }
-          : baseRun,
+      run: { ...fmtRun, statFmt },
       id,
       nid: (part: string) => `ann:${id}:${part}:${run.seq++}`,
       priority: ann.priority ?? (ann.kind === 'diff' ? PRIORITY.grandTotal : undefined),
@@ -668,7 +677,7 @@ function placeCagr(s: AnnotationScope, ann: Extract<Annotation, { kind: 'cagr' }
       `use {kind:'diff', mode:'absolute'} to report the change across the span, or a labelled note for a loss-reduction figure`);
   }
   const elapsed = input.elapsedYears?.(a, b);
-  let years = elapsed ?? yearSpan(a.date, b.date);
+  let years = elapsed ?? yearSpan(a.date ?? a.owner.categoryId, b.date ?? b.owner.categoryId);
   if (years === null) {
     // No dates: a label that names a year ("FY24", "2025", "Q1 2024")
     // carries the period too. Read it, and say so.
@@ -1136,9 +1145,11 @@ function valueLineLabel(
 ): string {
   const { input, id } = s;
   const span = input.meanSpan?.({ from: ann.from, to: ann.to });
+  const isMean = ann.value === 'mean' || ann.value === undefined;
+  const valueText = (isMean ? s.run.statFmt : s.run.fmt)(v);
   const labelText =
-    ann.label === false ? '' : ann.label !== undefined ? namedLineText(ann.label, s.run.fmt(v), v, id)
-      : (ann.value === 'mean' || ann.value === undefined ? `${input.strings?.average ?? localeStrings(input.locale).average} ${s.run.fmt(v)}${span ? ` (${span})` : ''}` : s.run.fmt(v));
+    ann.label === false ? '' : ann.label !== undefined ? namedLineText(ann.label, valueText, v, id)
+      : (isMean ? `${input.strings?.average ?? localeStrings(input.locale).average} ${valueText}${span ? ` (${span})` : ''}` : valueText);
   if (!labelText) return labelText;
   const font = { family: input.theme.type.family, ...input.theme.type.label };
   const row = input.valueLineRows?.get(id);
@@ -1280,7 +1291,7 @@ function placeValueLine(s: AnnotationScope, ann: Extract<Annotation, { kind: 'va
     id,
     kind: 'valueLine',
     computedText: labelText || '',
-    valueText: s.run.fmt(v),
+    valueText: (meanLine ? s.run.statFmt : s.run.fmt)(v),
     nodeIds: [lineId],
     labelId: labelText ? `valueLine:${id}` : undefined,
     // A mean is MEASURED over the plotted series (the observations are the
