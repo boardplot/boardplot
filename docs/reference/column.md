@@ -274,3 +274,4 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | option-value-labels-ends | example | The first and latest quarter print their values (valueLabels ends) |
 | option-value-labels-none | example | No value prints; the axis reads every column (valueLabels none) |
 | option-value-labels-all | example | Every quarter prints its value (valueLabels all) |
+| grouped-twelve-slide | torture | Two series over twelve units on a full slide print all 24 values |

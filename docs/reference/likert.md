@@ -107,6 +107,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | engagement-options | example | The engagement survey with left row labels, thicker bars, one highlighted statement and explicit label kinds |
 | engagement-notes-pinned | torture | The engagement survey with its net and base pinned as one-line method notes under the author note |
 | engagement-dashboard-notes | torture | The engagement survey on a dashboard with its notes in the info panel |
+| twelve-statements-slide | torture | Twelve statements on a full slide print their shares inside the bars |
 
 ## Not for
 
