@@ -360,8 +360,12 @@ it.each([
   [['Revenue Q4 2023', 'Revenue Q1 2025'], '+45.6% p.a.'],
   [['FY98', 'FY02'], '+12.5% p.a.'],
   [['2023-01-01', '2024-07-01'], '+36.8% p.a.'],
-  [['Plan 2024', 'Actual 2026'], undefined],
+  [['Plan 2024', 'Actual 2026'], '+26.5% p.a.'],
+  [['Mid 2023', 'End 2024'], undefined],
+  [['Spring 2023', 'Autumn 2024'], undefined],
+  [['Sprint 3 2023', 'Sprint 7 2024'], undefined],
   [['W1 2023', 'W27 2024'], undefined],
+  [['Wk 1 2023', 'Wk 27 2024'], undefined],
   [['Jan-23', 'Jul-24'], undefined],
 ])('reads the years of %j from the whole period, or prints no rate', (labels, text) => {
   const data = {

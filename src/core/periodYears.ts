@@ -43,22 +43,31 @@ function periodOfLabel(label?: string) {
   const words = label?.trim().split(/\s+/) ?? [];
   for (let k = 0; k < words.length; k++) {
     const period = periodOf(words.slice(k).join(' '));
-    if (period) return { ...period, lead: words.slice(0, k).join(' ').toLowerCase() };
+    if (period) return { ...period, lead: words.slice(0, k).join(' ').toLowerCase(), bareYear: k === words.length - 1 && /^\d{4}$/.test(words[k]!) };
   }
   return null;
 }
 
+const PERIOD_WORD = /^(?:q\d?|h\d?|quarter|half|halves|w|wk|kw|cw|weeks?|woche|spring|summer|autumn|fall|winter|early|mid|late|start|end|begin(?:ning)?)$/;
+
+/** True when a lead holds a digit or a word that names a point inside a year, so it is not a name like "Plan". */
+function leadIsPeriodic(lead: string): boolean {
+  return /\d/.test(lead) || lead.split(/[\s-]+/).some((w) => PERIOD_WORD.test(w) || MONTH_NAMES.some((m) => m.test(w.replace(/\.$/, ''))));
+}
+
 /**
  * Years between two labels that name a period, or are two ISO dates. Null when
- * either does not, when the words before the periods differ ("Plan 2024" to
- * "Actual 2026"), and for week labels, which need a calendar of their own.
+ * either does not, when the words before the periods differ ("Revenue Q4 2023" to
+ * "Cost Q1 2025"), and for week labels, which need a calendar of their own.
  */
 export function yearSpanFromLabels(from?: string, to?: string): number | null {
   const dated = yearSpan(from, to);
   if (dated !== null) return dated;
   const a = periodOfLabel(from);
   const b = periodOfLabel(to);
-  if (!a || !b || a.lead !== b.lead || /(?:^|\s)(?:w|kw|cw|week|woche)\s?\d+$/.test(a.lead)) return null;
+  if (!a || !b || /(?:^|\s)(?:w|wk|kw|cw|week|woche)\s?\d+$/.test(a.lead)) return null;
+  // Different leads are fine on a bare last-word year when neither lead is part of the period: "Plan 2024" to "Actual 2026".
+  if (a.lead !== b.lead && !(a.bareYear && b.bareYear && !leadIsPeriodic(a.lead) && !leadIsPeriodic(b.lead))) return null;
   // A two-digit start more than 50 years after the end is in the century before ("FY98" to "FY02").
   const start = a.short && a.months > b.months + 600 ? a.months - 1200 : a.months;
   return (b.months - start) / 12;
