@@ -8,7 +8,7 @@ import type { Geometry, LayoutResult, PlacedLabel, RefusedLayout } from './types
 import type { ChartSizing, ResolvedSizing } from './types/sizing';
 import type { BaseOptions, RenderTarget } from './types/options';
 import { compactOptions, MOVED_SUBTITLE, omittedCompactNotes } from './compact';
-import { COMPACT_SOURCE_LINES, frameTextOptions, freedChromeOf, plotChromeFloor, settledAutoHeight, subtitleLine } from './frame';
+import { COMPACT_SOURCE_LINES, frameTextOptions, freedChromeOf, plotChromeFloor, settledAutoHeight, slotDemandHeight, subtitleLine } from './frame';
 import { aspectClassFor, furnitureBudget, furnitureScoped, ladderHeights, LADDER_TOLERANCE } from './aspect';
 import { isVarianceTier } from './grid/varianceTiers';
 import { isRefused } from './schema/refusals';
@@ -1416,7 +1416,8 @@ function fitOnce<D, O extends ChartOptions, M extends object, DV extends object>
       return tall.refused ? settled : tall;
     }
     function contentHeight(): LayoutResult<M, DV> {
-      for (let pass = 0; pass < 4; pass++) {
+      let refusedProbe = false;
+      for (let pass = 0; pass < (definition.type === 'grid' ? 6 : 4); pass++) {
         const probe = at(width, height);
         const natural = probe.sizing?.naturalHeight;
         // Tables can resize their frame around measured rows without replaying the ladder.
@@ -1424,9 +1425,19 @@ function fitOnce<D, O extends ChartOptions, M extends object, DV extends object>
           && !probe.refused && probe.size.height === natural)
           || (definition.type === 'pie' && !probe.refused && settledAutoHeight.has(probe.frame) && probe.size.height === natural)) return probe;
         if (natural === undefined) break;
+        // A grid of fill panels reports a canvas height, not a content height. A tier grid's slots can
+        // ask for more at the height they were measured at, so a taller natural height is drawn again.
+        // The canvas keeps its height when the slots ask for less there.
+        if (definition.type === 'grid' && probe.sizing?.fit !== 'content') {
+          // A refused probe has no frame to tell the two apart: measure again at the height it names.
+          if (probe.refused && pass < 3) { refusedProbe = true; height = natural; continue; }
+          if (refusedProbe && !probe.refused && !slotDemandHeight.has(probe.frame)) return probe;
+        }
+        const slotGrid = !probe.refused && slotDemandHeight.has(probe.frame) && probe.sizing?.fit !== 'content';
+        if (slotGrid && natural < height) return probe;
+        const grew = natural > height;
         height = natural;
-        // A grid of fill panels reports a canvas height, not a content height.
-        if (probe.sizing?.fit !== 'content') break;
+        if (!(slotGrid && grew) && probe.sizing?.fit !== 'content') break;
       }
       return at(width, height);
     }

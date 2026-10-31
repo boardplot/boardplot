@@ -43,7 +43,7 @@ export function clippedTextWarnings(result: Geometry, measure: TextMeasurer): Li
 }
 
 /** Each drawn line's box on the canvas: rotated about the node's anchor, then moved by the grid panel offset. */
-function lineBoxes(node: TextNode, measure: TextMeasurer): { x0: number; y0: number; x1: number; y1: number }[] {
+export function lineBoxes(node: TextNode, measure: TextMeasurer): { x0: number; y0: number; x1: number; y1: number }[] {
   const { font } = node;
   const lineH = font.size * (font.lineHeight ?? 1.2);
   // The renderers set the first baseline 0.88 em below y and rotate about (x, that baseline).
