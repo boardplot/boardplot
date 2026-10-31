@@ -115,6 +115,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | torture-long-labels | torture | Torture: long names at a generous size read whole, never cut |
 | ramp-outcomes | example | Outcome funnel filled from the series ramp, the lost share in badFill at 45 % |
 | signup-options | example | The sign-up funnel with an authored format, a named palette, narrower bands and explicit label kinds |
+| centered-eight-stages-slide | example | Eight-stage centered funnel on a full slide, stage name and value on one line |
 
 ## Not for
 

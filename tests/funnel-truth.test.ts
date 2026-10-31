@@ -166,6 +166,19 @@ describe('funnel truth contract', () => {
     expect(drawn.warnings.map(warning => warning.code)).not.toContain('funnel-label-hidden');
   });
 
+  // Eight centered stages on a full slide refused because each band had to hold two label lines.
+  it('sets name and value on one line when centered bands are too short for two', () => {
+    const { geometry } = fixture('centered-eight-stages-slide');
+    expect(geometry.refused).toBeFalsy();
+    const stages = geometry.labels.filter((label) => label.id.startsWith('stage:'));
+    expect(stages).toHaveLength(8);
+    for (const label of stages) {
+      expect(label.hidden).toBeFalsy();
+      expect(label.lines).toHaveLength(2);
+      expect(label.rect.h).toBeLessThan(label.font!.size * 2);
+    }
+  });
+
   it('derives sliver conversions from adjacent stage totals; the column shows the rate, the description names both stages', () => {
     const { data, geometry } = fixture('sliver-segments');
     const expected = expectedRates(data);
