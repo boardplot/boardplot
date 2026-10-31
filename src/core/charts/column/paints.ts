@@ -124,7 +124,7 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
     if (options.seriesRamp) return orderedRampPaint(authored.length - 1 - authored.indexOf(s), authored.length, quietRest);
     if (s.id === receding) return mutedMarkPaint();
     const step = rampIds.indexOf(s.id);
-    if (step >= 0) return neutralRampPaint(step, rampIds.length);
+    if (step >= 0) return neutralRampPaint(step, rampIds.length, scenario === 'FC');
     const partner = scenarioPartner.get(s.id);
     if (partner) return seriesIdentityPaint(partner, dataSeries.indexOf(partner), scenario);
     const slot = slots[dataIdx] ?? dataIdx;

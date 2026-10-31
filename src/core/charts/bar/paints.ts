@@ -53,7 +53,7 @@ export function barPaints(domain: BarDomain, warnings: LintWarning[]): BarLegend
     // Several plain parts of a stack beside a highlight recede on the neutral
     // ramp, strongest to quietest in authored order.
     const grey = stackGreys.indexOf(s.id);
-    if (grey >= 0) return neutralRampPaint(grey, stackGreys.length);
+    if (grey >= 0) return neutralRampPaint(grey, stackGreys.length, scenario === 'FC');
     if (beyondNet.has(s.id)) return { token: 'rest' };
     if (dataSeries.length === 1) return themeSeriesPaint(s.slot, palette, scenario, true);
     if (stackPlain.length > 1 && stackPlain.includes(s)) return stackRampPaint(stackPlain.indexOf(s), stackPlain.length, s.slot);

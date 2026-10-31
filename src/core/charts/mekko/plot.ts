@@ -58,12 +58,12 @@ export function mekkoPaints(env: MekkoEnv, domain: MekkoDomain, warnings: LintWa
   const receding = recedingSeriesId(series, highlights);
   // Two or more plain series beside a highlight recede on the neutral ramp, strongest to quietest.
   const rampIds = recedingRampIds(series, highlights);
-  const base = (s: NormSer, dataIdx: number): Paint => {
+  const base = (s: NormSer, dataIdx: number, scenario = s.scenario): Paint => {
     if (s.fill) return { css: s.fill };
     if (s.colorRole) return markRolePaint(s.colorRole, true);
     if (s.id === receding) return mutedMarkPaint();
     const step = rampIds.indexOf(s.id);
-    if (step >= 0) return neutralRampPaint(step, rampIds.length);
+    if (step >= 0) return neutralRampPaint(step, rampIds.length, scenario === 'FC');
     if (series.length === 1) return themeSeriesPaint(dataIdx, palette, s.scenario);
     return themeSeriesPaint(slots[dataIdx] ?? dataIdx, palette);
   };
@@ -74,7 +74,7 @@ export function mekkoPaints(env: MekkoEnv, domain: MekkoDomain, warnings: LintWa
     if (highlights.has(cat.id) || highlights.has(s.id)) return { token: 'focus' };
     if (mode === 'bar' && v < 0 && !s.fill && !s.colorRole) return signedFillPaint('bad');
     if (val.scenario) {
-      return series.length === 1 ? themeSeriesPaint(dataIdx, palette, val.scenario) : base(s, dataIdx);
+      return series.length === 1 ? themeSeriesPaint(dataIdx, palette, val.scenario) : base(s, dataIdx, val.scenario);
     }
     return base(s, dataIdx);
   };

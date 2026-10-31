@@ -2126,20 +2126,24 @@ export function recedingRampIds(
  * step is the muted mark a single receding series takes (mutedMarkPaint), the
  * last the light neutral, with even steps between. Where the muted mark sits
  * too near the light neutral for the steps to read apart (a dark page holds
- * both near its floor), the ramp starts at the full neutral mark. It resolves
+ * both near its floor), the ramp starts at the full neutral mark. A hatched
+ * (forecast) step runs from the neutral mark to the muted mark. It resolves
  * in the active theme, so a repaint to dark decides again.
  */
-export function neutralRampPaint(index: number, count: number): Paint {
-  return { token: 'neutralMark', theme: { kind: 'neutral-ramp', index, count } };
+export function neutralRampPaint(index: number, count: number, hatched = false): Paint {
+  return { token: 'neutralMark', theme: { kind: 'neutral-ramp', index, count, ...(hatched ? { hatched: true as const } : {}) } };
 }
 
 /** Neighbouring steps of the neutral ramp keep at least this OKLab distance (twice the ordered step floor). */
 const NEUTRAL_RAMP_STEP = 6;
 
-function neutralRampColor(theme: Theme, source: { index: number; count: number }): string {
+function neutralRampColor(theme: Theme, source: { index: number; count: number; hatched?: true }): string {
   const quiet = theme.color.neutralLight;
   const muted = paintColor(theme, mutedMarkPaint());
   if (source.count < 2) return muted;
+  // A hatch draws its step in stripes that must reach 3:1 on the page. The light steps would all
+  // deepen to the same 3:1 grey, so a hatched step runs from the neutral mark to the muted mark.
+  if (source.hatched) return mixColors(muted, paintTokenColor(theme, 'neutralMark'), source.index / (source.count - 1));
   const roomy = palettePerceptualDistance(muted, quiet, 'normal') / (source.count - 1) >= NEUTRAL_RAMP_STEP;
   const strong = roomy ? muted : paintTokenColor(theme, 'neutralMark');
   return mixColors(quiet, strong, source.index / (source.count - 1));
