@@ -428,6 +428,7 @@ export function chartReading(input: ChartReadingInput): ChartReading {
     labelsDropped: dropped.length,
     labelsDroppedBy,
     omissions: [...omissions.sort((a, b) => byData(a.labelId, b.labelId)),
+      ...((input.geometry.derived as { omissions?: ChartReading['omissions'] }).omissions ?? []),
       ...(source && !sourceDrawn ? [{ labelId: 'frame:source', text: source, reason: fittedSource ? 'truncated' : 'not-drawn', destination: 'frame.source' }] : [])],
     derived: derivedNumbers(input.claims),
     ...((input.geometry.derived as GridDerived).metricStack ? { metricStack: { readouts: (input.geometry.derived as GridDerived).metricStack!.readouts } } : {}),

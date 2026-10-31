@@ -296,10 +296,19 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   const statementFields = new Set(data.measures.filter(inStatement).flatMap(m => fields(exprOf(m))));
   const roots = data.measures.filter(m=>!m.parentId && placeOf(m) === undefined && !(options.splits && m.splitOf));
   const records: ComputedCellRecord[] = [];
+  // Per member and window, the fields it reports in any period: one it reports anywhere is owed in every period.
+  const reported = new Map<string, {sums: Set<string>; ref: Set<string>}>();
+  const reportedBy = (id: string) => { let r = reported.get(id); if (!r) reported.set(id, r = {sums: new Set(), ref: new Set()}); return r; };
+  // Fields that reach a derived parent from a number below it, so a null sum does not take the field away.
+  const reaches = new Map<string, Set<string>>();
+  const gaps = new Map<string, {member: string; window: string; periods: Set<string>; fields: Set<string>}>();
   if (data.dimension.sums) {
+    for (const f of facts.values()) for (const window of ['sums','ref'] as const) for (const field of Object.keys(f[window] ?? {})) reportedBy(f.memberId)[window].add(field);
+    for (const member of [data.dimension.total, ...data.dimension.members]) for (const field of member.fields ?? []) { reportedBy(member.id).sums.add(field); reportedBy(member.id).ref.add(field); }
     const derive=(member:string, children:DimSwitchMember[]) => {
       for(const child of children) derive(child.id,data.dimension.members.filter(m=>m.parentId===child.id));
       if(!children.length) return;
+      for(const window of ['sums','ref'] as const) for(const child of children) for(const field of reportedBy(child.id)[window]) reportedBy(member)[window].add(field);
       for(const period of data.periods) {
         const existing=facts.get(key(member,period.id));
         // Keyed by field id: a field named __proto__ keeps its sum.
@@ -307,23 +316,31 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
         for(const window of ['sums','ref'] as const) {
           const fieldSet=new Set(children.flatMap(child=>Object.keys(facts.get(key(child.id,period.id))?.[window] ?? {})));
           for(const field of fieldSet) {
-            const inputs=children.map(child=>({rowId:child.id,colId:key(period.id,window,field),value:facts.get(key(child.id,period.id))?.[window]?.[field] ?? null}));
-            // A statement field is required of every member that reports the period: a fact without it makes the total missing, not smaller.
-            const applicable=inputs.filter((_,i)=>{const fact=facts.get(key(children[i]!.id,period.id))?.[window];return Object.hasOwn(fact ?? {},field) || (fact !== undefined && statementFields.has(field));});
-            const raw=applicable.some(i=>i.value===null)?null:applicable.reduce((sum,i)=>sum+i.value!,0);
+            // A child that reports the field in any period owes it in every period, and a statement field is owed by every child that reports the period: a gap makes the total missing, not smaller.
+            const owing=children.filter(child=>reportedBy(child.id)[window].has(field) || (facts.get(key(child.id,period.id))?.[window] !== undefined && statementFields.has(field)));
+            const inputs=owing.map(child=>({rowId:child.id,colId:key(period.id,window,field),value:facts.get(key(child.id,period.id))?.[window]?.[field] ?? null}));
+            for(const child of owing) if(!Object.hasOwn(facts.get(key(child.id,period.id))?.[window] ?? {},field)) {
+              const gap=gaps.get(child.id+window) ?? {member:child.id,window,periods:new Set<string>(),fields:new Set<string>()};
+              gap.periods.add(period.id);gap.fields.add(field);gaps.set(child.id+window,gap);
+            }
+            const raw=inputs.some(i=>i.value===null)?null:inputs.reduce((sum,i)=>sum+i.value!,0);
             next[window][field]=raw;
-            records.push({rowId:member,colId:key(period.id,window,field),op:'dimswitch:partition-sum',inputs:applicable,raw,state:raw===null?'missing':'value',displayed:raw===null?'—':String(raw),kind:'aggregate'});
+            if(window==='sums' && inputs.some(i=>i.value!==null || reaches.get(i.rowId)?.has(field))) {const set=reaches.get(member) ?? new Set<string>();set.add(field);reaches.set(member,set);}
+            records.push({rowId:member,colId:key(period.id,window,field),op:'dimswitch:partition-sum',inputs,raw,state:raw===null?'missing':'value',displayed:raw===null?'—':String(raw),kind:'aggregate'});
             const authored=existing?.[window]?.[field];
-            if(typeof authored==='number'&&raw!==null) records.push({rowId:member,colId:key(period.id,window,field),op:'dimswitch:partition-check',inputs:[{rowId:member,colId:key(period.id,window,field),value:authored},...applicable],raw:authored-raw,state:'value',displayed:String(authored-raw),kind:'reconciliation'});
+            if(typeof authored==='number'&&raw!==null) records.push({rowId:member,colId:key(period.id,window,field),op:'dimswitch:partition-check',inputs:[{rowId:member,colId:key(period.id,window,field),value:authored},...inputs],raw:authored-raw,state:'value',displayed:String(authored-raw),kind:'reconciliation'});
           }
         }
-        facts.set(key(member,period.id),next);
+        // A field only the parent reports (a target, say) stays beside the sums derived from the children.
+        facts.set(key(member,period.id),existing ? {...existing,sums:Object.assign(emptyIdRecord(),existing.sums,next.sums) as DimSwitchSums,ref:Object.assign(emptyIdRecord(),existing.ref,next.ref) as DimSwitchSums} : next);
       }
     };
     derive(data.dimension.total.id,data.dimension.members.filter(m=>!m.parentId));
+    for(const gap of gaps.values()) warnings.push({code:'dimswitch-fact-missing',severity:'warn',field:['data','facts'],message:`Member '${gap.member}' has no ${gap.window==='ref' ? 'ref sums' : 'sums'} for ${[...gap.fields].map(f=>`'${f}'`).join(', ')} in period ${[...gap.periods].map(p=>`'${p}'`).join(', ')}, although it reports them in other periods. The sums of its parents and the Total print missing there. Send null for unknown or 0 for none.`});
   }
   const available=new Map<string,Set<string>>();
   for(const f of facts.values()) {const set=available.get(f.memberId) ?? new Set<string>();for(const field of Object.keys(f.sums)) if(typeof f.sums[field]==='number') set.add(field);available.set(f.memberId,set);}
+  for(const [member,fieldsOf] of reaches) {const set=available.get(member) ?? new Set<string>();for(const field of fieldsOf) set.add(field);available.set(member,set);}
   // Declared fields apply even when the drawn windows hold only null for them.
   for (const member of [data.dimension.total, ...data.dimension.members]) for (const field of member.fields ?? []) {const set=available.get(member.id) ?? new Set<string>();set.add(field);available.set(member.id,set);}
   // Looked up per cell: a key string per lookup grew with members x measures x periods.
@@ -337,8 +354,18 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   };
   const sums = (member:string, period:string) => factOf(member,period)?.sums;
   const has = (m: DimSwitchMeasure, member:string) => fields(exprOf(m)).every(field=>available.get(member)?.has(field));
+  const omissions: CompiledDimSwitch['omissions'] = [];
   // A measure the Total lacks is left out everywhere, so both variants show the same measures. A statement line never leaves: it prints missing.
-  const applies = (m: DimSwitchMeasure, member:string) => inStatement(m) || (has(m, data.dimension.total.id) && has(m, member));
+  const applies = (m: DimSwitchMeasure, member:string) => {
+    if (inStatement(m)) return true;
+    if (!has(m, data.dimension.total.id)) {
+      const field = fields(exprOf(m)).find(f => !available.get(data.dimension.total.id)?.has(f))!;
+      if (!omissions.some(o => o.labelId === `measure:${m.id}`)) omissions.push({ labelId: `measure:${m.id}`, text: m.label, reason: 'no-number', destination: 'reading.omissions' });
+      warn('dimswitch-measure-omitted', m.id, `Measure '${m.id}' is left out of the table: the Total has no number for field '${field}'${data.dimension.sums ? ', and no member has one' : ''}. Check the field name in facts[].sums and in the measure value, or declare it in dimension.total.fields to keep the measure with a missing Total.`);
+      return false;
+    }
+    return has(m, member);
+  };
   const headline = (member:string) => data.dimension.headline.map(id=>measures.get(id)!).find(m=>applies(m,member));
   const show = (m:DimSwitchMember) => {
     if (options.show !== 'withData') return true;
@@ -681,7 +708,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
       // The object form of stickyLabels without `columns` keeps the compiled default: label, Range, vs prior (and vs plan).
       ...(typeof tableOptions.stickyLabels==='object' && tableOptions.stickyLabels.columns===undefined ? {stickyLabels:{...tableOptions.stickyLabels,columns:plan ? 4 : 3}} : {}),
       ...(data.effectLabel ? {inlineVisibility:{effect:false,...tableOptions.inlineVisibility}} : {}),
-      expansion:{collapsed:[...collapsed]}},computedCells:records,depthCollapsed:defaults,levels,maxDepth,warnings,
+      expansion:{collapsed:[...collapsed]}},computedCells:records,depthCollapsed:defaults,levels,maxDepth,warnings,omissions,
   };
 }
 

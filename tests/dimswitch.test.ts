@@ -208,6 +208,39 @@ describe('dimswitch source and ordering rules',()=>{
  it('does not mutate source facts when deriving a partition',()=>{const data=structuredClone(exampleData);data.dimension.sums=true;const before=JSON.stringify(data);compileDimSwitch(data);expect(JSON.stringify(data)).toBe(before);});
 });
 
+// With dimension.sums, a member with a null or missing figure used to remove a KPI from the table or leave the Total looking complete.
+describe('dimswitch partition totals with null and missing members',()=>{
+ const build=(facts:{memberId:string;periodId:string;sums:DimSwitchSums}[],margin=false):DimSwitchData=>({
+  dimension:{label:'Segment',total:{id:'total',label:'Total'},members:[{id:'a',label:'A'},{id:'b',label:'B'}],headline:['sales'],sums:true},
+  measures:[{id:'sales',label:'Sales',value:{field:'sales'}},
+   {id:'margin',label:'Margin',value:margin ? {op:'div',a:{field:'profit'},b:{field:'sales'},factor:100} : {field:'profit'}}],
+  periods:[{id:'r',label:'Current',kind:'range'},{id:'p',label:'Prior',kind:'prior'},{id:'w',label:'Week 1'}],
+  facts});
+ const every=(memberId:string,sums:DimSwitchSums)=>['r','p','w'].map(periodId=>({memberId,periodId,sums}));
+ it('keeps a KPI when one member is null in every fact, and prints the Total missing',()=>{
+  const data=build([...every('a',{sales:10,profit:5}),...every('b',{sales:20,profit:null})]);
+  const result=compileDimSwitch(data,{depth:2});
+  const total=result.data.rows.find(r=>r.id===dimswitchRowId('by-measure','total','margin'));
+  expect(total?.cells?.range).toBeNull();
+  expect(result.data.rows.find(r=>r.id===dimswitchRowId('by-measure','a','margin'))).toBeDefined();
+  expect(result.warnings.map(w=>w.code)).not.toContain('dimswitch-measure-omitted');
+ });
+ it('warns and lists the measure when no member has a number for its field',()=>{
+  const data=build(every('a',{sales:10,profit:5}).concat(every('b',{sales:20,profit:5})));
+  data.measures[1]!.value={field:'profti'};
+  const result=compileDimSwitch(data);
+  expect(result.warnings.find(w=>w.code==='dimswitch-measure-omitted')?.message).toContain("'profti'");
+  expect(result.omissions.map(o=>o.labelId)).toEqual(['measure:margin']);
+ });
+ it('prints the Total missing and warns when a member has no fact in a period',()=>{
+  const data=build([...every('a',{sales:10,profit:5}),{memberId:'b',periodId:'p',sums:{sales:20,profit:5}}],true);
+  const result=compileDimSwitch(data,{depth:2});
+  const total=result.data.rows.find(r=>r.id===dimswitchRowId('by-measure','total','margin'))!;
+  expect(total.cells?.range).toBeNull();
+  expect(result.warnings.find(w=>w.code==='dimswitch-fact-missing')?.message).toContain("Member 'b'");
+ });
+});
+
 // a change line whose fitted format would print a nonzero change as 0pp keeps its digit where the width holds.
 it('keeps a fitted change line nonzero', async () => {
  const {fixtures}=await import('../src/core/charts/dimswitch/fixtures');
