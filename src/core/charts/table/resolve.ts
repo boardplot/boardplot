@@ -356,7 +356,8 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
       if (row.children) checkCellKeys(row.children, [...rowPath, 'children']);
     });
   };
-  checkCellKeys(data.rows, []);
+  // The authored rows: a fitted resolution rewrites cell formats, which the repair patch must not test.
+  checkCellKeys(magnitudeSource.rows, []);
   const records: ComputedCellRecord[] = [];
   const autoFootnotes = new Set<string>();
   /** Row labels whose changes took a tone, by the direction that judged them. */

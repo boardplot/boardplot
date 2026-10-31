@@ -1101,3 +1101,14 @@ it('warns about a cell key that names no column and offers the nearest column id
   expect(found[0]!.owner).toEqual({ rowId: 'a' });
   expect(found[0]!.suggest).toContain("'amount'");
 });
+
+// A repair patch built from the fitted rows tested a cell format the author never wrote, so applying it to the authored spec failed.
+it('builds the cell-column-unknown repair from the authored cells when fitFormats shortens a cell format', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel', label: 'Region', width: 120 }, { id: 'amount', kind: 'value', label: 'Amount', width: 44 }, { id: 'orders', kind: 'value', label: 'Orders', width: 44 }],
+    rows: [{ id: 'a', label: 'North', cells: { orders: { v: 1_234_567, format: '1,234,567' }, amunt: 5 } }],
+  };
+  const { warnings } = layout('table', data, { fitFormats: true, size: { width: 320 } });
+  const fix = warnings.find((w) => w.code === 'cell-column-unknown')!.fix!;
+  expect(fix[0]).toEqual({ op: 'test', path: '/data/rows/0/cells', value: data.rows[0]!.cells });
+});
