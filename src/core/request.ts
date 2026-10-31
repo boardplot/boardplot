@@ -295,7 +295,7 @@ function withClipWarnings(result: LayoutResult, measure: TextMeasurer): LayoutRe
 
 function layoutOnce(request: ResolvedChartRequest): LayoutResult {
   const run = preparedLayout(request);
-  try { return drawnAdvice(request, run(request.options)); } finally { run.finish(); }
+  try { return drawnAdvice(request, run(request.options), run); } finally { run.finish(); }
 }
 
 /**
@@ -320,20 +320,41 @@ function askedNotesOff(plain: LayoutResult, refused: LayoutResult): LayoutResult
 
 /**
  * An open height grows with the width, so a size refusal at an open height advises the width alone.
- * The pair the registry names joins the needed width to the height measured at the
- * narrower width; a host that pins that pair refuses again. The advice is not test-drawn, to keep
- * drawing fast. A pinned height keeps the pair.
+ * The width the registry names can stand above the narrowest one that draws (a narrow diagram card
+ * reads under its static floor), so the advice is the narrowest whole pixel that draws in full, the
+ * same width measure names. The height is the one drawn there. A pinned height keeps the pair.
  */
-function drawnAdvice(request: ResolvedChartRequest, result: LayoutResult): LayoutResult {
+function drawnAdvice(request: ResolvedChartRequest, result: LayoutResult, layoutAt: LayoutCall<any, any, any>): LayoutResult {
   const finding = result.refused ? result.warnings[0] : undefined;
   const need = finding?.code === 'size-below-floor' ? finding.expected?.minimum as Size | undefined : undefined;
   if (!result.refused || !need || request.fixed.height || need.width <= result.size.width) return result;
-  const advice = sizeRefusal(result.type, result.title, result.size, { ...result.sizing, minWidth: need.width, minHeight: need.height }).warnings[0]!;
+  // The same bounds as measure: a floor the chart declares statically is not searched under, and a width at it is the answer.
+  // The advice is still width-only there, as everywhere else.
+  const def = getChart(request.type);
+  const staticMinWidth = def === undefined ? 0 : declaredSizing(def, request.options).minWidth;
+  const floorOptions = request.type === 'table' || request.type === 'dimswitch' ? {} : { belowMinimum: 'refuse' as const };
+  const fullAt = (width: number): Geometry | undefined => {
+    const probe = layoutAt.probe({ ...request.options, ...floorOptions, size: { width }, [WIDTH_PROBE]: request.type });
+    return !isRefused(probe) && (probe as Geometry).mode !== 'compact' ? probe as Geometry : undefined;
+  };
+  // One probe one pixel under the registry width ends the search when nothing narrower draws; a layout
+  // is made for each step of the search only when it does.
+  let drawn = need.width <= staticMinWidth ? undefined : fullAt(need.width - 1);
+  let [low, high] = [Math.max(Math.ceil(result.size.width), staticMinWidth) - 1, drawn ? need.width - 1 : need.width];
+  while (drawn && high - low > 1) {
+    const mid = Math.floor((low + high) / 2);
+    const probe = fullAt(mid);
+    if (probe) [high, drawn] = [mid, probe];
+    else low = mid;
+  }
+  const width = high;
+  const height = drawn ? Math.max(Math.ceil(drawn.size.height), Math.ceil(result.sizing.minHeight)) : need.height;
+  const advice = sizeRefusal(result.type, result.title, result.size, { ...result.sizing, minWidth: width, minHeight: height }).warnings[0]!;
   const warning = {
     ...advice,
-    message: `${result.title} needs at least ${need.width}px of width; received ${Math.round(result.size.width)}px`,
-    suggest: `Render it at ${need.width}px wide or wider; the height follows the width.${result.sizing.hint ? ` ${result.sizing.hint}` : ''}`,
-    fix: [{ op: 'replace' as const, path: '/options/size', value: { width: need.width } }],
+    message: `${result.title} needs at least ${width}px of width; received ${Math.round(result.size.width)}px`,
+    suggest: `Render it at ${width}px wide or wider; the height follows the width.${result.sizing.hint ? ` ${result.sizing.hint}` : ''}`,
+    fix: [{ op: 'replace' as const, path: '/options/size', value: { width } }],
   };
   return { ...result, warnings: [warning, ...result.warnings.slice(1)] };
 }
@@ -444,13 +465,26 @@ export function minHeightAtWidth(
 ): number {
   let height = Math.ceil(from);
   for (let pass = 0; pass < 8; pass++) {
-    const probe = layoutAt({ width, height });
-    if (!isRefused(probe) || !probe.sizing || probe.warnings[0]?.code !== 'size-below-floor') return height;
-    const next = Math.ceil(probe.sizing.minHeight);
-    if (next <= height) return height;
+    const next = heightNamedBy(layoutAt({ width, height }), height);
+    if (next === undefined || next <= height) return height;
     height = next;
   }
   return height;
+}
+
+/**
+ * The height a refused layout at `height` asks for: the floor a size refusal reports, or the height
+ * a refusal of unplaced text names in its size fix. Undefined when a taller frame does not help.
+ */
+function heightNamedBy(probe: LayoutResult, height: number): number | undefined {
+  if (!isRefused(probe)) return undefined;
+  if (probe.warnings[0]?.code === 'size-below-floor') return probe.sizing ? Math.ceil(probe.sizing.minHeight) : undefined;
+  for (const warning of probe.warnings) {
+    const op = warning.severity === 'error' ? warning.fix?.find(fix => fix.op !== 'test' && fix.op !== 'remove' && fix.path === '/options/size') : undefined;
+    const size = op && 'value' in op ? op.value as Partial<Size> : undefined;
+    if (size?.height !== undefined && size.height > height && (size.width ?? probe.size.width) <= probe.size.width + SIZE_TOLERANCE) return Math.ceil(size.height);
+  }
+  return undefined;
 }
 
 /** The measurement of a layout already made; the CLI judges the geometry it measured. */
@@ -674,8 +708,9 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
     const probe = probes.get(`${atWidth}x${observedHeight}`);
     if (!probe) break;
     const repairHeight = cleanHeight(probe);
-    const next = Math.ceil(Math.max(probe.sizing?.minHeight ?? observedHeight, repairHeight));
-    if ((!isRefused(probe) && !repairHeight) || !probe.sizing || (isRefused(probe) && probe.warnings[0]?.code !== 'size-below-floor') || next <= observedHeight) {
+    const named = heightNamedBy(probe, observedHeight);
+    const next = Math.ceil(Math.max(named ?? probe.sizing?.minHeight ?? observedHeight, repairHeight));
+    if ((!isRefused(probe) && !repairHeight && named === undefined) || !probe.sizing || (isRefused(probe) && named === undefined) || next <= observedHeight) {
       atHeight = Math.min(floorHeight, observedHeight);
       break;
     }
@@ -706,7 +741,7 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
       if (!request.fixed.height) return result.size.height;
       // A probe that draws the same chart at the same width is the answer; the floor bounds the search.
       const run = preparedLayout(request);
-      try { return drawnHeight(result, floorHeight, size => run({ ...request.options, size })); } finally { run.finish(); }
+      try { return drawnHeight(result, floorHeight, size => run({ ...request.options, size }), request.size.height); } finally { run.finish(); }
     },
     warnings,
     ...(result.refused ? { refused: { ...result, sizing, warnings } }

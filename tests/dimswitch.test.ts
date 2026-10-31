@@ -49,6 +49,21 @@ it('prints every member row of a money measure in the magnitude of its largest c
  const small:DimSwitchData={...exampleData,facts:exampleData.facts.map(fact=>({...fact,sums:tiny(fact.sums)!,...(fact.ref ? {ref:tiny(fact.ref)} : {})}))};
  expect(['total','paid','search-a','search-b'].map(member=>row(member,'spend',small).cells.range!.displayed)).toEqual(['0.180','0.160','0.140','0.120']);
 });
+// Period cells of 1.46M printed one string (1.5M ... 1.4M) because the Range total of 18.2M set the precision of every column of the measure.
+it('gives each column of a money measure the precision its own figures need', () => {
+ const sums=(amount:number)=>({amount});
+ const data:DimSwitchData={dimension:{label:'Region',total:{id:'total',label:'Total'},members:[{id:'a',label:'A'},{id:'b',label:'B'}],headline:['amount'],sums:true},
+  measures:[{id:'amount',scale:'money',label:'Amount',value:{field:'amount'}}],periods:[{id:'range',label:'Range',kind:'range'},{id:'prior',label:'Prior',kind:'prior'},{id:'p1',label:'P1'},{id:'p2',label:'P2'}],
+  facts:[['total',18200000,1460000,1440000],['a',17100000,1370000,1350000],['b',1100000,90000,90000]].flatMap(([memberId,...v])=>(['range','p1','p2'] as const).map((periodId,i)=>({memberId:memberId as string,periodId,sums:sums(v[i] as number),...(i===0 ? {ref:sums(v[0] as number*0.9)} : {})})))};
+ expect(['range','p1','p2'].map(col=>row('total','amount',data).cells[col]!.displayed)).toEqual(['18.2M','1.46M','1.44M']);
+ expect(['range','p1','p2'].map(col=>row('b','amount',data).cells[col]!.displayed)).toEqual(['1.1M','0.09M','0.09M']);
+});
+// Scale 'money' climbs k, M, B itself, so a unit that names a magnitude prints 1,320 Mio. CHF as 1.32k.
+it('warns when a money measure has a unit that names a magnitude', () => {
+ const data:DimSwitchData={...exampleData,measures:exampleData.measures.map(m=>m.scale==='money' ? {...m,unit:'Mio. CHF'} : m)};
+ expect(compileDimSwitch(data).warnings.filter(w=>w.code==='dimswitch-scale-unit').length).toBeGreaterThan(0);
+ expect(compileDimSwitch(exampleData).warnings.some(w=>w.code==='dimswitch-scale-unit')).toBe(false);
+});
 // One table prints one decimal separator: language alone must not switch the comparisons to commas while the values keep points.
 it('keeps the value separator in comparisons when only the language is German', () => {
  const german=resolveDimSwitch(exampleData,{locale:{language:'de'}}).table.rows.find(r=>r.id===dimswitchRowId('by-measure','total','cac'))!;
