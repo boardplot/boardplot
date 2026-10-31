@@ -239,6 +239,40 @@ export function round2(v: number): number {
 }
 
 /**
+ * A value or difference kept for printing, a verdict or a reading: fifteen
+ * significant digits of `scale` clear float noise (0.1 + 0.2) and keep every
+ * digit a format may print. `scale` is the size of the operands: a difference
+ * of 5.5e-17 between 0.3 and 0.30000000000000004 is noise, so it becomes 0.
+ * Never `round2` such a number: the format then rounds an already rounded
+ * value, and a gap of 0.004 reads as 0.
+ */
+export function cleanFloat(v: number, scale: number = v): number {
+  const decimals = 14 - Math.floor(Math.log10(Math.abs(scale)));
+  if (decimals < 0 || decimals > 100) return v;
+  const cleaned = Number(v.toFixed(decimals)) + 0; // + 0 turns -0 into 0
+  // Noise is a few float steps of the operands. A larger change is a real digit of the value, as in 1e14 + 0.25.
+  return Math.abs(cleaned - v) > 4 * Number.EPSILON * Math.abs(scale) ? v : cleaned;
+}
+
+/**
+ * A sum of terms, cleaned at the sum of their absolute values. Cleaning a sum
+ * at its own size keeps cancellation noise: 0.1 + 0.2 − 0.3 is 5.55e-17, and at
+ * its own scale that residue looks like a real value. The largest term is too
+ * small a scale: float steps add up over the terms, so five terms leave noise
+ * that a scale of one term does not clear.
+ */
+export function cleanSum(terms: readonly number[]): number {
+  let scale = 0;
+  for (const t of terms) scale += Math.abs(t);
+  return cleanFloat(terms.reduce((a, b) => a + b, 0), scale);
+}
+
+/** `a − b`, cleaned at the size of its operands. */
+export function cleanDiff(a: number, b: number): number {
+  return cleanFloat(a - b, Math.max(Math.abs(a), Math.abs(b)));
+}
+
+/**
  * Axis-aligned padding a stroke of `width` adds around a segment running
  * (dx, dy) — how far its ink reaches beyond the segment's own bounding box.
  *

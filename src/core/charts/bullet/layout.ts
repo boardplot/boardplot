@@ -30,7 +30,7 @@ import { contrastRatio } from '../../color';
 import { TEXT_CONTRAST_FLOOR } from '../../themeRules';
 import { formatAutomaticNumber, formatAutomaticPercent, MINUS } from '../../format';
 import { formatterFromExample, parseFormatExample } from '../../formatSpec';
-import { rectContains, rectsOverlap, round2, rowLabelX, type Rect } from '../../geometry';
+import { cleanDiff, rectContains, rectsOverlap, rowLabelX, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
 import { REFERENCE_LABEL_CLEARANCE, separationStroke } from '../../markVisibility';
@@ -539,7 +539,7 @@ export function layoutBullet(
   const deltaVsTarget: Record<Id, number> = emptyIdRecord();
   for (const row of rows) {
     if (row.value !== null && row.target !== null) {
-      deltaVsTarget[row.id] = round2(row.value - row.target);
+      deltaVsTarget[row.id] = cleanDiff(row.value, row.target);
     }
   }
 
