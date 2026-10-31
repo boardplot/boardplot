@@ -36,7 +36,7 @@ import { VALUE_LINE_RESERVE } from '../../annotateParts';
 import { accumulateStack, averageMarkerLine, averageOfUnaddedSums, averageOfWholeShares, grandTotalRequested, compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning, plottedMean, sortSegments, stackTotalFormatter, warnIncompleteStacks } from '../band/stacks';
 import { NO_STACK_MEAN, stackAdds } from '../../stackAdds';
 import { isIncomplete, warnShareRoundingDrift } from '../../dataGaps';
-import { roundingUnavailable, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
+import { roundingUnavailable, shareRoundingNotes, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
 import { chosenValueIndices } from '../band/valueSelection';
 import { partialKeyForced, saysToDate, toDateFits } from '../../partialPeriod';
 import { chartString } from '../../strings';
@@ -46,6 +46,7 @@ import { PANEL_KEYED } from './model';
 import type { AnomalyColumnOptions } from './types';
 import { currentSmallValues } from '../../formatPrecision';
 import { disclosuresShown } from '../../notes';
+import { cappedItems } from '../../frame';
 import { maxOf } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
 
@@ -1037,6 +1038,9 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
   } else if (sharesOn) {
     warnShareRoundingDrift(warnings, wholes.map(({ c, parts }) => ({ name: c.label ?? c.id, shares: parts.map((part) => part.share), decimals: shareSet.decimals })));
   }
+  // sharesOfOneWhole: a stack whose authored parts miss 100 prints shares of its own total.
+  const rescaled = options.sharesOfOneWhole === true ? wholes.filter(({ c }) => Math.abs(basis.stackTotals[c.id]! - 100) > 0.05).map(({ c }) => c.label ?? c.id) : [];
+  const shareNotes = shareRoundingNotes(options, roundingAdjustments, cappedItems(rescaled, options));
   let activeBreak = columnAxisBreak(options, anomaly, rendered, meanValue, averageMark, corridor.corridorShown, extent.dLo, extent.dHi, warnings);
   // An authored step keeps its rhythm across a break only while each side keeps an inner tick, not its end tick alone.
   let { stepTicks, ...span } = extent;
@@ -1063,7 +1067,7 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
   }
   return {
     // The shares print at the chart's one precision ("9%" beside "50%"), unless shareLabels.format sets one.
-    ...env, ...(options.shareLabels?.format ? {} : { pctFmt: shareSet.format }), shareTexts, roundingAdjustments, options, cats, seriesNorm, dataSeries, refSeries, othersId, valueSpec, fmt, totalFmt: stackTotalFormatter(variant, valueSpec.spec, fmt), statFmt, variant,
+    ...env, ...(options.shareLabels?.format ? {} : { pctFmt: shareSet.format }), shareTexts, roundingAdjustments, shareNotes, options, cats, seriesNorm, dataSeries, refSeries, othersId, valueSpec, fmt, totalFmt: stackTotalFormatter(variant, valueSpec.spec, fmt), statFmt, variant,
     refStyle: options.referenceStyle ?? 'tick', signColor, pyRef, pyGrowth,
     uniformScenario, pctLevels, ...lines, ...ribbons, computedTotal, va, ...basis, anomaly, ...span, ...(stepTicks && stepAcross ? { stepTicks } : {}), meanValue, averageMark, meanSpan, ...corridor,
     activeBreak,

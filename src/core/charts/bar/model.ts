@@ -137,6 +137,8 @@ export interface BarDomain {
   shareTexts: Map<string, string>;
   /** rounding 'sum-consistent': the shares printed off their nearest rounding. */
   roundingAdjustments: import('../../shareRounding').RoundingAdjustment[];
+  /** The hidden method note on moved or rescaled shares. */
+  shareNotes: string[];
   theme: Theme;
   /** The authored palette when the theme knows it, else undefined. */
   palette: string | undefined;

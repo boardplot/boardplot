@@ -308,6 +308,7 @@ export function solveColumnFrame(
           domain.dataSeries.reduce((sum, series) => sum + series.vals.filter((cell) => cell.v !== null).length, 0)),
         ...((options as { [CATEGORY_NOTES]?: string[] })[CATEGORY_NOTES] ?? []),
         ...partialTotalsNote(domain, options),
+        ...domain.shareNotes,
       ],
       legend,
       ...(eventKey ? { eventKey } : {}),

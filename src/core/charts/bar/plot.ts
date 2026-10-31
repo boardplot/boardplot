@@ -175,7 +175,7 @@ export function solveBarFrame(domain: BarDomain, paints: BarLegendPaints, warnin
           ? [disclosureNote(stringFields(options.strings!.knownPartsShares!, {
             categories: cappedItems(cats.filter(c => c.total100 === undefined && domain.incompleteRows.has(c.id)).map(c => c.label ?? c.id), options).join(', '),
           }))] : []),
-        ...authoredNotes(options), ...((options as { [CUT_NOTES]?: string[] })[CUT_NOTES] ?? [])],
+        ...authoredNotes(options), ...((options as { [CUT_NOTES]?: string[] })[CUT_NOTES] ?? []), ...domain.shareNotes],
       legend,
       theme,
       measure,

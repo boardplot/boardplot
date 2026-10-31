@@ -262,6 +262,16 @@ describe('data gaps', () => {
       .toEqual([['33', '33', '34'], [expect.objectContaining({ part: 'a', nearest: '33%', printed: '34%' })]]);
   });
 
+  // A 100% stack moves printed shares by default and rescales parts that miss 100, and only reading.rounding told the reader.
+  it('lists a hidden method note when a 100% stack moves or rescales shares', () => {
+    const thirds = lay('column', { categories: [{ id: 'q' }], series: ['a', 'b', 'c'].map((id) => ({ id, values: [10] })) }, { variant: 'stacked100' });
+    expect(noteTexts(thirds, ['method']).join(' ')).toContain('moved by one step');
+    const shares = [59.6, 19.8, 10.7, 5.8, 4.3].map((value, i) => ({ id: `s${i}`, values: [value] }));
+    const rescaled = lay('column', { categories: [{ id: 'q', label: 'Sep' }], series: shares }, { variant: 'stacked100', sharesOfOneWhole: true });
+    expect(noteTexts(rescaled, ['method']).join(' ')).toContain('Sep: the authored parts do not add up to 100');
+    expect(noteTexts(lay('column', { categories: [{ id: 'q' }], series: ['a', 'b'].map((id) => ({ id, values: [50] })) }, { variant: 'stacked100' }), ['method'])).toEqual([]);
+  });
+
   it('omits a CAGR to a partial period and flags a diff that uses one', () => {
     const categories = [{ id: 'y1', label: '2022', date: '2022-12-31' }, { id: 'y2', label: '2023', date: '2023-12-31' }, { id: 'y3', label: '2024 YTD', date: '2024-12-31', partial: true }];
     const g = lay('column', { categories, series: [{ id: 'a', values: [100, 120, 70] }] }, {

@@ -34,10 +34,11 @@ import { chartString } from '../../strings';
 import type { LintWarning, Paint } from '../../types/scene';
 import { accumulateStack, averageMarkerLine, averageOfUnaddedSums, averageOfWholeShares, grandTotalRequested, compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning, plottedMean, sortSegments, stackTotalFormatter, warnIncompleteStacks } from '../band/stacks';
 import { isIncomplete, warnShareRoundingDrift } from '../../dataGaps';
-import { roundingUnavailable, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
+import { roundingUnavailable, shareRoundingNotes, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
 import { NO_STACK_MEAN, stackAdds } from '../../stackAdds';
 import { OTHERS_ID, type BarDomain, type NormCat, type NormSeries } from './model';
 import { disclosuresShown } from '../../notes';
+import { cappedItems } from '../../frame';
 
 /** The label text of a bar or segment: the display value with the cell's `${value}` override; null when the cell hides it. */
 /**
@@ -559,9 +560,13 @@ export function resolveBarDomain(data: ChartData, options: BarOptions, warnings:
   } else if (sharesOn) {
     warnShareRoundingDrift(warnings, wholes.map(({ c, parts }) => ({ name: c.label, shares: parts.map((part) => part.share) })));
   }
+  // sharesOfOneWhole: a bar whose authored parts miss 100 prints shares of its own total.
+  const rescaled = options.sharesOfOneWhole === true
+    ? wholes.filter(({ c, parts }) => Math.abs(parts.reduce((sum, part) => sum + part.s.cells[cats.indexOf(c)]!.v!, 0) - 100) > 0.05).map(({ c }) => c.label) : [];
+  const shareNotes = shareRoundingNotes(options, roundingAdjustments, cappedItems(rescaled, options));
   const domain = {
     options, theme, palette: paletteRamp ? options.palette : undefined, size,
-    measure: options.measure ?? defaultMeasurer, highlights, variant, shareTexts, roundingAdjustments,
+    measure: options.measure ?? defaultMeasurer, highlights, variant, shareTexts, roundingAdjustments, shareNotes,
     referenceStyle: options.referenceStyle ?? 'tick', connectorsOn,
     referenceTick: {
       width: options.referenceTick?.width ?? strokeToken(theme, 'rule'),
