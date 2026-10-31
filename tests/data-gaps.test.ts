@@ -81,6 +81,23 @@ describe('data gaps', () => {
     }
   });
 
+  // A blank part drops its category from a variance chart, and the warnings must say so instead of leaving an empty slot that reads as no difference.
+  it('warns once per variance category that a blank part leaves undrawn', () => {
+    const data = { categories: [{ id: 'x' }, { id: 'y' }, { id: 'z' }], series: [
+      { id: 'a', values: [5, null, 7] }, { id: 'b', values: [1, 1, null] },
+      { id: 'plan', role: 'reference', values: [4, 4, 4] },
+    ] };
+    const missing = (g: Geometry) => g.warnings.filter((w) => w.code === 'missing-value');
+    const plain = missing(lay('variance', data, { variance: { vs: 'plan' } }));
+    expect(plain.map((w) => w.message)).toEqual([
+      "series 'a' at 'y': missing value — the category is not drawn",
+      "series 'b' at 'z': missing value — the category is not drawn",
+    ]);
+    expect(plain.map((w) => [w.severity, w.owner])).toEqual([['info', { categoryId: 'y' }], ['info', { categoryId: 'z' }]]);
+    const dash = missing(lay('variance', data, { variance: { vs: 'plan' }, missingMark: 'dash' }));
+    expect(dash[0]!.message).toBe("series 'a' at 'y': missing value — the category is drawn as an en dash");
+  });
+
   // A reference must keep isolated values visible and leave missing periods open unless the author requests a disclosed bridge.
   it('splits reference paths at missing periods and marks explicit bridges', () => {
     const categories = ['a', 'b', 'c', 'd'].map((id) => ({ id }));

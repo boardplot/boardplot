@@ -77,7 +77,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | variance | object |  |  | Required comparison identifying the measured quantity and the reference series. |
 | variance.of | string | `'total'` (or another value of its type) |  | Compared series id, or total for the sum of data series. Defaults to total. |
 | variance.vs | string |  |  | Reference-series id; its scenario names the comparison tier. |
-| missingMark | string | `'dash'`, `'none'` |  | What a category with no prior value leaves behind. 'dash' prints an en dash in the muted ink, at the baseline or, over an integrated actual column, where the cap would sit, so a missing reference reads as missing and not as no difference; 'none' (the default) draws nothing. A reference that exists and is not positive keeps its own 'n.m.' glyph. |
+| missingMark | string | `'dash'`, `'none'` |  | What a category with no prior value leaves behind. 'dash' prints an en dash in the muted ink, at the baseline or, over an integrated actual column, where the cap would sit, so a missing reference reads as missing and not as no difference; 'none' (the default) draws nothing. A reference that exists and is not positive keeps its own 'n.m.' glyph. A category with a blank part in its actual total leaves the same mark and the info warning missing-value. |
 
 Plus the [shared options](options.md). This type does not accept `detailFields`, `categoryLabels`, `valueAxis.tickStep`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `topN`, `hatchStrength`, `rounding`.
 
