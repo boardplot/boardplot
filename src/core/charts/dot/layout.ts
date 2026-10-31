@@ -22,7 +22,7 @@ import type { AnchorResolution } from '../../annotate';
 import { percentCellsOnly, percentLevels, runAnnotatePass } from '../../annotatePass';
 import { applyValueAxisTitleInk, layoutValueAxis, planValueAxisTitle, valueAxisTitleRequest } from '../../axis';
 import { arrowHeadPath, arrowShaftEnd } from '../../svgPath';
-import { formatterFromExample, neededDecimals, seriesRasterFormatter } from '../../formatSpec';
+import { formatStatWithSpec, formatterFromExample, neededDecimals, seriesRasterFormatter } from '../../formatSpec';
 import { formatAutomaticNumber } from '../../format';
 import { autoDecimals } from '../../formatPrecision';
 import { localeStrings } from '../../strings/dot';
@@ -264,6 +264,8 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   const percentAxis = percentCellsOnly(dataSeries.map((series) => ({ vals: series.cells.map((cell) => ({ ...cell, format: cell.meta?.format })), format: series.format })));
   const referenceFmt = percent && !options.format
     ? (v: number) => formatAutomaticNumber(v, { locale: options.locale?.language, decimals: Math.max(autoDecimals(v), neededDecimals(v)), suffix: '%' }) : fmt;
+  // A mean is a derived statistic: it lifts past the raster instead of rounding to another number (column twin).
+  const meanFmt = percent && !options.format ? referenceFmt : (v: number) => formatStatWithSpec(v, valueSpec.spec);
   if (variant === 'dumbbell' && dataSeries.length !== 2) {
     throw new NormalizeError(
       'dumbbell-two-series',
@@ -362,7 +364,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
       const mean = inScope.reduce((sum, v) => sum + v, 0) / inScope.length;
       // The marker reads "Average 8.1", not an unexplained "Ø". It
       // takes the plotted values' decimals, as the other value lines do.
-      const marker = averageMarkerLine(annotationsAll, mean, referenceFmt, undefined, averageWord);
+      const marker = averageMarkerLine(annotationsAll, mean, meanFmt, undefined, averageWord);
       averageIds.add(marker.id!);
       annotationsAll.push(marker);
     }
@@ -1111,7 +1113,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     const isMean = ann.value === undefined || ann.value === 'mean';
     // An authored name prints with the line's value ("Median 2024: 22.1"),
     // unless it carries it already; the mean reads "Average".
-    const valueText = annFmt(v);
+    const valueText = isMean && !ann.format ? meanFmt(v) : annFmt(v);
     const labelText = ann.label === false ? ''
       : ann.label === undefined ? (isMean ? `${averageWord} ${valueText}` : valueText)
       : averageIds.has(id) ? ann.label : namedLineText(ann.label, valueText, v, id);

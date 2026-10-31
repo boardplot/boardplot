@@ -42,6 +42,7 @@ import type { RenderGeometry } from './prepared';
 import { markScrollRegion, scrollStateOf, type TableScrollState } from './scrollState';
 import { useChartExport, type ExportLink } from './exportLink';
 import { useRowsInput, type RowsProps } from './rowsInput';
+import { frameSize, RefusalBoundary } from './RefusalBoundary';
 
 export type { HoverContentContext, HoverOption, RenderHoverContent } from './useHover';
 
@@ -178,7 +179,7 @@ const OWN_ROWS_OPTIONS = new Set(['grid']);
  * count in the server's first frame and the hydrating one (`asFirstFrame`).
  */
 export function createChartComponent<D, O extends ChartOptionsLike>(type: string, checkKeys?: OptionKeyCheck, linked?: readonly DeferredName[]) {
-  function Chart(props: ChartProps<D, O>): ReactElement {
+  function Drawn(props: ChartProps<D, O>): ReactElement {
     const { data: authored, annotations, fixedSize, onGeometry, onWarnings, onRefused, renderRefused, onEmpty, target, size, fit, fallbackSize, prepared, hover, onSeriesClick, onRecordClick, renderHoverContent, zoom, styleNonce, idPrefix,
       storyLink, onNotes, renderNotes, onScrollChange, deferLayout = true, exporter, rows: rowsProp, columns: columnsProp, onRowsReading, ...rest } = props;
     // A grid's rows and columns are its panel layout options.
@@ -234,7 +235,7 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
     const attached = zoomed.derived || detached.current === prepared ? undefined : prepared;
     const defer = deferLayout && attached === undefined && !measured.printing;
     const first = useDeferrableChartLayout({ type, data: zoomed.data as D, target, options: { ...zoomed.options as typeof noteOptions, size: asked }, annotations: zoomed.annotations as Annotation[] | undefined }, {},
-      { prepared: attached, fit: measured.printFill ? 'fill' : resolvedFit, skipLayout: refusedOptions.length > 0 || measured.waiting || noData, idle: noData, errorAsRefusal: true, linked, defer });
+      { prepared: attached, fit: measured.printFill ? 'fill' : resolvedFit, fallback: container ? measured.fallback : undefined, skipLayout: refusedOptions.length > 0 || measured.waiting || noData, idle: noData, errorAsRefusal: true, linked, defer });
     // A cohort refused for width alone draws at the width it needs in a horizontal
     // scroll box, as TableChart scrolls a wide table. A pinned height stays pinned. A prepared
     // chart attaches without a client layout, so its refusal keeps the card.
@@ -304,9 +305,12 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
     const refusals = refusedOptions.length ? refusedOptions : !geometry || geometry.refused ? []
       : isFullGeometry(geometry) ? refusalFindings(chartRefusals(geometry.warnings)) : geometry.refusals ?? [];
 
+    // The callbacks sit in refs: an inline one is new on every render and must not fire its effect again.
+    const geometryListener = useRef(onGeometry);
+    geometryListener.current = onGeometry;
     useEffect(() => {
-      if (geometry && !geometry.refused && isFullGeometry(geometry) && refusals.length === 0) onGeometry?.(geometry);
-    }, [onGeometry, geometry, refusals.length]);
+      if (geometry && !geometry.refused && isFullGeometry(geometry) && refusals.length === 0) geometryListener.current?.(geometry);
+    }, [geometry, refusals.length]);
     // The scroll box reports its state as TableChart's scroller does, so a host can fade the cut edge.
     const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
     const scrollListener = useRef(onScrollChange);
@@ -345,11 +349,13 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
     const footless = useMemo(() => (footer ? withoutSvgFooter(footer, asDrawn) : undefined), [footer, asDrawn]);
     // A list that empties after an update is reported too, once, as [].
     const notesSent = useRef(false);
+    const notesListener = useRef(onNotes);
+    notesListener.current = onNotes;
     useEffect(() => {
       if (!footer && !notesSent.current) return;
       notesSent.current = footer !== undefined;
-      onNotes?.(notes);
-    }, [onNotes, notes, footer]);
+      notesListener.current?.(notes);
+    }, [notes, footer]);
     const pinned = container ? measured.pinnedHeight : size !== undefined && (typeof size === 'string' || size.height !== undefined);
     // The export lays out what is on screen: no snapshot while a refusal, the busy box or an older drawing shows.
     const [storyStep, setStoryStep] = useState<string>();
@@ -404,6 +410,13 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
       </div>
     );
     return frame(scrollBox ? <div ref={setScroller} data-bp-scroll="" className="bp-scroll" style={{ overflowX: fitted ? 'visible' : 'auto', maxWidth: '100%' }}>{chart}</div> : chart);
+  }
+  const DrawnChart = Drawn as (props: object) => ReactElement;
+  // A bad value draws the refusal card in the chart's own frame and never unmounts the host's root (RefusalBoundary).
+  function Chart(props: ChartProps<D, O>): ReactElement {
+    const { size, fallbackSize, target, fixedSize, title, theme } = props as ChartHostProps & { title?: unknown; theme?: ThemeRef };
+    return <RefusalBoundary watch={props} fallback={(finding) => <LayoutRefusal fixedSize={fixedSize} refusals={[finding]} theme={theme}
+      size={frameSize(size === 'container' ? fallbackSize : size, target)} options={typeof title === 'string' ? { title } : {}} />}><DrawnChart {...props} /></RefusalBoundary>;
   }
   Chart.displayName = `${type[0]!.toUpperCase()}${type.slice(1)}Chart`;
   // First-class, not name-shaped: the public API check resolves type → component

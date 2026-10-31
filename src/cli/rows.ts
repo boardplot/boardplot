@@ -158,6 +158,32 @@ interface LoadedRows {
   warnings?: RowsWarning[];
 }
 
+/**
+ * The file's text, and a warning when its bytes are not UTF-8. A Windows-1252
+ * export (German Excel) turns each of its umlauts into U+FFFD, and the chart
+ * would print that character in its labels. A U+FFFD that the file spells in
+ * UTF-8 (EF BF BD) is real text and stays quiet.
+ */
+function decodeRows(bytes: Buffer): { text: string; warnings: RowsWarning[] } {
+  const text = bytes.toString('utf8');
+  let offset = 0;
+  let from = 0;
+  for (let at = text.indexOf('\uFFFD'); at >= 0; from = at, at = text.indexOf('\uFFFD', at + 1)) {
+    // Count only the text since the last hit, so a file with many real U+FFFD stays linear.
+    offset += Buffer.byteLength(text.slice(from, at));
+    if (bytes.subarray(offset, offset + 3).equals(Buffer.from([0xef, 0xbf, 0xbd]))) continue;
+    return {
+      text,
+      warnings: [{
+        code: 'rows-encoding-replaced', severity: 'warn', path: '/rowsFile',
+        message: `the file is not valid UTF-8: the byte 0x${bytes[offset]!.toString(16)} at offset ${offset} reads as the replacement character, so labels may print it`,
+        suggest: 'Save the file as UTF-8 (in Excel, "CSV UTF-8") and pass it again.',
+      }],
+    };
+  }
+  return { text, warnings: [] };
+}
+
 function readRowsFile(path: unknown): LoadedRows {
   if (typeof path !== 'string' || !isAbsolute(path)) {
     throw new InputError('invalid-argument', 'rowsFile must be an absolute path', {
@@ -184,14 +210,14 @@ function readRowsFile(path: unknown): LoadedRows {
     });
   }
   const bytes = readFileSync(real);
-  const text = bytes.toString('utf8');
+  const { text, warnings } = decodeRows(bytes);
   if (kind === '.csv') {
     const { rows, delimiter, repeats } = parseCsv(text);
-    return { rows, bytes, source: path, decimalComma: delimiter === ';', warnings: repeats.map(repeatedHeaderWarning) };
+    return { rows, bytes, source: path, decimalComma: delimiter === ';', warnings: [...warnings, ...repeats.map(repeatedHeaderWarning)] };
   }
   try {
     // A Windows editor may lead the file with a byte order mark; JSON.parse does not skip it.
-    return { rows: JSON.parse(text.replace(/^\uFEFF/, '')) as unknown, bytes, source: path };
+    return { rows: JSON.parse(text.replace(/^\uFEFF/, '')) as unknown, bytes, source: path, warnings };
   } catch (error) {
     throw new InputError('invalid-json', `${path} is not valid JSON: ${error instanceof Error ? error.message : error}`, { path: '/rowsFile' });
   }

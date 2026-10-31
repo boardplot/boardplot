@@ -62,6 +62,44 @@ test('overlay pies and their key share one paint per label and reject tone confl
   expect(publicResult()).toMatchObject({ ok: false, errors: [expect.objectContaining({ code: 'overlay-share-tone-conflict' })] });
 });
 
+// A longitude/latitude overlay the pack crop leaves outside the map frame was drawn off the canvas with no warning and no note.
+test('an overlay outside the map frame is warned about and listed in the note, not drawn off the canvas', () => {
+  const spec = {
+    type: 'choropleth',
+    data: {
+      pack: 'eu27',
+      regions: [{ id: 'DE', value: 1 }, { id: 'ES', value: 2 }],
+      overlays: [{ id: 'o', label: 'Funchal', at: { lon: -16.9, lat: 32.6 }, glyph: { kind: 'harvey', value: 0.5 } }],
+    },
+  };
+  const body = runVerb(() => render({ spec, return: ['svg', 'reading'] })).body as Record<string, any>;
+  expect(body.ok).toBe(true);
+  expect(body.warnings.map((warning: { code: string }) => warning.code)).toContain('overlay-coordinate-outside-frame');
+  expect(body.reading.omissions).toEqual([expect.objectContaining({ labelId: 'overlay:o', reason: 'note' })]);
+  expect(body.svg).not.toContain('overlay:glyph:o');
+});
+
+// With an automatic height, a second toned overlay made the probe drop the first one's tone key; the final pass then
+// skipped the frame test and drew the glyph off the canvas. A real coast tip, on the outer edge of the pack, was
+// dropped by a zero-tolerance frame test where it sits on the drawn coast.
+test('an off-frame overlay is omitted with a second toned overlay, and a coast tip on the frame edge stays', () => {
+  const regions = [{ id: 'DE', value: 1 }, { id: 'ES', value: 2 }];
+  const result = (overlays: unknown[]) => runVerb(() => render({ spec: { type: 'choropleth', data: { pack: 'eu27', regions, overlays } }, return: ['svg', 'reading'] })).body as Record<string, any>;
+  const two = result([
+    { id: 'mad', label: 'Funchal', at: { lon: -16.9, lat: 32.6 }, glyph: { kind: 'harvey', value: 0.5, tone: 'good' } },
+    { id: 'de', label: 'Berlin', at: { region: 'DE' }, glyph: { kind: 'harvey', value: 0.3, tone: 'bad' } },
+  ]);
+  expect(two.warnings.map((warning: { code: string }) => warning.code)).toContain('overlay-coordinate-outside-frame');
+  expect(two.reading.omissions).toEqual([expect.objectContaining({ labelId: 'overlay:mad', reason: 'note' })]);
+  expect(two.svg).not.toContain('overlay:glyph:mad');
+  expect(two.svg).toContain('overlay:glyph:de');
+  for (const [id, lon, lat] of [['sv', -8.997, 37.023], ['nu', 27.87, 70.08]] as const) {
+    const edge = result([{ id, label: 'Tip', at: { lon, lat }, glyph: { kind: 'harvey', value: 0.5 } }]);
+    expect(edge.warnings.map((warning: { code: string }) => warning.code)).not.toContain('overlay-coordinate-outside-frame');
+    expect(edge.svg).toContain(`overlay:glyph:${id}`);
+  }
+});
+
 /**
  * Every alias that names more than one region, sorted. The bake gate in
  * `scripts/build-geo-packs.mjs` is a separate JS reimplementation of the same
