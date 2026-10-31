@@ -2,7 +2,7 @@
 
 // Patched themes are checked by `core/themeShape`, which a CLI-shaped graph links and a chart entry fetches (core/deferred).
 import '../src/core/themeShapeRules';
-import { act, createElement, type ReactElement } from 'react';
+import { act, createElement, useState, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -21,6 +21,7 @@ import { ColumnChart } from '../src/react/charts/column';
 import { DimSwitchChart } from '../src/react/DimSwitchChart';
 import { exampleData as dimSwitchData } from '../src/core/charts/dimswitch/example';
 import { BoardplotChart } from '../src/react/spec';
+import { BoardplotTheme } from '../src/react/BoardplotTheme';
 import { createChartComponent } from '../src/react/createChartComponent';
 import { DotChart } from '../src/react/charts/dot';
 import { KpiChart } from '../src/react/charts/kpi';
@@ -227,6 +228,25 @@ describe('React adapter boundary', () => {
     // A hole in a sparse values array reads as a missing value, as the null of a JSON spec does.
     await act(async () => { root.render(<ColumnChart data={{ ...DATA, categories: [...DATA.categories, { id: 'c', label: 'C' }], series: [{ id: 's', label: 'S', values: sparse }] }} size={{ width: 480, height: 270 }} />); });
     expect(container.querySelector('svg')).not.toBeNull();
+  });
+
+  // A bad theme from a BoardplotTheme provider that is later fixed left the refusal card up, because the chart's own props did not change.
+  it('draws the chart again when the inherited theme is fixed', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const chart = <ColumnChart data={DATA} size={{ width: 480, height: 270 }} />;
+    let setTheme: (theme: string) => void = () => {};
+    function Host() {
+      const [theme, set] = useState('nope');
+      setTheme = set;
+      return <BoardplotTheme theme={theme as never}>{chart}</BoardplotTheme>;
+    }
+    await act(async () => { root.render(<Host />); });
+    for (let i = 0; i < 20 && container.querySelector('[data-bp-loading]'); i++) await act(async () => { await new Promise(r => setTimeout(r, 25)); });
+    expect(container.querySelector('[data-bp-error-code="unknown-theme"]')).not.toBeNull();
+    await act(async () => { setTheme('standard'); });
+    for (let i = 0; i < 20 && container.querySelector('[data-bp-loading]'); i++) await act(async () => { await new Promise(r => setTimeout(r, 25)); });
+    expect(container.querySelector('svg')).not.toBeNull();
+    expect(container.querySelector('[data-bp-error-code]')).toBeNull();
   });
 
   // A table is not built by createChartComponent: it threw on the same bad values and unmounted the host's root.
