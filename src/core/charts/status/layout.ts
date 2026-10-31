@@ -201,6 +201,8 @@ export function layoutStatus(
     options.palette,
     warnings,
   );
+  const statePaint = statePaints(usedStates, options, theme);
+  const plainPaint = statePaint.plain;
   const size = resolveSize(options.size);
   const measure = options.measure ?? defaultMeasurer;
   const highlights = new Set(resolveHighlight(options.highlight));
@@ -213,7 +215,7 @@ export function layoutStatus(
   const patternOf = new Map<Id, 'hatch45' | undefined>();
   const seenLook = new Map<string, StatusState>();
   for (const state of usedStates) {
-    const css = paintColor(theme, paintForState(state, options, theme));
+    const css = paintColor(theme, plainPaint(state));
     const look = (pattern: 'hatch45' | undefined) => `${css}|${pattern ?? ''}`;
     const earlier = seenLook.get(look(state.pattern));
     const pattern = earlier && !state.pattern && !seenLook.has(look('hatch45')) ? 'hatch45' : state.pattern;
@@ -228,7 +230,9 @@ export function layoutStatus(
     if (!seenLook.has(look(pattern))) seenLook.set(look(pattern), state);
     patternOf.set(state.id, pattern);
   }
-  const legendOptions = resolveLegendOptions(options, usedStates.length);
+    // A hatched state paints its full tone: the hatch ground washes it.
+  const paintForState = (state: StatusState): Paint => patternOf.get(state.id) ? statePaint.full(state) : plainPaint(state);
+const legendOptions = resolveLegendOptions(options, usedStates.length);
   // A hatched cell lays its stripes on its own tone, washed toward the page,
   // so it reads as that tone and never as an empty cell. Its key
   // draws the same recipe: the cell, a hatch without an edge.
@@ -241,16 +245,16 @@ export function layoutStatus(
   // the cell with no status the floor they fade to.
   const grounding = options.hatchStrength === undefined ? undefined : { strength: options.hatchStrength, apart: EMPTY_CELL_PAINT };
   const hatchOf = (state: StatusState) => patternOf.get(state.id)
-    ? { pattern: patternOf.get(state.id), hatchEdge: false as const, hatchGround: hatchGroundPaint(paintForState(state, options, theme), undefined, grounding) }
+    ? { pattern: patternOf.get(state.id), hatchEdge: false as const, hatchGround: hatchGroundPaint(paintForState(state), undefined, grounding) }
     : {};
   // A plain state fill under 3:1 whose cells print no state word takes a 3:1 edge
   // (fillEdges); its key swatch carries the same rule, so key and cells match.
   const separationOf = (state: StatusState) => patternOf.get(state.id) ? {}
-    : { separation: { fill: paintForState(state, options, theme), backing: { token: 'background' } as Paint } };
+    : { separation: { fill: paintForState(state), backing: { token: 'background' } as Paint } };
   const legendItems: LegendItemInput[] = usedStates.map((state) => ({
     id: state.id,
     label: state.label,
-    paint: paintForState(state, options, theme),
+    paint: paintForState(state),
     ...hatchOf(state),
     ...separationOf(state),
     key: 'box',
@@ -482,7 +486,7 @@ export function layoutStatus(
         // is the only separator and has one width everywhere: a
         // hatch draws no edge, and a cell with no status is a light cell of
         // the same grid, not an outlined box.
-        fill: state ? paintForState(state, options, theme) : EMPTY_CELL_PAINT,
+        fill: state ? paintForState(state) : EMPTY_CELL_PAINT,
         ...(state ? hatchOf(state) : {}),
         owner,
         part: 'cell',
@@ -491,7 +495,7 @@ export function layoutStatus(
       // The edge is a separate closed path inside the fill. Its stroke cannot cover the cell gutter.
       // Reserve both possible edge widths even when this theme needs none, so repaint keeps its path.
       if (state && !patternOf.get(state.id)) {
-        const fill = paintForState(state, options, theme);
+        const fill = paintForState(state);
         const inset = Math.min(rect.w / 2, rect.h / 2, Math.max(strokeToken(theme, 'rule'), theme.pattern.outlineStrokeWidth) / 2 + 0.01);
         const edge = separationStroke(paintColor(theme, fill), theme.color.background, theme);
         scene.push({ t: 'path', id: `cellOutline:${row.id}:${column.id}`,
@@ -533,8 +537,8 @@ export function layoutStatus(
               slot: 'inside',
               rect: { x: rect.x + (rect.w - size.width) / 2, y: rect.y + (rect.h - size.height) / 2, w: size.width, h: size.height },
               penalty: 0,
-              insideFill: paintColor(theme, paintForState(state, options, theme)),
-              insidePaint: paintForState(state, options, theme),
+              insideFill: paintColor(theme, paintForState(state)),
+              insidePaint: paintForState(state),
             }] : [],
           });
         }
@@ -842,7 +846,7 @@ function resolveLegendOptions(
   return normalized ? { position: normalized.position } : undefined;
 }
 
-function paintForState(state: StatusState, options: StatusOptions, theme: Theme): Paint {
+function tonePaint(state: StatusState, options: StatusOptions, theme: Theme): { paint: Paint; quiet?: 'good' | 'neutral' } {
   const role: ColorRole =
     typeof state.tone === 'string'
       ? state.tone === 'info'
@@ -850,13 +854,48 @@ function paintForState(state: StatusState, options: StatusOptions, theme: Theme)
         : state.tone
       : state.tone.role;
   if (options.colorblindSafe && (role === 'good' || role === 'bad')) {
-    return colorblindPaint(role, true);
+    return { paint: colorblindPaint(role, true) };
   }
-  if (role === 'neutral') return semanticPalettePaint(theme, options.palette, 'neutralMark');
+  if (role === 'neutral') return { paint: semanticPalettePaint(theme, options.palette, 'neutralMark'), quiet: 'neutral' };
   // A status cell is larger than a point: the highlight role takes the focus
   // and good / bad their fill roles.
-  if (role === 'highlight') return semanticPalettePaint(theme, options.palette, 'focus');
-  return markRolePaint(role, true);
+  if (role === 'highlight') return { paint: semanticPalettePaint(theme, options.palette, 'focus') };
+  return role === 'good' ? { paint: markRolePaint(role, true), quiet: 'good' } : { paint: markRolePaint(role, true) };
+}
+
+/**
+ * The fill of each state. On-track and not-started cells are the ones a
+ * reader passes over: the good and the neutral tone draw washed toward the
+ * page (status-tone), so off-track and at-risk cells carry the colour. The
+ * wash is decided in the theme the scene is painted in, apart from the cell
+ * with no status and from every other state's colour. A hatched state keeps
+ * the full tone (full): its hatch already washes the ground, and the stripes
+ * carry the tone.
+ */
+function statePaints(states: readonly StatusState[], options: StatusOptions, theme: Theme): { plain: (state: StatusState) => Paint; full: (state: StatusState) => Paint } {
+  const tones = new Map(states.map((state) => [state.id, tonePaint(state, options, theme)]));
+  const loud = [...tones.values()].filter((tone) => tone.quiet === undefined).map((tone) => tone.paint);
+  // A hatched state of the same tone (a forecast twin) keeps the full tone
+  // under its hatch; the plain cell stays at least as strong as that ground.
+  const grounding = options.hatchStrength === undefined ? undefined : { strength: options.hatchStrength, apart: EMPTY_CELL_PAINT };
+  const hatchedGrounds = (role: 'good' | 'neutral') => states
+    .filter((state) => state.pattern !== undefined && tones.get(state.id)?.quiet === role)
+    .map((state) => hatchGroundPaint(tones.get(state.id)!.paint, undefined, grounding));
+  const quiet = (role: 'good' | 'neutral', base: Paint, apartFrom: Paint[]): Paint => {
+    const under = hatchedGrounds(role);
+    return { token: 'token' in base ? base.token : role === 'good' ? 'goodFill' : 'neutralMark',
+      theme: { kind: 'status-tone', role, base, empty: EMPTY_CELL_PAINT, ...(apartFrom.length > 0 ? { apartFrom } : {}), ...(under.length > 0 ? { under } : {}) } };
+  };
+  const neutrals = new Map<Id, Paint>();
+  for (const [id, tone] of tones) if (tone.quiet === 'neutral') neutrals.set(id, quiet('neutral', tone.paint, loud));
+  const paints = new Map<Id, Paint>();
+  for (const [id, tone] of tones) {
+    paints.set(id, tone.quiet === 'neutral' ? neutrals.get(id)!
+      : tone.quiet === 'good' ? quiet('good', tone.paint, [...loud, ...neutrals.values()])
+        : tone.paint);
+  }
+  const full = (state: StatusState) => tones.get(state.id)?.paint ?? tonePaint(state, options, theme).paint;
+  return { plain: (state) => paints.get(state.id) ?? full(state), full };
 }
 
 function valueForStatus(value: import('../../types/cell').Cell, format: ReturnType<typeof seriesRasterFormatter>, authored: boolean): string {
