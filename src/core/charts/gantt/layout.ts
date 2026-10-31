@@ -384,7 +384,7 @@ function layoutGanttPass(data: GanttData, options: GanttOptions = {}, keyed: Rea
   if (badgeLevelCount > ((options as { [BADGE_LEVELS]?: number })[BADGE_LEVELS] ?? 1)) {
     return layoutGanttPass(data, { ...options, [BADGE_LEVELS]: badgeLevelCount } as GanttOptions, keyed, autoHeight, flags);
   }
-  const geometry = layoutGanttMarks(env, domain, band, body, paints);
+  const geometry = layoutGanttMarks(env, domain, band, body, paints, warnings);
   commitClaims(occupied, geometry.claims);
   // Open height: plan the flag levels on the drawn timeline, then lay the chart out with those row heights.
   if (heightOpen && flags.rows.size && !flags.pitch) {

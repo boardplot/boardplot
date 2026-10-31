@@ -41,7 +41,8 @@ import { structureCount } from '../../structureCounts';
 import { nextStaircase, runStaircase, seatStaircase, STAIRCASE, STAIRCASE_MAX_PAD } from '../../label/staircase';
 import { withBandValueNotes } from '../band/valueNotes';
 import { partialIds } from '../../partialPeriod';
-import { NO_STACK_MEAN, NO_STACK_TOTAL } from '../../stackAdds';
+import { NOT_AVAILABLE } from '../../format';
+import { NO_STACK_MEAN, noTotal } from '../../stackAdds';
 import { emitForecastDividers, placeForecastHeaders } from '../line/forecast';
 import { haloOverRules, raiseOverRules } from '../band/labels';
 import type { AnchorResolution, AnnotatePassResult } from '../../annotate';
@@ -172,7 +173,7 @@ function annotateCombo(
     // category level: column stack total
     if (columns.length === 0) return null;
     const topPlotted = domain.posTop[ci]! > 0 ? domain.posTop[ci]! : domain.negBot[ci]!;
-    return { x: band.center(ci), y: norm.edge === 'start' ? y0 : y(topPlotted), value: domain.stackTotals[c.id]!, format: columns.length === 1 ? columns[0]!.format : undefined, ...(domain.columnsAdd ? {} : { noValue: NO_STACK_TOTAL }), date: c.date, label: c.label, owner: { categoryId: c.id } };
+    return { x: band.center(ci), y: norm.edge === 'start' ? y0 : y(topPlotted), value: domain.stackTotals[c.id]!, format: columns.length === 1 ? columns[0]!.format : undefined, ...noTotal(domain.columnsAdd, domain.anyByCat[ci]!), date: c.date, label: c.label, owner: { categoryId: c.id } };
   };
   // extend the rect liftArm sees upward into the reserved headroom
   const lift = area.topPad - area.axisTitles.height - 8;
@@ -286,7 +287,7 @@ function assembleComboGeometry(input: {
   const a11yDesc =
     chartString(domain.options, 'comboDescStart', { v1: cats.length, v2: partsDesc }) +
     (domain.secondaryActive ? chartString(domain.options, 'secondaryAxisDesc') : '') +
-    (totalsAdd ? chartString(domain.options, 'columnTotalsSentence', { v1: cats.map((c) => `${c.label ?? c.id} ${fmt(stackTotals[c.id]!)}`).join(', ') }) : '.') +
+    (totalsAdd ? chartString(domain.options, 'columnTotalsSentence', { v1: cats.map((c, ci) => `${c.label ?? c.id} ${domain.anyByCat[ci] ? fmt(stackTotals[c.id]!) : NOT_AVAILABLE}`).join(', ') }) : '.') +
     anomalyA11y({ options: domain.options, anomaly: domain.anomaly, fmt: domain.anomaly ? domain.scaleFmtOf(domain.lines.find((s) => s.id === domain.anomaly!.seriesId)!) : fmt, cats });
   const paintWarningRules: PaintWarningRule[] = [];
   pushAll(warnings, rectSeriesAdjacentWarnings(nodes, input.paints.css, 'vertical', env.highlights, env.theme, { rules: paintWarningRules, before: warnings.filter(warning => !['pie-ramp-crowded', 'likert-ramp-invisible', 'band-lightness-insufficient', 'series-adjacent-similar', 'highlight-reads-as-loss'].includes(warning.code)).length }));

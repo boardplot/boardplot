@@ -1,5 +1,5 @@
 import { fmtPathNumber as pf } from '../../curve';
-import { restLabel, restSum, topNCut } from '../topN';
+import { DEFAULT_REST_MIN, DEFAULT_TOP_N, restDetailsWarning, restLabel, restSum, topNCut } from '../topN';
 import { chartPalette, chartTheme } from '../chartEnv';
 import { chartString } from '../../strings/pie';
 import { structureCount } from '../../structureCounts';
@@ -48,7 +48,7 @@ import { accessibleTitle,
 } from '../../normalize/shared';
 import { authoredNotes, frameTextOptions, valueNoteLine, normalizeLegendOption, settledAutoHeight, solveFrame, type FrameInput, type LegendItemInput } from '../../frame';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
-import { disclosuresShown } from '../../notes';
+import { disclosureNote, disclosuresShown } from '../../notes';
 import { hiddenValueNoteHeight } from '../../staticFooter';
 import { defaultMeasurer, wrapText, type FontSpec } from '../../text';
 import {
@@ -65,7 +65,7 @@ import type { AnchorRef, Annotation } from '../../types/annotations';
 import { cellMeta, cellValue, type Id } from '../../types/cell';
 import type { Category, ChartData } from '../../types/data';
 import { DEFAULT_OTHERS_SHADE } from '../../othersShade';
-import type { LabelContent, LabelKind, LegendOptions, PieOptions, TopNOptions } from '../../types/options';
+import type { LabelContent, LabelKind, LegendOptions, PieOptions } from '../../types/options';
 import type {
   AxisGeometry,
   Geometry,
@@ -106,9 +106,6 @@ export interface PieDerived {
   roundingAdjustments?: RoundingAdjustment[];
 }
 
-/** Default topN: the seven largest slices, the rest merged when it holds DEFAULT_REST_MIN slices or more. */
-export const DEFAULT_TOP_N: TopNOptions = { n: 7, rest: true };
-export const DEFAULT_REST_MIN = 3;
 /** The smallest radius a pinned pie draws at before it refuses (refuse-less). */
 const PIE_MIN_RADIUS = 36;
 /** The pie's static height floor; under it a pinned pie draws in the compact band. */
@@ -352,6 +349,8 @@ function layoutPiePass(
   warnIncompleteComposition(warnings,
     cats.filter((_, ci) => cellValue(cells[ci]!) === null).map((cat) => cat.label ?? cat.id),
     'the whole is not known, so the printed shares are of the known slices only');
+  // A negative slice is not drawn, so the sum of the drawn slices is not the total of the data.
+  const negatives: string[] = [];
   let slices: Slice[] = cats.map((cat, ci) => {
     const cell = cells[ci]!;
     const meta = cellMeta(cell);
@@ -364,6 +363,7 @@ function layoutPiePass(
         owner: { seriesId: sid, categoryId: cat.id },
         suggest: 'use a waterfall or bar chart for signed contributions',
       });
+      negatives.push(cat.label ?? cat.id);
       v = null;
     }
     return {
@@ -405,6 +405,8 @@ function layoutPiePass(
       let othersId: Id = 'others';
       while (slices.some((s) => s.cat.id === othersId)) othersId = `_${othersId}`;
       slices = [...kept, { cat: { id: othersId, label: restLabel(topN, options.strings, dropped.length) }, v: restSum(dropped.map((s) => s.v)), isOthers: true }];
+      const lostDetails = restDetailsWarning({ categories: data.categories, series: [ser] }, new Set(kept.map((s) => s.cat.id)));
+      if (lostDetails) warnings.push(lostDetails);
     }
   }
 
@@ -600,6 +602,7 @@ function layoutPiePass(
       ...frameTextOptions(options),
       footnotes: [
         ...authoredNotes(options),
+        ...(negatives.length ? [disclosureNote(chartString(options, 'pieNegativeNote', { v1: negatives.join(', ') }))] : []),
         ...valueNoteLine(chartString(options, 'pieHiddenSlices', { v1: named.size, v2: named.size === 1 ? 'slice' : 'slices' }), [...named.values()], options),
       ],
       legend: legendInput,
@@ -1048,7 +1051,7 @@ function layoutPiePass(
     }
     return strongFont;
   };
-  if (hole >= CENTER_TEXT_MIN && kindSetting('total') !== false) {
+  if (hole >= CENTER_TEXT_MIN && kindSetting('total') !== false && !negatives.length) {
     const lines = pieCenterLines(fmt(total), options.unit ?? ser.unit, options.format);
     const text = lines.join(' ');
     // Under a new target the total prints as large as the hole
@@ -1197,7 +1200,9 @@ function layoutPiePass(
   const axes: AxisGeometry[] = [];
   const shapeName = chartString(options, hole > 0 ? 'doughnutName' : 'pieName');
   const a11yDesc =
-    chartString(options, 'pieDesc', { v1: shapeName, v2: geoms.length, v3: ser.label ?? sid, v4: fmt(total) }) +
+    (negatives.length
+      ? chartString(options, 'pieDescNoTotal', { v1: shapeName, v2: geoms.length, v3: ser.label ?? sid })
+      : chartString(options, 'pieDesc', { v1: shapeName, v2: geoms.length, v3: ser.label ?? sid, v4: fmt(total) })) +
     chartString(options, 'sharesSentence', { v1: geoms
       .map((g) => `${g.cat.label ?? g.cat.id} ${shareText(g)}`)
       .join(', ') });

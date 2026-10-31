@@ -5,12 +5,12 @@
  */
 
 import { compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning } from '../band/stacks';
-import { mekkoAmount, poolMekkoAmounts, restLabel, restSum, topNCut } from '../topN';
+import { mekkoAmount, poolMekkoCell, restDetailsWarning, restLabel, restSum, topNCut } from '../topN';
 import { cellFields, normalizeCategorySeries } from '../categorySeries';
 import { breakUnsupported, chartPalette, chartTheme } from '../chartEnv';
 import { defaultMeasurer } from '../../text';
 import { formatAuthoredPercent, formatAutomaticNumber, formatShare, shareSetFormatter } from '../../format';
-import { formatterFromExample, parseFormatExample, specUnitKind } from '../../formatSpec';
+import { exampleSpec, formatNonzeroWithSpec, formatterFromExample, parseFormatExample, specUnitKind } from '../../formatSpec';
 import { round2 } from '../../geometry';
 import { isIncomplete } from '../../dataGaps';
 import { roundWholes } from '../../shareRounding';
@@ -42,6 +42,7 @@ export function resolveMekkoEnv(options: MekkoOptions, warnings: LintWarning[]):
   const plainFmt = (v: number) => formatAutomaticNumber(v, { locale: lang, decimals: autoDecimals(v) });
   const percentExample = options.format && specUnitKind(parseFormatExample(options.format)) === 'percent';
   const sharesOnly = percentExample && ((options.variant ?? 'stacked100') === 'stacked100' || options.valueAxis?.percent);
+  const totalSpec = options.format && !sharesOnly ? exampleSpec(options.format, lang) : undefined;
   return {
     options,
     theme,
@@ -49,6 +50,7 @@ export function resolveMekkoEnv(options: MekkoOptions, warnings: LintWarning[]):
     size: resolveSize(options.size),
     measure: options.measure ?? defaultMeasurer,
     fmt: options.format && !sharesOnly ? formatterFromExample(options.format, lang) : plainFmt,
+    totalFmt: totalSpec ? (v: number) => formatNonzeroWithSpec(v, totalSpec) : plainFmt,
     widthFmt: plainFmt,
     pctFmt: percentExample ? formatterFromExample(options.format!, lang) : (p: number) => formatShare(p, lang),
     authoredPctFmt: percentExample ? formatterFromExample(options.format!, lang) : (p: number) => formatAuthoredPercent(p, lang),
@@ -208,14 +210,14 @@ function reorderCategories(
   while (st.cats.some((c) => c.id === othersId)) othersId = `_${othersId}`;
   const bases = dropIdx.map(basisAt);
   const othersVals = seriesNorm.map((s) => s === st.widthSer
-    ? restSum(dropIdx.map((i) => s.vals[i]!.v))
-    : poolMekkoAmounts(dropIdx.map((i, k) => ({ ...s.vals[i]!, basis: bases[k]! })), st.mode === 'percent'));
+    ? { v: restSum(dropIdx.map((i) => s.vals[i]!.v)), isPct: false }
+    : poolMekkoCell(dropIdx.map((i, k) => ({ ...s.vals[i]!, basis: bases[k]!, weight: weightAt(i) })), st.mode, st.widthSer !== null));
   const total100 = st.mode === 'percent' && dropIdx.some((i) => st.cats[i]!.total100 !== undefined)
     ? bases.reduce((sum, basis) => sum + basis, 0) : undefined;
   applyOrder(keptIdx);
   st.cats = [...st.cats, { id: othersId, label: restLabel(topN, options.strings, dropIdx.length), ...(total100 === undefined ? {} : { total100 }) }];
   seriesNorm.forEach((s, k) => {
-    s.vals = [...s.vals, { v: othersVals[k]!, isPct: false }];
+    s.vals = [...s.vals, othersVals[k]!];
   });
   return othersId;
 }
@@ -327,6 +329,8 @@ export function resolveMekkoDomain(data: ChartData, env: MekkoEnv, warnings: Lin
   const fns = valueFns(st);
   const allCats = st.cats;
   const othersId = reorderCategories(st, seriesNorm, options, fns.weightAt, fns.basisAt);
+  const lostDetails = othersId === null ? undefined : restDetailsWarning(data, new Set(st.cats.map((c) => c.id)));
+  if (lostDetails) warnings.push(lostDetails);
   const othersMembers = othersId === null ? [] : allCats.filter((c) => !st.cats.some((kept) => kept.id === c.id)).map((c) => c.label ?? c.id);
   percentValidity(st, warnings);
 

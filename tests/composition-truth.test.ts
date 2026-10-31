@@ -155,6 +155,35 @@ describe('composition warning taxonomy', () => {
 });
 
 describe('line and mekko fail closed visibly', () => {
+  // A bar mekko's heights are rates, so a folded Others column printed 12.5% and 18.9% as a false 31.4.
+  it('folds bar mekko rates into their width-weighted mean', () => {
+    const draw = (values: unknown[], widthSeriesId?: string) => {
+      const request = resolveChartRequest({ type: 'mekko', data: {
+        categories: ['a', 'b', 'c', 'd'].map((id) => ({ id })),
+        series: [{ id: 'size', role: 'reference', values: [40, 90, 60, 20] }, { id: 'rate', values }],
+      }, options: { variant: 'bar', topN: { n: 2, rest: true }, ...(widthSeriesId ? { widthSeriesId } : {}), size: { width: 960, height: 540 } } } as never);
+      const geometry = requireGeometry(layoutResolvedRequest(request));
+      const record = interactionRecords({ request, geometry, scope: request.scope, claims: [] }).find((r) => r.target.owner?.categoryId === 'others')!;
+      return { geometry, record, total: geometry.labels.find((label) => label.id === 'total:others')?.text };
+    };
+    const rates = [{ pct: 10 }, { pct: 3 }, { pct: 6 }, { pct: 20 }];
+    const weighted = draw(rates, 'size');
+    expect(weighted.total).toBe('13%');
+    expect(weighted.geometry.a11y.desc).toContain('Others 13%');
+    expect(weighted.record.value.unit).toBe('%');
+    expect(weighted.record.value.raw).toBeCloseTo(40 / 3);
+    expect(draw([10, 3, 6, 20], 'size').record.value.raw).toBeCloseTo(40 / 3);
+    // Without a width series the columns are equal, and plain heights stay amounts.
+    expect(draw(rates).record.value.raw).toBe(13);
+    expect(draw([10, 3, 6, 20]).record.value.raw).toBe(26);
+    // A stacked column without a width series is as wide as its sum: a fold keeps the summed width.
+    const stacked = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'mekko', data: {
+      categories: ['a', 'b', 'c'].map((id) => ({ id })),
+      series: [{ id: 's1', values: [{ pct: 80 }, { pct: 20 }, { pct: 10 }] }, { id: 's2', values: [{ pct: 20 }, { pct: 80 }, { pct: 90 }] }],
+    }, options: { variant: 'stacked', topN: { n: 1, rest: true }, size: { width: 960, height: 540 } } } as never)));
+    expect(stacked.derived).toMatchObject({ columnTotals: { others: 200 } });
+  });
+
   // Mekko Others must convert percent cells to amounts and keep the present width values when one width is missing.
   it('pools equivalent Mekko amounts, percents and fractions through their category bases', () => {
     const bases = [5000, 1000, 100];
@@ -356,6 +385,31 @@ describe('bartable Total row', () => {
     one.panels[0].ends = one.panels[0].ends.map((end: unknown, r: number) => (r === 0 ? end : null));
     // With one range the Total must not add Software's 140 (597), which its row does not print.
     expect(text(requireGeometry(bartable.layout(one, { ...bartable.defaults, ...fixture.options })), 'total:abs')).toBe('567\u2013617');
+  });
+
+  // Percent, multiple and rate figures do not add, yet the Total printed 30.5% for margins of 12.5, 8 and 10.
+  it('leaves the Total empty for a percent, multiple or rate figure unless the author asks for a sum', () => {
+    const bartable = getChart('bartable')!;
+    const totals = (data: unknown, options: Record<string, unknown> = {}) => {
+      const geometry = requireGeometry(bartable.layout(data as BarTableData, { size: { width: 900 }, ...options }));
+      return { text: geometry.labels.filter((label) => label.id.startsWith('total:') && label.id !== 'total:label').map((label) => `${label.id}=${label.text}`), warnings: geometry.warnings.map((warning) => warning.code) };
+    };
+    const base = { categories: [{ id: 'a' }, { id: 'b' }, { id: 'c' }], series: [{ id: 's' }] };
+    const panel = (extra: object) => ({ id: 'p', label: 'Margin', values: { s: [12.5, 8, 10] }, ...extra });
+    const column = (extra: object) => ({ id: 'c', label: 'Multiple', values: [2, 3, 4], ...extra });
+    const sum = { text: ['total:p=30.5'], warnings: [] };
+    expect(totals({ ...base, panels: [panel({})] })).toEqual(sum);
+    expect(totals({ ...base, panels: [panel({ unit: '%' })] })).toEqual({ text: [], warnings: [] });
+    expect(totals({ ...base, panels: [panel({})] }, { format: '1.1%' })).toEqual({ text: [], warnings: [] });
+    expect(totals({ ...base, panels: [panel({ format: '1.1x' })] })).toEqual({ text: [], warnings: [] });
+    expect(totals({ ...base, panels: [panel({ unit: '%', aggregate: 'sum' })] })).toEqual({ text: ['total:p=30.5'], warnings: ['aggregate-non-additive'] });
+    // A column in a plain number format still adds; a multiple does not.
+    expect(totals({ ...base, panels: [panel({})], columns: [column({ format: '1.0' }), { ...column({ format: '1.0x' }), id: 'm' }] }).text).toEqual(['total:c=9.0', 'total:p=30.5']);
+    // A cascade splits its panel total, so a percent format there keeps the sum.
+    expect(totals({ ...base, series: [{ id: 's' }], panels: [panel({ format: '1.0%' })] }, { variant: 'cascade' }).text).toEqual(['total:p=30.5%']);
+    // The defaulted empty Total of a '%' unit must not drop the combined-share readout the author asked for.
+    const shares = getChart('bartable')!.layout({ ...base, panels: [panel({ unit: '%', values: { s: [50, 30, 20] } })] } as BarTableData, { size: { width: 900 }, combinedShare: { rows: ['a', 'b'] } });
+    expect(noteTexts(requireGeometry(shares)).join(' ')).toContain('80 of 100');
   });
 
   it('lists the rows the shared scale leaves as a sliver, with their parts, in one note ', () => {

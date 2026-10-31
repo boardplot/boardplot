@@ -22,7 +22,7 @@ import { deriveCascade } from './cascade';
 import { fixedBarRow } from '../bar/model';
 import { warnIncompleteComposition } from '../../dataGaps';
 import { authoredNotes, frameTextOptions, legendRequired, moreListedText, normalizeLegendOption, solveFrame, type LegendItemInput } from '../../frame';
-import { roundedNumber, seriesRasterFormatter } from '../../formatSpec';
+import { nonAdditiveFormat, roundedNumber, seriesRasterFormatter } from '../../formatSpec';
 import type { Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { fitText, lineBox, type FittedText } from '../../label/fitText';
@@ -152,6 +152,42 @@ function splitStates(data: BarTableData): { data: BarTablePlainData; states: Cel
   };
 }
 
+/**
+ * The aggregate each panel and column prints, set once: percentages, rates and
+ * multiples do not add, so a Total over them defaults to 'none'. A panel reads
+ * its own format, else options.format, and a '%' unit; a cascade splits its
+ * panel total, so its panels keep the sum. An authored 'sum' over such a
+ * figure stays and warns once.
+ */
+function withAggregates(data: BarTablePlainData, options: BarTableOptions, warnings: LintWarning[]): BarTablePlainData {
+  const cascade = options.variant === 'cascade';
+  const warn = (path: (string | number)[], id: Id) => {
+    if (options.total === false) return;
+    warnings.push({
+      code: 'aggregate-non-additive',
+      severity: 'warn',
+      message: `'${id}' sums a percentage, a rate or a multiple, which do not add: the Total prints a sum that is no total`,
+      suggest: "drop aggregate: 'sum' so the Total stays empty, or author a weighted figure",
+      field: path,
+    });
+  };
+  return {
+    ...data,
+    ...(data.columns ? {
+      columns: data.columns.map((column, c) => {
+        const additive = !nonAdditiveFormat(column.format);
+        if (column.aggregate === 'sum' && !additive) warn(['data', 'columns', c, 'aggregate'], column.id);
+        return { ...column, aggregate: column.aggregate ?? (additive ? 'sum' : 'none') };
+      }),
+    } : {}),
+    panels: data.panels.map((panel, p) => {
+      const additive = cascade || !(nonAdditiveFormat(panel.format ?? options.format) || panel.unit?.trim() === '%');
+      if (panel.aggregate === 'sum' && !additive) warn(['data', 'panels', p, 'aggregate'], panel.id);
+      return { ...panel, aggregate: panel.aggregate ?? (additive ? 'sum' : 'none') };
+    }),
+  };
+}
+
 /** The cascade refusals that need data and options together. */
 function checkCascade(data: BarTablePlainData, growth: unknown): void {
   const refuse = (path: string, message: string, suggest: string) => {
@@ -215,6 +251,7 @@ function combinedShareNotes(
   rows: readonly { id: string; label: string }[],
   panels: readonly { panel: BarTablePlainData['panels'][number]; rowSums: (number | null)[]; ranges: (BarTableEnd | undefined)[]; fmt: (v: number) => string }[],
   locale: string | undefined,
+  authored: BarTablePlainData['panels'],
 ): string[] {
   const combined = options.combinedShare;
   if (!combined) return [];
@@ -237,8 +274,9 @@ function combinedShareNotes(
   const pct = (part: number, whole: number) => (whole === 0
     ? chartString(options, 'combinedShareZero')
     : formatShare((part / whole) * 100, locale));
-  return panels.flatMap((entry) => {
-    if (entry.panel.aggregate === 'none' || entry.rowSums.some((sum) => sum === null)) return [];
+  return panels.flatMap((entry, p) => {
+    // Only an authored 'none' drops the readout: a defaulted 'none' (a % unit) still has rows that add.
+    if (authored[p]?.aggregate === 'none' || entry.rowSums.some((sum) => sum === null)) return [];
     const unit = entry.panel.unit ? ` ${entry.panel.unit}` : '';
     const at = (end: 'low' | 'high', r: number) => entry.ranges[r]?.[end] ?? entry.rowSums[r]!;
     const sumAt = (end: 'low' | 'high', of: readonly number[]) => of.reduce((sum, r) => sum + at(end, r), 0);
@@ -276,12 +314,15 @@ function layoutBarTableOnce(
   authored: BarTableData,
   options: BarTableOptions,
 ): Geometry<BarTableMarks, BarTableDerived> {
-  const { data, states } = splitStates(pinResidual(authored));
+  const split = splitStates(pinResidual(authored));
+  const { states } = split;
   if (options.cascade !== undefined && options.variant !== 'cascade') {
     throw new NormalizeError('bartable-cascade', 'options.cascade', "cascade sets the share cascade, and this table draws variant 'panels'", "set variant 'cascade', or drop cascade");
   }
   const cascadeOptions = options.variant === 'cascade' ? options.cascade ?? {} : undefined;
-  if (cascadeOptions) checkCascade(data, cascadeOptions.growth);
+  if (cascadeOptions) checkCascade(split.data, cascadeOptions.growth);
+  const warnings: LintWarning[] = [];
+  const data = withAggregates(split.data, options, warnings);
   // With the share columns hidden, the bracket and the share change still print from the rounded shares.
   if (options.rounding === 'sum-consistent' && cascadeOptions?.share === false && !options.combinedShare && cascadeOptions.growth?.measure !== 'share-change') {
     throw new NormalizeError('bartable-rounding', 'options.rounding', "rounding 'sum-consistent' sets how the share columns print, and this table prints none", "set cascade.share on, or drop options.rounding");
@@ -293,7 +334,6 @@ function layoutBarTableOnce(
   if (sharedScale && data.panels.some((panel) => panel.weight !== undefined)) {
     throw new NormalizeError('bartable-panel-weight', 'data.panels', "under sharedScale each panel is as wide as its longest bar on the one scale, so a weight has nothing to set", 'drop the weights, or set sharedScale false');
   }
-  const warnings: LintWarning[] = [];
   if (options.rounding === 'nearest' && (!cascadeOptions || (cascadeOptions.share === false && !options.combinedShare && cascadeOptions.growth?.measure !== 'share-change'))) {
     warnings.push({
       code: 'bartable-rounding-ignored', severity: 'warn',
@@ -422,7 +462,7 @@ function layoutBarTableOnce(
   );
   // ---- cascade: starts, shares, the bracket and the growth column ----
   // The note also checks the rows: each once, each a row of the table.
-  const shareNotes = combinedShareNotes(options, rows, panels, locale);
+  const shareNotes = combinedShareNotes(options, rows, panels, locale, split.data.panels);
   let bracketRows: number[] | undefined;
   if (cascadeOptions && options.combinedShare) {
     // The bracket spans its rows, so they must stand together.

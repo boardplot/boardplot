@@ -16,7 +16,7 @@ import type { PaintWarningRule } from '../../types/scene';
 import { rowLabelBand } from '../../label/rowLabels';
 import { fittedLabel, gutterBudget, stepDownFont } from '../../label/rowFit';
 import { PARTIAL_KEY, partialIds, toDateRoom } from '../../partialPeriod';
-import { NO_STACK_TOTAL } from '../../stackAdds';
+import { noTotal } from '../../stackAdds';
 import type { AnchorResolution, AnnotatePassInput, AnnotatePassResult } from '../../annotate';
 import { BAND_PAD, pruneOrphanAnnotationArms } from '../../annotateParts';
 import { percentLevels, runAnnotatePass } from '../../annotatePass';
@@ -371,8 +371,8 @@ function annotateBar(
     if (!found) return null;
     const cat = { ...found, format: domain.dataSeries.length === 1 ? domain.dataSeries[0]!.format : undefined };
     if (norm.edge === 'start') return { ...cat, x: x0, value: 0 };
-    // a stack whose parts do not add keeps its seat and has no value.
-    return domain.partsAdd ? cat : { ...cat, noValue: NO_STACK_TOTAL };
+    // a stack whose parts do not add, or whose parts are all blank, keeps its seat and has no value.
+    return { ...cat, ...noTotal(domain.partsAdd, domain.stacks[cats.findIndex((c) => c.id === norm.categoryId)]!.hasValue) };
   };
   const passInput: AnnotatePassInput = {
     target: domain.options.target,

@@ -221,6 +221,12 @@ describe('a figure never breaks across lines ', () => {
   it('groups a space-separated format with a no-break space and signs it with a true minus', () => {
     expect(formatWithSpec(-1234567, parseFormatExample('1 234'))).toBe('\u22121\u00a0234\u00a0567');
   });
+
+  // An example from Intl fr-FR holds U+202F, which was read as text, so every value printed a stray "234,5" after it.
+  it.each(['\u202f', '\u2009'])('reads a group space %j in a format example as a thousands separator', (space) => {
+    expect(formatWithSpec(1234567, parseFormatExample(`1${space}234`))).toBe('1\u00a0234\u00a0567');
+    expect(parseFormatExample(`1${space}234,5`)).toEqual(parseFormatExample('1\u00a0234,5'));
+  });
 });
 
 describe('no nonzero value prints as 0 ', () => {
@@ -355,6 +361,18 @@ describe('the automatic number rule', () => {
   const bar = (values: number[], options: object = {}) => ({ type: 'bar', options, data: {
     categories: values.map((_, i) => `C${i}`), series: [{ id: 's', label: 'S', values }],
   } });
+
+  // A format example of 1.234 read as a thousands group printed 0.512 as 1, and a German group example must keep grouping.
+  it('reads 1.234 by the chart: three decimals on small fractions, a group on large or whole values', async () => {
+    const labels = async (values: number[], format: string) => (await texts(bar(values, { format }), 'label:')).filter((text) => /^\d/.test(text)).sort();
+    expect(await labels([0.512, 1.25, 2.5], '1.234')).toEqual(['0.512', '1.250', '2.500']);
+    expect(await labels([1200, 3400], '1.234')).toEqual(['1,200', '3,400']);
+    // A text column named format holds words, and an object used twice reads the same in both places.
+    const cell = { v: 0.512, format: '1.234' };
+    expect(await texts({ type: 'table', data: { columns: [{ id: 'label', kind: 'rowLabel', label: 'Item' }, { id: 'format', kind: 'text', label: 'Code' }, { id: 'a', kind: 'value', label: 'A' }, { id: 'b', kind: 'value', label: 'B' }],
+      rows: [{ id: 'r0', label: 'Row', cells: { format: '1.234', a: cell, b: cell } }] } }, 'cell:')).toEqual(['Row', '1.234', '0.512', '0.512']);
+    expect(resolveChartRequest(bar([0.512, 1200], { format: '1.234' }) as never).inputWarnings?.[0]).toMatchObject({ code: 'format-reads-as-group', message: expect.stringContaining('0.512 prints 1') });
+  });
 
   // A column of small values printed two different values as one text (0.0123 and 0.0051 both as 0.01).
   it('gives a column one precision from its largest value, two significant digits below 1', async () => {
