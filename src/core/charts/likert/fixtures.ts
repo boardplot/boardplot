@@ -356,4 +356,40 @@ fixtures.push({
   },
 });
 
+// Twelve statements on a full slide make thin rows: the bars take more of
+// their row, so the shares print inside them and not only at the bar ends.
+fixtures.push({
+  id: 'twelve-statements-slide',
+  title: 'Twelve statements on a full slide print their shares inside the bars',
+  kind: 'torture',
+  tags: ['coverage'],
+  data: {
+    scale: FIVE_POINT,
+    items: [
+      ['onboarding', 'Onboarding prepared me for my role', [131, 55, 27, 162, 1]],
+      ['goals', 'My goals are clear to me', [101, 4, 165, 128, 40]],
+      ['meetings', 'Our meetings are a good use of time', [116, 184, 65, 64, 9]],
+      ['pay', 'My pay is fair for the work I do', [173, 139, 25, 95, 32]],
+      ['team', 'My team works well together', [54, 61, 134, 5, 170]],
+      ['trust', 'I trust the leadership team', [81, 50, 64, 193, 164]],
+      ['training', 'I get the training I need', [189, 72, 18, 141, 103]],
+      ['recognition', 'Good work is recognised here', [63, 80, 6, 179, 119]],
+      ['flexibility', 'I can plan my working hours', [49, 41, 77, 160, 71]],
+      ['systems', 'Our internal systems are easy to use', [167, 124, 29, 53, 29]],
+      ['change', 'Changes are explained well', [189, 95, 44, 175, 72]],
+      ['stay', 'I plan to be here in two years', [93, 184, 141, 192, 101]],
+    ].map(([id, label, values]) => ({ id: id as string, label: label as string, values: values as number[] })),
+  },
+  options: {
+    title: 'Meetings and internal systems draw the most disagreement',
+    subtitle: { measure: 'Share of responses', period: 'FY26' },
+    unit: 'responses',
+    values: 'counts',
+    sortBy: 'net',
+    source: 'Pulse survey, invented data',
+    target: 'slide',
+    size: { width: 1184, height: 528 },
+  },
+});
+
 registerFixtures('likert', fixtures);
