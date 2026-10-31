@@ -9,7 +9,7 @@ import type { TilemapMarks } from '../charts/tilemap/types';
 import type { ScatterData } from '../types/data';
 import type { OwnerRef } from '../types/cell';
 import { normalizeCell, normalizeScenario } from '../normalize/shared';
-import { cellRecordValue, derivedPercent, makeRecord, numericValue, textValue, withoutResidue, type RecordContext } from './recordsShared';
+import { cellRecordValue, derivedPercent, makeRecord, numericValue, statedValue, textValue, withoutResidue, type RecordContext } from './recordsShared';
 import { DERIVED_PERCENT_FORMAT, displayedValueText } from './valueText';
 import { intervalText } from '../format';
 import type { InteractionRecord, InteractionValue } from './types';
@@ -141,7 +141,9 @@ function histogramRecords(ctx: RecordContext): InteractionRecord[] {
     // "1 order", not "1 orders": an English plural noun drops its s for one.
     const counted = bin.count === 1 && noun.endsWith('s') ? noun.slice(0, -1) : noun;
     return makeRecord(ctx, { categoryId: JSON.stringify(['bin', bin.lo, bin.hi]) }, numericValue(bin.count, counted), {
-      label: intervalText(edge(low, bin.lo, false), edge(high, bin.hi, true), last, ctx.request.options), anchor: bin.rect,
+      // One bin per whole value names that value, "3 days", not "2.5 to under 3.5".
+      label: derived.binning.perValue ? edge(derived.binLabels[bin.index], (bin.lo + bin.hi) / 2, true)
+        : intervalText(edge(low, bin.lo, false), edge(high, bin.hi, true), last, ctx.request.options), anchor: bin.rect,
       annotations: makeRecord(ctx, { categoryId: bin.id }, numericValue(bin.count)).annotations,
       nodeIds: bin.nodeId ? [bin.nodeId] : [], members: members.map(item => item.owner),
       fields: members.map(item => numberField(item.owner.pointId!, item.value, unit, format)),
@@ -229,12 +231,8 @@ function mapRecords(ctx: RecordContext): InteractionRecord[] {
   const marks = ctx.geometry.marks as unknown as ChoroplethMarks | TilemapMarks;
   const { unit, format } = ctx.request.options;
   const records = marks.regions.map(mark => {
-    const value = numericValue(mark.value, unit, format);
-    if (mark.state === 'suppressed' || mark.state === 'nm' || mark.state === 'na') {
-      value.raw = null;
-      value.state = mark.state;
-      value.reason = mark.state === 'suppressed' ? chartString(ctx.request.options, 'valueWithheld') : mark.state === 'nm' ? chartString(ctx.request.options, 'notMeaningful') : chartString(ctx.request.options, 'notApplicableName');
-    }
+    const plain = numericValue(mark.value, unit, format);
+    const value = mark.state === 'suppressed' || mark.state === 'nm' || mark.state === 'na' ? statedValue(plain, mark.state, ctx.request.options) : plain;
     return makeRecord(ctx, { categoryId: mark.id }, value, {
       // The region's name, never its code.
       label: mark.name, ...('rect' in mark ? { anchor: mark.rect } : {}),

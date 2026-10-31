@@ -140,6 +140,23 @@ describe('histogram binning arithmetic', () => {
     expect(countPerBin(sample, binning.edges)).toEqual([4, 5, 1, 0, 1]);
     expect(countPerBin(sample, binning.edges).reduce((a, b) => a + b, 0)).toBe(sample.length);
   });
+  // Prevents a false spike: edges on the integers closed the last bin over 3 and 4 and drew 51 beside 24.
+  it('gives whole numbers one bin per value, centred on it and named under the bar', () => {
+    const observations = [0, 1, 2, 3, 4].flatMap((value, index) => Array.from({ length: [20, 25, 24, 25, 26][index]! }, () => value));
+    for (const bins of ['auto', { width: 1 }] as const) {
+      const geometry = layoutHistogram({ observations }, { bins });
+      expect(geometry.derived.counts).toEqual([20, 25, 24, 25, 26]);
+      expect(geometry.derived.binning.edges).toEqual([-0.5, 0.5, 1.5, 2.5, 3.5, 4.5]);
+      expect(geometry.derived.binLabels).toEqual(['0', '1', '2', '3', '4']);
+      const bars = geometry.marks.bins.map((bin) => bin.rect.x + bin.rect.w / 2);
+      const names = geometry.labels.filter((label) => label.kind === 'category' && !label.hidden);
+      expect(names.map((label) => label.text)).toEqual(['0', '1', '2', '3', '4']);
+      names.forEach((label, index) => expect(label.rect.x + label.rect.w / 2).toBeCloseTo(bars[index]!, 0));
+    }
+    // Large whole numbers keep their exact names: the display-rounded anchor is a half off.
+    const large = layoutHistogram({ observations: observations.map((value) => value + 100000000001) }, { bins: { width: 1 } });
+    expect(large.derived.binLabels.map((label) => label.replace(/\D/g, ''))).toEqual(['100000000001', '100000000002', '100000000003', '100000000004', '100000000005']);
+  });
 });
 
 describe('histogram refuses what it cannot draw honestly', () => {
@@ -216,21 +233,18 @@ describe('histogram disclosures', () => {
       expect(suppressed.geometry!.labels.filter(label => label.kind === 'point' && !label.hidden)).toHaveLength(0);
       expect(suppressed.geometry!.labels.some(label => label.kind === 'point' && label.noted)).toBe(false);
     }
-    const crowded = measure({ type: 'histogram',
-      data: { observations: Array.from({ length: 17 }, (_, i) => Array(1234 + i).fill(i + 0.5)).flat() },
-      options: { ...options, size: { width: 320, height: 400 } },
-    });
+    // Counts too wide for their bins must not float on leaders or fill a note: the tallest keeps its count and the axis carries the scale.
+    const crowdedData = { observations: Array.from({ length: 17 }, (_, i) => Array(1234 + i).fill(i + 0.5)).flat() };
+    const crowded = measure({ type: 'histogram', data: crowdedData, options: { ...options, size: { width: 320, height: 400 } } });
     expect(crowded.geometry).toBeDefined();
-    const crowdedCounts = crowded.geometry!.labels.filter(label => label.kind === 'point');
-    expect(crowdedCounts).toHaveLength(17);
-    const hidden = crowdedCounts.filter(label => label.hidden);
-    expect(hidden.length).toBeGreaterThan(0);
-    const notes = crowded.geometry!.scene.flatMap(node => node.t === 'text' && node.part === 'footnote' ? node.lines : []).join(' ');
-    for (const label of hidden) {
-      const index = Number(label.owner.categoryId!.replace('bin', ''));
-      expect(label.noted).toBe(true);
-      expect(notes).toContain(`${(1234 + index).toLocaleString('en-US')} (${index}–${index + 1})`);
-    }
+    const crowdedCounts = crowded.geometry!.labels.filter(label => label.kind === 'point' && !label.hidden);
+    expect(crowdedCounts.map(label => [label.owner.categoryId, label.leader])).toEqual([['bin16', undefined]]);
+    expect(crowded.geometry!.labels.some(label => label.kind === 'point' && label.noted)).toBe(false);
+    expect((crowded.geometry!.derived as { frequencyAxisShown: boolean }).frequencyAxisShown).toBe(true);
+    expect(crowded.geometry!.warnings.map(warning => warning.code)).toContain('histogram-counts-peak-only');
+    // An authored 'full' density keeps every count, as before.
+    const full = measure({ type: 'histogram', data: crowdedData, options: { ...options, size: { width: 320, height: 400 }, labelDensity: 'full' } });
+    expect(full.geometry!.labels.filter(label => label.kind === 'point' && (label.noted || !label.hidden))).toHaveLength(17);
   });
 
   it('keeps every fitting count in a compact dashboard card', () => {
@@ -241,21 +255,6 @@ describe('histogram disclosures', () => {
         canvas: { margin: { top: 0, right: 0, bottom: 0, left: 0 } }, size: { width, height },
       }));
       expect(geometry.labels.filter(label => label.kind === 'point' && !label.hidden)).toHaveLength(10);
-    }
-    const observations = Array.from({ length: 10 }, (_, i) => Array.from({ length: 1000 + i * 10 }, () => i + 0.5)).flat();
-    const crowded = requireGeometry(getChart('histogram')!.layout({ observations }, {
-      target: 'dashboard', title: false, bins: { width: 1, anchor: 0 },
-      canvas: { margin: 0 }, size: { width: 320, height: 400 }, ...SHOW_NOTES,
-    }));
-    const counts = crowded.labels.filter(label => label.kind === 'point');
-    expect(counts).toHaveLength(10);
-    expect(counts.filter(label => !label.hidden).length).toBeGreaterThan(5);
-    const notes = crowded.scene.flatMap(node => node.t === 'text' && node.part === 'footnote' ? node.lines : []).join(' ');
-    for (const count of counts.filter(label => label.hidden)) {
-      expect(count.hidden).toBe('collision');
-      expect(count.noted).toBe(true);
-      expect(count.noteText).toContain('–');
-      expect(notes).toContain(count.noteText);
     }
     const equalData = { observations: Array.from({ length: 10 }, (_, i) => Array(1000).fill(i + 0.5)).flat() };
     const equal = requireGeometry(getChart('histogram')!.layout(equalData, {
@@ -307,7 +306,8 @@ describe('histogram disclosures', () => {
     for (const id of ['order-value-distribution', 'cycle-time-days']) {
       const noTitle = fixtures.find((candidate) => candidate.id === id)!;
       const withoutAxis = layoutHistogram(noTitle.data, { ...noTitle.options, axisTitles: undefined, footnotes: false, ...SHOW_NOTES, size: { width: 720, height: 405 } });
-      expect(withoutAxis.scene.map(node2text).join(' ')).toMatch(/(Bins of [\d,.]+|per [\d,.]+ bin), lower edge included · n = \d+/);
+      // Whole days get one bin per value, so that line names the values instead of a width.
+      expect(withoutAxis.scene.map(node2text).join(' ')).toMatch(/(Bins of [\d,.]+|per [\d,.]+ bin), lower edge included · n = \d+|One bin per value · n = \d+/);
     }
   });
 

@@ -53,7 +53,7 @@ import {
 import { defaultMeasurer, type FontSpec } from '../../text';
 import { resolveTheme, themeForWidth, panelTypeClass, strokeToken } from '../../theme';
 import { createOccupiedIndex } from '../../label/occupied';
-import { labelCtx, solveLabels, PRIORITY, type LabelRequest } from '../../label/solver';
+import { labelCtx, solveLabels, PRIORITY, SERIES_VALUE_GAP, type LabelRequest } from '../../label/solver';
 import { labelsToNodes } from '../../label/emit';
 import { NormalizeError, resolveSize } from '../../normalize/shared';
 import { iqr as interquartileRange, quantileType7, sortAscending } from '../../stats';
@@ -230,24 +230,28 @@ export function layoutHistogram(
   // precision gets there does the loop fall back to: at how many decimals do
   // all k+1 edges still have distinct names? A cap of 6 decimals printed a
   // width of 5e-7 as four bins named "0.000002–0.000002".
+  // One bin per whole value names the value under its bar, not the half-way edges.
+  const perValue = binning.perValue;
+  // From the exact minimum: the display-rounded anchor of 1e11 + 0.5 reads 1e11 + 1.
+  const labelValues = perValue ? counts.map((_, index) => min + index) : binning.edges;
   const edgeDecimals = ((): number => {
     const tolerance = binning.width / 100;
     for (let decimals = 0; decimals <= MAX_FORMAT_DECIMALS; decimals++) {
-      if (binning.edges.every((edge) => Math.abs(Number(edge.toFixed(decimals)) - edge) <= tolerance)) return decimals;
+      if (labelValues.every((edge) => Math.abs(Number(edge.toFixed(decimals)) - edge) <= tolerance)) return decimals;
     }
     for (let decimals = 0; decimals <= MAX_FORMAT_DECIMALS; decimals++) {
-      const rendered = binning.edges.map((edge) => formatAutomaticNumber(edge, { locale: options.locale?.language, decimals, automatic: false }));
+      const rendered = labelValues.map((edge) => formatAutomaticNumber(edge, { locale: options.locale?.language, decimals, automatic: false }));
       if (new Set(rendered).size === rendered.length) return decimals;
     }
     return MAX_FORMAT_DECIMALS;
   })();
   const edgeText = (value: number, automatic: boolean) => formatAutomaticNumber(value, { locale: options.locale?.language, decimals: defaultNumberDecimals(value, edgeDecimals, options.unit, options.target), automatic });
   // Distinct edges win over the automatic AUTO_MAX_DECIMALS cap, as on an axis (tickFormatter): 1e-11 bins near 1e-6 would all read "1.0 × 10⁻⁶".
-  const automaticEdges = new Set(binning.edges.map((edge) => edgeText(edge, true))).size === new Set(binning.edges).size;
+  const automaticEdges = new Set(labelValues.map((edge) => edgeText(edge, true))).size === new Set(labelValues).size;
   const fmt = options.format
     ? formatterFromExample(options.format, options.locale?.language, options.unit)
     : (value: number) => edgeText(value, automaticEdges);
-  const edgeLabels = binning.edges.map((edge) => fmt(edge));
+  const edgeLabels = labelValues.map((edge) => fmt(edge));
 
   /**
    * The measure's format as a SPEC, so the method note can re-derive it at a
@@ -298,7 +302,7 @@ export function layoutHistogram(
   // A negative edge carries a minus of its own, so the range dash gets spaces
   // ("−100 – −80", not "−100–−80"), on every bin of the exhibit.
   const rangeDash = edgeLabels.some((text) => text.startsWith(MINUS)) ? ' – ' : '–';
-  const binLabels = counts.map((_, index) => `${edgeLabels[index]}${rangeDash}${edgeLabels[index + 1]}`);
+  const binLabels = counts.map((_, index) => perValue ? edgeLabels[index]! : `${edgeLabels[index]}${rangeDash}${edgeLabels[index + 1]}`);
   const collapsedEdges = edgeLabels.filter(
     (text, index) => index > 0 && text === edgeLabels[index - 1],
   ).length;
@@ -342,28 +346,32 @@ export function layoutHistogram(
   // Every bin count prints; past twelve bins, where only a few bins
   // hold observations, the empty ones stay blank.
   const filled = counts.filter((count) => count > 0).length;
-  const sparseLabels = k > POINT_LABEL_MAX_BINS && filled <= POINT_LABEL_MAX_BINS;
+  // One bin per value names every bin, so an empty slot above its value reads as zero without a 0.
+  const sparseLabels = perValue || (k > POINT_LABEL_MAX_BINS && filled <= POINT_LABEL_MAX_BINS);
 
   const shares = counts.map((count) => count / n * 100);
   const shareFormat = shareSetFormatter(shares, options.locale?.language);
   const shareDecimals = shareFormat.decimals;
   const frequencyFormat = options.valueAxis?.percent ? `0${shareDecimals > 0 ? defaultFormatSpec(options.locale?.language).decimalSep + '0'.repeat(shareDecimals) : ''}%` : countFormat;
 
-  const delegateData: ChartData = {
+  // The tallest bin, first of a tie: the one count that stays when the others give way.
+  const peak = counts.indexOf(maxOf(counts));
+  const countData = (peakOnly: boolean): ChartData => ({
     categories: counts.map((_, index) => ({ id: binId(index), label: binLabels[index]! })),
     series: [
       {
         id: 'count',
         ...(options.valueAxis?.percent ? { format: frequencyFormat } : {}),
         label: chartString(options, 'observations'),
-        values: counts.map((count) => {
+        values: counts.map((count, index) => {
           const value = options.valueAxis?.percent ? count / n * 100 : count;
-          return sparseLabels && count === 0 ? { number: 0, label: false }
+          return (sparseLabels && count === 0) || (peakOnly && index !== peak) ? { number: value, label: false }
             : options.valueAxis?.percent ? { number: value, label: shareFormat.format(value) } : value;
         }),
       },
     ],
-  } as ChartData;
+  } as ChartData);
+  let delegateData = countData(false);
 
   /**
    * Explicit passthrough, never a spread of the caller's options: a spread
@@ -385,10 +393,11 @@ export function layoutHistogram(
     // strings.histogramBins is authored: an authored setting always wins. The request fills
     // every string with its default, so 'authored' means it differs from the locale default.
     const title = frequencyAxis ? undefined : options.axisTitles?.y;
-    const binsAuthored = strings.histogramBins !== localeStrings(options.locale?.language).histogramBins;
     const shortBins = binsExact && !binsAuthored;
     const baseNote = captioned ? [] : [disclosureNote(methodPrinted
       ? `${title ? `${title} · ` : ''}${sampleBase}.`
+      : perValue && !binsAuthored
+        ? `${title ? chartString(options, 'histogramPerValueTitled', { v1: title }) : chartString(options, 'histogramPerValue')} · ${sampleBase}.`
       : shortBins
         ? `${title
           ? chartString(options, 'histogramBinsShortTitled', { v1: title, v2: fmtNote(binning.width) })
@@ -449,14 +458,17 @@ export function layoutHistogram(
 
   const sampleBase = `n = ${formatAutomaticNumber(n, { locale: options.locale?.language, decimals: 0 })}`;
   const binsExact = roundedNumber(binning.width, noteSpecFor(binning.width)) === binning.width;
-  const binsText = stringFields(strings.histogramBins, {
+  const binsAuthored = strings.histogramBins !== localeStrings(options.locale?.language).histogramBins;
+  const binsText = perValue && !binsAuthored
+    ? chartString(options, 'histogramPerValueRange', { v1: edgeLabels[0]!, v2: edgeLabels[k - 1]! })
+    : stringFields(strings.histogramBins, {
     count: k, about: binsExact ? '' : strings.histogramAbout,
     width: fmtNote(binning.width), from: fmtNote(binning.edges[0]!), to: fmtNote(binning.edges[k]!),
   });
   const size = resolveSize(options.size);
   let columnOptions = delegateOptions(true);
   let column = layoutColumn(delegateData, columnOptions, true);
-  const allValuesLabelled = (geometry: typeof column) => counts.every((_, index) => geometry.labels.some((label) => label.kind === 'point' && label.owner.categoryId === binId(index) && !label.hidden));
+  const allValuesLabelled = (geometry: typeof column) => counts.every((count, index) => (perValue && count === 0) || geometry.labels.some((label) => label.kind === 'point' && label.owner.categoryId === binId(index) && !label.hidden));
 
   // An instrument, not a prediction: the tick values are read back off the
   // geometry the engine actually produced. Counts are whole numbers, and a
@@ -532,6 +544,38 @@ export function layoutHistogram(
     const withoutAxis = layoutColumn(delegateData, withoutAxisOptions, true);
     if (allValuesLabelled(withoutAxis)) { columnOptions = withoutAxisOptions; column = withoutAxis; frequencyAxisShown = false; }
   }
+  /**
+   * A count wider than its bin (with the gap two neighbouring values keep)
+   * that lost its own seat at its bar (lifted onto a leader, hidden by a
+   * neighbour, or moved to the note) no longer fits. Then the frequency
+   * axis carries the scale, only the tallest bin keeps its count, empty
+   * bins print nothing and the tail callouts go too. A count displaced on
+   * a wide bin (by a tail callout, say) keeps its seating, and so does a
+   * chart with at most twelve filled bins: its few counts and callouts are
+   * the exhibit (a far outlier), and its empty bins already print nothing. An authored
+   * labelDensity 'full' keeps every count on its seat or leader. A count the
+   * density gate drops on purpose ('minimal') has not lost a seat. A hidden
+   * axis keeps them too, since nothing else would carry the scale.
+   */
+  const NATURAL_SEATS: ReadonlySet<string> = new Set(['outsideTop', 'outsideBottom', 'insideEnd']);
+  const bars = column.marks.bars;
+  const binStep = bars.length > 1 ? Math.abs(bars[1]!.rect.x - bars[0]!.rect.x) : Infinity;
+  const countsDisplaced = options.labels !== false && options.labels?.point !== false && options.labelDensity !== 'full'
+    && options.valueAxis?.show !== false && filled > POINT_LABEL_MAX_BINS && column.labels.some((label) => label.kind === 'point' && label.hidden !== 'redundant' && label.hidden !== 'density'
+      && counts[Number(label.owner.categoryId?.slice(3))]! > 0 && label.rect.w + SERIES_VALUE_GAP > binStep
+      && (label.hidden !== undefined || label.leader !== undefined || !NATURAL_SEATS.has(label.slot)));
+  if (countsDisplaced) {
+    delegateData = countData(true);
+    // One count is left: no density gate may drop it.
+    columnOptions = { ...delegateOptions(true), labelDensity: 'full' };
+    column = layoutColumn(delegateData, columnOptions, true);
+    warnings.push({
+      code: 'histogram-counts-peak-only',
+      severity: 'info',
+      message: `the bin counts do not fit over their ${k} bars, so only the tallest bin prints its count (${maxOf(counts)}) and the frequency axis carries the scale`,
+      suggest: "use fewer bins or a wider canvas to print every count, or set labelDensity: 'full' to seat every count, on leaders where needed",
+    });
+  }
   frequencyAxisShown = column.axes.some((axis) => axis.axis === 'y');
 
   // Histogram ticks name boundaries, at one measured stride. Column still owns all count labels.
@@ -551,20 +595,23 @@ export function layoutHistogram(
   let stride = 1;
   // Edge numbers keep a word space and more between them.
   const EDGE_GAP = 16;
-  while (stride < k && edgeLabels.some((_, i) => i % stride === 0 && i + stride <= k && (widths[i]! + widths[i + stride]!) / 2 + EDGE_GAP > stride * step)) stride++;
+  const lastLabel = labelValues.length - 1;
+  while (stride < lastLabel && edgeLabels.some((_, i) => i % stride === 0 && i + stride <= lastLabel && (widths[i]! + widths[i + stride]!) / 2 + EDGE_GAP > stride * step)) stride++;
   const requests: LabelRequest[] = [];
-  const ticks = binning.edges.map((edge, i) => {
-    const x = first + i * step;
+  const ticks = labelValues.map((value, i) => {
+    // A value sits under its bar centre; an edge sits on the seam between two bars.
+    const x = first + (perValue ? i + 0.5 : i) * step;
+    const id = `${perValue ? 'value' : 'edge'}:${i}`;
     const labelled = options.labels !== false && options.labels?.category !== false && i % stride === 0;
     if (labelled) {
       const w = widths[i]!, h = font.size * (font.lineHeight ?? 1.2);
-      // The first number starts at the plot edge and the last ends there; inner numbers centre on their edge.
-      const left = i === 0 ? x : i === k ? x - w : Math.max(0, Math.min(size.width - w, x - w / 2));
-      requests.push({ id: `edge:${i}`, kind: 'category', owner: { categoryId: binId(Math.min(i, k - 1)) }, text: edgeLabels[i]!, lines: [edgeLabels[i]!], font, typeRole: 'axis', priority: PRIORITY.reference, candidates: [{ slot: 'main', rect: { x: left, y, w, h }, penalty: 0 }] });
+      // The first edge number starts at the plot edge and the last ends there; inner numbers and values centre on their position.
+      const left = !perValue && i === 0 ? x : !perValue && i === k ? x - w : Math.max(0, Math.min(size.width - w, x - w / 2));
+      requests.push({ id, kind: 'category', owner: { categoryId: binId(Math.min(i, k - 1)) }, text: edgeLabels[i]!, lines: [edgeLabels[i]!], font, typeRole: 'axis', priority: PRIORITY.reference, candidates: [{ slot: 'main', rect: { x: left, y, w, h }, penalty: 0 }] });
     }
-    // A labelled edge gets the long tick, an unlabelled one the short tick.
-    column.scene.push({ t: 'line', id: `edgeTick:${i}`, x1: x, y1: column.plot.y + column.plot.h, x2: x, y2: column.plot.y + column.plot.h + (labelled ? 5 : 3), stroke: { token: 'axis' }, width: strokeToken(theme, 'hair'), owner: {}, part: 'tick' });
-    return { at: edge, pos: x, ...(labelled ? { labelId: `edge:${i}` } : {}) };
+    // A labelled edge gets the long tick, an unlabelled one the short tick. Values need none: the seams part the bars.
+    if (!perValue) column.scene.push({ t: 'line', id: `edgeTick:${i}`, x1: x, y1: column.plot.y + column.plot.h, x2: x, y2: column.plot.y + column.plot.h + (labelled ? 5 : 3), stroke: { token: 'axis' }, width: strokeToken(theme, 'hair'), owner: {}, part: 'tick' });
+    return { at: value, pos: x, ...(labelled ? { labelId: id } : {}) };
   });
   if (axis) axis.ticks = ticks;
   const occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
@@ -581,7 +628,7 @@ export function layoutHistogram(
   pushAll(column.scene, labelsToNodes(theme, solved.placed, () => font));
   pushAll(warnings, solved.warnings);
   const binLabelsShown = solved.placed.filter((label) => !label.hidden && label.id !== `edge:${k}`).length;
-  if (stride > 1) warnings.push({ code: 'histogram-bin-labels-thinned', severity: 'info', message: `${binLabelsShown} bin labels fit at an even stride of ${stride} bins; ticks mark every edge`, suggest: 'widen the canvas, or use fewer bins' });
+  if (stride > 1) warnings.push({ code: 'histogram-bin-labels-thinned', severity: 'info', message: `${binLabelsShown} bin labels fit at an even stride of ${stride} bins${perValue ? '' : '; ticks mark every edge'}`, suggest: 'widen the canvas, or use fewer bins' });
 
   const barByCategory = new Map(column.marks.bars.map((bar) => [bar.categoryId, bar]));
   // Touching bins meet at a 1 px background seam, so each bar reads as its own bin.

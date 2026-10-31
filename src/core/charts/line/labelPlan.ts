@@ -171,7 +171,7 @@ export function planLineLabels(
   const xPartial = xPartialWords(env, domain, area, reserves, lineToDateIds(env, domain, text));
   const catLabelsShown = area.xTicks && area.xOfValue
     ? placeXTickLabels({ show: area.showCategoryTickRow, plan: area.xTicks, xOf: area.xOfValue, row: area.frame.plot,
-      bottom: plot.y + plot.h + area.categoryTickGap, plotRight: plot.x + plot.w, labelRequests, ...xPartial })
+      bottom: plot.y + plot.h + area.categoryTickGap, plotRight: plot.x + plot.w, plotLeft: plot.x, labelRequests, ...xPartial })
     : placeCategoryLabels({ show: area.showCategoryTickRow, plan: area.catPlan, cats, xOf,
       plot: { ...plot, h: plot.h + area.categoryTickGap - 6 }, labelRequests });
   return { labelRequests, ratioTierRequestState, endpointLeaderAnchors, catLabelsShown, xPartialGroups: xPartial.partial?.groups ?? [], endpointFallback: bounded?.fallback ?? false, endpointWiden: bounded?.widen ?? false };

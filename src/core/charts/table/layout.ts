@@ -32,7 +32,6 @@ import {
   resolveSemanticPaletteTheme,
   resolveSurface,
   semanticPalettePaint,
-  tableEmphasis,
   strokeToken,
 } from '../../theme';
 import type { Theme } from '../../types/theme';
@@ -44,7 +43,7 @@ import { tableCellKey, tableCellNodeId } from './cellKey';
 import { isCohortDensity, levelLadder } from './ladder';
 import { presetLanguage } from './presets';
 import {
-  CHIP_PAD_X, HINT_GAP, INDENT_BASE, MARK_SIZE, kindFont,
+  CHIP_PAD_X, HINT_GAP, INDENT_BASE, MARK_SIZE, kindFont, strongColumnFont,
   HEADING_CUT_MIN as CUT_MIN, SECTION_CHIP_GAP as BADGE_GAP,
   ENGINE_NOTES, LABEL_WRAP_FLOOR, SOFT_LABEL_CAP, INLINE_LABEL_INDENT, cellPadX as trackCellPadX, figureFont, inlineFont as ladderInlineFont, changeLineFont, changeLineFitFont,
   rowFont as ladderRowFont, tableFonts,
@@ -311,7 +310,7 @@ export function memoLayout<G>(data: object, options: object, layout: () => G): G
  * A function (the text measurer) enters by identity. The data is part of the
  * key, so data changed in place never reads an older result.
  */
-function layoutKey(data: object, options: object): string {
+export function layoutKey(data: object, options: object): string {
   const symbols = Object.getOwnPropertySymbols(options).map((symbol) => [symbol.description, (options as Record<symbol, unknown>)[symbol]]);
   // The smallValues mode in force too: a nested table inherits its enclosing chart's mode.
   return JSON.stringify([data, options, symbols, currentSmallValues()], (_key, value: unknown) => {
@@ -1863,8 +1862,8 @@ function layoutTableOnce(authoredData: TableData, options: LayoutOptions, initia
       ? row.kind === 'driver' ? kindFont(fonts.body, 'driver', false, theme) : fonts.body
       : isTotal && cell.kind !== 'rowLabel' && usesTotalFace(row.kind)
         ? fonts.totalValue
-        : col.emphasis === 'strong' && !cell.deEmphasized && row.kind !== 'subtotal' && row.kind !== 'result'
-          ? { ...font, weight: theme.table?.weights?.block ?? tableEmphasis(theme) }
+        : col.emphasis === 'strong'
+          ? strongColumnFont(font, col, cell, row.kind, theme)
           : col.emphasis === 'muted' && isCohortDensity(density)
             ? { ...font, weight: fonts.body.weight }
             : font;

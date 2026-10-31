@@ -16,6 +16,7 @@ import { resolveTable } from '../src/core/charts/table/resolve';
 import { visibleRows, collapsedByDefault } from '../src/core/charts/table/view';
 import { compileDimSwitch, dimswitchRowId } from '../src/core/charts/dimswitch/compile';
 import { getChart } from '../src/core/registry';
+import { prepareChart } from '../src/react/prepare';
 (globalThis as typeof globalThis & {IS_REACT_ACT_ENVIRONMENT:boolean}).IS_REACT_ACT_ENVIRONMENT=true;
 it('resets toggles on a variant change and keeps them across Changes',()=>{
  const host=document.createElement('div');document.body.append(host);const root=createRoot(host);
@@ -167,4 +168,11 @@ it('calls onRefused once when refused at an inline size',async()=>{
  expect(calls).toBe(1);
  expect(renders).toBeLessThan(10);
  act(()=>root.unmount());host.remove();
+});
+
+// A prepared snapshot passed to DimSwitchChart reached the table, which threw "Expected a prepared table chart."
+it('ignores a prepared snapshot and draws from data',async()=>{
+ const prepared=await prepareChart({type:'column',data:{categories:['a','b'],series:[{id:'s',name:'S',values:[1,2]}]}});
+ const plain=renderToStaticMarkup(<DimSwitchChart data={exampleData} depth={1}/>);
+ expect(renderToStaticMarkup(<DimSwitchChart data={exampleData} depth={1} {...{prepared} as object}/>)).toBe(plain);
 });

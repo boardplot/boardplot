@@ -15,7 +15,7 @@ import { fitText, lineBox } from '../../label/fitText';
 import { fittedLabel, stepDownFont } from '../../label/rowFit';
 import type { Rect } from '../../geometry';
 import { formatAutomaticPercent, MINUS, valueSetFormatter } from '../../format';
-import { differenceExample, formatNonzeroWithSpec, localized, parseFormatExample, sameScale } from '../../formatSpec';
+import { differenceExample, formatNonzeroWithSpec, localized, parseFormatExample, sameScale, specUnitKind } from '../../formatSpec';
 import { frameTextOptions, solveFrame, textCarriesUnit, unitPrinted } from '../../frame';
 import { withUnit } from '../../unitJoin';
 import { labelsToNodes } from '../../label/emit';
@@ -69,9 +69,35 @@ interface KpiComparisonDerived {
   deltaAbs: number;
   deltaPct: number | null;
   tone: 'good' | 'bad' | 'neutral';
-  state: 'value' | 'ref-nonpositive';
+  state: 'value' | 'ref-nonpositive' | 'sign-change';
   displayed: string;
   nodeId?: Id;
+}
+
+type ChangeMode = 'absolute' | 'relative' | 'both';
+
+/**
+ * The mode one change prints in. A relative change needs a positive
+ * reference and a value on the same side of zero: off zero or a negative
+ * reference, or across a sign change, it is no measure of the gap (-42.5
+ * against +18.2 read "-333.5%"), so the absolute change stands in with a
+ * warning, whatever the mode. Unset, a percent measure compares in points
+ * only: two percents on one line ("-2.4% (-2.4pp)") leave the reader to
+ * pick one, and a relative change of a rate ("+22.6%" for 3.1% to 3.8%)
+ * hides the points that move.
+ */
+function changeMode(
+  value: number,
+  vs: number,
+  authored: ChangeMode | undefined,
+  fallback: ChangeMode,
+  percentMeasure: boolean,
+): { mode: ChangeMode; refused?: 'ref-nonpositive' | 'sign-change' } {
+  const wanted = authored ?? (percentMeasure ? 'absolute' : fallback);
+  if (wanted === 'absolute') return { mode: wanted };
+  if (vs <= 0) return { mode: 'absolute', refused: 'ref-nonpositive' };
+  if (value < 0) return { mode: 'absolute', refused: 'sign-change' };
+  return { mode: wanted };
 }
 
 interface KpiAttainmentDerived {
@@ -206,6 +232,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
   const fmt = spec
     ? (v: number) => formatNonzeroWithSpec(v, spec)
     : valueSetFormatter(printed, options.locale?.language, false, options.unit, options.target);
+  const percentMeasure = spec !== undefined && specUnitKind(spec) === 'percent';
   // The absolute change of a percent measure is in percentage points.
   const diffSpec = example ? localized(parseFormatExample(differenceExample(example)), options.locale?.language) : undefined;
   const fmtDiff = diffSpec
@@ -235,21 +262,20 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
       throw new NormalizeError('invalid-number', 'delta.vs', 'delta.vs must be a finite number');
     }
     const direction = data.delta.direction ?? 'higherIsBetter';
-    // One rule for delta and compare: a relative change needs a
-    // positive reference; off zero or a negative one the absolute change stands in.
-    const refused = vs <= 0 && (data.delta.mode ?? 'relative') !== 'absolute';
-    const mode = refused ? 'absolute' : (data.delta.mode ?? 'relative');
+    const { mode, refused } = changeMode(value, vs, data.delta.mode, 'relative', percentMeasure);
     const deltaAbs = value - vs;
     derived.deltaAbs = deltaAbs;
     if (refused) {
       warnings.push({
-        code: 'ref-nonpositive',
+        code: refused,
         severity: 'warn',
-        message: `delta.vs is ${vs === 0 ? '0' : 'negative'} — relative delta suppressed, absolute shown`,
+        message: refused === 'sign-change'
+          ? 'value and delta.vs have opposite signs — relative delta suppressed, absolute shown'
+          : `delta.vs is ${vs === 0 ? '0' : 'negative'} — relative delta suppressed, absolute shown`,
         suggest: "mode: 'absolute'",
       });
     }
-    if (vs > 0) derived.deltaPct = (deltaAbs / vs) * 100;
+    if (vs > 0 && value >= 0) derived.deltaPct = (deltaAbs / vs) * 100;
     derived.tone =
       deltaAbs === 0 || direction === 'neutral'
         ? 'neutral'
@@ -291,7 +317,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
       deltaAbs,
       deltaPct: derived.deltaPct ?? null,
       tone: derived.tone,
-      state: refused ? 'ref-nonpositive' : 'value',
+      state: refused ?? 'value',
       displayed: deltaText,
     }];
     if (direction === 'lowerIsBetter') deltaText += chartString(options, 'lowerBetterHint');
@@ -306,12 +332,9 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
         throw new NormalizeError('missing-label', `compare[${index}].label`, 'comparison label must be nonblank');
       }
       const label = comparison.label.trim();
-      // The delta rule: off a nonpositive reference the absolute change stands
-      // in for the relative one; absolute mode needs no positive reference.
-      const refused = comparison.vs <= 0 && (comparison.mode ?? 'both') !== 'absolute';
-      const mode = refused ? 'absolute' : (comparison.mode ?? 'both');
+      const { mode, refused } = changeMode(value, comparison.vs, comparison.mode, 'both', percentMeasure);
       const deltaAbs = value - comparison.vs;
-      const deltaPct = comparison.vs > 0 ? (deltaAbs / comparison.vs) * 100 : null;
+      const deltaPct = comparison.vs > 0 && value >= 0 ? (deltaAbs / comparison.vs) * 100 : null;
       const direction = comparison.direction ?? 'higherIsBetter';
       const tone = deltaAbs === 0 || direction === 'neutral'
         ? 'neutral'
@@ -321,9 +344,11 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
 
       if (refused) {
         warnings.push({
-          code: 'ref-nonpositive',
+          code: refused,
           severity: 'warn',
-          message: `compare[${index}].vs is nonpositive — relative delta suppressed, absolute shown`,
+          message: refused === 'sign-change'
+            ? `value and compare[${index}].vs have opposite signs — relative delta suppressed, absolute shown`
+            : `compare[${index}].vs is nonpositive — relative delta suppressed, absolute shown`,
           owner: { seriesId: `compare-${index}` },
         });
       }
@@ -346,7 +371,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
         deltaAbs,
         deltaPct,
         tone,
-        state: refused ? 'ref-nonpositive' : 'value',
+        state: refused ?? 'value',
         displayed,
       };
       comparisonVisuals.push({

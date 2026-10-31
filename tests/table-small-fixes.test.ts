@@ -13,7 +13,7 @@ import { bartableDataSchema } from '../src/core/charts/bartable/schema';
 import { tableDataSchema } from '../src/core/charts/table/schema';
 import { authoredTrackWidth, intrinsicColumnWidth, tableFonts, ENCODING_WIDTH } from '../src/core/charts/table/tracks';
 import { levelLadder } from '../src/core/charts/table/ladder';
-import { defaultMeasurer } from '../src/core/text';
+import { defaultMeasurer, twoLineWidth } from '../src/core/text';
 import { cellGrounds, paintColor, registerTheme, resolveTheme, themes } from '../src/core/theme';
 import { contrastRatio, hueSaturation, mixColors } from '../src/core/color';
 import { onTableGround, toneTextPaint } from '../src/core/charts/table/chips';
@@ -1111,6 +1111,25 @@ it('a pinned cell in a groundless total row keeps the page under it', () => {
   expect(pinned).toBeGreaterThan(clear);
 });
 
+// A head or a row label took its unit from the column or the row and ignored a cell's own format: "$" stood over euro cells.
+it('leaves the unit in the cells when a cell format names another one', () => {
+  const columns: TableData['columns'] = [{ id: 'l', kind: 'rowLabel', label: 'Item' }, { id: 'v', kind: 'value', label: 'Revenue', format: '$1,234' }];
+  const byColumn = resolveTable({ columns, rows: [
+    { id: 'a', label: 'US', cells: { v: 1200 } },
+    { id: 'b', label: 'DE', cells: { v: { v: 900, format: '€1,234' } } },
+  ] }, { subtitle: 'By market' }).table;
+  expect(byColumn.columns.find((c) => c.id === 'v')!.unitLabel).toBeUndefined();
+  expect(byColumn.unit).toBeUndefined();
+  expect(byColumn.rows.map((r) => r.cells.v!.displayed)).toEqual(['$1,200', '€900']);
+
+  const byRow = resolveTable({ columns: [columns[0]!, { id: 'v', kind: 'value', label: 'Q1' }, { id: 'w', kind: 'value', label: 'Q2' }], rows: [
+    { id: 'a', label: 'Net sales', format: '$1,234', cells: { v: 12000, w: { v: 9000, format: '€1,234k' } } },
+  ] }, { magnitude: 'thousand' }).table;
+  expect(byRow.rows[0]!.unitAffix).toBeUndefined();
+  expect(byRow.rows[0]!.cells.v!.displayed).toMatch(/^\$/);
+  expect(byRow.rows[0]!.cells.w!.displayed).toMatch(/^€/);
+});
+
 // A narrow percent-change column under a money row format shortened the money and stayed clipped, though the percent fits at one digit less.
 it('fits an overflowing percent change by its own format, not the money row format', () => {
   const data: TableData = {
@@ -1194,6 +1213,26 @@ it('keeps three lifted decimals as decimals when fitFormats writes the cell form
   expect(cell!.lines.join('')).toBe('$0.003M');
 });
 
+// A margin on a credit-note row with negative revenue printed 11.8% for -2 over -17 with no word that it is arithmetic, while percentDelta prints n.m. off a negative base.
+it('warns once per computed column when a ratio divides by a negative cell, and keeps the number', () => {
+  const data: TableData = {
+    columns: [{ id: 'l', kind: 'rowLabel', label: 'Line' }, { id: 'rev', kind: 'value' }, { id: 'ebit', kind: 'value' },
+      { id: 'm', kind: 'computed', calc: { op: 'mul', a: { op: 'div', a: { ref: 'ebit' }, b: { ref: 'rev' } }, b: { lit: 100 } }, format: '1.0%' },
+      { id: 'h', kind: 'computed', calc: { op: 'div', a: { ref: 'ebit' }, b: { lit: -2 } }, format: '1.0' }],
+    rows: [
+      { id: 'a', label: 'Normal line', cells: { rev: 100, ebit: 20 } },
+      { id: 'b', label: 'Credit notes', cells: { rev: -17, ebit: -2 } },
+      { id: 'c', label: 'Returns', cells: { rev: -5, ebit: -1 } },
+    ],
+  };
+  const resolved = resolveTable(data);
+  const found = resolved.warnings.filter((w) => w.code === 'ratio-negative-base');
+  expect(found).toHaveLength(1);
+  expect(found[0]).toMatchObject({ severity: 'info', owner: { rowId: 'b', colId: 'm' } });
+  expect(found[0]!.message).toContain('1 more');
+  expect(resolved.computedCells.find((r) => r.rowId === 'b' && r.colId === 'm')).toMatchObject({ displayed: '11.8%', state: 'value' });
+});
+
 // A margin row (gp / rev * 100) in a delta column printed the ratio of the changes (30.0%) and not the change of the margins (10.0%).
 it('prints the change of a nonlinear row calc in a delta or sub column, and keeps a linear one', () => {
   const data: TableData = {
@@ -1211,6 +1250,115 @@ it('prints the change of a nonlinear row calc in a delta or sub column, and keep
   const table = resolveTable(data, {}).table;
   const cell = (row: string, col: string) => table.rows.find((r) => r.id === row)!.cells[col]!.displayed;
   expect([cell('margin', 'ac'), cell('margin', 'py'), cell('margin', 'd'), cell('margin', 's'), cell('sum', 'd')]).toEqual(['20.0%', '10.0%', '10.0%', '10.0%', '130']);
+});
+
+// A bold (`strong`) label column was measured in the regular weight, so its track was too narrow and the next cell painted over the last letters.
+it('measures a strong row-label column in the weight it draws', () => {
+  const data: TableData = {
+    columns: [
+      { id: 'label', kind: 'rowLabel', label: 'Business', emphasis: 'strong' },
+      ...['a', 'b'].map((id) => ({ id, kind: 'value' as const, label: `Column ${id}`, format: '0.0' })),
+    ],
+    rows: ['Point-of-Care Analyzers', 'Imaging Contrast Agents', 'Molecular Test Kits']
+      .map((label, i) => ({ id: `r${i}`, label, cells: { a: 3.1 + i, b: 4.2 + i } })),
+  };
+  const encodings = { a: { type: 'heat', scale: 'column' }, b: { type: 'heat', scale: 'column' } };
+  const geometry = layout('table', data, { encodings, target: 'slide', size: { width: 444, height: 396, unit: 'pt' } });
+  for (const id of ['r0', 'r1', 'r2']) {
+    const text = geometry.scene.find((node): node is TextNode => node.t === 'text' && node.id === `cell:${id}:label`)!;
+    const heat = geometry.scene.find((node): node is Extract<SceneNode, { t: 'rect' }> => node.t === 'rect' && node.id === `heat:${id}:a`)!;
+    const drawn = Math.max(...text.lines.map((line) => defaultMeasurer(line, text.font).width));
+    expect(text.x + drawn).toBeLessThanOrEqual(heat.rect.x);
+  }
+});
+
+// A fixed frame cut a head and a cell in text columns that were narrow while wrapping columns kept width they did not need.
+it('takes width from a wrapping text column before it cuts another text column', () => {
+  const data: TableData = {
+    columns: [
+      { id: 'label', kind: 'rowLabel', label: 'Offer' },
+      { id: 'mix', kind: 'text', label: 'Consideration' },
+      { id: 'terms', kind: 'text', label: 'Terms', wrap: true },
+      { id: 'notes', kind: 'text', label: 'Notes', wrap: true },
+      { id: 'when', kind: 'text', label: 'Timeline' },
+    ],
+    rows: ['A', 'B'].map((id) => ({
+      id, label: `Bidder ${id}`,
+      cells: {
+        mix: 'Cash and stock',
+        terms: 'Antitrust clearance in the EU and UK, no material adverse change, works council consulted',
+        notes: 'Bridge facility from two lead banks, syndication after signing the offer',
+        when: 'Signing in the second quarter, closing early next year',
+      },
+    })),
+  };
+  const geometry = layout('table', data, { size: { width: 760, height: 400 } });
+  expect(geometry.warnings.filter((warning) => warning.code === 'label-truncated')).toEqual([]);
+});
+
+// The post-pass gave a column group's heading room to another column, and the heading then ran past its block.
+it('keeps the room a column-group heading needs when a cut column takes width from a text column', () => {
+  const words = ['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot'];
+  const text = (count: number, from: number) => Array.from({ length: count }, (_, i) => words[(i + from) % 6]).join(' ');
+  const data: TableData = {
+    columns: [
+      { id: 'label', kind: 'rowLabel', label: 'Offer' },
+      { id: 'a', kind: 'text', label: 'Aa', wrap: true },
+      { id: 'b', kind: 'text', label: 'Bb', wrap: true },
+      { id: 'c', kind: 'text', label: 'Cc', wrap: true },
+      { id: 'd', kind: 'text', label: 'Dd' },
+    ],
+    columnGroups: [{ id: 'g', label: 'A long group heading text here', columns: ['c', 'd'] }],
+    rows: ['x', 'y'].map((id) => ({
+      id, label: `Row ${id}`,
+      cells: { a: text(9, 0), b: text(8, 1), c: text(7, 2), d: 'Signing in the second quarter and closing early next year' },
+    })),
+  };
+  const geometry = layout('table', data, { size: { width: 540, height: 400 } });
+  expect(geometry.warnings.filter((warning) => warning.code === 'table-group-heading-overflow')).toEqual([]);
+});
+
+// Each rounded cut of the shrink could leave the tracks a pixel over the plot, and a table that fit in exact arithmetic then warned table-overflow.
+it('does not report an overflow for a pixel of rounding in the shrink', () => {
+  const rows: Array<[string, string[]]> = [
+    ['syndication signing Q1', ['foxtrot', 'EU consideration', 'delta syndication EU works', 'echo alpha closing works charlie bravo closing UK financing EU financing Q2']],
+    ['bravo unitranche', ['council unitranche Q1 echo clearance', 'alpha', 'syndication bravo antitrust foxtrot works EU EU UK', 'signing clearance alpha council consideration consideration council bravo consideration closing']],
+    ['clearance financing Q1', ['financing', 'closing Q1 financing unitranche closing consideration syndication council alpha', 'foxtrot syndication UK council foxtrot syndication UK consideration foxtrot unitranche consideration', 'council UK clearance closing charlie financing Q1 financing Q1 foxtrot']],
+    ['echo UK', ['charlie unitranche signing UK syndication charlie echo clearance unitranche', 'alpha Q2 works UK EU alpha Q2 alpha delta', 'unitranche works alpha EU financing echo Q2 alpha antitrust echo', 'charlie council works delta']],
+  ];
+  const ids = ['t1', 't2', 't0', 't3'];
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel', label: 'Offer' }, ...ids.map((id, i) => ({ id, kind: 'text' as const, label: ['Terms', 'Timeline', 'Conditions', 'Conditions'][i]!, wrap: true }))],
+    rows: rows.map(([label, cells], i) => ({ id: `r${i}`, label, cells: Object.fromEntries(ids.map((id, c) => [id, cells[c]!])) })),
+  };
+  const geometry = layout('table', data, { theme: 'boardroom', variant: 'benchmark', size: { width: 1235, height: 700 } });
+  expect(geometry.warnings.filter((warning) => warning.code === 'table-overflow')).toEqual([]);
+});
+
+// The post-pass measured every non-wrap text column at its two-line width in each pass, also when the shrink cut none of them.
+it('measures no two-line width of a text column the shrink did not cut', () => {
+  const data: TableData = {
+    columns: [
+      { id: 'label', kind: 'rowLabel', label: 'Offer' },
+      { id: 'when', kind: 'text', label: 'When' },
+    ],
+    rows: [{ id: 'a', label: 'A bidder with a long name that needs most of the frame', cells: { when: 'Q1 Q2 Q3' } }],
+  };
+  const seen: string[] = [];
+  const measure: typeof defaultMeasurer = (text, font) => { seen.push(text); return defaultMeasurer(text, font); };
+  layout('table', data, { measure, size: { width: 380, height: 200 } });
+  expect(seen).not.toContain('Q2 Q3');
+});
+
+// A table asks for the two-line width of one cell again on each layout pass, and each ask measured every split of the text again.
+it('measures the two-line width of a text once per measurer', () => {
+  let calls = 0;
+  const measure: typeof defaultMeasurer = (text, font) => { calls++; return defaultMeasurer(text, font); };
+  const font = { size: 12, weight: 400 };
+  const first = twoLineWidth('Signing in the second quarter and closing early next year', font, measure);
+  const used = calls;
+  expect(twoLineWidth('Signing in the second quarter and closing early next year', font, measure)).toBe(first);
+  expect(calls).toBe(used);
 });
 
 // The React path skips schema validation, and a non-string options.unit threw "trim is not a function" instead of drawing.

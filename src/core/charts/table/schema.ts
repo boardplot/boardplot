@@ -46,7 +46,7 @@ const calcSchema: z.ZodType = z.lazy(() =>
       .describe('Reference to a numeric cell.'),
     z.strictObject({ lit: z.number().describe('Constant in source units.') }).describe('Numeric literal, e.g. {lit: 100} for a percent bridge.'),
     z.strictObject({
-      op: z.enum(['add', 'sub', 'mul', 'div']).describe('Arithmetic on a and b.'),
+      op: z.enum(['add', 'sub', 'mul', 'div']).describe("Arithmetic on a and b. x/0 prints n.m., 0/0 prints n/a. A division by a negative cell is plain arithmetic and warns 'ratio-negative-base' (info); percentDelta prints n.m. there."),
       a: calcSchema,
       b: calcSchema,
     }).describe('Binary arithmetic calculation.'),
@@ -85,7 +85,7 @@ const columnBase = {
   align: z.enum(['left', 'right', 'center']).optional()
     .describe('Cell alignment. Numeric left alignment is accepted but linted.'),
   emphasis: z.enum(['strong', 'muted']).optional()
-    .describe("Header and cell emphasis. 'strong' sets the header and its cells to the emphasis weight (700 by default), 'muted' paints them in the muted ink. Paint only — column widths and row heights do not move."),
+    .describe("Header and cell emphasis. 'strong' sets the header and its cells to the emphasis weight (700 by default), 'muted' paints them in the muted ink. A strong column is measured in the bold weight; muted is paint only."),
   band: z.boolean().optional()
     .describe('Column band ground. Neighbouring banded columns read as one block and the first of the run takes the left hairline, so a block inside a column group needs no group of its own. Paint only.'),
   fitFormat: z.literal(false).optional().describe('false: options.fitFormats leaves this column\'s format as authored.'),

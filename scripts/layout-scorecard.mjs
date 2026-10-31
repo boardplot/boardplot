@@ -624,9 +624,12 @@ export function auditScene(item, request, geometry, reading) {
   const requested = new Set([...labels.keys(), ...geometry.debug.decisions.map(decision => decision.labelId), ...ticks.flatMap(tick => tick.labelId ? [tick.labelId] : [])]);
   // Histogram replaces the delegated column names with its bin-edge axis.
   // Exclude only those obsolete requests, and keep every final axis request.
-  const binEdges = geometry.derived?.binning?.edges;
-  const histogramAxis = request.type === 'histogram' && binEdges && geometry.axes?.some(axis => axis.axis === 'x'
-    && axis.ticks.length === binEdges.length && axis.ticks.every((tick, i) => tick.at === binEdges[i]));
+  // Whole-number data names one value per bin, at the bin centre, instead of the edges.
+  const binning = geometry.derived?.binning;
+  const binEdges = binning?.edges;
+  const axisValues = binning?.perValue ? binEdges?.slice(1).map(edge => edge - 0.5) : binEdges;
+  const histogramAxis = request.type === 'histogram' && axisValues && geometry.axes?.some(axis => axis.axis === 'x'
+    && axis.ticks.length === axisValues.length && axis.ticks.every((tick, i) => tick.at === axisValues[i]));
   if (histogramAxis) for (const bin of geometry.marks.bins) requested.delete(`category:${bin.id}`);
   const drawnIds = new Set(texts.map(text => text.node.id));
   for (const id of requested) {
