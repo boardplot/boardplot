@@ -316,6 +316,18 @@ process.exit(2);
       hideResvg.value = false;
       expect(rasterize([drawing], 1, 'resvg').warnings).toEqual([]);
       expect(runs()).toBe(1);
+      // Chrome on a host without CJK or emoji fonts still draws a whole PNG with boxes, so only macOS and Windows clear the warning.
+      const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+      try {
+        for (const [name, count] of [['darwin', 0], ['win32', 0], ['linux', 1]] as const) {
+          Object.defineProperty(process, 'platform', { value: name });
+          const warnings = rasterize([drawing], 1, 'resvg').warnings;
+          expect(warnings).toHaveLength(count);
+          if (count) expect(warnings[0]!.message).toContain('Chrome drew the PNG');
+        }
+      } finally {
+        Object.defineProperty(process, 'platform', platform);
+      }
       process.env.BOARDPLOT_CHROME_PATH = join(tmpdir(), 'no-such-chrome');
       if (rasterFamily(stack, installedFamilies()) === null) return;
       const warning = rasterize([drawing], 1, 'resvg').warnings[0]!;
