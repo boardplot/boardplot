@@ -5,6 +5,7 @@ import { getFixtures } from '../src/fixtures';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { requireGeometry } from '../src/core/sizing';
 import { runDocLints } from '../src/core/lint';
+import { normalizeGridData } from '../src/core/charts/grid/normalize';
 
 // A dense key must leave the plot its furniture budget while keeping every series identifiable.
 it('fits 25 long series names inside the furniture budget', () => {
@@ -121,4 +122,19 @@ it('colours a series alike in every panel of a written-out grid', () => {
   }
   expect([...fills.keys()].sort()).toEqual(['online', 'retail', 'wholesale']);
   for (const [id, set] of fills) expect(set.size, id).toBe(1);
+});
+
+// A colorRole on every series would override the authored highlight, so a panel that sets one keeps its series as written.
+it('keeps the authored highlight of slope panels in a written-out grid', () => {
+  const panel = (id: string, column: number, ids: string[]) => ({
+    id, type: 'slope', row: 0, column, options: { highlight: 'acme' },
+    data: {
+      categories: [{ id: 'y1', label: '2020' }, { id: 'y2', label: '2025' }],
+      series: ids.map((sid, i) => ({ id: sid, label: sid, values: [10 + i, 20 - i] })),
+    },
+  });
+  const data = { panels: [panel('n', 0, ['acme', 'beta', 'gamma']), panel('s', 1, ['beta', 'acme', 'gamma'])] };
+  for (const p of normalizeGridData(data).panels) {
+    expect((p.data as { series: Array<{ colorRole?: string }> }).series.some((s) => s.colorRole !== undefined)).toBe(false);
+  }
 });

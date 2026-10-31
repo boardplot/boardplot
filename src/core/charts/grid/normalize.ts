@@ -186,7 +186,8 @@ export function normalizeGridData(raw: unknown): ExplicitGridData {
   // parsed object owning 'panels' can only have come from the explicit branch.
   if (Object.hasOwn(input, 'panels')) {
     const explicit = input as ExplicitGridData;
-    return seriesIdsDisagree(explicit.panels) ? { ...explicit, panels: lockPaletteBySeriesId(explicit.panels, false) } : explicit;
+    const panels = lockWrittenOutPanels(explicit.panels);
+    return panels === explicit.panels ? explicit : { ...explicit, panels };
   }
   // Owning neither key is reachable: zod's required-key presence check reads
   // `key in input`, so a non-writable prototype gadget satisfies the explicit
@@ -346,6 +347,28 @@ function substitute(value: unknown, placeholder: string, replacement: string): u
     return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, substitute(item, placeholder, replacement)]));
   }
   return value;
+}
+
+/**
+ * A panel that names its focus series with `highlight` or `emphasis` colours
+ * its series by id itself. A colorRole on every series would override that
+ * focus, so such a panel keeps its series as written.
+ */
+function stylesSeriesById(panel: GridPanelSpec): boolean {
+  const options = isRecord(panel.options) ? panel.options : {};
+  return options.highlight !== undefined || options.emphasis !== undefined;
+}
+
+/**
+ * Locks the colours of a written-out grid by series id, over the panels that
+ * do not style their series by id. Returns the same array when nothing changes.
+ */
+function lockWrittenOutPanels(panels: GridPanelSpec[]): GridPanelSpec[] {
+  const plain = panels.filter((panel) => !stylesSeriesById(panel));
+  if (!seriesIdsDisagree(plain)) return panels;
+  const locked = lockPaletteBySeriesId(plain, false);
+  const lockedQueue = [...locked];
+  return panels.map((panel) => (stylesSeriesById(panel) ? panel : (lockedQueue.shift() ?? panel)));
 }
 
 /** The non-reference series ids a panel lists, in order. */
