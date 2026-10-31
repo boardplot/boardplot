@@ -49,6 +49,8 @@ export interface Binning {
   edges: number[];
   /** True when an 'auto' width was moved onto the readability ladder. */
   snapped: boolean;
+  /** True when every observation is a whole number and each width-1 bin centres on one value. */
+  perValue: boolean;
   /** `2*IQR*n^(-1/3)`; 0 when the interquartile range collapses. */
   hFd: number;
   /** `range / (log2(n) + 1)`. */
