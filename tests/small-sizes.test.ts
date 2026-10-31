@@ -740,8 +740,8 @@ it('reports a compact floor where the spec draws and names the compact size belo
 it('names a wider card for lost band names at a height authored in mm', () => {
   const fixture = getFixtures('waterfall').find(f => f.id === 'torture-long-labels')!;
   const at = (size: object) => layoutResolvedRequest(resolveChartRequest({ type: 'waterfall', data: fixture.data, options: { ...fixture.options, size } } as never));
-  const px = at({ width: 280, height: 600 });
-  const mm = at({ width: 280 * 25.4 / 96, height: 600 * 25.4 / 96, unit: 'mm' });
+  const px = at({ width: 240, height: 600 });
+  const mm = at({ width: 240 * 25.4 / 96, height: 600 * 25.4 / 96, unit: 'mm' });
   expect(px.warnings[0]?.code).toBe('size-below-floor');
   expect(mm.warnings[0]?.code).toBe('size-below-floor');
   expect(mm.warnings[0]?.expected?.minimum).toEqual(px.warnings[0]?.expected?.minimum);

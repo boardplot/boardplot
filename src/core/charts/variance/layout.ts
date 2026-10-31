@@ -82,6 +82,7 @@ import {
   resolveSemanticPaletteTheme,
   semanticPalettePaint,
   signedFillPaint,
+  emphasisLabelTheme,
   emphasisWeight,
   strokeToken,
 } from '../../theme';
@@ -1284,7 +1285,9 @@ export function layoutVariance(
       cats.length >= 2 ? { from: cats[0]!.id, to: cats[cats.length - 1]!.id } : undefined,
     occupied,
     plot,
-    theme,
+    // Annotation labels draw bold (see labelsToNodes below), so the pass measures them bold.
+    theme: emphasisLabelTheme(theme),
+    plainLabelWeight: theme.type.label.weight,
     measure,
     format: options.format,
     locale: options.locale?.language,
