@@ -225,6 +225,8 @@ export function placeXTickLabels(input: {
   /** The top of the row. */
   bottom: number;
   plotRight: number;
+  /** The plot's left edge: a first tick label that pokes left of it may shift to start here when the value axis' bottom label holds its seat. */
+  plotLeft: number;
   labelRequests: LabelRequest[];
   /**
    * A running period's words under its readings, where no value carries them: in the tick row, else the day or
@@ -242,7 +244,11 @@ export function placeXTickLabels(input: {
   let y = input.bottom;
   if (plan.values.length) {
     plan.values.forEach((_, i) => {
-      if (plan.keep[i]) input.labelRequests.push(request(`xtick:${i}`, plan.labels[i]!, tickLabelX(plan, i, xOf, left, right), y, plan.widths[i]!));
+      if (!plan.keep[i]) return;
+      const x = tickLabelX(plan, i, xOf, left, right), w = plan.widths[i]!;
+      const req = request(`xtick:${i}`, plan.labels[i]!, x, y, w);
+      if (x < input.plotLeft - 0.5) req.candidates.push({ slot: 'below', rect: { x: input.plotLeft, y, w, h: plan.lineH }, penalty: 1 });
+      input.labelRequests.push(req);
     });
     y += plan.lineH + ROW_GAP;
   }
