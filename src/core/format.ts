@@ -99,12 +99,14 @@ export const MAGNITUDE_SUFFIX: Record<'none' | 'k' | 'm' | 'bn' | 't', string> =
  * The scale letter under a chart locale. A German reader takes "B" for
  * "Billion" (10¹²) and "T" for "Tausend", a French reader "B" for "billion"
  * (10¹²): those charts print the local short form (CLDR: " Mrd.", " Bio.";
- * " Md", " Bn"). k and M read alike everywhere.
+ * " Md", " Bn"). A German chart prints " Mio." beside " Mrd.", so one axis
+ * never reads "500M" under "1,0 Mrd.". k reads alike everywhere.
  */
 export function magnitudeSuffix(magnitude: keyof typeof MAGNITUDE_SUFFIX, locale: string | undefined): string {
-  if (magnitude !== 'bn' && magnitude !== 't') return MAGNITUDE_SUFFIX[magnitude];
+  if (magnitude === 'none' || magnitude === 'k') return MAGNITUDE_SUFFIX[magnitude];
   const language = wordLanguage(locale)?.toLowerCase().split(/[-_]/)[0];
-  if (language === 'de') return magnitude === 'bn' ? ' Mrd.' : ' Bio.';
+  if (language === 'de') return magnitude === 'm' ? ' Mio.' : magnitude === 'bn' ? ' Mrd.' : ' Bio.';
+  if (magnitude === 'm') return MAGNITUDE_SUFFIX[magnitude];
   if (language === 'fr') return magnitude === 'bn' ? ' Md' : ' Bn';
   return MAGNITUDE_SUFFIX[magnitude];
 }

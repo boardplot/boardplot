@@ -15,6 +15,7 @@ import {
   formatterFromExample,
   neededDecimals,
   roundedNumber,
+  seriesRasterFormatter,
   type NumberFormatSpec,
 } from '../../formatSpec';
 import { autoDecimals } from '../../formatPrecision';
@@ -129,8 +130,25 @@ function discloseNumber(raw: number, spec: NumberFormatSpec, authoredFormat: boo
   return { value, text: formatWithSpec(value, applied), exact };
 }
 
+/**
+ * The engine scale of one axis without a format, as bar takes it
+ * (seriesRasterFormatter): from a million on a render target, else none.
+ */
+function engineAxisScale(options: ScatterStrategyOptions, format: string | undefined, data: ScatterData | undefined, axis: 'x' | 'y'): ReturnType<typeof seriesRasterFormatter> | undefined {
+  if (format || options.target === undefined || !Array.isArray(data?.points)) return undefined;
+  const values: number[] = [];
+  for (const point of data.points) {
+    const raw: unknown = point?.[axis];
+    const value = typeof raw === 'number' ? raw : raw !== null && typeof raw === 'object' && 'number' in raw ? Number((raw as { number: unknown }).number) : NaN;
+    if (Number.isFinite(value)) values.push(value);
+  }
+  if (!values.some((value) => Math.abs(value) >= 1e6)) return undefined;
+  const engine = seriesRasterFormatter(undefined, values, options.locale?.language, options.unit, options.target);
+  return engine.spec.autoMagnitude ? engine : undefined;
+}
+
 /** Resolve the options once: theme, palette, size, measurer and the number formats. */
-export function resolveScatterEnv(options: ScatterStrategyOptions, warnings: LintWarning[]): ScatterEnv {
+export function resolveScatterEnv(options: ScatterStrategyOptions, warnings: LintWarning[], data?: ScatterData): ScatterEnv {
   if (options.zones && options.quadrants) {
     throw new NormalizeError(
       'zones-quadrants-conflict',
@@ -146,9 +164,13 @@ export function resolveScatterEnv(options: ScatterStrategyOptions, warnings: Lin
   const fmt = scatterFormatter(options);
   // Each coordinate prints in its own axis format (axisFormat), else the chart's.
   const axisFormat = { x: options.axisFormat?.x ?? options.format, y: options.axisFormat?.y ?? options.format };
+  // An axis without a format takes the engine scale bar takes from a
+  // million, chosen once per axis from its largest value: ticks and
+  // coordinates print 2.0B and 500M, not 2,000,000,000.
+  const engine = { x: engineAxisScale(options, axisFormat.x, data, 'x'), y: engineAxisScale(options, axisFormat.y, data, 'y') };
   const axisFmt = {
-    x: options.axisFormat?.x ? scatterFormatter(options, axisFormat.x) : fmt,
-    y: options.axisFormat?.y ? scatterFormatter(options, axisFormat.y) : fmt,
+    x: options.axisFormat?.x ? scatterFormatter(options, axisFormat.x) : engine.x?.fmt ?? fmt,
+    y: options.axisFormat?.y ? scatterFormatter(options, axisFormat.y) : engine.y?.fmt ?? fmt,
   };
   // A chart formatter is a DISPLAY convention; a cut point is a BOUNDARY. Run
   // a boundary through the display formatter and the exhibit states a
@@ -163,8 +185,15 @@ export function resolveScatterEnv(options: ScatterStrategyOptions, warnings: Lin
   // tick through autoDecimals on its own and printed "1.0", "1", "1.1" at
   // 0.95, 1 and 1.05.
   // An authored example prints as the marks print it: the chart locale's separators, the authored word.
-  const axisSpecOf = (format: string | undefined): NumberFormatSpec => (format ? exampleSpec(format, options.locale?.language) : countSpec);
-  const axisSpec = { x: axisSpecOf(axisFormat.x), y: axisSpecOf(axisFormat.y) };
+  const axisSpecOf = (format: string | undefined, scaled: NumberFormatSpec | undefined): NumberFormatSpec => (format ? exampleSpec(format, options.locale?.language) : scaled ?? countSpec);
+  const axisSpec = { x: axisSpecOf(axisFormat.x, engine.x?.spec), y: axisSpecOf(axisFormat.y, engine.y?.spec) };
+  // A cut point on a scaled axis prints at its own scale with every digit it needs ("452.345678M").
+  const cutSpec = (raw: number, axis: 'x' | 'y'): NumberFormatSpec => {
+    if (!engine[axis]) return axisSpec[axis];
+    let magnitude: NumberFormatSpec['magnitude'] = 'none';
+    for (const step of ['k', 'm', 'bn', 't'] as const) if (Math.abs(raw) >= MAGNITUDE_DIVISOR[step]) magnitude = step;
+    return { ...countSpec, magnitude, rollMagnitude: false };
+  };
   return {
     options,
     theme,
@@ -174,7 +203,7 @@ export function resolveScatterEnv(options: ScatterStrategyOptions, warnings: Lin
     fmt,
     axisFmt,
     axisSpec,
-    discloseCut: (raw: number, axis: 'x' | 'y') => discloseNumber(raw, axisSpec[axis], axisFormat[axis] !== undefined),
+    discloseCut: (raw: number, axis: 'x' | 'y') => discloseNumber(raw, cutSpec(raw, axis), axisFormat[axis] !== undefined),
     discloseCount: (raw: number) => discloseNumber(raw, countSpec, false),
     highlights: new Set(resolveHighlight(options.highlight)),
     va: options.valueAxis ?? {},
