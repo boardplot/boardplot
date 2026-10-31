@@ -388,9 +388,6 @@ export function layoutBullet(
   const measure = options.measure ?? defaultMeasurer;
   // Business default (copied from waterfall): whole numbers get 0 decimals;
   // small non-integers keep one, so a 0.4 sliver never prints as "0".
-  const fmt = options.format
-    ? formatterFromExample(options.format, options.locale?.language)
-    : (v: number) => formatAutomaticNumber(v, { locale: options.locale?.language, decimals: autoDecimals(v) });
   const highlights = new Set(resolveHighlight(options.highlight));
   const labelOn = (kind: LabelKind): boolean => !compact && chartLabelOn(options, kind);
 
@@ -508,6 +505,9 @@ export function layoutBullet(
   }
 
   // ---- per-row formatting (cell format override > pct > chart format) ----
+  const fmt = options.format
+    ? formatterFromExample(options.format, options.locale?.language, undefined, rows.flatMap((row) => row.isPct ? [] : [row.value, row.target]))
+    : (v: number) => formatAutomaticNumber(v, { locale: options.locale?.language, decimals: autoDecimals(v) });
   const rowFmt = (row: NormRow) => (v: number): string => {
     if (row.meta?.format) return formatterFromExample(row.meta.format, options.locale?.language)(v);
     if (row.isPct) return formatAutomaticPercent(v, autoDecimals(v), false, options.locale?.language);

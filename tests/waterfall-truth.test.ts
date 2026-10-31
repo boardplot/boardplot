@@ -15,6 +15,7 @@
 import { describe, expect, it } from 'vitest';
 import '../src/core/charts';
 import { getChartDefinition } from '../src/core/registry';
+import { unscaledFormatLint } from '../src/core/formatSpec';
 import { getFixtures } from '../src/fixtures';
 import type { Geometry } from '../src/core/types/scene';
 
@@ -244,6 +245,26 @@ describe('a subtotal with toBaseline beside checks, hidden breaks and segments',
   it('checks its value against the authored segments of the block', () => {
     const g = run({ items: [{ id: 'o', type: 'total', value: 0 }, { id: 'a', segments: [{ id: 'x', value: 0.25 }, { id: 'y', value: 0.75 }] }, { id: 's', type: 'subtotal', toBaseline: true, value: 1.4 }] });
     expect(codes(g)).toEqual(['derived-mismatch']);
+  });
+});
+
+describe('an authored scale word', () => {
+  const fixture = getFixtures('waterfall').find((candidate) => candidate.id === 'automatic-axis-break')!;
+  const valueTexts = (format: string) => {
+    const options = { ...fixture.options, format };
+    const geometry = def.layout(def.normalize(structuredClone(fixture.data)) as never, options as never) as unknown as Geometry<object, object>;
+    return geometry.labels.filter((label) => /^(sum|total):/.test(label.id)).map((label) => label.text).sort();
+  };
+
+  // Decided per label, +50 printed +0.1k and -20 left the thousands, so the labels did not add up to the total.
+  it.each(['1.2k', '1,234k', '1.23k'])('holds every value of %s to one scale and one decimal count', (format) => {
+    expect(valueTexts(format)).toEqual(['+0.05k', '1.00k', '1.03k', '−0.02k'].sort());
+  });
+
+  // The warning named a 0.0k the chart never drew.
+  it('says what the chart prints in place of the authored decimals', () => {
+    const [warning] = unscaledFormatLint({ ...fixture.options, format: '1.2k' }, fixture.data);
+    expect([warning?.code, warning?.message]).toEqual(['format-hides-values', "format '1.2k' cannot show -20 near its size, so the chart prints every value with 2 decimals: -20 as −0.02k"]);
   });
 });
 

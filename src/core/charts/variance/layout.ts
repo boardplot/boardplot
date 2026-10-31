@@ -184,9 +184,6 @@ export function layoutVariance(
   const measure = options.measure ?? defaultMeasurer;
   // Business default: whole numbers get 0 decimals; small non-integers keep
   // one, so a 0.4 sliver never prints as "0". (waterfall's autoDecimals)
-  const fmt = options.format
-    ? formatterFromExample(options.format, options.locale?.language)
-    : (v: number) => formatAutomaticNumber(v, { locale: options.locale?.language, decimals: autoDecimals(v) });
   const highlights = new Set(resolveHighlight(options.highlight));
   // A warm red or orange accent on a signed variance reads as a loss.
   const paintWarningRules: PaintWarningRule[] = highlights.size > 0 ? [{ kind: 'highlight-reads-as-loss', chart: 'variance', before: warnings.length }] : [];
@@ -377,6 +374,11 @@ export function layoutVariance(
     const example = formats[ci];
     return mode === 'relative' && example && specUnitKind(parseFormatExample(example)) === 'percent' ? undefined : example;
   };
+  // An authored format holds the bars and the deltas to one scale and one decimal count (exampleSpec).
+  const printed = [...acArr, ...dAbsArr];
+  const fmt = options.format
+    ? formatterFromExample(options.format, options.locale?.language, undefined, printed)
+    : (v: number) => formatAutomaticNumber(v, { locale: options.locale?.language, decimals: autoDecimals(v) });
   // The AC values and the signed deltas are two series: each takes one precision (seriesValueFormatter).
   const acFmt = seriesValueFormatter(acArr, options.locale?.language);
   const deltaFmt = seriesValueFormatter(dAbsArr, options.locale?.language);
@@ -388,7 +390,8 @@ export function layoutVariance(
         ? formatWithSpec(v, { ...exampleSpec(example, options.locale?.language), prefix: '', suffix, signed })
         : withUnit((signed ? deltaFmt : acFmt)(v, signed), suffix);
     }
-    return example ? (signed ? signedFormatterFromExample(example, options.locale?.language, options.unit) : formatterFromExample(example, options.locale?.language, options.unit))(v)
+    const shared = example === options.format ? printed : undefined;
+    return example ? (signed ? signedFormatterFromExample(example, options.locale?.language, options.unit, shared) : formatterFromExample(example, options.locale?.language, options.unit, shared))(v)
       : (signed ? deltaFmt : acFmt)(v, signed);
   };
 

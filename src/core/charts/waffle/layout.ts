@@ -196,11 +196,13 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false): Pass
     const text = shareText(value, autoDecimals(value), options.locale?.language);
     return /^[<>]/.test(text) ? text : shareText(value, Math.max(autoDecimals(value), authoredDecimals(value)), options.locale?.language);
   };
+  // An authored chart format holds every printed share to one scale and one decimal count (exampleSpec).
+  const cellNumbers = series.flatMap((row) => row.cells.map(cellValue));
   // A cell's own format wins, then its series' format, then options.format (the pie rule).
   const formatFor = (seriesIndex: number, panelIndex: number, exact = true): ((value: number) => string) => {
     const example = cellMeta(series[seriesIndex]!.cells[panelIndex]!)?.format ?? series[seriesIndex]!.ser.format ?? options.format;
     if (!example) return exact ? defaultFormat : (value) => shareText(value, autoDecimals(value), options.locale?.language);
-    const spec = exampleSpec(example, options.locale?.language);
+    const spec = exampleSpec(example, options.locale?.language, undefined, example === options.format ? cellNumbers : undefined);
     return (value) => {
       const rounded = roundedNumber(value, spec);
       if ((value > 0 && rounded === 0) || (value < 100 && rounded === 100)) return shareText(value, exact ? 1 : spec.decimals, options.locale?.language);
@@ -307,7 +309,7 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false): Pass
   const valueText = (si: number, pi: number) => cellValue(series[si]!.cells[pi]!) === null
     ? theme.table?.glyphs?.missing ?? '–' : formatFor(si, pi)(panels[pi]!.segments[si]!.value);
   // The computed rest has no series format of its own: it takes the chart format, or the default.
-  const restSpec = options.format ? exampleSpec(options.format, options.locale?.language) : undefined;
+  const restSpec = options.format ? exampleSpec(options.format, options.locale?.language, undefined, cellNumbers) : undefined;
   // As a series format: a rounded rest must not claim a different share from its cells.
   const restFormat = (value: number): string => {
     if (!restSpec) return defaultFormat(value);
