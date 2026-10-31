@@ -281,7 +281,9 @@ const WIDTH_REPAIR_PROBE = Symbol('tableWidthRepairProbe');
 
 /**
  * The table-overflow patch widens the frame and keeps the authored height, but the wider frame draws the rows
- * at their regular spacing and can need more height than that. The patch names the height the wider frame needs.
+ * at their regular spacing and can need more height than that. Measure lays the wider frame out and names the
+ * height it needs. A layout that only draws would pay a second layout for every such table, so it reports the
+ * warning with no patch and sends the caller to measure. A table without a fixed height keeps its width patch.
  */
 function widthRepairHeight(data: TableData, options: TableOptions, geometry: Geometry<TableMarks, TableDerived>): Geometry<TableMarks, TableDerived> {
   if ((options as { [WIDTH_REPAIR_PROBE]?: boolean })[WIDTH_REPAIR_PROBE] || (options as LayoutOptions)[SIZING_ONLY]) return geometry;
@@ -289,6 +291,14 @@ function widthRepairHeight(data: TableData, options: TableOptions, geometry: Geo
   const patch = warning?.fix?.[0];
   const size = patch && 'value' in patch ? patch.value as { width: number; height?: number } : undefined;
   if (!warning || !size || size.height === undefined) return geometry;
+  if (!(options as { [VERIFY_ADVICE]?: boolean })[VERIFY_ADVICE]) {
+    geometry.warnings = geometry.warnings.map(w => {
+      if (w !== warning) return w;
+      const { fix: _unverified, ...rest } = w;
+      return { ...rest, suggest: `${w.suggest ?? ''} Call measure for a size that keeps the height and draws.`.trim() };
+    });
+    return geometry;
+  }
   const wider = layoutTableCard(data, { ...options, size, [WIDTH_REPAIR_PROBE]: true } as TableOptions);
   const needed = wider.refused || !wider.sizing ? undefined : Math.ceil(wider.sizing.minHeight);
   if (needed !== undefined && needed > size.height) {

@@ -744,14 +744,17 @@ describe('size advice', () => {
     expect(floor.fix).toBeUndefined();
   });
 
-  // Prevents a wider-size patch of a drawn table from refusing: the wider frame draws the rows at their regular
-  // spacing and needs more height than the authored height, so the patch must name that height.
-  it('names a table-overflow patch whose frame draws', () => {
+  // Prevents a plain render of a table from laying out a second, wider frame (1.6x to 2x slower than main) to name a
+  // patch: a drawn table with a fixed height reports table-overflow with no patch, and measure names the height that draws.
+  it('names the table-overflow height in measure, not in a plain render', () => {
     const found = getFixtures('table').find(f => f.id === 'cohort-heat-relative')!;
     const spec = { type: 'table', data: found.data, options: { ...found.options, size: { width: 1048, height: 379 } } };
     const drawn = render({ spec }).body as any;
     expect(drawn.ok).toBe(true);
-    const overflow = drawn.warnings.find((warning: any) => warning.code === 'table-overflow');
+    const plain = drawn.warnings.find((warning: any) => warning.code === 'table-overflow');
+    expect(plain.fix).toBeUndefined();
+    expect(plain.suggest).toContain('measure');
+    const overflow = measure(spec).warnings.find(warning => warning.code === 'table-overflow')!;
     expect(overflow.fix).toBeDefined();
     const after = render({ spec: applyRepair(spec, overflow.fix) }).body as any;
     expect(after.ok).toBe(true);
