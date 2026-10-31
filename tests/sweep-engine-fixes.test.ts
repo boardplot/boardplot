@@ -449,4 +449,20 @@ describe('chart layout edge cases', () => {
     const key = geometry.labels.find((l: { id: string }) => l.id === 'legend:net:0');
     expect(key && !key.hidden).toBe(true);
   });
+
+  // An unsized sparkline with a title kept its 176 px card on slide, so the title wrapped one word a line and was cut.
+  it('an unsized sparkline on slide is as wide as its title and keeps 176 px for a short one', () => {
+    const request = (title: string) => ({
+      type: 'sparkline',
+      data: { values: [11.2, 11.6, 11.1, 12, 12.4, 12.1, 12.9, 13.4, 13.1] },
+      options: { title, target: 'slide' },
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const lay = (title: string) => layoutResolvedRequest(resolveChartRequest(request(title) as any) as any) as any;
+    const long = lay('Orders climb into August and ease to 13.1k in September');
+    expect(long.size.width).toBeGreaterThan(176);
+    expect(long.frame.titleLines).toBe(1);
+    expect(long.warnings.some((w: { code: string }) => w.code === 'frame-title-truncated')).toBe(false);
+    expect(lay('Orders').size.width).toBe(176);
+  });
 });
