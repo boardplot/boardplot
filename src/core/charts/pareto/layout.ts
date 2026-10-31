@@ -636,6 +636,16 @@ export function layoutPareto(
   // point; without one, the note would name a set the exhibit does not have.
   // When the names fit at neither 0° nor 45° the axis carries rank
   // numbers, and combo prints their mapping itself, whatever `methodNote` says.
+  // A curve point that sits on the threshold rule and prints the rule's own share says the
+  // rule's label twice, side by side ("80%  80%" where the first cause alone reaches 80%):
+  // the rule's label carries it. The key keeps the wording it was given above.
+  if (thresholdLine && threshold !== false) {
+    curve.forEach((cell, i) => {
+      const value = typeof cell === 'number' ? cell : cell !== null && typeof cell === 'object' && 'number' in cell ? cell.number : undefined;
+      const prints = typeof cell === 'number' || (cell !== null && typeof cell === 'object' && 'label' in cell && cell.label === '${value}');
+      if (prints && value !== undefined && curveShareText(value) === thresholdText(threshold)) curve[i] = { number: value, label: false };
+    });
+  }
   let geo = render([]);
   // The seat at the rule's start is free on most Pareto curves, which climb
   // to the threshold from below. Where a tall first column takes it, the
@@ -669,7 +679,7 @@ export function layoutPareto(
   // total-scaled curve that starts on a crowded first column), the key carries it.
   const key = (comboOptions as { [HIGHLIGHT_KEY]?: HighlightKey })[HIGHLIGHT_KEY];
   if (key && key.highlighted === topKey(true)
-    && geo.labels.some((l) => l.id === `point:${CUMULATIVE_SERIES_ID}:${highlighted.at(-1)}` && l.hidden !== undefined)) {
+    && geo.labels.some((l) => l.id === `point:${CUMULATIVE_SERIES_ID}:${highlighted.at(-1)}` && l.hidden !== undefined && l.hidden !== 'redundant')) {
     key.highlighted = topKey(false);
     const at = plotted.findIndex((p) => p.id === highlighted.at(-1));
     curve[at] = { number: cumulativeShare[highlighted.at(-1)!]!, label: false };

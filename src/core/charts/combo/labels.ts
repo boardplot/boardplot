@@ -170,6 +170,7 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
   // names the segment back, so a pinned segment placed first takes the value whatever its format.
   const linked = new Map(requests.flatMap((req) => req.printedIn ? [[req.printedIn, req.id] as const] : []));
   const valueAlone = gtContent.join() === 'absolute';
+  const shares = (domain.options as { [FIRST_END_BELOW_TOTALS]?: boolean })[FIRST_END_BELOW_TOTALS] === true;
   const backLink = (id: string, words: unknown) => !words && valueAlone && linked.has(id) ? { printedIn: linked.get(id) } : {};
   // A reference rule does not move a total: it crosses the rule on a halo, as on column.
   const crossesRules = domain.averageMarkerId !== undefined || (domain.options.annotations ?? []).some(annotation => annotation.kind === 'valueLine');
@@ -262,6 +263,20 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
     })();
     const inside = (dy: number, slot: string) => insideDepth >= tsize.height + dy
       ? { ...at(slot, above ? edgeY + dy : edgeY - tsize.height - dy, 2), ...paints.top(ci, above) } : undefined;
+    // Type steps: a line that rises from this column's top runs right of its centre;
+    // the total then stands left of the line's start, level with its usual seat (pareto at 320: '120').
+    // Only the first column (left of any other the total would stand over its neighbour), and only
+    // one too narrow to hold its total inside. Where a Pareto curve starts on that column's top
+    // (scaled to its total), the seat clears the marker and comes before the seat two rows up,
+    // which would leave the total floating over the curve's first point.
+    const curveStartsOnTop = ci === 0 && shares && lineYs(ci).some((ly) => Math.abs(ly - edgeY) < 0.5);
+    const leftX = cx - LEFT_SEAT_AIR - (curveStartsOnTop ? MARKER_R : 0) - tsize.width;
+    const leftSeat = ci === 0 && tsize.width + 4 > band.bandwidth && strokes.length > 0 && above && leftX >= LEFT_SEAT_MIN_X
+      ? [{ slot: 'aboveStackLeft', rect: { x: leftX, y: edgeY - tsize.height - 4, w: tsize.width, h: tsize.height }, penalty: 2 }] : [];
+    // Over that first point, the total lifts only as far as the rising curve and its marker need,
+    // short of the seat two rows up.
+    const lift = curveStartsOnTop && above ? clearLift({ ...at('aboveStack', edgeY - tsize.height - 4, 0).rect }, strokes, 2 * tsize.height + 4) : undefined;
+    const liftedSeat = lift !== undefined && lift >= MARKER_R ? [at('aboveStackLifted', edgeY - tsize.height - 4 - lift - 2, 1)] : [];
     const named = { noteText: `${domain.columns.length === 1 ? noteName(domain.columns[0]!) : chartString(domain.options, 'total')} ${text}${words ? ` ${words.lines[1]}` : ''} (${noteName(c)})` };
     if (insideFont && above && edgeY + 4 + tsize.height <= y(0)) {
       requests.push({
@@ -300,13 +315,9 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
         // An average marker across this seat does not move the total: it
         // crosses the rule on a halo, as on column.
         { ...at(above ? 'aboveStack' : 'belowStack', above ? edgeY - tsize.height - 4 : edgeY + 4, 0), ...(crossesRules ? { overRules: true } : {}) },
+        ...(curveStartsOnTop ? [...leftSeat, ...liftedSeat] : []),
         { ...shiftedClear(at(above ? 'aboveStackShifted' : 'belowStackShifted', above ? edgeY - 2 * tsize.height - 8 : edgeY + tsize.height + 8, 1), ci), ...(crossesRules ? { overRules: true } : {}) },
-        // Type steps: a line that rises from this column's top runs right of its centre;
-        // the total then stands left of the line's start, level with its usual seat (pareto at 320: '120').
-        // Only the first column (left of any other the total would stand over its neighbour), and only
-        // one too narrow to hold its total inside.
-        ...(ci === 0 && tsize.width + 4 > band.bandwidth && strokes.length > 0 && above && cx - LEFT_SEAT_AIR - tsize.width >= LEFT_SEAT_MIN_X
-          ? [{ slot: 'aboveStackLeft', rect: { x: cx - LEFT_SEAT_AIR - tsize.width, y: edgeY - tsize.height - 4, w: tsize.width, h: tsize.height }, penalty: 2 }] : []),
+        ...(curveStartsOnTop ? [] : leftSeat),
       ], edgeY, lineYs(ci), inside(8, 'insideEnd'),
       domain.columns.length > 1,
       // Last of all, one step further in: a line marker just inside the column top blocks the inside end by a fraction of a pixel.
