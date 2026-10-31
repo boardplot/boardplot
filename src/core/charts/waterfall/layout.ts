@@ -1921,6 +1921,7 @@ function layoutWaterfallWithPad(
     plot: annPlot,
     // Annotation labels draw bold (see labelsToNodes below), so the pass measures them bold.
     theme: emphasisLabelTheme(theme),
+    plainLabelWeight: theme.type.label.weight,
     measure,
     format: options.format,
     locale: options.locale?.language,

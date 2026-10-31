@@ -301,6 +301,26 @@ describe('chart layout edge cases', () => {
     expect(tooNarrow).toEqual([]);
   });
 
+  // The bold seat measure also widened an arrow callout and the body under a headline, which print plain, so a callout that fits was moved to the notes.
+  it('an arrow callout and a headline body keep the plain face and their seat', () => {
+    const text = 'Restated after the audit of the Q3 numbers';
+    const categories = ['North', 'South', 'East', 'West'].map((label) => ({ id: label.toLowerCase(), label }));
+    const specs = [
+      { type: 'variance', data: { categories, series: [{ id: 'act', label: 'Actual', values: [120, 95, 140, 88] }, { id: 'ref', label: 'Reference', values: [100, 100, 100, 100] }] },
+        options: { variant: 'integrated', variance: { of: 'act', vs: 'ref' }, size: { width: 440 } }, annotations: [{ kind: 'callout', at: { categoryId: 'north', seriesId: 'act' }, text, arrow: true }] },
+      { type: 'waterfall', data: { items: [{ id: 'a', label: 'Start', type: 'total', value: 100 }, { id: 'b', label: 'Gain', value: 30 }, { id: 'c', label: 'Loss', value: -20 }, { id: 'd', label: 'End', type: 'total', value: 110 }] },
+        options: { title: 'Bridge', size: { width: 480 } }, annotations: [{ kind: 'callout', at: 'b', text, headline: 'Largest step ${value}' }] },
+    ];
+    const seen = specs.map((spec) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const geometry = layoutResolvedRequest(resolveChartRequest(spec as any) as any) as any;
+      const label = geometry.labels.find((l: { id: string }) => l.id.startsWith('annotation:'));
+      const node = geometry.scene.find((n: { id: string }) => n.id === `label:${label.id}:body`) ?? geometry.scene.find((n: { id: string }) => n.id === `label:${label.id}`);
+      return { type: spec.type, hidden: label.hidden, weight: node.font.weight };
+    });
+    expect(seen).toEqual([{ type: 'variance', hidden: undefined, weight: 400 }, { type: 'waterfall', hidden: undefined, weight: 400 }]);
+  });
+
   // A callout seated in the strip under the axis, on top of the 45° names: a name claimed only a square at its anchor.
   it('a callout does not seat on a rotated category name', () => {
     const categories = ['Umsatzerlöse', 'Niedersachsen', 'Licence income', 'Abschreibungen'].map((label, i) => ({ id: `c${i}`, label }));
