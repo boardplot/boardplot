@@ -564,7 +564,7 @@ function verifySizeAdvice(doc: BoardplotDoc, chart: DocChart, findings: Document
     const repair = verifiedSizeRepair(value, size => {
       const scratch: DocumentEnvelope = { ok: true, errors: [], warnings: [] };
       try {
-        return drawn(doc, { ...chart, options: { ...chart.options, size: { ...value, ...size } } }, scratch, {}, target) !== null
+        return drawn(doc, { ...chart, options: { ...chart.options, size: { ...value, ...size } } }, scratch, {}, target, true) !== null
           && scratch.errors.length === 0 && !scratch.warnings.some(w => w.code === finding.code
             || w.code === 'plot-under-floor' || w.code === 'size-below-floor');
       } catch { return false; }
