@@ -30,6 +30,8 @@ export function stepToBar(
   const lost = names.filter((label) => label.hidden === 'density');
   if (lost.length === 0 || panelTypeClass(options) !== undefined) return undefined;
   if (COLUMN_ONLY.some((key) => options[key] !== undefined) || options.annotations?.some((annotation) => annotation.kind === 'event')) return undefined;
+  // valueAxis.percent turns a column into shares of 100%, and an integrated PY reference draws growth labels; a bar draws neither.
+  if (options.valueAxis?.percent || column.derived.integratedVariance !== undefined) return undefined;
   if (Object.entries(options.valueAxis ?? {}).some(([key, value]) => value !== undefined && valueAxisRefusal('bar', key) !== undefined && valueAxisRefusal('column', key) === undefined)) return undefined;
   // An open height is the bar's to choose: the fit step after the layout gives its rows their height.
   // A pinned height must already hold every row with its name.

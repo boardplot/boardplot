@@ -848,6 +848,19 @@ it('keeps the column when a column-only value axis key is set', () => {
   expect(draw({ tickStep: 5 }).type).toBe('column');
 });
 
+// A 100% share column, and a stacked column with a PY reference, stepped to bars that drew absolute values and no growth labels, with no warning.
+it('keeps the column when it draws shares of 100% or growth against a PY reference', () => {
+  const names = Array.from({ length: 20 }, (_, i) => `Sector number ${i + 1} of the survey`);
+  const categories = names.map((label, i) => ({ id: `c${i}`, label }));
+  const values = (k: number) => names.map((_, i) => 8 + ((i * k) % 23));
+  const draw = (series: object[], options: object) => layoutResolvedRequest(resolveChartRequest({ type: 'column', data: { categories, series }, options: { title: 'Margin by sector', size: { width: 320 }, ...options } } as never)) as Geometry;
+  const two = [{ id: 'a', label: 'Online', values: values(7) }, { id: 'b', label: 'Stores', values: values(5) }];
+  expect(draw(two, {}).type).toBe('bar');
+  expect(draw(two, { valueAxis: { percent: true } }).type).toBe('column');
+  const withPy = [...two, { id: 'py', label: 'PY', role: 'reference', scenario: 'PY', values: values(3).map((v) => v * 2) }];
+  expect(draw(withPy, { variant: 'stacked' }).type).toBe('column');
+});
+
 // The reading of a column that stepped to bars said column, so an agent reading it took the wrong chart type.
 it('reports the drawn type in the reading of a column that stepped to bars', () => {
   const names = ['Automotive OEM', 'Automotive suppliers', 'Chemicals', 'Consumer goods', 'Energy utilities', 'Financial services', 'Food and beverage', 'Healthcare providers', 'Industrial machinery', 'Insurance',
