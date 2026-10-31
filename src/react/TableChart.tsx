@@ -2,7 +2,6 @@ import { hasPolarityBadge, isFigureCell, polarityBadgeInk } from '../core/charts
 import { belowTableViewportFloor, tableWidths } from '../core/charts/table/widths';
 import {
   createContext,
-  createElement,
   memo,
   useCallback,
   useContext,
@@ -494,7 +493,7 @@ export function createTableChart(checkKeys?: OptionKeyCheck, linked?: readonly D
   function TableChart(props: TableChartProps): ReactElement {
     const { size, fallbackSize, target, title, theme } = props as TableChartProps & { title?: unknown; theme?: ThemeRef };
     return <RefusalBoundary watch={props} fallback={(finding) => <LayoutRefusal refusals={[finding]} theme={theme}
-      size={frameSize(size === 'container' ? fallbackSize : size as Parameters<typeof frameSize>[0], target)} options={typeof title === 'string' ? { title } : {}} />}>{createElement(GatedTable, props)}</RefusalBoundary>;
+      size={frameSize(size === 'container' ? fallbackSize : size as Parameters<typeof frameSize>[0], target)} options={typeof title === 'string' ? { title } : {}} />}><GatedTable {...props} /></RefusalBoundary>;
   }
   // The registry type this component renders, stated by the component itself —
   // the same stamp createChartComponent writes, so the public API check resolves

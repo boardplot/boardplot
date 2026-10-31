@@ -5,7 +5,7 @@ import { localeStrings } from '../core/strings/createChartComponent';
  * flat props = data + annotations + options, zero per-chart React code.
  */
 
-import { createElement, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type FunctionComponent, type KeyboardEvent, type MouseEvent, type ReactElement, type ReactNode } from 'react';
+import { memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactElement, type ReactNode } from 'react';
 import type { InteractionRecord } from '../core/a11y/types';
 import { BoardplotThemeContext } from './themeContext';
 import type { ChartRequest, RequestOptions } from '../core/request';
@@ -406,11 +406,12 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
     );
     return frame(scrollBox ? <div ref={setScroller} data-bp-scroll="" className="bp-scroll" style={{ overflowX: fitted ? 'visible' : 'auto', maxWidth: '100%' }}>{chart}</div> : chart);
   }
+  const DrawnChart = Drawn as (props: object) => ReactElement;
   // A bad value draws the refusal card in the chart's own frame and never unmounts the host's root (RefusalBoundary).
   function Chart(props: ChartProps<D, O>): ReactElement {
     const { size, fallbackSize, target, fixedSize, title, theme } = props as ChartHostProps & { title?: unknown; theme?: ThemeRef };
     return <RefusalBoundary watch={props} fallback={(finding) => <LayoutRefusal fixedSize={fixedSize} refusals={[finding]} theme={theme}
-      size={frameSize(size === 'container' ? fallbackSize : size, target)} options={typeof title === 'string' ? { title } : {}} />}>{createElement(Drawn as FunctionComponent<object>, props)}</RefusalBoundary>;
+      size={frameSize(size === 'container' ? fallbackSize : size, target)} options={typeof title === 'string' ? { title } : {}} />}><DrawnChart {...props} /></RefusalBoundary>;
   }
   Chart.displayName = `${type[0]!.toUpperCase()}${type.slice(1)}Chart`;
   // First-class, not name-shaped: the public API check resolves type → component
