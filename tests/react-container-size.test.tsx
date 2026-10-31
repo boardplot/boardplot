@@ -1199,7 +1199,9 @@ it('mounts a content-fit chart beside drawn charts without a render-phase update
 
 // A host that re-renders with a new prepared object after the container measured a size other than the fallback
 // threw "Prepared chart does not match the resolved request": the snapshot is keyed at the fallback frame.
+// A host as wide as the fallback with no height has the fallback size but not its fixed flags, and threw too.
 it.each(['chart', 'table'] as const)('accepts a new prepared %s after the container measured another size', async kind => {
+  for (const [width, height] of [[820, 420], [640, 0]] as const) {
   const fallbackSize = { width: 640, height: 360 };
   const column = { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: 's', label: 'S', values: [3, 5] }] };
   const table = { columns: [{ id: 'label', kind: 'rowLabel' as const, label: 'Item' }, { id: 'a', kind: 'value' as const, label: 'A', format: '1.0' }],
@@ -1210,9 +1212,10 @@ it.each(['chart', 'table'] as const)('accepts a new prepared %s after the contai
     ? <ColumnChart data={column} size="container" fit="fill" fallbackSize={fallbackSize} prepared={snapshot as never} />
     : <TableChart data={table} size="container" fallbackSize={fallbackSize} prepared={snapshot as never} />;
   act(() => root.render(draw(prepared)));
-  resize(820, 420);
+  resize(width, height);
   flush();
   act(() => root.render(draw(structuredClone(prepared))));
   expect(host.querySelector(kind === 'chart' ? 'svg[data-bp-chart]' : '.bp-table-grid')).not.toBeNull();
-  if (kind === 'chart') expect(host.querySelector('svg[data-bp-chart]')?.getAttribute('viewBox')?.split(' ')[2]).toBe('820');
+  if (kind === 'chart') expect(host.querySelector('svg[data-bp-chart]')?.getAttribute('viewBox')?.split(' ')[2]).toBe(String(width));
+  }
 });

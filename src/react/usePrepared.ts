@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import type { ResolvedChartRequest } from '../core/request';
 import { resolveTargetSize } from '../core/target';
 import type { Size } from '../core/geometry';
-import { assertPreparedRequest, type PreparedHeader } from './prepared';
+import { assertPreparedRequest, requestRenderKey, type PreparedHeader } from './prepared';
 
 /**
  * Keep a server snapshot only while its original layout inputs remain current.
@@ -24,8 +24,11 @@ export function usePrepared<T extends PreparedHeader & { kind: string }>(
   else if (!request) return undefined;
   else if (prepared !== initial.current?.prepared) {
     if (prepared.kind !== kind) throw new Error(`Expected a prepared ${kind} chart.`);
-    const frame = fallback && (request.size.width !== fallback.width || request.size.height !== fallback.height) ? resolveTargetSize(request.target, fallback) : undefined;
-    const framed = frame ? { ...request, size: frame.sizePx, fixed: frame.fixed, options: { ...request.options, size: fallback } } : request;
+    // A host as wide as the fallback with no height has the fallback size but not its fixed flags or options.size,
+    // so compare the keys, not the pixels. The request itself stays when the frame is the same request.
+    const frame = fallback && resolveTargetSize(request.target, fallback);
+    const framing = frame && { ...request, size: frame.sizePx, fixed: frame.fixed, options: { ...request.options, size: fallback } };
+    const framed = framing && requestRenderKey(framing) !== requestRenderKey(request) ? framing : request;
     assertPreparedRequest(prepared, framed);
     if (prepared.fit !== fit) throw new Error('Prepared chart container fit does not match.');
     initial.current = { prepared, request: framed, fit };
