@@ -22,7 +22,48 @@ const TYPE_BUDGETS: Readonly<Record<string, number>> = { likert: 500, mekko: 20_
 
 export const TOO_MANY_ITEMS = 'too-many-items';
 
-/** The data lists whose length sets what a type draws. Line and area sample, tables scroll, and the other types draw aggregates. */
+/** What a point-drawing chart may cost: points (drawn categories times series) plus `perSeries` for each series. `crossCap` also bounds categories times series times series. */
+interface PointLimit { budget: number; perSeries: number; crossCap?: number }
+
+/**
+ * A line or area costs its points plus 100 per series, up to 300,000. Memory follows the points
+ * (about 7 KB each: 1,000 categories by 201 series use 1.4 GB, 1,999 by 200 ran out of memory),
+ * and it grows faster than linearly with the series: categories times series times series stays
+ * under 100 million. Above about 140 million the process aborts on a default heap (300 categories
+ * by 700 series, 200 by 1,000 and 100 by 1,490 are under 300,000 points and still abort), and
+ * below about 130 million it draws. The cap keeps a margin under that edge, because a smaller heap
+ * moves it (500 by 500 and 200 by 800 draw here but refuse). The line counts after its viewport
+ * and its sampling, so a dated line that samples keeps drawing.
+ */
+export const LINE_LIMIT: PointLimit = { budget: 300_000, perSeries: 100, crossCap: 100_000_000 };
+
+/**
+ * A combo labels and stacks every point, so it costs its points plus 40 per series, up to 20,000:
+ * 300 categories by 51 series take 10 s and 2.1 GB, 10 by 600 take 22 s, and 10 by 1,000 did not
+ * finish in 150 s.
+ */
+export const COMBO_LIMIT: PointLimit = { budget: 20_000, perSeries: 40 };
+
+/** Throws the `too-many-items` refusal when a chart costs more than its limit (a line or area by default). */
+export function checkPointBudget(categories: number, series: number, limit: PointLimit = LINE_LIMIT, chart = 'a line or area chart'): void {
+  const cost = categories * series + limit.perSeries * series;
+  const cross = categories * series * series;
+  const crossOver = limit.crossCap !== undefined && cross > limit.crossCap;
+  if (cost <= limit.budget && !crossOver) return;
+  const message = cost > limit.budget
+    ? `${series} series of ${categories} categories cost ${cost} (the points plus ${limit.perSeries} for each series), over the ${limit.budget} ${chart} draws; it would take minutes or run out of memory`
+    : `${series} series of ${categories} categories give ${categories} x ${series} x ${series} = ${cross}, over the ${limit.crossCap} ${chart} draws; it would run out of memory`;
+  throw new NormalizeError(
+    TOO_MANY_ITEMS,
+    'series',
+    message,
+    'draw fewer series, aggregate the periods first (weeks or months), or set window.last or viewDomain to draw part of the periods',
+    undefined,
+    ['data', 'series'],
+  );
+}
+
+/** The data lists whose length sets what a type draws. Line, area and combo count points in checkPointBudget, tables scroll, and the other types draw aggregates. */
 const BUDGETED_LISTS: Readonly<Record<string, readonly string[]>> = {
   column: ['categories'], bar: ['categories'], combo: ['categories'], dot: ['categories'], variance: ['categories'],
   butterfly: ['categories'], funnel: ['categories'], mekko: ['categories'], waffle: ['categories'],

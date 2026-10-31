@@ -168,6 +168,7 @@ function renderWithTables(input: RenderInput): VerbResult {
   }
   shareScaleGroups(loaded);
   const { doc, envelope, bare } = loaded;
+  envelope.warnings.push(...(rows.warnings ?? []));
   const laid: { name: string; chart: DrawnChart; drawsWith: (changed: Record<string, unknown>) => boolean }[] = [];
   const scopeUses = new Map<string, number>();
   for (const chart of doc.charts) {

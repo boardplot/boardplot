@@ -19,6 +19,7 @@ import {
   SCALE_GROUP_MEMBERS,
   facetHeadedGaps,
   gridShare,
+  measuredCaption,
   bottomUpTierOrder,
   tierWeights,
   sharedCategoryLabelOwner,
@@ -44,7 +45,7 @@ import { GridChildRefusal, gridRowHeights, gridSizing, hasKpiFigure, layoutChild
 import { KPI_HOST_TEXT, KPI_VALUE_SIZE } from '../../typeFloors';
 import { LEFT_OUT_OF_NOTE, panelNoteTexts, stringsIn } from '../../frame';
 import { autoPlotPx, CARD_CLASS_WIDTH, CARD_MIN_WIDTH, chartSizing, DIGIT_SEAT, heightOmitted, type DigitSeated, NARROW_SHARE_WIDTH, stackedColumnPlotPx } from '../../sizing';
-import { defaultMeasurer, wrapText, type FontSpec, type TextMeasurer } from '../../text';
+import { defaultMeasurer, type FontSpec, type TextMeasurer } from '../../text';
 import {
   canvasMargin,
   panelTypeClass,
@@ -485,13 +486,6 @@ function gridTypeClass(options: GridLayoutOptions): TypeWidthClass {
   return panelTypeClass(options) ?? typeWidthClass(resolveSize(options.size).width);
 }
 
-function measuredCaption(text: string, font: FontSpec, width: number, measure: TextMeasurer) {
-  const lines = wrapText(text, font, width, Number.MAX_SAFE_INTEGER, measure).lines;
-  const sizes = lines.map(line => measure(line, font));
-  return { lines, width: Math.max(...sizes.map(size => size.width)),
-    height: Math.max(...sizes.map(size => size.height)) + (lines.length - 1) * font.size * (font.lineHeight ?? 1.2) };
-}
-
 function panelCaptionBand(panel: GridPanelSpec, theme: ReturnType<typeof resolveTheme>, measure: TextMeasurer,
   slot: Rect, highlighted: Set<string>, compact = false, shift = 0): { nodes: SceneNode[]; claims: Geometry['debug']['occupied'] } {
   const margin = isRecord(panel.options?.margin) ? panel.options.margin : {};
@@ -508,11 +502,11 @@ function panelCaptionBand(panel: GridPanelSpec, theme: ReturnType<typeof resolve
     if (!value) continue;
     const width = Math.max(1, slot.w - numeric(margin.left, sides.left) - numeric(margin.right, sides.right));
     const text = measuredCaption(value, font, width, measure);
-    const { lines } = text;
+    const { lines, title } = text;
     const id = `panel:${panel.id}:${part === 'panelCaption' ? 'caption' : 'title'}`;
     const rect = { x, y, w: text.width, h: text.height };
     const occupied = createOccupiedIndex(rect);
-    const solved = solveLabels([{ id, kind: 'annotation', typeRole: 'axis', owner: {}, text: value, lines, font,
+    const solved = solveLabels([{ id, kind: 'annotation', typeRole: 'axis', owner: {}, text: value, lines, ...(title ? { title } : {}), font,
       priority: PRIORITY.total, candidates: [{ slot: 'panelCaption', rect, penalty: 0 }], role: 'note' }], occupied, {
       density: 'full', pins: {}, measure, plot: rect, canvas: rect,
       darkInk: theme.color.ink, lightInk: theme.color.inkInverse, labelPad: 0,

@@ -5,6 +5,7 @@ import { formatAutomaticPercent, formatPercentagePoints } from '../../format';
 import { ENGINE_NOTES, LABEL_WRAP_FLOOR, SOFT_LABEL_CAP } from '../table/tracks';
 import { disclosureNote, disclosuresShown, engineNote } from '../../notes';
 import { saysToDate } from '../../partialPeriod';
+import { closestKey } from '../../schema/unknownKeyWords';
 import { cappedItems } from '../../frame';
 import { localeStrings, stringFields } from '../../strings';
 import { AUTOMATIC_FORMAT, MAGNITUDE_GROUP, parseFormatExample, specUnitKind } from '../../formatSpec';
@@ -189,6 +190,15 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     return m;
   };
   const warnings: CompiledDimSwitch['warnings'] = [];
+  // The table resolver ignores an encodings key that names no column; here the columns are range, pp, pl (with a plan) and the displayed period ids.
+  const columnIds = ['range', 'pp', ...(plan ? ['pl'] : []), ...authoredPeriods.map(p => p.id)];
+  for (const id of Object.keys(options.encodings ?? {})) if (!columnIds.includes(id)) {
+    const asKind = data.periods.find(p => p.kind && p.id === id);
+    const guess = asKind ? { key: asKind.kind === 'prior' ? 'pp' : asKind.kind === 'plan' ? 'pl' : 'range', near: true } : closestKey(id, columnIds);
+    warnings.push({ code: 'dimswitch-encoding-column', severity: 'warn', field: ['options', 'encodings', id],
+      message: `options.encodings key '${id}' names no column of this dimswitch, so it draws nothing.`,
+      suggest: `${guess?.near ? `Use '${guess.key}'. ` : ''}The column ids are ${columnIds.map(c => `'${c}'`).join(', ')}.` });
+  }
   const warned = new Set<string>();
   const warn = (code: string, id: string, message: string) => { if (!warned.has(code + id)) { warned.add(code + id); warnings.push({ code, severity: 'warn', field: ['data', 'measures', data.measures.findIndex(m => m.id === id)], message }); } };
 
@@ -296,10 +306,19 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   const statementFields = new Set(data.measures.filter(inStatement).flatMap(m => fields(exprOf(m))));
   const roots = data.measures.filter(m=>!m.parentId && placeOf(m) === undefined && !(options.splits && m.splitOf));
   const records: ComputedCellRecord[] = [];
+  // Per member and window, the fields it reports in any period: one it reports anywhere is owed in every period.
+  const reported = new Map<string, {sums: Set<string>; ref: Set<string>}>();
+  const reportedBy = (id: string) => { let r = reported.get(id); if (!r) reported.set(id, r = {sums: new Set(), ref: new Set()}); return r; };
+  // Fields that reach a derived parent from a number below it, so a null sum does not take the field away.
+  const reaches = new Map<string, Set<string>>();
+  const gaps = new Map<string, {member: string; window: string; periods: Set<string>; fields: Set<string>}>();
   if (data.dimension.sums) {
+    for (const f of facts.values()) for (const window of ['sums','ref'] as const) for (const field of Object.keys(f[window] ?? {})) reportedBy(f.memberId)[window].add(field);
+    for (const member of [data.dimension.total, ...data.dimension.members]) for (const field of member.fields ?? []) { reportedBy(member.id).sums.add(field); reportedBy(member.id).ref.add(field); }
     const derive=(member:string, children:DimSwitchMember[]) => {
       for(const child of children) derive(child.id,data.dimension.members.filter(m=>m.parentId===child.id));
       if(!children.length) return;
+      for(const window of ['sums','ref'] as const) for(const child of children) for(const field of reportedBy(child.id)[window]) reportedBy(member)[window].add(field);
       for(const period of data.periods) {
         const existing=facts.get(key(member,period.id));
         // Keyed by field id: a field named __proto__ keeps its sum.
@@ -307,23 +326,33 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
         for(const window of ['sums','ref'] as const) {
           const fieldSet=new Set(children.flatMap(child=>Object.keys(facts.get(key(child.id,period.id))?.[window] ?? {})));
           for(const field of fieldSet) {
-            const inputs=children.map(child=>({rowId:child.id,colId:key(period.id,window,field),value:facts.get(key(child.id,period.id))?.[window]?.[field] ?? null}));
-            // A statement field is required of every member that reports the period: a fact without it makes the total missing, not smaller.
-            const applicable=inputs.filter((_,i)=>{const fact=facts.get(key(children[i]!.id,period.id))?.[window];return Object.hasOwn(fact ?? {},field) || (fact !== undefined && statementFields.has(field));});
-            const raw=applicable.some(i=>i.value===null)?null:applicable.reduce((sum,i)=>sum+i.value!,0);
+            // A child that reports the field in any period owes it in every period, and a statement field is owed by every child that reports the period: a gap makes the total missing, not smaller.
+            const owing=children.filter(child=>reportedBy(child.id)[window].has(field) || (facts.get(key(child.id,period.id))?.[window] !== undefined && statementFields.has(field)));
+            const inputs=owing.map(child=>({rowId:child.id,colId:key(period.id,window,field),value:facts.get(key(child.id,period.id))?.[window]?.[field] ?? null}));
+            for(const child of owing) if(!Object.hasOwn(facts.get(key(child.id,period.id))?.[window] ?? {},field)) {
+              const gap=gaps.get(child.id+window) ?? {member:child.id,window,periods:new Set<string>(),fields:new Set<string>()};
+              gap.periods.add(period.id);gap.fields.add(field);gaps.set(child.id+window,gap);
+            }
+            const raw=inputs.some(i=>i.value===null)?null:inputs.reduce((sum,i)=>sum+i.value!,0);
             next[window][field]=raw;
-            records.push({rowId:member,colId:key(period.id,window,field),op:'dimswitch:partition-sum',inputs:applicable,raw,state:raw===null?'missing':'value',displayed:raw===null?'—':String(raw),kind:'aggregate'});
+            if(window==='sums' && inputs.some(i=>i.value!==null || reaches.get(i.rowId)?.has(field))) {const set=reaches.get(member) ?? new Set<string>();set.add(field);reaches.set(member,set);}
+            records.push({rowId:member,colId:key(period.id,window,field),op:'dimswitch:partition-sum',inputs,raw,state:raw===null?'missing':'value',displayed:raw===null?'—':String(raw),kind:'aggregate'});
             const authored=existing?.[window]?.[field];
-            if(typeof authored==='number'&&raw!==null) records.push({rowId:member,colId:key(period.id,window,field),op:'dimswitch:partition-check',inputs:[{rowId:member,colId:key(period.id,window,field),value:authored},...applicable],raw:authored-raw,state:'value',displayed:String(authored-raw),kind:'reconciliation'});
+            if(typeof authored==='number'&&raw!==null) records.push({rowId:member,colId:key(period.id,window,field),op:'dimswitch:partition-check',inputs:[{rowId:member,colId:key(period.id,window,field),value:authored},...inputs],raw:authored-raw,state:'value',displayed:String(authored-raw),kind:'reconciliation'});
           }
         }
-        facts.set(key(member,period.id),next);
+        // A field only the parent reports (a target, say) stays beside the sums derived from the children.
+        // An authored field that a child reports in the window gives way to the derived sum: the child's gap makes it missing, not the authored figure.
+        const own=(window:'sums'|'ref')=>{const out=emptyIdRecord() as DimSwitchSums;for(const [field,value] of Object.entries(existing?.[window] ?? {})) if(!children.some(child=>reportedBy(child.id)[window].has(field))) out[field]=value;return out;};
+        facts.set(key(member,period.id),existing ? {...existing,sums:Object.assign(emptyIdRecord(),own('sums'),next.sums) as DimSwitchSums,ref:Object.assign(emptyIdRecord(),own('ref'),next.ref) as DimSwitchSums} : next);
       }
     };
     derive(data.dimension.total.id,data.dimension.members.filter(m=>!m.parentId));
+    for(const gap of gaps.values()) warnings.push({code:'dimswitch-fact-missing',severity:'warn',field:['data','facts'],message:`Member '${gap.member}' has no ${gap.window==='ref' ? 'ref sums' : 'sums'} for ${[...gap.fields].map(f=>`'${f}'`).join(', ')} in period ${[...gap.periods].map(p=>`'${p}'`).join(', ')}, although it reports them in other periods. The sums of its parents and the Total print missing there. Send null for unknown or 0 for none.`});
   }
   const available=new Map<string,Set<string>>();
   for(const f of facts.values()) {const set=available.get(f.memberId) ?? new Set<string>();for(const field of Object.keys(f.sums)) if(typeof f.sums[field]==='number') set.add(field);available.set(f.memberId,set);}
+  for(const [member,fieldsOf] of reaches) {const set=available.get(member) ?? new Set<string>();for(const field of fieldsOf) set.add(field);available.set(member,set);}
   // Declared fields apply even when the drawn windows hold only null for them.
   for (const member of [data.dimension.total, ...data.dimension.members]) for (const field of member.fields ?? []) {const set=available.get(member.id) ?? new Set<string>();set.add(field);available.set(member.id,set);}
   // Looked up per cell: a key string per lookup grew with members x measures x periods.
@@ -337,8 +366,18 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   };
   const sums = (member:string, period:string) => factOf(member,period)?.sums;
   const has = (m: DimSwitchMeasure, member:string) => fields(exprOf(m)).every(field=>available.get(member)?.has(field));
+  const omissions: CompiledDimSwitch['omissions'] = [];
   // A measure the Total lacks is left out everywhere, so both variants show the same measures. A statement line never leaves: it prints missing.
-  const applies = (m: DimSwitchMeasure, member:string) => inStatement(m) || (has(m, data.dimension.total.id) && has(m, member));
+  const applies = (m: DimSwitchMeasure, member:string) => {
+    if (inStatement(m)) return true;
+    if (!has(m, data.dimension.total.id)) {
+      const field = fields(exprOf(m)).find(f => !available.get(data.dimension.total.id)?.has(f))!;
+      if (!omissions.some(o => o.labelId === `measure:${m.id}`)) omissions.push({ labelId: `measure:${m.id}`, text: m.label, reason: 'no-number', destination: 'reading.omissions' });
+      warn('dimswitch-measure-omitted', m.id, `Measure '${m.id}' is left out of the table: the Total has no number for field '${field}'${data.dimension.sums ? ', and no member has one' : ''}. Check the field name in facts[].sums and in the measure value, or declare it in dimension.total.fields to keep the measure with a missing Total.`);
+      return false;
+    }
+    return has(m, member);
+  };
   const headline = (member:string) => data.dimension.headline.map(id=>measures.get(id)!).find(m=>applies(m,member));
   const show = (m:DimSwitchMember) => {
     if (options.show !== 'withData') return true;
@@ -421,6 +460,9 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     };
     assign(m.drivers);
   }
+  // A displayed period whose facts carry no ref has no change to print: its change cell stays blank, never n/a.
+  const withRef = new Set(data.facts.filter(f => f.ref).map(f => f.periodId));
+  const noChangeLine = periods.length > 0 && periods.every(p => !withRef.has(p.id));
   const addMeasure = (m:DimSwitchMeasure,member:string,parentId:string|undefined,rung:number,label=m.label,kind:TableRow['kind']='measure') => {
     const id=dimswitchRowId(variant,member,m.id);
     // Keyed by period id too: a period named __proto__ keeps its cell.
@@ -459,7 +501,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
       const rounded=Math.round(Math.abs(delta.raw ?? 0)*10)/10;
       const relative=m.change!=='pp' && m.change!=='absolute';
       const changeFormat=m.change==='pp' ? formatPercentagePoints(1.2,1,true) : m.change==='absolute' ? signedFormat(ownFormat) : formatAutomaticPercent(1.2,rounded>=5 || rounded===0 ? 0 : 1,true);
-      const changeCell:TableCell=delta.state==='missing' ? {missing:delta.blank ? 'blank' : 'dash'} : cell(delta,judgement,changeFormat);
+      const changeCell:TableCell=!p.kind && !withRef.has(p.id) ? {missing:'blank'} : delta.state==='missing' ? {missing:delta.blank ? 'blank' : 'dash'} : cell(delta,judgement,changeFormat);
       const effectCell:TableCell=effect === null ? null : {v:effect,format:effectFormat};
       if (m.format === undefined && m.unit === undefined && changeCell && typeof changeCell === 'object') Object.assign(changeCell, { [AUTOMATIC_FORMAT]: true });
       if ((owner ?? m).format === undefined && (owner ?? m).unit === undefined && effectCell) Object.assign(effectCell, { [AUTOMATIC_FORMAT]: true });
@@ -470,7 +512,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
         record(id,comparison,m,member,p.id,delta,ref,true,refTotal,reference?.id);
         effects[comparison]=effectCell;
       }
-      else {changes[p.id]=changeCell; effects[p.id]=effectCell; record(`${id}:change`,p.id,m,member,p.id,delta,ref,true,refTotal); if (relative) relativeChanges.push({cell:changeCell,col:p.id,rounded});}
+      else {changes[p.id]=changeCell; effects[p.id]=effectCell; if (withRef.has(p.id)) {record(`${id}:change`,p.id,m,member,p.id,delta,ref,true,refTotal); if (relative) relativeChanges.push({cell:changeCell,col:p.id,rounded});}}
     }
     // An unjudged volume (a sum of money or counts) shows its size as a bar, not a colour; a statement line never does.
     const sized = !m.judge && (m.scale === 'money' || m.scale === 'count') && !inStatement(m);
@@ -487,7 +529,9 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     // A member's bar compares it with the other members in that column (the Total would always win).
     if (sized && member!==totalId) for (const col of ['range',...periods.map(p=>p.id)]) {const value=values.get(col)?.raw; if (typeof value==='number') bars.push({row,measure:m.id,col,value});}
     if (m.divider && (kind==='measure' || kind==='split')) row.divider=true;
-    rows.push(row,{id:`${id}:change`,label:data.changeLabel ?? '',parentId:id,inline:true,inlineGroup:'change',relation:'displayOnly',missing:'blank',cells:changes});
+    rows.push(row);
+    // No displayed period has a ref: the change line would be empty, so it is left out.
+    if (!noChangeLine) rows.push({id:`${id}:change`,label:data.changeLabel ?? '',parentId:id,inline:true,inlineGroup:'change',relation:'displayOnly',missing:'blank',cells:changes});
     if (owner && data.effectLabel) rows.push({id:`${id}:effect`,label:data.effectLabel,parentId:id,inline:true,inlineGroup:'effect',relation:'displayOnly',missing:'blank',cells:effects});
     return row;
   };
@@ -681,7 +725,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
       // The object form of stickyLabels without `columns` keeps the compiled default: label, Range, vs prior (and vs plan).
       ...(typeof tableOptions.stickyLabels==='object' && tableOptions.stickyLabels.columns===undefined ? {stickyLabels:{...tableOptions.stickyLabels,columns:plan ? 4 : 3}} : {}),
       ...(data.effectLabel ? {inlineVisibility:{effect:false,...tableOptions.inlineVisibility}} : {}),
-      expansion:{collapsed:[...collapsed]}},computedCells:records,depthCollapsed:defaults,levels,maxDepth,warnings,
+      expansion:{collapsed:[...collapsed]}},computedCells:records,depthCollapsed:defaults,levels,maxDepth,warnings,omissions,
   };
 }
 

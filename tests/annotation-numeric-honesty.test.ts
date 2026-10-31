@@ -109,7 +109,8 @@ it('measures variance value-line statistics on the drawn axis', () => {
       const geometry = layoutVariance(data, options);
       const expected = typeof value === 'number' ? value : variant === 'integrated' ? 21 : 16 / 3;
       expect(geometry.annotations.find(annotation => annotation.id === 'stat')?.derivation?.raw).toBeCloseTo(expected, 12);
-      const printed = format ? expected.toFixed(2) : expected === 16 / 3 ? '5.3' : String(expected);
+      // An authored format prints a mean one decimal past its raster (5.333), as a bar's mean does.
+      const printed = format ? expected === 16 / 3 ? '5.333' : expected.toFixed(2) : expected === 16 / 3 ? '5.3' : String(expected);
       const unit = percent ? variant === 'absolute' ? 'pp' : '%' : '';
       expect(annOf(geometry, 'valueLine')?.valueText).toBe(`${printed}${unit}`);
       const line = geometry.scene.find(node => node.part === 'valueLine');
@@ -312,6 +313,29 @@ it('keeps the percent unit through column Others and the column average marker',
   expect(marker?.computedText).toMatch(/^Average 2\.33?%$/);
 });
 
+// An average of 1.25M must not print as "1M" because its raw number is whole: its decimals count at the printed scale.
+it('keeps the decimals an average needs at the magnitude of the format', () => {
+  const data = { categories: [{ id: 'a' }, { id: 'b' }], series: [{ id: 's', label: 'Series', values: [1000000, 1500000] }] };
+  const text = (layout: typeof layoutColumn, format: string, values = data) => layout(values, { averageMarker: true, format })
+    .annotations.find(annotation => annotation.id.startsWith('averageMarker'))?.computedText;
+  expect(text(layoutColumn, '1M')).toBe('Average 1.3M');
+  expect(text(layoutBar as never, '1M')).toBe('Average 1.3M');
+  expect(text(layoutColumn, '$1k', { ...data, series: [{ id: 's', label: 'Series', values: [2000, 3000] }] })).toBe('Average $2.5k');
+});
+
+// A line chart rejects averageMarker, so its mean valueLine is its only average; it must print the mean, as a bar does.
+it('keeps the decimals a mean valueLine needs on every chart that draws one', () => {
+  const data = { categories: [{ id: 'a' }, { id: 'b' }], series: [{ id: 's', label: 'Series', values: [1000000, 1500000] }] };
+  const small = { ...data, series: [{ id: 's', label: 'Series', values: [2000, 3000] }] };
+  const text = (layout: typeof layoutColumn, format: string, values = data) => layout(values, { format, annotations: [{ kind: 'valueLine', value: 'mean' }] } as never)
+    .annotations.find(annotation => annotation.kind === 'valueLine')?.computedText;
+  for (const layout of [layoutBar, layoutColumn, layoutLine, layoutDot] as never[]) {
+    expect(text(layout, '1M')).toBe('Average 1.3M');
+    expect(text(layout, '1.0M')).toBe('Average 1.25M');
+    expect(text(layout, '$1k', small)).toBe('Average $2.5k');
+  }
+});
+
 // A reference at 2.5 must not call itself 3 because the plotted values use an integer format.
 it('keeps a value line precise unless its author chooses a format', () => {
   const data = { categories: [{ id: 'a' }, { id: 'b' }], series: [{ id: 's', label: 'Series', values: [1, 4] }] };
@@ -342,6 +366,46 @@ describe('yearSpan — the date math nothing covered', () => {
   it('counts an end-of-month anniversary as a whole year', () => {
     expect(yearSpan('2024-02-29', '2025-02-28')).toBe(1);
   });
+
+  it('counts the same month and day as whole years, also 28 February across a leap year', () => {
+    expect(yearSpan('2023-02-28', '2024-02-28')).toBe(1);
+    expect(yearSpan('2024-02-28', '2025-02-28')).toBe(1);
+  });
+});
+
+// A label that names a month, a quarter or a half read as a bare last-word year, so the rate ran over the wrong span and no warning said so.
+it.each([
+  [['Jan 2023', 'Jul 2024'], '+36.8% p.a.'],
+  [['January 2023', 'July 2024'], '+36.8% p.a.'],
+  [["Jan '23", "Jul '24"], '+36.8% p.a.'],
+  [['Mär 2023', 'Sep 2024'], '+36.8% p.a.'],
+  [['Q1 FY23', 'Q3 FY24'], '+36.8% p.a.'],
+  [['1H 2023', '2H 2024'], '+36.8% p.a.'],
+  [['Revenue Q4 2023', 'Revenue Q1 2025'], '+45.6% p.a.'],
+  [['FY98', 'FY02'], '+12.5% p.a.'],
+  [['2023-01-01', '2024-07-01'], '+36.8% p.a.'],
+  [['Plan 2024', 'Actual 2026'], '+26.5% p.a.'],
+  [['Plan 2024', 'Actual 2026F'], '+26.5% p.a.'],
+  // A scenario name before a quarter must not block the rate when both periods are the same quarter.
+  [['Actual Q4 2023', 'Plan Q4 2025'], '+26.5% p.a.'],
+  [['Actual Q4 2023', 'Plan Q1 2025'], undefined],
+  [['FY 2023', 'FY2024'], '+60.0% p.a.'],
+  [['FY 2023', 'FY 24'], '+60.0% p.a.'],
+  [['Mid 2023', 'End 2024'], undefined],
+  [['Spring 2023', 'Autumn 2024'], undefined],
+  [['Sprint 3 2023', 'Sprint 7 2024'], undefined],
+  [['W1 2023', 'W27 2024'], undefined],
+  [['Wk 1 2023', 'Wk 27 2024'], undefined],
+  [['Jan-23', 'Jul-24'], undefined],
+])('reads the years of %j from the whole period, or prints no rate', (labels, text) => {
+  const data = {
+    // An ISO date is the category id alone, as a time series carries it.
+    categories: labels.map((label, i) => (/^\d{4}-\d\d-\d\d$/.test(label) ? { id: label } : { id: `c${i}`, label })),
+    series: [{ id: 'a', label: 'A', values: [100, 160] }],
+  };
+  const geometry = layoutColumn(data as never, { annotations: [{ kind: 'cagr' }] } as never);
+  expect(annOf(geometry, 'cagr')?.computedText).toBe(text);
+  if (text === undefined) expect(codes(geometry)).toContain('cagr-no-dates');
 });
 
 // The ends of an arrow show its span, so years in the oval only widen it and cover more of the line.
@@ -766,4 +830,16 @@ it('prints a magnitude the same on every surface', async () => {
     // Without a format the card prints the exact source number instead.
     expect(labelCardContent(record, request.locale?.language).rows.map(row => row.text)).toContain(format === undefined ? '2.500.000.000' : text);
   }
+});
+
+// A line at 20 named 'Improve from -20' or 'Top 120' printed no value of its own, so it read as a line at -20 or 120.
+it('adds a reference line value unless the name holds that same number', () => {
+  const text = (value: number, label: string) => requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'line',
+    data: { categories: ['a', 'b'], series: [{ id: 's', label: 'S', values: [5, 40] }] },
+    options: { annotations: [{ kind: 'valueLine', value, label }] } } as never))).labels.find(entry => entry.kind === 'valueLine')?.text;
+  expect(text(20, 'Improve from -20')).toBe('Improve from -20: 20');
+  expect(text(20, 'Top 120')).toBe('Top 120: 20');
+  expect(text(20, 'Target 20')).toBe('Target 20');
+  expect(text(20, 'FY-20')).toBe('FY-20');
+  expect(text(-20, 'Floor -20')).toBe('Floor -20');
 });

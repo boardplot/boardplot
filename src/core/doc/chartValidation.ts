@@ -7,7 +7,7 @@ import { flattenIssues } from '../schema/flattenIssues';
 import { allowedValues, expectedTypes } from '../diagnostics/describe';
 import { refusalSuggest } from '../schema/capabilityReasons';
 import { LABEL_KINDS } from '../schema/capability';
-import { WORDING_KEYS, closestKey, movedKey, nearestOptionTerm, unknownKeySuggest, unknownOptionMessage, valueChangeSuggest } from '../schema/unknownKeyWords';
+import { WORDING_KEYS, closestKey, movedKey, nearestOptionTerm, typoRenameFix, unknownKeySuggest, unknownOptionMessage, valueChangeSuggest } from '../schema/unknownKeyWords';
 import { ownedDocumentCopy } from './docExpand';
 import { chartSchemaDiagnostic, completeChartDiagnostic } from './diagnostics';
 import type { DocChart, BoardplotDoc, DocumentEnvelope } from './document';
@@ -560,20 +560,36 @@ function sweepStrippedOptionKeys(
     }
     // At the top the near miss also reads the words an option's values use (showValues -> labels).
     const near = parent.length === 0 ? nearestOptionKey(key, schema) : undefined;
-    const nearest = near ? { key: near, near: true } : closestKey(key, known ?? expectedObjectKeys(schema, parent));
+    const siblings = known ?? expectedObjectKeys(schema, parent);
+    const nearest = near ? { key: near, near: true } : closestKey(key, siblings);
     const dotted = keyPath.join('.');
     const moved = movedKey(dotted, (target) => expectedObjectKeys(schema, target.slice(0, -1)).includes(target.at(-1)!));
     // A rename is advice only when the near option takes the authored value too.
-    const renameFits = !nearest?.near || moved !== undefined || parent.length > 0
-      || !(schema.safeParse({ [nearest.key]: authored[key] }).error?.issues ?? []).some((issue) => issue.path[0] === nearest.key);
+    const renameFits = !nearest?.near || moved !== undefined || valueFitsKey(schema, parent, nearest.key, valueAtPath(authored, keyPath));
+    const fix = renameFits && moved === undefined ? typoRenameFix(field, nearest, siblings, valueAtPath(authored, parent)) : undefined;
     envelope.errors.push(completeChartDiagnostic(source.doc, source.chart, {
       code: 'unknown-option',
       message: `${where}: ${unknownOptionMessage(dotted, nearest, moved)}`,
       displayPath: `${pathBase}.${dotted}`,
       suggest: renameFits ? unknownKeySuggest(key, nearest, moved) : valueChangeSuggest(key, nearest!.key, kinds),
+      ...(fix ? { fix } : {}),
     }, field));
   }
   return stripped.length > 0;
+}
+
+/** Whether the options schema takes `value` under `key` in the object at `parent`: the value alone, set where the rename would put it. */
+function valueFitsKey(schema: z.ZodType, parent: readonly (string | number)[], key: string, value: unknown): boolean {
+  const place = [...parent, key];
+  let probe: unknown = value;
+  for (const segment of [...place].reverse()) {
+    if (typeof segment === 'number') {
+      const items: unknown[] = [];
+      items[segment] = probe;
+      probe = items;
+    } else probe = { [segment]: probe };
+  }
+  return !(schema.safeParse(probe).error?.issues ?? []).some((issue) => place.every((segment, index) => issue.path[index] === segment));
 }
 
 /** Where the data of a chart type takes a key: on each series, at the data root, or both. */

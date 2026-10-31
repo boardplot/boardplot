@@ -83,7 +83,8 @@ export function StoryFrame({ geometry, theme, strings, render, step, defaultStep
   ].join('');
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+    // A key a chart part already took (the hover record stops) or a browser shortcut (Alt+Arrow) is not a step.
+    if ((event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
     event.preventDefault();
     go(index + (event.key === 'ArrowRight' ? 1 : -1), 'key');
   };

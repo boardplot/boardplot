@@ -37,6 +37,8 @@ export interface SankeyGraph {
   nodes: GraphNode[];
   links: GraphLink[];
   columnCount: number;
+  /** What flows in from outside the chart: the sum of the nodes nothing flows into. */
+  total: number;
   /** The stage of each column, when stages are known or `data.stages` names the columns. */
   columns: { id?: Id; label?: string }[];
   staged: boolean;
@@ -157,6 +159,9 @@ export function sankeyGraph(data: SankeyData, options: SankeyOptions): SankeyGra
     stageIds = data.stages?.map((stage) => stage.id) ?? [];
   }
   totals(nodes, merged.links);
+  // What flows in from outside: the nodes nothing flows into. A source can sit in a later column. Counted before
+  // the Other bucket, so folding cannot change it.
+  const total = nodes.reduce((sum, node) => (node.in > 0 ? sum : sum + node.value), 0);
 
   // ---- the Other bucket ----
   const otherLabel = (options.other ? options.other.label : undefined) ?? options.strings?.others ?? 'Others';
@@ -208,7 +213,7 @@ export function sankeyGraph(data: SankeyData, options: SankeyOptions): SankeyGra
 
   const repeats = staged && new Set(nodes.map((node) => node.id)).size < nodes.length;
   return {
-    nodes, links: merged.links, columnCount,
+    nodes, links: merged.links, columnCount, total,
     columns: Array.from({ length: columnCount }, (_, c) => {
       const id = stageIds[c];
       const stage = data.stages?.find((entry) => entry.id === id);

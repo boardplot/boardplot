@@ -31,7 +31,9 @@ export function assertTableRankOptions(options: TableOptions): void {
  * display-only statement lines and keep their authored place.
  */
 export function ranksAsData(row: Pick<TableRow, 'role' | 'kind'> | undefined): boolean {
-  return (row?.role ?? 'data') === 'data' && row?.kind !== 'result' && row?.kind !== 'driver';
+  // An authored section row carries kind 'section' and no role; resolve derives its role the same way.
+  const role = row?.role ?? (row?.kind === 'section' ? 'section' : 'data');
+  return role === 'data' && row?.kind !== 'result' && row?.kind !== 'driver';
 }
 
 export function additiveRankKey(row: ResolvedRow, columns: readonly ResolvedColumn[]): number | null {

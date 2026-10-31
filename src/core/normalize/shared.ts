@@ -147,7 +147,8 @@ export function normalizeSeriesValues(
       undefined, ['data', 'series', seriesIndex, 'values'],
     );
   }
-  return raw.map((v, i) => normalizeCell(v, `${path}[${i}]`));
+  // Array.from visits a hole of a sparse array as undefined, which reads as a missing value; map would keep the hole.
+  return Array.from(raw, (v, i) => normalizeCell(v, `${path}[${i}]`));
 }
 
 /** Convert an authored frame to layout pixels. */
