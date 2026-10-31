@@ -62,7 +62,7 @@ import type {
   TotalPolicy,
 } from '../../types/table';
 import { previousColumnInGroup, readCalcInput, resolveCalcRef } from './calcRef';
-import { calcIsLinear, calcPreservesScale, calcYieldsPoints, columnOwnsFormat } from '../../tableCalc';
+import { calcFlipsWithInputs, calcIsLinear, calcPreservesScale, calcYieldsPoints, columnOwnsFormat } from '../../tableCalc';
 import {
   additiveRankKey,
   assertTableRankOptions,
@@ -1589,6 +1589,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
         const evaluated = rawState.get(row.id)!.get(col.id);
         const s = evaluated ?? { raw: null, state: 'missing' as CellState };
         let displayed: string;
+        let negated = false;
         if (s.state !== 'value' || typeof s.raw !== 'number') {
           const state = s.state === 'value' ? 'missing' : (s.state as Exclude<CellState, 'value'>);
           const noPreviousColumn = row.calc !== undefined && JSON.stringify(row.calc).includes('"previous":true') && previousColumnInGroup(data.columnGroups ?? [], col.id) === null;
@@ -1600,7 +1601,10 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
           const relativeChange = (row.inline === true || row.calc !== undefined || col.kind === 'computed')
             && (specUnitKind(specFor(col.id, row.id)) !== 'number' || (row.calc !== undefined && calcYieldsPoints(row.calc)) || (col.kind === 'computed' && calcYieldsPoints(col.calc)));
           const negate = (options.signs ?? 'signed') === 'signed' && row.kind !== 'driver' && row.kind !== 'result'
-            && !relativeChange && signTo(row, null) === -1;
+            && !relativeChange && signTo(row, null) === -1
+            // A ratio of two cells prints the same on the negated figures, so only a calc that flips with its inputs flips.
+            && (col.kind !== 'computed' || row.calc !== undefined || calcFlipsWithInputs(col.calc));
+          negated = negate && s.raw !== 0;
           displayed = (negate ? undefined : displayOverride.get(tableCellKey(row.id, col.id))) ?? formatNumber(negate && s.raw !== 0 ? -s.raw : s.raw, col.id, row.id);
           if (negate && locale.minusGlyph === '-') displayed = displayed.replace(MINUS, '-');
           // The head's † and its note say it where they print (disclosures shown, a column that skipped a child); else the cell says it.
@@ -1668,6 +1672,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
         // judges a fall under lowerIsBetter as good even where the tone stays
         // neutral (an ofWhich line, a muted cell).
         return { ...base, raw: s.raw, state: s.state, displayed, tone, deEmphasized, polarity, ...(zero ? { zero: true as const } : {}),
+          ...(negated ? { negated: true as const } : {}),
           ...(band === undefined ? {} : { band: { to: band.to, ...(bandIndex > 0 ? { from: obj!.bands![bandIndex - 1]!.to } : {}), ...(band.label === undefined ? {} : { label: band.label }) } }) };
       }
       case 'status': {

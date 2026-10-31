@@ -5,6 +5,7 @@ import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request'
 import { requireGeometry } from '../src/core/sizing';
 import { repaintGeometry } from '../src/core/repaintGeometry';
 import { resolveTable } from '../src/core/charts/table/resolve';
+import { sortRows } from '../src/core/charts/table/view';
 import { preparedTableRecords } from '../src/core/a11y/structuralRecords';
 import { displayedValueText, interactionValueText } from '../src/core/a11y/valueText';
 import { claimsForChart } from '../src/core/claims/browser';
@@ -1218,4 +1219,35 @@ it('draws a table whose options.unit is not a string', () => {
   for (const unit of [5, { a: 1 }, null]) {
     expect(() => resolveTable(data, { subtitle: { measure: 'Revenue' }, unit } as never)).not.toThrow();
   }
+});
+
+// A sign -1 row printed its figures negated but drew its arrow and sorted from the supplied figures, and a ratio of two cells printed -1.20 where the printed figures give 1.20.
+it('reads arrows, sort and ratios of a sign -1 row from the printed figures', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'ac', kind: 'value' }, { id: 'py', kind: 'value' },
+      { id: 'd', kind: 'computed', polarity: 'higherIsBetter', calc: { op: 'delta', a: 'ac', b: 'py' } },
+      { id: 'r', kind: 'computed', format: '0.00', calc: { op: 'div', a: { ref: 'ac' }, b: { ref: 'py' } } }],
+    rows: [
+      { id: 'rev', label: 'Revenue', cells: { ac: 300, py: 300 } },
+      { id: 'cost', label: 'Cost', sign: -1, cells: { ac: 120, py: 100 } },
+      { id: 'fee', label: 'Fee', sign: -1, cells: { ac: 30, py: 20 } },
+    ],
+  };
+  const table = resolveTable(data, {}).table;
+  expect(table.rows.find((r) => r.id === 'cost')!.cells.r!.displayed).toBe('1.20');
+  // A literal over a cell flips with the row sign, so it prints the quotient of the printed -120.
+  const inverse = resolveTable({ ...data, columns: [...data.columns, { id: 'q', kind: 'computed', format: '0.00', calc: { op: 'div', a: { lit: 100 }, b: { ref: 'ac' } } }] }, {}).table;
+  expect(inverse.rows.find((r) => r.id === 'cost')!.cells.q!.displayed).toBe('\u22120.83');
+  // A sum of a ratio and a cell is neither odd nor invariant, so operand order must not change its sign.
+  const ratio = { op: 'div', a: { ref: 'ac' }, b: { ref: 'py' } } as const;
+  const mixed = resolveTable({ ...data, columns: [...data.columns,
+    { id: 'm1', kind: 'computed', format: '0.00', calc: { op: 'add', a: ratio, b: { ref: 'ac' } } },
+    { id: 'm2', kind: 'computed', format: '0.00', calc: { op: 'add', a: { ref: 'ac' }, b: ratio } }] }, {}).table;
+  expect(mixed.rows.find((r) => r.id === 'cost')!.cells.m1!.displayed).toBe(mixed.rows.find((r) => r.id === 'cost')!.cells.m2!.displayed);
+  // Printed -120 sorts before -30, though the supplied 120 is the larger figure.
+  expect(sortRows(table, { column: 'ac', direction: 'asc' }).map((r) => r.id)).toEqual(['cost', 'fee', 'rev']);
+  const arrows = layout('table', data, { encodings: { d: 'arrow' } }).scene
+    .filter((node): node is TextNode => node.t === 'text' && node.part === 'tableArrow');
+  // The cost change prints -20 and the fee change -10, so both fall.
+  expect(arrows.map((node) => node.lines.join(''))).toEqual(['→', '↓', '↓']);
 });
