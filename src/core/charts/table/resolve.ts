@@ -58,7 +58,7 @@ import type {
   TotalPolicy,
 } from '../../types/table';
 import { previousColumnInGroup, readCalcInput, resolveCalcRef } from './calcRef';
-import { calcPreservesScale, calcYieldsPoints, columnOwnsFormat } from '../../tableCalc';
+import { calcIsLinear, calcPreservesScale, calcYieldsPoints, columnOwnsFormat } from '../../tableCalc';
 import {
   additiveRankKey,
   assertTableRankOptions,
@@ -2524,18 +2524,23 @@ function evaluateTableCalcs(
     const sourceStates = new Map(states);
     for (const col of numericCols) {
       if (col.kind === 'computed' && !calcPreservesScale(col.calc)) continue;
-      let res = evalCalc(row.calc!, row, sourceStates, leafTotal, {
+      // A delta column takes the change of a nonlinear row calc's own cells (a margin), not the ratio of
+      // the changes. A sum column keeps running the row calc on the sums: a YTD growth is the ratio of sums.
+      const ownCalc = col.kind === 'computed' && 'op' in col.calc && col.calc.op === 'delta' && !calcIsLinear(row.calc!);
+      const calc = ownCalc ? col.calc : row.calc!;
+      const read = ownCalc ? states : sourceStates;
+      let res = evalCalc(calc, row, read, leafTotal, ownCalc ? undefined : {
         currentCol: col.id,
         rawState,
         previousCol,
         noPrevious,
       }, contributionSign);
       // A row calc compares rows the way a column calc compares columns.
-      if (res.state === 'value' && comparesMixedRows(row.calc!, coverageOf(row.id, sourceStates, col.id))) {
+      if (res.state === 'value' && comparesMixedRows(calc, coverageOf(row.id, read, col.id))) {
         res = { ...res, raw: null, state: 'nm' };
         mixedCoverage = true;
       }
-      states.set(col.id, { raw: res.raw, state: res.state, ...partialFrom(res, row.id, sourceStates) });
+      states.set(col.id, { raw: res.raw, state: res.state, ...partialFrom(res, row.id, read) });
       if (res.nearZero) nearZero = true;
       pushCalcRecord(records, row.id, col.id, res);
     }

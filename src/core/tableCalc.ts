@@ -24,6 +24,31 @@ export function calcPreservesScale(calc: Calc): boolean {
 }
 
 /**
+ * True when running the calc on a difference of two columns gives the difference of
+ * running it on each column: refs, literals, sums, differences and scaling by a literal.
+ * A ratio, a product of two cells, abs, percentDelta and share are not, so a delta
+ * column takes their change from the row's own cells, not from the changed inputs.
+ */
+export function calcIsLinear(calc: Calc): boolean {
+  if ('ref' in calc || 'lit' in calc) return true;
+  switch (calc.op) {
+    case 'add':
+    case 'sub':
+      return calcIsLinear(calc.a) && calcIsLinear(calc.b);
+    case 'mul':
+      return ('lit' in calc.a && calcIsLinear(calc.b)) || ('lit' in calc.b && calcIsLinear(calc.a));
+    case 'div':
+      return 'lit' in calc.b && calcIsLinear(calc.a);
+    case 'delta':
+      return true;
+    case 'abs':
+    case 'percentDelta':
+    case 'share':
+      return false;
+  }
+}
+
+/**
  * Calcs the engine itself produces in percentage POINTS — the
  * only computed columns whose scale is guaranteed by construction.
  */
