@@ -642,7 +642,7 @@ function layoutScatterRun(
   }
   const { frame, claims } = solvedFrame!;
   commitClaims(occupied, claims);
-  const geometry = layoutScatterMarks(env, domain, area!, paints);
+  const geometry = layoutScatterMarks(env, domain, area!, paints, warnings);
   if (geometry.densePoints) {
     warnings.push({
       code: 'scatter-dense-paths',

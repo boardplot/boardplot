@@ -39,12 +39,12 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | delta.vs | number | yes | Reference value subtracted from the main metric. |
 | delta.scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). Code of the comparison baseline; a baseline with its own name, such as a month, goes in compare[].label instead. |
 | delta.direction | string |  | Whether an increase from the reference is favorable. neutral prints ordinary ink without a judgment; omission keeps higherIsBetter. One of `'higherIsBetter'`, `'lowerIsBetter'`, `'neutral'`. |
-| delta.mode | string |  | Display absolute change, relative change, or both. Defaults to relative. A zero or negative vs shows the absolute change with a ref-nonpositive warning; under a percent format the absolute change prints in pp. One of `'absolute'`, `'relative'`, `'both'`. |
+| delta.mode | string |  | Display absolute change, relative change, or both. Defaults to relative; under a percent format it defaults to absolute, which prints in pp. A zero or negative vs shows the absolute change with a ref-nonpositive warning, and a value on the other side of zero from vs shows it with a sign-change warning. One of `'absolute'`, `'relative'`, `'both'`. |
 | compare | array |  | One or two named comparisons below the metric; cannot be combined with delta. An empty compare list is the same as none. |
 | compare[].vs | number | yes | Reference value for this named comparison. |
 | compare[].label | string | yes | Visible name of this comparison baseline. |
 | compare[].direction | string |  | Whether an increase from this reference is favorable. neutral prints ordinary ink without a judgment; omission keeps higherIsBetter. One of `'higherIsBetter'`, `'lowerIsBetter'`, `'neutral'`. |
-| compare[].mode | string |  | Display absolute change, relative change, or both. Defaults to both. A zero or negative vs shows the absolute change with a ref-nonpositive warning; under a percent format the absolute change prints in pp. One of `'absolute'`, `'relative'`, `'both'`. |
+| compare[].mode | string |  | Display absolute change, relative change, or both. Defaults to both; under a percent format it defaults to absolute, which prints in pp. A zero or negative vs shows the absolute change with a ref-nonpositive warning, and a value on the other side of zero from vs shows it with a sign-change warning. One of `'absolute'`, `'relative'`, `'both'`. |
 | attainment | object |  | Ratio of the main value to a named target, displayed as attainment. |
 | attainment.vs | number | yes | Target value used as the attainment denominator. |
 | attainment.label | string | yes | Visible name of the attainment target. |

@@ -31,6 +31,7 @@ import { structureCount } from '../../structureCounts';
 
 import { PARTIAL_KEY, partialAxisWords, partialFootnotes, partialIds, partialKeyForced, partialLegendKeys, partialPattern, saysToDate, toDateFits, toDateFont, toDateLabel, toDateRoom } from '../../partialPeriod';
 import { highlightPaintWarnings } from '../../paintWarnings';
+import { warnMissingValue } from '../../dataGaps';
 import type { PaintWarningRule } from '../../types/scene';
 import type { AnchorResolution } from '../../annotate';
 import { percentLevels, runAnnotatePass } from '../../annotatePass';
@@ -296,6 +297,12 @@ export function layoutVariance(
     } else {
       const present = dataSeries.filter((s) => s.vals[ci]!.v !== null);
       ac = present.length !== dataSeries.length ? null : cleanSum(present.map((s) => s.vals[ci]!.v!));
+    }
+    // A blank part leaves the category without a total, so nothing is drawn for it.
+    if (ac === null) {
+      const blank = (ofSeries ? [ofSeries] : dataSeries).filter((s) => s.vals[ci]!.v === null).map((s) => `'${s.id}'`);
+      warnMissingValue(warnings, `series ${blank.join(' and ')} at '${c.id}'`, { categoryId: c.id },
+        options.missingMark === 'dash' ? 'the category is drawn as an en dash' : 'the category is not drawn');
     }
     const ref = refSeries.vals[ci]!.v;
     acArr[ci] = ac;
