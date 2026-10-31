@@ -5,7 +5,7 @@ import { requireGeometry } from '../src/core/sizing';
 import { repaintGeometry } from '../src/core/repaintGeometry';
 import { resolveTable } from '../src/core/charts/table/resolve';
 import { preparedTableRecords } from '../src/core/a11y/structuralRecords';
-import { displayedValueText } from '../src/core/a11y/valueText';
+import { displayedValueText, interactionValueText } from '../src/core/a11y/valueText';
 import { claimsForChart } from '../src/core/claims/browser';
 import { bartableDataSchema } from '../src/core/charts/bartable/schema';
 import { tableDataSchema } from '../src/core/charts/table/schema';
@@ -1059,4 +1059,32 @@ it('a pinned cell in a groundless total row keeps the page under it', () => {
   const pinned = css.findIndex((rule) => rule.includes('[data-role="total"]') && rule.includes('>[data-bp-pin]{background:linear-gradient(var(--bp-row-ground),var(--bp-row-ground)),var(--bp-background)}'));
   expect(clear).toBeGreaterThanOrEqual(0);
   expect(pinned).toBeGreaterThan(clear);
+});
+
+// A narrow percent-change column under a money row format shortened the money and stayed clipped, though the percent fits at one digit less.
+it('fits an overflowing percent change by its own format, not the money row format', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'ac', kind: 'value' }, { id: 'py', kind: 'value' },
+      { id: 'yoy', kind: 'computed', calc: { op: 'percentDelta', a: 'ac', b: 'py' }, width: 60 }],
+    rows: [{ id: 'rev', label: 'Revenue', format: '$1.2m', cells: { ac: 2500000, py: 2000000 } }],
+  };
+  const measure: typeof defaultMeasurer = (text, font) => ({ ...defaultMeasurer(text, font), width: text.length * 10 });
+  const g = layout('table', data, { fitFormats: true, measure, size: { width: 480 } });
+  const text = (col: string) => g.scene.find((n): n is TextNode => n.t === 'text' && n.id === `cell:rev:${col}`)!.lines.join('');
+  expect([text('ac'), text('yoy')]).toEqual(['$2.5M', '25%']);
+});
+
+// The accessible table read the percent change under a money row format as "$25" while the cell printed 25.0%.
+it('reads a percent change under a row format as a percent, as it reads one without the row format', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'ac', kind: 'value' }, { id: 'py', kind: 'value' },
+      { id: 'yoy', kind: 'computed', calc: { op: 'percentDelta', a: 'ac', b: 'py' } }],
+    rows: [{ id: 'rev', label: 'Revenue', format: '$1.2m', cells: { ac: 2500000, py: 2000000 } }],
+  };
+  const table = resolveTable(data, {}).table;
+  const records = preparedTableRecords(table, data, { chartId: 't' } as never, {});
+  const value = records.find(record => record.target.owner.rowId === 'rev' && record.target.owner.colId === 'yoy')!.value;
+  expect(table.rows[0]!.cells.yoy!.displayed).toBe('25.0%');
+  // The accessible table reads a derived percent at two decimals.
+  expect(interactionValueText(value)).toBe('25.00%');
 });

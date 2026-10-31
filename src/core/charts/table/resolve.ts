@@ -58,7 +58,7 @@ import type {
   TotalPolicy,
 } from '../../types/table';
 import { previousColumnInGroup, readCalcInput, resolveCalcRef } from './calcRef';
-import { calcPreservesScale } from '../../tableCalc';
+import { calcPreservesScale, calcYieldsPoints, columnOwnsFormat } from '../../tableCalc';
 import {
   additiveRankKey,
   assertTableRankOptions,
@@ -991,8 +991,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
   // So does the kind of its calculation: a percent change or a share is points
   // whatever its row prints in, and a row's '$1.2m' never turns it into "$0.0M".
   // A mul or div by a literal keeps its row's scale and currency.
-  const ownFormatColumns = new Set<Id>([...valueCols, ...computedCols]
-    .filter(col => col.format !== undefined || (col.kind === 'computed' && calcYieldsPoints(col.calc))).map(col => col.id));
+  const ownFormatColumns = new Set<Id>([...valueCols, ...computedCols].filter(columnOwnsFormat).map(col => col.id));
   const rowFormattedColumns = new Set<Id>();
   for (const row of flat) {
     if (row.calc || !rowSpecs.has(row.id)) continue;
@@ -1175,8 +1174,14 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     const floors = entries.map((e) => Math.floor((e.s.raw as number) / unit) * unit);
     const remainders = entries.map((e, i) => (e.s.raw as number) - floors[i]!);
     let deficit = Math.round((100 - floors.reduce((a, b) => a + b, 0)) / unit);
+    // A cell whose own format has another precision prints its own rounding: it takes no unit of the column's total.
+    const ownPrecision = entries.map((e) => {
+      const cellSpec = cellSpecs.get(e.r.id)?.get(colId);
+      return cellSpec !== undefined && (cellSpec.decimals ?? 1) !== decimals;
+    });
     const order = entries
       .map((_, i) => i)
+      .filter((i) => !ownPrecision[i])
       .sort((a, b) => remainders[b]! - remainders[a]! || a - b); // larger remainder first, then row order
     const adjusted = new Set<number>();
     for (const i of order) {
@@ -1185,9 +1190,12 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
       deficit--;
     }
     entries.forEach((e, i) => {
+      if (ownPrecision[i]) return;
       const shown = floors[i]! + (adjusted.has(i) ? unit : 0);
+      // A cell format of the column's precision prints the reconciled amount through itself.
+      const cellSpec = cellSpecs.get(e.r.id)?.get(colId);
       // A nonzero share the reconciled unit floors to 0 reads "<0.1%", as formatShare prints it in a chart.
-      displayOverride.set(tableCellKey(e.r.id, colId), shown === 0 && (e.s.raw as number) > 0 && spec.automatic ? `<${formatNumber(unit, colId)}` : formatNumber(shown, colId));
+      displayOverride.set(tableCellKey(e.r.id, colId), shown === 0 && (e.s.raw as number) > 0 && spec.automatic && !cellSpec ? `<${formatNumber(unit, colId)}` : formatNumber(shown, colId, e.r.id));
       overrideAmount.set(tableCellKey(e.r.id, colId), shown);
       if (adjusted.has(i) && Math.abs(shown - (e.s.raw as number)) > 1e-9) {
         records.push({
@@ -1203,7 +1211,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
           ],
           raw: shown,
           state: 'value',
-          displayed: formatNumber(shown, colId),
+          displayed: formatNumber(shown, colId, e.r.id),
           kind: 'rounding-adjustment',
         });
       }
@@ -1493,7 +1501,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
       ...(obj?.heat === false ? { heat: false as const } : {}),
       ...(obj?.strong === true && obj.tone !== undefined && obj.tone !== 'neutral' ? { strong: true as const } : {}),
       ...(typeof obj?.bar === 'number' && Number.isFinite(obj.bar) ? { bar: Math.min(1, Math.max(0, obj.bar)) } : {}),
-      ...(col.kind === 'value' && obj?.format !== undefined ? { format: obj.format } : {}),
+      ...((col.kind === 'value' || col.kind === 'computed') && obj?.format !== undefined ? { format: obj.format } : {}),
       scenario: col.kind === 'value' ? col.scenario : undefined,
       role: row.role,
       relation: row.relation,
@@ -1526,7 +1534,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
             && (specUnitKind(specFor(col.id, row.id)) !== 'number' || (row.calc !== undefined && calcYieldsPoints(row.calc)) || (col.kind === 'computed' && calcYieldsPoints(col.calc)));
           const negate = (options.signs ?? 'signed') === 'signed' && row.kind !== 'driver' && row.kind !== 'result'
             && !relativeChange && signTo(row, null) === -1;
-          displayed = (negate || cellSpecs.get(row.id)?.has(col.id) ? undefined : displayOverride.get(tableCellKey(row.id, col.id))) ?? formatNumber(negate && s.raw !== 0 ? -s.raw : s.raw, col.id, row.id);
+          displayed = (negate ? undefined : displayOverride.get(tableCellKey(row.id, col.id))) ?? formatNumber(negate && s.raw !== 0 ? -s.raw : s.raw, col.id, row.id);
           if (negate && locale.minusGlyph === '-') displayed = displayed.replace(MINUS, '-');
           // The head's † and its note say it where they print (disclosures shown, a column that skipped a child); else the cell says it.
           if (s.partial && !(disclosuresShown(options) && partialColumnIds.has(col.id))) displayed = `${displayed} ${options.strings?.incomplete ?? localeStrings(options.locale?.language).incomplete}`;
@@ -1823,13 +1831,13 @@ function applyTableTopN(
 function stampRecordDisplay(
   records: ComputedCellRecord[],
   resolvedRows: ResolvedRow[],
-  formatNumber: (raw: number, colId: Id) => string,
+  formatNumber: (raw: number, colId: Id, rowId?: Id) => string,
 ): void {
   const cellIndex = new Map<string, ResolvedCell>();
   for (const r of resolvedRows) for (const c of Object.values(r.cells)) cellIndex.set(tableCellKey(c.rowId, c.colId), c);
   for (const rec of records) {
     if (rec.kind === 'reconciliation' || rec.kind === 'rounding-adjustment') {
-      rec.displayed = typeof rec.raw === 'number' ? formatNumber(rec.raw, rec.colId) : '';
+      rec.displayed = typeof rec.raw === 'number' ? formatNumber(rec.raw, rec.colId, rec.kind === 'rounding-adjustment' ? rec.rowId : undefined) : '';
       continue;
     }
     rec.displayed = cellIndex.get(tableCellKey(rec.rowId, rec.colId))?.displayed ?? rec.displayed;
@@ -2305,14 +2313,6 @@ function validateCalcRefs(columns: TableColumn[], colById: Map<Id, TableColumn>)
   for (const c of columns) {
     if (c.kind === 'computed') check(c.calc, c.id);
   }
-}
-
-/**
- * Calcs the engine itself produces in percentage POINTS — the
- * only computed columns whose scale is guaranteed by construction.
- */
-function calcYieldsPoints(calc: Calc): boolean {
-  return 'op' in calc && (calc.op === 'share' || calc.op === 'percentDelta');
 }
 
 /**
