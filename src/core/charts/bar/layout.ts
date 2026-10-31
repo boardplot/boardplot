@@ -395,6 +395,7 @@ function annotateBar(
     xScale: area.x,
     ...categoryTargetFields(cats.map((c) => c.id), plot, (i) => band.position(i) + band.bandwidth / 2, 'y'),
     valueAxis: 'horizontal',
+    calloutRowPitch: band.step,
     partialCategories: partialIds(cats),
     ...(!annotationPass && cagrInset(domain) ? { barInset: { gapWord: chartString(domain.options, 'gapLead') } } : {}),
   };
