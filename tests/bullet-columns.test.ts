@@ -17,6 +17,38 @@ const heads = (geometry: Geometry) => texts(geometry, 'label:header:');
 const label = (geometry: Geometry, id: string) => geometry.labels.find((placed) => placed.id === id && !placed.hidden);
 
 describe('bullet target and gap columns', () => {
+  // Different rounding of a value, target and gap made the printed subtraction disagree and gave zero a sign.
+  it('prints each row and its gap at one precision and treats a printed zero as on target', () => {
+    const data = { rows: [
+      { id: 'ratio', label: 'Ratio', value: 2.6, target: 2.25 },
+      { id: 'above', label: 'Above', value: { number: 10.04, format: '1.1' }, target: 10 },
+      { id: 'below', label: 'Below', value: { number: 9.96, format: '1.1' }, target: 10 },
+      { id: 'rate', label: 'Rate', value: { pct: 6 }, target: { pct: 7.9 } },
+    ] };
+    for (const options of [{}, { targetColumns: false }, { sharedScale: 'percentOfTarget' }] as BulletOptions[]) {
+      const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'bullet', data,
+        options: { size: { width: 1200, height: 500 }, ...options } }));
+      if (geometry.refused) throw new Error('refused');
+      expect(label(geometry, 'point:ratio')?.text).toBe('2.6');
+      const target = options.sharedScale === 'percentOfTarget' ? 'target:' : 'target-value:';
+      expect(label(geometry, `${target}ratio`)?.text).toContain('2.3');
+      const suffix = options.targetColumns === false ? ' vs target' : '';
+      expect(label(geometry, 'delta:ratio')?.text).toBe(`+0.3${suffix}`);
+      expect(label(geometry, 'point:rate')?.text).toBe('6.0%');
+      expect(label(geometry, `${target}rate`)?.text).toContain('7.9%');
+      expect(label(geometry, 'delta:rate')?.text).toBe(`−1.9pp${suffix}`);
+      for (const id of ['above', 'below']) {
+        expect(label(geometry, `point:${id}`)?.text).toBe('10.0');
+        expect(label(geometry, `delta:${id}`)?.text).toBe(`0.0${options.targetColumns === false ? ' on target' : ''}`);
+        expect(geometry.annotations.find((annotation) => annotation.id === `delta-target:${id}`)?.tone).toBe('good');
+        if (options.targetColumns !== false && options.sharedScale !== 'percentOfTarget') {
+          expect(label(geometry, `gap-position:${id}`)?.text).toBe('on target');
+        }
+      }
+      expect(geometry.derived).toMatchObject({ deltaVsTarget: { ratio: 0.35, above: 0.04, below: -0.04, rate: -1.9 } });
+    }
+  });
+
   // A reader had to find each target above its tick and read "−7 vs target" at the row end.
   it('prints the target and the gap under headed columns, in English and German', () => {
     const wide = draw({ size: { width: 1200, height: 620 } });
