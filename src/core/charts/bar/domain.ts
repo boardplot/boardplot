@@ -560,9 +560,9 @@ export function resolveBarDomain(data: ChartData, options: BarOptions, warnings:
   } else if (sharesOn) {
     warnShareRoundingDrift(warnings, wholes.map(({ c, parts }) => ({ name: c.label, shares: parts.map((part) => part.share) })));
   }
-  // sharesOfOneWhole: a bar whose authored parts miss 100 prints shares of its own total.
+  // sharesOfOneWhole: a bar whose authored parts miss 100 prints shares of its own total; direct percents print as authored.
   const rescaled = options.sharesOfOneWhole === true
-    ? wholes.filter(({ c, parts }) => Math.abs(parts.reduce((sum, part) => sum + part.s.cells[cats.indexOf(c)]!.v!, 0) - 100) > 0.05).map(({ c }) => c.label) : [];
+    ? wholes.filter(({ c, parts }) => !dataSeries.some((s) => s.cells[cats.indexOf(c)]!.isPct) && Math.abs(parts.reduce((sum, part) => sum + part.s.cells[cats.indexOf(c)]!.v!, 0) - 100) > 0.05).map(({ c }) => c.label) : [];
   const shareNotes = shareRoundingNotes(options, roundingAdjustments, cappedItems(rescaled, options));
   const domain = {
     options, theme, palette: paletteRamp ? options.palette : undefined, size,

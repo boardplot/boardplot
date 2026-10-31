@@ -272,6 +272,20 @@ describe('data gaps', () => {
     expect(noteTexts(lay('column', { categories: [{ id: 'q' }], series: ['a', 'b'].map((id) => ({ id, values: [50] })) }, { variant: 'stacked100' }), ['method'])).toEqual([]);
   });
 
+  // A bar of direct percents prints them as authored, and the note said each share was divided by the stack total.
+  it('adds no rescaling note for a bar of direct percents', () => {
+    const direct = lay('bar', { categories: [{ id: 'q', label: 'Sep' }], series: [{ id: 'a', values: [{ pct: 55 }] }, { id: 'b', values: [{ pct: 30 }] }] }, { variant: 'stacked100', sharesOfOneWhole: true });
+    expect(noteTexts(direct, ['method'])).toEqual([]);
+  });
+
+  // The area note named moved shares that sit at unlabelled categories or under labels: false, and the reader saw no moved share.
+  it('adds the area rounding note only when a moved share prints', () => {
+    const data = { categories: ['a', 'b', 'c'].map((id) => ({ id })), series: [[50, 1, 50], [25, 1, 25], [25, 1, 25]].map((values, i) => ({ id: `s${i}`, values })) };
+    expect(noteTexts(lay('line', data, { variant: 'stacked100-area' }), ['method'])).toEqual([]);
+    expect(noteTexts(lay('line', data, { variant: 'stacked100-area', valueLabels: 'all', labels: false }), ['method'])).toEqual([]);
+    expect(noteTexts(lay('line', data, { variant: 'stacked100-area', valueLabels: 'all' }), ['method']).join(' ')).toContain('moved by one step');
+  });
+
   it('omits a CAGR to a partial period and flags a diff that uses one', () => {
     const categories = [{ id: 'y1', label: '2022', date: '2022-12-31' }, { id: 'y2', label: '2023', date: '2023-12-31' }, { id: 'y3', label: '2024 YTD', date: '2024-12-31', partial: true }];
     const g = lay('column', { categories, series: [{ id: 'a', values: [100, 120, 70] }] }, {
