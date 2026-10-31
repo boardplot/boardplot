@@ -71,21 +71,27 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
     const own = s.vals.filter((val) => val.v !== null).map((val) => val.scenario);
     return own.length > 0 && own.every((sc) => sc === own[0]) ? own[0] : undefined;
   };
-  const actuals = authored.filter((x) => { const role = roleOf(x); return role === undefined || role === 'AC'; });
+  // A stack keeps its stack colours: there only a plan pairs, as it always did, and keeps its step.
+  const stackLike = variant === 'stacked' || variant === 'stacked100';
+  const ownPaint = (x: NormSer): boolean => !!x.fill || !!x.colorRole || highlights.has(x.id);
+  const roleIn = (x: NormSer): Scenario | undefined => (stackLike ? x.scenario : roleOf(x));
+  const pairOrder = stackLike ? dataSeries : authored;
+  const actuals = pairOrder.filter((x) => { const role = roleIn(x); return role === undefined || role === 'AC'; });
   const scenarioPartner = new Map<string, NormSer>();
-  for (const sc of ['PY', 'PL', 'FC'] as const) {
-    authored.filter((x) => roleOf(x) === sc).forEach((x, k) => {
+  for (const sc of stackLike ? (['PL'] as const) : (['PY', 'PL', 'FC'] as const)) {
+    pairOrder.filter((x) => roleIn(x) === sc).forEach((x, k) => {
       const actual = actuals[k];
       // A prior year draws its actual's colour as a wash, which needs the theme's series colour:
       // beside an actual in an authored colour or role it keeps a washed step of its own.
-      if (actual && (sc !== 'PY' || (!actual.fill && !actual.colorRole && !highlights.has(actual.id)))) scenarioPartner.set(x.id, actual);
+      if (actual && (sc !== 'PY' || !ownPaint(actual))) scenarioPartner.set(x.id, actual);
     });
   }
   const roles = colorRolePaints(authored);
   const ownPaints = authored.map((s): Paint | undefined =>
     s.fill ? { css: s.fill } : s.colorRole ? roles.get(s.id)! : highlights.has(s.id) ? { token: 'focus' } : undefined);
-  // A paired scenario series takes no ramp step of its own.
-  const dealt = authored.filter((s) => !scenarioPartner.has(s.id));
+  // A paired scenario series of grouped columns takes no ramp step of its own. One with its own
+  // paint keeps it, so it stays in the deal and the plain series step past its colour.
+  const dealt = authored.filter((s) => stackLike || ownPaint(s) || !scenarioPartner.has(s.id));
   const authoredSlots = rampSlots(theme, dealt.map((s) => ownPaints[authored.indexOf(s)]), palette, { labels: dealt.map((s) => s.label), warnings });
   // A plain series of a stack beside authored colours keeps apart from them in the active theme.
   const stackOwn = (variant === 'stacked' || variant === 'stacked100') && ownPaints.some(Boolean) ? ownPaints : undefined;
@@ -101,7 +107,7 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
   // series keeps every series in its usual colour.
   const marked = authored.some((s) => s.colorRole !== undefined || highlights.has(s.id) || s.id === receding);
   const stackPlain = (variant === 'stacked' || variant === 'stacked100') && palette === undefined && !marked
-    ? authored.filter((s) => !s.fill && !scenarioPartner.has(s.id)) : [];
+    ? authored.filter((s) => !s.fill) : [];
   const seriesIdentityPaint = (
     s: NormSer,
     dataIdx: number,
@@ -120,6 +126,7 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
     if (dataSeries.length === 1) return themeSeriesPaint(slot, palette, scenario, true);
     if (stackPlain.length > 1 && stackPlain.includes(s)) return stackRampPaint(stackPlain.indexOf(s), stackPlain.length, slot);
     if (stackOwn && authored.includes(s)) return stackApartPaint(stackOwn, authored.indexOf(s), slot, palette);
+    if (stackLike) return themeSeriesPaint(slot, palette);
     // A prior year draws its colour at the scenario wash, apart from the actual it shares it with.
     if (scenario === 'PY') return themeSeriesPaint(slot, palette, 'PY', true, false, true);
     // A forecast keeps its key colour where its hatch reads on the page; scenarioSeriesColor lifts

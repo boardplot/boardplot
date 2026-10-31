@@ -370,3 +370,24 @@ it('paints scenario columns from the actual, whatever the series order', () => {
     expect(acFirst.py, theme).not.toBe(acFirst.ac);
   }
 });
+
+// Pairing a scenario with its actual must never give two unpatterned columns one colour: an authored PY fill and a stacked PY segment stay apart.
+it('keeps scenario columns apart from an authored fill and in a stack', () => {
+  const resolved = resolveTheme('standard');
+  const fills = (variant: 'grouped' | 'stacked', series: { id: string; label: string; scenario?: 'AC' | 'PY'; fill?: string; values: number[] }[]) => {
+    const geometry = layoutResolvedRequest(resolveChartRequest({
+      type: 'column', theme: 'standard',
+      data: { categories: ['y1', 'y2'].map(id => ({ id, label: id })), series },
+      options: { variant },
+    }));
+    if (geometry.refused) throw new Error('refused');
+    return series.map(s => {
+      const node = geometry.scene.find((n): n is Extract<SceneNode, { t: 'rect' }> => n.t === 'rect' && n.owner?.seriesId === s.id && !!n.owner.categoryId && !!n.fill);
+      return node?.fill ? resolvePaint(node.fill, resolved) : undefined;
+    });
+  };
+  const [ac, py] = fills('grouped', [{ id: 'ac', label: 'Actual', values: [3, 4] }, { id: 'py', label: 'Prior year', scenario: 'PY', fill: '#075A8E', values: [2, 3] }]);
+  expect(ac).not.toBe(py);
+  const stack = fills('stacked', [{ id: 'a', label: 'North', values: [3, 4] }, { id: 'b', label: 'South', values: [2, 2] }, { id: 'py', label: 'Prior year', scenario: 'PY', values: [1, 2] }]);
+  expect(new Set(stack).size).toBe(3);
+});
