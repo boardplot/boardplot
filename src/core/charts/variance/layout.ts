@@ -37,7 +37,7 @@ import { percentLevels, runAnnotatePass } from '../../annotatePass';
 import { hiddenValueLineReserve, VALUE_LINE_RESERVE } from '../../annotateParts';
 import { defaultNumberDecimals, formatAutomaticNumber, formatAutomaticPercent, PERCENTAGE_POINTS, seriesValueFormatter } from '../../format';
 import { exampleSpec, formatterFromExample, formatWithSpec, parseFormatExample, roundedNumber, signedFormatterFromExample, specUnitKind } from '../../formatSpec';
-import { boxGap, cleanDiff, cleanFloat, type Rect } from '../../geometry';
+import { boxGap, cleanDiff, cleanFloat, cleanSum, type Rect } from '../../geometry';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelsToNodes } from '../../label/emit';
 import { categoryLineAlign, planCategoryRow, rotatedClaimRect, rotatedLeftOverhang, yearRowRequests } from '../../label/categoryRow';
@@ -295,7 +295,7 @@ export function layoutVariance(
       ac = ofSeries.vals[ci]!.v;
     } else {
       const present = dataSeries.filter((s) => s.vals[ci]!.v !== null);
-      ac = present.length !== dataSeries.length ? null : present.reduce((a, s) => a + s.vals[ci]!.v!, 0);
+      ac = present.length !== dataSeries.length ? null : cleanSum(present.map((s) => s.vals[ci]!.v!));
     }
     const ref = refSeries.vals[ci]!.v;
     acArr[ci] = ac;

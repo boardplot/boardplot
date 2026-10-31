@@ -251,6 +251,15 @@ export function cleanFloat(v: number, scale: number = v): number {
   return decimals >= 0 && decimals <= 100 ? Number(v.toFixed(decimals)) + 0 : v; // + 0 turns -0 into 0
 }
 
+/**
+ * A sum of terms, cleaned at the size of its largest term. Cleaning a sum at
+ * its own size keeps cancellation noise: 0.1 + 0.2 − 0.3 is 5.55e-17, and at
+ * its own scale that residue looks like a real value.
+ */
+export function cleanSum(terms: readonly number[]): number {
+  return cleanFloat(terms.reduce((a, b) => a + b, 0), Math.max(0, ...terms.map(Math.abs)));
+}
+
 /** `a − b`, cleaned at the size of its operands. */
 export function cleanDiff(a: number, b: number): number {
   return cleanFloat(a - b, Math.max(Math.abs(a), Math.abs(b)));
