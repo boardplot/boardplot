@@ -8,6 +8,7 @@ import { PARTIAL_FOOTNOTE, SUPPRESSED_FOOTNOTE } from './resolve';
 import { ranksAsData } from './rank';
 import { disclosureNote } from '../../notes';
 import { heatRanges, statusDirectionNote } from './encodings/heat';
+import { printedNumber } from './encodings/arrow';
 
 /** Column kinds whose cells hold numbers. */
 const NUMERIC_COLUMNS: ReadonlySet<ColumnKind> = new Set<ColumnKind>(['value', 'computed', 'date', 'encoding']);
@@ -334,7 +335,7 @@ export function sortableColumnIds(
 function sortKey(row: ResolvedRow, colId: Id): { missing: boolean; number?: number; text?: string } {
   const cell = row.cells[colId];
   if (cell === undefined || cell.state !== 'value') return { missing: true };
-  if (typeof cell.raw === 'number') return { missing: false, number: cell.raw };
+  if (typeof cell.raw === 'number') return { missing: false, number: printedNumber(cell) };
   const text = typeof cell.raw === 'string' && cell.raw !== '' ? cell.raw : cell.displayed;
   return text === '' ? { missing: true } : { missing: false, text };
 }

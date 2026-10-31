@@ -329,8 +329,8 @@ function treeNumbers(node: unknown, into: number[] = [], seen = new Set<unknown>
 /**
  * The chart's data and options with each format example read by that data
  * (`exampleReading`), and a warning where a group rounds a small number.
- * ponytail: one reading per chart from all of its numbers, a number that is no
- * value counts too; per-field numbers if a real chart needs them.
+ * Each chart gets one reading, taken from all of its numbers. A number that is
+ * not a data value counts too. Fields are not read one by one.
  */
 export function readFormatExamples<D, O>(data: D, options: O): { data: D; options: O; warnings: LintWarning[] } {
   const examples = new Set<string>();
@@ -1260,17 +1260,19 @@ function drawnNumberTexts(geo: { labels?: readonly PlacedLabel[]; scene: readonl
  * raster too (an authored 36.2 % must not flatten to 36 %); computed shares
  * follow `formatShare`.
  */
-const MAGNITUDE_UNIT = /^\W*(?:([a-z]{3})(\W*))?(k|mm?|mn|bn?|tn|tsd|mio|mrd|bio|thousands?|tausend|millions?|millionen|billions?|billionen|trillions?|milliard(?:en?|s)?)\W*$/i;
+const MAGNITUDE_UNIT = /^\W*(?:([a-z]{3})(\W*))?(k|mm?|mn|bn?|tn|tsd|mio|mrd|bio|thousands?|tausend|millions?|millionen|billions?|billionen|trillions?|milliard(?:en?|s)?)\W*(?:([a-z]{3})\W*)?$/i;
 const CURRENCY_CODES = new Set(Intl.supportedValuesOf('currency'));
 
 /**
  * The scale a unit names: "€M", "EUR m" and "CHFm" are millions, "k€"
- * thousands, "USD bn" billions; none for "%" or "EUR". Three letters joined
- * to the word must be a currency code: "USDm" names millions, "item" does not.
+ * thousands, "USD bn" billions, "Mio. CHF" millions; none for "%" or "EUR".
+ * Three letters joined to the word must be a currency code: "USDm" names
+ * millions, "item" does not. A currency may follow the word too.
  */
-function unitMagnitude(unit: string | undefined): NumberFormatSpec['magnitude'] | undefined {
+export function unitMagnitude(unit: string | undefined): NumberFormatSpec['magnitude'] | undefined {
   const match = MAGNITUDE_UNIT.exec(unit ?? '');
   if (!match || (match[1] && !match[2] && !CURRENCY_CODES.has(match[1].toUpperCase()))) return undefined;
+  if (match[4] && (match[1] || !CURRENCY_CODES.has(match[4].toUpperCase()))) return undefined;
   const letter = MAGNITUDE_WORD_LETTER[match[3]!.toLowerCase()] ?? match[3]!.toLowerCase();
   return letter === 'k' ? 'k' : letter === 'b' ? 'bn' : letter === 't' ? 't' : 'm';
 }
