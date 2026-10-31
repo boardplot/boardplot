@@ -1,0 +1,3 @@
+### Fixed
+
+- A line or area chart with very many points no longer runs the CLI or the MCP server out of memory. A line of 1,999 categories by 200 series (about 400,000 points) used all of a 4 GB heap and aborted the process after about 14 seconds. A line or area now refuses with `too-many-items` at `/data/series` when it draws more than 200,000 points, and the fix names fewer series, aggregated periods, `window.last` or `viewDomain`. The count is taken after the viewport and after the sampling of a dated line, so every chart that drew before still draws. A line of 1,000 categories by 100 series is unchanged.

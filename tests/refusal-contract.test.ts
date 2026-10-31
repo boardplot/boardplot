@@ -245,6 +245,18 @@ describe('refusal contract', () => {
     expect((body.errors as Finding[]).map(({ code, path, suggest }) => ({ code, path, line: suggest?.includes('line') }))).toEqual([{ code: 'too-many-items', path: '/data/categories', line: true }]);
   });
 
+  // A line of 1,999 categories by 200 series (about 400,000 points) ran the CLI and the MCP server out of memory; above the point budget it must refuse at once, and a window.last that draws less must still draw.
+  it('refuses a line or area above the point budget and draws the same data under window.last', () => {
+    const categories = Array.from({ length: 1_000 }, (_, i) => `c${i}`);
+    const series = Array.from({ length: 201 }, (_, k) => ({ id: `s${k}`, values: categories.map((_, i) => (i * (k + 1)) % 97) }));
+    const data = { categories, series };
+    for (const variant of ['line', 'stacked-area'] as const) {
+      const { body } = render({ spec: { type: 'line', data, options: { variant } } });
+      expect((body.errors as Finding[]).map(({ code, path }) => ({ code, path }))).toEqual([{ code: 'too-many-items', path: '/data/series' }]);
+    }
+    expect(render({ spec: { type: 'line', data, options: { window: { last: 100 } } } }).body.errors ?? []).toEqual([]);
+  });
+
   // The budget must not refuse long lists that the chart itself cuts to a few drawn items.
   it('draws a long list that topN, its threshold, window.last or the Pareto tail fold reduces', () => {
     const n = 2_001;

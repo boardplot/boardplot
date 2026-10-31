@@ -22,7 +22,27 @@ const TYPE_BUDGETS: Readonly<Record<string, number>> = { likert: 500, mekko: 20_
 
 export const TOO_MANY_ITEMS = 'too-many-items';
 
-/** The data lists whose length sets what a type draws. Line and area sample, tables scroll, and the other types draw aggregates. */
+/**
+ * The most points (drawn categories times series) one line or area draws. A line of 1,000 categories
+ * by 100 series draws in 3 s and uses 1.8 GB; 1,999 by 200 ran out of memory at 4 GB. The line
+ * counts after its viewport and its sampling, so a dated line that samples keeps drawing.
+ */
+export const POINT_BUDGET = 200_000;
+
+/** Throws the `too-many-items` refusal when a line or area draws more points than POINT_BUDGET. */
+export function checkPointBudget(categories: number, series: number): void {
+  if (categories * series <= POINT_BUDGET) return;
+  throw new NormalizeError(
+    TOO_MANY_ITEMS,
+    'series',
+    `${series} series of ${categories} categories are ${categories * series} points, over the ${POINT_BUDGET} a line or area chart draws; it would run out of memory`,
+    'draw fewer series, aggregate the periods first (weeks or months), or set window.last or viewDomain to draw part of the periods',
+    undefined,
+    ['data', 'series'],
+  );
+}
+
+/** The data lists whose length sets what a type draws. Line and area count points in checkPointBudget, tables scroll, and the other types draw aggregates. */
 const BUDGETED_LISTS: Readonly<Record<string, readonly string[]>> = {
   column: ['categories'], bar: ['categories'], combo: ['categories'], dot: ['categories'], variance: ['categories'],
   butterfly: ['categories'], funnel: ['categories'], mekko: ['categories'], waffle: ['categories'],
