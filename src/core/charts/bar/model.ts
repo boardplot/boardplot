@@ -169,6 +169,8 @@ export interface BarDomain {
   statFmt: (v: number) => string;
   /** Categories whose whole stack carries one scenario. */
   uniformScenario: Map<Id, Scenario>;
+  /** The actual each PY, PL or FC series takes its colour from (scenarioPairs), by series id. */
+  scenarioPartner: Map<Id, NormSeries>;
   /** One series with a highlighted category, so the other bars step back. */
   restRecedes: boolean;
   totals: number[];

@@ -36,6 +36,7 @@ import { accumulateStack, averageMarkerLine, averageOfUnaddedSums, averageOfWhol
 import { isIncomplete, warnShareRoundingDrift } from '../../dataGaps';
 import { roundingUnavailable, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
 import { NO_STACK_MEAN, stackAdds } from '../../stackAdds';
+import { scenarioPartners, seriesScenarioRole } from '../../scenarioPairs';
 import { OTHERS_ID, type BarDomain, type NormCat, type NormSeries } from './model';
 import { disclosuresShown } from '../../notes';
 
@@ -497,10 +498,21 @@ export function resolveBarDomain(data: ChartData, options: BarOptions, warnings:
   // A series with its own paint keeps it; the ramp series skip a step that
   // paints the same colour, so no two series of one chart look alike.
   const roles = colorRolePaints(dataSeries);
-  const slots = rampSlots(theme, dataSeries.map((s): Paint | undefined =>
+  // A scenario series takes the colour of its actual (scenarioPairs). A series whose cells all
+  // carry one scenario counts as that scenario. A stack keeps its stack colours: only a plan pairs.
+  const stacked = variant !== 'grouped';
+  const ownPaint = (x: NormSeries): boolean => !!x.fill || !!x.colorRole || highlights.has(x.id);
+  const scenarioPartner = stacked
+    ? scenarioPartners(dataSeries, (x) => x.scenario, ownPaint, true)
+    : scenarioPartners(dataSeries, (x) => seriesScenarioRole(x.scenario, x.cells.filter((c) => c.v !== null).map((c) => c.meta?.scenario)), ownPaint, false);
+  // A paired scenario series of grouped bars takes no ramp step of its own. One with its own
+  // paint keeps it, so it stays in the deal and the plain series step past its colour.
+  const dealt = dataSeries.filter((s) => stacked || ownPaint(s) || !scenarioPartner.has(s.id));
+  const slots = rampSlots(theme, dealt.map((s): Paint | undefined =>
     s.fill ? { css: s.fill } : s.colorRole ? roles.get(s.id)! : highlights.has(s.id) ? { token: 'focus' } : undefined,
-  ), paletteRamp ? options.palette : undefined, { labels: dataSeries.map((s) => s.label), warnings });
-  dataSeries.forEach((s, i) => (s.slot = slots[i]!));
+  ), paletteRamp ? options.palette : undefined, { labels: dealt.map((s) => s.label), warnings });
+  dealt.forEach((s, i) => (s.slot = slots[i]!));
+  dataSeries.forEach((s) => { const partner = scenarioPartner.get(s.id); if (partner && !dealt.includes(s)) s.slot = partner.slot; });
   const basis = barBasis(variant, cats, dataSeries, warnings);
   // TWIN of column's `meanValue`. NOT coalesced to 0: with no plotted value
   // there is no mean, and a valueLine drawn at 0 would state a number the
@@ -577,7 +589,7 @@ export function resolveBarDomain(data: ChartData, options: BarOptions, warnings:
     axisFmt: variant === 'stacked100' ? { format: (v: number) => formatAutomaticPercent(v, 0, false, options.locale?.language) }
       : percentCellsOnly(dataSeries.map((series) => ({ vals: series.cells.map((cell) => ({ ...cell, format: cell.meta?.format })), format: series.format })))
         ? { format: valueSpec.fmtPercent, formatSpec: valueSpec.percentSpec } : { format: valueSpec.fmt, formatSpec: valueSpec.spec },
-    cats, dataSeries, refSeries, valueSpec, fmt: valueSpec.fmt, totalFmt: stackTotalFormatter(variant, valueSpec.spec, valueSpec.fmt), statFmt, uniformScenario,
+    cats, dataSeries, refSeries, valueSpec, fmt: valueSpec.fmt, totalFmt: stackTotalFormatter(variant, valueSpec.spec, valueSpec.fmt), statFmt, uniformScenario, scenarioPartner,
     /**
      * A category highlight on one series makes the named bars the
      * subject. They take `highlight` and every other bar steps back to

@@ -343,7 +343,7 @@ it('draws series that share a colour role in distinct steps of that colour', () 
 });
 
 // Scenario series took their rank colour, so a prior year listed first painted darker than the actual and the look changed with series order.
-it('paints scenario columns from the actual, whatever the series order', () => {
+it.each(['column', 'bar'] as const)('paints scenario %s series from the actual, whatever the series order', (type) => {
   const series = {
     ac: { id: 'ac', label: 'Actual', scenario: 'AC' as const, values: [101, 108, null] },
     py: { id: 'py', label: 'Prior year', scenario: 'PY' as const, values: [90, 101, null] },
@@ -354,7 +354,7 @@ it('paints scenario columns from the actual, whatever the series order', () => {
     const resolved = resolveTheme(theme);
     const paints = (order: (keyof typeof series)[]) => {
       const geometry = layoutResolvedRequest(resolveChartRequest({
-        type: 'column',
+        type,
         theme,
         data: { categories: ['y1', 'y2', 'y3'].map(id => ({ id, label: id })), series: order.map(key => series[key]) },
         options: { variant: 'grouped' },
