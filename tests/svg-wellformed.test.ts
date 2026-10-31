@@ -43,6 +43,11 @@ describe('SVG XML contract', () => {
     expect(doc.querySelector('[data-bp-category-label]')?.getAttribute('data-bp-category-label')).toBe(label);
   });
 
+  // A plain-JS caller who left out the theme got a TypeError about `color` that did not name the argument.
+  it('names the theme when renderSvg is called without it', () => {
+    expect(() => (renderSvg as (geometry: unknown) => string)({ width: 100, height: 100, nodes: [] })).toThrow('theme is required');
+  });
+
   // LibreOffice paints an 8-digit hex fill opaque black, so a sankey flow became a black block.
   it('writes an alpha fill as a plain colour plus fill-opacity', () => {
     const fill = (css: string) => ({ css });
