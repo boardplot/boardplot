@@ -2,7 +2,7 @@
 
 // Patched themes are checked by `core/themeShape`, which a CLI-shaped graph links and a chart entry fetches (core/deferred).
 import '../src/core/themeShapeRules';
-import { act, createElement } from 'react';
+import { act, createElement, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -190,6 +190,51 @@ describe('React adapter boundary', () => {
     // A browser can deliver a resize that the placeholder queued before it unmounted.
     expect(resized.length).toBeGreaterThan(0);
     for (const callback of resized) expect(() => callback([], {} as ResizeObserver)).not.toThrow();
+  });
+
+  // A host that stores a new object from an inline callback re-rendered the chart without end, because each new callback fired its effect again.
+  it('calls an inline onGeometry, onNotes and onRefused once, even when each stores a new object', async () => {
+    const calls = { geometry: 0, notes: 0, refused: 0 };
+    let renders = 0;
+    function Host({ size }: { size: { width: number; height: number } }) {
+      const [, setBox] = useState<object>();
+      if (++renders > 40) throw new Error('render loop');
+      return <ColumnChart data={DATA} size={size} source="Invented source" notes={{ placement: 'list' }}
+        onGeometry={g => { calls.geometry++; setBox({ w: g.size.width }); }}
+        onNotes={n => { calls.notes++; setBox({ n: n.length }); }}
+        onRefused={r => { calls.refused++; setBox({ r: r.warnings.length }); }} />;
+    }
+    const settle = async () => { for (let i = 0; i < 6; i++) await act(async () => { await new Promise(r => setTimeout(r, 25)); }); };
+    await act(async () => { root.render(<Host size={{ width: 480, height: 270 }} />); });
+    await settle();
+    expect(calls.geometry).toBe(1);
+    expect(calls.notes).toBe(1);
+    await act(async () => { root.render(<Host size={{ width: 200, height: 120 }} />); });
+    await settle();
+    expect(calls.refused).toBe(1);
+    expect(renders).toBeLessThan(10);
+  });
+
+  // A table refused at an inline `size={{ … }}` re-rendered without end: the new size object remade the refusal on every render.
+  it('calls onRefused once for a table refused at an inline size', async () => {
+    const data = {
+      columns: [
+        { id: 'label', kind: 'rowLabel' as const, label: 'Item' },
+        { id: 'value', kind: 'value' as const, label: 'Value' },
+      ],
+      rows: [{ id: 'a', label: 'A', cells: { value: 12 } }],
+    };
+    let renders = 0;
+    let calls = 0;
+    function Host() {
+      const [, setBox] = useState<object>();
+      if (++renders > 40) throw new Error('render loop');
+      return <TableChart data={data} size={{ width: 40, height: 40 }} onRefused={r => { calls++; setBox({ r: r.warnings.length }); }} />;
+    }
+    await act(async () => { root.render(<Host />); });
+    for (let i = 0; i < 4; i++) await act(async () => { await new Promise(r => setTimeout(r, 25)); });
+    expect(calls).toBe(1);
+    expect(renders).toBeLessThan(10);
   });
 
   // A host that handled the refusal through onRefused still got console noise for it.
