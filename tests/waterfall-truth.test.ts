@@ -331,3 +331,70 @@ describe('a check value off by its inputs\' rounding agrees', () => {
     ])).toEqual([]);
   });
 });
+
+describe('step notes on a broken value axis', () => {
+  // The break leaves 12 px over the top bar, so the far seats that lead a note back to its step
+  // fall under the key, and both notes stack at a free spot with a stub or no leader.
+  it('seats each note on a seat that leads back to its step', () => {
+    const data = def.normalize({
+      items: [
+        { id: 'start', label: 'Unit cost FY25', type: 'total', value: 14.2 },
+        { id: 'e0', label: 'Raw materials', value: -0.6, direction: 'lowerIsBetter' },
+        { id: 'e1', label: 'Scrap', value: -0.4, direction: 'lowerIsBetter' },
+        { id: 'e2', label: 'Energy', value: 0.1, direction: 'lowerIsBetter' },
+        { id: 'e3', label: 'Labour', value: -0.1, direction: 'lowerIsBetter' },
+        { id: 'e4', label: 'Freight', value: 0.2, direction: 'lowerIsBetter' },
+        { id: 'end', label: 'Unit cost FY26', type: 'total', value: 13.4 },
+      ],
+    });
+    const geometry = def.layout(data as never, {
+      size: { width: 480, height: 405 },
+      theme: 'studio',
+      title: 'Cost per unit falls EUR 0.8 on procurement and scrap reduction',
+      subtitle: { measure: 'Unit cost' },
+      unit: 'EUR/unit',
+      format: '1.00',
+      source: 'Plant controlling, FY26 vs FY25',
+      valueAxis: { break: 'auto' },
+      annotations: [
+        { kind: 'note', at: { categoryId: 'e0' }, text: 'New supplier contract' },
+        { kind: 'note', at: { categoryId: 'e1' }, text: 'Line 3 yield programme' },
+      ],
+    } as never) as unknown as { labels: { id: string; slot?: string; leader?: unknown }[] };
+    const notes = geometry.labels.filter((label) => label.id.startsWith('annotation:'));
+    expect(notes).toHaveLength(2);
+    for (const note of notes) {
+      expect(note.slot).not.toBe('freeSpot');
+      expect(note.leader).toBeDefined();
+    }
+  });
+
+  // The band growth on a small unbroken chart shrank the plot until the second note was hidden
+  // for a collision, where the first pass drew both. A grown pass that hides a note is dropped.
+  it('keeps every note drawn on a small chart without a break', () => {
+    const data = def.normalize({
+      items: [
+        { id: 'start', label: 'Start', type: 'total', value: 1000 },
+        { id: 'e0', label: 'Step 0', value: -100 },
+        { id: 'e1', label: 'Step 1', value: 50 },
+        { id: 'e2', label: 'Step 2', value: -30 },
+        { id: 'e3', label: 'Step 3', value: 20 },
+        { id: 'end', label: 'End', type: 'total', value: 940 },
+      ],
+    });
+    const geometry = def.layout(data as never, {
+      size: { width: 320, height: 300 },
+      theme: 'studio',
+      title: 'Title here for the chart',
+      unit: 'EUR',
+      source: 'Src',
+      annotations: [
+        { kind: 'note', at: { categoryId: 'e0' }, text: 'New supplier contract' },
+        { kind: 'note', at: { categoryId: 'e1' }, text: 'Line 3 yield programme' },
+      ],
+    } as never) as unknown as { labels: { id: string; hidden?: string }[] };
+    const notes = geometry.labels.filter((label) => label.id.startsWith('annotation:'));
+    expect(notes).toHaveLength(2);
+    expect(notes.filter((note) => note.hidden)).toEqual([]);
+  });
+});

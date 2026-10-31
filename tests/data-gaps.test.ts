@@ -290,6 +290,15 @@ describe('data gaps', () => {
     expect(texts(lay('table', { columns: [columns[0], { id: 'm', kind: 'value' }], rows: parentPercent }))).not.toContain('18.0%');
   });
 
+  // Summand rows that differ only in decimals ("$1.2m", "$1.23m") dropped the parent total to a dash, though they add up.
+  it('adds a table parent over rows that differ only in decimals, not over rows in another unit', () => {
+    const columns = [{ id: 'label', kind: 'rowLabel' }, { id: 'v', kind: 'value' }];
+    const parent = (bFormat: string) => ({ columns, rows: [{ id: 'p', label: 'P', children: [
+      { id: 'a', label: 'A', format: '$1.2m', cells: { v: 2_500_000 } }, { id: 'b', label: 'B', format: bFormat, cells: { v: 1_250_000 } }] }] });
+    expect(texts(lay('table', parent('$1.23m')))).toContain('3.8M');
+    expect(texts(lay('table', parent('$500k')))).not.toContain('3.8M');
+  });
+
   it('lets a wrap: true text column take the lines it needs instead of the width', () => {
     // Two lines needed 925 px here.
     const note = 'This is an extremely long free-text comment that explains in painful detail why the number moved, including several sub-clauses, caveats and a reference to the appendix.';

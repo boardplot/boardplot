@@ -283,7 +283,8 @@ while (pending.size || host.querySelector('[data-bp-loading]')) {
   // Map packs are separate host imports, outside the spec graph measured here.
   if (error.code !== 'geo-pack-not-registered') throw error;
 }
-if (host.querySelector('[data-bp-spec-error]')) throw new Error(host.textContent);
+// A map chart without its pack draws the refusal card with that code, for the same reason.
+if (host.querySelector('[data-bp-spec-error]') && !host.querySelector('[data-bp-error-code="geo-pack-not-registered"]')) throw new Error(host.textContent);
 await act(async () => root.unmount());
 dom.window.close();
 console.log(JSON.stringify([...requested]));

@@ -72,6 +72,7 @@ function measureWithTables(input: MeasureInput): VerbResult {
   if ('errors' in loaded) return rejected(rewriteRowsDiagnostics(asSent(loaded.errors, loaded.bare), rows.pathMap));
   shareScaleGroups(loaded);
   const { doc, envelope, bare } = loaded;
+  envelope.warnings.push(...(rows.warnings ?? []));
   const measured: { name: string; result: Measured }[] = [];
   for (const chart of doc.charts) {
     const result = measureChart(doc, withSize(chart, width, undefined, target ?? chart.options?.target as RenderTarget | undefined), envelope, target);
