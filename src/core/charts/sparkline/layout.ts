@@ -35,7 +35,7 @@ import { readerFloorPx, textScaleOf } from '../../typeFloors';
 import { cellMeta, cellValue, type Cell, type Id, type OwnerRef } from '../../types/cell';
 import type { SparklineData } from '../../types/data';
 import type { CanvasSizeInput, RenderTarget, SparklineOptions } from '../../types/options';
-import { DEFAULT_TARGET, TARGET_SIZE, type TargetSizeOptions } from '../../target';
+import { DEFAULT_TARGET, resolveTargetSize, TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import type { Geometry, LintWarning, Paint, SceneNode } from '../../types/scene';
 import type { Theme } from '../../types/theme';
 import { normalizeCell } from '../../normalize/shared';
@@ -646,17 +646,42 @@ export function sparklinePointId(index: number): Id {
   return `p${index + 1}`;
 }
 
+/**
+ * The card of a framed sparkline whose width is not authored: wide enough for its title on one line
+ * between the two side margins, never under the 176 px card and never over the target's canvas.
+ * A longer title wraps as on any chart. A sized sparkline keeps the size it was given.
+ */
+function framedCardSize(options: SparklineOptions, theme: Theme, measure: TextMeasurer): { width: number; height: number } {
+  const card = resolveSize(cardSize(options, SPARKLINE_SIZE));
+  const title = options.title;
+  if (typeof title !== 'string' || title === '') return card;
+  const constraints = (options as SparklineOptions & TargetSizeOptions)[TARGET_SIZE];
+  if (options.size !== undefined && constraints?.fixed.width !== false) return card;
+  const font: FontSpec = { family: theme.type.family, ...theme.type.title };
+  const lineWidth = Math.max(...title.split('\n').map((line) => measure(line.trim(), font).width));
+  const canvas = resolveTargetSize(options.target ?? DEFAULT_TARGET).sizePx.width;
+  return { ...card, width: Math.max(card.width, Math.min(canvas, Math.ceil(lineWidth) + 2 * FRAMED_SIDE_MARGIN)) };
+}
+
 export function layoutSparkline(
   data: SparklineData,
   options: SparklineOptions = {},
 ): Geometry<SparklineMarks, SparklineDerived> {
   const warnings: LintWarning[] = [];
-  const size = resolveSize(cardSize(options, SPARKLINE_SIZE));
   const measure = options.measure ?? defaultMeasurer;
   // A card-class mark, like kpi: no width class over a 176 px box, or the
   // type scale would step down on every host that draws one.
   const theme = resolveSemanticPaletteTheme(resolveTheme(options.theme), options.palette, warnings);
   pushAll(warnings, ringToneRefusal(options));
+  // A bare sparkline is a mark inside someone else's card and draws edge to
+  // edge; one that carries a title is an exhibit and takes the canvas
+  // margin. `canvas.margin` overrides either (the registry resolves it into
+  // `options.margin` before layout sees it).
+  const framed = (options.title !== undefined && options.title !== false)
+    || options.subtitle !== undefined
+    || options.source !== undefined
+    || authoredNotes(options).length > 0;
+  const size = framed ? framedCardSize(options, theme, measure) : resolveSize(cardSize(options, SPARKLINE_SIZE));
   const cells = (data.values ?? []).map((cell, index) => normalizeCell(cell, `values[${index}]`));
   if (cells.length === 0) throw new NormalizeError('empty-data', 'values', 'sparkline requires at least two values');
   if (cells.length < 2) {
@@ -672,14 +697,6 @@ export function layoutSparkline(
     });
   }
 
-  // A bare sparkline is a mark inside someone else's card and draws edge to
-  // edge; one that carries a title is an exhibit and takes the canvas
-  // margin. `canvas.margin` overrides either (the registry resolves it into
-  // `options.margin` before layout sees it).
-  const framed = (options.title !== undefined && options.title !== false)
-    || options.subtitle !== undefined
-    || options.source !== undefined
-    || authoredNotes(options).length > 0;
   // A framed sparkline is a narrow card: it keeps 28 px sides at every width,
   // where the canvas token gives 24 at 720 and 16 below 600 px.
   const token = canvasMargin(theme, size.width);
