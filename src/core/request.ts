@@ -324,9 +324,9 @@ function drawnAdvice(request: ResolvedChartRequest, result: LayoutResult, layout
   const need = finding?.code === 'size-below-floor' ? finding.expected?.minimum as Size | undefined : undefined;
   if (!result.refused || !need || request.fixed.height || need.width <= result.size.width) return result;
   // The same bounds as measure: a floor the chart declares statically is not searched under, and a width at it is the answer.
+  // The advice is still width-only there, as everywhere else.
   const def = getChart(request.type);
   const staticMinWidth = def === undefined ? 0 : declaredSizing(def, request.options).minWidth;
-  if (need.width <= staticMinWidth) return result;
   const floorOptions = request.type === 'table' || request.type === 'dimswitch' ? {} : { belowMinimum: 'refuse' as const };
   const fullAt = (width: number): Geometry | undefined => {
     const probe = layoutAt.probe({ ...request.options, ...floorOptions, size: { width }, [WIDTH_PROBE]: request.type });
@@ -334,7 +334,7 @@ function drawnAdvice(request: ResolvedChartRequest, result: LayoutResult, layout
   };
   // One probe one pixel under the registry width ends the search when nothing narrower draws; a layout
   // is made for each step of the search only when it does.
-  let drawn = fullAt(need.width - 1);
+  let drawn = need.width <= staticMinWidth ? undefined : fullAt(need.width - 1);
   let [low, high] = [Math.max(Math.ceil(result.size.width), staticMinWidth) - 1, drawn ? need.width - 1 : need.width];
   while (drawn && high - low > 1) {
     const mid = Math.floor((low + high) / 2);

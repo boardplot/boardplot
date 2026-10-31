@@ -473,6 +473,14 @@ it('names the size that render draws in measure', () => {
   expect(refused.fix[0]!.value.width).toBe(floor);
   expect((render({ spec: { ...card, options: { ...card.options, size: { width: floor } } } }).body as { ok: boolean }).ok).toBe(true);
 
+  // A width-only refusal at the chart's static floor advises the width alone, and that width draws.
+  const football = getFixtures('bar').find((f) => f.id === 'valuation-football-field')!;
+  const narrowBar = { type: 'bar', data: football.data, options: { ...football.options, size: { width: 150 } } };
+  const barRefused = (render({ spec: narrowBar }).body as { errors: { code: string; fix: { value: { width: number; height?: number } }[] }[] }).errors[0]!;
+  expect(barRefused.code).toBe('size-below-floor');
+  expect(barRefused.fix[0]!.value).toEqual({ width: 280 });
+  expect((render({ spec: { ...narrowBar, options: { ...narrowBar.options, size: barRefused.fix[0]!.value } } }).body as { ok: boolean }).ok).toBe(true);
+
   const map = { type: 'choropleth', data: { pack: 'dach', regions: [{ id: 'DE', value: 620.3 }, { id: 'AT', value: 618.9 }, { id: 'CH', value: 148.3 }] },
     options: { title: 'Value by region', unit: 'EUR m', source: 'Invented sample data', classes: 5, size: { width: 720, height: 270 } } };
   const drawn = (render({ spec: map }).body as { size: { height: number } }).size.height;
