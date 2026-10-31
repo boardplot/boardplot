@@ -9,8 +9,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { familiesOf, resolveFace } from '../core/fontMetrics';
-import { crc32, withPhysicalSize } from '../core/pngPhysicalSize';
-import { ToolFailure } from './result';
+import { crc32, PNG_PIXELS_MAX, withPhysicalSize } from '../core/pngPhysicalSize';
+import { InputError, ToolFailure } from './result';
 import { glyphFallbackFamily, hasArrowFallback, installedFamilies, loadResvg, rasterFamily, rasterizeWithResvg } from './resvg';
 
 const CHROME_CANDIDATES = [
@@ -218,6 +218,18 @@ export function rasterize(
   scale: number,
   rasterizer: Rasterizer | null = availableRasterizer(),
 ): RasterResult {
+  // Both rasterizers allocate the whole image up front, and a failed allocation in resvg aborts the process.
+  for (const drawing of drawings) {
+    const width = Math.round(drawing.size.width * scale);
+    const height = Math.round(drawing.size.height * scale);
+    if (width * height > PNG_PIXELS_MAX) {
+      throw new InputError('png-too-large', `chart '${drawing.name ?? 'chart'}' would be a PNG of ${width} x ${height} px, above the limit of ${PNG_PIXELS_MAX} pixels`, {
+        path: '/format', expected: { maximum: PNG_PIXELS_MAX },
+        suggest: `Draw the SVG, lower scale, or make the canvas smaller so width x height x scale^2 stays within ${PNG_PIXELS_MAX} pixels.`,
+        fix: [{ op: 'replace', path: '/format', value: 'svg' }],
+      });
+    }
+  }
   const resvg = rasterizer === 'resvg' ? loadResvg() : null;
   let chrome = rasterizer === 'chrome' ? findChrome() : null;
   if (resvg) {

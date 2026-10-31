@@ -124,7 +124,11 @@ export function getGeoPack(id: GeoPackId): GeoPack {
         `geo pack '${id}' WAS registered, but into a different copy of boardplot — ` +
         `${ledger.instances} copies of the geo registry are loaded in this process, and the ` +
         `chart being rendered resolves a copy that has ${haveText}. Adding ` +
-        `\`import 'boardplot/geo/${id}';\` again will not help. Fix: de-duplicate ` +
+        `\`import 'boardplot/geo/${id}';\` again will not help. In Next.js (app router) or ` +
+        `any bundler with a server layer and a client layer, the chart entry carries ` +
+        `'use client', so a bare import in a server file registers into the server layer. ` +
+        `Fix: put \`import 'boardplot/geo/${id}';\` in the same 'use client' module as the ` +
+        `chart. If one app has two installs, de-duplicate ` +
         `boardplot so exactly one copy is installed — one version in the lockfile ` +
         `(\`npm dedupe\`, or match the version your component library depends on), or your ` +
         `bundler's dedupe (Vite \`resolve.dedupe: ['boardplot']\`, webpack ` +

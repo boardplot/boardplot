@@ -399,7 +399,7 @@ export function Dashboard() {
 | strings.missingStack | string |  |  | StackedArea source-null note; {categories} is replaced. |
 | strings.incompleteStacks | string |  |  | Incomplete bar stack note (bar only; column and combo use knownPartsTotals); {categories} is replaced. |
 | strings.knownPartsShares | string |  |  | Incomplete 100% stack note without total100; {categories} is replaced. |
-| strings.rebaseZero | string |  |  | Line or stacked-area series left out by rebase100 for a zero base; {series} and {period} are replaced. |
+| strings.rebaseZero | string |  |  | Line or stacked-area series left out by rebase100 for a zero or negative base; {series} and {period} are replaced. |
 | strings.rebaseMissing | string |  |  | Line or stacked-area series left out by rebase100 for a missing base; {series} and {period} are replaced. |
 | strings.loading | string |  |  | Visible wording of the busy state; default Loading. |
 
@@ -474,6 +474,7 @@ The package is ES modules. Every entry names a `default` condition beside `impor
 `ChoroplethChart` ships the layout without the map geometry. Import the pack you draw once in your entry graph; `import 'boardplot/geo';` registers every pack, which costs more bundle than one pack.
 
 ```tsx
+'use client';
 import 'boardplot/geo/de-states';
 import { ChoroplethChart } from 'boardplot/react/choropleth';
 
@@ -481,6 +482,8 @@ export function StateMap() {
   return <ChoroplethChart data={{ pack: 'de-states', regions: [{ id: 'DE-BY', value: 42.1 }, { id: 'DE-BE', value: 37.5 }] }} title="Bavaria leads Berlin by 4.6 points" />;
 }
 ```
+
+In Next.js (app router) keep the pack import and the chart in the same `"use client"` module, as above. The chart entry carries `"use client"`, so a bare pack import in a server file registers into the server layer and the chart reads an empty registry. The chart then throws `geo-pack-duplicate-install`.
 
 Without the import the chart draws a refusal card with the code `geo-pack-not-registered`, and its message names the pack and the import line. The packs are `de-states`, `dach`, `eu27`, `europe`, `us-states` and `world`. `TilemapChart` carries its tile layouts and needs a pack only for an overlay placed by longitude and latitude. The CLI and the MCP server register every pack.
 

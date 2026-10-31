@@ -80,6 +80,40 @@ describe('chart layout edge cases', () => {
     expect(geometry.warnings.some((w: { code: string; message: string }) => w.code === 'footnotes-off' && w.message.includes('methodNote'))).toBe(true);
   });
 
+  // A format coarser than the class width ('$0M' over 1.2M to 1.48M) rounded the class edges into one
+  // value: the key printed '$1M to under $1M' and every region took the darkest class.
+  for (const type of ['choropleth', 'tilemap'] as const) {
+    it(`${type} classes keep apart when the format is coarser than the class width`, () => {
+      const pack = 'eu27';
+      const ids = ['DE', 'FR', 'IT', 'ES', 'PL', 'NL', 'SE', 'AT'];
+      const request = { type, data: { pack, regions: ids.map((id, i) => ({ id, value: 1_200_000 + i * 40_000 })) }, options: { classes: 5, format: '$0M' } };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+      const ticks = [...geometry.scene, ...geometry.labels]
+        .filter((node: { id?: string }) => /^(legend-edge|legend:tickLabel):/.test(String(node.id)))
+        .map((node: { text?: string; lines?: string[] }) => node.text ?? node.lines?.[0]);
+      expect(ticks.length).toBeGreaterThanOrEqual(4);
+      expect(new Set(ticks).size).toBe(ticks.length);
+    });
+  }
+
+  // A fractional data max printed its end tick with the coarse format ('$1.43M' then '$1M'), and a region
+  // exactly on a printed edge ('$8.3M') fell below it because the edge came out as 8300000.000000001.
+  it('tilemap end ticks keep the lifted decimals and a value on a printed edge takes the class above', () => {
+    const layout = (regions: Record<string, number>) => layoutResolvedRequest(resolveChartRequest({
+      type: 'tilemap', data: { pack: 'eu27', regions: Object.entries(regions).map(([id, value]) => ({ id, value })) }, options: { classes: 5, format: '$0M' },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any) as any) as any;
+    const ticksOf = (geometry: { scene: { id?: string; text?: string }[]; labels: { id?: string; text?: string; lines?: string[] }[] }) =>
+      [...geometry.scene, ...geometry.labels].filter((node) => /^(legend-edge|legend:tickLabel):/.test(String(node.id)))
+        .map((node) => (node as { text?: string; lines?: string[] }).text ?? (node as { lines?: string[] }).lines?.[0]);
+    expect(ticksOf(layout({ DE: 1234567, FR: 1300000, IT: 1400000, ES: 1481234.5 })).at(-1)).toBe('$1.48M');
+    const geometry = layout({ DE: 8100000, FR: 8200000, IT: 8300000, ES: 8400000, PL: 8500000, NL: 8600000 });
+    const fill = (id: string) => JSON.stringify(geometry.scene.find((node: { id?: string }) => node.id === `tile:${id}`)?.fill);
+    expect(fill('IT')).not.toBe(fill('FR'));
+    expect(fill('IT')).not.toBe('undefined');
+  });
+
   // The key said 'rise over 10%' while +7.1% drew the strong arrow: the cut was a share of the column's largest change.
   it('table arrows on a percent column cut the change itself, as the key says (fatigue-cell-encodings)', () => {
     const geometry = layoutFixture('table', 'fatigue-cell-encodings');

@@ -58,7 +58,7 @@ import type {
   TotalPolicy,
 } from '../../types/table';
 import { previousColumnInGroup, readCalcInput, resolveCalcRef } from './calcRef';
-import { calcPreservesScale } from '../../tableCalc';
+import { calcPreservesScale, calcYieldsPoints, columnOwnsFormat } from '../../tableCalc';
 import {
   additiveRankKey,
   assertTableRankOptions,
@@ -941,12 +941,13 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
       rowSpecs.set(row.id, spec);
     }
   }
-  // A value cell's own format beats its row's and its column's: the YoY
+  // A value or computed cell's own format beats its row's and its column's: the YoY
   // column prints percent, and a share KPI's change in it prints points.
   // Separate row and column keys avoid pair-string allocation and id collisions.
   const cellSpecs = new Map<Id, Map<Id, NumberFormatSpec>>();
+  const cellFormatCols = [...valueCols, ...computedCols];
   for (const row of flat) {
-    for (const col of valueCols) {
+    for (const col of cellFormatCols) {
       const example = cellFormat(row.cells[col.id]);
       if (example !== undefined) {
         const sourceRow = sourceRows.get(row.id);
@@ -987,12 +988,15 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
   // header: each cell carries its row's unit.
   // A computed column's own format counts too: an authored '+1.1%'
   // YoY calc column on a row that prints its months in $M keeps its percent.
-  const authoredColumnFormat = new Set<Id>([...valueCols, ...computedCols].filter(col => col.format !== undefined).map(col => col.id));
+  // So does the kind of its calculation: a percent change or a share is points
+  // whatever its row prints in, and a row's '$1.2m' never turns it into "$0.0M".
+  // A mul or div by a literal keeps its row's scale and currency.
+  const ownFormatColumns = new Set<Id>([...valueCols, ...computedCols].filter(columnOwnsFormat).map(col => col.id));
   const rowFormattedColumns = new Set<Id>();
   for (const row of flat) {
     if (row.calc || !rowSpecs.has(row.id)) continue;
     for (const col of valueCols) {
-      if (!authoredColumnFormat.has(col.id) && typeof rawState.get(row.id)?.get(col.id)?.raw === 'number') rowFormattedColumns.add(col.id);
+      if (!ownFormatColumns.has(col.id) && typeof rawState.get(row.id)?.get(col.id)?.raw === 'number') rowFormattedColumns.add(col.id);
     }
   }
   /**
@@ -1042,7 +1046,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
   // rolls to "1.1M" prints each cell with its own letter, not "1.1M" under "(k)".
   const rollsOff = (colId: Id, spec: NumberFormatSpec): boolean => spec.magnitude !== 'none' && flat.some((row) => {
     // Only a cell that prints through the column's spec: a row or cell format carries its own unit.
-    const rowPath = rowSpecs.has(row.id) && (row.calc !== undefined || row.inline === true || !authoredColumnFormat.has(colId));
+    const rowPath = rowSpecs.has(row.id) && (row.calc !== undefined || row.inline === true || !ownFormatColumns.has(colId));
     if (rowPath || cellSpecs.get(row.id)?.has(colId)) return false;
     const raw = rawState.get(row.id)?.get(colId)?.raw;
     return typeof raw === 'number' && raw !== 0 && effectiveScale(Math.abs(raw), spec).magnitude !== spec.magnitude;
@@ -1096,7 +1100,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     const cellSpec = rowId ? cellSpecs.get(rowId)?.get(colId) : undefined;
     if (cellSpec) return cellSpec;
     const rowSpec = rowId ? rowSpecs.get(rowId) : undefined;
-    return rowSpec && (rowOverridesColumn(rowId!) || !authoredColumnFormat.has(colId)) ? rowSpec : specs.get(colId)!;
+    return rowSpec && (rowOverridesColumn(rowId!) || !ownFormatColumns.has(colId)) ? rowSpec : specs.get(colId)!;
   };
   // `lift: false` prints the plain rounded text, which the near-zero base check reads.
   const formatNumber = (raw: number, colId: Id, rowId?: Id, lift = true): string => {
@@ -1106,7 +1110,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     // the column names no format of its own (an authored '+1.1%' YoY column
     // keeps its percent on a row that prints its months in $M; a chart-level
     // `options.format` yields to the row).
-    const rowPath = rowSpec !== undefined && (rowOverridesColumn(rowId!) || !authoredColumnFormat.has(colId));
+    const rowPath = rowSpec !== undefined && (rowOverridesColumn(rowId!) || !ownFormatColumns.has(colId));
     // A cell's own format prints whole: its unit is not the one the column
     // or the row hoists. One that names the same unit and changes only the
     // decimals prints as its row or column does, so a hoisted unit is not
@@ -1170,8 +1174,14 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     const floors = entries.map((e) => Math.floor((e.s.raw as number) / unit) * unit);
     const remainders = entries.map((e, i) => (e.s.raw as number) - floors[i]!);
     let deficit = Math.round((100 - floors.reduce((a, b) => a + b, 0)) / unit);
+    // A cell whose own format has another precision prints its own rounding: it takes no unit of the column's total.
+    const ownPrecision = entries.map((e) => {
+      const cellSpec = cellSpecs.get(e.r.id)?.get(colId);
+      return cellSpec !== undefined && (cellSpec.decimals ?? 1) !== decimals;
+    });
     const order = entries
       .map((_, i) => i)
+      .filter((i) => !ownPrecision[i])
       .sort((a, b) => remainders[b]! - remainders[a]! || a - b); // larger remainder first, then row order
     const adjusted = new Set<number>();
     for (const i of order) {
@@ -1180,9 +1190,12 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
       deficit--;
     }
     entries.forEach((e, i) => {
+      if (ownPrecision[i]) return;
       const shown = floors[i]! + (adjusted.has(i) ? unit : 0);
+      // A cell format of the column's precision prints the reconciled amount through itself.
+      const cellSpec = cellSpecs.get(e.r.id)?.get(colId);
       // A nonzero share the reconciled unit floors to 0 reads "<0.1%", as formatShare prints it in a chart.
-      displayOverride.set(tableCellKey(e.r.id, colId), shown === 0 && (e.s.raw as number) > 0 && spec.automatic ? `<${formatNumber(unit, colId)}` : formatNumber(shown, colId));
+      displayOverride.set(tableCellKey(e.r.id, colId), shown === 0 && (e.s.raw as number) > 0 && spec.automatic && !cellSpec ? `<${formatNumber(unit, colId)}` : formatNumber(shown, colId, e.r.id));
       overrideAmount.set(tableCellKey(e.r.id, colId), shown);
       if (adjusted.has(i) && Math.abs(shown - (e.s.raw as number)) > 1e-9) {
         records.push({
@@ -1198,7 +1211,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
           ],
           raw: shown,
           state: 'value',
-          displayed: formatNumber(shown, colId),
+          displayed: formatNumber(shown, colId, e.r.id),
           kind: 'rounding-adjustment',
         });
       }
@@ -1236,7 +1249,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     const rowSpec = rowSpecs.get(row.id);
     if (!rowSpec || row.calc || !(rowSpec.suffix ?? '').includes('%')) continue;
     const vals = valueCols
-      .filter((col) => !authoredColumnFormat.has(col.id) && col.percentScale !== 'points')
+      .filter((col) => !ownFormatColumns.has(col.id) && col.percentScale !== 'points')
       .map((col) => rawState.get(row.id)!.get(col.id))
       .filter((s): s is { raw: number; state: CellState } => !!s && typeof s.raw === 'number');
     if (vals.length > 0 && vals.every((v) => Math.abs(v.raw) <= 1.5)) {
@@ -1488,7 +1501,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
       ...(obj?.heat === false ? { heat: false as const } : {}),
       ...(obj?.strong === true && obj.tone !== undefined && obj.tone !== 'neutral' ? { strong: true as const } : {}),
       ...(typeof obj?.bar === 'number' && Number.isFinite(obj.bar) ? { bar: Math.min(1, Math.max(0, obj.bar)) } : {}),
-      ...(col.kind === 'value' && obj?.format !== undefined ? { format: obj.format } : {}),
+      ...((col.kind === 'value' || col.kind === 'computed') && obj?.format !== undefined ? { format: obj.format } : {}),
       scenario: col.kind === 'value' ? col.scenario : undefined,
       role: row.role,
       relation: row.relation,
@@ -1818,13 +1831,13 @@ function applyTableTopN(
 function stampRecordDisplay(
   records: ComputedCellRecord[],
   resolvedRows: ResolvedRow[],
-  formatNumber: (raw: number, colId: Id) => string,
+  formatNumber: (raw: number, colId: Id, rowId?: Id) => string,
 ): void {
   const cellIndex = new Map<string, ResolvedCell>();
   for (const r of resolvedRows) for (const c of Object.values(r.cells)) cellIndex.set(tableCellKey(c.rowId, c.colId), c);
   for (const rec of records) {
     if (rec.kind === 'reconciliation' || rec.kind === 'rounding-adjustment') {
-      rec.displayed = typeof rec.raw === 'number' ? formatNumber(rec.raw, rec.colId) : '';
+      rec.displayed = typeof rec.raw === 'number' ? formatNumber(rec.raw, rec.colId, rec.kind === 'rounding-adjustment' ? rec.rowId : undefined) : '';
       continue;
     }
     rec.displayed = cellIndex.get(tableCellKey(rec.rowId, rec.colId))?.displayed ?? rec.displayed;
@@ -2300,14 +2313,6 @@ function validateCalcRefs(columns: TableColumn[], colById: Map<Id, TableColumn>)
   for (const c of columns) {
     if (c.kind === 'computed') check(c.calc, c.id);
   }
-}
-
-/**
- * Calcs the engine itself produces in percentage POINTS — the
- * only computed columns whose scale is guaranteed by construction.
- */
-function calcYieldsPoints(calc: Calc): boolean {
-  return 'op' in calc && (calc.op === 'share' || calc.op === 'percentDelta');
 }
 
 /**

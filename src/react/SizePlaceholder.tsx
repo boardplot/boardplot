@@ -71,10 +71,13 @@ export function EmptyPlaceholder(props: EmptyProps & PlaceholderFrame & { theme?
 function usePlaceholderNotice({ onEmpty, result, onRefused }: EmptyProps & RefusalProps & { result?: RefusedLayout }) {
   const empty = !result || result.warnings[0]?.code === EMPTY_DATA;
   const notified = useRef(false);
+  // The callbacks sit in a ref: an inline one is new on every render and must not fire the effect again.
+  const listeners = useRef({ onEmpty, onRefused });
+  listeners.current = { onEmpty, onRefused };
   useEffect(() => {
-    if (empty) { if (!notified.current) onEmpty?.(); }
-    else onRefused?.(result!);
+    if (empty) { if (!notified.current) listeners.current.onEmpty?.(); }
+    else listeners.current.onRefused?.(result!);
     notified.current = empty;
-  }, [empty, result, onRefused]);
+  }, [empty, result]);
   return empty;
 }

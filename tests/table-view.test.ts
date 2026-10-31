@@ -79,6 +79,30 @@ it('ranks only data rows for top-N and keeps result and driver rows in place', (
   ]);
 });
 
+// A kind 'section' row has no authored role, so top-N folded the largest section into Others and the React sort moved a result row.
+it('keeps kind section and result rows out of top-N and the React sort', () => {
+  const sections: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'v', kind: 'value' }],
+    rows: ['a', 'b', 'c'].map((id, i) => ({ id, label: id, kind: 'section' as const, children: [
+      { id: `${id}1`, label: `${id}1`, cells: { v: 5 * 10 ** i } },
+      { id: `${id}2`, label: `${id}2`, cells: { v: 4 * 10 ** i } },
+    ] })),
+  };
+  expect(resolveTable(sections, { topN: { n: 2 } }).table.rows.map(row => row.id)).toEqual(['a', 'a1', 'a2', 'b', 'b1', 'b2', 'c', 'c1', 'c2']);
+
+  const withResult: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'v', kind: 'value' }],
+    rows: [
+      { id: 'a', label: 'A', cells: { v: 5 } },
+      { id: 'b', label: 'B', cells: { v: 9 } },
+      { id: 'c', label: 'C', cells: { v: 7 } },
+      { id: 'r', label: 'Result', kind: 'result', cells: { v: 8 } },
+    ],
+  };
+  const core = resolveTable(withResult, { sort: { categories: 'desc' } }).table.rows.map(row => row.id);
+  expect(sortRows(resolveTable(withResult, {}).table, { column: 'v', direction: 'desc' }).map(row => row.id)).toEqual(core);
+});
+
 // Sorting categories must not move a driver or result row among the data rows it explains.
 it('keeps result and driver rows in their authored place under sort.categories', () => {
   const data: TableData = {

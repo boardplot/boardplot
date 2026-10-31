@@ -5,7 +5,7 @@ import { requireGeometry } from '../src/core/sizing';
 import { repaintGeometry } from '../src/core/repaintGeometry';
 import { resolveTable } from '../src/core/charts/table/resolve';
 import { preparedTableRecords } from '../src/core/a11y/structuralRecords';
-import { displayedValueText } from '../src/core/a11y/valueText';
+import { displayedValueText, interactionValueText } from '../src/core/a11y/valueText';
 import { claimsForChart } from '../src/core/claims/browser';
 import { bartableDataSchema } from '../src/core/charts/bartable/schema';
 import { tableDataSchema } from '../src/core/charts/table/schema';
@@ -224,6 +224,40 @@ it('keeps the dash when a calculation input is an explicit blank', () => {
   };
   const yoy = resolveTable(data, { target: 'report', theme: { preset: 'standard', overrides: { table: { dataGap: 'word' } } } }).table.rows.find(r => r.id === 'yoy')!;
   expect(yoy.cells.plan!.displayed).toBe('\u2013');
+});
+
+// A row's money format printed a percent change and a parent share as "$0.0M", and a cell format on a computed cell was ignored.
+it('keeps a computed column in its own kind under a row format and honours a computed cell format', () => {
+  const data: TableData = {
+    columns: [{ id: 'l', kind: 'rowLabel' }, { id: 'ac', kind: 'value' }, { id: 'py', kind: 'value' },
+      { id: 'yoy', kind: 'computed', calc: { op: 'percentDelta', a: 'ac', b: 'py' } },
+      { id: 'share', kind: 'computed', calc: { op: 'share', of: 'ac' } }],
+    rows: [
+      { id: 'p', format: '$1.2m', children: [
+        { id: 'a', format: '$1.2m', cells: { ac: 2500000, py: 2000000 } },
+        { id: 'b', format: '$1.2m', cells: { ac: 1500000, py: 1000000 } }] },
+      { id: 'c', format: '$1.2m', cells: { ac: 1000000, py: 1000000 } }],
+  };
+  const rows = resolveTable(data, {}).table.rows;
+  const shown = (row: string, col: string) => rows.find(r => r.id === row)!.cells[col]!.displayed;
+  expect(['yoy', 'share'].map(col => shown('a', col))).toEqual(['25.0%', '50.0%']);
+  expect(['yoy', 'share'].map(col => shown('p', col))).toEqual(['33.3%', '80.0%']);
+
+  const delta = resolveTable({
+    columns: [{ id: 'l', kind: 'rowLabel' }, { id: 'ac', kind: 'value', format: '1,234' }, { id: 'py', kind: 'value', format: '1,234' },
+      { id: 'd', kind: 'computed', format: '+1,234', calc: { op: 'delta', a: 'ac', b: 'py' } }],
+    rows: [{ id: 'rev', cells: { ac: 200, py: 100 } }, { id: 'margin', cells: { ac: { v: 19.84, format: '1.0%' }, py: { v: 18.5, format: '1.0%' }, d: { format: '+1.0pp' } } }],
+  }, {}).table.rows;
+  expect(delta.map(r => r.cells.d!.displayed)).toEqual(['+100', '+1.3pp']);
+
+  // A column that multiplies or divides by a literal lost its row's currency and unit ("2.6" and "208,333" instead of "$2.6M" and "$0.2M").
+  const scaled = resolveTable({
+    columns: [{ id: 'l', kind: 'rowLabel' }, { id: 'ac', kind: 'value' },
+      { id: 'fc', kind: 'computed', calc: { op: 'mul', a: { ref: 'ac' }, b: { lit: 1.05 } } },
+      { id: 'rr', kind: 'computed', calc: { op: 'div', a: { ref: 'ac' }, b: { lit: 12 } } }],
+    rows: [{ id: 'rev', format: '$1.2m', cells: { ac: 2500000 } }],
+  }, {}).table.rows;
+  expect(['ac', 'fc', 'rr'].map(col => scaled[0]!.cells[col]!.displayed)).toEqual(['$2.5M', '$2.6M', '$0.2M']);
 });
 
 // A large Range total made unequal weekly counts and money both print as 0.2B.
@@ -1025,4 +1059,32 @@ it('a pinned cell in a groundless total row keeps the page under it', () => {
   const pinned = css.findIndex((rule) => rule.includes('[data-role="total"]') && rule.includes('>[data-bp-pin]{background:linear-gradient(var(--bp-row-ground),var(--bp-row-ground)),var(--bp-background)}'));
   expect(clear).toBeGreaterThanOrEqual(0);
   expect(pinned).toBeGreaterThan(clear);
+});
+
+// A narrow percent-change column under a money row format shortened the money and stayed clipped, though the percent fits at one digit less.
+it('fits an overflowing percent change by its own format, not the money row format', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'ac', kind: 'value' }, { id: 'py', kind: 'value' },
+      { id: 'yoy', kind: 'computed', calc: { op: 'percentDelta', a: 'ac', b: 'py' }, width: 60 }],
+    rows: [{ id: 'rev', label: 'Revenue', format: '$1.2m', cells: { ac: 2500000, py: 2000000 } }],
+  };
+  const measure: typeof defaultMeasurer = (text, font) => ({ ...defaultMeasurer(text, font), width: text.length * 10 });
+  const g = layout('table', data, { fitFormats: true, measure, size: { width: 480 } });
+  const text = (col: string) => g.scene.find((n): n is TextNode => n.t === 'text' && n.id === `cell:rev:${col}`)!.lines.join('');
+  expect([text('ac'), text('yoy')]).toEqual(['$2.5M', '25%']);
+});
+
+// The accessible table read the percent change under a money row format as "$25" while the cell printed 25.0%.
+it('reads a percent change under a row format as a percent, as it reads one without the row format', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'ac', kind: 'value' }, { id: 'py', kind: 'value' },
+      { id: 'yoy', kind: 'computed', calc: { op: 'percentDelta', a: 'ac', b: 'py' } }],
+    rows: [{ id: 'rev', label: 'Revenue', format: '$1.2m', cells: { ac: 2500000, py: 2000000 } }],
+  };
+  const table = resolveTable(data, {}).table;
+  const records = preparedTableRecords(table, data, { chartId: 't' } as never, {});
+  const value = records.find(record => record.target.owner.rowId === 'rev' && record.target.owner.colId === 'yoy')!.value;
+  expect(table.rows[0]!.cells.yoy!.displayed).toBe('25.0%');
+  // The accessible table reads a derived percent at two decimals.
+  expect(interactionValueText(value)).toBe('25.00%');
 });

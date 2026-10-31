@@ -305,9 +305,12 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
     const refusals = refusedOptions.length ? refusedOptions : !geometry || geometry.refused ? []
       : isFullGeometry(geometry) ? refusalFindings(chartRefusals(geometry.warnings)) : geometry.refusals ?? [];
 
+    // The callbacks sit in refs: an inline one is new on every render and must not fire its effect again.
+    const geometryListener = useRef(onGeometry);
+    geometryListener.current = onGeometry;
     useEffect(() => {
-      if (geometry && !geometry.refused && isFullGeometry(geometry) && refusals.length === 0) onGeometry?.(geometry);
-    }, [onGeometry, geometry, refusals.length]);
+      if (geometry && !geometry.refused && isFullGeometry(geometry) && refusals.length === 0) geometryListener.current?.(geometry);
+    }, [geometry, refusals.length]);
     // The scroll box reports its state as TableChart's scroller does, so a host can fade the cut edge.
     const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
     const scrollListener = useRef(onScrollChange);
@@ -346,11 +349,13 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
     const footless = useMemo(() => (footer ? withoutSvgFooter(footer, asDrawn) : undefined), [footer, asDrawn]);
     // A list that empties after an update is reported too, once, as [].
     const notesSent = useRef(false);
+    const notesListener = useRef(onNotes);
+    notesListener.current = onNotes;
     useEffect(() => {
       if (!footer && !notesSent.current) return;
       notesSent.current = footer !== undefined;
-      onNotes?.(notes);
-    }, [onNotes, notes, footer]);
+      notesListener.current?.(notes);
+    }, [notes, footer]);
     const pinned = container ? measured.pinnedHeight : size !== undefined && (typeof size === 'string' || size.height !== undefined);
     // The export lays out what is on screen: no snapshot while a refusal, the busy box or an older drawing shows.
     const [storyStep, setStoryStep] = useState<string>();

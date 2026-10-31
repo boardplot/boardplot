@@ -651,11 +651,13 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: TableChartProp
   const themeScope = stylesheet === undefined ? '' : stylesheetHash(stylesheet);
 
   const floorRevision = useDeferredRevision();
+  // By content: an inline `size={{ … }}` is a new object on every render and must not remake the refusal.
+  const sizeProp = useStableValue(size);
   const floorAttempt = useMemo<{ result?: RefusedLayout; deferred?: DeferredName }>(() => {
     if (!fullLayoutRequest || !belowTableViewportFloor(fullLayoutRequest.options.size)) return {};
     // The server's first frame and the hydrating one count only the modules this entry links.
     return floorRevision === 0 ? asFirstFrame(linked ?? [], attemptFloor) : attemptFloor();
-  }, [fullLayoutRequest, originalFloorRequest, provider, scope, fontMetrics, floorRevision, size, container.pinnedHeight, data, target, stableOptions, linked]);
+  }, [fullLayoutRequest, originalFloorRequest, provider, scope, fontMetrics, floorRevision, sizeProp, container.pinnedHeight, data, target, stableOptions, linked]);
   function attemptFloor(): { result?: RefusedLayout; deferred?: DeferredName } {
     if (!fullLayoutRequest) return {};
     try {
