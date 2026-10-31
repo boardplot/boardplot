@@ -11,7 +11,7 @@ import { normalizeCategorySeries } from '../categorySeries';
 import { chartPalette } from '../chartEnv';
 import { valueLineHasTargetExtras } from '../../annotateFields';
 import { formatAutomaticPercent, formatShare } from '../../format';
-import { formatStatWithSpec, formatterFromExample, seriesRasterFormatter } from '../../formatSpec';
+import { formatStatWithSpec, formatterFromExample, parseFormatExample, seriesRasterFormatter, shareFormatExample, withChartMarks } from '../../formatSpec';
 import { PRIORITY } from '../../label/solver';
 import {
   NormalizeError,
@@ -91,7 +91,7 @@ export function textFor(domain: BarDomain, v: number, cell: BarTextCell, pctVal?
 export function displayFor(domain: BarDomain, v: number, cell: BarTextCell, pctVal?: number, s?: NormSeries, categoryId?: string): string {
   const { meta } = cell;
   return pctVal !== undefined
-    ? (s && categoryId !== undefined ? domain.shareTexts.get(`${categoryId}\0${s.id}`) : undefined) ?? formatShare(pctVal, domain.options.locale?.language)
+    ? (s && categoryId !== undefined ? domain.shareTexts.get(`${categoryId}\0${s.id}`) : undefined) ?? domain.pctFmt(pctVal)
     : meta?.format
       ? formatterFromExample(meta.format, domain.options.locale?.language)(v)
       // A percent cell, and a Rest built from percent cells, keep their '%', as on column.
@@ -547,14 +547,17 @@ export function resolveBarDomain(data: ChartData, options: BarOptions, warnings:
   // rounding 'sum-consistent' (the default): each complete bar's shares print so they add up to 100%.
   const shareTexts = new Map<string, string>();
   const roundingAdjustments: RoundingAdjustment[] = [];
+  const shareExample = shareFormatExample(options);
+  const shareSpec = shareExample ? withChartMarks(parseFormatExample(shareExample), options.locale?.language) : undefined;
+  const pctFmt = shareExample ? formatterFromExample(shareExample, options.locale?.language) : (percent: number) => formatShare(percent, options.locale?.language);
   if (options.rounding !== 'nearest') {
     for (const { c, parts } of wholes) {
-      const rounded = sumConsistentShares(parts.map((part) => part.share), options.locale?.language);
+      const rounded = sumConsistentShares(parts.map((part) => part.share), options.locale?.language, shareSpec);
       if (rounded?.warning) warnings.push(roundingUnavailable(c.label, rounded.warning));
       else if (rounded) parts.forEach((part, index) => {
         shareTexts.set(`${c.id}\0${part.s.id}`, rounded.texts[index]!);
         if (rounded.moved[index]) roundingAdjustments.push({ whole: c.label, part: part.s.label, share: Math.round(part.share * 1e4) / 1e4,
-          nearest: formatShare(part.share, options.locale?.language), printed: rounded.texts[index]! });
+          nearest: pctFmt(part.share), printed: rounded.texts[index]! });
       });
     }
   } else if (sharesOn) {
@@ -566,7 +569,7 @@ export function resolveBarDomain(data: ChartData, options: BarOptions, warnings:
   const shareNotes = shareRoundingNotes(options, roundingAdjustments, cappedItems(rescaled, options));
   const domain = {
     options, theme, palette: paletteRamp ? options.palette : undefined, size,
-    measure: options.measure ?? defaultMeasurer, highlights, variant, shareTexts, roundingAdjustments, shareNotes,
+    measure: options.measure ?? defaultMeasurer, highlights, variant, shareTexts, pctFmt, roundingAdjustments, shareNotes,
     referenceStyle: options.referenceStyle ?? 'tick', connectorsOn,
     referenceTick: {
       width: options.referenceTick?.width ?? strokeToken(theme, 'rule'),

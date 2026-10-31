@@ -916,6 +916,16 @@ export function exampleSpec(example: string, locale?: string, unit?: string, val
   return spec;
 }
 
+/**
+ * The example that sets how a chart prints its computed shares: `shareLabels.format`,
+ * else `options.format` when it is a percent example ("1.0%"). A format without a
+ * percent sign belongs to the values and gives none.
+ */
+export function shareFormatExample(options: { format?: string; shareLabels?: { format?: string } }): string | undefined {
+  if (options.shareLabels?.format) return options.shareLabels.format;
+  return options.format && parseFormatExample(options.format).suffix.includes('%') ? options.format : undefined;
+}
+
 /** Parse an example and return a ready-to-use formatter. The chart locale is required (pass undefined for none), so no caller forgets it. */
 export function formatterFromExample(example: string, locale: string | undefined, unit?: string, values?: Iterable<number | null | undefined>): (value: number) => string {
   const spec = exampleSpec(example, locale, unit, values);
