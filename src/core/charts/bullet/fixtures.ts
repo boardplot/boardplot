@@ -578,6 +578,10 @@ for (const bandKey of ['labels', 'ramp'] as const) {
 
 fixtures.push({ id: 'two-sided-spend', title: 'Both low and high spend are off plan', kind: 'example', data: { rows: [{ id: 'spend', label: 'Spend', value: 98, target: 100, bands: [{ to: 90, label: 'Below plan', tone: 'bad' }, { to: 110, label: 'On plan', tone: 'good' }, { to: 130, label: 'Above plan', tone: 'bad' }] }] }, options: { title: 'Spend is inside the plan corridor', size: { width: 700, height: 300 } } });
 
+// The spend corridor with its toned bands in their full fills
+// (marks.bulletBandFill 'full') instead of washed toward the page.
+fixtures.push({ id: 'two-sided-spend-full-fill', title: 'Toned bands in their full fills', kind: 'torture', tags: ['theme'], data: { rows: [{ id: 'spend', label: 'Spend', value: 98, target: 100, bands: [{ to: 90, label: 'Below plan', tone: 'bad' }, { to: 110, label: 'On plan', tone: 'good' }, { to: 130, label: 'Above plan', tone: 'bad' }] }] }, options: { title: 'Spend is inside the plan corridor', size: { width: 700, height: 300 }, theme: { preset: 'standard', overrides: { marks: { bulletBandFill: 'full' } } } } });
+
 fixtures.push({
   id: 'tone-spectrum', title: 'Band tones carry the range judgment', kind: 'torture',
   data: { rows: [
