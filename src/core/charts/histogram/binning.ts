@@ -35,6 +35,14 @@
  *    exact boundaries and silently moves an observation one bin down.
  *    `sum(counts) === n` is asserted.
  *
+ * 7. Open last bin (`bins.openAbove`): every observation at or above the
+ *    value goes into one open last bin, whose upper edge is the maximum. The
+ *    equal-width bins below cover the smallest observation up to the value,
+ *    and their grid runs through it: the derived anchor is counted down from
+ *    `openAbove`, and an authored anchor must land on it. The rule widths
+ *    still come from the whole sample. Whole numbers at width 1 end the
+ *    closed bins half a step below the first whole number at or above it.
+ *
  * Equal-width bins only. Unequal bins must encode frequency as AREA, which
  * needs a continuous value axis; a band-scaled unequal-bin histogram is a lie
  * about density, so variable-width binning is refused rather than approximated.
@@ -139,6 +147,37 @@ function derivedAnchor(min: number, width: number): number {
   return Math.min(edgeSequence(0, width, index)(index), min);
 }
 
+/**
+ * First edge for an open last bin: counted down from `openAbove` in whole
+ * widths, so the value itself is a bin edge, to at or below the minimum.
+ */
+function anchorBelow(openAbove: number, min: number, width: number): number {
+  if (!(width > 0) || !Number.isFinite(width)) return Number.NaN;
+  let steps = Math.max(1, Math.ceil((openAbove - min) / width - 1e-9));
+  let anchor = edgeSequence(openAbove, width, steps)(-steps);
+  if (anchor > min) anchor = edgeSequence(openAbove, width, ++steps)(-steps);
+  return anchor;
+}
+
+/** Whether `value` is a bin edge of the grid `anchor + i * width`. */
+export function onEdgeGrid(value: number, anchor: number, width: number): boolean {
+  const steps = (value - anchor) / width;
+  return Number.isFinite(steps) && Math.abs(steps - Math.round(steps)) <= 1e-9 * Math.max(1, Math.abs(steps));
+}
+
+/** The ladder widths below `width`, down to a tenth of it, widest first. */
+function ladderBelow(width: number): number[] {
+  const exponent = Math.floor(Math.log10(width));
+  const out: number[] = [];
+  for (let e = exponent; e >= exponent - 1; e--) {
+    for (const mantissa of [...SNAP_MANTISSAS].reverse()) {
+      const candidate = round12(mantissa * Math.pow(10, e));
+      if (candidate < width && candidate >= width / 10) out.push(candidate);
+    }
+  }
+  return out;
+}
+
 function binCountFor(max: number, first: number, width: number): number {
   const spans = (max - first) / width;
   return Math.max(1, Math.ceil(spans - 1e-9));
@@ -169,6 +208,18 @@ function perValueFits(min: number, max: number): boolean {
 export function computeBinning(input: BinningInput): Binning {
   const { sorted, min, max, interquartileRange, bins, snap } = input;
   const n = sorted.length;
+  const openAbove = typeof bins === 'object' ? bins.openAbove : undefined;
+  if (openAbove !== undefined && !(openAbove > min && openAbove <= max)) {
+    throw new NormalizeError(
+      'histogram-open-above-invalid',
+      'options.bins.openAbove',
+      `bins.openAbove ${openAbove} must lie above the smallest observation ${min} and at or below the largest ${max}; the open bin would hold every observation or none`,
+      'pass a value inside the data range, such as the 98th percentile rounded to a bin edge',
+    );
+  }
+  // The closed bins end where the open bin starts; without one, at the maximum.
+  // The rule widths keep the whole sample, so an open bin leaves the NumPy width as it was.
+  const top = openAbove ?? max;
   const range = max - min;
 
   const hSturges = sturgesWidth(range, n);
@@ -191,24 +242,25 @@ export function computeBinning(input: BinningInput): Binning {
     requestedCount = bins;
     width = range / bins;
     anchor = min;
-  } else if (typeof bins === 'object') {
+  } else if (typeof bins === 'object' && (bins.width !== undefined || bins.openAbove === undefined)) {
+    // An object without width or openAbove has no width to draw; the check below refuses it.
     rule = 'width';
-    width = bins.width;
+    width = bins.width ?? Number.NaN;
     explicitAnchor = bins.anchor !== undefined;
-    perValue = !explicitAnchor && width === 1 && wholeNumbers && perValueFits(min, max);
-    anchor = bins.anchor ?? (perValue ? min - 0.5 : derivedAnchor(min, width));
+    perValue = !explicitAnchor && width === 1 && wholeNumbers && perValueFits(min, top);
+    anchor = bins.anchor ?? (perValue ? min - 0.5 : openAbove !== undefined ? anchorBelow(openAbove, min, width) : derivedAnchor(min, width));
   } else {
     rule = 'auto';
     width = hAuto;
     if (snap) {
       const snappedWidth = snapWidth(hAuto);
-      const candidate = wholeNumbers && snappedWidth < 1 && perValueFits(min, max) ? 1 : snappedWidth;
+      const candidate = wholeNumbers && snappedWidth < 1 && perValueFits(min, top) ? 1 : snappedWidth;
       // Snapping trades an exact rule for a readable edge, and it is only a
       // good trade while the shape survives. Three bins is the floor at which
       // "distribution" still means anything; below it the snap has erased the
       // very thing the chart was asked to show, so the rule wins.
-      const centred = candidate === 1 && wholeNumbers && perValueFits(min, max);
-      if (candidate > 0 && binCountFor(max, centred ? min - 0.5 : derivedAnchor(min, candidate), candidate) >= 3) {
+      const centred = candidate === 1 && wholeNumbers && perValueFits(min, top);
+      if (candidate > 0 && binCountFor(top, centred ? min - 0.5 : derivedAnchor(min, candidate), candidate) >= 3) {
         // `snapped` records a MOVE, not an attempt: a rule width that already
         // sits on the ladder would otherwise print "snapped to a round width"
         // in the method note about a number nothing touched.
@@ -217,7 +269,14 @@ export function computeBinning(input: BinningInput): Binning {
         perValue = centred;
       }
     }
-    anchor = perValue ? min - 0.5 : derivedAnchor(min, width);
+    // An open bin keeps round edges: a snapped width whose grid from the minimum misses
+    // openAbove gives way to the next narrower ladder width whose grid meets it.
+    if (openAbove !== undefined && !perValue && snap && !onEdgeGrid(openAbove, derivedAnchor(min, width), width)) {
+      const meets = ladderBelow(width).find((candidate) => onEdgeGrid(openAbove, derivedAnchor(min, candidate), candidate)
+        && binCountFor(openAbove, derivedAnchor(min, candidate), candidate) < MAX_BINS);
+      if (meets !== undefined) { snapped = meets !== hAuto; width = meets; }
+    }
+    anchor = perValue ? min - 0.5 : openAbove !== undefined ? anchorBelow(openAbove, min, width) : derivedAnchor(min, width);
   }
 
   if (!(width > 0) || !Number.isFinite(width)) {
@@ -245,8 +304,22 @@ export function computeBinning(input: BinningInput): Binning {
     );
   }
 
+  // Whole numbers end the closed bins half a step below the first value that goes into the open bin.
+  const closedTop = openAbove === undefined ? max : perValue ? Math.ceil(openAbove) - 0.5 : openAbove;
+  if (openAbove !== undefined && !perValue && Number.isFinite(width) && width > 0 && Number.isFinite(anchor)) {
+    if (!onEdgeGrid(openAbove, anchor, width)) {
+      const below = anchor + Math.floor((openAbove - anchor) / width) * width;
+      throw new NormalizeError(
+        'histogram-open-above-off-grid',
+        'options.bins.openAbove',
+        `bins.openAbove ${openAbove} does not fall on a bin edge of width ${width} from ${anchor}; the last closed bin would be narrower than the others`,
+        `use openAbove ${round12(below)} or ${round12(below + width)}, or leave out bins.anchor so the edges run through openAbove`,
+      );
+    }
+  }
   const first = anchor;
-  const k = rule === 'count' ? requestedCount! : binCountFor(max, first, width);
+  const closedBins = rule === 'count' ? requestedCount! : binCountFor(closedTop, first, width);
+  const k = closedBins + (openAbove === undefined ? 0 : 1);
   if (k > MAX_BINS) {
     throw new NormalizeError(
       'histogram-bin-explosion',
@@ -256,11 +329,17 @@ export function computeBinning(input: BinningInput): Binning {
     );
   }
 
-  const atEdge = (rule === 'count' ? countEdges(min, max, k) : undefined) ?? edgeSequence(first, width, k);
-  const edges = Array.from({ length: k + 1 }, (_, i) => atEdge(i));
+  const atEdge = (rule === 'count' ? countEdges(min, max, k) : undefined) ?? edgeSequence(first, width, closedBins);
+  const edges = Array.from({ length: closedBins + 1 }, (_, i) => atEdge(i));
   // An exact count ends on the maximum itself, not on a float sum a hair off it.
   if (rule === 'count') edges[k] = max;
-  if (edges.some((edge, i) => !Number.isFinite(edge) || (i > 0 && edge <= edges[i - 1]!))) {
+  // The open bin starts exactly on its authored value and ends on the maximum.
+  if (openAbove !== undefined) {
+    edges[closedBins] = closedTop;
+    edges.push(max);
+  }
+  // An open bin from the maximum itself holds that one value: its upper edge may equal its lower.
+  if (edges.some((edge, i) => !Number.isFinite(edge) || (i > 0 && (edge < edges[i - 1]! || (edge === edges[i - 1]! && !(openAbove !== undefined && i === k)))))) {
     throw new NormalizeError(
       'histogram-bin-range-invalid',
       'options.bins',
@@ -280,6 +359,7 @@ export function computeBinning(input: BinningInput): Binning {
     hSturges,
     hAuto,
     ...(requestedCount === undefined ? {} : { requestedCount }),
+    ...(openAbove === undefined ? {} : { openAbove }),
   };
 }
 
