@@ -651,14 +651,15 @@ describe('pvm valueAxis.break', () => {
     'keeps the whole-axis height at %i px', async (width, redesignHeight) => {
       const { measure } = await import('../src/index');
       const fixture = fixtures.find(entry => entry.id === 'fy-revenue-bridge')!;
-      const result = measure({ type: 'pvm', data: fixture.data, options: { ...fixture.options, notes: { show: ['note', 'disclosure'] }, size: { width } } } as never);
+      const result = measure({ type: 'pvm', data: fixture.data, options: { ...fixture.options, valueAxis: { break: false }, notes: { show: ['note', 'disclosure'] }, size: { width } } } as never);
       expect(result.refused).toBeUndefined();
       expect(Math.abs(result.geometry!.size.height / redesignHeight - 1)).toBeLessThanOrEqual(0.03);
       expect(result.geometry!.scene.some(node => node.part === 'barBreak')).toBe(false);
     },
   );
 
-  it('keeps the default whole and draws a valid explicit automatic break', async () => {
+  // A whole axis spent the plot on two totals and drew the steps as slivers.
+  it('breaks by default where the base swamps the steps, and false keeps it whole', async () => {
     const { measure } = await import('../src/index');
     const fixture = fixtures.find((entry) => entry.id === 'fy-revenue-bridge')!;
     const broken = (valueAxis?: object) => {
@@ -666,8 +667,7 @@ describe('pvm valueAxis.break', () => {
       expect(result.geometry, JSON.stringify(result).slice(0, 400)).toBeDefined();
       return JSON.stringify(result.geometry!.scene).includes('Value axis broken');
     };
-    // No automatic break unless explicitly requested.
-    expect(broken()).toBe(false);
+    expect(broken()).toBe(true);
     expect(broken({ break: false })).toBe(false);
     expect(broken({ break: 'auto' })).toBe(true);
   });
