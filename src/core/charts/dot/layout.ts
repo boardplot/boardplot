@@ -973,7 +973,8 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
         occupied.claim(
           { x: Math.min(x0, cx), y: cy - 1, w: Math.max(Math.abs(cx - x0), 0.5), h: 2 },
           'mark',
-          owner,
+          // The stem is no own mark of its value label: a seat over it is blocked, not free.
+          { pointId: stemId },
         );
         row.stemNodeId = stemId;
       }

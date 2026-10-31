@@ -168,6 +168,25 @@ describe('story React', () => {
     expect(document.activeElement).toBe(next);
   });
 
+  // An arrow key that a part inside the chart took (the hover record stops) or that carries a browser shortcut (Alt+Arrow is Back) must not also step the story.
+  it('leaves an arrow key to the part that took it and to browser shortcuts', () => {
+    root = createRoot(host);
+    act(() => root!.render(<ScatterChart {...props} />));
+    const group = host.querySelector<HTMLDivElement>('[data-bp-story]')!;
+    const press = (init: KeyboardEventInit, target: Element = group) => {
+      const event = new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true, ...init });
+      act(() => { target.dispatchEvent(event); });
+      return event;
+    };
+    for (const init of [{ altKey: true }, { metaKey: true }, { ctrlKey: true }]) expect(press(init).defaultPrevented).toBe(false);
+    const inner = group.appendChild(document.createElement('div'));
+    inner.addEventListener('keydown', event => event.preventDefault());
+    press({}, inner);
+    expect(counter()).toBe('1 / 6');
+    expect(press({}).defaultPrevented).toBe(true);
+    expect(counter()).toBe('2 / 6');
+  });
+
   it('keeps at least 44 px hit boxes apart as the SVG shrinks', () => {
     root = createRoot(host);
     act(() => root!.render(<ScatterChart {...props} />));
