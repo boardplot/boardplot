@@ -808,7 +808,10 @@ export function rewriteRowsDiagnostics<T extends { path?: string; displayPath?: 
       ? `rows[${finding.owner.rowId}].cells[${finding.owner.colId}]` : undefined;
     const source = sourceFor(finding.path) ?? (finding.displayPath === undefined ? undefined : pathMap?.get(finding.displayPath))
       ?? (owner === undefined ? undefined : pathMap?.get(owner));
-    const fix = finding.fix?.map(operation => ({ ...operation, path: sourceFor(operation.path)?.path ?? operation.path }));
-    return { ...finding, ...(source || {}), ...(fix ? { fix } : {}) };
+    // A fix aimed at data the rows generated has no source row to patch (a removed category, say). It is left out whole, and its suggest stays.
+    const generated = pathMap && finding.fix?.some(operation => operation.path.startsWith('/data/') && !sourceFor(operation.path));
+    const fix = generated ? undefined : finding.fix?.map(operation => ({ ...operation, path: sourceFor(operation.path)?.path ?? operation.path }));
+    const { fix: _fix, ...rest } = finding;
+    return { ...(generated ? rest : finding), ...(source || {}), ...(fix ? { fix } : {}) } as T;
   });
 }
