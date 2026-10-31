@@ -142,6 +142,17 @@ describe('root key fixes', () => {
     }
   });
 
+  // The move check laid the chart out at the default size, so a title moved into a KPI card that the --width and --height arguments make too small was refused where removing it draws.
+  it('removes a root key when the moved chart is refused at the width and height of the call', () => {
+    const spec = { ...fixtureSpec('kpi', 'arr-card'), title: 'Annual recurring revenue by customer segment and region' };
+    const refused = render({ spec, width: '300', height: '220', format: 'svg' }).body as any;
+    expect(refused.ok).toBe(false);
+    const fixed = applyPatch(spec, refused.errors.flatMap((error: any) => error.fix));
+    expect(fixed).not.toHaveProperty('title');
+    expect(fixed.options).not.toHaveProperty('title');
+    expect(render({ spec: fixed, width: '300', height: '220', format: 'svg' }).body).toMatchObject({ ok: true });
+  });
+
   // A stray root key beside charts got a move into a root options that an envelope does not have; the fixed document was refused.
   it('draws an envelope after its stray root key is removed', () => {
     for (const extra of [{ title: 'Revenue' }, { unit: 'EUR m' }, { foo: 1 }, { type: 'column' }]) {

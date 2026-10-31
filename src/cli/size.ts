@@ -36,7 +36,7 @@ export function targetArgument(value: unknown): RenderTarget | undefined {
 }
 
 /** A width or height argument in its own unit. */
-interface Length { value: number; unit: LengthUnit }
+export interface Length { value: number; unit: LengthUnit }
 
 /** A number is px; a string may end in px, pt or mm (660pt, 180mm), and a bare one is px. */
 export function length(name: 'width' | 'height', value: unknown): Length | undefined {

@@ -41,6 +41,7 @@ import type { Theme, ThemeRef } from '../core/types/theme';
 import type { Geometry, LintWarning, PaintToken, PlacedLabel } from '../core/types/scene';
 import type { JsonPatchOperation } from '../core/diagnostics/jsonPatch';
 import { InputError } from './result';
+import { withSize, type Length } from './size';
 import { assertSpecObject } from '../core/inputError';
 import { pushAll } from '../core/arrays';
 
@@ -271,24 +272,34 @@ function themeUsage(doc: BoardplotDoc, charts: DocChart[], theme: Theme): ThemeU
   return { roles, types, series };
 }
 
-/** Whether a spec with no stray key loads and every chart of it lays out: a fix that moves a root key is offered only then. */
-function drawsAfterFix(candidate: Record<string, unknown>): boolean {
+/** The size and target arguments of a call, which the check of a moved root key lays the chart out with. */
+export interface CallSizing { width?: Length; height?: Length; target?: RenderTarget; measure?: boolean }
+
+/**
+ * Whether a spec with no stray key loads and every chart of it comes out as the call will draw it: a fix that moves a root key is offered only then.
+ * The check lays each chart out at the width, height and target of the call, and measures it when the call measures.
+ */
+function drawsAfterFix(candidate: Record<string, unknown>, call: CallSizing): boolean {
   try {
-    const loaded = loadSpec(candidate);
+    const loaded = loadSpec(candidate, call);
     if ('errors' in loaded) return false;
     const scratch: DocumentEnvelope = { ok: true, errors: [], warnings: [] };
-    return loaded.doc.charts.every((chart) => layoutChart(loaded.doc, chart, scratch) !== null) && scratch.errors.length === 0;
+    const drawsAt = (chart: DocChart): boolean => {
+      const sized = withSize(chart, call.width, call.measure ? undefined : call.height, call.target ?? chart.options?.target as RenderTarget | undefined);
+      return (call.measure ? measureChart(loaded.doc, sized, scratch, call.target) : layoutChart(loaded.doc, sized, scratch, {}, call.target)) !== null;
+    };
+    return loaded.doc.charts.every(drawsAt) && scratch.errors.length === 0;
   } catch {
     return false;
   }
 }
 
-/** Parse the spec, or return the findings that refuse it. */
-export function loadSpec(spec: unknown): LoadedSpec | { errors: DocumentFinding[]; bare: boolean } {
+/** Parse the spec, or return the findings that refuse it. `call` carries the size arguments the check of a moved root key uses. */
+export function loadSpec(spec: unknown, call: CallSizing = {}): LoadedSpec | { errors: DocumentFinding[]; bare: boolean } {
   assertSpecObject(spec);
   const bare = isBareChart(spec);
   try {
-    const { doc, envelope } = parseDocumentInput(ownedDocumentCopy(spec), { accepts: drawsAfterFix });
+    const { doc, envelope } = parseDocumentInput(ownedDocumentCopy(spec), { accepts: (candidate) => drawsAfterFix(candidate, call) });
     const rootJudged = registerThemeObject(doc, envelope);
     const rootErrors = rootContextErrors(doc).map((finding) => completeDiagnostic(finding, doc));
     if (rootErrors.length) return { errors: rootErrors, bare };
