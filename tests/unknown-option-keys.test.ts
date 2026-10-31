@@ -183,6 +183,26 @@ describe('unknown option keys are refused on every type', () => {
     const typo = { ...spec, options: { ...spec.options, presett: 'plain' } };
     expect(cliErrors(typo).errors).toContainEqual(expect.objectContaining({ code: 'unknown-option', path: '/options/presett' }));
   });
+  // `tile` named a11y (it holds a11y.title) and no refusal carried a patch, so an agent could not repair a one-letter typo.
+  it('names the option a typo is closest to by its own name, and patches only the one key within one edit', () => {
+    const data = getFixtures('column')[0]!.data;
+    const fix = (options: object, key: string) => cliErrors({ type: 'column', data, options }).errors.find((finding) => finding.path === `/options/${key}`) as Finding & { fix?: JsonPatchOperation[] };
+    for (const [typo, name] of [['tile', 'title'], ['Title', 'title'], ['tilte', 'title']] as const) {
+      const options = { [typo]: 'Revenue' };
+      const finding = fix(options, typo);
+      expect(finding.message, typo).toContain(`try: ${name}`);
+      expect(finding.fix, typo).toEqual([{ op: 'remove', path: `/options/${typo}` }, { op: 'add', path: `/options/${name}`, value: 'Revenue' }]);
+      expect(patchApplies({ type: 'column', data, options }, finding.fix!), typo).toBe(true);
+    }
+    // A key that names only a word below an option gets the hint and no patch; so does a typo whose target the author already set.
+    expect(fix({ valueAxis: { show: true }, gridlines: true }, 'gridlines').fix).toBeUndefined();
+    expect(fix({ title: 'A', tile: 'B' }, 'tile').fix).toBeUndefined();
+    // The per-type React entry words the same patch from its key tree.
+    const tree: OptionKeyTree = { a11y: { title: 0 }, title: 0 };
+    expect(wordUnknownKeys([{ path: ['tile'], node: tree, parent: { tile: 'Revenue' } }], tree)[0]).toMatchObject({
+      suggest: "Rename 'tile' to 'title'.", fix: [{ op: 'remove', path: '/options/tile' }, { op: 'add', path: '/options/title', value: 'Revenue' }],
+    });
+  });
   // A retired-setting fix that does not apply (an add under a missing parent) leaves an agent with no way to clean the spec.
   it('gives every retired setting a fix that applies, also under a missing parent and in a repeat template', () => {
     const combo = getFixtures('combo').find(fixture => fixture.id === 'margin-line-own-scale')!;

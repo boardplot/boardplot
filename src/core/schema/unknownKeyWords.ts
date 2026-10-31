@@ -3,7 +3,8 @@
  * how near it is to a key the object takes, and the
  * message and suggest that name that key.
  */
-import { levenshtein } from '../spelling';
+import { toJsonPointer } from '../diagnostics/jsonPatch';
+import { editDistance } from '../spelling';
 import type { RefusalFinding } from './refusals';
 import type { OptionKeyTree, UnknownKey } from './unknownKeys';
 
@@ -43,34 +44,69 @@ function normalizeOptionTerm(term: string): string {
 function normalizedDistance(a: string, b: string): number {
   if (a === b) return 0;
   const longest = Math.max(a.length, b.length);
-  return longest === 0 ? 0 : levenshtein(a, b) / longest;
+  return longest === 0 ? 0 : editDistance(a, b) / longest;
+}
+
+/** How far two option terms are apart, read as option concepts (showValues, labels) or, when that is closer, as plain spelling with case folded. */
+function termDistance(a: string, b: string): number {
+  return Math.min(normalizedDistance(normalizeOptionTerm(a), normalizeOptionTerm(b)), normalizedDistance(a.toLowerCase(), b.toLowerCase()));
 }
 
 /** The key of `known` closest to `key`, and whether it is close enough to be a typo of it. */
 export function closestKey(key: string, known: readonly string[]): { key: string; near: boolean } | undefined {
   const synonym = KEY_SYNONYMS.get(key);
   if (synonym !== undefined && known.includes(synonym)) return { key: synonym, near: true };
-  const normalized = normalizeOptionTerm(key);
   const best = known
     .filter(candidate => candidate !== key)
-    .map((candidate) => ({ candidate, distance: normalizedDistance(normalized, normalizeOptionTerm(candidate)) }))
+    .map((candidate) => ({ candidate, distance: termDistance(key, candidate) }))
     .sort((a, b) => a.distance - b.distance || (a.candidate < b.candidate ? -1 : 1))[0];
   return best && { key: best.candidate, near: best.distance <= OPTION_MATCH_MAX_DISTANCE };
 }
 
 /**
- * The top-level option a key near-misses, read by its own name and by the
- * words below it (`gridlines` is a typo of nothing at the top, but it names
- * `valueAxis.gridlines`): `terms` lists each top-level key with those words.
+ * The top-level option a key near-misses, read by its own name first and
+ * only then by the words below it (`gridlines` is a typo of nothing at the
+ * top, but it names `valueAxis.gridlines`): `terms` lists each top-level key
+ * with those words. A word below must not outrank a key's own name, or
+ * `tile` would name `a11y`, which holds `a11y.title`, and not `title`.
  */
 export function nearestOptionTerm(input: string, terms: Iterable<readonly [string, readonly string[]]>): string | undefined {
-  const normalizedInput = normalizeOptionTerm(input);
-  let best: { key: string; distance: number } | undefined;
-  for (const [key, words] of terms) {
-    const distance = Math.min(...words.map((word) => normalizedDistance(normalizedInput, normalizeOptionTerm(word))));
-    if (!best || distance < best.distance || (distance === best.distance && key < best.key)) best = { key, distance };
-  }
-  return best && best.distance <= OPTION_MATCH_MAX_DISTANCE ? best.key : undefined;
+  const list = [...terms];
+  const rank = (distanceOf: (key: string, words: readonly string[]) => number): string | undefined => {
+    let best: { key: string; distance: number } | undefined;
+    for (const [key, words] of list) {
+      const distance = distanceOf(key, words);
+      if (!best || distance < best.distance || (distance === best.distance && key < best.key)) best = { key, distance };
+    }
+    return best && best.distance <= OPTION_MATCH_MAX_DISTANCE ? best.key : undefined;
+  };
+  return rank((key) => termDistance(input, key)) ?? rank((_, words) => Math.min(...words.map((word) => termDistance(input, word))));
+}
+
+/**
+ * The one key of `known` within one edit of `key` once case is folded. Only
+ * this match may become a patch: an agent applies a fix without reading it,
+ * so a weaker match gets the hint and no patch.
+ */
+function uniqueTypo(key: string, known: readonly string[]): string | undefined {
+  const lower = key.toLowerCase();
+  const hits = known.filter((candidate) => candidate !== key && editDistance(lower, candidate.toLowerCase()) <= 1);
+  return hits.length === 1 ? hits[0] : undefined;
+}
+
+/**
+ * The rename patch for an unknown option key, or none: the near key must be the
+ * one typo of the key in `known`, and the object that holds the key must not
+ * set it yet. `field` is the key's path from the chart, `parent` the authored object that holds it.
+ */
+export function typoRenameFix(field: readonly (string | number)[], nearest: { key: string; near: boolean } | undefined, known: readonly string[], parent: unknown): RefusalFinding['fix'] {
+  const key = String(field.at(-1));
+  const target = nearest?.near ? uniqueTypo(key, known) : undefined;
+  if (target === undefined || target !== nearest!.key || parent === null || typeof parent !== 'object' || Object.hasOwn(parent, target)) return undefined;
+  return [
+    { op: 'remove', path: toJsonPointer(field) },
+    { op: 'add', path: toJsonPointer([...field.slice(0, -1), target]), value: (parent as Record<string, unknown>)[key] },
+  ];
 }
 
 /**
@@ -137,13 +173,14 @@ function treeTakes(tree: OptionKeyTree, path: readonly string[]): boolean {
 
 /** The refusal for each unknown key, worded as the CLI words it. */
 export function wordUnknownKeys(found: readonly UnknownKey[], tree?: OptionKeyTree): RefusalFinding[] {
-  return found.map(({ path, node }) => {
+  return found.map(({ path, node, parent }) => {
     const key = String(path.at(-1));
     // At the top the near miss also reads the words below each option (gridlines -> valueAxis).
     const top = path.length === 1 ? nearestOptionTerm(key, termsOf(node)) : undefined;
     const nearest = top ? { key: top, near: true } : closestKey(key, namedKeys(node));
     const dotted = path.join('.');
     const moved = tree === undefined ? undefined : movedKey(dotted, (target) => treeTakes(tree, target));
-    return { code: 'unknown-option', message: unknownOptionMessage(dotted, nearest, moved), path: `options.${dotted}`, suggest: unknownKeySuggest(key, nearest, moved) };
+    const fix = moved === undefined ? typoRenameFix(['options', ...path], nearest, namedKeys(node), parent) : undefined;
+    return { code: 'unknown-option', message: unknownOptionMessage(dotted, nearest, moved), path: `options.${dotted}`, suggest: unknownKeySuggest(key, nearest, moved), ...(fix ? { fix } : {}) };
   });
 }

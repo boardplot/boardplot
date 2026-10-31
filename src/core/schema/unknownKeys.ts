@@ -29,6 +29,8 @@ export interface OptionKeys {
 export interface UnknownKey {
   path: (string | number)[];
   node: OptionKeyTree;
+  /** The authored object that holds the key. */
+  parent?: Record<string, unknown>;
 }
 
 /**
@@ -62,7 +64,7 @@ export function unknownKeys(options: Record<string, unknown>, keys: OptionKeys):
         const map = next;
         next = Object.fromEntries(keys.labels.map((kind) => [kind, map === 0 ? 0 : map[kind] ?? map['*'] ?? 0]));
       }
-      if (next === undefined) found.push({ path: [...path, key], node });
+      if (next === undefined) found.push({ path: [...path, key], node, parent: value as Record<string, unknown> });
       else walk(child, next, [...path, key]);
     }
   };
