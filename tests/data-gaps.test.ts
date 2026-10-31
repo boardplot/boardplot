@@ -459,6 +459,34 @@ describe('an empty category in a stack', () => {
   });
 });
 
+describe('a blank category as an annotation anchor', () => {
+  // A blank period was read as a total of 0, so a CAGR or a change printed -100% for data nobody has.
+  it('prints no growth on a blank end, as a line does, and keeps a real 0', () => {
+    const categories = ['2021', '2022', '2023', '2024'].map((id) => ({ id, date: `${id}-12-31` }));
+    const grown = (type: string, last: number | null, more: Record<string, unknown> = {}) => {
+      const series = [{ id: 'a', ...(type === 'combo' ? { kind: 'column' } : {}), values: [100, 110, 120, last] }];
+      const g = lay(type, { categories, series }, { annotations: [{ kind: 'cagr', from: '2021', to: '2024' }], ...more });
+      return {
+        drawn: g.labels.some((label) => label.owner.annotationId === 'cagr-1' && !label.hidden),
+        warned: g.warnings.some((warning) => warning.code === 'bad-anchor'),
+        desc: g.a11y.desc,
+      };
+    };
+    for (const type of ['column', 'bar', 'combo']) {
+      expect(grown(type, null), type).toMatchObject({ drawn: false, warned: true });
+      expect(grown(type, 0), type).toMatchObject({ drawn: true, warned: false });
+    }
+    expect(grown('column', null, { variant: 'stacked' })).toMatchObject({ drawn: false, warned: true });
+    expect(grown('combo', null).desc).toContain('2024 n/a');
+    // A mekko column with an unknown part has no total, so it has no change either and the description omits it.
+    const mekko = lay('mekko', { categories: ['A', 'B'], series: [{ id: 'x', values: [100, 120] }, { id: 'y', values: [100, null] }] },
+      { annotations: [{ kind: 'diff', from: 'A', to: 'B', mode: 'relative' }] });
+    expect(mekko.warnings.some((warning) => warning.code === 'bad-anchor')).toBe(true);
+    expect(mekko.labels.some((label) => label.owner.annotationId === 'diff-1' && !label.hidden)).toBe(false);
+    expect(mekko.a11y.desc).toContain('Totals: A 200.');
+  });
+});
+
 describe('bridged gaps on a line', () => {
   it('dash the bridge and ring each missing point', () => {
     const categories = ['a', 'b', 'c', 'd'].map((id) => ({ id }));

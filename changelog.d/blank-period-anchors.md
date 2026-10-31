@@ -1,0 +1,3 @@
+### Fixed
+
+- A blank category no longer feeds a growth or a change. On a column, bar or combo chart, a CAGR, `diff`, `delta` or `abs` annotation on a category with no known value read the blank as 0, so a column `[100, 110, 120, null]` printed -100.0% p.a. with no warning. The annotation is now dropped with a `bad-anchor` warning, as on a line chart. A real 0 still counts. A stack with some known parts keeps its sum of the known parts and its `incomplete-composition` warning. On a mekko, a column with a missing part has no total, so a `diff` on it is dropped and the description no longer lists its total. The combo description reads `n/a` for a blank column instead of 0.

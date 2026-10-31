@@ -37,11 +37,24 @@ export function stackAdds(parts: readonly StackPart[], chartUnit: string | undef
 /** What an anchor on a stack whose parts do not add says instead of a total. */
 export const NO_STACK_TOTAL = 'the stack has no total: its parts are percents of different wholes';
 
+/** What an anchor on a category with no known value says instead of a total: blank is not 0. */
+export const NO_KNOWN_VALUE = 'the category has no known value: it is blank, not 0';
+
+/** The noValue an anchor on a category total carries: parts that do not add, or no known part. */
+export function noTotal(adds: boolean, hasValue: boolean): { noValue?: string } {
+  return !adds ? { noValue: NO_STACK_TOTAL } : hasValue ? {} : { noValue: NO_KNOWN_VALUE };
+}
+
 /** What a mean over such a stack says instead of a number. */
 export const NO_STACK_MEAN = 'the stack has no sums to average: its parts are percents of different wholes';
 
 /** The fix a value-less anchor names: the category annotations and the attainment band. */
 export const VALUELESS_ANCHOR_FIX = 'anchor it on one series ({ categoryId, seriesId }), or set sharesOfOneWhole when every series is a share of the same whole';
+
+/** The fix a value-less anchor names for this reason. */
+export function valuelessFix(reason: string): string {
+  return reason === NO_KNOWN_VALUE ? 'give the category its value (0 when it is known to be none), or anchor on a category that has one' : VALUELESS_ANCHOR_FIX;
+}
 
 /** The fix both warnings name. */
 export const SHARES_OF_ONE_WHOLE_FIX = 'set sharesOfOneWhole: true when every series is a share of the same whole, or scope it to one series';
