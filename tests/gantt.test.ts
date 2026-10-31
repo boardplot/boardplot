@@ -362,3 +362,62 @@ it('gantt calendar head keeps four-digit years and leaves a clipped edge year em
   expect(svg).toContain('>2026<');
   expect(svg).not.toMatch(/>2[0-9]</);
 });
+
+const processRows = () => {
+  const plan: [string, string, string, string?][] = [['Teaser and process letter drafted', '2026-11-02', '2026-11-13'], ['NDAs signed by 40 invited parties', '2026-11-09', '2026-11-20'],
+    ['Information memorandum (IM) issued', '2026-11-16', '2026-11-27'], ['First-round non-binding bids', '2026-11-30', '2026-12-11'],
+    ['Shortlist and Gate 1 decision', '2026-12-14', '2026-12-18', 'Gate 1'], ['Management presentations', '2027-01-04', '2027-01-15'],
+    ['Data room open for due diligence', '2027-01-04', '2027-01-29'], ['Final binding bids', '2027-01-25', '2027-01-29'],
+    ['Bid evaluation and Gate 2 decision', '2027-02-01', '2027-02-02', 'Gate 2'], ['SPA negotiation with top bidder', '2027-02-01', '2027-02-05'],
+    ['Board and works council approval', '2027-02-03', '2027-02-05']];
+  const rows = plan.map(([label, start, end, gate], i) => ({ id: `r${i}`, label, items: [{ id: `b${i}`, kind: 'bar', start, end },
+    ...(gate ? [{ id: `g${i}`, kind: 'milestone', start: end, label: gate, scope: 'shared' }] : [])] }));
+  rows.push({ id: 'sign', label: 'Signing', items: [{ id: 'signing', kind: 'milestone', start: '2027-02-05' }] } as never);
+  return rows;
+};
+
+// Two-line row names need more than the 40 px pitch, so every second name of a 12-row plan lost its seat on a pinned slide canvas.
+it('gantt keeps every wrapped row name on a pinned canvas', () => {
+  const rows = processRows();
+  const reading = render({ spec: { type: 'gantt', data: { rows },
+    options: { title: 'The process runs 14 weeks from teaser to signing, with two gates', subtitle: { measure: 'Sell-side process' }, today: '2026-12-07',
+      calendar: { weeks: 'isoWeek', span: 'data' }, source: 'Invented dates', target: 'slide', size: { width: 432, height: 630, unit: 'pt' } } }, return: ['reading'] }).body.reading as { omissions: { labelId: string }[] };
+  expect(reading.omissions.filter(omission => omission.labelId.startsWith('activity:'))).toEqual([]);
+});
+
+// A row pinned at exactly its text floor left a gap of 1.9999999999 px to the next name, under the solver's 2 px, so a pinned canvas at or above the declared minimum height hid a name.
+it('gantt keeps every wrapped row name from the declared minimum height upward', () => {
+  const rows = processRows();
+  for (const width of [888, 1000]) {
+    for (let height = 700; height <= 840; height++) {
+      const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'gantt', data: { rows },
+        options: { title: 'The process runs 14 weeks from teaser to signing, with two gates', subtitle: { measure: 'Sell-side process' }, today: '2026-12-07',
+          calendar: { weeks: 'isoWeek', span: 'data' }, source: 'Invented dates', target: 'slide', size: { width, height, unit: 'px' } } }));
+      if (geometry.refused || height < geometry.sizing!.minHeight) continue;
+      expect(geometry.labels.filter(label => label.hidden && label.id.startsWith('activity:')).map(label => `${width}x${height} ${label.id}`)).toEqual([]);
+    }
+  }
+});
+
+// A wrapped name needs its height plus one label gap to keep its seat, so the declared minimum height counts one gap per row, not two.
+it('gantt draws every wrapped row name on a pinned canvas at the least height the names need', () => {
+  const rows = Array.from({ length: 8 }, (_, i) => ({ id: `r${i}`, label: `${i % 2 ? 'Management presentations and site visits for shortlisted bidders' : 'Information memorandum prepared and issued to bidders'} ${i}`,
+    items: [{ id: `b${i}`, kind: 'bar', start: `2026-11-0${1 + i}`, end: `2026-12-1${i}` }] }));
+  const body = render({ spec: { type: 'gantt', data: { rows }, options: { target: 'slide', size: { width: 720, height: 430 } } }, return: ['reading'] }).body as { ok: boolean; reading: { omissions: { labelId: string }[] } };
+  expect(body.ok).toBe(true);
+  expect(body.reading.omissions.filter(omission => omission.labelId.startsWith('activity:'))).toEqual([]);
+});
+
+// A row whose name needs less than the 40 px pitch had no text floor, so a pinned canvas at the declared minimum height squeezed it below its name and hid the name.
+it('gantt keeps every row name at the declared minimum height for rows with and without sublabels', () => {
+  const names = ['Management presentations and site visits for shortlisted bidders', 'Information memorandum prepared and issued to bidders', 'Board and works council approval of the final binding offer'];
+  const rows = Array.from({ length: 10 }, (_, i) => ({ id: `r${i}`, label: i < 3 ? names[i]! : `Step ${i}`, ...(i === 0 ? { sublabel: 'PMO' } : {}),
+    items: [{ id: `b${i}`, kind: 'bar', start: `2026-11-${String(1 + i).padStart(2, '0')}`, end: `2026-12-${String(10 + i)}` }] }));
+  const options = { theme: 'standard', size: { width: 1200 } };
+  const open = layoutResolvedRequest(resolveChartRequest({ type: 'gantt', data: { rows }, options }));
+  if (open.refused) throw new Error('gantt refused');
+  const height = open.sizing!.minHeight;
+  const body = render({ spec: { type: 'gantt', data: { rows }, options: { ...options, size: { width: 1200, height } } }, return: ['reading'] }).body as { ok: boolean; reading: { omissions: { labelId: string }[] } };
+  expect(body.ok).toBe(true);
+  expect(body.reading.omissions.filter(omission => omission.labelId.startsWith('activity:') || omission.labelId.startsWith('sublabel:'))).toEqual([]);
+});

@@ -431,6 +431,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | cost-bridge-lower-is-better | waterfall.vertical | example | Cost bridge: a rise paints bad and a saving good under lowerIsBetter |
 | neutral-steps | waterfall.vertical | example | signColor false keeps every step in the neutral |
 | two-case-budget-bridge | waterfall.vertical | example | Two cases side by side in each step: a conservative and an aggressive budget |
+| two-case-budget-bars | waterfall.horizontal | example | The two-case bridge as bars: each value stands past the end of its own bar |
 | single-segment-authored-format | waterfall.vertical | example | One segment prints one value at the authored precision |
 | repeated-segment-key | waterfall.vertical | torture | Equal segment names and colours share one key |
 

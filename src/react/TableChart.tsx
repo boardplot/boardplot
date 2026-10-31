@@ -1119,7 +1119,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: TableChartProp
       x += width.get(column.id) ?? 0;
     }
     // A group a spacer stands off draws no divider on the SVG: the gap is the separation.
-    return { left, groupStart: [...groupMarks.groupStart].filter((id) => left.has(id) && !((width.get(`bp-spacer:${id}`) ?? 0) > 0)) };
+    return { left, end: x, groupStart: [...groupMarks.groupStart].filter((id) => left.has(id) && !((width.get(`bp-spacer:${id}`) ?? 0) > 0)) };
   }, [gridTracks, allColumns, hiddenColumns, groupMarks]);
   const gridStyle = useMemo(() => ({
     // Under 'frame' the empty track is at least the right margin wide.
@@ -2226,7 +2226,7 @@ interface SharedRowProps {
   /** 1-based track of each column, on a grid with spacer tracks only. */
   trackColumn: ReadonlyMap<Id, number> | undefined;
   /** Each drawn column's left edge from the grid's start, and the columns that open a group. */
-  columnEdges: { left: ReadonlyMap<Id, number>; groupStart: readonly Id[] };
+  columnEdges: { left: ReadonlyMap<Id, number>; end: number; groupStart: readonly Id[] };
   /** Each column's start and width in the track list, for the runs outside the column window. */
   liteSlots?: ReadonlyMap<Id, { start: number; width: number }>;
   /** The drawn columns by index, and the runs outside the window, while the columns are windowed. */
@@ -2452,7 +2452,8 @@ function TableGridRow({
   const sectionPin = row.role === 'section' && alignmentClass(rowLabel) === undefined ? pinned.get(rowLabel.id) : undefined;
   // `table.blockRule: 'rule'`: the heading is a cell of the pinned block, so
   // the rule that closes the block runs through it; the rest of the row is
-  // an empty cell that carries the heading's line.
+  // an empty cell that carries the heading's line. The text still has that
+  // empty width (`--bp-section-spill`): it reads against the table, as on the SVG.
   const pinnedSpan = row.role === 'section' && theme.table?.blockRule === 'rule' && trackColumn === undefined && pinned.size > 0
     ? columns.findIndex((column) => !pinned.has(column.id)) : -1;
   // The dividers a section heading's cells draw, at their offsets inside each
@@ -2505,7 +2506,9 @@ function TableGridRow({
           data-bp-pin={pinnedSpan > 0 ? '' : undefined}
           data-bp-pin-last={pinnedSpan > 0 ? '' : undefined}
           style={{ ...(sectionCell?.style as CSSProperties | undefined),
-            ...(sectionPin === undefined ? {} : { '--bp-pin-left': `${sectionPin.left}px` }), gridColumn: pinnedSpan > 0 ? `1 / ${pinnedSpan + 1}` : '1 / -1' } as CSSProperties}
+            ...(sectionPin === undefined ? {} : { '--bp-pin-left': `${sectionPin.left}px` }),
+            ...(pinnedSpan > 0 ? { '--bp-section-spill': `${columnEdges.end - restStart}px` } : {}),
+            gridColumn: pinnedSpan > 0 ? `1 / ${pinnedSpan + 1}` : '1 / -1' } as CSSProperties}
         >
           {sectionRules(true, 0)}
           {row.badge === undefined ? (

@@ -1076,7 +1076,8 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
         || rowById.get(rowId)?.calc !== undefined
         || !scales(sourceRows.get(rowId)?.format ?? '1,234')
         || valueCols.some((col) => cellNamesOtherUnit(rowId, col.id, spec))) continue;
-      const unit = unitOfSpec(spec);
+      // Only a scale letter leaves the cells: a row that reads in whole units keeps "$215.9" and "5.1x".
+      const unit = spec.magnitude === 'none' ? null : unitOfSpec(spec);
       if (unit !== null) hoistedRowUnits.set(rowId, unit);
     }
   }

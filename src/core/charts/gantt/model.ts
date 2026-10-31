@@ -131,6 +131,12 @@ export interface GanttDomain {
   milestones: MilestonePlan;
 }
 
+/** The row names as drawn on one plot width, and the narrowest name band that holds every complete name. */
+export interface RowNames {
+  rowLabels: RowLabel[];
+  minimumLabelBandW: number;
+}
+
 /** Phase 1 output, vertical: marker strip, two header tiers and the rows. */
 export interface GanttBand {
   headerRowH: number;
@@ -144,6 +150,8 @@ export interface GanttBand {
   rowH: number;
   /** Each row's lane height: rowH, or more for a row with stacked milestone flags. */
   rowHs: number[];
+  /** The table form's row names, measured with the rows' text floors; the body reuses them. */
+  names?: RowNames;
   rowsBottom: number;
   /** Row tops, one per row and one for the bottom edge. */
   rowY: number[];
@@ -246,7 +254,13 @@ export function laneTop(band: GanttBand, rows: readonly NormRow[], index: number
 
 /** Internal option: lay the chart out without the milestone lane (layout.ts gives an unused lane back to the timeline). */
 export const NO_LANE = Symbol('ganttNoLane');
-/** Internal option: per row id, the pitch its drawn name and sublabel need in the table form, once a pass has measured them. */
-export const ROW_TEXT_PITCH = Symbol('ganttRowTextPitch');
+/** The label solver keeps this gap between labels; rows touch, so a row name needs its height plus this gap. */
+export const LABEL_PAD = 2;
+/** The least height of a table row; a row whose text needs less keeps it. */
+export const MIN_ROW_H = 28;
+/** Extra height above the exact floor. The label solver hides a name whose gap to the next name is under its gap, and the sum of row heights can land a hair under it. */
+export const ROW_FLOOR_SLACK = 0.01;
+/** The least row height at which a wrapped name and its sublabel keep their seats: the text, one gap to the next row's name, and the slack. */
+export const rowTextFloor = (label: RowLabel) => label.h + (label.sub ? 2 + label.sub.h : 0) + LABEL_PAD + ROW_FLOOR_SLACK;
 /** Internal option: how many levels the event badges stack in, once a pass on the drawn timeline has planned them. */
 export const BADGE_LEVELS = Symbol('ganttBadgeLevels');

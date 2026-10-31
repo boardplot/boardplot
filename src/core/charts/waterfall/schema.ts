@@ -119,7 +119,7 @@ export const waterfallDataSchema = z
       .min(2)
       .max(3)
       .optional()
-      .describe("Two or three cases of the same bridge side by side in each step (scenarios): each item gives values, one per case, and each case runs its own levels in its own colour, named in the key. Case bars draw no connectors, since a line to a case's next bar would cross the other case's bar; items take no value or segments, and data.connectors and variant 'horizontal' are refused."),
+      .describe("Two or three cases of the same bridge side by side in each step (scenarios): each item gives values, one per case, and each case runs its own levels in its own colour, named in the key. Case bars draw no connectors, since a line to a case's next bar would cross the other case's bar; items take no value or segments, and data.connectors is refused. Under variant 'horizontal' each step's case bars stack in its row."),
   })
   .passthrough()
   .superRefine((data, ctx) => {
