@@ -1,0 +1,3 @@
+### Fixed
+
+- A waterfall subtotal with `toBaseline: true` now prints the sum of the steps since the last total or the last baseline subtotal. Before, it ignored `toBaseline` and printed the running balance, so a "Free cash flow" subtotal of five steps summing to -0.8 printed the cash balance of 12.0. The bar draws from zero to that sum. The running balance is unchanged, so the next step starts at the balance and a later total still checks. The connector skips over the subtotal. Only a subtotal that already set `toBaseline` changes. To bring back the old look, remove `toBaseline` from the subtotal.

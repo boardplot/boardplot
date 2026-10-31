@@ -203,6 +203,23 @@ describe('an opening total without a value', () => {
   });
 });
 
+describe('a subtotal with toBaseline', () => {
+  // The subtotal printed the running balance and ignored toBaseline, so a block subtotal (a free cash flow over several steps) showed the cash balance.
+  it('prints the steps since the last baseline, skips its connector and leaves the balance to the next step', () => {
+    const geometry = def.layout(def.normalize({ items: [
+      { id: 'open', type: 'total', value: 100 }, { id: 'a', value: 40 }, { id: 'b', value: -10 }, { id: 'c', value: -35 },
+      { id: 'fcf', type: 'subtotal', toBaseline: true }, { id: 'd', value: -20 }, { id: 'end', type: 'total', value: 75 },
+    ] }) as never, {} as never) as unknown as Geometry<{ connectors: { from: string; to: string }[] }, {
+      totals: Record<string, number>; levels: Record<string, { start: number; end: number }>;
+      totalBasis: Record<string, { inputs: { ref: string }[] }>;
+    }>;
+    const { totals, levels, totalBasis } = geometry.derived;
+    expect([totals.fcf, levels.fcf!.start, levels.d!.start, totals.end]).toEqual([-5, 0, 95, 75]);
+    expect(totalBasis.fcf!.inputs.map((input) => input.ref)).toEqual(['a', 'b', 'c']);
+    expect(geometry.marks.connectors.filter((c) => c.from === 'c' || c.to === 'fcf' || c.from === 'fcf')).toEqual([{ from: 'c', to: 'd', nodeId: 'connector:c:d' }]);
+  });
+});
+
 describe('two cases in one bridge', () => {
   it('runs each case its own levels side by side in every step, keys the cases and draws no connectors', () => {
     const waterfall = getChartDefinition('waterfall')!;
