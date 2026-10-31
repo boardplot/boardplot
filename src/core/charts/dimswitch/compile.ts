@@ -39,7 +39,7 @@ const affix = (m: DimSwitchMeasure): string | undefined => {
   const kind = m.format ? specUnitKind(parseFormatExample(m.format)) : m.scale === 'percent' ? 'percent' : undefined;
   return (m.unit === '%' || m.unit === 'pp') && (kind === 'percent' || kind === 'pp') ? undefined : m.unit;
 };
-interface Value { raw: number | null; state: CellState; blank?: boolean; nearZero?: true }
+interface Value { raw: number | null; state: CellState; blank?: boolean; nearZero?: true; negativeBase?: true }
 const combine = (op: 'add' | 'sub' | 'mul' | 'div', a: number, b: number) => op === 'sub' ? a - b : op === 'add' ? a + b : op === 'mul' ? a * b : a / b;
 function evaluate(expr: DimSwitchExpression, sums: DimSwitchSums | undefined, total?: DimSwitchSums): Value {
   if (typeof expr === 'number') return { raw: expr, state: 'value' };
@@ -53,7 +53,9 @@ function evaluate(expr: DimSwitchExpression, sums: DimSwitchSums | undefined, to
   if (a.raw === null || b.raw === null) return { raw: null, state: a.state === 'missing' || b.state === 'missing' ? 'missing' : 'nm' };
   if (expr.op === 'div' && b.raw === 0) return { raw: null, state: a.raw === 0 ? 'na' : 'nm' };
   const raw = combine(expr.op, a.raw, b.raw) * (expr.factor ?? 1);
-  return Number.isFinite(raw) ? { raw, state: 'value' } : { raw: null, state: 'nm' };
+  // A divisor written as a number is the author's own constant; a negative one that comes from the sums is a base that went negative.
+  const negativeBase = a.negativeBase || b.negativeBase || (expr.op === 'div' && b.raw < 0 && typeof expr.b !== 'number');
+  return Number.isFinite(raw) ? { raw, state: 'value', ...(negativeBase ? { negativeBase: true as const } : {}) } : { raw: null, state: 'nm' };
 }
 /** A driver formula over measure values; null when a value is missing or a step divides by zero. */
 function formula(expr: DimSwitchExpression, values: ReadonlyMap<string, number>): number | null {
@@ -200,7 +202,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
       suggest: `${guess?.near ? `Use '${guess.key}'. ` : ''}The column ids are ${columnIds.map(c => `'${c}'`).join(', ')}.` });
   }
   const warned = new Set<string>();
-  const warn = (code: string, id: string, message: string) => { if (!warned.has(code + id)) { warned.add(code + id); warnings.push({ code, severity: 'warn', field: ['data', 'measures', data.measures.findIndex(m => m.id === id)], message }); } };
+  const warn = (code: string, id: string, message: string, severity: 'info' | 'warn' = 'warn') => { if (!warned.has(code + id)) { warned.add(code + id); warnings.push({ code, severity, field: ['data', 'measures', data.measures.findIndex(m => m.id === id)], message }); } };
   // Scale 'money' reads values as currency units and climbs k, M, B itself: a unit that names a magnitude would print 1.32k for 1,320 Mio. CHF.
   data.measures.forEach((m, index) => { if (m.scale === 'money' && unitMagnitude(m.unit) !== undefined) warnings.push({ code: 'dimswitch-scale-unit', severity: 'warn', field: ['data', 'measures', index, 'unit'],
     message: `Measure '${m.id}': scale 'money' reads its values as currency units and picks k, M or B itself, but unit '${m.unit}' names a magnitude, so the figures climb a second time (1,320 prints 1.32k).`,
@@ -485,6 +487,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
       const current=evaluate(exprOf(m),currentSums,total), before=evaluate(exprOf(m),ref,refTotal), delta=change(current,before,m.change,m.format,decimalsOf);
       if (delta.nearZero) nearZeroSeen = true;
       const col=p.kind ? 'range' : p.id, comparison=comparisonKind==='plan' ? 'pl' : comparisonKind==='prior' ? 'pp' : p.id;
+      if (current.negativeBase || before.negativeBase) warn('ratio-negative-base', m.id, `Measure '${m.id}' divides by a negative number (member '${member}', ${col}), so the ratio prints as plain arithmetic, not n.m.`, 'info');
       // Effect on the statement: the line's signed change, or a driver's share of the change of the line it explains.
       let effect: number | null = null;
       if (m.judge?.family === 'effect' || (owner && data.effectLabel)) {

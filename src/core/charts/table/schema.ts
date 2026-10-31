@@ -46,7 +46,7 @@ const calcSchema: z.ZodType = z.lazy(() =>
       .describe('Reference to a numeric cell.'),
     z.strictObject({ lit: z.number().describe('Constant in source units.') }).describe('Numeric literal, e.g. {lit: 100} for a percent bridge.'),
     z.strictObject({
-      op: z.enum(['add', 'sub', 'mul', 'div']).describe('Arithmetic on a and b.'),
+      op: z.enum(['add', 'sub', 'mul', 'div']).describe("Arithmetic on a and b. x/0 prints n.m., 0/0 prints n/a. A division by a negative cell is plain arithmetic and warns 'ratio-negative-base' (info); percentDelta prints n.m. there."),
       a: calcSchema,
       b: calcSchema,
     }).describe('Binary arithmetic calculation.'),
