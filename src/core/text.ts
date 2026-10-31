@@ -282,6 +282,22 @@ const CONNECTOR = /^(?:&|and|\/|-|–)$/i;
  * takes its one-line width.
  */
 export function twoLineWidth(text: string, font: FontSpec, measure: TextMeasurer, breakAfter = false): number {
+  // A table asks again for every cell on each layout pass, and a long text takes a measure per split.
+  let known = twoLineMemo.get(measure);
+  if (known === undefined) twoLineMemo.set(measure, known = new Map());
+  const key = `${font.family}|${font.size}|${font.weight}|${font.style}|${font.letterSpacing}|${font.tabular}|${breakAfter}|${text}`;
+  let width = known.get(key);
+  if (width === undefined) {
+    // Bound the memo in a long-lived renderer, as the default measurer bounds its widths.
+    if (known.size >= 20000) known.clear();
+    known.set(key, width = twoLineWidthOf(text, font, measure, breakAfter));
+  }
+  return width;
+}
+
+const twoLineMemo = new WeakMap<TextMeasurer, Map<string, number>>();
+
+function twoLineWidthOf(text: string, font: FontSpec, measure: TextMeasurer, breakAfter: boolean): number {
   const paragraphs = String(text).split('\n').map(wordsOf).filter((words) => words.length > 0);
   if (paragraphs.length === 2) return Math.max(...paragraphs.map((words) => measure(words.join(' '), font).width));
   if (paragraphs.length !== 1) return measure(text, font).width;

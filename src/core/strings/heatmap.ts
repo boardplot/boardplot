@@ -4,6 +4,10 @@ const EN = {
   // reader-facing wording linked only by its consumers.
   "noData": "No data",
   "hatchedNoData": "Hatched cells: no data.",
+  "hatchedCells": "Hatched cells: {v1}.",
+  "stateSuppressed": "Suppressed",
+  "stateNm": "Not meaningful",
+  "stateNa": "Not applicable",
   "heatmapBaseNote": "Hatched {v1}: base below n = {v2}, read with care.",
   "circles": "circles",
   "cellsLower": "cells",
@@ -27,6 +31,10 @@ const DE: { [K in keyof typeof EN]: string } = {
   // reader-facing wording linked only by its consumers.
   "noData": "Keine Daten",
   "hatchedNoData": "Schraffierte Zellen: keine Daten.",
+  "hatchedCells": "Schraffierte Zellen: {v1}.",
+  "stateSuppressed": "Zurückgehalten",
+  "stateNm": "Nicht aussagekräftig",
+  "stateNa": "Nicht anwendbar",
   "heatmapBaseNote": "Schraffierte {v1}: Basis unter n = {v2}; vorsichtig lesen.",
   "circles": "Kreise",
   "cellsLower": "Zellen",

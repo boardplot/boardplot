@@ -15,6 +15,7 @@ import { SceneRenderer } from '../src/react/SceneRenderer';
 import { interactionRecords } from '../src/core/a11y/records';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { render } from '../src/cli/render';
+import { specFromRows } from '../src/rows';
 import { claimsForChart } from '../src/core/claims';
 import { chartReading } from '../src/core/reading';
 import type { Geometry, LintWarning } from '../src/core/types/scene';
@@ -79,6 +80,23 @@ describe('data gaps', () => {
       expect(reading.values.numbers).toBe(2);
       expect(reading.values.withoutNumber).toEqual([expect.objectContaining({ label: 'missing' })]);
     }
+  });
+
+  // A blank part drops its category from a variance chart, and the warnings must say so instead of leaving an empty slot that reads as no difference.
+  it('warns once per variance category that a blank part leaves undrawn', () => {
+    const data = { categories: [{ id: 'x' }, { id: 'y' }, { id: 'z' }], series: [
+      { id: 'a', values: [5, null, 7] }, { id: 'b', values: [1, 1, null] },
+      { id: 'plan', role: 'reference', values: [4, 4, 4] },
+    ] };
+    const missing = (g: Geometry) => g.warnings.filter((w) => w.code === 'missing-value');
+    const plain = missing(lay('variance', data, { variance: { vs: 'plan' } }));
+    expect(plain.map((w) => w.message)).toEqual([
+      "series 'a' at 'y': missing value — the category is not drawn",
+      "series 'b' at 'z': missing value — the category is not drawn",
+    ]);
+    expect(plain.map((w) => [w.severity, w.owner])).toEqual([['info', { categoryId: 'y' }], ['info', { categoryId: 'z' }]]);
+    const dash = missing(lay('variance', data, { variance: { vs: 'plan' }, missingMark: 'dash' }));
+    expect(dash[0]!.message).toBe("series 'a' at 'y': missing value — the category is drawn as an en dash");
   });
 
   // A reference must keep isolated values visible and leave missing periods open unless the author requests a disclosed bridge.
@@ -515,6 +533,29 @@ describe('a lone valid 100% category', () => {
     // Footer rule: the note is in the notes list, not drawn.
     const note = noteTexts(geometry).some((text) => text.startsWith('A: n.m.'));
     expect([columns.length, note]).toEqual([2, true]);
+  });
+});
+
+// A heatmap cell the rows mark suppressed was drawn, keyed and counted as plain no data, so a reader could not tell withheld from absent.
+describe('heatmap cell states', () => {
+  it('names a suppressed cell in the key and the reading, and keeps a plain empty cell no data', () => {
+    const rows = [
+      { m: 'm1', d: 'a', v: 1.5, s: '' }, { m: 'm2', d: 'a', v: null, s: '' },
+      { m: 'm1', d: 'b', v: null, s: 'suppressed' }, { m: 'm2', d: 'b', v: null, s: 'nm' },
+    ];
+    const { spec } = specFromRows({ type: 'heatmap', options: { title: 't' } }, { rows, columns: { category: 'm', series: 'd', value: 'v', state: 's' } });
+    const body = render({ spec, return: ['reading'] }).body as { reading: { values: { byState: Record<string, number> } } };
+    const keys = lay('heatmap', (spec as { data: unknown }).data, { title: 't' }).legend?.items.map((item) => item.id).filter((id) => /^scale:\D/.test(id));
+    expect([body.reading.values.byState, keys]).toEqual([{ value: 1, missing: 1, suppressed: 1, nm: 1 }, ['scale:none', 'scale:nm', 'scale:suppressed']]);
+  });
+
+  // A template's old per-cell states stayed on refilled rows, so a cell given a number was refused and a plain empty cell stayed suppressed.
+  it('lets the refilled rows decide every cell state, not the template', () => {
+    const template = { type: 'heatmap', options: { title: 't' }, data: { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: 'm1', label: 'M1', values: [1, null], states: [null, 'suppressed'] }] } };
+    const rows = [{ c: 'a', s: 'm1', v: null }, { c: 'b', s: 'm1', v: 2 }];
+    const { spec } = specFromRows(template as never, { rows, columns: { category: 'c', series: 's', value: 'v' } });
+    const series = (spec as { data: { series: { states?: unknown }[] } }).data.series[0]!;
+    expect(series.states).toBeUndefined();
   });
 });
 

@@ -382,4 +382,37 @@ describe('chart layout edge cases', () => {
     const node = geometry.scene.find((n: { id: string }) => n.id === 'label:category:c5');
     expect(node.lines).toEqual(['Mecklenburg-Vorpommern5']);
   });
+
+  // A qualitative scatter wrapped its y title to four lines in a plot too short for it, so the title printed over the Higher and Lower end labels.
+  it('a qualitative scatter plot too short for its y title drops the title and warns', () => {
+    const points = [[4, 3], [2, 5], [3, 5], [5, 2]].map(([x, y], i) => ({ id: `p${i}`, label: `Case ${i}`, x, y }));
+    const request = {
+      type: 'scatter',
+      data: { points },
+      options: { size: { width: 300, height: 240, unit: 'pt' }, title: 'Cases that combine high value and low effort are the ones to start with now', subtitle: 'Matrix of use cases', qualitativeAxes: true, axisTitles: { x: 'Ease', y: 'Value impact of use case' }, footnotes: Array.from({ length: 4 }, (_, i) => `Note ${i + 1} is long enough to wrap onto several lines of the footer in a narrow chart.`), source: 'Illustrative data' },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+    const ids = geometry.scene.map((node: { id?: string }) => String(node.id));
+    expect(geometry.plot.h).toBeLessThan(80);
+    expect(ids).toContain('axis:y:high');
+    expect(ids).not.toContain('axis:y:title');
+    expect(geometry.warnings.map((w: { code: string }) => w.code)).toContain('axis-title-dropped');
+  });
+
+  // The y arrows are drawn from the plot centre toward Higher and Lower also when no y axis title is set.
+  it('a tall qualitative scatter without a y title keeps both y arrows', () => {
+    const points = [[4, 3], [2, 5], [3, 5], [5, 2]].map(([x, y], i) => ({ id: `p${i}`, label: `Case ${i}`, x, y }));
+    const request = {
+      type: 'scatter',
+      data: { points },
+      options: { size: { width: 400, height: 300, unit: 'pt' }, title: 'T', qualitativeAxes: true, axisTitles: { x: 'Ease' } },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+    const ids = geometry.scene.map((node: { id?: string }) => String(node.id));
+    expect(ids).not.toContain('axis:y:title');
+    expect(ids).toContain('axis:y:arrow-high');
+    expect(ids).toContain('axis:y:arrow-low');
+  });
 });

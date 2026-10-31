@@ -8,7 +8,7 @@ import '../src/core/geo/packs';
 import { contrastRatio } from '../src/core/color';
 import { getFixtures } from '../src/fixtures';
 import { fixtureTags } from '../src/fixtures/registry';
-import { rectContains, rectHitsConvexPolygon, rectsOverlap, segmentHitsRect } from '../src/core/geometry';
+import { cleanDiff, cleanSum, rectContains, rectHitsConvexPolygon, rectsOverlap, segmentHitsRect } from '../src/core/geometry';
 import type { OccupiedClaim } from '../src/core/label/occupied';
 import { CROSSABLE_RULE_PART } from '../src/core/label/solver';
 import { isColumnPart, isOwnMark } from '../src/core/label/solver';
@@ -352,4 +352,17 @@ it('pie ten-tiny-slices: no leader crosses another leader or a label, and each e
       expect(crosses, `${a.label.id} crosses the leader of ${b.label.id}`).toBe(false);
     }
   }
+});
+
+// A gap between two large exact values must keep its digits, and a sum of many terms must not overflow the call stack.
+it('cleanDiff keeps a representable gap at a large scale and cleanSum takes 150000 terms', () => {
+  expect(cleanDiff(100000000000000.25, 100000000000000)).toBe(0.25);
+  expect(cleanDiff(10000000000000.25, 10000000000000)).toBe(0.25);
+  expect(cleanDiff(0.30000000000000004, 0.3)).toBe(0);
+  expect(cleanSum(new Array<number>(150000).fill(1))).toBe(150000);
+});
+
+// The noise of a sum of five terms is larger than a float step of its largest term, so 33.5 summed to 33.49999999999999 and printed as 33.
+it('cleanSum clears the float noise of a sum of five terms', () => {
+  expect(cleanSum([8.2, 8.6, 8.9, 6.2, 1.6])).toBe(33.5);
 });

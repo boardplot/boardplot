@@ -20,10 +20,13 @@
  */
 import { NormalizeError, normalizeCategory, normalizeCell, normalizeSeriesValues } from '../normalize/shared';
 import type { Category, ChartData, Series } from '../types/data';
+import type { HatchPattern } from '../types/scene';
 
 /** Authored states from the table contract; a chart cell carries none of them. */
 export const NAMED_COLUMN_STATES = ['na', 'nm', 'suppressed'] as const;
 export type NamedColumnState = (typeof NAMED_COLUMN_STATES)[number];
+/** The hatch each state draws, so the maps and the heatmap key the three states by pattern. */
+export const NAMED_STATE_PATTERN = { suppressed: 'crosshatch', nm: 'horizontal', na: 'vertical' } as const satisfies Record<NamedColumnState, HatchPattern>;
 
 export interface NamedColumnContract {
   /** Column holding the category id. Required. */
