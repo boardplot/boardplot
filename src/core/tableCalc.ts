@@ -49,31 +49,38 @@ export function calcIsLinear(calc: Calc): boolean {
 }
 
 /**
- * True when negating every cell the calc reads negates its result: odd in its cell inputs.
- * A linear calc does, a ratio or product of two cells does not (both flip), and a literal
- * over a cell does (only one flips). Literals never flip.
+ * False only when negating every cell the calc reads leaves its result unchanged: a ratio or
+ * product of two cells, a literal, abs, percentDelta, share, and sums of such terms. A linear
+ * calc flips, a literal over a cell flips (only one side flips), and a sum or difference of an
+ * invariant term and a flipping term flips too, whichever operand comes first.
  */
 export function calcFlipsWithInputs(calc: Calc): boolean {
   if (calcIsLinear(calc)) return true;
-  const odd = (c: Calc): boolean => {
-    if ('ref' in c) return true;
-    if ('lit' in c) return false;
+  type Parity = 'odd' | 'even' | 'mixed';
+  const parity = (c: Calc): Parity => {
+    if ('ref' in c) return 'odd';
+    if ('lit' in c) return 'even';
     switch (c.op) {
       case 'add':
-      case 'sub':
-        return odd(c.a);
+      case 'sub': {
+        const a = parity(c.a);
+        return a === parity(c.b) ? a : 'mixed';
+      }
       case 'mul':
-      case 'div':
-        return odd(c.a) !== odd(c.b);
+      case 'div': {
+        const a = parity(c.a);
+        const b = parity(c.b);
+        return a === 'mixed' || b === 'mixed' ? 'mixed' : a === b ? 'even' : 'odd';
+      }
       case 'delta':
-        return true;
+        return 'odd';
       case 'abs':
       case 'percentDelta':
       case 'share':
-        return false;
+        return 'even';
     }
   };
-  return odd(calc);
+  return parity(calc) !== 'even';
 }
 
 /**

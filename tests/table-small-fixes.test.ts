@@ -1172,6 +1172,12 @@ it('reads arrows, sort and ratios of a sign -1 row from the printed figures', ()
   // A literal over a cell flips with the row sign, so it prints the quotient of the printed -120.
   const inverse = resolveTable({ ...data, columns: [...data.columns, { id: 'q', kind: 'computed', format: '0.00', calc: { op: 'div', a: { lit: 100 }, b: { ref: 'ac' } } }] }, {}).table;
   expect(inverse.rows.find((r) => r.id === 'cost')!.cells.q!.displayed).toBe('\u22120.83');
+  // A sum of a ratio and a cell is neither odd nor invariant, so operand order must not change its sign.
+  const ratio = { op: 'div', a: { ref: 'ac' }, b: { ref: 'py' } } as const;
+  const mixed = resolveTable({ ...data, columns: [...data.columns,
+    { id: 'm1', kind: 'computed', format: '0.00', calc: { op: 'add', a: ratio, b: { ref: 'ac' } } },
+    { id: 'm2', kind: 'computed', format: '0.00', calc: { op: 'add', a: { ref: 'ac' }, b: ratio } }] }, {}).table;
+  expect(mixed.rows.find((r) => r.id === 'cost')!.cells.m1!.displayed).toBe(mixed.rows.find((r) => r.id === 'cost')!.cells.m2!.displayed);
   // Printed -120 sorts before -30, though the supplied 120 is the larger figure.
   expect(sortRows(table, { column: 'ac', direction: 'asc' }).map((r) => r.id)).toEqual(['cost', 'fee', 'rev']);
   const arrows = layout('table', data, { encodings: { d: 'arrow' } }).scene
