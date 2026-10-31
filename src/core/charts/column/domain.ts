@@ -1045,7 +1045,9 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
     warnShareRoundingDrift(warnings, wholes.map(({ c, parts }) => ({ name: c.label ?? c.id, shares: parts.map((part) => part.share), decimals: shareSet.decimals })));
   }
   // sharesOfOneWhole: a stack whose authored parts miss 100 prints shares of its own total.
-  const rescaled = options.sharesOfOneWhole === true ? wholes.filter(({ c }) => Math.abs(basis.stackTotals[c.id]! - 100) > 0.05).map(({ c }) => c.label ?? c.id) : [];
+  // Direct percent cells print as authored, so a stack holding one is not rescaled.
+  const rescaled = options.sharesOfOneWhole === true
+    ? wholes.filter(({ c }) => !dataSeries.some((s) => s.vals[cats.indexOf(c)]!.isPct) && Math.abs(basis.stackTotals[c.id]! - 100) > 0.05).map(({ c }) => c.label ?? c.id) : [];
   const shareNotes = shareRoundingNotes(options, roundingAdjustments, cappedItems(rescaled, options));
   let activeBreak = columnAxisBreak(options, anomaly, rendered, meanValue, averageMark, corridor.corridorShown, extent.dLo, extent.dHi, warnings);
   // An authored step keeps its rhythm across a break only while each side keeps an inner tick, not its end tick alone.

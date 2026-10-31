@@ -297,6 +297,12 @@ describe('data gaps', () => {
     expect(noteTexts(direct, ['method'])).toEqual([]);
   });
 
+  // A column of direct percents prints them as authored, and the note said each share was divided by the stack total.
+  it('adds no rescaling note for a column of direct percents', () => {
+    const direct = lay('column', { categories: [{ id: 'q', label: 'Sep' }], series: [{ id: 'a', values: [{ pct: 55 }] }, { id: 'b', values: [{ pct: 30 }] }] }, { variant: 'stacked100', sharesOfOneWhole: true });
+    expect(noteTexts(direct, ['method'])).toEqual([]);
+  });
+
   // The area note named moved shares that sit at unlabelled categories or under labels: false, and the reader saw no moved share.
   it('adds the area rounding note only when a moved share prints', () => {
     const data = { categories: ['a', 'b', 'c'].map((id) => ({ id })), series: [[50, 1, 50], [25, 1, 25], [25, 1, 25]].map((values, i) => ({ id: `s${i}`, values })) };
