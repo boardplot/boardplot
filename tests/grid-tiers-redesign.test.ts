@@ -449,4 +449,16 @@ describe('tiers keep the height their parts need', () => {
     expect(caption).toBeDefined();
     expect(caption!.rect.y).toBeGreaterThanOrEqual(grid.plot.y - 1);
   });
+  // The row tracks added up to more than the canvas, so the minimum scaled by them refused a height where both tiers fit.
+  it('draws a row-placed tier grid at a height above what its parts need', () => {
+    const names = ['Baden-Württemberg', 'Niedersachsen', 'Ruhrgebiet', 'Oberfranken', 'Abschreibungen', 'Umsatzerlöse', 'Personalaufwand', 'Sonstige']
+      .map((label) => ({ id: label.toLowerCase().replace(/\W+/g, '-'), label }));
+    const german = { ...regionData, categories: names };
+    const grid = laidOut({ type: 'grid', data: { panels: [
+      { id: 'base', type: 'column', row: 1, column: 0, data: german },
+      { id: 'tier', type: 'variance', row: 0, column: 0, data: german, options: { variant: 'relative', variance: { of: 'ac', vs: 'py' } } }] },
+    options: { title: 'Revenue by region', subtitle: { measure: 'Revenue', period: 'FY26' }, unit: 'EUR m', source: 'Invented data', sharedAxis: 'category', target: 'print', size: { width: 720, height: 400, unit: 'px' } } });
+    expect(grid.refused).toBeFalsy();
+    expect(grid.warnings.map((warning) => warning.code)).not.toContain('size-below-floor');
+  });
 });

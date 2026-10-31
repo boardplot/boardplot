@@ -1259,6 +1259,7 @@ function layoutAuthoredGrid(
       });
     }
   }
+  let sizingRows = rowWeights;
   if (naturalTierWeights) {
     // Final margins can change header wrapping and label rows. Balance the
     // plots after alignment, preserving the margins that alignment measured.
@@ -1303,6 +1304,9 @@ function layoutAuthoredGrid(
       }
     }
     rowWeights = rowWeights.map((_, row) => tierSlots[provisional.findIndex(p => p.row === row)]!.h);
+    // A packed tier takes the height its content needs, not its slot: the slots can add up to more
+    // than the canvas, and a minimum scaled by them refuses a canvas where every tier fits.
+    if (packed) sizingRows = rowWeights.map((weight, row) => children.find(child => child.placement.row === row)?.geometry.sizing?.minHeight ?? weight);
     rowBands = trackBands(area.y, area.h, rowWeights, rowGaps, options.gutters?.rows !== undefined);
     tierSlots.forEach((slot, index) => { slot.y = rowBands[provisional[index]!.row]!.start; });
     let bottom = area.y + area.h;
@@ -1441,7 +1445,7 @@ function layoutAuthoredGrid(
   return {
     type: 'grid',
     size,
-    sizing: withReadoutPlotHeight(gridSizing(size, area, children.map(child => ({ geometry: child.geometry, ...child.placement })), rowWeights, columnWeights, rowGaps, columnGaps, automaticRows),
+    sizing: withReadoutPlotHeight(gridSizing(size, area, children.map(child => ({ geometry: child.geometry, ...child.placement })), sizingRows, columnWeights, rowGaps, columnGaps, automaticRows),
       size, automaticRows ? children : []),
     plot: area,
     scene,
