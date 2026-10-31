@@ -1826,6 +1826,8 @@ it('keeps the currency of options.unit in front of a shared bare scale', () => {
   expect(unitOf('k EUR')).toEqual({ unit: 'B', overridden: true });
   expect(unitOf('EUR bn (adj.)')).toEqual({ unit: 'EUR bn (adj.)', overridden: false });
   expect(unitOf('Mrd. EUR')).toEqual({ unit: 'Mrd. EUR', overridden: false });
+  // A scale glued to the currency ('USDbn') or in another language ('Md') is not a bare currency, so it never gets a second scale.
+  for (const unit of ['USDbn', 'EURm', 'kEUR', 'EUR Md']) expect(unitOf(unit)).toEqual({ unit: 'B', overridden: true });
   const de = resolveTable({ ...data, columns: [data.columns[0]!, { id: 'v', kind: 'value', format: '1,2 Mrd' }] }, { subtitle: { measure: 'Umsatz' }, unit: 'Mio. EUR', locale: { decimal: ',', thousands: '.' } });
   expect(de.warnings.some(warning => warning.code === 'table-unit-overridden')).toBe(true);
   expect(de.table.unit).not.toContain('Mio.');

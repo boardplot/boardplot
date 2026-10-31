@@ -1089,7 +1089,8 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
   const bareScale = candidateUnit !== undefined && [...[...valueCols, ...computedCols].map((col) => specs.get(col.id)!), ...rowSpecs.values()]
     .every((spec) => specUnitKind(spec) !== 'number' || (spec.prefix.trim() === '' && spec.suffix.trim() === ''));
   const carriesScale = scaleWords.some((word) => sameUnitText(word, candidateUnit ?? ''));
-  const composes = bareScale && !!authoredUnit && (scaleWords.length === 0 || carriesScale);
+  // Only a bare currency code or symbol takes the scale appended. Any other text ('USDbn', 'EURm', 'EUR Md') may hold a scale this check cannot read.
+  const composes = bareScale && !!authoredUnit && (carriesScale || (scaleWords.length === 0 && /^(?:[A-Z]{3}|\p{Sc})$/u.test(authoredUnit)));
   const composedUnit = composes ? carriesScale ? authoredUnit : `${authoredUnit} ${candidateUnit}` : candidateUnit;
   const uniformUnit = composedUnit && frameCarriesUnit ? composedUnit : null;
   if (uniformUnit !== null && options.unit !== undefined && options.unit !== uniformUnit && !composes) {
