@@ -604,7 +604,7 @@ function layoutScatterRun(
   const warnings: LintWarning[] = [];
   // The names the plot could not place share ONE note with the registry's ("Not labelled on the chart").
   const hiddenNote = hiddenNoteWith(options, (hiddenNames ?? []).map((text, i) => ({ id: `scatter:${i}`, text })));
-  const env: ScatterEnv = { ...resolveScatterEnv(options, warnings), valueTier, valueInsideOnly };
+  const env: ScatterEnv = { ...resolveScatterEnv(options, warnings, data), valueTier, valueInsideOnly };
   const domain = resolveScatterDomain(data, env, warnings);
   if (env.options.legend === 'none' && domain.bubbleMode && domain.sizeMax && env.options.sizeLegend !== false) {
     const sizeKey = typeof env.options.sizeLegend === 'object' && env.options.sizeLegend.label ? env.options.sizeLegend.label : 'bubble size';

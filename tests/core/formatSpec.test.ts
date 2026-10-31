@@ -238,6 +238,8 @@ it('prints no bare B or T on a German or French chart without an authored word',
   expect(seriesRasterFormatter(undefined, [2.5e9], 'de', undefined, 'report').fmt(2.5e9)).toBe('2,5 Mrd.');
   expect(seriesRasterFormatter(undefined, [2.5e9], 'fr', undefined, 'report').fmt(2.5e9)).toBe('2,5 Md');
   expect(seriesRasterFormatter(undefined, [2.5e9], 'en', undefined, 'report').fmt(2.5e9)).toBe('2.5B');
+  // One German axis reads "500 Mio." under "1,0 Mrd.", not "500M".
+  expect(seriesRasterFormatter(undefined, [2.5e9, 5e8], 'de', undefined, 'report').fmt(5e8)).toBe('500 Mio.');
   expect(formatWithSpec(2.5e9, { ...parseFormatExample('1,0 Mio.'), locale: 'de' })).toBe('2,5 Mrd.');
 });
 
