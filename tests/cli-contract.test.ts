@@ -692,7 +692,7 @@ describe('render and measure on the command line', () => {
     expect(envelope(result).errors).toMatchObject([{ code: 'invalid-value', path: '/rowsFile', message: expect.stringContaining('rows[1].Revenue') }]);
   });
 
-  const rowsRender = (csv: string, valueKind = 'number') => {
+  const rowsRender = (csv: string | Buffer, valueKind = 'number') => {
     const dir = tdir();
     writeFileSync(join(dir, 'rows.csv'), csv);
     const spec = writeDoc(dir, 'spec.json', { type: 'column' });
@@ -706,6 +706,16 @@ describe('render and measure on the command line', () => {
 
   it('refuses a rows file with only its header as empty, not as three missing columns', () => {
     expect(rowsError('month,segment,revenue\n')).toMatchObject({ code: 'rows-empty', path: '/rowsFile' });
+  });
+
+  // A Windows-1252 export decoded as UTF-8 printed U+FFFD in the labels with no warning.
+  it('warns when a rows file is not UTF-8, and stays quiet for a real U+FFFD', () => {
+    const latin1 = rowsRender(Buffer.from('month,segment,revenue\nM\xfcnchen,A,10\n', 'latin1'));
+    expect(latin1.warnings).toContainEqual(expect.objectContaining({ code: 'rows-encoding-replaced', path: '/rowsFile', message: expect.stringContaining('offset 23') }));
+    expect(rowsRender('month,segment,revenue\nM\uFFFDnchen,A,10\n').warnings.map((w) => (w as { code: string }).code)).not.toContain('rows-encoding-replaced');
+    // A real U+FFFD (3 bytes) before the bad byte must not shift the reported offset (22 header bytes, then 10 for the first row, then 'M').
+    const mixed = rowsRender(Buffer.concat([Buffer.from('month,segment,revenue\n'), Buffer.from('\uFFFDx,A,10\nM'), Buffer.from([0xfc]), Buffer.from('nchen,A,10\n')]));
+    expect(mixed.warnings).toContainEqual(expect.objectContaining({ code: 'rows-encoding-replaced', message: expect.stringContaining('byte 0xfc at offset 33') }));
   });
 
   it('quotes a formatted number in a CSV and asks for a plain number', () => {
