@@ -329,8 +329,8 @@ function treeNumbers(node: unknown, into: number[] = [], seen = new Set<unknown>
 /**
  * The chart's data and options with each format example read by that data
  * (`exampleReading`), and a warning where a group rounds a small number.
- * ponytail: one reading per chart from all of its numbers, a number that is no
- * value counts too; per-field numbers if a real chart needs them.
+ * Each chart gets one reading, taken from all of its numbers. A number that is
+ * not a data value counts too. Fields are not read one by one.
  */
 export function readFormatExamples<D, O>(data: D, options: O): { data: D; options: O; warnings: LintWarning[] } {
   const examples = new Set<string>();

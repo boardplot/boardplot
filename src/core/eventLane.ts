@@ -593,7 +593,7 @@ function planLane(events: LaneEvent[], axis: LaneAxis, count: number, rows: numb
     }
     let spot = block ? slot(placed, block) : undefined;
     // A block that fits nowhere may fit once one placed block turns to the other side of its pole.
-    // ponytail: one turn only; a full search over sides would find more fits at a combinatorial cost.
+    // Only one placed block is turned, and only once. Turning several blocks together is not tried.
     for (const [i, p] of placed.entries()) {
       if (!block || spot) break;
       const turned: Placed = { ...p, side: p.side === 'right' ? 'left' : 'right' };
