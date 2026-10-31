@@ -733,3 +733,15 @@ it('prints a circular-process arrow label in full', () => {
   expect(body.ok).toBe(true);
   expect(body.reading.labelsTruncated).toEqual([]);
 });
+
+// A 13-row bar on the default slide canvas was refused, while the same canvas written out as a size drew in compact mode.
+it('draws compact on the default slide canvas as it does on the same size written out', () => {
+  const categories = Array.from({ length: 13 }, (_, i) => `Region ${i + 1}`);
+  const data = { categories, series: [{ id: 'rev', label: 'Revenue', values: categories.map((_, i) => 100 - 3 * i) }] };
+  const draw = (options: object) => render({ spec: { type: 'bar', data, options: { title: 'Revenue by region', unit: '$m', ...options } } }).body as any;
+  const slide = draw({ target: 'slide' });
+  expect(slide.ok).toBe(true);
+  expect(slide.reading.mode).toBe('compact');
+  expect(slide.size).toEqual(draw({ target: 'slide', size: { width: 888, height: 396, unit: 'pt' } }).size);
+  expect(draw({ target: 'slide', belowMinimum: 'refuse' }).errors[0].code).toBe('size-below-floor');
+});
