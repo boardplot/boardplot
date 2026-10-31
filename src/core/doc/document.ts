@@ -154,20 +154,25 @@ function unknownField(
   }, input, segments, 'docs/manual.md#the-spec');
 }
 
+/** Chart furniture an author often puts at the top level; options takes each of these as a string. */
+const MOVABLE_KEYS = ['title', 'subtitle', 'unit', 'source'] as const;
+const isMovable = (input: Record<string, unknown>, key: string): boolean => (MOVABLE_KEYS as readonly string[]).includes(key) && typeof input[key] === 'string';
+
 /**
- * A top-level key a chart does not take, like `title` or `unit`, holds what
- * the author meant for the chart. Its fix moves it into options, because a
- * remove would drop it without a word; the options check then judges it by name.
+ * A top-level `title`, `subtitle`, `unit` or `source` string holds what the
+ * author meant for the chart, so its fix moves it into options instead of
+ * dropping it unseen. Any other stray key is no option name, so options would
+ * refuse it: its fix removes it, and the fixed chart draws.
  */
 function strayKey(input: Record<string, unknown>, key: string, where: string, strays: readonly string[]): DocumentFinding {
+  if (!isMovable(input, key)) return unknownField(input, [key], where);
   const { options } = input;
   // Without options, every fix adds the same whole object: two adds of /options would otherwise overwrite each other.
-  const append = options === undefined ? { op: 'add' as const, path: '/options', value: Object.fromEntries(strays.map(name => [name, input[name]])) }
+  const append = options === undefined ? { op: 'add' as const, path: '/options', value: Object.fromEntries(strays.filter(name => isMovable(input, name)).map(name => [name, input[name]])) }
     : isRecord(options) && !Object.hasOwn(options, key) ? { op: 'add' as const, path: toJsonPointer(['options', key]), value: input[key] }
       : undefined;
-  return unknownField(input, [key], where, append
-    ? { suggest: `Move '${key}' into options.`, fix: [append, { op: 'remove', path: toJsonPointer([key]) }] }
-    : { suggest: `Move '${key}' into options, or remove it.` });
+  // Options already hold this key (or are no object): the options value stays and the fix removes the top-level copy.
+  return append ? unknownField(input, [key], where, { suggest: `Move '${key}' into options.`, fix: [append, { op: 'remove', path: toJsonPointer([key]) }] }) : unknownField(input, [key], where);
 }
 
 /**

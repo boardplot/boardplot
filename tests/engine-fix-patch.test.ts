@@ -88,6 +88,17 @@ describe('root key fixes', () => {
     }
   });
 
+  // A bare chart with a stray key that is no option name got a move into options, and the fixed chart was refused with no fix.
+  it('draws a bare chart after a stray key that no option takes is removed', () => {
+    for (const extra of [{ $schema: 'https://boardplot.com/schema/v1/boardplot-doc.json' }, { foo: 1 }, { width: 600 }, { colors: ['#fff'] }, { format: { value: { decimals: 1 } } }, { description: 'd' }, { notes: ['n'] }, { locale: 'de' }, { 'a/b': 1 }, { title: 'Revenue', foo: 1 }]) {
+      const spec = { ...chart, ...extra };
+      const refused = render({ spec, format: 'svg' }).body as any;
+      expect(refused.ok).toBe(false);
+      const fixed = applyPatch(spec, refused.errors.flatMap((error: any) => error.fix));
+      expect(render({ spec: fixed, format: 'svg' }).body).toMatchObject({ ok: true });
+    }
+  });
+
   // A stray root key beside charts got a move into a root options that an envelope does not have; the fixed document was refused.
   it('draws an envelope after its stray root key is removed', () => {
     for (const extra of [{ title: 'Revenue' }, { unit: 'EUR m' }, { foo: 1 }, { type: 'column' }]) {
