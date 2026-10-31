@@ -130,7 +130,8 @@ export function drawnHeight(pinned: Geometry, lowest: number, layoutAt: (size: S
   const width = pinned.size.width;
   const draws = (height: number): boolean => {
     const probe = layoutAt({ width, height });
-    return !isRefused(probe) && sameDrawing(probe as Geometry, pinned);
+    // A canvas that grew past the height given (the notes outgrew it) is not a drawing at that height.
+    return !isRefused(probe) && probe.size.height <= height + 0.01 && sameDrawing(probe as Geometry, pinned);
   };
   const frame = pinned.size.height;
   let [low, high] = [Math.max(1, Math.floor(lowest)), Math.ceil(frame)];

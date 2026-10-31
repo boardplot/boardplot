@@ -4,6 +4,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import '../src/core/charts';
+import '../src/core/geo/packs/dach';
 import { getChart } from '../src/core/registry';
 import { getFixtures, getRefusalExamples } from '../src/fixtures';
 import { canDraw, measure } from '../src/index';
@@ -449,6 +450,33 @@ it('judges a narrow diagram card by its card and group text at its content heigh
   // Authored positions that collide only at the narrow width keep the 480 px floor too.
   const placed = { nodes: [{ ...node('a', 'Alpha'), position: { x: 0.42, y: 0.5 } }, { ...node('b', 'Beta'), position: { x: 0.58, y: 0.5 } }], edges: [edge('a', 'b')] };
   expect(getChart('diagram')!.layout(placed as never, { variant: 'hierarchy', target: 'report', size: { width: 320, height: 600 } } as never).refused).toBe(true);
+});
+
+// Prevents measure and render from naming different floors: a height that render refuses, a card width
+// that render refuses while measure says it draws, and a pinned choropleth that draws taller than measure says.
+it('names the size that render draws in measure', () => {
+  const names = ['Northern upland districts', 'Southern river valleys', 'Eastern coastal plains', 'Western forest foothills', 'Central market towns',
+    'Island ferry crossings', 'Research and development expenses', 'Income from equity-accounted firms', 'Pension provisions, domestic'];
+  const nodes = names.map((label, index) => ({ id: `n${index}`, kind: 'entity', shape: { kind: 'roundedRect' }, label, role: index === 0 ? 'accent' : 'primary', order: index }));
+  const edges = [[0, 1], [0, 2], [1, 3], [2, 4], [1, 5], [2, 6], [1, 7], [2, 8]].map(([from, to]) => ({ id: `e${from}-${to}`, source: { nodeId: `n${from}` }, target: { nodeId: `n${to}` } }));
+  const tree = { type: 'diagram', data: { nodes, edges }, options: { variant: 'hierarchy', title: 'Structure of the programme', source: 'Invented sample data' } };
+  const needed = (cliMeasure({ spec: tree, width: 720 }).body as { minHeightAtWidth: number }).minHeightAtWidth;
+  expect((render({ spec: { ...tree, options: { ...tree.options, size: { width: 720, height: needed } } } }).body as { ok: boolean }).ok).toBe(true);
+
+  const steps = ['Fix lead qualification', 'Shorten the demo wait', 'Simplify legal terms', 'Launch referral scheme'].map((label, index) => ({
+    id: `p${index}`, kind: 'step', shape: { kind: 'chevron' }, label, caption: `Sales ops, ${index + 4} weeks`, badge: { text: 'Sales ops', role: 'accent' }, order: index + 1, role: 'primary' }));
+  const card = { type: 'diagram', data: { nodes: steps }, options: { variant: 'linear-process', title: 'Four steps take 28 weeks and start with lead qualification', subtitle: 'Owner and duration for each step', source: 'Invented plan', target: 'dashboard' } };
+  const narrow = { ...card, options: { ...card.options, size: { width: 438 } } };
+  const floor = (cliMeasure({ spec: narrow }).body as { minWidth: number }).minWidth;
+  const refused = (render({ spec: narrow }).body as { errors: { code: string; fix: { value: { width: number } }[] }[] }).errors[0]!;
+  expect(refused.code).toBe('size-below-floor');
+  expect(refused.fix[0]!.value.width).toBe(floor);
+  expect((render({ spec: { ...card, options: { ...card.options, size: { width: floor } } } }).body as { ok: boolean }).ok).toBe(true);
+
+  const map = { type: 'choropleth', data: { pack: 'dach', regions: [{ id: 'DE', value: 620.3 }, { id: 'AT', value: 618.9 }, { id: 'CH', value: 148.3 }] },
+    options: { title: 'Value by region', unit: 'EUR m', source: 'Invented sample data', classes: 5, size: { width: 720, height: 270 } } };
+  const drawn = (render({ spec: map }).body as { size: { height: number } }).size.height;
+  expect((cliMeasure({ spec: map }).body as { size: { height: number } }).size.height).toBe(drawn);
 });
 
 // Prevents a pinned slope from refusing a 180–269 px slot where its end labels fit, from drawing a
