@@ -99,7 +99,7 @@ Consulting-grade table: hierarchy with honest totals (derive/validate/source), t
 | columns[].fitFormat (columns[] branch 3) | false |  | false: options.fitFormats leaves this column's format as authored. One of `false`. |
 | columns[].noteLine (columns[] branch 3) | boolean |  | Notes below figures. They use the inline step in muted ink. Default false keeps the note inline after the figure, where a 90 px block track cuts it off; a steering block column says sum under its year-to-date figure. The note takes the first line slot whose change line holds no value in that cell, and where every line holds one, or the row prints none, the row grows by one inline line. |
 | columns[].kind (columns[] branch 3) | string | yes | Kind. One of `'computed'`. |
-| columns[].calc (columns[] branch 3) | object | yes | Cell or expression. |
+| columns[].calc (columns[] branch 3) | object | yes | Calculation over value-column ids. A { row } or { row, previous: true } ref is refused (row-ref-in-column-calc): put cross-row refs in rows[].calc. |
 | columns[].calc.ref (columns[] branch 3; columns[].calc branch 1) | string \| object | yes | Cell ref: column id or { row, col?, previous? }. |
 | columns[].calc.ref.row (columns[] branch 3; columns[].calc branch 1) | string | yes | Row id. |
 | columns[].calc.ref.col (columns[] branch 3; columns[].calc branch 1) | string |  | Column id. Omitted means the column being evaluated. |

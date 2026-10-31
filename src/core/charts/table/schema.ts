@@ -120,7 +120,7 @@ const columnSchema = z
     z.strictObject({
       ...columnBase,
       kind: z.literal('computed').describe('Kind.'),
-      calc: calcSchema,
+      calc: calcSchema.describe('Calculation over value-column ids. A { row } or { row, previous: true } ref is refused (row-ref-in-column-calc): put cross-row refs in rows[].calc.'),
       format: formatExample.optional().describe(COLUMN_FORMAT_DOC),
       polarity: z.enum(['higherIsBetter', 'lowerIsBetter']).optional().describe('Which sign is favorable. Judgment tones and directional encodings read it.'),
       materiality: materialitySchema.optional().describe('Mute tones below this threshold; keep values visible.'),
