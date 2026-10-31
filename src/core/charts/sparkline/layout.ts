@@ -163,7 +163,10 @@ export function sparklineDomain(
     }
   }
   if (!Number.isFinite(min) || !Number.isFinite(max)) return { min: 0, max: 0 };
-  if (shape === 'column') {
+  // A column and an area spark encode a value as a height from zero: a
+  // floor at the series minimum would draw the first point with no height
+  // and read as growth from nothing. A line spark keeps its min-max range.
+  if (shape === 'column' || shape === 'area') {
     min = Math.min(min, 0);
     max = Math.max(max, 0);
   }
@@ -279,7 +282,7 @@ export function plotSparkline(input: {
   const gaps: SparklinePlot['gaps'] = [];
   const observed = values.flatMap((value, index) => (value === null ? [] : [index]));
   if (observed.length > 0) {
-    const foot = input.shape === 'column' ? yAt(Math.max(domain.min, Math.min(0, domain.max))) : plot.y + plot.h;
+    const foot = input.shape !== 'line' ? yAt(Math.max(domain.min, Math.min(0, domain.max))) : plot.y + plot.h;
     const bands = input.shape === 'column' && n > 0
       ? bandScale(n, [plot.x, plot.x + plot.w], { paddingInner: COLUMN_INNER, paddingOuter: COLUMN_OUTER }) : undefined;
     values.forEach((value, index) => {
@@ -355,7 +358,11 @@ export function emitSparklineMarks(input: {
   // that sets `surface.sparkWash: false` draws no wash at all: the
   // spark is its line and last point, as a line spark is.
   if (shape === 'area' && theme.surface?.sparkWash !== false) {
-    const base = plot.plot.y + plot.plot.h;
+    // The wash fills to the zero line, which the zero-floor domain keeps
+    // inside the plot: a series below zero fills up to it, as columns do.
+    // `surface.sparkAreaBase: 'min'` fills to the plot's foot.
+    const foot = plot.plot.y + plot.plot.h;
+    const base = theme.surface?.sparkAreaBase === 'min' ? foot : Math.min(foot, Math.max(plot.plot.y, plot.yAt(0)));
     const areaD = plot.runs
       .filter((points) => points.length > 1)
       .map((points) => `${linePath([...points, { x: points[points.length - 1]!.x, y: base }, { x: points[0]!.x, y: base }])}Z`)
@@ -503,11 +510,15 @@ export function emitKpiSpark(
       candidates: [{ slot: 'end', rect: { x: align === 'start' ? rect.x : rect.x + rect.w - width, y: periodY, w: width, h: periodH }, penalty: 0 }],
     });
   }
-  const domain = sparklineDomain([values], kind);
+  // A theme that draws no wash draws an area spark as a line, and a line
+  // keeps its min-max range. A theme with `surface.sparkAreaBase: 'min'`
+  // keeps that range under the wash too.
+  const areaFromMin = kind === 'area' && (theme.surface?.sparkWash === false || theme.surface?.sparkAreaBase === 'min');
+  const domain = sparklineDomain([values], areaFromMin ? 'line' : kind);
   const plot = plotSparkline({
     box: lineBox,
     values,
-    shape: kind,
+    shape: areaFromMin ? 'line' : kind,
     domain,
     style: sparkStyle(theme, KPI_SPARK_STYLE),
     lastText,
