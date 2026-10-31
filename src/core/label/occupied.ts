@@ -30,6 +30,11 @@ export interface OccupiedIndex {
   some?(rect: Rect, pad: number, test: (claim: OccupiedClaim) => boolean): boolean;
   snapshot(): OccupiedClaim[];
   /**
+   * Takes back a claim that `hitsWhich` returned, for a layout that seats a
+   * label and then moves it: no query meets it and `snapshot` leaves it out.
+   */
+  release?(claim: OccupiedClaim): void;
+  /**
    * The value axis's tick label columns. Only the label solver
    * reads them, for values (a bare number there reads as a tick); names,
    * annotations and leaders may still cross them.
@@ -62,6 +67,7 @@ function cellRange(rect: Rect, pad: number): [number, number, number, number] | 
 
 export function createOccupiedIndex(_plot: Rect): OccupiedIndex {
   const rects: OccupiedClaim[] = [];
+  const released = new Set<number>();
   // Claims by grid cell, so a query tests the claims near it, not every
   // claim (a map claims its region fills as a thousand strips). Claims off
   // the grid are tested on every query.
@@ -70,7 +76,7 @@ export function createOccupiedIndex(_plot: Rect): OccupiedIndex {
   const polygonTests: ReturnType<typeof prepareConvexPolygon>[] = [];
   const hit = (index: number, rect: Rect, pad: number): boolean => {
     const claim = rects[index]!;
-    return rectsOverlap(claim.rect, rect, pad) && (claim.polygon === undefined
+    return (released.size === 0 || !released.has(index)) && rectsOverlap(claim.rect, rect, pad) && (claim.polygon === undefined
       || (polygonTests[index] ??= prepareConvexPolygon(claim.polygon))(rect, pad));
   };
   // A claim spans several cells; `seen` stamps it once per query.
@@ -140,7 +146,11 @@ export function createOccupiedIndex(_plot: Rect): OccupiedIndex {
       return found.sort((a, b) => a - b).map((i) => rects[i]!);
     },
     snapshot() {
-      return rects.map((entry) => ({ ...entry, rect: { ...entry.rect } }));
+      return rects.flatMap((entry, index) => released.has(index) ? [] : [{ ...entry, rect: { ...entry.rect } }]);
+    },
+    release(claim) {
+      const index = rects.indexOf(claim);
+      if (index >= 0) released.add(index);
     },
   };
 }

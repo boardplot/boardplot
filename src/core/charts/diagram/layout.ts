@@ -2,12 +2,12 @@ import { chartString } from '../../strings/diagram';
 import { chartPalette, chartTheme } from '../chartEnv';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { structureCount, type StructureCount } from '../../structureCounts';
-import { rectContains, rectsOverlap, type Rect } from '../../geometry';
+import { rectContains, rectsOverlap, type Point, type Rect } from '../../geometry';
 import { fitText } from '../../label/fitText';
 import { frameTextOptions, solveFrame, type LegendItemInput } from '../../frame';
 import { labelsToNodes } from '../../label/emit';
-import { createOccupiedIndex } from '../../label/occupied';
-import { labelCtx, PRIORITY, solveLabels, type LabelRequest } from '../../label/solver';
+import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
+import { labelCtx, PRIORITY, seatLeader, solveLabels, type LabelRequest, type SolveCtx } from '../../label/solver';
 import { accessibleTitle, NormalizeError, resolveSize } from '../../normalize/shared';
 import { defaultMeasurer, wrapText, type FontSpec } from '../../text';
 import { emphasisWeight, headingWeight, resolveSurface, strokeToken, canvasMargin, paintColor, panelTypeClass } from '../../theme';
@@ -284,7 +284,7 @@ function layoutDiagramPass(
   const refusedIds = ensurePositionContract(rawData.nodes, data.nodes, preset.nodeRects, plot, warnings);
 
   const labelRequests: LabelRequest[] = [];
-  const splitLabels = new Map<string, LabelRequest[]>();
+  const joinedLabels = new Map<string, JoinedLabel>();
   const labelKinds = new Map<string, DiagramLabelKind>();
   /** Node labels whose first lines are the step name, printed bold. */
   const boldLeads = new Map<string, number>();
@@ -437,7 +437,7 @@ function layoutDiagramPass(
       org !== undefined && !org.centred,
       emphasisWeight(theme),
       org?.captionBoxes ? { font: captionFont, box: org.captionBoxes.get(node.id) } : org?.seats ? { font: labelFont, seat: org.seats.get(node.id) } : undefined,
-      splitLabels,
+      joinedLabels,
     );
     if (node.badge || options.variant === 'linear-process') {
       // An authored badge takes its role; the engine's step number is no
@@ -504,24 +504,8 @@ function layoutDiagramPass(
     plot,
     labelPad: 1,
   });
-  let solvedStructural: ReturnType<typeof solveLabels>;
-  if (splitLabels.size === 0) solvedStructural = solveLabels(labelRequests, occupied, structuralCtx);
-  else {
-    // An outside label block that carries its secondary lines and finds no
-    // seat is solved again as the primary label alone.
-    const marks = occupied.snapshot();
-    const solveOn = (requests: LabelRequest[]) => {
-      const trial = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
-      trial.tickColumns = occupied.tickColumns;
-      for (const claim of marks) trial.claim(claim.rect, claim.kind, claim.owner, claim.part, claim.polygon);
-      return { solved: solveLabels(requests, trial, structuralCtx), trial };
-    };
-    let attempt = solveOn(labelRequests);
-    const lost = new Set(attempt.solved.placed.filter(label => label.hidden && splitLabels.has(label.id)).map(label => label.id));
-    if (lost.size > 0) attempt = solveOn(labelRequests.flatMap(request => lost.has(request.id) ? splitLabels.get(request.id)! : [request]));
-    for (const claim of attempt.trial.snapshot().slice(marks.length)) occupied.claim(claim.rect, claim.kind, claim.owner, claim.part, claim.polygon);
-    solvedStructural = attempt.solved;
-  }
+  const solvedStructural = solveLabels(labelRequests, occupied, structuralCtx);
+  settleJoinedLabels(solvedStructural, joinedLabels, nodeMarks, occupied, { x: 0, y: 0, w: size.width, h: size.height }, structuralCtx);
   remapLabelKinds(solvedStructural.placed, labelKinds);
   // A compact layout's own inks: a muted description, a numeral in its step's fill.
   for (const label of solvedStructural.placed) {
@@ -752,8 +736,8 @@ function addNodeLabels(
   leadWeight = font.weight,
   /** A compact layout's caption type and its seat. */
   caption?: { font: FontSpec; box?: { rect: Rect; lines: string[] }; seat?: { rect: Rect; lines: string[] } },
-  /** Per node label id, the requests that stand in for the label block when it finds no seat with its secondary lines. */
-  split?: Map<string, LabelRequest[]>,
+  /** Per node label id, what the label block needs once the solver has seated it with its secondary lines or without them. */
+  joinedLabels?: Map<string, JoinedLabel>,
 ): void {
   const external = options.variant === 'roadmap' || options.variant === 'circular-process';
   // A cycle step's label sits on the side of its node that faces away from
@@ -783,7 +767,7 @@ function addNodeLabels(
     : fitText(node.label, font, maxWidth, 3, measure, externalFit);
   if (lead) boldLeads.set(id, lead.lines.length);
   const lineH = font.size * (font.lineHeight ?? 1.2);
-  const secondary = node.secondaryLabel ? fitText(node.secondaryLabel, font, external ? maxWidth : resolved.contentRect.w, 2, measure, external ? externalFit : { target: options.target, typeRole: 'label' }) : undefined;
+  const secondary = node.secondaryLabel ? fitText(node.secondaryLabel, font, resolved.contentRect.w, 2, measure, { target: options.target, typeRole: 'label' }) : undefined;
   const secondaryHeight = (secondary?.lines.length ?? 0) * lineH;
   const height = primary.lines.length * lineH;
   const secondaryFits = secondary && !secondary.title && height + secondaryHeight + u <= resolved.contentRect.h;
@@ -830,18 +814,24 @@ function addNodeLabels(
       candidates,
     };
   };
-  // A node with its label outside has no room inside for a second text: the
-  // secondary lines follow the primary lines in one outside block. Where that
-  // taller block finds no seat, the layout solves again with the primary label
-  // alone and the secondary text unplaced (see `split`).
-  const joined = external && !seat && secondary && !secondaryFits ? secondary : undefined;
-  if (joined) {
+  requests.push(labelRequest(primary, node.label));
+  // A node with its label outside has no room inside for a second text. Its
+  // secondary lines follow the name in one outside block, which settles after
+  // the solve (see `settleJoinedLabels`).
+  const outside = joinedLabels && external && !seat && node.secondaryLabel && !secondaryFits
+    ? fitText(node.secondaryLabel, font, maxWidth, 2, measure, externalFit) : undefined;
+  if (outside) {
     const text = `${node.label}\n${node.secondaryLabel}`;
-    requests.push(labelRequest({
-      lines: [...primary.lines, ...joined.lines],
-      title: primary.title !== undefined || joined.title !== undefined ? text : undefined,
-    }, text));
-    split?.set(id, [labelRequest(primary, node.label), secondaryRequest(joined)]);  } else requests.push(labelRequest(primary, node.label));
+    const block = { lines: [...primary.lines, ...outside.lines], title: primary.title !== undefined || outside.title !== undefined ? text : undefined };
+    joinedLabels?.set(id, {
+      text,
+      lines: block.lines,
+      title: block.title,
+      seats: () => labelRequest(block, text).candidates,
+      from: { x: resolved.rect.x + resolved.rect.w / 2, y: resolved.rect.y + resolved.rect.h / 2 },
+      secondary: secondaryRequest(secondary!),
+    });
+  }
   if (primary.title !== undefined) {
     warnings.push({
       code: 'diagram-node-label-unplaced',
@@ -880,9 +870,82 @@ function addNodeLabels(
       ],
     };
   }
-  if (secondary && !joined) requests.push(secondaryRequest(secondary));
+  if (secondary && !outside) requests.push(secondaryRequest(secondary));
 
   addNodeCaption(node, resolved, options, caption?.font ?? font, measure, u, requests, kinds, caption?.box);
+}
+
+/** An outside node label that can take its node's secondary lines as extra lines of one block. */
+interface JoinedLabel {
+  /** The label text, lines and title of the name with its secondary lines. */
+  text: string;
+  lines: string[];
+  title: string | undefined;
+  /** The seats of that taller block, in the order of the name's own seats. */
+  seats: () => LabelRequest['candidates'];
+  /** The centre of the node, where a leader starts. */
+  from: Point;
+  /** The secondary text as a request of its own, which has no seat. */
+  secondary: LabelRequest;
+}
+
+/**
+ * Gives each outside node label its secondary lines once every name has its
+ * seat. The taller block takes the first of its seats that is clear of every
+ * other claim, and the name keeps its own seat where none is, so a secondary
+ * text cannot cost any node its name. A secondary text with no room stays
+ * unplaced and goes to the note.
+ */
+function settleJoinedLabels(
+  solved: ReturnType<typeof solveLabels>,
+  joined: ReadonlyMap<string, JoinedLabel>,
+  nodes: readonly ResolvedDiagramNode[],
+  occupied: OccupiedIndex,
+  canvas: Rect,
+  ctx: SolveCtx,
+): void {
+  if (joined.size === 0) return;
+  const pad = ctx.labelPad ?? 2;
+  const unplaced: LabelRequest[] = [];
+  for (const [id, entry] of joined) {
+    const label = solved.placed.find(candidate => candidate.id === id);
+    const name = label && !label.hidden
+      ? occupied.hitsWhich(label.rect, 0).find(claim => claim.kind === 'label' && claim.owner.pointId === label.owner.pointId && sameRect(claim.rect, label.rect))
+      : undefined;
+    if (!label || !name) {
+      unplaced.push(entry.secondary);
+      continue;
+    }
+    // The name gives up its own claim while its taller block looks for a seat.
+    occupied.release?.(name);
+    const seat = entry.seats().find(candidate => rectContains(canvas, candidate.rect, 0) && !occupied.hits(candidate.rect, pad));
+    if (!seat) {
+      occupied.claim(label.rect, 'label', label.owner);
+      unplaced.push(entry.secondary);
+      continue;
+    }
+    occupied.claim(seat.rect, 'label', label.owner);
+    label.rect = seat.rect;
+    label.slot = seat.slot;
+    label.lines = entry.lines;
+    label.text = entry.text;
+    if (entry.title === undefined) delete label.title;
+    else label.title = entry.title;
+    const leader = seatLeader(seat.rect, entry.from);
+    if (leader) label.leader = leader;
+    else delete label.leader;
+    const node = nodes.find(candidate => candidate.id === label.owner.pointId);
+    if (node) node.secondaryPrinted = true;
+  }
+  if (unplaced.length === 0) return;
+  const rest = solveLabels(unplaced, occupied, ctx);
+  solved.placed.push(...rest.placed);
+  solved.decisions.push(...rest.decisions);
+  solved.warnings.push(...rest.warnings);
+}
+
+function sameRect(a: Rect, b: Rect): boolean {
+  return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
 }
 
 /** The side of the plot centre a ring node sits on: where its label goes. */

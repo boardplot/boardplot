@@ -287,7 +287,7 @@ function diagramRecords(ctx: RecordContext): InteractionRecord[] {
     return makeRecord(ctx, { pointId: mark.id }, textValue(node.label), {
       label: node.label, nodeIds: mark.sceneNodeIds, anchor: mark.rect,
       fields: fields.map(({ key, label, value }) => ({ key, label, value })),
-      cardFields: fields.filter(field => unprinted(field.labelId)).map(field => field.key),
+      cardFields: fields.filter(field => !(field.key === 'secondaryLabel' && mark.secondaryPrinted) && unprinted(field.labelId)).map(field => field.key),
     });
   });
   const edges = marks.edges.map(mark => {

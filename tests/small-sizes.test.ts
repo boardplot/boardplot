@@ -9,6 +9,7 @@ import { getChart } from '../src/core/registry';
 import { getFixtures, getRefusalExamples } from '../src/fixtures';
 import { canDraw, measure } from '../src/index';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
+import { interactionRecords } from '../src/core/a11y/records';
 import { BoardplotTheme } from '../src/react/BoardplotTheme';
 import { layoutDiagram } from '../src/core/charts/diagram/layout';
 import type { DiagramData } from '../src/core/types/diagram';
@@ -812,4 +813,38 @@ it('draws a roadmap milestone secondary text under its name', () => {
   expect(body.ok).toBe(true);
   expect(body.reading.omissions).toEqual([]);
   expect(body.warnings.filter((warning: { code: string }) => warning.code === 'diagram-secondary-label-unplaced')).toEqual([]);
+});
+
+// A milestone whose secondary text prints under its name must not open a hover card that only repeats that text.
+it('opens no hover card for a roadmap secondary text printed under the name', () => {
+  const lanes = [{ id: 'w1', label: 'Wave 1', orientation: 'vertical', role: 'category', paletteKey: 'w1', order: 1 }];
+  const nodes = ['Pilot live', 'First ten sites', 'Platform v2 live', 'All sites live'].map((label, i) => ({ id: `m${i}`, kind: 'milestone', shape: { kind: 'circle' }, label, secondaryLabel: `Q${i + 1} FY27`, laneId: 'w1', role: 'category', paletteKey: 'w1', order: i + 1 }));
+  const request = resolveChartRequest({ type: 'diagram', data: { lanes, nodes }, options: { variant: 'roadmap', title: 'Four milestones', source: 'Invented' } } as never);
+  const geometry = layoutResolvedRequest(request) as Geometry;
+  expect(geometry.labels.filter(label => label.id.startsWith('node-label:') && label.text.includes('\n') && !label.hidden).length).toBe(4);
+  const records = interactionRecords({ request, geometry, scope: request.scope, claims: [] });
+  expect(records.map(record => record.cardFields)).toEqual([[], [], [], []]);
+  expect(records[0]!.fields.map(field => field.key)).toContain('secondaryLabel');
+});
+
+// Twelve milestones in three waves on a small canvas: every name must draw, as it does without secondary text.
+it('keeps every roadmap milestone name when secondary text crowds the canvas', () => {
+  const lanes = [0, 1, 2].map(i => ({ id: `w${i}`, label: `Wave ${i}`, orientation: 'vertical', role: 'category', paletteKey: `w${i}`, order: i + 1 }));
+  const nodes = Array.from({ length: 12 }, (_, i) => ({ id: `m${i}`, kind: 'milestone', shape: { kind: 'circle' }, label: `Milestone ${i} reached`, secondaryLabel: `Q${i % 4} FY27 delivery`, laneId: `w${i % 3}`, role: 'category', paletteKey: `w${i % 3}`, order: i + 1 }));
+  const result = layoutDiagram({ lanes, nodes } as never, { variant: 'roadmap', size: { width: 700, height: 400 } } as never, false);
+  expect(result.labels.filter(label => label.id.startsWith('node-label:') && label.hidden)).toEqual([]);
+  expect(result.warnings.filter(warning => warning.code === 'diagram-node-label-unplaced')).toEqual([]);
+});
+
+// A cycle step whose node is tall enough keeps its secondary text inside, so the text must fit the node's own width, not the wider outside label.
+it('keeps a cycle step secondary text inside its node', () => {
+  const nodes = ['Share results', 'Refer leads', 'Qualify fast', 'Deliver value'].map((label, i) => ({ id: `s${i}`, kind: 'step', shape: { kind: 'circle' }, label, secondaryLabel: 'Customer reply within twenty-four hours', role: 'primary', order: i + 1 }));
+  const edges = nodes.map((node, i) => ({ id: `e${i}`, source: { nodeId: node.id }, target: { nodeId: `s${(i + 1) % 4}` }, arrowEnd: true }));
+  const result = layoutDiagram({ nodes, edges } as never, { variant: 'circular-process', size: { width: 700, height: 700 } } as never, false);
+  const inside = result.labels.filter(label => label.slot === 'inside-secondary' && !label.hidden);
+  expect(inside.length).toBeGreaterThan(0);
+  for (const label of inside) {
+    const node = result.marks.nodes.find(mark => mark.id === label.owner.pointId)!;
+    expect(label.rect.w).toBeLessThanOrEqual(node.contentRect.w);
+  }
 });
