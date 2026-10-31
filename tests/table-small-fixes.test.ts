@@ -535,6 +535,31 @@ it('keeps the shares of the kept rows when topN.rest false omits rows', () => {
   expect(shares()).toMatchObject({ a: '50.0%', b: '30.0%', tot: '100.0%' });
 });
 
+// An omitted row's of-which detail was counted in the share denominator, so the kept share read 58.8% against 62.5% in the full table.
+it('leaves the detail under an omitted row out of the share denominator', () => {
+  const data = tableDataSchema.parse({
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'rev', kind: 'value' }, { id: 'share', kind: 'computed', calc: { op: 'share', of: 'rev' }, format: '1.1%' }],
+    rows: [{ id: 'a', cells: { rev: 500 } }, { id: 'b', cells: { rev: 300 } },
+      { id: 'b1', parentId: 'b', relation: 'ofWhich', cells: { rev: 100 } }, { id: 'b1x', parentId: 'b1', cells: { rev: 50 } }],
+  });
+  const share = (topN?: { n: number; rest: boolean }) =>
+    resolveTable(data, { target: 'report', topN }).table.rows.find(row => row.id === 'a')!.cells.share!.displayed;
+  expect(share()).toBe('62.5%');
+  expect(share({ n: 1, rest: false })).toBe('62.5%');
+});
+
+// Hidden rows were placed after every shown row, so an equal-remainder tie went to different rows than in the full table (26.7% against 26.6%).
+it('breaks equal share remainders in full-table row order when rows are hidden', () => {
+  const data = tableDataSchema.parse({
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'rev', kind: 'value' }, { id: 'share', kind: 'computed', calc: { op: 'share', of: 'rev' }, format: '1.1%' }],
+    rows: [{ id: 'a', cells: { rev: 1 } }, { id: 'b', cells: { rev: 1 } }, { id: 'c', cells: { rev: 4 } }, { id: 'd', cells: { rev: 9 } }],
+  });
+  const share = (topN?: { n: number; rest: boolean }) =>
+    resolveTable(data, { target: 'report', topN }).table.rows.find(row => row.id === 'c')!.cells.share!.displayed;
+  expect(share()).toBe('26.6%');
+  expect(share({ n: 2, rest: false })).toBe('26.6%');
+});
+
 // Tone text printed in the raw tone read 2.96:1 on the standard total ground of this fixture.
 it('prints table tone text at 4.5:1 or more on its ground', () => {
   const tones = new Set(['good', 'bad', 'warn']);
