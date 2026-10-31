@@ -114,6 +114,20 @@ describe('root key fixes', () => {
     }
   });
 
+  // The options schema lists `unit` for combo and pyramid, but a moved unit is refused again at layout (series units that differ, a share basis), with no fix; the key moves only when the moved chart draws.
+  it('moves a root key only when the moved chart draws', () => {
+    for (const [type, id] of [['combo', 'counts-fraction-rate'], ['pyramid', 'workforce-tenure-gender']] as const) {
+      const { title: _title, source: _source, ...options } = fixtureSpec(type, id).options;
+      const spec = { ...fixtureSpec(type, id), options, source: 'Finance', unit: 'U' };
+      const refused = render({ spec, format: 'svg' }).body as any;
+      expect(refused.ok).toBe(false);
+      const fixed = applyPatch(spec, refused.errors.flatMap((error: any) => error.fix));
+      expect(fixed.options).toMatchObject({ source: 'Finance' });
+      expect(fixed.options).not.toHaveProperty('unit');
+      expect(render({ spec: fixed, format: 'svg' }).body).toMatchObject({ ok: true });
+    }
+  });
+
   // A stray root key beside charts got a move into a root options that an envelope does not have; the fixed document was refused.
   it('draws an envelope after its stray root key is removed', () => {
     for (const extra of [{ title: 'Revenue' }, { unit: 'EUR m' }, { foo: 1 }, { type: 'column' }]) {

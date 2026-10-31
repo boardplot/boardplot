@@ -271,12 +271,24 @@ function themeUsage(doc: BoardplotDoc, charts: DocChart[], theme: Theme): ThemeU
   return { roles, types, series };
 }
 
+/** Whether a spec with no stray key loads and every chart of it lays out: a fix that moves a root key is offered only then. */
+function drawsAfterFix(candidate: Record<string, unknown>): boolean {
+  try {
+    const loaded = loadSpec(candidate);
+    if ('errors' in loaded) return false;
+    const scratch: DocumentEnvelope = { ok: true, errors: [], warnings: [] };
+    return loaded.doc.charts.every((chart) => layoutChart(loaded.doc, chart, scratch) !== null) && scratch.errors.length === 0;
+  } catch {
+    return false;
+  }
+}
+
 /** Parse the spec, or return the findings that refuse it. */
 export function loadSpec(spec: unknown): LoadedSpec | { errors: DocumentFinding[]; bare: boolean } {
   assertSpecObject(spec);
   const bare = isBareChart(spec);
   try {
-    const { doc, envelope } = parseDocumentInput(ownedDocumentCopy(spec));
+    const { doc, envelope } = parseDocumentInput(ownedDocumentCopy(spec), { accepts: drawsAfterFix });
     const rootJudged = registerThemeObject(doc, envelope);
     const rootErrors = rootContextErrors(doc).map((finding) => completeDiagnostic(finding, doc));
     if (rootErrors.length) return { errors: rootErrors, bare };

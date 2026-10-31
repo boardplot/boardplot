@@ -731,10 +731,20 @@ function schemaNodeAtPath(schema: z.ZodType, path: readonly (string | number)[])
   return nodes;
 }
 
+/** The option keys of each chart type, read once: building the JSON schema for them takes tens of milliseconds. */
+const optionKeysByType = new Map<string, ReadonlySet<string>>();
+
 /** Whether the options schema of a chart type (or alias) lists `key`; false for an unknown type. */
 export function optionsTake(type: string, key: string): boolean {
-  const def = getChartSchemas(type);
-  return !!def && expectedObjectKeys(def.optionsSchema as z.ZodType, []).includes(key);
+  let keys = optionKeysByType.get(type);
+  if (!keys) {
+    const def = getChartSchemas(type);
+    // An unknown type is not cached: a schema chunk may register later.
+    if (!def) return false;
+    keys = new Set(expectedObjectKeys(def.optionsSchema as z.ZodType, []));
+    optionKeysByType.set(type, keys);
+  }
+  return keys.has(key);
 }
 
 /** The keys the object at `path` accepts; a key it refuses by name (`not: {}`) is not one of them. */

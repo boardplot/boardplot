@@ -6,7 +6,7 @@ import { documentSchemaHint, documentSchemaHintWarning } from '../schema/documen
 import { flattenIssues } from '../schema/flattenIssues';
 import type { LintWarning } from '../types/scene';
 import type { ThemeRef } from '../types/theme';
-import { optionsTake } from './chartValidation';
+import { optionsTake, validateChartInput } from './chartValidation';
 import { DocExpansionError, expandDoc, missingChartName, ownedDocumentCopy } from './docExpand';
 import { completeDiagnostic, rememberDiagnosticSource, sourceSchemaDiagnostic, type DocumentFinding } from './diagnostics';
 import { toJsonPointer } from '../diagnostics/jsonPatch';
@@ -157,25 +157,59 @@ function unknownField(
 
 /** Chart furniture an author often puts at the top level; options takes each of these as a string. */
 const MOVABLE_KEYS = ['title', 'subtitle', 'unit', 'source'] as const;
-/** Movable only when the chart type's options schema lists the key: diagram and creative take no `unit`, and a moved key there would be refused again. */
-const isMovable = (input: Record<string, unknown>, key: string): boolean => (MOVABLE_KEYS as readonly string[]).includes(key) && typeof input[key] === 'string'
-  && typeof input.type === 'string' && optionsTake(input.type, key);
+
+/** Whether a spec, once its stray keys are gone, is accepted: it parses and its chart passes the chart schemas. */
+function schemaAccepts(candidate: Record<string, unknown>): boolean {
+  try {
+    const { doc } = parseDocumentInput(candidate);
+    const scratch: DocumentEnvelope = { ok: true, errors: [], warnings: [] };
+    return doc.charts.every(chart => validateChartInput(doc, chart, scratch) !== null) && scratch.errors.length === 0;
+  } catch {
+    return false;
+  }
+}
+
+/** Reads a spec the way the caller will: `accepts` says whether a spec with no stray key is accepted. Without it, only the schemas judge. */
+export interface ParseHooks {
+  accepts?: (candidate: Record<string, unknown>) => boolean;
+}
+
+/**
+ * The stray keys whose fix moves the value into options. A key moves only when
+ * the chart type's options list it and the spec with that value moved (and
+ * every other stray key removed) is accepted. The options schema listing a
+ * key does not prove the value is accepted: a combo whose series carry units
+ * refuses a chart unit of another name, and a pyramid of shares refuses a unit
+ * at all. Such a key is removed, as for any key options do not take.
+ */
+function movableKeys(input: Record<string, unknown>, strays: readonly string[], accepts: (candidate: Record<string, unknown>) => boolean): ReadonlySet<string> {
+  const { options, type } = input;
+  const candidates = typeof type === 'string' ? strays.filter(key => (MOVABLE_KEYS as readonly string[]).includes(key) && typeof input[key] === 'string'
+    && optionsTake(type, key) && (options === undefined || (isRecord(options) && !Object.hasOwn(options, key)))) : [];
+  if (candidates.length === 0) return new Set();
+  const moved = (keys: readonly string[]): boolean => {
+    const rest = Object.fromEntries(Object.entries(input).filter(([key]) => !strays.includes(key) && key !== 'version' && key !== 'name'));
+    return accepts({ ...rest, options: { ...(isRecord(options) ? options : {}), ...Object.fromEntries(keys.map(key => [key, input[key]])) } });
+  };
+  if (moved(candidates)) return new Set(candidates);
+  const single = candidates.filter(key => moved([key]));
+  return new Set(single.length > 1 && !moved(single) ? [] : single);
+}
 
 /**
  * A top-level `title`, `subtitle`, `unit` or `source` string holds what the
  * author meant for the chart, so its fix moves it into options instead of
- * dropping it unseen. Any other stray key is no option name, so options would
- * refuse it: its fix removes it, and the fixed chart draws.
+ * dropping it unseen, when the moved chart is accepted (`movableKeys`). Any
+ * other stray key is no option name, so options would refuse it: its fix
+ * removes it, and the fixed chart draws.
  */
-function strayKey(input: Record<string, unknown>, key: string, where: string, strays: readonly string[]): DocumentFinding {
-  if (!isMovable(input, key)) return unknownField(input, [key], where);
+function strayKey(input: Record<string, unknown>, key: string, where: string, moved: ReadonlySet<string>): DocumentFinding {
+  if (!moved.has(key)) return unknownField(input, [key], where);
   const { options } = input;
   // Without options, every fix adds the same whole object: two adds of /options would otherwise overwrite each other.
-  const append = options === undefined ? { op: 'add' as const, path: '/options', value: Object.fromEntries(strays.filter(name => isMovable(input, name)).map(name => [name, input[name]])) }
-    : isRecord(options) && !Object.hasOwn(options, key) ? { op: 'add' as const, path: toJsonPointer(['options', key]), value: input[key] }
-      : undefined;
-  // Options already hold this key (or are no object): the options value stays and the fix removes the top-level copy.
-  return append ? unknownField(input, [key], where, { suggest: `Move '${key}' into options.`, fix: [append, { op: 'remove', path: toJsonPointer([key]) }] }) : unknownField(input, [key], where);
+  const append = options === undefined ? { op: 'add' as const, path: '/options', value: Object.fromEntries([...moved].map(name => [name, input[name]])) }
+    : { op: 'add' as const, path: toJsonPointer(['options', key]), value: input[key] };
+  return unknownField(input, [key], where, { suggest: `Move '${key}' into options.`, fix: [append, { op: 'remove', path: toJsonPointer([key]) }] });
 }
 
 /**
@@ -183,7 +217,7 @@ function strayKey(input: Record<string, unknown>, key: string, where: string, st
  * author would get no signal that `chart.title` or a typo'd `anotations` did
  * nothing. A non-string root locale stays a warning, because it has no effect.
  */
-function unknownDocFields(raw: unknown): { errors: DocumentFinding[]; warnings: LintWarning[] } {
+function unknownDocFields(raw: unknown, accepts: (candidate: Record<string, unknown>) => boolean): { errors: DocumentFinding[]; warnings: LintWarning[] } {
   const errors: DocumentFinding[] = [];
   const warnings: LintWarning[] = [];
   if (!isRecord(raw)) return { errors, warnings };
@@ -199,6 +233,7 @@ function unknownDocFields(raw: unknown): { errors: DocumentFinding[]; warnings: 
   // `version` beside chart keys and no `charts`: the keys are one chart and the version is the stray one.
   const oneChart = !Object.hasOwn(raw, 'charts') && ['type', 'data', 'options', 'annotations'].some(key => Object.hasOwn(raw, key));
   const strays = Object.keys(raw).filter(key => !DOC_ROOT_FIELDS.has(key) && !(oneChart && BARE_FIELDS.has(key)));
+  const moved = oneChart ? movableKeys(raw, strays, accepts) : new Set<string>();
   for (const key of Object.keys(raw)) {
     if (oneChart && key === 'version') {
       errors.push(completeDiagnostic({
@@ -209,7 +244,7 @@ function unknownDocFields(raw: unknown): { errors: DocumentFinding[]; warnings: 
       }, raw, ['version'], 'docs/manual.md#the-spec'));
     } else if (strays.includes(key)) {
       // An envelope has no root options to move a key into, so its fix removes the key.
-      errors.push(oneChart ? strayKey(raw, key, 'Root', strays) : unknownField(raw, [key], 'Root'));
+      errors.push(oneChart ? strayKey(raw, key, 'Root', moved) : unknownField(raw, [key], 'Root'));
     }
   }
   if (Object.hasOwn(raw, 'locale') && typeof raw.locale !== 'string') {
@@ -230,9 +265,10 @@ function unknownDocFields(raw: unknown): { errors: DocumentFinding[]; warnings: 
   return { errors, warnings };
 }
 
-function bareFieldErrors(spec: Record<string, unknown>): DocumentFinding[] {
+function bareFieldErrors(spec: Record<string, unknown>, accepts: (candidate: Record<string, unknown>) => boolean): DocumentFinding[] {
   const strays = Object.keys(spec).filter((key) => !BARE_FIELDS.has(key));
-  const errors = strays.map((key) => strayKey(spec, key, 'Top-level', strays));
+  const moved = movableKeys(spec, strays, accepts);
+  const errors = strays.map((key) => strayKey(spec, key, 'Top-level', moved));
   if (Object.hasOwn(spec, 'name') && !(typeof spec.name === 'string' && FILE_STEM.test(spec.name))) {
     errors.push(completeDiagnostic({
       code: 'invalid-name',
@@ -248,9 +284,10 @@ function bareFieldErrors(spec: Record<string, unknown>): DocumentFinding[] {
  * envelope first; findings then point into that envelope, and `bareFinding`
  * points them back into the bare spec.
  */
-export function parseDocumentInput(input: unknown): DocumentParseResult {
+export function parseDocumentInput(input: unknown, hooks: ParseHooks = {}): DocumentParseResult {
+  const accepts = hooks.accepts ?? schemaAccepts;
   if (isBareChart(input)) {
-    const unknown = bareFieldErrors(input);
+    const unknown = bareFieldErrors(input, accepts);
     if (unknown.length) throw new DocumentSchemaError(unknown.map((finding) => ({ ...finding, path: `/charts/0${finding.path}`,
       fix: finding.fix?.map((operation) => ({ ...operation, path: `/charts/0${operation.path}` })) })));
     input = bareEnvelope(input);
@@ -264,7 +301,7 @@ export function parseDocumentInput(input: unknown): DocumentParseResult {
       code: 'cli-error', message: atPath({ displayPath: issue.path.join('.') }, issue.message), displayPath: issue.path.join('.'), suggest: SHAPE_SUGGEST,
     }, input, issue.path)));
   }
-  const fields = unknownDocFields(input);
+  const fields = unknownDocFields(input, accepts);
   if (fields.errors.length) throw new DocumentSchemaError(fields.errors);
   // Re-own the root assembled by expansion and every schema output: inherited
   // properties must never turn into authored options at this process boundary.
