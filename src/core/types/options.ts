@@ -1188,7 +1188,9 @@ export interface ParetoOptions extends Omit<BaseOptionsFor<'pareto'>, 'sort'> {
   /**
    * Scale the left axis to the total, so 100 % on the right sits level with
    * the total on the left and the curve starts at the top of the first
-   * column; default false keeps two independent scales.
+   * column. Default: on when a vital few reaches the threshold and no
+   * valueAxis.min or max is set, off for a flat distribution; false keeps
+   * two independent scales.
    */
   totalScale?: boolean;
 }

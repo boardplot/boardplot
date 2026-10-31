@@ -367,7 +367,9 @@ function referenceLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, re
 function nearestOwnMarkFirst(outer: SlotCandidate[], edgeY: number, lineYs: number[], inside: SlotCandidate | undefined, tieIsOwn: boolean, insideLast?: SlotCandidate): SlotCandidate[] {
   const own = (c: SlotCandidate) => {
     const cy = c.rect.y + c.rect.h / 2;
-    return lineYs.every((ly) => (tieIsOwn && Math.abs(ly - edgeY) < 0.5) || Math.abs(cy - ly) > Math.abs(cy - edgeY));
+    // A line point on the column top (within half a pixel) is a tie: the column's own mark where
+    // tieIsOwn, else a rival, never decided by float noise (a total-scaled Pareto starts its curve there).
+    return lineYs.every((ly) => Math.abs(ly - edgeY) < 0.5 ? tieIsOwn : Math.abs(cy - ly) > Math.abs(cy - edgeY));
   };
   return [...outer.filter(own), ...(inside ? [inside] : []), ...outer.filter((c) => !own(c)).map(c => ({ ...c, lastResort: true as const })),
     ...(insideLast ? [insideLast] : [])].map((c, penalty) => ({ ...c, penalty }));

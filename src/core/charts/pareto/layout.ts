@@ -556,8 +556,17 @@ export function layoutPareto(
   const primaryTitle = valueAxisTitleText(resolveTheme(options.theme), options.axisTitles?.primary, options, options.unit);
 
   const curveTitled = drawCumulative && highlighted.length === 0;
+  // The highlight's key item; it carries the vital few's share where the curve does not print it.
+  const topKey = (curveShows: boolean) => chartString(options, 'paretoTop', { v1: /^de(?:[-_]|$)/i.test(options.locale?.language ?? '') ? chartString(options, 'numberCount', { v1: highlighted.length }) : countWord(highlighted.length), v2: curveShows
+    ? '' : `: ${curveShareText(populationShare[highlighted.at(-1)!]!)}` });
+  // A concentrated Pareto reads columns and curve as one measure: the left
+  // axis runs to the total, so 100 % sits level with it and the curve starts
+  // on the first column. A flat distribution keeps the column-capped axis,
+  // where its equal columns would otherwise shrink to a sliver. An authored
+  // valueAxis.min or max keeps its scale.
+  const totalScaled = drawCumulative && (options.totalScale ?? (concentrated && options.valueAxis?.min === undefined && options.valueAxis?.max === undefined));
   const comboOptions: ComboOptions & { [FORCE_CATEGORY_RANKS]?: true; defaultFormat?: string; [FIRST_END_BELOW_TOTALS]?: boolean; [CATEGORY_ROW_FROM_END]?: boolean; [CATEGORY_ROW_VERTICAL]?: boolean; [SECONDARY_FULL_DOMAIN]?: readonly [number, number] } = {
-    [SECONDARY_FULL_DOMAIN]: options.totalScale === true && drawCumulative ? [0, total] : undefined,
+    [SECONDARY_FULL_DOMAIN]: totalScaled ? [0, total] : undefined,
     ...stripParetoOnly(options),
     [CATEGORY_ROW_FROM_END]: false,
     // Cause names that must rotate stand vertical, whole, each in its column.
@@ -584,8 +593,7 @@ export function layoutPareto(
           [HIGHLIGHT_KEY]: {
             // The share the vital few reach prints once, on the curve where it
             // prints there, else in the key.
-            highlighted: chartString(options, 'paretoTop', { v1: /^de(?:[-_]|$)/i.test(options.locale?.language ?? '') ? chartString(options, 'numberCount', { v1: highlighted.length }) : countWord(highlighted.length), v2: curvePrints(curve, plotted.findIndex((p) => p.id === highlighted.at(-1)), options.labels)
-              ? '' : `: ${curveShareText(populationShare[highlighted.at(-1)!]!)}` }),
+            highlighted: topKey(curvePrints(curve, plotted.findIndex((p) => p.id === highlighted.at(-1)), options.labels)),
             // The rest group is every column outside the top ones, not the pooled "Others" column.
             rest: chartWording(options, 'others', chartString(options, 'outsideTop', { v1: /^de(?:[-_]|$)/i.test(options.locale?.language ?? '') ? chartString(options, 'numberCount', { v1: highlighted.length }) : countWord(highlighted.length) })),
             legend: legendRequired(options.legend, warnings, 'pareto', resolveTheme(options.theme), 'the column colours mark the causes that reach the threshold'),
@@ -603,7 +611,7 @@ export function layoutPareto(
     // column heights read against a scale beside the right-hand share axis,
     // under the title above. valueAxis.show: false drops it.
     // Scaled to the total, the left axis tops out where the curve reaches 100 %.
-    valueAxis: { ...options.valueAxis, show: options.valueAxis?.show ?? !bareAxes, ...(options.totalScale === true && drawCumulative ? { min: 0, max: total } : {}) },
+    valueAxis: { ...options.valueAxis, show: options.valueAxis?.show ?? !bareAxes, ...(totalScaled ? { min: 0, max: total } : {}) },
     // The right axis says what the curve is; its title carries the curve's swatch.
     // with the highlight key, the curve's line item there names it instead.
     ...(primaryTitle || curveTitled
@@ -655,6 +663,16 @@ export function layoutPareto(
   // Without the key, ranks name nothing, so the cut name stays (its title keeps it whole).
   if (rankKeyShown(options) && geo.warnings.some((w) => w.code === 'category-labels-truncated')) {
     comboOptions[FORCE_CATEGORY_RANKS] = true;
+    geo = render([]);
+  }
+  // The share the vital few reach prints once. Where the curve's label there lost its seat (a
+  // total-scaled curve that starts on a crowded first column), the key carries it.
+  const key = (comboOptions as { [HIGHLIGHT_KEY]?: HighlightKey })[HIGHLIGHT_KEY];
+  if (key && key.highlighted === topKey(true)
+    && geo.labels.some((l) => l.id === `point:${CUMULATIVE_SERIES_ID}:${highlighted.at(-1)}` && l.hidden !== undefined)) {
+    key.highlighted = topKey(false);
+    const at = plotted.findIndex((p) => p.id === highlighted.at(-1));
+    curve[at] = { number: cumulativeShare[highlighted.at(-1)!]!, label: false };
     geo = render([]);
   }
   let unnamed = unnamedColumns(geo, plotted);
