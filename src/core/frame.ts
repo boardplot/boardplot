@@ -26,7 +26,7 @@ import { PRIORITY } from './label/solver';
 import { footnoteMark } from './footnoteMark';
 import { localeStrings } from './strings/frame';
 import { withLocaleStrings } from './strings';
-import { chartNotes, copyNote, defaultNoteLines, defaultNotePlacement, engineNote, engineNoteMeta, footerParts, keepNoteMeta, notesPointer, shownNoteKinds, sourceLine, valueNote, type ChartCredit, type ChartNote, type NoteKind, type NoteList } from './notes';
+import { allQuiet, chartNotes, copyNote, defaultNoteLines, defaultNotePlacement, engineNote, engineNoteMeta, footerParts, keepNoteMeta, notesPointer, shownNoteKinds, sourceLine, valueNote, type ChartCredit, type ChartNote, type NoteKind, type NoteList } from './notes';
 import { harveyWedgePath } from './svgPath';
 import { parseFormatExample, unitOfSpec } from './formatSpec';
 import { hasAuthoredTypeSize, type FontSpec } from './text';
@@ -2254,8 +2254,10 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
   // the frame reserves the button's row. A 280 px card with one hidden value drew the button
   // below the card.
   const infoPanel = staticFrame.live && placement === 'info';
+  // Quiet method notes alone raise no pointer: the button for them is left off where its row would grow the footer.
+  const infoCount = (hidden: readonly object[]) => allQuiet(hidden) && !(credit && !creditInFrame) ? 0 : hidden.length;
   const listed = (k: number) => infoPanel
-    ? entries.filter((entry) => !kept.includes(entry) && !candidates.slice(0, k).includes(entry)).length + (credit && !creditInFrame ? 1 : 0)
+    ? infoCount(entries.filter((entry) => !kept.includes(entry) && !candidates.slice(0, k).includes(entry))) + (credit && !creditInFrame ? 1 : 0)
     : entries.filter((entry) => shown.has(entry.kind) && !kept.includes(entry)).length - k + (credit && !creditInFrame ? 1 : 0);
   const sourcePara = (k: number): string | undefined => {
     const hidden = listed(k);
@@ -2309,8 +2311,14 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
   // source leaves it no room, and it also counts the notes compact mode left off the canvas.
   const omitted = Array.from({ length: input[COMPACT_OMITTED_NOTES] ?? 0 }, (): ChartNote => ({ n: 0, kind: 'note', text: '', inFrame: false }));
   // The 'info' button row reaches into the bottom margin, as hitRoom rules.
-  liveFooterH = staticFrame.live && !fullStatic ? Math.max(0, htmlFooterHeight(input, footerParts([...noteList, ...omitted], placement, input[LIVE_NOTE_SHOW] ?? input.notes?.show, pointerOn),
-    sourceText, footFont, contentW, footLineH, measure) - (placement === 'info' ? margin.bottom : 0)) : 0;
+  const liveParts = (pointer: boolean) => footerParts([...noteList, ...omitted], placement, input[LIVE_NOTE_SHOW] ?? input.notes?.show, pointer);
+  const liveHeight = (pointer: boolean) => Math.max(0, htmlFooterHeight(input, liveParts(pointer), sourceText, footFont, contentW, footLineH, measure) - (placement === 'info' ? margin.bottom : 0));
+  liveFooterH = staticFrame.live && !fullStatic ? liveHeight(pointerOn) : 0;
+  // A quiet method note alone never makes the footer taller: without its button row the footer keeps its height.
+  if (liveFooterH > 0 && allQuiet(liveParts(pointerOn).panel) && liveHeight(false) < liveFooterH) {
+    liveFooterH = liveHeight(false);
+    frame.notesButtonOff = true;
+  }
   if (footParts.length > 0 || liveFooterH > 0) {
     frame.footnoteNodeIds = [];
     // stack upward from the bottom

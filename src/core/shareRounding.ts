@@ -4,7 +4,7 @@
  * implement the option (mekko, pie) carry it.
  */
 import { formatPercent, shareText } from './format';
-import { engineNote } from './notes';
+import { quietMethodNote } from './notes';
 import { chartString } from './strings/shareRounding';
 import { roundHalfUp, shareSetDecimals } from './formatPrecision';
 import { formatWithSpec, withChartMarks, type NumberFormatSpec } from './formatSpec';
@@ -50,7 +50,7 @@ export function shareRoundingNotes(
     ...(adjustments.length > 0 ? [chartString(options, 'shareRoundingMoved')] : []),
     ...(rescaled.length > 0 ? [chartString(options, 'shareRoundingRescaled', { v1: rescaled.join(', ') })] : []),
   ];
-  return sentences.length > 0 ? [engineNote(sentences.join(' '), 'method')] : [];
+  return sentences.length > 0 ? [quietMethodNote(sentences.join(' '))] : [];
 }
 
 /**

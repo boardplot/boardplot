@@ -12,6 +12,7 @@ import { getFixtures } from '../src/fixtures';
 import { renderSvg } from '../src/core/svg/renderSvg';
 import { resolveTheme } from '../src/core/theme';
 import { SceneRenderer } from '../src/react/SceneRenderer';
+import { BarChart } from '../src/react/charts/bar';
 import { interactionRecords } from '../src/core/a11y/records';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { render } from '../src/cli/render';
@@ -284,6 +285,26 @@ describe('data gaps', () => {
     expect(noteTexts(lay('line', data, { variant: 'stacked100-area' }), ['method'])).toEqual([]);
     expect(noteTexts(lay('line', data, { variant: 'stacked100-area', valueLabels: 'all', labels: false }), ['method'])).toEqual([]);
     expect(noteTexts(lay('line', data, { variant: 'stacked100-area', valueLabels: 'all' }), ['method']).join(' ')).toContain('moved by one step');
+  });
+
+  // The area note read the first and last of all categories, so it missed a moved share at the window's end and named one at an undrawn start.
+  it('follows the drawn window for the area rounding note', () => {
+    const area = (rows: number[][], window: object) => lay('line', { categories: ['A', 'B', 'C', 'D'].map((id) => ({ id })), series: rows.map((values, i) => ({ id: `s${i}`, values })) },
+      { variant: 'stacked100-area', window });
+    const movedAtC = [[50, 50, 10, 50], [25, 25, 10, 25], [25, 25, 10, 25]];
+    expect(noteTexts(area(movedAtC, { last: 2 }), ['method']).join(' ')).toContain('moved by one step');
+    const movedAtA = [[10, 50, 50, 50], [10, 25, 25, 25], [10, 25, 25, 25]];
+    expect(noteTexts(area(movedAtA, { last: 2 }), ['method'])).toEqual([]);
+  });
+
+  // The hidden note added the React button row, so a pinned card that drew before was refused and the dashboard image grew by a blank row.
+  it('keeps the size of a dashboard card when the share note is the only hidden note', () => {
+    const thirds = { categories: ['q1', 'q2', 'q3'].map((id) => ({ id })), series: ['a', 'b', 'c'].map((id) => ({ id, values: [10, 10, 10] })) };
+    const card = renderToStaticMarkup(createElement(BarChart as never, { data: thirds, variant: 'stacked100', title: 'Mix', source: 'Source: invented', target: 'dashboard', size: { width: 280, height: 196 } }));
+    expect(card).toContain('<svg');
+    const slivers = getFixtures('bar').find((f) => f.id === 'stacked100-slivers')!;
+    const image = render({ spec: { type: 'bar', data: slivers.data, options: { ...slivers.options, target: 'dashboard' } }, width: 360, return: ['svg'] }).body as { svg: string };
+    expect(image.svg).toContain('viewBox="0 0 360 269"');
   });
 
   it('omits a CAGR to a partial period and flags a diff that uses one', () => {
