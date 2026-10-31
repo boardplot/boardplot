@@ -7,7 +7,8 @@ import type { ChartCore } from '../../registry';
 import type { ChartData } from '../../types/data';
 import type { PieOptions } from '../../types/options';
 import type { LintWarning } from '../../types/scene';
-import { DEFAULT_REST_MIN, DEFAULT_TOP_N, PIE_SLICE_LIMIT, layoutPie, type PieDerived, type PieMarks } from './layout';
+import { DEFAULT_REST_MIN, DEFAULT_TOP_N } from '../topN';
+import { PIE_SLICE_LIMIT, layoutPie, type PieDerived, type PieMarks } from './layout';
 
 export const pieCore: ChartCore<ChartData, PieOptions, PieMarks, PieDerived> = {
   type: 'pie',

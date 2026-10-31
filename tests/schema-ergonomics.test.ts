@@ -146,6 +146,14 @@ describe('tagged union issues', () => {
     expect(flattenIssues(result.error!.issues).map((issue) => issue.path.join('.')))
       .toEqual(['secondaryAxis.acknowledge', 'secondaryAxis.domain.0']);
   });
+  // A share calc without `of` listed four op-enum errors for the other branches and never named `of`.
+  it('names the missing field of the branch the op points at', () => {
+    const result = (getChartSchemas('table')!.dataSchema as z.ZodType).safeParse({
+      columns: [{ id: 'l', kind: 'rowLabel', label: 'L' }, { id: 'v', kind: 'value', label: 'V' }, { id: 's', kind: 'computed', label: 'S', calc: { op: 'share' } }],
+      rows: [{ id: 'a', label: 'A', cells: { v: 1 } }],
+    });
+    expect(flattenIssues(result.error!.issues).map((issue) => issue.path.join('.'))).toEqual(['columns.2.calc.of']);
+  });
   // A coloured rule would enter the colour key as a status the chart never draws.
   it('refuses a colour on a gantt rule item', () => {
     const result = ganttDataSchema.safeParse({ rows: [{ id: 'a', label: 'A',

@@ -1127,6 +1127,14 @@ it('reads a percent change under a row format as a percent, as it reads one with
   expect(interactionValueText(value)).toBe('25.00%');
 });
 
+// fitFormats wrote the example "$1.234M" for a lifted cell, which reads back as a thousands group, so 3,000 printed "$0M".
+it('keeps three lifted decimals as decimals when fitFormats writes the cell format', () => {
+  const g = layout('table', { columns: [{ id: 'l', kind: 'rowLabel' }, { id: 'v', kind: 'value', format: '$1.23M', width: 62 }],
+    rows: [{ id: 'a', cells: { v: 123_456_789 } }, { id: 'b', cells: { v: 3000 } }] }, { fitFormats: true });
+  const cell = g.scene.find((node): node is TextNode => node.t === 'text' && node.id === 'cell:b:v');
+  expect(cell!.lines.join('')).toBe('$0.003M');
+});
+
 // A margin row (gp / rev * 100) in a delta column printed the ratio of the changes (30.0%) and not the change of the margins (10.0%).
 it('prints the change of a nonlinear row calc in a delta or sub column, and keeps a linear one', () => {
   const data: TableData = {

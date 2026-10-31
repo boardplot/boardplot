@@ -1,5 +1,5 @@
 import { fmtPathNumber as pf } from '../../curve';
-import { restLabel, restSum, topNCut } from '../topN';
+import { DEFAULT_REST_MIN, DEFAULT_TOP_N, restLabel, restSum, topNCut } from '../topN';
 import { chartPalette, chartTheme } from '../chartEnv';
 import { chartString } from '../../strings/pie';
 import { structureCount } from '../../structureCounts';
@@ -65,7 +65,7 @@ import type { AnchorRef, Annotation } from '../../types/annotations';
 import { cellMeta, cellValue, type Id } from '../../types/cell';
 import type { Category, ChartData } from '../../types/data';
 import { DEFAULT_OTHERS_SHADE } from '../../othersShade';
-import type { LabelContent, LabelKind, LegendOptions, PieOptions, TopNOptions } from '../../types/options';
+import type { LabelContent, LabelKind, LegendOptions, PieOptions } from '../../types/options';
 import type {
   AxisGeometry,
   Geometry,
@@ -106,9 +106,6 @@ export interface PieDerived {
   roundingAdjustments?: RoundingAdjustment[];
 }
 
-/** Default topN: the seven largest slices, the rest merged when it holds DEFAULT_REST_MIN slices or more. */
-export const DEFAULT_TOP_N: TopNOptions = { n: 7, rest: true };
-export const DEFAULT_REST_MIN = 3;
 /** The smallest radius a pinned pie draws at before it refuses (refuse-less). */
 const PIE_MIN_RADIUS = 36;
 /** The pie's static height floor; under it a pinned pie draws in the compact band. */
