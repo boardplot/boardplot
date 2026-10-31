@@ -348,7 +348,7 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
       for (const share of owed ? [] : [1, 0.85, 0.7, 0.6, 0.5, 0.4]) {
         if (span <= 0) continue;
         const wrapped = wrapText(item.label, font, span * share, 3, measure);
-        // Rectangles allow one marked word break before the complete pair goes to the note.
+        // Rectangles allow marked word breaks before the complete pair goes to the note.
         if (wrapped.truncated && shape === 'circle') continue;
         const lines = wrapped.truncated ? wrapCellName(item.label, font, span * share, measure) : wrapped.lines;
         if (!lines || textW(lines, font) > span * share) continue;
@@ -773,14 +773,14 @@ function searchMemo(owner: object): Map<string, unknown> {
   return memo;
 }
 
-/** Keep space breaks first; allow one hyphenated word with at least three letters on each side. */
+/** Keep space breaks first; hyphenate each over-long word with at least three letters on each side, and give each break one more line. */
 function wrapCellName(text: string, font: FontSpec, width: number, measure: TextMeasurer): string[] | undefined {
   const words = text.split(/\s+/).filter(Boolean);
-  let broken = false;
+  let breaks = 0;
   for (let wi = 0; wi < words.length; wi++) {
     const word = words[wi]!;
     if (measure(word, font).width <= width) continue;
-    if (broken || !/^\p{L}[\p{L}\p{M}]*$/u.test(word)) return undefined;
+    if (!/^\p{L}[\p{L}\p{M}]*$/u.test(word)) return undefined;
     const chars = graphemes(word);
     let split = 0;
     for (let i = chars.length - 3; i >= 3; i--) {
@@ -792,9 +792,9 @@ function wrapCellName(text: string, font: FontSpec, width: number, measure: Text
     }
     if (!split) return undefined;
     words[wi] = `${chars.slice(0, split).join('')}-\n${chars.slice(split).join('')}`;
-    broken = true;
+    breaks++;
   }
-  const wrapped = wrapText(words.join(' '), font, width, 3, measure);
+  const wrapped = wrapText(words.join(' '), font, width, 3 + breaks, measure);
   return wrapped.truncated ? undefined : wrapped.lines;
 }
 

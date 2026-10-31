@@ -1,8 +1,12 @@
 /** The topN cut of bar, column, butterfly, pie and mekko: one ranking, one rest name, one rest sum. */
 
-import type { StringsSpec } from '../types/options';
+import type { StringsSpec, TopNOptions } from '../types/options';
 
 interface TopN { n: number; restLabel?: string; showRestCount?: boolean }
+
+/** Default pie topN: the seven largest slices, the rest merged when it holds DEFAULT_REST_MIN slices or more. */
+export const DEFAULT_TOP_N: TopNOptions = { n: 7, rest: true };
+export const DEFAULT_REST_MIN = 3;
 
 /**
  * Rank by size, largest first, authored order breaking ties; the first n

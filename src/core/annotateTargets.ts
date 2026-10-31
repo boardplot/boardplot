@@ -26,7 +26,7 @@ import type {
 import type { StringsSpec } from './types/options';
 import type { Theme } from './types/theme';
 import { isCategoryAlongY, type CategoryBand } from './annotateFields';
-import { VALUELESS_ANCHOR_FIX } from './stackAdds';
+import { valuelessFix } from './stackAdds';
 import { minOf, pushAll } from './arrays';
 
 
@@ -524,7 +524,7 @@ function placeAttainmentBand(
     ctx.warnings.push({
       code: 'bad-anchor', severity: 'warn', owner: { annotationId: ctx.id },
       message: `band '${ctx.id}': ${valueless}, so it prints no value there`,
-      suggest: VALUELESS_ANCHOR_FIX,
+      suggest: valuelessFix(valueless),
     });
     return;
   }

@@ -1,0 +1,5 @@
+### Fixed
+
+- A dimswitch table with `dimension.sums: true` no longer loses a KPI when one member has `null` for one of its fields. The measure stays, the member without the number has no row for it, and the Total prints the missing glyph. A depth of 2 no longer refuses with "depth must be between 1 and 1" for this data.
+- A Total no longer prints a partial sum as a complete one. A member that reports a field in any period now owes it in every period. A missing fact or a missing field makes its parents and the Total print missing, and the new warning `dimswitch-fact-missing` names the member and the periods. Send `0` for a member that has none. A member that reports a field in no fact is still left out of that sum.
+- A dimswitch measure that is left out because the Total has no number for its field, such as a misspelt field name, now gives the warning `dimswitch-measure-omitted` and appears in `reading.omissions`. A field that only a parent member reports stays beside the sums derived from its children.
