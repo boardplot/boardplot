@@ -1140,7 +1140,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
   // A shared bare scale ("B" from '1.2bn') carries no currency, so options.unit's currency stays in front of it
   // ("EUR B"). A scale word anywhere in options.unit ("Mio. EUR", "k EUR", "EUR bn (adj.)") either is this scale, so the
   // unit prints as written, or conflicts with it. Only a unit without a scale word gets the scale appended.
-  const authoredUnit = options.unit?.trim();
+  const authoredUnit = typeof options.unit === 'string' ? options.unit.trim() : undefined;
   const scaleWords = (authoredUnit?.split(/[\s$€£¥()]+/) ?? []).filter((word) => Object.values(MAGNITUDE_LABEL).some((label) => label !== '' && sameUnitText(word, label)));
   // Row formats can supply the unit too, so their affixes count as well as the columns'.
   const bareScale = candidateUnit !== undefined && [...[...valueCols, ...computedCols].map((col) => specs.get(col.id)!), ...rowSpecs.values()]

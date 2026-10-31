@@ -1206,3 +1206,11 @@ it('prints the change of a nonlinear row calc in a delta or sub column, and keep
   const cell = (row: string, col: string) => table.rows.find((r) => r.id === row)!.cells[col]!.displayed;
   expect([cell('margin', 'ac'), cell('margin', 'py'), cell('margin', 'd'), cell('margin', 's'), cell('sum', 'd')]).toEqual(['20.0%', '10.0%', '10.0%', '10.0%', '130']);
 });
+
+// The React path skips schema validation, and a non-string options.unit threw "trim is not a function" instead of drawing.
+it('draws a table whose options.unit is not a string', () => {
+  const data: TableData = { columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'v', kind: 'value', format: '1.2bn' }], rows: [{ id: 'r', label: 'North', cells: { v: 2500000000 } }] };
+  for (const unit of [5, { a: 1 }, null]) {
+    expect(() => resolveTable(data, { subtitle: { measure: 'Revenue' }, unit } as never)).not.toThrow();
+  }
+});
