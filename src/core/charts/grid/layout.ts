@@ -24,6 +24,7 @@ import {
   sharedCategoryLabelOwner,
   sharedYGroup,
   withoutCategoryLabels,
+  occupiedBounds,
   type GridDerived as ComposedGridDerived,
   type GridMarks as ComposedGridMarks,
 } from '../../grid/layoutGrid';
@@ -1271,7 +1272,7 @@ function layoutAuthoredGrid(
     }
     // Automatic tiers spend the canvas on visible content, like the compact
     // composition path. Empty child margins do not become extra tier gutters.
-    const contentHeight = () => children.reduce((sum, child) => sum + authoredOccupiedBounds(child.geometry).h, 0);
+    const contentHeight = () => children.reduce((sum, child) => sum + occupiedBounds(child.geometry, measure).h, 0);
     const available = area.h - rowGaps.reduce((sum, gap) => sum + gap, 0);
     const weight = naturalTierWeights.reduce((sum, value) => sum + value, 0);
     const packed = children.every(child => !child.panel.align) && !options.anchors?.baselines;
@@ -1307,7 +1308,7 @@ function layoutAuthoredGrid(
     let bottom = area.y + area.h;
     for (const index of packed ? bottomUpTierOrder(panels) : []) {
       const child = children[index]!;
-      const bounds = authoredOccupiedBounds(child.geometry);
+      const bounds = occupiedBounds(child.geometry, measure);
       child.slot.y = bottom - bounds.y - bounds.h;
       rowBands[child.placement.row] = { start: bottom - bounds.h, size: bounds.h };
       bottom -= bounds.h + (rowGaps[child.placement.row - 1] ?? 0);

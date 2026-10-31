@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import '../src/core/charts';
 import { getChart } from '../src/core/registry';
 import { getFixtures } from '../src/fixtures';
-import { measure } from '../src/index';
+import { layoutResolvedRequest, measure, resolveChartRequest } from '../src/index';
 import type { Geometry, Paint } from '../src/core/types/scene';
 import { paintColor, registerTheme, resolveTheme } from '../src/core/theme';
 import { layoutGrid } from '../src/core/charts/grid/layout';
@@ -406,5 +406,47 @@ describe('facet reflow on a phone card', () => {
     expect(short.refused).toBeUndefined();
     expect(titleColumns(short)).toBe(3);
     expect(titleColumns(layout({ size: { width: 320, height: 900 } }))).toBe(2);
+  });
+});
+
+describe('tiers keep the height their parts need', () => {
+  const regions = ['Administration', 'Manufacturing', 'Merchandising', 'Infrastructure', 'Communications', 'Transportation', 'Procurement', 'Engineering-Ops']
+    .map((label) => ({ id: label.toLowerCase().replace(/\W+/g, '-'), label }));
+  const regionData = { categories: regions, series: [
+    { id: 'ac', label: 'Actual', values: [362, 327, 355, 365, 366, 406, 375, 412] },
+    { id: 'py', label: 'PY', role: 'reference' as const, scenario: 'PY' as const, values: [352, 292, 421, 408, 416, 342, 420, 448] }] };
+  const laidOut = (request: Record<string, unknown>) => layoutResolvedRequest(resolveChartRequest(request as never)) as unknown as Geometry;
+  const regionTiers = [
+    { id: 'base', type: 'column', data: regionData },
+    { id: 'tier', type: 'variance', data: regionData, options: { variant: 'relative', variance: { of: 'ac', vs: 'py' } } }];
+  // The grid moved a panel by its claims alone, so the 45° names it had reserved room for ran off the canvas.
+  it('keeps rotated category names on the canvas', () => {
+    const grid = laidOut({ type: 'grid', data: { panels: regionTiers }, options: { title: 'Revenue by region', sharedAxis: 'category', target: 'report', size: { width: 720 } } });
+    expect(grid.warnings.map((warning) => warning.code)).toContain('category-labels-rotated');
+    expect(grid.warnings.map((warning) => warning.code)).not.toContain('text-clipped');
+  });
+  // The weights alone gave a middle panel less than its own minimum, so its plot was a strip the canvas had room to avoid.
+  it('gives every panel its minimum height when the canvas holds them all', () => {
+    const years = Array.from({ length: 9 }, (_, index) => ({ id: String(2015 + index) }));
+    const line = (id: string, values: number[]) => ({ id, type: 'line', title: `Panel ${id}`,
+      data: { categories: years, series: [{ id, label: id, values }] }, options: { legend: 'none', seriesLabels: 'none' } });
+    const grid = laidOut({ type: 'grid', data: { panels: [
+      line('a', [94, 95.5, 96.8, 97.4, 98.1, 99, 97.2, 98, 99.1]),
+      line('b', [100, 103, 106, 109, 112, 118, 128, 135, 129]),
+      line('c', [6, 5.5, 5, 5.3, 6, 12, 9, 7, 7.5])] },
+    options: { title: 'Three panels', sharedAxis: 'category', sharedScale: false, target: 'print', size: { width: 180, unit: 'mm' } } });
+    for (const panel of (grid.marks as unknown as { panels: { id: string; chart: { geometry: Geometry } }[] }).panels) {
+      expect(panel.chart.geometry.size.height + 1).toBeGreaterThanOrEqual(panel.chart.geometry.sizing!.minHeight);
+    }
+  });
+  // A tier that keeps its frame at the plot floor pushed the stack up until its caption printed over the subtitle.
+  it('keeps the tier caption under the subtitle on a short canvas', () => {
+    const upright = { ...regionData, categories: ['Net revenue', 'Churn rate', 'Marketing', 'North', 'Ruhr', 'Highlands', 'Deprec.', 'Plains']
+      .map((label) => ({ id: label.toLowerCase().replace(/\W+/g, '-'), label })) };
+    const grid = laidOut({ type: 'grid', data: { panels: regionTiers.map((panel) => ({ ...panel, data: upright })) }, options: {
+      title: 'Revenue by region', subtitle: { measure: 'Revenue', period: 'FY26' }, unit: 'EUR m', source: 'Invented data', sharedAxis: 'category', target: 'dashboard', size: { width: 960, height: 300 } } });
+    const caption = grid.labels.find((label) => label.id.endsWith('tier:caption'));
+    expect(caption).toBeDefined();
+    expect(caption!.rect.y).toBeGreaterThanOrEqual(grid.plot.y - 1);
   });
 });
