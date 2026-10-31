@@ -248,7 +248,10 @@ export function round2(v: number): number {
  */
 export function cleanFloat(v: number, scale: number = v): number {
   const decimals = 14 - Math.floor(Math.log10(Math.abs(scale)));
-  return decimals >= 0 && decimals <= 100 ? Number(v.toFixed(decimals)) + 0 : v; // + 0 turns -0 into 0
+  if (decimals < 0 || decimals > 100) return v;
+  const cleaned = Number(v.toFixed(decimals)) + 0; // + 0 turns -0 into 0
+  // Noise is a few float steps of the operands. A larger change is a real digit of the value, as in 1e14 + 0.25.
+  return Math.abs(cleaned - v) > 4 * Number.EPSILON * Math.abs(scale) ? v : cleaned;
 }
 
 /**
@@ -257,7 +260,9 @@ export function cleanFloat(v: number, scale: number = v): number {
  * its own scale that residue looks like a real value.
  */
 export function cleanSum(terms: readonly number[]): number {
-  return cleanFloat(terms.reduce((a, b) => a + b, 0), Math.max(0, ...terms.map(Math.abs)));
+  let scale = 0;
+  for (const t of terms) scale = Math.max(scale, Math.abs(t));
+  return cleanFloat(terms.reduce((a, b) => a + b, 0), scale);
 }
 
 /** `a − b`, cleaned at the size of its operands. */
