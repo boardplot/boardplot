@@ -666,66 +666,67 @@ describe('size advice', () => {
     expect(layout(fix.value).refused).toBeUndefined();
   });
 
-  // Prevents a loop in the size advice: the fix of a plot-floor, aspect or ladder finding must end at a size that
-  // draws with no further size fix, and must never step from a drawn chart into a refusal.
-  it('ends when the plot floor, the aspect cap and the ladder disagree', () => {
+  // Prevents a size patch that loops or turns a drawn chart into a refusal: a size warning on a chart that
+  // draws carries no height patch, and every patch from render and measure leads to a drawn chart at a new size.
+  it('names a size patch only at a drawn size, and following the patches never repeats a size', () => {
     const names = ['Field service', 'Net revenue', 'Order intake', 'Rhein-Main', 'Warehouse costs', 'Personnel costs', 'Turnover', 'Black Forest', 'Churn rate', 'Cost of sales', 'Saxony-Anhalt', 'Retail stores'];
-    const column = { type: 'column', data: { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [
+    const column = (size: object) => ({ type: 'column', data: { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [
       { id: 'a', label: 'Partner channel', values: names.map((_, i) => (i % 5 === 0 ? 1e9 : 7.5e8)) },
       { id: 'b', label: 'Mid market', values: names.map((_, i) => (i % 3 === 0 ? 1.25e9 : 1.5e9)) },
-    ] }, options: { title: 'Revenue by unit', unit: 'EUR', source: 'Invented data', variant: 'grouped', format: '1.2bn', size: { width: 480, height: 270 } } };
+    ] }, options: { title: 'Revenue by unit', unit: 'EUR', source: 'Invented data', variant: 'grouped', format: '1.2bn', size } });
     const labels = ['Schleswig-Holstein and Hamburg', 'Depreciation of fixed assets', 'Rebilled freight costs', 'Mecklenburg-Western Pomerania', 'Research and development expenses', 'Income from equity-accounted firms', 'Thuringia and Saxony-Anhalt', 'Pension provisions, domestic'];
-    const diagram = { type: 'diagram', data: { nodes: labels.map((label, i) => ({ id: `n${i}`, kind: 'entity', shape: { kind: 'roundedRect' }, label, role: i ? 'primary' : 'accent', order: i })),
+    const diagram = (size?: object) => ({ type: 'diagram', data: { nodes: labels.map((label, i) => ({ id: `n${i}`, kind: 'entity', shape: { kind: 'roundedRect' }, label, role: i ? 'primary' : 'accent', order: i })),
       edges: [[0, 1], [0, 2], [1, 3], [2, 4], [1, 5], [2, 6], [1, 7]].map(([s, t], i) => ({ id: `e${i}`, source: { nodeId: `n${s}` }, target: { nodeId: `n${t}` } })) },
-    options: { variant: 'hierarchy', title: 'Structure of the programme', source: 'Invented data', size: { width: 320, height: 200 } } };
-    // Measure names a size fix by the same rule: a size it names must draw with no size fix, or it names none.
-    for (const start of [column, diagram]) {
-      const body = cliMeasure({ spec: start }).body as any;
-      for (const item of [...(body.errors ?? []), ...(body.warnings ?? [])]) {
-        if (!item.fix?.some((op: any) => op.path === '/options/size')) continue;
-        const after = render({ spec: applyRepair(start, item.fix) }).body as any;
-        expect(after.ok, `${start.type} measure fix refuses a drawn chart`).toBe(true);
-        expect([...(after.errors ?? []), ...(after.warnings ?? [])].filter((w: any) => w.code === item.code), `${start.type} measure fix ${item.code} still raised`).toEqual([]);
+    options: { variant: 'hierarchy', title: 'Structure of the programme', source: 'Invented data', ...(size ? { size } : {}) } });
+    const fixture = (type: string, id: string, size: object) => {
+      const found = getFixtures(type as never).find(f => f.id === id)!;
+      return { type, data: found.data, options: { ...found.options, size } };
+    };
+    // A request is a spec plus the CLI width and height. A patch aims at the spec or at one of those arguments.
+    type Request = { spec: any; width?: number; height?: number };
+    const apply = (request: Request, fix: { path: string }[]): Request => {
+      const next = { ...request };
+      const toSpec = fix.filter(op => !/^\/(width|height)$/.test(op.path));
+      for (const op of fix.filter(op => /^\/(width|height)$/.test(op.path)) as { path: string; value: number }[]) (next as any)[op.path.slice(1)] = op.value;
+      return toSpec.length ? { ...next, spec: applyRepair(next.spec, toSpec as never) } : next;
+    };
+    const sizePatches = (body: any) => [...(body.errors ?? []), ...(body.warnings ?? [])]
+      .filter((item: any) => item.fix?.some((op: any) => op.path.endsWith('/options/size') || /^\/(width|height)$/.test(op.path)));
+    const requests: [string, Request][] = [
+      ['column 480x213', { spec: column({ width: 480, height: 213 }) }],
+      ['column 480x270', { spec: column({ width: 480, height: 270 }) }],
+      ['column 480x361', { spec: column({ width: 480, height: 361 }) }],
+      ['column 360x202.5pt', { spec: column({ width: 360, height: 202.5, unit: 'pt' }) }],
+      ['diagram 320x200', { spec: diagram({ width: 320, height: 200 }) }],
+      ['heatmap survey-journey-long-names 480x200', { spec: fixture('heatmap', 'survey-journey-long-names', { width: 480, height: 200 }) }],
+      ['heatmap survey-journey-long-names 480x200 by argument', { spec: fixture('heatmap', 'survey-journey-long-names', { width: 800, height: 600 }), width: 480, height: 200 }],
+      ['line recession-era-band 1200x200', { spec: fixture('line', 'recession-era-band', { width: 1200, height: 200 }) }],
+    ];
+    const sizeOf = (request: Request) => JSON.stringify([request.width, request.height, request.spec.options.size]);
+    for (const [name, start] of requests) {
+      const first = render(start).body as any;
+      if (first.ok) expect(sizePatches(first), `${name}: render of a drawn chart names a size patch`).toEqual([]);
+      // Every patch of render and of measure, applied once to the request, draws and names no size patch again.
+      const patches = [...sizePatches(first), ...sizePatches(cliMeasure(start).body)];
+      for (const item of patches) {
+        const patched = apply(start, item.fix);
+        expect(sizeOf(patched), `${name}: ${item.code} patch changes nothing`).not.toBe(sizeOf(start));
+        const after = render(patched).body as any;
+        expect(after.ok, `${name}: ${item.code} patch ${sizeOf(patched)} is refused`).toBe(true);
+        expect(sizePatches(after), `${name}: ${item.code} patch ${sizeOf(patched)} draws with a size patch`).toEqual([]);
       }
-    }
-    for (const start of [column, diagram]) {
-      let spec: any = start;
+      // Measure's own patches, followed one after another, end without a repeated size.
+      let current = start;
       const seen = new Set<string>();
       for (let step = 0; step < 6; step++) {
-        const size = JSON.stringify(spec.options.size);
-        expect(seen.has(size), `${start.type} size ${size} came up twice`).toBe(false);
-        seen.add(size);
-        const body = render({ spec }).body as any;
-        const finding = [...(body.errors ?? []), ...(body.warnings ?? [])].find((item: any) => item.fix?.some((op: any) => op.path === '/options/size'));
-        if (!finding) {
-          expect(body.ok, `${start.type} at ${size} is refused with no size fix`).toBe(true);
-          break;
-        }
-        const next = applyRepair(spec, finding.fix);
-        if (body.ok) expect((render({ spec: next }).body as any).ok, `${start.type} fix ${JSON.stringify(next.options.size)} refuses a drawn chart`).toBe(true);
-        spec = next;
+        expect(seen.has(sizeOf(current)), `${name}: measure came back to ${sizeOf(current)}`).toBe(false);
+        seen.add(sizeOf(current));
+        const [next] = sizePatches(cliMeasure(current).body);
+        if (!next) break;
+        current = apply(current, next.fix);
       }
-      expect(seen.size, `${start.type} advice still going after 6 fixes`).toBeLessThan(6);
+      expect(seen.size, `${name}: measure advice still going after 6 patches`).toBeLessThan(6);
     }
-  });
-
-  // Prevents the size advice from dropping a fix that draws clean: a content height that is only a preference
-  // once the height is authored, and a plot-floor estimate above the aspect cap, must not take the cap-height fix away.
-  it.each([
-    ['choropleth', 'single-region-data', 480, 400, 361],
-    ['diagram', 'operating-cycle', 480, 263, 270],
-    ['column', 'forecast-ci-column', 480, 270, 361],
-  ])('keeps a fix that draws clean for %s %s at %ix%i', (type, id, width, height, expected) => {
-    const fixture = getFixtures(type as any).find(f => f.id === id)!;
-    const spec = { type, data: fixture.data, options: { ...fixture.options, size: { width, height } } };
-    const body = render({ spec }).body as any;
-    const finding = [...(body.errors ?? []), ...(body.warnings ?? [])].find((item: any) => item.fix?.some((op: any) => op.path === '/options/size'));
-    expect(finding, `${type} ${id} has no size fix`).toBeDefined();
-    const fixed = applyRepair(spec, finding.fix);
-    expect(fixed.options.size.height).toBe(expected);
-    const after = render({ spec: fixed }).body as any;
-    expect(after.ok).toBe(true);
-    expect([...(after.errors ?? []), ...(after.warnings ?? [])].filter((item: any) => item.fix?.some((op: any) => op.path === '/options/size'))).toEqual([]);
   });
 });
 
