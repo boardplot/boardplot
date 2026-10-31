@@ -39,6 +39,7 @@ One form; its chart ID is `histogram`.
 
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
+| labelDensity | string | `'full'`, `'smart'`, `'minimal'` |  | Count-label density. Default: every bin count competes for a seat over its bar, and an empty bin prints no 0 when one value fills each bin or most bins are empty. When more than 12 bins hold observations and a count is too wide for its bin and loses its seat, only the tallest bin keeps its count, the frequency axis carries the scale, and no tail callout prints (info histogram-counts-peak-only). 'full' keeps every count: a count without a seat moves onto a leader or into the note. 'minimal' keeps only the essential labels. |
 | valueAxis.break | false \| object | `false` (or another value of its type) |  | No break by default or with false. Set { from, to, style? } for a straight value-axis break; the omitted span collapses to a fixed 12px gap when valid. Automatic placement is supported only by waterfall and pvm. |
 | axisTitles | object |  |  | Title of the frequency axis, drawn in the top row left of the plot while the axis is drawn. When every bin carries its count, the automatic axis gives way and this title leads the base note under the plot. The bin labels carry the measure and its unit. |
 | axisTitles.y | string |  |  | Title of the frequency axis, e.g. 'Orders'. |
