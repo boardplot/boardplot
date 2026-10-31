@@ -1151,3 +1151,25 @@ it('takes width from a wrapping text column before it cuts another text column',
   const geometry = layout('table', data, { size: { width: 760, height: 400 } });
   expect(geometry.warnings.filter((warning) => warning.code === 'label-truncated')).toEqual([]);
 });
+
+// The post-pass gave a column group's heading room to another column, and the heading then ran past its block.
+it('keeps the room a column-group heading needs when a cut column takes width from a text column', () => {
+  const words = ['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot'];
+  const text = (count: number, from: number) => Array.from({ length: count }, (_, i) => words[(i + from) % 6]).join(' ');
+  const data: TableData = {
+    columns: [
+      { id: 'label', kind: 'rowLabel', label: 'Offer' },
+      { id: 'a', kind: 'text', label: 'Aa', wrap: true },
+      { id: 'b', kind: 'text', label: 'Bb', wrap: true },
+      { id: 'c', kind: 'text', label: 'Cc', wrap: true },
+      { id: 'd', kind: 'text', label: 'Dd' },
+    ],
+    columnGroups: [{ id: 'g', label: 'A long group heading text here', columns: ['c', 'd'] }],
+    rows: ['x', 'y'].map((id) => ({
+      id, label: `Row ${id}`,
+      cells: { a: text(9, 0), b: text(8, 1), c: text(7, 2), d: 'Signing in the second quarter and closing early next year' },
+    })),
+  };
+  const geometry = layout('table', data, { size: { width: 540, height: 400 } });
+  expect(geometry.warnings.filter((warning) => warning.code === 'table-group-heading-overflow')).toEqual([]);
+});

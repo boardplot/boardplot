@@ -16,7 +16,7 @@ import type { PresentationInfo } from '../../types/sizing';
 import { columnHeadLabel, columnHeaderAffix } from './resolve';
 import { visibleColumns, visibleRows, visibleInlineRows, treeChildCounts, heatColumn, printsFigures, cellDrawsTabular } from './view';
 import { operatorWidth, qualifierFont } from './statement';
-import { groupHeadingFaces, groupHeadingFloors } from './groupHeading';
+import { groupHeadingFaces, groupHeadingFloors, groupHeadingNeed } from './groupHeading';
 import {
   DENSE_COLUMNS, LABEL_WRAP_FLOOR, SOFT_LABEL_CAP, INLINE_LABEL_INDENT, cellPadX as trackCellPadX,
   tableFonts, rowFont as ladderRowFont, kindFont, strongColumnFont, labelIndents, inlineFont as ladderInlineFont,
@@ -375,20 +375,40 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
     const flexText = cols.filter((col) => canShrink(col) && col.kind === 'text' && col.width === undefined);
     const gaps = flexText.map((col) => ({ id: col.id, gap: printsUncut(col) - widths.get(col.id)! }));
     const wants = gaps.filter((entry) => entry.gap > 0);
-    const gives = gaps.filter((entry) => entry.gap < 0);
     const wanted = wants.reduce((sum, entry) => sum + entry.gap, 0);
-    const given = gives.reduce((sum, entry) => sum - entry.gap, 0);
+    // A donor gives at most the width it keeps above its uncut text, and no group heading it sits
+    // under gives up the room its heading needs: the later group pass cannot restore that room
+    // when the frame is full.
+    const groupFaces = headingFaces(fonts);
+    const spare = new Map(table.columnGroups.filter((group) => group.heading !== false).map((group) => [group.id,
+      cols.filter((col) => group.columnIds.includes(col.id)).reduce((sum, col) => sum + widths.get(col.id)!, 0)
+        - groupHeadingNeed(group, groupFaces, measure, groupCell)]));
+    const donors = gaps.filter((entry) => entry.gap < 0).map((entry) => ({
+      id: entry.id,
+      slack: Math.floor(-entry.gap),
+      groups: table.columnGroups.filter((group) => spare.has(group.id) && group.columnIds.includes(entry.id)),
+    }));
+    const roomOf = (donor: (typeof donors)[number]) => Math.max(0, Math.min(donor.slack, ...donor.groups.map((group) => spare.get(group.id)!)));
+    const rooms = donors.map(roomOf);
+    const given = rooms.reduce((sum, room) => sum + room, 0);
     const move = Math.floor(Math.min(wanted, given));
+    let moved = 0;
+    const cut = (donor: (typeof donors)[number], amount: number) => {
+      const take = Math.min(amount, roomOf(donor));
+      widths.set(donor.id, widths.get(donor.id)! - take);
+      donor.slack -= take;
+      for (const group of donor.groups) spare.set(group.id, spare.get(group.id)! - take);
+      moved += take;
+    };
     if (move > 0) {
-      let toGive = move;
-      let toTake = move;
-      for (const [index, entry] of gives.entries()) {
-        const cut = index === gives.length - 1 ? toGive : Math.min(toGive, Math.floor(move * -entry.gap / given));
-        widths.set(entry.id, widths.get(entry.id)! - cut);
-        toGive -= cut;
+      donors.forEach((donor, index) => cut(donor, Math.floor(move * rooms[index]! / given)));
+      for (let progress = true; progress && moved < move;) {
+        progress = false;
+        for (const donor of donors) if (moved < move && roomOf(donor) > 0) { cut(donor, 1); progress = true; }
       }
+      let toTake = moved;
       for (const [index, entry] of wants.entries()) {
-        const add = index === wants.length - 1 ? toTake : Math.min(toTake, Math.floor(move * entry.gap / wanted));
+        const add = index === wants.length - 1 ? toTake : Math.min(toTake, Math.floor(moved * entry.gap / wanted));
         widths.set(entry.id, widths.get(entry.id)! + add);
         toTake -= add;
       }
