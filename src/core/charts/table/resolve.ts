@@ -20,7 +20,7 @@ import {
   parseFormatExample as parseExample,
   effectiveScale,
   roundedNumber,
-  nonAdditiveFormat,
+  nonAdditiveSpec,
   specUnitKind,
   unitOfSpec,
   MAGNITUDE_DIVISOR,
@@ -489,6 +489,8 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
    * 'none' unless the author asks for a sum, and an authored sum there is
    * warned once per column.
    */
+  // The table's cached parse feeds the shared predicate: it runs for every summand cell.
+  const nonAdditiveFormat = (format: string | undefined): boolean => !!format && nonAdditiveSpec(parseFormatExample(format));
   // A cell's own format counts where it sits: a pp change among summands does not add either.
   const formatAt = (row: FlatRow, colId: Id): string | undefined => cellFormat(row.cells[colId]) ?? row.format;
   // Decimals are no unit: "$1.2m" and "$1.23m" add, "$1.2m" and "$500k" do not.

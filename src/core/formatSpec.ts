@@ -402,10 +402,12 @@ export function specUnitKind(spec: NumberFormatSpec): 'percent' | 'pp' | 'number
 }
 
 /** A percentage, percentage points or a multiple ("1.0x"): a figure that does not add. */
-export function nonAdditiveFormat(format: string | undefined): boolean {
-  if (!format) return false;
-  const spec = parseFormatExample(format);
+export function nonAdditiveSpec(spec: NumberFormatSpec): boolean {
   return specUnitKind(spec) !== 'number' || /^[x×]$/i.test(spec.suffix.trim());
+}
+
+export function nonAdditiveFormat(format: string | undefined): boolean {
+  return !!format && nonAdditiveSpec(parseFormatExample(format));
 }
 
 const MAGNITUDE_PREVIOUS: Record<Scale, NumberFormatSpec['magnitude']> = { k: 'none', m: 'k', bn: 'm', t: 'bn' };
