@@ -112,7 +112,7 @@ const columnSchema = z
       polarity: z.enum(['higherIsBetter', 'lowerIsBetter']).optional().describe('Which sign is favorable. Judgment tones and directional encodings read it.'),
       materiality: materialitySchema.optional().describe('Mute tones below this threshold; keep values visible.'),
       aggregate: z.enum(['sum', 'none', 'source']).optional()
-        .describe("Parent-row aggregation. Default 'sum' over additive children; 'none' where the column format is a percentage, percentage points or a multiple, or the summand rows carry different formats, since those do not add. An explicit 'sum' there warns aggregate-non-additive."),
+        .describe("Parent-row aggregation. Default 'sum' over additive children; 'none' where the column format is a percentage, percentage points or a multiple, or the summand rows carry different units (decimals do not count), since those do not add. An explicit 'sum' there warns aggregate-non-additive."),
       nulls: z.enum(['propagate', 'skip']).optional()
         .describe("Default 'propagate'. A missing child then makes the parent '—', with no silent partial sums; 'skip' sums the present values and auto-footnotes 'partial'."),
       percentScale: z.literal('points').optional().describe("Values already in points; percent-scale-suspect stays quiet."),
@@ -120,7 +120,7 @@ const columnSchema = z
     z.strictObject({
       ...columnBase,
       kind: z.literal('computed').describe('Kind.'),
-      calc: calcSchema,
+      calc: calcSchema.describe('Calculation over value-column ids. A { row } or { row, previous: true } ref is refused (row-ref-in-column-calc): put cross-row refs in rows[].calc.'),
       format: formatExample.optional().describe(COLUMN_FORMAT_DOC),
       polarity: z.enum(['higherIsBetter', 'lowerIsBetter']).optional().describe('Which sign is favorable. Judgment tones and directional encodings read it.'),
       materiality: materialitySchema.optional().describe('Mute tones below this threshold; keep values visible.'),

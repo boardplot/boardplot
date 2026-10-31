@@ -143,7 +143,8 @@ function shorterSpec(spec: NumberFormatSpec, figures?: readonly number[]): Numbe
 
 /** A format-by-example that parses back to `spec`. */
 function exampleOf(spec: NumberFormatSpec): string {
-  const whole = spec.thousandsSep === '' ? '1' : `1${spec.thousandsSep}234`;
+  // Three decimals after a bare 1 ("1.234") read back as a thousands group, so a leading 0 marks them as decimals.
+  const whole = spec.thousandsSep === '' ? (spec.decimals === 3 ? '0' : '1') : `1${spec.thousandsSep}234`;
   const fraction = spec.decimals > 0 ? `${spec.decimalSep}${'2345678'.slice(0, spec.decimals)}` : '';
   const body = `${spec.signed ? '+' : ''}${spec.prefix}${whole}${fraction}${MAGNITUDE_LABEL[spec.magnitude]}${spec.suffix}`;
   return spec.negative === 'parens' ? `(${body})` : body;

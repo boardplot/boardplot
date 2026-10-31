@@ -526,9 +526,15 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
   };
   // A cell's own format counts where it sits: a pp change among summands does not add either.
   const formatAt = (row: FlatRow, colId: Id): string | undefined => cellFormat(row.cells[colId]) ?? row.format;
+  // Decimals are no unit: "$1.2m" and "$1.23m" add, "$1.2m" and "$500k" do not.
+  const unitOf = (format: string): string => {
+    if (!format) return '';
+    const spec = parseFormatExample(format);
+    return `${spec.prefix}\u0000${spec.suffix}\u0000${spec.magnitude}`;
+  };
   const nonAdditiveSum = (col: Extract<TableColumn, { kind: 'value' }>, row: FlatRow, kids: readonly FlatRow[]): boolean =>
     nonAdditiveFormat(col.format) || [row, ...kids].some((k) => nonAdditiveFormat(formatAt(k, col.id))) ||
-    new Set(kids.map((k) => formatAt(k, col.id) ?? col.format ?? '')).size > 1;
+    new Set(kids.map((k) => unitOf(formatAt(k, col.id) ?? col.format ?? ''))).size > 1;
   const aggregateFor = (col: Extract<TableColumn, { kind: 'value' }>, row: FlatRow): 'sum' | 'none' | 'source' =>
     col.aggregate ?? (nonAdditiveSum(col, row, summandsOf(row.id)) ? 'none' : 'sum');
   const warnedNonAdditive = new Set<Id>();
@@ -793,12 +799,17 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     }
   };
   collectLeafSummands(null);
+  partitionLeafIds.set(rawState, leafRows.map((r) => r.id));
+  // Rows that topN.rest false omits still belong to the partition, so hiding a row leaves the other shares as they were.
+  const hiddenLeaves = [...folded.hidden].filter(([, h]) => h.leaf);
   const leafTotal = (colId: Id): number | null => {
     let t = 0;
-    for (const r of leafRows) {
-      const s = rawState.get(r.id)!.get(colId);
+    for (const [s, sign] of [
+      ...leafRows.map((r) => [rawState.get(r.id)!.get(colId), signTo(r, null)] as const),
+      ...hiddenLeaves.map(([, h]) => [h.states.get(colId), h.sign] as const),
+    ]) {
       if (!s || s.state !== 'value' || typeof s.raw !== 'number') return null;
-      t += signTo(r, null) * s.raw;
+      t += sign * s.raw;
     }
     return t;
   };
@@ -1196,10 +1207,15 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     reconcileShares(col.id, spec);
   }
   function reconcileShares(colId: Id, spec: NumberFormatSpec) {
-    const entries = leafRows
-      .map((r) => ({ r, s: rawState.get(r.id)!.get(colId)! }))
-      .filter((e) => e.s.state === 'value' && typeof e.s.raw === 'number');
-    if (entries.length !== leafRows.length || entries.length === 0) return;
+    // Rows topN.rest false omits take their units too, so the shown shares stay what they are with all rows shown.
+    const entries = [
+      ...leafRows.map((r) => ({ r, s: rawState.get(r.id)!.get(colId)!, shown: true })),
+      ...hiddenLeaves.map(([id, h]) => ({ r: { id }, s: h.states.get(colId)!, shown: false })),
+    ].filter((e) => e.s?.state === 'value' && typeof e.s.raw === 'number');
+    const LAST = Number.MAX_SAFE_INTEGER;
+    // The full table breaks equal remainders by its own row order, so shown and hidden rows keep that order.
+    entries.sort((a, b) => (folded.leafOrder.get(a.r.id) ?? LAST) - (folded.leafOrder.get(b.r.id) ?? LAST));
+    if (entries.length !== leafRows.length + hiddenLeaves.length || entries.length === 0) return;
     const decimals = spec.decimals ?? 1;
     const unit = Math.pow(10, -decimals);
     const floors = entries.map((e) => Math.floor((e.s.raw as number) / unit) * unit);
@@ -1221,7 +1237,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
       deficit--;
     }
     entries.forEach((e, i) => {
-      if (ownPrecision[i]) return;
+      if (ownPrecision[i] || !e.shown) return;
       const shown = floors[i]! + (adjusted.has(i) ? unit : 0);
       // A cell format of the column's precision prints the reconciled amount through itself.
       const cellSpec = cellSpecs.get(e.r.id)?.get(colId);
@@ -1818,25 +1834,30 @@ function resolveCellEncoding(encoding: TableCellEncoding | undefined, percent: b
 
 /** The evaluated cell states of a resolve, kept for the top-N pass that resolves the full table first. */
 const evaluatedStates = new WeakMap<ResolveResult, Map<Id, Map<Id, CellEval>>>();
+/** The ids of the share partition (the leaves the column total sums), in row order, keyed by the evaluated states of their resolve. */
+const partitionLeafIds = new WeakMap<Map<Id, Map<Id, CellEval>>, Id[]>();
 
 /** A row topN.rest false omits: calcs of the rows it keeps still read it. */
 interface HiddenRow {
   sign: number;
   states: Map<Id, CellEval>;
+  /** The row is a leaf of the full table's share partition: the part of the share denominator it carries. */
+  leaf: boolean;
 }
 
 function applyTableTopN(
   data: TableData,
   options: TableOptions,
-): { data: TableData; generatedOthers: Set<Id>; hidden: Map<Id, HiddenRow> } {
+): { data: TableData; generatedOthers: Set<Id>; hidden: Map<Id, HiddenRow>; leafOrder: Map<Id, number> } {
   const topN = options.topN;
-  if (!topN || topN.n <= 0) return { data, generatedOthers: new Set(), hidden: new Map() };
+  if (!topN || topN.n <= 0) return { data, generatedOthers: new Set(), hidden: new Map(), leafOrder: new Map() };
   const inner = resolveTable(data, { ...options, topN: undefined });
   const folded = foldTableTopN(data, inner.table, options);
   // Values come from the full table, so a kept result reads an omitted row as the untruncated table shows it.
   const kept = new Set(flattenRows(folded.data.rows).map((row) => row.id));
   const innerById = new Map(inner.table.rows.map((row) => [row.id, row]));
   const hidden = new Map<Id, HiddenRow>();
+  const leafOrder = new Map((partitionLeafIds.get(evaluatedStates.get(inner)!) ?? []).map((id, i) => [id, i] as const));
   for (const row of inner.table.rows) {
     if (kept.has(row.id)) continue;
     // The evaluated states keep which rows a partial total skipped, so a kept calc reading it still compares like with like.
@@ -1846,9 +1867,9 @@ function applyTableTopN(
       const own = evaluated?.get(colId);
       states.set(colId, { raw: cell.raw, state: cell.state, ...(own?.partial ? { partial: true as const, skipped: own.skipped } : {}) });
     }
-    hidden.set(row.id, { sign: contributionSignOf(row, (id) => innerById.get(id), null), states });
+    hidden.set(row.id, { sign: contributionSignOf(row, (id) => innerById.get(id), null), states, leaf: leafOrder.has(row.id) });
   }
-  return { ...folded, hidden };
+  return { ...folded, hidden, leafOrder };
 }
 
 /**

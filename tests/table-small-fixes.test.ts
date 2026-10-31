@@ -522,6 +522,44 @@ it('prints n.m. where a kept row calc compares a full total with a partial total
   expect(gap.pace!.displayed).not.toBe('n.m.');
 });
 
+// Shares kept the omitted rows out of their denominator, so topN.rest false printed 62.5%, 37.5% and a total of 125.0%.
+it('keeps the shares of the kept rows when topN.rest false omits rows', () => {
+  const data = tableDataSchema.parse({
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'rev', kind: 'value' }, { id: 'share', kind: 'computed', calc: { op: 'share', of: 'rev' }, format: '1.1%' }],
+    rows: [{ id: 'a', cells: { rev: 500 } }, { id: 'b', cells: { rev: 300 } }, { id: 'c', cells: { rev: 150 } }, { id: 'd', cells: { rev: 50 } },
+      { id: 'tot', role: 'total', cells: { rev: 1000 } }],
+  });
+  const shares = (topN?: { n: number; rest: boolean }) =>
+    Object.fromEntries(resolveTable(data, { target: 'report', topN }).table.rows.map(row => [row.id, row.cells.share!.displayed]));
+  expect(shares({ n: 2, rest: false })).toEqual({ a: '50.0%', b: '30.0%', tot: '100.0%' });
+  expect(shares()).toMatchObject({ a: '50.0%', b: '30.0%', tot: '100.0%' });
+});
+
+// An omitted row's of-which detail was counted in the share denominator, so the kept share read 58.8% against 62.5% in the full table.
+it('leaves the detail under an omitted row out of the share denominator', () => {
+  const data = tableDataSchema.parse({
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'rev', kind: 'value' }, { id: 'share', kind: 'computed', calc: { op: 'share', of: 'rev' }, format: '1.1%' }],
+    rows: [{ id: 'a', cells: { rev: 500 } }, { id: 'b', cells: { rev: 300 } },
+      { id: 'b1', parentId: 'b', relation: 'ofWhich', cells: { rev: 100 } }, { id: 'b1x', parentId: 'b1', cells: { rev: 50 } }],
+  });
+  const share = (topN?: { n: number; rest: boolean }) =>
+    resolveTable(data, { target: 'report', topN }).table.rows.find(row => row.id === 'a')!.cells.share!.displayed;
+  expect(share()).toBe('62.5%');
+  expect(share({ n: 1, rest: false })).toBe('62.5%');
+});
+
+// Hidden rows were placed after every shown row, so an equal-remainder tie went to different rows than in the full table (26.7% against 26.6%).
+it('breaks equal share remainders in full-table row order when rows are hidden', () => {
+  const data = tableDataSchema.parse({
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'rev', kind: 'value' }, { id: 'share', kind: 'computed', calc: { op: 'share', of: 'rev' }, format: '1.1%' }],
+    rows: [{ id: 'a', cells: { rev: 1 } }, { id: 'b', cells: { rev: 1 } }, { id: 'c', cells: { rev: 4 } }, { id: 'd', cells: { rev: 9 } }],
+  });
+  const share = (topN?: { n: number; rest: boolean }) =>
+    resolveTable(data, { target: 'report', topN }).table.rows.find(row => row.id === 'c')!.cells.share!.displayed;
+  expect(share()).toBe('26.6%');
+  expect(share({ n: 2, rest: false })).toBe('26.6%');
+});
+
 // Tone text printed in the raw tone read 2.96:1 on the standard total ground of this fixture.
 it('prints table tone text at 4.5:1 or more on its ground', () => {
   const tones = new Set(['good', 'bad', 'warn']);
@@ -1111,6 +1149,14 @@ it('builds the cell-column-unknown repair from the authored cells when fitFormat
   const { warnings } = layout('table', data, { fitFormats: true, size: { width: 320 } });
   const fix = warnings.find((w) => w.code === 'cell-column-unknown')!.fix!;
   expect(fix[0]).toEqual({ op: 'test', path: '/data/rows/0/cells', value: data.rows[0]!.cells });
+});
+
+// fitFormats wrote the example "$1.234M" for a lifted cell, which reads back as a thousands group, so 3,000 printed "$0M".
+it('keeps three lifted decimals as decimals when fitFormats writes the cell format', () => {
+  const g = layout('table', { columns: [{ id: 'l', kind: 'rowLabel' }, { id: 'v', kind: 'value', format: '$1.23M', width: 62 }],
+    rows: [{ id: 'a', cells: { v: 123_456_789 } }, { id: 'b', cells: { v: 3000 } }] }, { fitFormats: true });
+  const cell = g.scene.find((node): node is TextNode => node.t === 'text' && node.id === 'cell:b:v');
+  expect(cell!.lines.join('')).toBe('$0.003M');
 });
 
 // A margin row (gp / rev * 100) in a delta column printed the ratio of the changes (30.0%) and not the change of the margins (10.0%).
