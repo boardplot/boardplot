@@ -58,13 +58,30 @@ describe("bullet band names on the rows (bandKey 'row')", () => {
     expect(shown(near, 'point:coverage')[0]?.slot).not.toBe('pastEnd');
   });
 
-  // With a name on every band the shade only groups; the dark ramp crowded the bar and the text.
-  it('paints the lighter ramp only where every band is named on its row', () => {
-    const theme = resolveTheme(undefined);
-    const lightness = (geometry: Geometry) => [0, 1, 2, 3].map((index) => oklabLightness(paintColor(theme, bandRect(geometry, `band:coverage:${index}`).fill!))!);
+  // The dark ramp under a key made the bar sink into its worst band, and the chart changed weight with its row count.
+  it('paints the light ramp on every row; the full band fill keeps the wider steps under a key', () => {
+    const full = { preset: 'standard', overrides: { marks: { bulletBandFill: 'full' } } } as const;
+    const lightness = (geometry: Geometry, theme = resolveTheme(undefined)) => [0, 1, 2, 3].map((index) => oklabLightness(paintColor(theme, bandRect(geometry, `band:coverage:${index}`).fill!))!);
     const steps = (values: number[]) => values.slice(1).map((value, index) => value - values[index]!);
     for (const step of steps(lightness(slide()))) expect(step).toBeCloseTo(0.065, 2);
-    for (const step of steps(lightness(draw({ size: { width: 1200, height: 620 }, bandKey: 'labels' })))) expect(step).toBeGreaterThanOrEqual(0.12);
+    for (const step of steps(lightness(draw({ size: { width: 1200, height: 620 }, bandKey: 'labels' })))) expect(step).toBeCloseTo(0.065, 2);
+    const keyed = draw({ size: { width: 1200, height: 620 }, bandKey: 'labels', theme: full });
+    for (const step of steps(lightness(keyed, resolveTheme(full)))) expect(step).toBeGreaterThanOrEqual(0.12);
+  });
+
+  // Full red and green bands made an on-plan corridor read as an alarm.
+  it('washes toned bands and attainment toward the page, bad lighter than good', () => {
+    const theme = resolveTheme(undefined);
+    const fill = (geometry: Geometry, id: string) => paintColor(theme, bandRect(geometry, id).fill!);
+    const corridor = getFixtures('bullet').find((fixture) => fixture.id === 'two-sided-spend')!;
+    const spend = layoutResolvedRequest(resolveChartRequest({ type: 'bullet', data: corridor.data, options: corridor.options }));
+    if (spend.refused) throw new Error('refused');
+    expect([fill(spend, 'band:spend:0'), fill(spend, 'band:spend:1')]).toEqual(['#f8d8d8', '#b2e0cd']);
+    const plan = getFixtures('bullet').find((fixture) => fixture.id === 'attainment-shading')!;
+    const shaded = layoutResolvedRequest(resolveChartRequest({ type: 'bullet', data: plan.data, options: plan.options, annotations: plan.annotations }));
+    if (shaded.refused) throw new Error('refused');
+    const washes = shaded.scene.filter((node) => node.t === 'rect' && node.part === 'attainment').map((node) => node.t === 'rect' ? paintColor(theme, node.fill!) : '');
+    expect(washes.sort()).toEqual(['#b2e0cd', '#f8d8d8']);
   });
 
   // The rows no longer show which mark is the actual and which the target.

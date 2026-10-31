@@ -558,6 +558,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | band-key-labels | bullet | torture | bandKey labels keeps every label and shade |
 | band-key-ramp | bullet | example | bandKey ramp forces the worse-to-better key |
 | two-sided-spend | bullet | example | Both low and high spend are off plan |
+| two-sided-spend-full-fill | bullet | torture | Toned bands in their full fills |
 | tone-spectrum | bullet | torture | Band tones carry the range judgment |
 | neutral-change | bullet | example | A neutral comparison with a target |
 | plan-wording | bullet | example | strings.target words the comparison as plan |

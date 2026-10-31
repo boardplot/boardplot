@@ -105,7 +105,7 @@ export type ThemePaintSource =
   | { kind: 'line-apart'; share: number; top: number; apartFrom: Paint[]; darker?: { share: number; pairs: Array<[number, number]> } }
   | { kind: 'fan-step'; base: Paint; bandCount: number; showBounds: boolean; index: number; seriesId: string; deEmphasized: boolean }
   /** `light`: the ramp of rows that print every band's name (bulletBandPaints). */
-  | { kind: 'bullet-band'; poor: Paint; good: Paint; count: number; index: number; light?: true }
+  | { kind: 'bullet-band'; poor: Paint; good: Paint; count: number; index: number; light?: true; /** The band tones by index: a toned band takes its tone's wash (bulletBandPaints). */ tones?: ('good' | 'warn' | 'bad' | 'neutral' | null)[] }
   /** A plain waterfall segment colour, tinted in the active theme where it reads too close to the total (segmentApartPaints). */
   | { kind: 'segment-apart'; plain: Paint[]; others: Paint[]; index: number }
   /**
