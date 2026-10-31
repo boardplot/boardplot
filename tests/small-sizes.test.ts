@@ -821,4 +821,8 @@ it('draws a column whose names cannot fit or rotate as bars, or lists the names 
   expect(kept.type).toBe('column');
   expect(hiddenNames(kept).length).toBeGreaterThan(0);
   expect(new Set(hiddenNames(kept))).toEqual(new Set(['density']));
+  // A pinned height that holds every row draws the bars: the early out for short canvases skips only heights no row layout can hold.
+  const tall = layoutResolvedRequest(resolveChartRequest(spec({ width: 320, height: 700 }))) as Geometry;
+  expect(tall.type).toBe('bar');
+  expect(hiddenNames(tall)).toEqual([]);
 });

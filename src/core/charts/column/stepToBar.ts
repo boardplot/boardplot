@@ -8,7 +8,8 @@
 
 import { fitsSize, SIZE_TOLERANCE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
-import { panelTypeClass } from '../../theme';
+import { panelTypeClass, resolveTheme } from '../../theme';
+import { textScaleOf } from '../../typeFloors';
 import type { ChartData } from '../../types/data';
 import type { BarOptions } from '../../types/options';
 import type { Geometry } from '../../types/scene';
@@ -24,13 +25,15 @@ export function stepToBar(
   options: AnomalyColumnOptions,
   column: Geometry<ColumnMarks, ColumnDerived>,
 ): Geometry<ColumnMarks, ColumnDerived> | undefined {
-  const lost = column.labels.filter((label) => label.kind === 'category' && label.hidden === 'density');
+  const names = column.labels.filter((label) => label.kind === 'category');
+  const lost = names.filter((label) => label.hidden === 'density');
   if (lost.length === 0 || panelTypeClass(options) !== undefined) return undefined;
   if (COLUMN_ONLY.some((key) => options[key] !== undefined) || options.annotations?.some((annotation) => annotation.kind === 'event')) return undefined;
-  const bar = layoutBar(data, options as BarOptions);
   // An open height is the bar's to choose: the fit step after the layout gives its rows their height.
   // A pinned height must already hold every row with its name.
   const pinned = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === true;
+  if (pinned && rowsExceed(names.length, options, column.size.height)) return undefined;
+  const bar = layoutBar(data, options as BarOptions);
   const fits = bar.sizing !== undefined && (pinned ? fitsSize(bar.size, bar.sizing) : bar.size.width + SIZE_TOLERANCE >= bar.sizing.minWidth);
   if (bar.refused || !fits || (pinned && bar.labels.some((label) => label.kind === 'category' && label.hidden))) return undefined;
   bar.warnings.push({
@@ -40,4 +43,17 @@ export function stepToBar(
     suggest: `Set the chart type to bar, or widen the canvas to keep columns.`,
   });
   return bar as unknown as Geometry<ColumnMarks, ColumnDerived>;
+}
+
+/** The bar row floor in px, before the text scale (barSizing in bar/layout.ts). */
+const BAR_ROW_FLOOR = 28;
+
+/**
+ * Whether the category rows alone are taller than a pinned height, so no bar layout can hold them and the
+ * bar need not be laid out. Every bar row is at least the row floor times the text scale; a theme
+ * with its own row pitch sets another height, so that case is laid out.
+ */
+function rowsExceed(rows: number, options: AnomalyColumnOptions, height: number): boolean {
+  if (resolveTheme(options.theme).space.barRow !== undefined) return false;
+  return rows * BAR_ROW_FLOOR * textScaleOf(options) > height + SIZE_TOLERANCE;
 }
