@@ -923,6 +923,8 @@
   "heatmap/all-equal.notation": "d098eb8e0b4057c0a059cc95d05cd83c77fadc340e0f52510ca0e6edc8299a73",
   "heatmap/capability-matrix.authored": "62c838350598713ddaf4b05175353223b5c0ae299152b1b247806c64a3689116",
   "heatmap/capability-matrix.notation": "8b77e552d4fbe13faf462f0eb025e106a3f8ecd9ba29fea42dbbe05bcbce9dbc",
+  "heatmap/cell-states.authored": "9eaba51245f8d182d0760bf6761df4c3e71522b20ceea9c8ffde68b02c4f850e",
+  "heatmap/cell-states.notation": "dd0728fee8509ae9ef6eb3074cd7dbf431affa4f64b119be17fb8eca84c6e19e",
   "heatmap/dense-20x12.authored": "bb91bacfa3e58821f64e4b9c86b1c424e3556a23c59dd5380e3c16eacd606cc6",
   "heatmap/dense-20x12.notation": "68126744e44190585632592e556bef030f1d6d83f32ebb0efe8b76cd5f113a56",
   "heatmap/harvey-quarter-steps.authored": "12e93c36972cbda4e1609d92c5bd2c57433cb16296d419aed74f1153679dadee",
