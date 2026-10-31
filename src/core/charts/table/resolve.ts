@@ -332,18 +332,25 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
   // A key far from every column, or beside a column the row also fills, is data the author left out of the columns on purpose, so it stays quiet.
   // One warning per key keeps the response small on a wide row set.
   const columnIds = data.columns.map((column) => column.id);
+  const columnIdSet = new Set(columnIds);
+  // closestKey depends on the key alone, so each distinct key is measured once, not once per row.
+  const nearColumn = new Map<string, string | undefined>();
   const unknownKeys = new Map<string, { row: TableData['rows'][number]; rowPath: (string | number)[]; near: string; rows: number }>();
   const checkCellKeys = (rows: TableData['rows'], path: (string | number)[]): void => {
     rows.forEach((row, index) => {
       const rowPath = [...path, index];
       for (const key of Object.keys(row.cells ?? {})) {
-        if (columnIds.includes(key)) continue;
-        const nearest = closestKey(key, columnIds);
+        if (columnIdSet.has(key)) continue;
+        if (!nearColumn.has(key)) {
+          const nearest = closestKey(key, columnIds);
+          nearColumn.set(key, nearest?.near ? nearest.key : undefined);
+        }
+        const near = nearColumn.get(key);
         // The near column holds a cell in this row too: the key is another column, left out on purpose.
-        if (!nearest?.near || Object.hasOwn(row.cells!, nearest.key)) continue;
+        if (near === undefined || Object.hasOwn(row.cells!, near)) continue;
         const seen = unknownKeys.get(key);
         if (seen) seen.rows += 1;
-        else unknownKeys.set(key, { row, rowPath, near: nearest.key, rows: 1 });
+        else unknownKeys.set(key, { row, rowPath, near, rows: 1 });
       }
       if (row.children) checkCellKeys(row.children, [...rowPath, 'children']);
     });

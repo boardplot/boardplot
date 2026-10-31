@@ -1,4 +1,5 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
+import { closestKey } from '../src/core/schema/unknownKeyWords';
 import '../src/core/charts';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { requireGeometry } from '../src/core/sizing';
@@ -20,6 +21,11 @@ import type { TableData } from '../src/core/types/table';
 import type { Paint, SceneNode } from '../src/core/types/scene';
 import { getFixtures } from '../src/fixtures';
 import { render } from '../src/cli/render';
+
+vi.mock('../src/core/schema/unknownKeyWords', async (importActual) => {
+  const actual = await importActual<typeof import('../src/core/schema/unknownKeyWords')>();
+  return { ...actual, closestKey: vi.fn(actual.closestKey) };
+});
 
 type TextNode = Extract<SceneNode, { t: 'text' }>;
 
@@ -1150,6 +1156,17 @@ it('warns once per cell key and stays quiet for keys that are not a typo of an e
   expect(found.map((w) => w.field?.at(-1))).toEqual(['amunt']);
   expect(found[0]!.message).toContain('19 more');
   expect(found[0]!.fix).toBeUndefined();
+});
+
+// The near-key search ran again for every row and unknown key, so a long table with a few far keys rendered much slower.
+it('measures each unknown cell key once, however many rows carry it', () => {
+  const data: TableData = {
+    columns: [{ id: 'l', kind: 'rowLabel', label: 'Unit' }, { id: 'amount', kind: 'value', label: 'Amount' }],
+    rows: Array.from({ length: 50 }, (_, i) => ({ id: `r${i}`, label: `Row ${i}`, cells: { amount: 1, region: 2, owner: 3 } })),
+  };
+  vi.mocked(closestKey).mockClear();
+  resolveTable(data);
+  expect(vi.mocked(closestKey)).toHaveBeenCalledTimes(2);
 });
 
 // A repair patch built from the fitted rows tested a cell format the author never wrote, so applying it to the authored spec failed.
