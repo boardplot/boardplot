@@ -311,7 +311,7 @@ export function memoLayout<G>(data: object, options: object, layout: () => G): G
  * A function (the text measurer) enters by identity. The data is part of the
  * key, so data changed in place never reads an older result.
  */
-function layoutKey(data: object, options: object): string {
+export function layoutKey(data: object, options: object): string {
   const symbols = Object.getOwnPropertySymbols(options).map((symbol) => [symbol.description, (options as Record<symbol, unknown>)[symbol]]);
   // The smallValues mode in force too: a nested table inherits its enclosing chart's mode.
   return JSON.stringify([data, options, symbols, currentSmallValues()], (_key, value: unknown) => {
