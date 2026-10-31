@@ -16,7 +16,7 @@ const driverExpression: z.ZodType<DimSwitchExpression> = z.lazy(()=>z.union([
  z.number().finite().describe('Constant.'),
  z.strictObject({op:z.enum(['add','sub','mul','div']).describe('Arithmetic over driver measure values.'),a:driverExpression,b:driverExpression,factor:z.number().finite().optional().describe('Multiplier of the result.')}),
 ])).describe('Driver formula over measure references and constants only.');
-const sums=idRecord(id,z.number().finite().nullable().describe('Additive sum, or null for a missing value.')).describe('Sums by field: an absent field drops its measures, null is missing, 0 is data. Absent means absent from every fact of the member.');
+const sums=idRecord(id,z.number().finite().nullable().describe('Additive sum, or null for a missing value.')).describe('Sums by field: an absent field drops its measures, null is missing, 0 is data. A field absent or null in every fact of a member does not apply to it, null in some facts is missing, and a host that means zero sends 0. With dimension.sums true, a member owes a field it reports in any period in every period, and a gap makes the parent sum missing.');
 const measureRefs=(e:DimSwitchExpression):string[]=>typeof e==='number' || 'field' in e ? [] : 'measure' in e ? [e.measure] : 'total' in e ? measureRefs(e.total) : [...measureRefs(e.a),...measureRefs(e.b)];
 const judgeBase: z.ZodType<DimSwitchJudgeBase> = z.union([id,z.tuple([id],id).refine(v=>new Set(v).size===v.length,{message:'Sample base fields must be unique.'})]).describe('One field or a nonempty list of unique fields. All listed fields must meet their own minimumSample floor in every required member and Total window.');
 const thresholdPair = z.tuple([z.number().finite().nonnegative(),z.number().finite().nonnegative()]).refine(v=>v[0]<=v[1],{message:'Thresholds must satisfy 0 <= first <= second.'});
@@ -64,6 +64,7 @@ export const dimswitchDataSchema: z.ZodType<DimSwitchData> = z.strictObject({
 });
 export const dimswitchOptionsSchema = tableOptionsObject.safeExtend({
  topN:refusedBaseOptions('dimswitch').topN,
+ encodings:tableOptionsObject.shape.encodings.describe('Per-column opt-in visual encodings. A key is a column id: range, pp (the vs prior column), pl (the vs plan column, with a plan) or the id of a displayed period. Any other key draws nothing and warns dimswitch-encoding-column.'),
  density:z.enum(['compact','regular','relaxed']).optional().describe("Cell spacing: 'compact', 'regular' or 'relaxed'. The cohort densities do not apply: every cell holds a value and a change line, and cohort rows are fixed one-liners."),
  // The table's own variant is fixed to steering here, so this key names the dimswitch form (the cast only quiets safeExtend's same-type rule).
  variant:z.enum(['by-measure','by-member']).optional().describe('by-measure: KPI rows over members (by-member: members over KPIs, Total first). In by-member the Total block is always open.') as unknown as (typeof tableOptionsObject.shape)['variant'],

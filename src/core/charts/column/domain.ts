@@ -4,7 +4,7 @@
  * stacks and totals, the anomaly rule, the value domain and the axis break.
  */
 
-import { restLabel, restSum, topNCut } from '../topN';
+import { restDetailsWarning, restLabel, restSum, topNCut } from '../topN';
 import { cellFields, normalizeCategorySeries } from '../categorySeries';
 import { chartPalette } from '../chartEnv';
 import { breakStyleRefusal } from '../band/breakOrder';
@@ -940,6 +940,8 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
   // Read before topN: the Others cell is a sum, never a typed percent cell.
   const pctLevels = percentLevels(plotted);
   const { cats, dataSeries, othersId } = orderColumnCategories(options, normalized.cats, seriesNorm, plotted, warnings);
+  const lostDetails = othersId === null ? undefined : restDetailsWarning(data, new Set(cats.map((c) => c.id)));
+  if (lostDetails) warnings.push(lostDetails);
   const stackedLike = variant !== 'grouped';
   const { pyRef, uniformScenario } = columnScenarios(options, variant, cats, dataSeries, refSeries, warnings);
   const lines = columnLines(options, stackedLike, dataSeries, warnings, cats.some((cat) => cat.total100 !== undefined));
@@ -1099,7 +1101,7 @@ function seriesCagrs(
   }
   const from = cats[fi]!;
   const to = cats[ti]!;
-  const years = yearSpan(from.date, to.date) ?? yearSpanFromLabels(from.label, to.label);
+  const years = yearSpan(from.date ?? from.id, to.date ?? to.id) ?? yearSpanFromLabels(from.label, to.label);
   if (from.partial || to.partial || years === null || years <= 0) {
     warn(
       'series-cagr-no-span',

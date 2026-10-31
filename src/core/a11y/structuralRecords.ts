@@ -3,7 +3,7 @@ import type { DimSwitchDerived } from '../charts/dimswitch/types';
 import type { GridDerived } from '../charts/grid/layout';
 import type { MetricStackData } from '../charts/grid/metricStack';
 import { wholeCurrencyValue } from '../format';
-import { calcPreservesScale } from '../tableCalc';
+import { calcPreservesScale, columnOwnsFormat } from '../tableCalc';
 import type { BarTableData, BarTableDerived, BarTableMarks, BarTableOptions } from '../charts/bartable/types';
 import type { GanttMarks } from '../charts/gantt/layout';
 import type { GridMarks } from '../charts/grid/layout';
@@ -24,7 +24,8 @@ import type { InteractionRecord, InteractionScope, InteractionValue } from './ty
 /**
  * The value a table cell's record carries. A row's own format beats the
  * column's where the renderer's does (specFor in table/resolve.ts): on a
- * calc row, and on a data row under a column with no authored format. A
+ * calc row, and on a data row under a column with no format of its own (an
+ * authored one, or a percent change or share, which prints in points). A
  * MoM line under a money column prints "−8.3%", so its record is a
  * percentage, not euros; a $1.2m row under an authored '+1.1%' column
  * prints the percent, and so does its record. A cell a row calc or a
@@ -95,7 +96,7 @@ function authoredRowSpecs(data: TableData): Map<string, { format?: string; calc?
 function tableRecordCells(table: TableDerived['table'], data: TableData, options: TableOptions = {}): TableRecordCell[] {
   const withheld = suppressedTableCells(data);
   const rowSpecs = authoredRowSpecs(data);
-  const authoredFormat = new Set(data.columns.filter((column) => 'format' in column && column.format !== undefined).map((column) => column.id));
+  const authoredFormat = new Set(data.columns.filter(columnOwnsFormat).map((column) => column.id));
   return table.rows.flatMap(row => table.columns.flatMap(column => {
     const resolved = row.cells[column.id];
     // The resolved cell already prints the theme's glyph; a record

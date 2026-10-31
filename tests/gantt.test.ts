@@ -332,3 +332,33 @@ it('gantt calendar span data runs from the first item to the later of the last e
   expect(Math.min(...xs)).toBeGreaterThanOrEqual(wide.plot.x);
   expect(Math.max(...xs)).toBeLessThanOrEqual(wide.plot.x + wide.plot.w);
 });
+
+// Date.UTC reads years 0-99 as 19xx, so bars dated in year 50 printed heads and a description for 1950.
+it('keeps the years 0 to 99 in the calendar heads and the description', () => {
+  const svg = render({ spec: { type: 'gantt', data: { rows: [{ id: 'a', label: 'Phase', items: [
+    { id: 'i', label: 'Build', start: '0050-03-01', end: '0051-02-28', kind: 'bar' },
+  ] }] } }, return: ['svg'] }).body.svg as string;
+  expect(svg).toContain('Q2 0050');
+  expect(svg).toContain('1 Mar 0050');
+  expect(svg).not.toContain('195');
+});
+
+// A year cell too narrow for "2010" stayed empty, so a 20-year head showed no dates and nothing said so.
+it('gantt calendar head falls back to two-digit years and warns when no date fits', () => {
+  const spec = (start: string, end: string, width?: number) => ({ type: 'gantt', data: { rows: [{ id: 'r', label: 'Row', items: [
+    { id: 'a', label: 'a', kind: 'bar', start, end },
+  ] }] }, options: width ? { size: { width, height: 300 } } : {} });
+  const codes = (r: ReturnType<typeof render>) => (r.body.warnings as { code: string }[]).map((w) => w.code);
+  const long = render({ spec: spec('2010-01-01', '2029-12-31'), return: ['svg'] });
+  expect(long.body.svg as string).toContain('>29<');
+  expect(codes(long)).not.toContain('gantt-calendar-unlabelled');
+  expect(codes(render({ spec: spec('1990-01-01', '2029-12-31', 300), return: ['svg'] }))).toContain('gantt-calendar-unlabelled');
+});
+
+// A clipped edge year printed "27" beside the four-digit "2025" and "2026" once "yy" joined the year formats.
+it('gantt calendar head keeps four-digit years and leaves a clipped edge year empty', () => {
+  const fixture = getFixtures('gantt').find(f => f.id === 'two-year-span')!;
+  const svg = render({ spec: { type: 'gantt', data: fixture.data, options: { ...fixture.options, size: { width: 400, height: 300 } } }, return: ['svg'] }).body.svg as string;
+  expect(svg).toContain('>2026<');
+  expect(svg).not.toMatch(/>2[0-9]</);
+});

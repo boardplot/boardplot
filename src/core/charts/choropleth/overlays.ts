@@ -2,8 +2,7 @@ import { fmtPathNumber as fmt } from '../../curve';
 import { localeStrings } from '../../strings/choropleth';
 import { chartString } from '../../strings/choropleth';
 import type { LegendItemInput } from '../../frame';
-import type { Point, Rect } from '../../geometry';
-import { boxGap, rectsOverlap } from '../../geometry';
+import { boxGap, rectContains, rectsOverlap, type Point, type Rect } from '../../geometry';
 import { compileIcon, isIconName, listIcons } from '../../icons';
 import type { OccupiedIndex } from '../../label/occupied';
 import {
@@ -44,12 +43,18 @@ interface RenderGeoOverlaysInput {
   textless?: ReadonlySet<string>;
   /** Crowded choropleth glyphs move to the note together with their labels. */
   omitted?: ReadonlySet<string>;
+  /** The map frame: an omitted glyph whose anchor lies outside it is named as cropped, not as crowded. */
+  frame?: Rect;
   /** Key words an omitted glyph keeps in its note line, since its key entry goes with it. */
   toneNames?: Partial<Record<GeoOverlayTone, string>>;
   overlayMeasure?: string;
 }
 
 const SIZE: Record<GeoOverlaySize, number> = { sm: 12, md: 16, lg: 22 };
+/** The map frame sits this far inside the plot, so an anchor just beyond a simplified coastline stays on the canvas. */
+const FRAME_SLACK = 8;
+/** A glyph whose anchor lies outside the map frame (a crop dropped its region) cannot be drawn. */
+export const geoOverlayInFrame = (anchor: Point, frame: Rect): boolean => rectContains(frame, { ...anchor, w: 0, h: 0 }, -FRAME_SLACK);
 export const geoOverlayDiameter = (overlay: GeoOverlay): number => SIZE[overlay.size ?? 'md'];
 
 /** Reserve glyphs before solving region labels. Rendering reuses these exact claims. */
@@ -266,6 +271,12 @@ export function renderGeoOverlays(input: RenderGeoOverlaysInput): GeoOverlayRend
       }], overlayOccupied, input.solveCtx);
       labels.push(...hidden.placed);
       decisions.push(...hidden.decisions);
+      if (input.frame && !geoOverlayInFrame(anchor, input.frame)) {
+        warnings.push({ code: 'overlay-coordinate-outside-frame', severity: 'warn',
+          message: `overlay '${overlay.id}' lies outside the map frame, so its glyph is not drawn; its label is listed in the note`,
+          owner, suggest: 'move the overlay inside the mapped area, or place it on a region with at.region' });
+        return;
+      }
       warnings.push({ code: 'geo-overlay-no-space', severity: 'warn',
         message: `overlay '${overlay.id}' at its geographic anchor overlaps another glyph; its label is listed in the note`,
         owner, suggest: 'use smaller glyphs or a wider map' });

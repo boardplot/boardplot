@@ -64,7 +64,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | series[].role | string |  | Data series or comparison-only reference series; references are excluded from the main plotted data. One of `'data'`, `'reference'`. |
 | series[].colorRole | string |  | Theme color role of the integrated actual columns and their key when this series is the actual and sets no fill; no effect in the other modes or on a reference series. One of good, bad, warn, neutral, neutralLight, highlight, total, others; series-N for step N of the theme ramp, 1-based (series-2 is color.series[1]); or status-<key> for a theme status colour. A hex colour goes in fill. |
 | series[].fill | string |  | CSS fill of the integrated actual columns and their key when this series is the actual; a cell fill wins. No effect in the other modes or on a reference series. |
-| series[].unit | string |  | Unit of this series' values, read only by the grid shared-scale check; variance prints options.unit, not this. |
+| series[].unit | string |  | Unit of this series' values, read by the grid shared-scale check and the hover card; the drawn labels print options.unit. |
 | series[].format | string |  | Format-by-example for this series values, for example 1,234 or 1.2%. |
 
 ## Options

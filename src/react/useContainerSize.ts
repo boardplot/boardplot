@@ -221,6 +221,8 @@ export function useContainerSize({ size, fit = 'fill', fallbackSize, target, nee
     wrapperStyle: probed ? FILL_STYLE : undefined,
     probed,
     size: resolvedSize,
+    /** The frame a server snapshot of this container was laid out at. */
+    fallback,
     /** The host gives the chart its height (a fixed-height slot): the chart, its footer included, never grows past it. */
     pinnedHeight: ready && probed && measurement.host > 0,
     ready: !container || ready,
