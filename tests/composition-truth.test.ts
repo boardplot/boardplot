@@ -345,6 +345,19 @@ describe('line and mekko fail closed visibly', () => {
       expectSharesInRange(negative, `${type} negative direct shares`);
     }
   });
+  // A 100% column stack of percent cells has no absolute basis; its segments printed no share at all.
+  it('prints the share of each percent cell on a 100% column stack', () => {
+    const shares: ChartData = {
+      categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }],
+      series: [
+        { id: 's1', label: 'S1', values: [{ pct: 40 }, { pct: 30 }] },
+        { id: 's2', label: 'S2', values: [{ pct: 60 }, { pct: 70 }] },
+      ],
+    };
+    const texts = layoutComposition('column', shares).scene
+      .flatMap((node) => (node.t === 'text' ? [(node.lines ?? []).join(' ')] : []));
+    for (const share of ['40%', '30%', '60%', '70%']) expect(texts).toContain(share);
+  });
 });
 
 describe('composition share invariant', () => {

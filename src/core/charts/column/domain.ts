@@ -592,8 +592,14 @@ function columnBasis(
     .map((c) => c.id));
   const shareOf = (s: NormSer, ci: number): number | null => {
     const c = cats[ci]!;
-    if (basisByCat[ci]! <= 0 || (incompleteCats.has(c.id) && c.total100 === undefined)) return null;
-    if (variant === 'stacked100') return plottedOf(s, ci);
+    if (incompleteCats.has(c.id) && c.total100 === undefined) return null;
+    // A percent cell on a 100% stack is its own share: it needs no basis of
+    // absolute parts, which a stack of percent cells does not have.
+    if (variant === 'stacked100') {
+      if (nmCats100.has(c.id) || naCats100.has(c.id)) return null;
+      return basisByCat[ci]! > 0 || s.vals[ci]!.isPct ? plottedOf(s, ci) : null;
+    }
+    if (basisByCat[ci]! <= 0) return null;
     const val = s.vals[ci]!;
     return val.v === null || val.isPct ? null : (val.v / basisByCat[ci]!) * 100;
   };
