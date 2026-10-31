@@ -46,6 +46,8 @@ interface ValueAxisInput {
   ticks?: number[];
   /** A rank ladder (bump): its first and last ticks are ranks, so thinning keeps them instead of a coarser regular step. */
   keepEndTicks?: boolean;
+  /** A scale whose top tick is the point of the axis (a Pareto total = 100%): thinning keeps it, on a coarser regular step. */
+  keepTopTick?: boolean;
   /** Canvas width, for an x axis: an end label centred past it anchors inward. */
   canvasWidth?: number;
 }
@@ -105,6 +107,7 @@ function thinAxisTicks(
   measure: TextMeasurer,
   labelX: (pos: number, width: number, index: number, count: number) => number,
   keepEnds = false,
+  keepTop = false,
 ): number[] {
   if (ticks.length <= 2) return [...ticks];
   const itemsFor = (values: readonly number[]) => values.map((tick, index) => {
@@ -132,6 +135,7 @@ function thinAxisTicks(
     // Coarsen the whole ladder; retaining off-step endpoints makes a linear axis look uneven.
     for (let stride = 1; stride <= regular.length; stride++) {
       const kept = regular.filter(tick => Math.abs((tick - origin) / (baseStep * stride) - Math.round((tick - origin) / (baseStep * stride))) < 1e-9);
+      if (keepTop && kept.at(-1) !== regular.at(-1)) continue;
       if (kept.length > 0 && sweepHide(itemsFor(kept), 2).every(Boolean)) return kept;
     }
   }
@@ -325,7 +329,7 @@ export function layoutValueAxis(input: ValueAxisInput, occupied: OccupiedIndex):
     const inside = centred >= 0 && centred + width <= (input.canvasWidth ?? Infinity);
     return inside && occupied.hitsWhich(box, 0).length === 0 ? centred : tickLabelX(pos, width, index, count, true);
   };
-  const ticks = thinAxisTicks(requestedTicks, scale, orient, formatTick, font, measure, labelX, input.keepEndTicks === true);
+  const ticks = thinAxisTicks(requestedTicks, scale, orient, formatTick, font, measure, labelX, input.keepEndTicks === true, input.keepTopTick === true);
 
   for (const t of ticks) {
     const pos = scale(t);

@@ -995,6 +995,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | cycle-time-days | histogram | example | Cycle time peaks in the six-to-eight-day band and tails off by day thirteen |
 | order-value-eur-formatted | histogram | torture | Formatted in euro: the bin edges carry the currency, the bar heights are counts |
 | bimodal-with-far-outlier | histogram | torture | One $14,000 order stretches the axis over 40 bins; 999 of 1,000 orders sit in the first three |
+| claim-amount-open-tail | histogram | example | 15 of 800 claims run from $1,250 to $3,303; one open bin keeps them from stretching the axis |
 | unsnapped-bins-method-note | histogram | torture | The automatic bin width as computed, not snapped to a round number, with the binning rule stated |
 | localized-binning | histogram | torture | Authored binning wording under a German locale |
 

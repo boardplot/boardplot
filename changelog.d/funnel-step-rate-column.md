@@ -1,0 +1,3 @@
+### Fixed
+
+- A rows funnel whose gaps are too short for the step rates now prints every rate in the right-hand column, level with the gap between its two rows. Before, a long funnel on a short frame (for example 12 stages on a 888 × 396 pt slide) reserved that column but left it empty: each rate failed the row check, the chart warned `funnel-label-hidden` per step, and the rates went to a note the page does not show. Funnels whose gaps hold the rates do not change. The old drawing has no option: the nearest look is `{ "labels": { "point": false } }`, which takes the step rates off the page and gives the bars the column's width.
