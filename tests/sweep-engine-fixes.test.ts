@@ -415,4 +415,22 @@ describe('chart layout edge cases', () => {
     expect(ids).toContain('axis:y:arrow-high');
     expect(ids).toContain('axis:y:arrow-low');
   });
+
+  // Eight diverging panels on a wide slide sent five net scores to a note: "Netto +20,9 (+7,9)" was wider than a panel.
+  it('a diverging slope prints every net score and defines the net once in the key', () => {
+    const names = ['Subscription revenue, annual plans', 'Professional services, fixed price', 'Training and certification', 'Other revenue abroad',
+      'Consulting and implementation', 'Maintenance and repair', 'Managed services and support', 'Enterprise software licences'];
+    const series = names.map((label, i) => ({ id: `g${i}`, label, values: [53.85 - i * 4.3, 58.54 - i * 4.9], negative: [6.697 + i * 2.1, 16.82 + i * 1.7] }));
+    const request = {
+      type: 'slope',
+      data: { categories: [{ id: 'fy24', label: 'FY24' }, { id: 'fy26', label: 'FY26' }], series },
+      options: { title: 'T', target: 'slide', size: { width: 888, height: 396, unit: 'pt' }, locale: { language: 'de' }, variant: 'diverging', diverging: { labels: { positive: 'Besser', negative: 'Schlechter' } } },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+    const nets = geometry.labels.filter((l: { id: string }) => /^total:g\d:net$/.test(l.id));
+    expect(nets.filter((l: { hidden?: unknown }) => !l.hidden)).toHaveLength(8);
+    const key = geometry.labels.find((l: { id: string }) => l.id === 'legend:net:0');
+    expect(key && !key.hidden).toBe(true);
+  });
 });

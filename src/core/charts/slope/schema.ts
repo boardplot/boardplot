@@ -84,7 +84,7 @@ export const slopeOptionsSchema = baseOptionsSchema
         negative: z.string().optional().describe("Default 'Negative'."),
       }).optional().describe("Area names, such as Better and Worse."),
       sort: z.enum(['positive', 'net', 'data']).optional().describe("Panel order: 'positive' (default; second-period positive share, descending), 'net' or 'data'."),
-      net: z.boolean().optional().describe("Net score (positive minus negative) and its change under each panel. Default true."),
+      net: z.boolean().optional().describe("Net score (positive minus negative) and its change under each panel, defined once in the key. Default true."),
       neutralNote: z.boolean().optional().describe("Note the share that chose neither answer. Default true."),
       minBase: z.number().nonnegative().optional().describe("Base n below which a panel is hatched and noted. Default 30."),
     }).optional().describe("Variant 'diverging' options."),
