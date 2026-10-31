@@ -26,6 +26,35 @@ describe('the description states the drawn numbers', () => {
 });
 
 describe('drawn text stays on the canvas', () => {
+  // A highlighted rotated column name measured at regular weight was clipped at the left edge.
+  it('column: highlighted rotated names fit at their drawn weight in every variant', () => {
+    const names = [
+      'Membership-supported equipment', 'Subscription-supported training',
+      'Equipment-maintenance contracts', 'Distribution-management services',
+      'Subscription-management services', 'Software-maintenance agreements',
+      'Equipment-rental arrangements', 'Warehouse-management services',
+    ];
+    const data = {
+      categories: names.map((label, i) => ({ id: `c${i}`, label })),
+      series: [
+        { id: 'a', label: 'Online', values: [25, 20, 35, 30, 20, 25, 10, 20] },
+        { id: 'b', label: 'Stores', values: [20, 10, 15, 10, 5, 20, 10, 25] },
+      ],
+    };
+    for (const variant of ['grouped', 'stacked', 'stacked100']) {
+      const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'column', data,
+        options: { variant, highlight: 'c0', size: { width: 720, height: 700 } },
+      } as never)) as Geometry;
+      const label = geometry.scene.find(node => node.id === 'label:category:c0');
+      expect(label?.t).toBe('text');
+      if (label?.t !== 'text') continue;
+      expect(label.rotate).toBe(-45);
+      expect(label.lines).toEqual([names[0]]);
+      expect(label.font.weight).toBe(700);
+      expect(clippedTextWarnings(geometry, defaultMeasurer)).toEqual([]);
+    }
+  });
+
   // A bold extreme label was seated at its regular width and ran 5 px past the right edge.
   it('column: the bold extreme label fits at its drawn width', () => {
     const fixture = getFixtures('column').find((f) => f.id === 'anomaly-torture')!;
