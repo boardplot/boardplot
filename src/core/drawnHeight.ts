@@ -123,23 +123,28 @@ function sameDrawing(short: Geometry, tall: Geometry): boolean {
 
 /**
  * The least height whose layout draws the chart the pinned frame draws, with no empty bands.
- * `layoutAt` lays the chart out at a size; `lowest` is a height known to be too small. A chart that
- * uses all of its frame, or that no shorter frame draws the same, keeps the pinned height.
+ * `layoutAt` lays the chart out at a size; `lowest` is a height known to be too small; `pin` is the
+ * height the frame was pinned to. A chart that uses all of its frame, or that no shorter frame draws
+ * the same, keeps the pinned height.
  */
-export function drawnHeight(pinned: Geometry, lowest: number, layoutAt: (size: Size) => LayoutResult): number {
+export function drawnHeight(pinned: Geometry, lowest: number, layoutAt: (size: Size) => LayoutResult, pin: number): number {
   const width = pinned.size.width;
+  // A chart can add its own text below the frame (a map's source and credit line): the canvas is the frame plus that growth.
+  const growth = Math.max(0, pinned.size.height - pin);
   const draws = (height: number): boolean => {
     const probe = layoutAt({ width, height });
-    return !isRefused(probe) && sameDrawing(probe as Geometry, pinned);
+    // A canvas that grew past the height given by more than the pinned one did (the notes outgrew it) is not a drawing at that height.
+    return !isRefused(probe) && probe.size.height <= height + growth + 0.01 && sameDrawing(probe as Geometry, pinned);
   };
-  const frame = pinned.size.height;
+  const canvas = pinned.size.height;
+  const frame = canvas - growth;
   let [low, high] = [Math.max(1, Math.floor(lowest)), Math.ceil(frame)];
-  if (high - low <= 1) return frame;
+  if (high - low <= 1) return canvas;
   if (!draws(low)) {
     while (high - low > 1) {
       const middle = Math.floor((low + high) / 2);
       if (draws(middle)) high = middle; else low = middle;
     }
   } else high = low;
-  return frame - high >= MIN_EMPTY_BAND ? Math.min(high, frame) : frame;
+  return frame - high >= MIN_EMPTY_BAND ? Math.min(high + growth, canvas) : canvas;
 }
