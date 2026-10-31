@@ -19,7 +19,7 @@ import { operatorWidth, qualifierFont } from './statement';
 import { groupHeadingFaces, groupHeadingFloors } from './groupHeading';
 import {
   DENSE_COLUMNS, LABEL_WRAP_FLOOR, SOFT_LABEL_CAP, INLINE_LABEL_INDENT, cellPadX as trackCellPadX,
-  tableFonts, rowFont as ladderRowFont, kindFont, labelIndents, inlineFont as ladderInlineFont,
+  tableFonts, rowFont as ladderRowFont, kindFont, strongColumnFont, labelIndents, inlineFont as ladderInlineFont,
   changeLineFont, encodingReserve, intrinsicColumnWidth, authoredTrackWidth, authoredWidthWarnings,
   wrapFloorWidth, sectionChipFloor, collapsedHintWidth, headsFit, frameFillExtras,
   SORT_CHEVRON_RESERVE, DEFAULT_TRACK_GROWTH, headerContentWidth, columnTracks, type TableFonts, type WidthContext,
@@ -112,7 +112,8 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
     const totalFace = kind === undefined || (kind !== 'subtotal' && kind !== 'result' && kind !== 'driver' &&
       ((kind !== 'member' && kind !== 'measure') || theme.table?.weights?.figures?.[kind] === undefined));
     if (cell.role === 'total' && cell.kind !== 'rowLabel' && totalFace) return regularFonts.totalValue;
-    return kindFont(ladderRowFont(theme, ladder, regularFonts, cell.role, cellStep(cell), row?.hasChildren === true, hasChanges.has(cell.rowId)), kind, cell.kind === 'rowLabel', theme);
+    const font = kindFont(ladderRowFont(theme, ladder, regularFonts, cell.role, cellStep(cell), row?.hasChildren === true, hasChanges.has(cell.rowId)), kind, cell.kind === 'rowLabel', theme);
+    return cell.state === 'value' ? strongColumnFont(font, cols.find((col) => col.id === cell.colId), cell, kind, theme) : font;
   }
   function affixRoom(row: ResolvedRow, font: FontSpec): number {
     if (row.unitAffix === undefined) return 0;
@@ -365,6 +366,31 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
           changed = true;
         }
         if (!changed) break;
+      }
+    }
+    // A text column the shrink cut while another keeps width above what prints it uncut takes that
+    // width: the cut column is the one that loses text, and the slack column only wraps more.
+    const printsUncut = (col: ResolvedColumn) => col.wrap ? minimumWidths.get(col.id)!
+      : intrinsicColumnWidth(col, widthRows, { ...chosen.context, hint: undefined, twoLineLabels: true });
+    const flexText = cols.filter((col) => canShrink(col) && col.kind === 'text' && col.width === undefined);
+    const gaps = flexText.map((col) => ({ id: col.id, gap: printsUncut(col) - widths.get(col.id)! }));
+    const wants = gaps.filter((entry) => entry.gap > 0);
+    const gives = gaps.filter((entry) => entry.gap < 0);
+    const wanted = wants.reduce((sum, entry) => sum + entry.gap, 0);
+    const given = gives.reduce((sum, entry) => sum - entry.gap, 0);
+    const move = Math.floor(Math.min(wanted, given));
+    if (move > 0) {
+      let toGive = move;
+      let toTake = move;
+      for (const [index, entry] of gives.entries()) {
+        const cut = index === gives.length - 1 ? toGive : Math.min(toGive, Math.floor(move * -entry.gap / given));
+        widths.set(entry.id, widths.get(entry.id)! - cut);
+        toGive -= cut;
+      }
+      for (const [index, entry] of wants.entries()) {
+        const add = index === wants.length - 1 ? toTake : Math.min(toTake, Math.floor(move * entry.gap / wanted));
+        widths.set(entry.id, widths.get(entry.id)! + add);
+        toTake -= add;
       }
     }
     // A shrink never takes a section chip past the table's end: a frame without room for it

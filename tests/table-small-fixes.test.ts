@@ -1107,3 +1107,47 @@ it('prints the change of a nonlinear row calc in a delta or sub column, and keep
   const cell = (row: string, col: string) => table.rows.find((r) => r.id === row)!.cells[col]!.displayed;
   expect([cell('margin', 'ac'), cell('margin', 'py'), cell('margin', 'd'), cell('margin', 's'), cell('sum', 'd')]).toEqual(['20.0%', '10.0%', '10.0%', '10.0%', '130']);
 });
+
+// A bold (`strong`) label column was measured in the regular weight, so its track was too narrow and the next cell painted over the last letters.
+it('measures a strong row-label column in the weight it draws', () => {
+  const data: TableData = {
+    columns: [
+      { id: 'label', kind: 'rowLabel', label: 'Business', emphasis: 'strong' },
+      ...['a', 'b'].map((id) => ({ id, kind: 'value' as const, label: `Column ${id}`, format: '0.0' })),
+    ],
+    rows: ['Point-of-Care Analyzers', 'Imaging Contrast Agents', 'Molecular Test Kits']
+      .map((label, i) => ({ id: `r${i}`, label, cells: { a: 3.1 + i, b: 4.2 + i } })),
+  };
+  const encodings = { a: { type: 'heat', scale: 'column' }, b: { type: 'heat', scale: 'column' } };
+  const geometry = layout('table', data, { encodings, target: 'slide', size: { width: 444, height: 396, unit: 'pt' } });
+  for (const id of ['r0', 'r1', 'r2']) {
+    const text = geometry.scene.find((node): node is TextNode => node.t === 'text' && node.id === `cell:${id}:label`)!;
+    const heat = geometry.scene.find((node): node is Extract<SceneNode, { t: 'rect' }> => node.t === 'rect' && node.id === `heat:${id}:a`)!;
+    const drawn = Math.max(...text.lines.map((line) => defaultMeasurer(line, text.font).width));
+    expect(text.x + drawn).toBeLessThanOrEqual(heat.rect.x);
+  }
+});
+
+// A fixed frame cut a head and a cell in text columns that were narrow while wrapping columns kept width they did not need.
+it('takes width from a wrapping text column before it cuts another text column', () => {
+  const data: TableData = {
+    columns: [
+      { id: 'label', kind: 'rowLabel', label: 'Offer' },
+      { id: 'mix', kind: 'text', label: 'Consideration' },
+      { id: 'terms', kind: 'text', label: 'Terms', wrap: true },
+      { id: 'notes', kind: 'text', label: 'Notes', wrap: true },
+      { id: 'when', kind: 'text', label: 'Timeline' },
+    ],
+    rows: ['A', 'B'].map((id) => ({
+      id, label: `Bidder ${id}`,
+      cells: {
+        mix: 'Cash and stock',
+        terms: 'Antitrust clearance in the EU and UK, no material adverse change, works council consulted',
+        notes: 'Bridge facility from two lead banks, syndication after signing the offer',
+        when: 'Signing in the second quarter, closing early next year',
+      },
+    })),
+  };
+  const geometry = layout('table', data, { size: { width: 760, height: 400 } });
+  expect(geometry.warnings.filter((warning) => warning.code === 'label-truncated')).toEqual([]);
+});
