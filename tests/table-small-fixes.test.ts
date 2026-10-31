@@ -1090,10 +1090,11 @@ it('reads a percent change under a row format as a percent, as it reads one with
 });
 
 // A margin row (gp / rev * 100) in a delta column printed the ratio of the changes (30.0%) and not the change of the margins (10.0%).
-it('prints the change of a nonlinear row calc in a delta column, and keeps a linear one', () => {
+it('prints the change of a nonlinear row calc in a delta or sub column, and keeps a linear one', () => {
   const data: TableData = {
     columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'ac', kind: 'value' }, { id: 'py', kind: 'value' },
-      { id: 'd', kind: 'computed', calc: { op: 'delta', a: 'ac', b: 'py' } }],
+      { id: 'd', kind: 'computed', calc: { op: 'delta', a: 'ac', b: 'py' } },
+      { id: 's', kind: 'computed', calc: { op: 'sub', a: { ref: 'ac' }, b: { ref: 'py' } } }],
     rows: [
       { id: 'rev', label: 'Revenue', cells: { ac: 200, py: 100 } },
       { id: 'gp', label: 'Gross profit', cells: { ac: 40, py: 10 } },
@@ -1104,5 +1105,5 @@ it('prints the change of a nonlinear row calc in a delta column, and keeps a lin
   };
   const table = resolveTable(data, {}).table;
   const cell = (row: string, col: string) => table.rows.find((r) => r.id === row)!.cells[col]!.displayed;
-  expect([cell('margin', 'ac'), cell('margin', 'py'), cell('margin', 'd'), cell('sum', 'd')]).toEqual(['20.0%', '10.0%', '10.0%', '130']);
+  expect([cell('margin', 'ac'), cell('margin', 'py'), cell('margin', 'd'), cell('margin', 's'), cell('sum', 'd')]).toEqual(['20.0%', '10.0%', '10.0%', '10.0%', '130']);
 });

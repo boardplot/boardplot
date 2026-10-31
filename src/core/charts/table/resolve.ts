@@ -2524,9 +2524,9 @@ function evaluateTableCalcs(
     const sourceStates = new Map(states);
     for (const col of numericCols) {
       if (col.kind === 'computed' && !calcPreservesScale(col.calc)) continue;
-      // A delta column takes the change of a nonlinear row calc's own cells (a margin), not the ratio of
-      // the changes. A sum column keeps running the row calc on the sums: a YTD growth is the ratio of sums.
-      const ownCalc = col.kind === 'computed' && 'op' in col.calc && col.calc.op === 'delta' && !calcIsLinear(row.calc!);
+      // A delta column, or a sub column of two cells, takes the change of a nonlinear row calc's own cells
+      // (a margin), not the ratio of the changes. A sum column keeps running the row calc on the sums: a YTD growth is the ratio of sums.
+      const ownCalc = col.kind === 'computed' && isChangeCalc(col.calc) && !calcIsLinear(row.calc!);
       const calc = ownCalc ? col.calc : row.calc!;
       const read = ownCalc ? states : sourceStates;
       let res = evalCalc(calc, row, read, leafTotal, ownCalc ? undefined : {
@@ -2546,6 +2546,11 @@ function evaluateTableCalcs(
     }
   }
   return { nearZero, mixedCoverage };
+}
+
+/** A column calc that is the change between two cells: delta, or sub of two column references. */
+function isChangeCalc(calc: Calc): boolean {
+  return 'op' in calc && (calc.op === 'delta' || (calc.op === 'sub' && 'ref' in calc.a && 'ref' in calc.b));
 }
 
 /**
