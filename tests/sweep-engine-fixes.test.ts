@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import * as labelSolver from '../src/core/label/solver';
+import { layoutColumn } from '../src/core/charts/column/layout';
 import '../src/core/geo/packs';
 import { getFixtures } from '../src/fixtures';
 import { layoutResolvedRequest, renderSvg, resolveChartRequest } from '../src/index';
@@ -430,6 +432,26 @@ describe('chart layout edge cases', () => {
     const ticks = (r: unknown) => (layoutResolvedRequest(resolveChartRequest(r as any) as any) as any).scene.filter((n: { id?: string }) => String(n.id).startsWith('axis:y:tick:')).length;
     expect(ticks(request())).toBeGreaterThan(1);
     expect(ticks(request({ show: false }))).toBe(0);
+  });
+
+  // A grouped chart with thinned values needs no discarded label solve before it draws its axis.
+  it('solves thinned grouped values only with the fallback axis', () => {
+    const data = {
+      categories: Array.from({ length: 12 }, (_, i) => ({ id: `c${i}`, label: `Category ${i + 1}` })),
+      series: ['a', 'b', 'c', 'd'].map((id, i) => ({ id, values: Array.from({ length: 12 }, (_, j) => 20 + i + j) })),
+    };
+    const solve = vi.spyOn(labelSolver, 'solveLabels');
+    try {
+      const options = { title: 'Values by category', size: { width: 480, height: 320 } };
+      layoutColumn(data, { ...options, valueAxis: { show: true } });
+      const withAxis = solve.mock.calls.length;
+      solve.mockClear();
+      const automatic = layoutColumn(data, options);
+      expect(automatic.scene.some(node => node.id?.startsWith('axis:y:tick:'))).toBe(true);
+      expect(solve.mock.calls.length).toBe(withAxis);
+    } finally {
+      solve.mockRestore();
+    }
   });
 
   // Eight diverging panels on a wide slide sent five net scores to a note: "Netto +20,9 (+7,9)" was wider than a panel.

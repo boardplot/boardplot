@@ -97,7 +97,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | connectors[].to | string | yes | Destination waterfall item id. |
 | connectors[].anchor | string |  | Connect at the item sum or a named segment boundary. One of `'sum'` (or another value of its type). |
 | connectors[].hidden | boolean |  | Hide this connector and start a new summation at the destination. |
-| cases | array |  | Two or three cases of the same bridge side by side in each step (scenarios): each item gives values, one per case, and each case runs its own levels in its own colour, named in the key. Case bars draw no connectors, since a line to a case's next bar would cross the other case's bar; items take no value or segments, and data.connectors and variant 'horizontal' are refused. |
+| cases | array |  | Two or three cases of the same bridge side by side in each step (scenarios): each item gives values, one per case, and each case runs its own levels in its own colour, named in the key. Case bars draw no connectors, since a line to a case's next bar would cross the other case's bar; items take no value or segments, and data.connectors is refused. Under variant 'horizontal' each step's case bars stack in its row. |
 | cases[].id | string | yes | Case identity without ':', which joins it to an item id ('<item>:<case>'); an annotation anchor names it as seriesId. |
 | cases[].label | string |  | Displayed case name in the key; defaults to the id. |
 
@@ -160,5 +160,6 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | cost-bridge-lower-is-better | example | Cost bridge: a rise paints bad and a saving good under lowerIsBetter |
 | neutral-steps | example | signColor false keeps every step in the neutral |
 | two-case-budget-bridge | example | Two cases side by side in each step: a conservative and an aggressive budget |
+| two-case-budget-bars | example | The two-case bridge as bars: each value stands past the end of its own bar |
 | single-segment-authored-format | example | One segment prints one value at the authored precision |
 | repeated-segment-key | torture | Equal segment names and colours share one key |

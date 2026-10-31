@@ -77,7 +77,9 @@ import {
   normalizeGridData,
   parseGridLegendPanelData,
   parseGridTextPanelData,
+  type ExplicitGridData,
   type GridInput,
+  type GridThemeFacts,
   type GridLayoutOptions,
   type GridPanelSpec,
   type GridTrackScope,
@@ -132,6 +134,30 @@ function assertTrackLimits(options: GridLayoutOptions, panels: readonly GridPane
   });
 }
 
+/**
+ * Normalizes grid data with the facts of the themes the panels render in: a
+ * panel's own `options.theme` replaces the grid's. A theme that does not
+ * resolve reports neutral facts here and fails where the panel is laid out.
+ */
+export function normalizeGridWithTheme(data: unknown, options: GridLayoutOptions): ExplicitGridData {
+  const facts = new Map<unknown, GridThemeFacts>();
+  const themeFacts = (panelTheme: unknown): GridThemeFacts => {
+    const ref = panelTheme ?? options.theme;
+    let found = facts.get(ref);
+    if (!found) {
+      try {
+        const theme = resolveTheme(ref as ThemeRef);
+        found = { seriesCount: theme.color.series.length, stylesSeries: theme.marks?.comboLine === 'ink' || theme.marks?.comboColumnTint !== undefined };
+      } catch {
+        found = { seriesCount: Infinity, stylesSeries: false };
+      }
+      facts.set(ref, found);
+    }
+    return found;
+  };
+  return normalizeGridData(data, { palette: options.palette, themeFacts });
+}
+
 export function layoutGrid(
   data: GridInput,
   options: GridLayoutOptions = {},
@@ -156,7 +182,7 @@ export function layoutGrid(
     return withWarnings(layoutMetricStack(data, options), formatWarnings);
   }
   if (options.stack) stackError('data', 'Metric stack mode needs shared categories and measures');
-  const normalized = normalizeGridData(data);
+  const normalized = normalizeGridWithTheme(data, options);
   requireChartCores(normalized.panels.map((panel) => panel.type), (type) => getChart(type) !== undefined);
   assertTrackLimits(options, normalized.panels);
   normalized.panels = normalized.panels.map((panel) => panel.options

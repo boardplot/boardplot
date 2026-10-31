@@ -15,6 +15,7 @@
 import { describe, expect, it } from 'vitest';
 import '../src/core/charts';
 import { getChartDefinition } from '../src/core/registry';
+import { resolveChartRequest } from '../src/index';
 import { getFixtures } from '../src/fixtures';
 import type { Geometry } from '../src/core/types/scene';
 
@@ -259,6 +260,63 @@ describe('two cases in one bridge', () => {
       geometry.marks.connectors.length,
       geometry.legend?.items.map((item) => item.id),
     ]).toEqual([127, 150, 12, 0, ['conservative', 'aggressive']]);
+  });
+
+  const caseLayout = (data: unknown, options: Record<string, unknown>) => {
+    const waterfall = getChartDefinition('waterfall')!;
+    return waterfall.layout(waterfall.normalize(structuredClone(data) as never), options as never) as Geometry<{ bars: { id: string; rect: { x: number; y: number; w: number; h: number } }[] }, object>;
+  };
+  const valueOf = (geometry: ReturnType<typeof caseLayout>, barId: string) =>
+    geometry.labels.find((label) => label.id === `sum:${barId}` || label.id === `total:${barId}`)!;
+
+  // A value at its bar's inner edge read as the neighbouring case's number: +8 stood at the right edge of its bar.
+  it('centres each value on its own column', () => {
+    const fixture = getFixtures('waterfall').find((candidate) => candidate.id === 'two-case-budget-bridge')!;
+    const geometry = caseLayout(fixture.data, { ...fixture.options });
+    const offCentre = geometry.marks.bars.filter((bar) => {
+      const { rect } = valueOf(geometry, bar.id);
+      return Math.abs(rect.x + rect.w / 2 - (bar.rect.x + bar.rect.w / 2)) > 0.5;
+    });
+    expect(offCentre.map((bar) => bar.id)).toEqual([]);
+  });
+
+  // Two equal totals closer than the series value gap read as one number, and neither may drop for it.
+  it('keeps crowded equal totals apart at their bars\' inner edges', () => {
+    const geometry = caseLayout({
+      cases: [{ id: 'a' }, { id: 'b' }],
+      items: [{ id: 'open', type: 'total', values: [12000, 12000] }, { id: 'step', values: [800, 1800] }, { id: 'mid', values: [500, 1400] }, { id: 'end', type: 'total' }],
+    }, { size: { width: 400, height: 225 } });
+    const [a, b] = [valueOf(geometry, 'open:a'), valueOf(geometry, 'open:b')];
+    expect([a.hidden, b.hidden, b.rect.x - (a.rect.x + a.rect.w) >= 6]).toEqual([undefined, undefined, true]);
+  });
+
+  // A centred +18, wider than its bar, hung over +8's seat, and the case's whole value row thinned to every other value.
+  it('keeps every value of a narrow bridge whose centred values would touch', () => {
+    const fixture = getFixtures('waterfall').find((candidate) => candidate.id === 'two-case-budget-bridge')!;
+    const request = resolveChartRequest({ type: 'waterfall', data: fixture.data, options: { ...fixture.options, size: { width: 320, height: 477 } } } as never);
+    const geometry = caseLayout(request.data, request.options as Record<string, unknown>);
+    expect(geometry.marks.bars.filter((bar) => valueOf(geometry, bar.id).hidden !== undefined).map((bar) => bar.id)).toEqual([]);
+  });
+
+  // The horizontal form looked a label's bar up by step id, so case values floated, overprinted other bars or fell to the notes.
+  it('seats each value of the bars form just past the end of its own bar, in its row', () => {
+    const fixture = getFixtures('waterfall').find((candidate) => candidate.id === 'two-case-budget-bars')!;
+    const geometry = caseLayout(fixture.data, { ...fixture.options });
+    const misplaced = geometry.marks.bars.filter((bar) => {
+      const label = valueOf(geometry, bar.id);
+      return label.hidden !== undefined || Math.abs(label.rect.x - (bar.rect.x + bar.rect.w + 8)) > 0.5
+        || Math.abs(label.rect.y + label.rect.h / 2 - (bar.rect.y + bar.rect.h / 2)) > 0.5;
+    });
+    expect(misplaced.map((bar) => bar.id)).toEqual([]);
+  });
+
+  // The value ink of the bars form looked the direction up by step id too, so a fall under lowerIsBetter read as bad.
+  it('reads a case step\'s direction in the bars form', () => {
+    const geometry = caseLayout({
+      cases: [{ id: 'a' }, { id: 'b' }],
+      items: [{ id: 'open', type: 'total', values: [10, 10] }, { id: 'cost', direction: 'lowerIsBetter', values: [-2, -3] }, { id: 'end', type: 'total' }],
+    }, { variant: 'horizontal', theme: { preset: 'standard', overrides: { marks: { bridge: 'sign' } } } });
+    expect(valueOf(geometry, 'cost:a').ink).toEqual({ token: 'good' });
   });
 
   it('refuses a case bridge whose step gives the wrong number of values', () => {
