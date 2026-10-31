@@ -399,7 +399,7 @@ export function Dashboard() {
 | strings.missingStack | string |  |  | StackedArea source-null note; {categories} is replaced. |
 | strings.incompleteStacks | string |  |  | Incomplete bar stack note (bar only; column and combo use knownPartsTotals); {categories} is replaced. |
 | strings.knownPartsShares | string |  |  | Incomplete 100% stack note without total100; {categories} is replaced. |
-| strings.rebaseZero | string |  |  | Line or stacked-area series left out by rebase100 for a zero base; {series} and {period} are replaced. |
+| strings.rebaseZero | string |  |  | Line or stacked-area series left out by rebase100 for a zero or negative base; {series} and {period} are replaced. |
 | strings.rebaseMissing | string |  |  | Line or stacked-area series left out by rebase100 for a missing base; {series} and {period} are replaced. |
 | strings.loading | string |  |  | Visible wording of the busy state; default Loading. |
 
