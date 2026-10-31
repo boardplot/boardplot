@@ -284,6 +284,7 @@ function layoutDiagramPass(
   const refusedIds = ensurePositionContract(rawData.nodes, data.nodes, preset.nodeRects, plot, warnings);
 
   const labelRequests: LabelRequest[] = [];
+  const splitLabels = new Map<string, LabelRequest[]>();
   const labelKinds = new Map<string, DiagramLabelKind>();
   /** Node labels whose first lines are the step name, printed bold. */
   const boldLeads = new Map<string, number>();
@@ -436,6 +437,7 @@ function layoutDiagramPass(
       org !== undefined && !org.centred,
       emphasisWeight(theme),
       org?.captionBoxes ? { font: captionFont, box: org.captionBoxes.get(node.id) } : org?.seats ? { font: labelFont, seat: org.seats.get(node.id) } : undefined,
+      splitLabels,
     );
     if (node.badge || options.variant === 'linear-process') {
       // An authored badge takes its role; the engine's step number is no
@@ -496,12 +498,30 @@ function layoutDiagramPass(
     nodeMarks.push(resolved);
   }
 
-  const solvedStructural = solveLabels(labelRequests, occupied, labelCtx(theme, size, {}, {
+  const structuralCtx = labelCtx(theme, size, {}, {
     density: 'full',
     measure,
     plot,
     labelPad: 1,
-  }));
+  });
+  let solvedStructural: ReturnType<typeof solveLabels>;
+  if (splitLabels.size === 0) solvedStructural = solveLabels(labelRequests, occupied, structuralCtx);
+  else {
+    // An outside label block that carries its secondary lines and finds no
+    // seat is solved again as the primary label alone.
+    const marks = occupied.snapshot();
+    const solveOn = (requests: LabelRequest[]) => {
+      const trial = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
+      trial.tickColumns = occupied.tickColumns;
+      for (const claim of marks) trial.claim(claim.rect, claim.kind, claim.owner, claim.part, claim.polygon);
+      return { solved: solveLabels(requests, trial, structuralCtx), trial };
+    };
+    let attempt = solveOn(labelRequests);
+    const lost = new Set(attempt.solved.placed.filter(label => label.hidden && splitLabels.has(label.id)).map(label => label.id));
+    if (lost.size > 0) attempt = solveOn(labelRequests.flatMap(request => lost.has(request.id) ? splitLabels.get(request.id)! : [request]));
+    for (const claim of attempt.trial.snapshot().slice(marks.length)) occupied.claim(claim.rect, claim.kind, claim.owner, claim.part, claim.polygon);
+    solvedStructural = attempt.solved;
+  }
   remapLabelKinds(solvedStructural.placed, labelKinds);
   // A compact layout's own inks: a muted description, a numeral in its step's fill.
   for (const label of solvedStructural.placed) {
@@ -732,6 +752,8 @@ function addNodeLabels(
   leadWeight = font.weight,
   /** A compact layout's caption type and its seat. */
   caption?: { font: FontSpec; box?: { rect: Rect; lines: string[] }; seat?: { rect: Rect; lines: string[] } },
+  /** Per node label id, the requests that stand in for the label block when it finds no seat with its secondary lines. */
+  split?: Map<string, LabelRequest[]>,
 ): void {
   const external = options.variant === 'roadmap' || options.variant === 'circular-process';
   // A cycle step's label sits on the side of its node that faces away from
@@ -753,7 +775,7 @@ function addNodeLabels(
   const bold: FontSpec = { ...font, weight: leadWeight };
   const lead = cut > 0 ? fitText(node.label.slice(0, cut), bold, maxWidth, 1, measure, externalFit) : undefined;
   const seat = caption?.seat;
-  const wrapped = seat ? { lines: seat.lines, title: undefined as string | undefined } : lead
+  const primary = seat ? { lines: seat.lines, title: undefined as string | undefined } : lead
     ? (() => {
       const rest = fitText(node.label.slice(cut + 1), font, maxWidth, 2, measure, externalFit);
       return { lines: [...lead.lines, ...rest.lines], title: lead.title ?? rest.title };
@@ -761,51 +783,66 @@ function addNodeLabels(
     : fitText(node.label, font, maxWidth, 3, measure, externalFit);
   if (lead) boldLeads.set(id, lead.lines.length);
   const lineH = font.size * (font.lineHeight ?? 1.2);
-  const width = Math.max(1, ...wrapped.lines.map((line, index) => measure(line, index < (lead?.lines.length ?? 0) ? bold : font).width));
-  const height = wrapped.lines.length * lineH;
-  const secondary = node.secondaryLabel ? fitText(node.secondaryLabel, font, resolved.contentRect.w, 2, measure, { target: options.target, typeRole: 'label' }) : undefined;
+  const secondary = node.secondaryLabel ? fitText(node.secondaryLabel, font, external ? maxWidth : resolved.contentRect.w, 2, measure, external ? externalFit : { target: options.target, typeRole: 'label' }) : undefined;
   const secondaryHeight = (secondary?.lines.length ?? 0) * lineH;
+  const height = primary.lines.length * lineH;
   const secondaryFits = secondary && !secondary.title && height + secondaryHeight + u <= resolved.contentRect.h;
   const primaryHeight = resolved.contentRect.h - (!external && secondaryFits ? secondaryHeight + u : 0);
   kinds.set(id, 'diagramNode');
-  const candidates = seat ? [{ slot: 'right', rect: qRect(seat.rect), penalty: 0 }] : !external && height > primaryHeight + 0.5
-    ? [] : external
-    ? externalCandidates(
-        resolved.rect,
-        width,
-        height,
-        u,
-        options.variant === 'roadmap',
-        plot,
-        laneBox,
-      )
-    : [
-        {
-          slot: 'inside',
-          rect: qRect({
-            x: start ? resolved.contentRect.x : resolved.contentRect.x + (resolved.contentRect.w - width) / 2,
-            y: resolved.contentRect.y + (primaryHeight - height) / 2,
-            w: width,
-            h: height,
-          }),
-          penalty: 0,
-          insideFill: fillCss,
-          insidePaint,
-        },
-      ];
-  requests.push({
-    id,
-    kind: 'point', markAnchored: false, typeRole: 'label',
-    owner: nodeOwner(node.id),
-    text: node.label,
-    lines: wrapped.lines,
-    ...(wrapped.title !== undefined ? { title: wrapped.title } : {}),
-    font,
-    priority: PRIORITY.valueLine,
-    ...(ring === 'left' ? { align: 'end' as const } : ring === 'above' || ring === 'below' ? { align: 'middle' as const } : { align: 'start' as const }),
-    candidates,
-  });
-  if (wrapped.title !== undefined) {
+  const labelRequest = (block: { lines: string[]; title?: string | undefined }, text: string): LabelRequest => {
+    const width = Math.max(1, ...block.lines.map((line, index) => measure(line, index < (lead?.lines.length ?? 0) ? bold : font).width));
+    const blockHeight = block.lines.length * lineH;
+    const candidates = seat ? [{ slot: 'right', rect: qRect(seat.rect), penalty: 0 }] : !external && blockHeight > primaryHeight + 0.5
+      ? [] : external
+      ? externalCandidates(
+          resolved.rect,
+          width,
+          blockHeight,
+          u,
+          options.variant === 'roadmap',
+          plot,
+          laneBox,
+        )
+      : [
+          {
+            slot: 'inside',
+            rect: qRect({
+              x: start ? resolved.contentRect.x : resolved.contentRect.x + (resolved.contentRect.w - width) / 2,
+              y: resolved.contentRect.y + (primaryHeight - blockHeight) / 2,
+              w: width,
+              h: blockHeight,
+            }),
+            penalty: 0,
+            insideFill: fillCss,
+            insidePaint,
+          },
+        ];
+    return {
+      id,
+      kind: 'point', markAnchored: false, typeRole: 'label',
+      owner: nodeOwner(node.id),
+      text,
+      lines: block.lines,
+      ...(block.title !== undefined ? { title: block.title } : {}),
+      font,
+      priority: PRIORITY.valueLine,
+      ...(ring === 'left' ? { align: 'end' as const } : ring === 'above' || ring === 'below' ? { align: 'middle' as const } : { align: 'start' as const }),
+      candidates,
+    };
+  };
+  // A node with its label outside has no room inside for a second text: the
+  // secondary lines follow the primary lines in one outside block. Where that
+  // taller block finds no seat, the layout solves again with the primary label
+  // alone and the secondary text unplaced (see `split`).
+  const joined = external && !seat && secondary && !secondaryFits ? secondary : undefined;
+  if (joined) {
+    const text = `${node.label}\n${node.secondaryLabel}`;
+    requests.push(labelRequest({
+      lines: [...primary.lines, ...joined.lines],
+      title: primary.title !== undefined || joined.title !== undefined ? text : undefined,
+    }, text));
+    split?.set(id, [labelRequest(primary, node.label), secondaryRequest(joined)]);  } else requests.push(labelRequest(primary, node.label));
+  if (primary.title !== undefined) {
     warnings.push({
       code: 'diagram-node-label-unplaced',
       severity: 'error',
@@ -814,17 +851,17 @@ function addNodeLabels(
     });
   }
 
-  if (node.secondaryLabel && secondary) {
-    const secondaryWidth = Math.max(1, ...secondary.lines.map((line) => measure(line, font).width));
+  function secondaryRequest(lines: { lines: string[]; title?: string | undefined }): LabelRequest {
+    const secondaryWidth = Math.max(1, ...lines.lines.map((line) => measure(line, font).width));
     const secondaryId = `secondary-label:${node.id}`;
     kinds.set(secondaryId, 'diagramSecondary');
-    requests.push({
+    return {
       id: secondaryId,
       kind: 'point', markAnchored: false, typeRole: 'label',
       owner: nodeOwner(node.id),
-      text: node.secondaryLabel,
-      lines: secondary.lines,
-      ...(secondary.title !== undefined ? { title: secondary.title } : {}),
+      text: node.secondaryLabel!,
+      lines: lines.lines,
+      ...(lines.title !== undefined ? { title: lines.title } : {}),
       font,
       priority: PRIORITY.interior,
       candidates: !secondaryFits ? [] : [
@@ -841,8 +878,9 @@ function addNodeLabels(
           insidePaint,
         },
       ],
-    });
+    };
   }
+  if (secondary && !joined) requests.push(secondaryRequest(secondary));
 
   addNodeCaption(node, resolved, options, caption?.font ?? font, measure, u, requests, kinds, caption?.box);
 }

@@ -802,3 +802,14 @@ it('draws compact on the default slide canvas as it does on the same size writte
   expect(slide.size).toEqual(draw({ target: 'slide', size: { width: 888, height: 396, unit: 'pt' } }).size);
   expect(draw({ target: 'slide', belowMinimum: 'refuse' }).errors[0].code).toBe('size-below-floor');
 });
+
+// A roadmap milestone is a small circle with its name outside, so its secondary text had no seat inside the circle and went to an off-page note.
+it('draws a roadmap milestone secondary text under its name', () => {
+  const lanes = [{ id: 'w1', label: 'Wave 1', orientation: 'vertical', role: 'category', paletteKey: 'w1', order: 1 }, { id: 'w2', label: 'Wave 2', orientation: 'vertical', role: 'category', paletteKey: 'w2', order: 2 }];
+  const names = ['Pilot live', 'First ten sites', 'Platform v2 live', 'All sites live'];
+  const nodes = names.map((label, i) => ({ id: `m${i}`, kind: 'milestone', shape: { kind: 'circle' }, label, secondaryLabel: `Q${i + 1} FY27`, laneId: i < 2 ? 'w1' : 'w2', role: 'category', paletteKey: i < 2 ? 'w1' : 'w2', order: i + 1 }));
+  const body = render({ spec: { type: 'diagram', data: { lanes, nodes }, options: { variant: 'roadmap', title: 'Four milestones in two waves', source: 'Invented' } } }).body as any;
+  expect(body.ok).toBe(true);
+  expect(body.reading.omissions).toEqual([]);
+  expect(body.warnings.filter((warning: { code: string }) => warning.code === 'diagram-secondary-label-unplaced')).toEqual([]);
+});
