@@ -337,3 +337,57 @@ it('draws series that share a colour role in distinct steps of that colour', () 
     expect(stepped.warnings.map(w => w.code), `${type} custom series`).not.toContain('series-indistinguishable');
   }
 });
+
+// Scenario series took their rank colour, so a prior year listed first painted darker than the actual and the look changed with series order.
+it('paints scenario columns from the actual, whatever the series order', () => {
+  const series = {
+    ac: { id: 'ac', label: 'Actual', scenario: 'AC' as const, values: [101, 108, null] },
+    py: { id: 'py', label: 'Prior year', scenario: 'PY' as const, values: [90, 101, null] },
+    pl: { id: 'pl', label: 'Plan', scenario: 'PL' as const, values: [104, 112, 120] },
+    fc: { id: 'fc', label: 'Forecast', scenario: 'FC' as const, values: [null, null, 117] },
+  };
+  for (const theme of ['boardroom', 'standard', 'standard-dark', 'notation', 'notation-dark', 'capital', 'studio', 'glass']) {
+    const resolved = resolveTheme(theme);
+    const paints = (order: (keyof typeof series)[]) => {
+      const geometry = layoutResolvedRequest(resolveChartRequest({
+        type: 'column',
+        theme,
+        data: { categories: ['y1', 'y2', 'y3'].map(id => ({ id, label: id })), series: order.map(key => series[key]) },
+        options: { variant: 'grouped' },
+      }));
+      if (geometry.refused) throw new Error('refused');
+      // The cell's base colour, before its pattern: PL outlines it and FC hatches it.
+      const paint = (id: string) => {
+        const node = geometry.scene.find((n): n is Extract<SceneNode, { t: 'rect' }> => n.t === 'rect' && n.owner?.seriesId === id && !!n.owner.categoryId && !!n.fill);
+        return node?.fill ? resolvePaint(node.fill, resolved) : undefined;
+      };
+      return { ac: paint('ac'), py: paint('py'), pl: paint('pl'), fc: paint('fc') };
+    };
+    const acFirst = paints(['ac', 'py', 'pl', 'fc']);
+    expect(paints(['py', 'ac', 'pl', 'fc']), theme).toEqual(acFirst);
+    // FC may lift off a dark page's floor, so only PL is held to the actual's exact colour.
+    expect(acFirst.pl, theme).toBe(acFirst.ac);
+    expect(acFirst.py, theme).not.toBe(acFirst.ac);
+  }
+});
+
+// Pairing a scenario with its actual must never give two unpatterned columns one colour: an authored PY fill and a stacked PY segment stay apart.
+it('keeps scenario columns apart from an authored fill and in a stack', () => {
+  const resolved = resolveTheme('standard');
+  const fills = (variant: 'grouped' | 'stacked', series: { id: string; label: string; scenario?: 'AC' | 'PY'; fill?: string; values: number[] }[]) => {
+    const geometry = layoutResolvedRequest(resolveChartRequest({
+      type: 'column', theme: 'standard',
+      data: { categories: ['y1', 'y2'].map(id => ({ id, label: id })), series },
+      options: { variant },
+    }));
+    if (geometry.refused) throw new Error('refused');
+    return series.map(s => {
+      const node = geometry.scene.find((n): n is Extract<SceneNode, { t: 'rect' }> => n.t === 'rect' && n.owner?.seriesId === s.id && !!n.owner.categoryId && !!n.fill);
+      return node?.fill ? resolvePaint(node.fill, resolved) : undefined;
+    });
+  };
+  const [ac, py] = fills('grouped', [{ id: 'ac', label: 'Actual', values: [3, 4] }, { id: 'py', label: 'Prior year', scenario: 'PY', fill: '#075A8E', values: [2, 3] }]);
+  expect(ac).not.toBe(py);
+  const stack = fills('stacked', [{ id: 'a', label: 'North', values: [3, 4] }, { id: 'b', label: 'South', values: [2, 2] }, { id: 'py', label: 'Prior year', scenario: 'PY', values: [1, 2] }]);
+  expect(new Set(stack).size).toBe(3);
+});
