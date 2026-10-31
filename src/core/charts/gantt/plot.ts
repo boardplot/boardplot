@@ -314,10 +314,10 @@ export function ganttFrame(
   const textPitch = stacked ? undefined : (env.options as { [ROW_TEXT_PITCH]?: ReadonlyMap<string, number> })[ROW_TEXT_PITCH];
   const pitches = domain.rows.map((row) => Math.max(lanePitch, domain.milestones.flagPitch.get(row.id) ?? 0, textPitch?.get(row.id) ?? 0));
   const extra = pitches.reduce((sum, pitch) => sum + pitch - lanePitch, 0);
-  // A short canvas squeezes every row by the same factor.
-  const squeeze = Math.min(1, Math.max(6 * n, bodyH - named * nameLineH) / (n * lanePitch + extra));
-  const rowH = extra > 0 ? lanePitch * squeeze : Math.min(lanePitch, Math.max(6, (bodyH - named * nameLineH) / n));
-  const rowHs = extra > 0 ? pitches.map((pitch) => pitch * squeeze) : pitches.map(() => rowH);
+  // A short canvas squeezes the rows by the same factor, except that a row never goes below the height its name needs.
+  const squeezed = squeezeRows(pitches, domain.rows.map((row) => textPitch?.get(row.id) ?? 0), Math.max(6 * n, bodyH - named * nameLineH));
+  const rowH = extra > 0 ? lanePitch * squeezed.scale : Math.min(lanePitch, Math.max(6, (bodyH - named * nameLineH) / n));
+  const rowHs = extra > 0 ? squeezed.heights : pitches.map(() => rowH);
   const rowY = [rowsTop];
   for (let i = 0; i < n; i++) rowY.push(stacked ? rowY[i]! + rowHs[i]! + (domain.rows[i]!.shared && !sharedLine ? 0 : nameLineH) : extra > 0 ? rowY[i]! + rowHs[i]! : rowsTop + (i + 1) * rowH);
   const band: GanttBand = {
@@ -325,6 +325,24 @@ export function ganttFrame(
     rowY, stacked, nameLineH, sharedLine, colHeaderH, stackedLineW: stackedLineW ?? 0, naturalRowsH: n * lanePitch + extra + named * nameLineH,
   };
   return { frame, claims, band };
+}
+
+/**
+ * Shrinks the pitches by one common factor to fit the budget. A row stops at its floor and the
+ * others take the rest. Heights add up to more than the budget only when the floors do.
+ */
+function squeezeRows(pitches: readonly number[], floors: readonly number[], budget: number): { heights: number[]; scale: number } {
+  const pinned = pitches.map(() => false);
+  let scale = 1;
+  for (let again = true; again;) {
+    let fixed = 0;
+    let free = 0;
+    pitches.forEach((pitch, i) => { if (pinned[i]) fixed += floors[i]!; else free += pitch; });
+    scale = free > 0 ? Math.max(0, Math.min(1, (budget - fixed) / free)) : 1;
+    again = false;
+    pitches.forEach((pitch, i) => { if (!pinned[i] && pitch * scale < floors[i]!) { pinned[i] = true; again = true; } });
+  }
+  return { heights: pitches.map((pitch, i) => (pinned[i] ? floors[i]! : pitch * scale)), scale };
 }
 
 /** The narrowest complete two-line name; a word is never split or cut. The sublabel is one line in the label font. */

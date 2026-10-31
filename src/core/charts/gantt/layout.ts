@@ -54,7 +54,7 @@ import { GANTT_ROW_PITCH, resolveGanttDomain, resolveGanttEnv } from './domain';
 import { badgeFill, badgeLevels, layoutGanttAnnotations, ruleNodes, type GanttAnnotationLayer } from './events';
 import { flagRowPitch, ganttSpanBlockers, planGanttLabels, planRowFlags } from './labels';
 import { fmtDay, ganttPaints, layoutGanttMarks, type GanttMarkGeometry } from './marks';
-import { BADGE_LEVELS, NO_LANE, ROW_TEXT_PITCH, RULE_LABEL_GAP, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv } from './model';
+import { BADGE_LEVELS, NO_LANE, ROW_TEXT_PITCH, RULE_LABEL_GAP, type GanttBand, type RowLabel, type GanttBody, type GanttDomain, type GanttEnv } from './model';
 import { formatDate } from '../../dateFormat';
 import { ganttBody, ganttFrame, STACKED_LANE_FLOOR } from './plot';
 import { maxOf, minOf, pushAll } from '../../arrays';
@@ -236,7 +236,7 @@ function assembleGanttGeometry(input: {
       chromeH: size.height - band.bodyH,
       minimumRowsH: band.stacked
         ? n * Math.max(STACKED_LANE_FLOOR, input.keyRowHeight) + rows.filter((row) => !row.shared || band.sharedLine).length * band.nameLineH
-        : n * Math.max(28, input.keyRowHeight, maxOf(body.rowLabels.map((label) => label.h + (label.sub ? 2 + label.sub.h : 0) + LABEL_PAD))),
+        : body.rowLabels.reduce((sum, label) => sum + Math.max(28, input.keyRowHeight, rowTextNeed(label)), 0),
       naturalRowsH: Math.max(band.naturalRowsH, (input.cardHeight ?? 0) - (size.height - band.bodyH)),
       minWidth: band.stacked ? size.width - body.inner.w + Math.max(80, band.stackedLineW) : size.width - body.inner.w + body.minimumLabelBandW + 12 + colWs.reduce((sum, width) => sum + width, 0) + (colWs.length ? 4 : 0) + 80 + (laneLabelW && options.mode !== 'compact' ? body.laneGap + laneLabelW : 0),
     }),
@@ -312,6 +312,9 @@ function commitClaims(occupied: OccupiedIndex, phase: OccupiedIndex): void {
 // reference does not inherit compact spacing or minimal label density.
 /** The label solver keeps this gap between labels; rows touch, so a row name needs its height plus this gap. */
 const LABEL_PAD = 2;
+
+/** The row height a wrapped name and its sublabel need so that the name keeps its seat beside the next row's name. */
+const rowTextNeed = (label: RowLabel) => label.h + (label.sub ? 2 + label.sub.h : 0) + 2 * LABEL_PAD;
 const fullCardOptions = new WeakMap<GanttData, GanttOptions>();
 
 /** Rows that retry with stacked milestone flags; in open height, the lane height each needs, and whether unused flag height is already trimmed. */
@@ -368,12 +371,12 @@ function layoutGanttPass(data: GanttData, options: GanttOptions = {}, keyed: Rea
   });
   if (grow !== undefined) return layoutGanttPass(data, { ...options, size: { width: size.width, height: grow } }, keyed, autoHeight, flags);
   const body = ganttBody(env, domain, frame, band, warnings);
-  // Table form: a row whose name and sublabel need more than its pitch is laid out again with that pitch.
+  // Table form: a row whose name and sublabel need more than the common pitch is laid out again with that pitch.
   if (!band.stacked) {
     const known = (options as { [ROW_TEXT_PITCH]?: ReadonlyMap<string, number> })[ROW_TEXT_PITCH] ?? new Map<string, number>();
     const grown = new Map(known);
     body.rowLabels.forEach((label, i) => {
-      const need = label.sub ? label.h + 2 + label.sub.h + 2 * LABEL_PAD : 0;
+      const need = rowTextNeed(label);
       const id = domain.rows[i]!.id;
       if (need > Math.max(GANTT_ROW_PITCH, known.get(id) ?? 0) + 0.5) grown.set(id, need);
     });
