@@ -1088,3 +1088,16 @@ it('reads a percent change under a row format as a percent, as it reads one with
   // The accessible table reads a derived percent at two decimals.
   expect(interactionValueText(value)).toBe('25.00%');
 });
+
+// A cell key that names no column dropped its value with no warning, so a typo such as `amunt` made a number vanish unseen.
+it('warns about a cell key that names no column and offers the nearest column id', () => {
+  const data: TableData = {
+    columns: [{ id: 'l', kind: 'rowLabel', label: 'Unit' }, { id: 'amount', kind: 'value', label: 'Amount' }],
+    rows: [{ id: 'all', label: 'All', children: [{ id: 'a', label: 'North', cells: { amunt: 63.9 } }, { id: 'b', label: 'South', cells: { amount: 41.2 } }] }],
+  };
+  const { warnings } = resolveTable(data);
+  const found = warnings.filter((w) => w.code === 'cell-column-unknown');
+  expect(found).toHaveLength(1);
+  expect(found[0]!.owner).toEqual({ rowId: 'a' });
+  expect(found[0]!.suggest).toContain("'amount'");
+});

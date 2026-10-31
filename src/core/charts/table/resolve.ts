@@ -30,6 +30,7 @@ import { NormalizeError, resolveHighlight, resolveSubtitle } from '../../normali
 import { resolveTheme } from '../../theme';
 import { localeStrings } from '../../strings';
 import type { Theme } from '../../types/theme';
+import { closestKey } from '../../schema/unknownKeyWords';
 import { tableCellKey } from './cellKey';
 import { isCohortDensity } from './ladder';
 import { presetLanguage } from './presets';
@@ -327,6 +328,35 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
       });
     }
   });
+  // A cell key that names no column draws nothing: the number vanishes without a word.
+  const columnIds = data.columns.map((column) => column.id);
+  const checkCellKeys = (rows: TableData['rows'], path: (string | number)[]): void => {
+    rows.forEach((row, index) => {
+      const rowPath = [...path, index];
+      for (const key of Object.keys(row.cells ?? {})) {
+        if (columnIds.includes(key)) continue;
+        const nearest = closestKey(key, columnIds);
+        const near = nearest?.near ? nearest.key : undefined;
+        const cells = row.cells!;
+        warnings.push({
+          code: 'cell-column-unknown',
+          severity: 'warn',
+          message: `cell '${key}' in row '${row.id}' names no column, so its value is not drawn${near ? `; did you mean '${near}'?` : ''}`,
+          owner: { rowId: row.id },
+          field: ['data', 'rows', ...rowPath, 'cells', key],
+          suggest: near ? `Rename the cell key to '${near}'.` : `Use one of the column ids (${columnIds.join(', ')}), or remove the cell.`,
+          ...(near === undefined || Object.hasOwn(cells, near) ? {} : {
+            fix: [
+              { op: 'test', path: `/data/rows/${rowPath.join('/')}/cells`, value: cells },
+              { op: 'replace', path: `/data/rows/${rowPath.join('/')}/cells`, value: Object.fromEntries(Object.entries(cells).map(([name, value]) => [name === key ? near : name, value])) },
+            ],
+          }),
+        });
+      }
+      if (row.children) checkCellKeys(row.children, [...rowPath, 'children']);
+    });
+  };
+  checkCellKeys(data.rows, []);
   const records: ComputedCellRecord[] = [];
   const autoFootnotes = new Set<string>();
   /** Row labels whose changes took a tone, by the direction that judged them. */
