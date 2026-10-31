@@ -216,6 +216,15 @@ describe('note rules', () => {
     expect(x('b')).toBeGreaterThan(360);
   });
 
+  // A doughnut that dropped negative slices printed the sum of the rest as the total of the data.
+  it('a doughnut with negative slices prints no centre total and names the dropped slices', () => {
+    const geo = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'pie', data: { categories: [{ id: 'a', label: 'Gain' }, { id: 'b', label: 'Loss' }, { id: 'c', label: 'Rest' }],
+      series: [{ id: 's', values: [84.9, -12.3, 43.8] }] }, options: { title: 'Split', doughnut: 0.55 } } as never)));
+    expect(geo.labels.some((label) => label.kind === 'total')).toBe(false);
+    expect(geo.a11y.desc).not.toContain('total');
+    expect(noteTexts(geo, ['disclosure'])).toEqual(['Not drawn (negative value, so no total shown): Loss.']);
+  });
+
   it('an open height gives hidden values the room their unprinted note took', () => {
     const fixture = getFixtures('pie').find((entry) => entry.id === 'ten-tiny-slices')!;
     const geo = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'pie', data: fixture.data, options: fixture.options } as never)));

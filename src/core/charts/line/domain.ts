@@ -42,6 +42,7 @@ import type { LineAnomaly, LineDomain, LineEnv, LineVariant } from './model';
 import type { LineInterpolation, LineOptionTarget, LineOptions } from './types';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
+import { checkPointBudget } from '../../itemBudget';
 
 /**
  * The nice domain already caps wasted domain on either side at 15%. If the plotted data
@@ -849,6 +850,7 @@ export function resolveLineDomain(data: LineChartData, input: LineOptions, env: 
     plotted: pv, basis: basisByCat, targets, annotations: options.annotations,
     anchors: [...phases?.phases.flatMap(phase => [phase.from, phase.to]) ?? [], ...live.anchors ?? []],
     samplingRows: [...(isBump ? pv : []), ...(isStacked ? stackBoundaries(dataSeries.map(s => pv[rowOf.get(s)!]!)) : []), ...(fan?.bands.map(band => band.widths) ?? [])] });
+  checkPointBudget(cats.length, seriesNorm.length);
   if (population) projectLineViewport({ ...population, bump: bumpDerived, fan, phases });
   if (population) options = liveWindowOptions({ ...options, annotations: population.annotations }, population.sampling);
   // After the viewport: the rounded shares are keyed by category, so they follow its projection.
