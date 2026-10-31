@@ -5,6 +5,7 @@
  * friends) or through the all-packs barrel `./index`.
  */
 
+import { NormalizeError } from '../../normalize/shared';
 import type { GeoPack, GeoPackId } from '../types';
 
 // Declaration order of GeoPackId. listGeoPacks() must not depend on which
@@ -47,9 +48,9 @@ ledger.instances += 1;
  * Thrown by {@link getGeoPack}. Carries a `code` so the CLI/MCP envelope names
  * this fault instead of folding it into the generic `layout-error` fallback
  * (`src/cli/main.ts`), and a `pack` so a caller can act on it programmatically.
+ * It is a NormalizeError, so a React chart draws it as a refusal card.
  */
-export class GeoPackNotRegisteredError extends Error {
-  readonly code: string;
+export class GeoPackNotRegisteredError extends NormalizeError {
   readonly pack: string;
   readonly registered: string[];
   readonly duplicateInstall: boolean;
@@ -61,9 +62,8 @@ export class GeoPackNotRegisteredError extends Error {
     registered: string[];
     duplicateInstall: boolean;
   }) {
-    super(options.message);
+    super(options.code, '', options.message);
     this.name = 'GeoPackNotRegisteredError';
-    this.code = options.code;
     this.pack = options.pack;
     this.registered = options.registered;
     this.duplicateInstall = options.duplicateInstall;

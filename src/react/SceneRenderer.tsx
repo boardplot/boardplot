@@ -1,5 +1,6 @@
 import { assertEmbeddedImage } from '../core/image';
 import { ENGINE_REV } from '../core/engine';
+import { NormalizeError } from '../core/normalize/shared';
 /**
  * React fold over a Geometry scene. Renders exactly what the
  * layout computed — no measuring, no repositioning, no chart knowledge.
@@ -46,7 +47,8 @@ const TEXT_RESETS: CSSProperties = {
 const NON_FINITE_PATH = /NaN|Infinity/;
 
 function invalidGeometry(detail: string): never {
-  throw new Error(`invalid React geometry ${detail}`);
+  throw new NormalizeError('invalid-geometry', '', `invalid React geometry ${detail}`,
+    'Check the options and the data for a value that is not a finite number, such as an axis bound or a size written as text.');
 }
 
 function assertNumber(
