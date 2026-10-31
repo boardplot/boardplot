@@ -1811,6 +1811,17 @@ it('prints the resolved table unit in both frames', () => {
   expect(resolveTable(data, { ...options, unit: '$k' }).warnings.some(warning => warning.code === 'table-unit-overridden')).toBe(false);
 });
 
+// A prepared snapshot dropped the raw values of arrow and sparkline cells, so the reader lost the arrows, their key and the trend lines.
+it('draws arrows, their key and sparklines from a prepared snapshot', async () => {
+  const { prepareChart } = await import('../src/react/prepare');
+  for (const id of ['fatigue-cell-encodings', 'sparkline-line-column']) {
+    const { data, options } = getFixtures('table').find((f) => f.id === id)!;
+    const props = { data: data as TableData, ...(options as TableOptions), size: { width: 900 } };
+    const prepared = await prepareChart({ type: 'table', data, options, size: { width: 900 } });
+    expect(renderToString(<TableChart {...props} prepared={prepared} />)).toBe(renderToString(<TableChart {...props} />));
+  }
+});
+
 // A capitalised head printed "Power,mW" as "POWER,MW": milliwatts read as megawatts.
 it('keeps the unit after a head comma as written, on column and group heads, on both surfaces', async () => {
   const { render } = await import('../src/cli/render');
