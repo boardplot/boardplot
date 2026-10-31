@@ -351,4 +351,15 @@ describe('chart layout edge cases', () => {
     expect(ticks.length).toBeGreaterThan(0);
     for (const tick of ticks) expect(tick.x).toBeGreaterThanOrEqual(0);
   });
+
+  // One long first name set the rotated-name cap for the whole row, so a name that fits its own seat was cut with it.
+  it('a rotated name that fits its seat is not cut for a long name elsewhere', () => {
+    const names = ['Rhein0', 'Pensionsrückstellungen, Inland1', 'Nordrhein-Westfalen (Rheinland)2', 'Zinsen und ähnliche Aufwendungen3', 'Instandhaltung und Reparaturen4', 'Mecklenburg-Vorpommern5', 'Research and development expenses6', 'Fremdleistungen Logistik Ausland7', 'Zinsen und ähnliche Aufwendungen8', 'Aufwendungen für bezogene Waren9'];
+    const request = { type: 'variance', data: { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [{ id: 'act', label: 'Actual', values: names.map((_, i) => 50 + i) }, { id: 'ref', label: 'Reference', role: 'reference', values: names.map(() => 52) }] },
+      options: { variant: 'integrated', variance: { of: 'act', vs: 'ref' }, size: { width: 320, height: 480 } } };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+    const node = geometry.scene.find((n: { id: string }) => n.id === 'label:category:c5');
+    expect(node.lines).toEqual(['Mecklenburg-Vorpommern5']);
+  });
 });

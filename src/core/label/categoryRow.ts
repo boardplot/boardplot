@@ -1152,19 +1152,20 @@ function planRow(input: CategoryRowInput, bundled: boolean): CategoryRowPlan {
     const whole = rotatable.find((font) => measureAll(font, 1).every((info) => info.w <= maxRotatedWidth));
     const font = whole ?? rotatable[0];
     if (font) {
-      // The first names reach left of the row by their slant (rotatedLeftOverhang). A name no wider than the
-      // cap that leaves every column the pitch of a 45° line, or the row stops rotating once the caller takes the overhang.
+      // The first names reach left of the row by their slant (rotatedLeftOverhang). A name is no wider than
+      // the length that leaves every column the pitch of a 45° line at its own seat, or the row stops rotating
+      // once the caller takes the overhang. The limit is per name: a short name at the left never shortens a long one elsewhere.
       const lineH = font.size * (font.lineHeight ?? 1.2);
       const spare = n * step - (n * (lineH + 2)) / SIN45 - n;
       const reach = (i: number) => (spare + centers[i]! - 4) / SIN45 - lineH;
-      const pitchCap = Math.min(...measureAll(font, 1).map((info, i) => (info.w > reach(i) ? reach(i) : Infinity)));
-      const cap = input.maxRotatedWidth !== undefined ? maxRotatedWidth : Math.max(ROTATED_MIN_WIDTH, Math.min(maxRotatedWidth, Math.floor(pitchCap)));
+      const capAt = (i: number, w: number) => input.maxRotatedWidth !== undefined || w <= reach(i) ? maxRotatedWidth : Math.max(ROTATED_MIN_WIDTH, Math.min(maxRotatedWidth, Math.floor(reach(i))));
       // A rotated name longer than the cap is cut, or the plot would shrink
       // to a strip under a fan of sixty-character labels. A cut name
       // carries a note mark, and the note gives it back whole.
       const cutNotes: string[] = [];
       const cutNames: string[] = [];
       const infos = measureAll(font, 1).map((info, i) => {
+        const cap = capAt(i, info.w);
         if (info.w <= cap) return info;
         // A name that already carries the author's reference keeps that one mark.
         const mark = input.cutMarkFrom === undefined || suffixAt(i) ? '' : ` ${footnoteMark(input.cutMarkFrom + cutNotes.length)}`;
