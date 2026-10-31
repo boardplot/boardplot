@@ -56,6 +56,8 @@ export interface ScaleModel {
   explicitSteps?: boolean;
   /** Prints a class edge on the key: round breaks drop the decimals they do not need. */
   edgeFmt: (value: number) => string;
+  /** The key prints the equal-interval edges with more decimals than the format; its ends need them too. */
+  liftedDecimals?: boolean;
 }
 
 /**
@@ -131,7 +133,8 @@ function printedEdge(value: number, format: string | undefined, decimals?: numbe
   const spec = parseFormatExample(format);
   const unit = MAGNITUDE_DIVISOR[spec.magnitude];
   const places = decimals ?? spec.decimals;
-  return Math.round(value / unit * 10 ** places) / 10 ** places * unit;
+  // Integer times unit, then one division: dividing first leaves 8300000.000000001 for $8.3M.
+  return Math.round(value / unit * 10 ** places) * unit / 10 ** places;
 }
 
 /** Digits after the point that `value` prints with (12 significant digits). */
@@ -324,7 +327,7 @@ export function buildGeoScale(
         return (value: number) => formatWithSpec(value, { ...spec, decimals });
       })()
     : keyFmt;
-  return { min, max, midpoint: declaredMidpoint, polarity, paint, legend, edgeFmt, ...(edges ? { edges } : {}), ...(options.steps ? { explicitSteps: true } : {}) };
+  return { min, max, midpoint: declaredMidpoint, polarity, paint, legend, edgeFmt, ...(keyDecimals !== undefined ? { liftedDecimals: true } : {}), ...(edges ? { edges } : {}), ...(options.steps ? { explicitSteps: true } : {}) };
 }
 
 function geoScaleLegend(
