@@ -2137,7 +2137,17 @@ export function neutralRampPaint(index: number, count: number, hatched = false):
 /** Neighbouring steps of the neutral ramp keep at least this OKLab distance (twice the ordered step floor). */
 const NEUTRAL_RAMP_STEP = 6;
 
+const NEUTRAL_RAMP = new WeakMap<Theme, Map<string, string>>();
 function neutralRampColor(theme: Theme, source: { index: number; count: number; hatched?: true }): string {
+  const cache = NEUTRAL_RAMP.get(theme) ?? new Map<string, string>();
+  NEUTRAL_RAMP.set(theme, cache);
+  const key = `${source.index}/${source.count}${source.hatched ? 'h' : ''}`;
+  let color = cache.get(key);
+  if (color === undefined) cache.set(key, color = neutralRampStep(theme, source));
+  return color;
+}
+
+function neutralRampStep(theme: Theme, source: { index: number; count: number; hatched?: true }): string {
   const quiet = theme.color.neutralLight;
   const muted = paintColor(theme, mutedMarkPaint());
   if (source.count < 2) return muted;
