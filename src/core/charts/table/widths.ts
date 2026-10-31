@@ -13,7 +13,8 @@ import { targetFloorsPx, TARGET_SIZE, type TargetSizeOptions } from '../../targe
 import { footerType } from '../../footer';
 import type { RenderTarget } from '../../types/options';
 import type { PresentationInfo } from '../../types/sizing';
-import { columnHeadLabel, columnHeaderAffix } from './resolve';
+import { fieldHeadText } from './headFace';
+import { columnHeaderAffix } from './resolve';
 import { visibleColumns, visibleRows, visibleInlineRows, treeChildCounts, heatColumn, printsFigures, cellDrawsTabular } from './view';
 import { operatorWidth, qualifierFont } from './statement';
 import { groupHeadingFaces, groupHeadingFloors, groupHeadingNeed } from './groupHeading';
@@ -128,7 +129,7 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
   // The label's case is the theme's (`table.head.case`), and the
   // tracks measure the text the head draws.
   const columnHeaderText = (col: (typeof cols)[number]) =>
-    columnHeadLabel(col.label, theme) + columnHeaderAffix(col);
+    fieldHeadText(col.label, theme) + columnHeaderAffix(col);
   /** The tracks every column takes at one set of head faces, and the cuts they report. */
   function trackWidths(faces: TableFonts) {
     const widths = new Map<Id, number>();

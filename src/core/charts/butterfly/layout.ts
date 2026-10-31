@@ -1,5 +1,5 @@
 import { chartString } from '../../strings/butterfly';
-import { restLabel, restSum, topNCut } from '../topN';
+import { restDetailsWarning, restLabel, restSum, topNCut } from '../topN';
 import { structureCount } from '../../structureCounts';
 /**
  * Butterfly / tornado (alias 'tornado') — two mirrored
@@ -271,6 +271,8 @@ export function layoutButterfly(
         mark: '',
       rest: true,
       });
+      const lostDetails = restDetailsWarning({ categories, series: [sA, sB] }, new Set(rows.map((r) => r.id)));
+      if (lostDetails) warnings.push(lostDetails);
     }
   }
 

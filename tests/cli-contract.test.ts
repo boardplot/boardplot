@@ -108,6 +108,22 @@ describe('rows mappings', () => {
       .toEqual({ code: cli.code, path: cli.path, suggest: cli.suggest });
   });
 
+  // JSON rows refused a year or SQL key as an id while the same rows drew from a CSV.
+  it('reads a number in a text role as its text, as a CSV cell', () => {
+    const cases = [
+      { spec: { type: 'column' }, columns: { category: 'key', series: 'year', value: 'n' } },
+      { spec: { type: 'waterfall' }, columns: { label: 'key', value: 'n' } },
+      { spec: { type: 'scatter' }, columns: { x: 'n', y: 'n2', group: 'year', label: 'key' } },
+      { spec: { type: 'box' }, columns: { category: 'year', value: 'n' } },
+      { spec: { type: 'table', data: { columns: [{ id: 'name', kind: 'rowLabel' }, { id: 'n', kind: 'value' }] } }, columns: { id: 'key', label: 'year' } },
+    ];
+    for (const { spec, columns } of cases) {
+      const numbers = [{ key: 7, year: 2024, n: 1, n2: 2 }, { key: 8, year: 2025, n: 3, n2: 4 }];
+      const text = numbers.map(({ key, year, ...row }) => ({ ...row, key: String(key), year: String(year) }));
+      expect(specFromRows(spec, { rows: numbers, columns: columns as never }).spec).toEqual(specFromRows(spec, { rows: text, columns: columns as never }).spec);
+    }
+  });
+
   // A SQL month column mapped as category and date was refused, and a helper label equal to the id hid the automatic month labels.
   it('one date column fills category and date, and the categories keep their automatic date labels', () => {
     const rows = ['2026-01-01', '2026-02-01'].map((month) => ({ month, product: 'Sparrow', revenue: 131 }));
@@ -338,7 +354,7 @@ describe('rows mappings', () => {
     expect(JSON.parse(callTool('boardplot_render', { spec, rows: dated, columns: { ...columns, date: 'month' } }).text).errors[0]).toMatchObject({ code: 'ambiguous-mapping', path: '/rows/4/month' });
     expect(refusal({ team: '' })).toMatchObject({ code: 'invalid-identity', path: '/rows/4/team' });
     // A group label that is not text is a wrong value, not a second label for the group.
-    expect(refusal({ name: 7 })).toMatchObject({ code: 'invalid-value', path: '/rows/4/name' });
+    expect(refusal({ name: true })).toMatchObject({ code: 'invalid-value', path: '/rows/4/name' });
     // Rows input must not hide the refusal the native box gives for a repeated spec group id.
     expect(JSON.parse(callTool('boardplot_render', { spec: { ...spec, data: { groups: [{ id: 'East' }, { id: 'East', label: 'East again' }] } }, rows, columns }).text).errors[0])
       .toMatchObject({ code: 'invalid-data', path: '/spec/data/groups/1/id' });
@@ -706,6 +722,14 @@ describe('render and measure on the command line', () => {
 
   it('refuses a rows file with only its header as empty, not as three missing columns', () => {
     expect(rowsError('month,segment,revenue\n')).toMatchObject({ code: 'rows-empty', path: '/rowsFile' });
+  });
+
+  // A repeated header kept only its last column, so the chart drew the wrong numbers without a word.
+  it('keeps both columns of a repeated CSV header and warns', () => {
+    const first = rowsRender('month,segment,revenue,revenue\nJan,A,10,99\n');
+    expect(first.warnings).toContainEqual(expect.objectContaining({ code: 'rows-header-repeated', path: '/rowsFile', message: expect.stringContaining("'revenue.1'") }));
+    expect(first.svg).toContain('>10<');
+    expect(first.svg).not.toContain('>99<');
   });
 
   // A Windows-1252 export decoded as UTF-8 printed U+FFFD in the labels with no warning.
