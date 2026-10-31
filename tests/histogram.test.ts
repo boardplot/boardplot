@@ -159,6 +159,37 @@ describe('histogram binning arithmetic', () => {
   });
 });
 
+describe('histogram open last bin', () => {
+  // Prevents a miscounted tail: a value on openAbove belongs to the open bin, the bin before it stays [lo, openAbove).
+  it('gathers every value from openAbove up into one open bin on the same grid', () => {
+    const observations = [3, 12, 18, 22, 39, 40, 41, 90, 400];
+    const geometry = layoutHistogram({ observations }, { bins: { width: 10, openAbove: 40 } });
+    expect(geometry.derived.binning.edges).toEqual([0, 10, 20, 30, 40, 400]);
+    expect(geometry.derived.counts).toEqual([1, 2, 1, 1, 4]);
+    expect(geometry.derived.binLabels.at(-1)).toBe('≥ 40');
+    const open = geometry.labels.find((label) => label.id === 'open');
+    expect(open?.text).toBe('≥ 40 (max 400)');
+    // Whole numbers at width 1 keep one centred bin per value below the open bin.
+    const whole = layoutHistogram({ observations: [1, 2, 2, 3, 3, 3, 4, 9, 12] }, { bins: { width: 1, openAbove: 4 } });
+    expect(whole.derived.binning.edges).toEqual([0.5, 1.5, 2.5, 3.5, 12]);
+    expect(whole.derived.counts).toEqual([1, 2, 3, 3]);
+  });
+
+  // Prevents a silent squeeze: a long tail under 'auto' proposes an open bin that keeps the width and folds only the tail.
+  it('proposes openAbove under auto for a long tail, and never for ties that would fold the sample', () => {
+    const tail = [...ramp(980, 1), 2000, 2500, 3000, 3500, 4000, 4500, 5000, 5500, 6000, 6500, 7000, 7500, 8000, 8500, 9000, 9500, 9800, 9900, 9950, 9999];
+    const warning = layoutHistogram({ observations: tail }, {}).warnings.find((item) => item.code === 'histogram-long-tail');
+    const suggested = Number(/openAbove: (\d+)/.exec(warning?.suggest ?? '')?.[1]);
+    expect(suggested).toBeGreaterThan(900);
+    const auto = layoutHistogram({ observations: tail }, {});
+    const fixed = layoutHistogram({ observations: tail }, { bins: { openAbove: suggested } });
+    expect(fixed.derived.binning.width).toBe(auto.derived.binning.width);
+    expect(fixed.derived.counts.at(-1)).toBe(tail.filter((value) => value >= suggested).length);
+    const ties = [0, ...Array.from({ length: 981 }, () => 100), ...Array.from({ length: 18 }, () => 1000)];
+    expect(codes(layoutHistogram({ observations: ties }, {}))).not.toContain('histogram-long-tail');
+  });
+});
+
 describe('histogram refuses what it cannot draw honestly', () => {
   it('throws histogram-too-few below four observations', () => {
     const error = expectThrows(() => layoutHistogram({ observations: [1, 2, 3] }), 'histogram-too-few');
@@ -446,6 +477,11 @@ describe('histogram geometry and determinism', () => {
       const bars = geometry.marks.bins;
       expect(bars.length).toBe(geometry.derived.counts.length);
       for (let index = 0; index + 1 < bars.length; index++) {
+        // The open last bin stands a small gap apart.
+        if (geometry.derived.binning.openAbove !== undefined && index + 2 === bars.length) {
+          expect(bars[index + 1]!.rect.x - bars[index]!.rect.x - bars[index]!.rect.w).toBeGreaterThan(1);
+          continue;
+        }
         expect(
           bars[index]!.rect.x + bars[index]!.rect.w,
           `${fixture.id}: bin ${index} must touch bin ${index + 1}`,
