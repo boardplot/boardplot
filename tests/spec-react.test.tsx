@@ -13,6 +13,9 @@ import { parseChartSpec } from '../src/react/parseChartSpec';
 import { mount, mountedMarkup, settle } from './helpers/spec-chunks';
 import spec from './fixtures/spec-document.json';
 
+const dataTableLoads = vi.hoisted(() => ({ count: 0 }));
+vi.mock('../src/react/hover/dataTable', async (importOriginal) => { dataTableLoads.count += 1; return importOriginal(); });
+
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 /** BoardplotChart draws one chart: the envelope reduced to the named one. */
 const only = (name: string) => ({ ...spec, charts: spec.charts.filter(chart => chart.name === name) });
@@ -130,4 +133,16 @@ it('keeps the row props away from a chart that is not a table', async () => {
   expect(layout).toHaveBeenCalled();
   for (const [, options] of layout.mock.calls) expect(Object.keys(options ?? {})).not.toEqual(expect.arrayContaining(['onRowSelect']));
   for (const [, options] of layout.mock.calls) expect(Object.keys(options ?? {})).not.toEqual(expect.arrayContaining(['isRowSelectable']));
+});
+
+// BoardplotChart linked the accessible data table and its record code into every first chart, also with the table off.
+it('loads the data table module only for a spec that asks for the table', async () => {
+  root = await mountRoot(<BoardplotChart spec={only('regions')} />);
+  expect(host.querySelector('svg[data-bp-chart="column"]')).not.toBeNull();
+  expect(dataTableLoads.count).toBe(0);
+  act(() => root!.unmount());
+  const asked = { ...only('regions'), charts: only('regions').charts.map(chart => ({ ...chart, options: { ...chart.options, a11y: { table: 'hidden' } } })) };
+  root = await mountRoot(<BoardplotChart spec={asked} />);
+  expect(dataTableLoads.count).toBe(1);
+  expect(host.querySelector('[data-bp-a11y-table]')).not.toBeNull();
 });

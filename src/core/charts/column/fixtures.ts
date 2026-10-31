@@ -2687,4 +2687,31 @@ for (const [mode, title] of [['last', 'Only the latest quarter prints its value'
   });
 }
 
+// Two series over twelve categories on a full slide: the values are wider than
+// the default columns, so the groups widen and both series print their values.
+fixtures.push({
+  id: 'grouped-twelve-slide',
+  title: 'Two series over twelve units on a full slide print all 24 values',
+  kind: 'torture',
+  tags: ['coverage'],
+  data: {
+    categories: ['North', 'South', 'East', 'West', 'Central', 'Coast', 'Lakes', 'Hills', 'Valley', 'Harbour', 'Plains', 'Forest']
+      .map((label) => ({ id: label.toLowerCase(), label })),
+    series: [
+      { id: 'partners', label: 'Partner channel', values: [750, 750, 750, 750, 750, 1000, 1000, 1000, 750, 750, 750, 750].map((v) => v * 1e6) },
+      { id: 'direct', label: 'Direct sales', values: [1250, 1250, 1250, 1500, 1500, 1500, 1500, 1500, 1500, 1250, 1500, 1500].map((v) => v * 1e6) },
+    ],
+  },
+  options: {
+    title: 'Direct sales lead in every unit',
+    subtitle: { measure: 'Revenue', period: 'FY26' },
+    unit: 'EUR',
+    variant: 'grouped',
+    format: '1.2bn',
+    source: 'Illustrative data',
+    target: 'slide',
+    size: { width: 1184, height: 528 },
+  },
+});
+
 registerFixtures('column', fixtures);

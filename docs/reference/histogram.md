@@ -39,12 +39,14 @@ One form; its chart ID is `histogram`.
 
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
+| labelDensity | string | `'full'`, `'smart'`, `'minimal'` |  | Count-label density. Default: every bin count competes for a seat over its bar, and an empty bin prints no 0 when one value fills each bin or most bins are empty. When more than 12 bins hold observations and a count is too wide for its bin and loses its seat, only the tallest bin keeps its count, the frequency axis carries the scale, and no tail callout prints (info histogram-counts-peak-only). 'full' keeps every count: a count without a seat moves onto a leader or into the note. 'minimal' keeps only the essential labels. |
 | valueAxis.break | false \| object | `false` (or another value of its type) |  | No break by default or with false. Set { from, to, style? } for a straight value-axis break; the omitted span collapses to a fixed 12px gap when valid. Automatic placement is supported only by waterfall and pvm. |
 | axisTitles | object |  |  | Title of the frequency axis, drawn in the top row left of the plot while the axis is drawn. When every bin carries its count, the automatic axis gives way and this title leads the base note under the plot. The bin labels carry the measure and its unit. |
 | axisTitles.y | string |  |  | Title of the frequency axis, e.g. 'Orders'. |
-| bins | string \| integer \| object | `'auto'` (or another value of its type) |  | Binning. 'auto' (default) takes the narrower of the Freedman-Diaconis and Sturges widths, then snaps it to a round number. A positive integer is an EXACT bin count: that many equal bins from the smallest to the largest observation, so the width is rarely round. { width } sets the width outright and skips the snap. Named rules such as 'sturges' or 'fd' are not accepted — the engine states which rule it used on the exhibit. |
-| bins.width | number |  |  | Authored bin width in observation units; bypasses automatic width selection and snapping. |
-| bins.anchor | number |  |  | Origin of the regularly spaced bin boundaries. |
+| bins | string \| integer \| object | `'auto'` (or another value of its type) |  | Binning. 'auto' (default) takes the narrower of the Freedman-Diaconis and Sturges widths, then snaps it to a round number. A positive integer is an EXACT bin count: that many equal bins from the smallest to the largest observation, so the width is rarely round. { width } sets the width outright and skips the snap. When every observation is a whole number and the width is 1 ('auto' or { width: 1 } without an anchor), each bin holds one value, centres on it and is named under its bar. { openAbove } gathers every value at or above it into one open last bin, so a long tail no longer stretches the axis; under 'auto' a warning (histogram-long-tail) proposes a value when most bins past the first quarter of the axis are nearly empty. Named rules such as 'sturges' or 'fd' are not accepted — the engine states which rule it used on the exhibit. |
+| bins.width | number |  |  | Authored bin width in observation units; bypasses automatic width selection and snapping. Leave it out with openAbove to let the automatic rule pick the width. |
+| bins.anchor | number |  |  | Origin of the regularly spaced bin boundaries. Needs width. |
+| bins.openAbove | number |  |  | Value from which every observation goes into one open last bin, named '≥ value (max …)' under its bar, drawn a small gap apart and always labelled with its count. The bin edges run through it. Use it when a few extreme values stretch the axis. |
 | binSnap | boolean |  |  | Snap an 'auto' width onto the {1, 2, 2.5, 5} ladder so bin edges are round numbers. Default true; ignored for an authored count or width. |
 | methodNote | boolean |  |  | Default false: the axis caption states the sample base n and the realized bins; without a caption, a method note carries them. true adds the binning rule, width, first edge and interval convention. footnotes: false hides method notes. |
 
@@ -69,6 +71,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | cycle-time-days | example | Cycle time peaks in the six-to-eight-day band and tails off by day thirteen |
 | order-value-eur-formatted | torture | Formatted in euro: the bin edges carry the currency, the bar heights are counts |
 | bimodal-with-far-outlier | torture | One $14,000 order stretches the axis over 40 bins; 999 of 1,000 orders sit in the first three |
+| claim-amount-open-tail | example | 15 of 800 claims run from $1,250 to $3,303; one open bin keeps them from stretching the axis |
 | unsnapped-bins-method-note | torture | The automatic bin width as computed, not snapped to a round number, with the binning rule stated |
 | localized-binning | torture | Authored binning wording under a German locale |
 

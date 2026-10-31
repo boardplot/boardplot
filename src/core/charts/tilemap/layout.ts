@@ -215,11 +215,10 @@ function layoutTilemapPass(
         // Only drawn glyphs can have a key or a label in the tile note.
         footnotes: [...overlayNote(drawableOverlays, listed, pack, idIndex, options), ...codeLookup(options, pack),
           ...(listOmissions ? [] : omissionLines), ...authoredNotes(options)],
-        // Footer rule: the tile layout is Boardplot's own, drawn from pinned anchors, so it
-        // needs no credit line. The short credit ends the source line,
-        // "Source: … · Tile layout: Boardplot, after Natural Earth"; the full attribution
-        // stays in the reading and in derived.pack.attribution.
-        source: options.source ? `${options.source} · ${tileCreditShort(pack.meta.attribution, options)}` : tileCreditShort(pack.meta.attribution, options),
+        // The tile layout is Boardplot's own and carries no third-party data, so the
+        // source line names only the author's source. The full attribution stays in
+        // the reading and in derived.pack.attribution.
+        source: options.source,
         legend: { options: legendOptions, items: [...scale.legend.filter((item) => !key?.owns.has(item.id)), ...overlayLegend.items] },
         theme,
         measure,
@@ -968,12 +967,6 @@ function tileValueNote(entries: readonly { id: string; name: string; value: numb
   const low = entries.find((entry) => entry.value === minOf(values))!;
   const leads = [...new Set([high, low, ...entries.filter(named)])];
   return valueNoteLine(lead, [...new Set([...leads, ...entries])].map((entry) => entry.text), options, entries.length);
-}
-
-/** The short tile-layout credit: the anchor source by name, else the full attribution. */
-function tileCreditShort(attribution: string, options: TilemapOptions): string {
-  const from = /Natural Earth/.test(attribution) ? 'Natural Earth' : /US Census Bureau/.test(attribution) ? 'US Census Bureau' : undefined;
-  return from ? chartString(options, 'tileCreditShort', { v1: from }) : attribution;
 }
 
 /** Whether every tile's code fits its tile in bold, as tileLabelPlan measures it. */

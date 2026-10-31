@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { withNumberMarks } from '../src/core/numberMarks';
 import '../src/core/charts';
 import { compileDimSwitch, dimswitchRowId } from '../src/core/charts/dimswitch/compile';
@@ -15,6 +15,11 @@ import { claimsForChart } from '../src/core/claims/browser';
 import { tableCellNodeId } from '../src/core/charts/table/cellKey';
 import { DERIVATION_KINDS, recomputeClaim } from './helpers/recompute';
 import { getFixtures } from '../src/fixtures';
+// Wraps the real compile to count calls; the output is unchanged.
+vi.mock('../src/core/charts/dimswitch/compile', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/core/charts/dimswitch/compile')>();
+  return { ...actual, compileDimSwitch: vi.fn(actual.compileDimSwitch) };
+});
 const rows=(variant:DimSwitchVariant,depth:number,splits=false)=>visibleRows(resolveDimSwitch(exampleData,{variant,depth,splits}).table);
 const row=(member:string,measure:string,data=exampleData)=>resolveDimSwitch(data).table.rows.find(r=>r.id===dimswitchRowId('by-measure',member,measure))!;
 // A cycle spanning subtotal placement and driver ownership must give input advice, not overflow the stack.
@@ -343,4 +348,27 @@ it('leaves out the change line of periods with no ref and warns on an encodings 
   expect(changeRow(some)!.cells.w1!.displayed).toBe('');
   expect(changeRow(some)!.cells.w2!.displayed).toContain('+11%');
   expect(some.compileWarnings.map(w => w.code)).not.toContain('dimswitch-encoding-column');
+});
+
+// A size search lays the card out at many sizes, and each layout compiled and resolved every form again.
+it('compiles each form once across layouts at other sizes', () => {
+  const data = structuredClone(exampleData);
+  const layout = (width: number) => dimswitchCore.layout(data, { size: { width } });
+  const first = layout(900);
+  vi.mocked(compileDimSwitch).mockClear();
+  const second = layout(700);
+  expect(second.size.width).toBe(700);
+  expect(first.size.width).toBe(900);
+  expect(compileDimSwitch).not.toHaveBeenCalled();
+});
+
+// A multiple of a negative base (revenue over a negative order count) printed a plain ratio with no word that it is arithmetic, not n.m.
+it('warns once per measure when a ratio divides by a negative sum', () => {
+  const flip=(sums:DimSwitchSums|undefined)=>sums && {...sums,orders:-Math.abs(sums.orders!)};
+  const data:DimSwitchData={...exampleData,
+    facts:exampleData.facts.map(fact=>({...fact,sums:flip(fact.sums)!,...(fact.ref ? {ref:flip(fact.ref)} : {})})),
+    measures:[...exampleData.measures,{id:'neg',label:'Revenue per order',value:{op:'div',a:{field:'rev'},b:{field:'orders'}}}]};
+  const found=resolveDimSwitch(data).compileWarnings.filter(w=>w.code==='ratio-negative-base');
+  expect(found.map(w=>w.severity)).toEqual(['info']);
+  expect(found[0]!.message).toContain("Measure 'neg'");
 });

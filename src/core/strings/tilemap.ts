@@ -19,9 +19,8 @@ const EN = {
   "codesSentence": "Codes: {v1}.",
   "overlays": "Overlays",
   "userSourceClause": " User source: {v1}",
-  // The key entry of a hatched tile and the short credit (no text on the tile).
+  // The key entry of a hatched tile (no text on the tile).
   "tilemapNoData": "No data",
-  "tileCreditShort": "Tile layout: Boardplot, after {v1}",
   // The note and the reading for values the tiles do not print.
   "valuesNotPrinted": "Values not printed in tiles",
   "tileValuesSentence": "Values: {v1}. ",
@@ -45,9 +44,8 @@ const DE: { [K in keyof typeof EN]: string } = {
   "codesSentence": "Kürzel: {v1}.",
   "overlays": "Zusatzzeichen",
   "userSourceClause": " Nutzerquelle: {v1}",
-  // The key entry of a hatched tile and the short credit (no text on the tile).
+  // The key entry of a hatched tile (no text on the tile).
   "tilemapNoData": "Keine Daten",
-  "tileCreditShort": "Kachellayout: Boardplot, nach {v1}",
   "valuesNotPrinted": "Werte nicht in den Kacheln",
   "tileValuesSentence": "Werte: {v1}. ",
 };
