@@ -587,6 +587,19 @@ export function layoutHistogram(
     column = layoutColumn(delegateData, columnOptions, true);
   }
 
+  // A bin whose own count is seated in a row of counts needs no callout: "1 in 850–900" over a printed 1
+  // between printed neighbours says it twice. A lone far bin keeps its callout, which names its range.
+  if (tail.length > 0) {
+    const seated = new Set(column.labels.filter((label) => label.kind === 'point' && !label.hidden).map((label) => label.owner.categoryId));
+    const inRow = (index: number) => seated.has(binId(index)) && (seated.has(binId(index - 1)) || seated.has(binId(index + 1)));
+    const kept = tail.filter((annotation) => !inRow(Number((annotation as { at: string }).at.slice(3))));
+    if (kept.length < tail.length) {
+      tail = kept;
+      const { annotations: _dropped, ...rest } = columnOptions;
+      columnOptions = kept.length > 0 ? { ...rest, annotations: kept } : rest;
+      column = layoutColumn(delegateData, columnOptions, true);
+    }
+  }
   // Try exact compact counts before the note; the frequency axis keeps whole counts.
   const drawnCounts = (geometry: typeof column) => geometry.labels.filter(label => label.kind === 'point' && !label.hidden).length;
   if (!options.valueAxis?.percent && column.labels.some(label => label.kind === 'point' && label.hidden === 'collision')) {
