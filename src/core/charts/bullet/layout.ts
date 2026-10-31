@@ -364,6 +364,8 @@ const BAND_TRIES = Symbol('bandTries');
 const REGULAR_NAMES = Symbol('regularNames');
 /** Set when the band names cannot print on their rows: the chart lays out again with the key. */
 const ROW_KEY_OFF = Symbol('rowKeyOff');
+/** Internal: the column heads take a line of their own, because the Actual head would meet the key. */
+const HEADS_OFF_KEY = Symbol('headsOffKey');
 
 export function layoutBullet(
   data: BulletData,
@@ -805,11 +807,12 @@ export function layoutBullet(
     const legendLast = legendLabels.at(-1);
     const legendRight = Math.max(-Infinity, maxOf(legendLabels.map((node) => node.t === 'text' ? node.x + Math.max(...node.lines.map((line) => measure(line, node.font).width)) : -Infinity)));
     // Only a key above the rows can carry the heads.
-    const headsOnKey = legendLast?.t === 'text' && legendLast.y < plot0.y && legendRight + 2 * COLUMN_GAP <= plot0.x + plot0.w - colsW;
+    const headsOnKey = (options as { [HEADS_OFF_KEY]?: true })[HEADS_OFF_KEY] !== true
+      && legendLast?.t === 'text' && legendLast.y < plot0.y && legendRight + 2 * COLUMN_GAP <= plot0.x + plot0.w - colsW;
     const colTopAir = headsOnKey ? 0 : headerH + 4;
     const colAvailH = plotHeightAfter(frameResult, size.height, plot0.h - axisH - 2 * inset - colTopAir);
     const colPitch = Math.max(44, minimumRowH, Math.ceil(maxOf(rows.map((_, ri) => colBlockH(ri))) + 12));
-    return { headerFont, noteFont, colTargets, colGaps, colPositions, colDirections, colHeads, targetColW, gapColW, colsW, colLeftW, colPlotW, headerH, noteH, colBlockH, legendLast, headsOnKey, colTopAir, colAvailH, colPitch };
+    return { headerFont, noteFont, colTargets, colGaps, colPositions, colDirections, colHeads, targetColW, gapColW, colsW, colLeftW, colPlotW, headerH, noteH, colBlockH, legendLast, legendRight, headsOnKey, colTopAir, colAvailH, colPitch };
   };
   const colPlan = colsEligible ? planColumns() : undefined;
   const colBlockMax = colPlan ? maxOf(rows.map((_, ri) => colPlan.colBlockH(ri))) : 0;
@@ -972,6 +975,10 @@ export function layoutBullet(
   const zeroX = rows.map((_, ri) => scaleAt(ri)(0));
   // The value column ends one value width past the rightmost band, bar or target of all rows.
   const valueColRight = Math.min(plot.x + plot.w, maxOf(extents.map((extent, ri) => scaleAt(ri)(extent.hi))) + VALUE_COL_GAP + valueColW);
+  // The heads share the key line only where the Actual head clears the key too.
+  if (actualHead && cp.headsOnKey && cp.legendRight + 2 * COLUMN_GAP > valueColRight - actualHead.w) {
+    return layoutBullet(data, { ...options, [HEADS_OFF_KEY]: true } as BulletOptions);
+  }
   const uniformZeroX = zeroX.every((value) => value === zeroX[0]);
   // Each name fits its own band with 2 px to spare on each side, or the key names the bands.
   if (rowMode && !rows.every((row, ri) => row.bands.every((bandSpec, bi) =>

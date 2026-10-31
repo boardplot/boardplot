@@ -520,26 +520,32 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
     const rawH = plot0.h - topPad - axisH;
     frameResult.frame.plotMinHeight = Math.max(frameResult.frame.plotMinHeight ?? 0, size.height + (frameResult.deficit ?? 0) - rawH + rows.length * (2 * lineH + 4));
   }
-  // DENSE ROWS. A row too low to hold its median over the box (label height + 19 px) would push
-  // the median to a whisker end or beside a dot, where it reads as that mark's value. Such rows print
-  // every median right-aligned in one column beside n, under the head Median.
-  const denseRows = availH / rows.length < valueLabelH + MEDIAN_OFFSET + MEDIAN_CLEAR + 8;
-  const medianRows = rows.filter((row) => row.median !== null && row.state !== 'points');
-  const medianCol = denseRows && labelOn('point') && options.boxValues !== 'all' && medianRows.length > 0;
-  const headFont = columnHeadFont(theme, options.target ?? DEFAULT_TARGET, textScaleOf(options));
-  const medianBodyW = medianCol ? maxOf(medianRows.map((row) => measure(fmtMedian(row.median!), labelFont).width)) : 0;
-  const medianHead = medianCol ? fitHead('Median', headFont, medianBodyW, measure, { target: options.target ?? DEFAULT_TARGET, textScale: textScaleOf(options) }) : undefined;
-  const medianColRight = plot0.x + plot0.w - nBandTotal;
-  const medianColTotal = medianHead ? Math.max(medianHead.w, medianBodyW) + N_BAND_GAP : 0;
-  nBandTotal += medianColTotal;
   // The parked value takes the room of its label at the plot's right end.
   // It reads in the tick row, as a tick: the axis format.
   const parkLabel = parked === undefined ? '' : axisFmt(parked);
   const parkRoom = parked === undefined ? 0 : PARK_GAP + Math.max(POINT_R, measure(parkLabel, tickFont).width / 2);
 
+  // DENSE ROWS. A row too low to hold its median over the box (label height + 19 px) would push
+  // the median to a whisker end or beside a dot, where it reads as that mark's value. Such rows print
+  // every median right-aligned in one column beside n, under the head Median.
+  const denseRows = availH / rows.length < valueLabelH + MEDIAN_OFFSET + MEDIAN_CLEAR + 8;
+  const medianRows = rows.filter((row) => row.median !== null && row.state !== 'points');
+  // The column shows only where the value run keeps MIN_VALUE_RUN beside it; a narrower frame keeps
+  // the seats by the box, so no size that drew before refuses.
+  const medianWanted = denseRows && labelOn('point') && options.boxValues !== 'all' && medianRows.length > 0;
+  const headFont = columnHeadFont(theme, options.target ?? DEFAULT_TARGET, textScaleOf(options));
+  const medianBodyW = medianWanted ? maxOf(medianRows.map((row) => measure(fmtMedian(row.median!), labelFont).width)) : 0;
+  const medianHeadFit = medianWanted ? fitHead('Median', headFont, medianBodyW, measure, { target: options.target ?? DEFAULT_TARGET, textScale: textScaleOf(options) }) : undefined;
+  const medianColW = medianHeadFit ? Math.max(medianHeadFit.w, medianBodyW) + N_BAND_GAP : 0;
+  const medianCol = medianWanted && plot0.w - catBandTotal - nBandTotal - medianColW - bracketRoom - parkRoom >= MIN_VALUE_RUN;
+  const medianHead = medianCol ? medianHeadFit : undefined;
+  const medianColRight = plot0.x + plot0.w - nBandTotal;
+  const medianColTotal = medianCol ? medianColW : 0;
+  nBandTotal += medianColTotal;
+
   // A box chart is a row form. Its narrowest canvas holds the name column, the n column,
   // the bracket room and a value run of 80 px, beside the chrome around the plot.
-  const sizingFor = (room: number) => bandSizing('box', size, plot0.w, NATURAL_BAND_STEP, catBandTotal + nFloorTotal + medianColTotal + room + parkRoom + MIN_VALUE_RUN);
+  const sizingFor = (room: number) => bandSizing('box', size, plot0.w, NATURAL_BAND_STEP, catBandTotal + nFloorTotal + room + parkRoom + MIN_VALUE_RUN);
 
   const plot: Rect = {
     x: plot0.x + catBandTotal,
