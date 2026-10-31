@@ -522,6 +522,19 @@ it('prints n.m. where a kept row calc compares a full total with a partial total
   expect(gap.pace!.displayed).not.toBe('n.m.');
 });
 
+// Shares kept the omitted rows out of their denominator, so topN.rest false printed 62.5%, 37.5% and a total of 125.0%.
+it('keeps the shares of the kept rows when topN.rest false omits rows', () => {
+  const data = tableDataSchema.parse({
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'rev', kind: 'value' }, { id: 'share', kind: 'computed', calc: { op: 'share', of: 'rev' }, format: '1.1%' }],
+    rows: [{ id: 'a', cells: { rev: 500 } }, { id: 'b', cells: { rev: 300 } }, { id: 'c', cells: { rev: 150 } }, { id: 'd', cells: { rev: 50 } },
+      { id: 'tot', role: 'total', cells: { rev: 1000 } }],
+  });
+  const shares = (topN?: { n: number; rest: boolean }) =>
+    Object.fromEntries(resolveTable(data, { target: 'report', topN }).table.rows.map(row => [row.id, row.cells.share!.displayed]));
+  expect(shares({ n: 2, rest: false })).toEqual({ a: '50.0%', b: '30.0%', tot: '100.0%' });
+  expect(shares()).toMatchObject({ a: '50.0%', b: '30.0%', tot: '100.0%' });
+});
+
 // Tone text printed in the raw tone read 2.96:1 on the standard total ground of this fixture.
 it('prints table tone text at 4.5:1 or more on its ground', () => {
   const tones = new Set(['good', 'bad', 'warn']);

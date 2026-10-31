@@ -762,12 +762,16 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     }
   };
   collectLeafSummands(null);
+  // Rows that topN.rest false omits still belong to the partition, so hiding a row leaves the other shares as they were.
+  const hiddenLeaves = [...folded.hidden].filter(([, h]) => h.leaf);
   const leafTotal = (colId: Id): number | null => {
     let t = 0;
-    for (const r of leafRows) {
-      const s = rawState.get(r.id)!.get(colId);
+    for (const [s, sign] of [
+      ...leafRows.map((r) => [rawState.get(r.id)!.get(colId), signTo(r, null)] as const),
+      ...hiddenLeaves.map(([, h]) => [h.states.get(colId), h.sign] as const),
+    ]) {
       if (!s || s.state !== 'value' || typeof s.raw !== 'number') return null;
-      t += signTo(r, null) * s.raw;
+      t += sign * s.raw;
     }
     return t;
   };
@@ -1165,10 +1169,12 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     reconcileShares(col.id, spec);
   }
   function reconcileShares(colId: Id, spec: NumberFormatSpec) {
-    const entries = leafRows
-      .map((r) => ({ r, s: rawState.get(r.id)!.get(colId)! }))
-      .filter((e) => e.s.state === 'value' && typeof e.s.raw === 'number');
-    if (entries.length !== leafRows.length || entries.length === 0) return;
+    // Rows topN.rest false omits take their units too, so the shown shares stay what they are with all rows shown.
+    const entries = [
+      ...leafRows.map((r) => ({ r, s: rawState.get(r.id)!.get(colId)!, shown: true })),
+      ...hiddenLeaves.map(([id, h]) => ({ r: { id }, s: h.states.get(colId)!, shown: false })),
+    ].filter((e) => e.s?.state === 'value' && typeof e.s.raw === 'number');
+    if (entries.length !== leafRows.length + hiddenLeaves.length || entries.length === 0) return;
     const decimals = spec.decimals ?? 1;
     const unit = Math.pow(10, -decimals);
     const floors = entries.map((e) => Math.floor((e.s.raw as number) / unit) * unit);
@@ -1190,7 +1196,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
       deficit--;
     }
     entries.forEach((e, i) => {
-      if (ownPrecision[i]) return;
+      if (ownPrecision[i] || !e.shown) return;
       const shown = floors[i]! + (adjusted.has(i) ? unit : 0);
       // A cell format of the column's precision prints the reconciled amount through itself.
       const cellSpec = cellSpecs.get(e.r.id)?.get(colId);
@@ -1792,6 +1798,8 @@ const evaluatedStates = new WeakMap<ResolveResult, Map<Id, Map<Id, CellEval>>>()
 interface HiddenRow {
   sign: number;
   states: Map<Id, CellEval>;
+  /** An additive row with no additive child: the part of the share denominator it carries. */
+  leaf: boolean;
 }
 
 function applyTableTopN(
@@ -1815,7 +1823,9 @@ function applyTableTopN(
       const own = evaluated?.get(colId);
       states.set(colId, { raw: cell.raw, state: cell.state, ...(own?.partial ? { partial: true as const, skipped: own.skipped } : {}) });
     }
-    hidden.set(row.id, { sign: contributionSignOf(row, (id) => innerById.get(id), null), states });
+    const leaf = row.relation === 'additive' && row.role !== 'total'
+      && !inner.table.rows.some((kid) => kid.parentId === row.id && kid.relation === 'additive' && kid.role !== 'total');
+    hidden.set(row.id, { sign: contributionSignOf(row, (id) => innerById.get(id), null), states, leaf });
   }
   return { ...folded, hidden };
 }
