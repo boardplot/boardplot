@@ -1,0 +1,3 @@
+### Changed / may need action
+
+- A tile map no longer ends its source line with a tile-layout credit. The line printed `Source: Invented data · Tile layout: Boardplot, after US Census Bureau` (in German `Kachellayout: Boardplot, nach Natural Earth`). With no `options.source`, it printed `Source: Tile layout: Boardplot`, so the chart named Boardplot as the source of the data. The tile layouts are Boardplot's own and carry no third-party data, so the source line now names only `options.source`, and a tile map without one has no source line. The full attribution stays in the reading and in `derived.pack.attribution`. To bring back the old look, write the credit into `options.source`, for example `"source": "Invented data · Tile layout: Boardplot, after US Census Bureau"`.

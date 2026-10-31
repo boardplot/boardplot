@@ -4,7 +4,7 @@
 <rect x="0" y="0" width="720" height="712" fill="#FFFFFF"/>
 <text data-id="frame:title:0" data-part="title" data-bp-role="title" x="24" y="37.60" text-anchor="start" font-size="20" font-weight="700" fill="#0D2A43"><tspan x="24" dy="0">Demand is broad-based across Europe</tspan></text>
 <text data-id="frame:subtitle:1" data-part="subtitle" data-bp-role="subtitle" x="24" y="61.32" text-anchor="start" font-size="14" font-weight="400" fill="#0D2A43"><tspan font-weight="700">Demand index</tspan><tspan> · 2026</tspan></text>
-<text data-id="frame:source:2" data-part="source" data-bp-role="source" x="24" y="697.38" text-anchor="start" font-size="11" font-weight="400" fill="#4E6070"><tspan x="24" dy="0">Source: Illustrative planning data · Tile layout: Boardplot, after Natural Earth</tspan></text>
+<text data-id="frame:source:2" data-part="source" data-bp-role="source" x="24" y="697.38" text-anchor="start" font-size="11" font-weight="400" fill="#4E6070"><tspan x="24" dy="0">Source: Illustrative planning data</tspan></text>
 <rect data-id="legend:step:0" data-part="swatch" x="24" y="75.20" width="61.09" height="10" fill="#c1cbd5"/>
 <rect data-id="legend:step:1" data-part="swatch" x="85.09" y="75.20" width="61.09" height="10" fill="#9aabba"/>
 <rect data-id="legend:step:2" data-part="swatch" x="146.18" y="75.20" width="61.09" height="10" fill="#738aa0"/>
