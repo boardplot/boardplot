@@ -232,7 +232,8 @@ export function layoutHistogram(
   // width of 5e-7 as four bins named "0.000002–0.000002".
   // One bin per whole value names the value under its bar, not the half-way edges.
   const perValue = binning.perValue;
-  const labelValues = perValue ? counts.map((_, index) => round12(binning.anchor + index + 0.5)) : binning.edges;
+  // From the exact minimum: the display-rounded anchor of 1e11 + 0.5 reads 1e11 + 1.
+  const labelValues = perValue ? counts.map((_, index) => min + index) : binning.edges;
   const edgeDecimals = ((): number => {
     const tolerance = binning.width / 100;
     for (let decimals = 0; decimals <= MAX_FORMAT_DECIMALS; decimals++) {

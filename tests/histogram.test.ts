@@ -153,6 +153,9 @@ describe('histogram binning arithmetic', () => {
       expect(names.map((label) => label.text)).toEqual(['0', '1', '2', '3', '4']);
       names.forEach((label, index) => expect(label.rect.x + label.rect.w / 2).toBeCloseTo(bars[index]!, 0));
     }
+    // Large whole numbers keep their exact names: the display-rounded anchor is a half off.
+    const large = layoutHistogram({ observations: observations.map((value) => value + 100000000001) }, { bins: { width: 1 } });
+    expect(large.derived.binLabels.map((label) => label.replace(/\D/g, ''))).toEqual(['100000000001', '100000000002', '100000000003', '100000000004', '100000000005']);
   });
 });
 
