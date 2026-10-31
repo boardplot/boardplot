@@ -531,4 +531,13 @@ describe('heatmap cell states', () => {
     const keys = lay('heatmap', (spec as { data: unknown }).data, { title: 't' }).legend?.items.map((item) => item.id).filter((id) => /^scale:\D/.test(id));
     expect([body.reading.values.byState, keys]).toEqual([{ value: 1, missing: 1, suppressed: 1, nm: 1 }, ['scale:none', 'scale:nm', 'scale:suppressed']]);
   });
+
+  // A template's old per-cell states stayed on refilled rows, so a cell given a number was refused and a plain empty cell stayed suppressed.
+  it('lets the refilled rows decide every cell state, not the template', () => {
+    const template = { type: 'heatmap', options: { title: 't' }, data: { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: 'm1', label: 'M1', values: [1, null], states: [null, 'suppressed'] }] } };
+    const rows = [{ c: 'a', s: 'm1', v: null }, { c: 'b', s: 'm1', v: 2 }];
+    const { spec } = specFromRows(template as never, { rows, columns: { category: 'c', series: 's', value: 'v' } });
+    const series = (spec as { data: { series: { states?: unknown }[] } }).data.series[0]!;
+    expect(series.states).toBeUndefined();
+  });
 });
