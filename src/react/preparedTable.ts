@@ -44,6 +44,7 @@ function preparedCell(cell: ResolvedCell, keepRaw: boolean): ResolvedCell {
     state: cell.state, displayed: cell.displayed, tone: cell.tone,
     note: cell.note, href: cell.href, deEmphasized: cell.deEmphasized, polarity: cell.polarity,
     ...(cell.zero ? { zero: true as const } : {}),
+    ...(cell.negated ? { negated: true as const } : {}),
     ...(cell.heat === false ? { heat: false as const } : {}),
     ...(cell.strong ? { strong: true as const } : {}),
     ...(cell.bar === undefined ? {} : { bar: cell.bar }),
