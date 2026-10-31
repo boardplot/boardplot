@@ -184,7 +184,10 @@ export function normalizeGridData(raw: unknown): ExplicitGridData {
   // Object.hasOwn, not `in`: see the union discriminator in index.ts.
   // hasOwn does not narrow the union for TypeScript, hence the casts — a
   // parsed object owning 'panels' can only have come from the explicit branch.
-  if (Object.hasOwn(input, 'panels')) return input as ExplicitGridData;
+  if (Object.hasOwn(input, 'panels')) {
+    const explicit = input as ExplicitGridData;
+    return seriesIdsDisagree(explicit.panels) ? { ...explicit, panels: lockPaletteBySeriesId(explicit.panels, false) } : explicit;
+  }
   // Owning neither key is reachable: zod's required-key presence check reads
   // `key in input`, so a non-writable prototype gadget satisfies the explicit
   // branch while zod's output drops the assignment. NormalizeError is this
@@ -345,7 +348,27 @@ function substitute(value: unknown, placeholder: string, replacement: string): u
   return value;
 }
 
-function lockPaletteBySeriesId(panels: GridPanelSpec[]): GridPanelSpec[] {
+/** The non-reference series ids a panel lists, in order. */
+function panelSeriesIds(panel: GridPanelSpec): string[] {
+  const series = isRecord(panel.data) && Array.isArray(panel.data.series) ? panel.data.series : [];
+  return series.flatMap((item) => (isRecord(item) && typeof item.id === 'string' && item.role !== 'reference' ? [item.id] : []));
+}
+
+/**
+ * True when a written-out grid shares a series id between panels and the panels
+ * do not already list the same ids in the same order. Panels that agree by
+ * position, or that share no id, keep the colours they have.
+ */
+function seriesIdsDisagree(panels: GridPanelSpec[]): boolean {
+  const lists = panels.map(panelSeriesIds).filter((ids) => ids.length > 0);
+  const panelsOfId = new Map<string, number>();
+  for (const ids of lists) for (const id of new Set(ids)) panelsOfId.set(id, (panelsOfId.get(id) ?? 0) + 1);
+  const shared = [...panelsOfId.values()].some((count) => count > 1);
+  const first = lists[0] ?? [];
+  return shared && lists.some((ids) => ids.length !== first.length || ids.some((id, index) => id !== first[index]));
+}
+
+function lockPaletteBySeriesId(panels: GridPanelSpec[], reorder = true): GridPanelSpec[] {
   const roleBySeries = new Map<string, string>();
   for (const panel of panels) {
     const series = isRecord(panel.data) && Array.isArray(panel.data.series) ? panel.data.series : [];
@@ -365,7 +388,7 @@ function lockPaletteBySeriesId(panels: GridPanelSpec[]): GridPanelSpec[] {
   };
   return panels.map((panel) => {
     if (!isRecord(panel.data) || !Array.isArray(panel.data.series)) return panel;
-    const series = [...panel.data.series].sort((a, b) => at(a) - at(b)).map((item) => {
+    const series = (reorder ? [...panel.data.series].sort((a, b) => at(a) - at(b)) : panel.data.series).map((item) => {
       if (
         !isRecord(item) ||
         typeof item.id !== 'string' ||

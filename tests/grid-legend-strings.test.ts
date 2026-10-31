@@ -102,3 +102,23 @@ it('keys a grid of two-series panels with no legend set, and leaves single-serie
   expect(keyOf([panel('North', [['Sales', [4, 5]], ['Target', [5, 5]]]), panel('South', [['Sales', [3, 4]], ['Target', [4, 4]]])])).toEqual(['Sales', 'Target']);
   expect(keyOf([panel('North', [['Sales', [4, 5]]]), panel('South', [['Returns', [3, 4]]])])).toEqual([]);
 });
+
+// A written-out grid coloured a series by its place in each panel, so Online was blue in one panel and navy in the next.
+it('colours a series alike in every panel of a written-out grid', () => {
+  const cats = ['a', 'b'].map(id => ({ id }));
+  const panel = (id: string, column: number, series: Array<[string, number]>) => ({
+    id, type: 'column', row: 0, column, options: { variant: 'stacked' },
+    data: { categories: cats, series: series.map(([sid, v]) => ({ id: sid, label: sid, values: [v, v + 1] })) },
+  });
+  const geo = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'grid',
+    data: { panels: [panel('p1', 0, [['retail', 3], ['online', 2], ['wholesale', 1]]), panel('p2', 1, [['online', 2], ['wholesale', 1]])] },
+    options: { columns: 2, legend: 'top' },
+  })));
+  const fills = new Map<string, Set<string>>();
+  for (const node of geo.scene) {
+    if (node.t !== 'rect' || node.part !== 'segment' || !node.owner?.seriesId) continue;
+    fills.set(node.owner.seriesId, (fills.get(node.owner.seriesId) ?? new Set()).add(JSON.stringify(node.fill)));
+  }
+  expect([...fills.keys()].sort()).toEqual(['online', 'retail', 'wholesale']);
+  for (const [id, set] of fills) expect(set.size, id).toBe(1);
+});
