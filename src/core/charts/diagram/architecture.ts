@@ -1,4 +1,4 @@
-import type { Point, Rect, Size } from '../../geometry';
+import { rectLineDistance, type Point, type Rect, type Size } from '../../geometry';
 import { NormalizeError } from '../../normalize/shared';
 import { fitText } from '../../label/fitText';
 import { compileIcon } from '../../icons';
@@ -90,6 +90,7 @@ interface Geometry {
   ys: Line[];
   gaps: Gap[];
   width: number;
+  narrowLaneGrid: boolean;
 }
 
 type Side = 'top' | 'right' | 'bottom' | 'left';
@@ -525,10 +526,12 @@ function place(arrangement: Arrangement, gaps: ReadonlyMap<string, number>, env:
   const lanesFlow = arrangement.lanes !== undefined;
   const pad = 2.5 * u;
   const titleH = title.size * (title.lineHeight ?? 1.2);
+  const narrowLaneGrid = !!arrangement.labelAbove && arrangement.bands.some((band) => band.cols > 1);
+  const laneZoneGap = narrowLaneGrid ? Math.max(0, titleH / 2 + 2 - 2 * u) : 0;
   const innerGap = 2 * GAP_HALF;
   const unitGap = 2 * GAP_HALF;
   const gap = (key: string, base: number) => Math.max(base, gaps.get(key) ?? 0);
-  const geometry: Geometry = { rects: new Map(), textBoxes: new Map(), icons: new Map(), badges: new Map(), zones: [], loops: [], locks: new Map(), lanes: [], labelClaims: [], xs: [], ys: [], gaps: [], width: plot.w };
+  const geometry: Geometry = { rects: new Map(), textBoxes: new Map(), icons: new Map(), badges: new Map(), zones: [], loops: [], locks: new Map(), lanes: [], labelClaims: [], xs: [], ys: [], gaps: [], width: plot.w, narrowLaneGrid };
   const outerL = gap('oL', 0);
   const outerR = gap('oR', 0);
   const laneLabel = lanesFlow && !arrangement.labelAbove ? laneLabelWidth(env) : 0;
@@ -625,7 +628,7 @@ function place(arrangement: Arrangement, gaps: ReadonlyMap<string, number>, env:
           memberNodeIds: env.data.nodes.filter((node) => node.laneId === lane.lane.id).map((node) => node.id), ...(r > 0 ? { rule: cursor } : {}) });
         // A dashed zone's title sits on its frame, clear of the lane rule above.
         const framedLane = env.data.nodes.some((node) => node.laneId === lane.lane.id && node.groupId !== undefined);
-        cursor += headerH + 2 * u + (framedLane ? titleH / 2 + u : 0);
+        cursor += headerH + 2 * u + (framedLane ? titleH / 2 + u + laneZoneGap : 0);
       }
       rowY[r] = q(cursor);
       cursor += rowH[r]!;
@@ -710,7 +713,7 @@ function place(arrangement: Arrangement, gaps: ReadonlyMap<string, number>, env:
   axisY.push([y + Math.max(bottom, 2 * PITCH) / 2, 'oB']);
   geometry.gaps.push({ key: 'oB', axis: 'h', rect: { x: plot.x, y, w: plot.w, h: Math.max(bottom, 2 * PITCH) } });
 
-  if (lanesFlow) laneZones(geometry, env);
+  if (lanesFlow) laneZones(geometry, env, laneZoneGap);
   geometry.xs = corridorLines(axisX);
   geometry.ys = corridorLines(axisY);
   return geometry;
@@ -784,7 +787,7 @@ function laneHeader(label: string, x: number, y: number, width: number, env: Env
 }
 
 /** In lanes a zone wraps its members across neighbouring lanes, with its title on the frame. */
-function laneZones(geometry: Geometry, env: Env): void {
+function laneZones(geometry: Geometry, env: Env, clearance: number): void {
   const { data, title, measure, u } = env;
   for (const group of data.groups) {
     const members = data.nodes.filter((node) => node.groupId === group.id);
@@ -792,7 +795,7 @@ function laneZones(geometry: Geometry, env: Env): void {
     const rects = members.map((node) => geometry.rects.get(node.id)!);
     const x0 = Math.min(...rects.map((rect) => rect.x)) - 1.5 * u;
     // The title centres on the top line and keeps clear of the nodes below it.
-    const y0 = Math.min(...rects.map((rect) => rect.y)) - 2 * u;
+    const y0 = Math.min(...rects.map((rect) => rect.y)) - 2 * u - clearance;
     const x1 = Math.max(...rects.map((rect) => rect.x + rect.w)) + 1.5 * u;
     const y1 = Math.max(...rects.map((rect) => rect.y + rect.h)) + 1.5 * u;
     const bounds = qRect({ x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
@@ -1415,7 +1418,9 @@ function placeLabels(
         })];
       }),
     ]).map(qRect);
-    const seat = seats.find((box) => labelClear(box, polylines, blockers, env.plot));
+    // In a narrow lane grid, a return label must be closer to its own line.
+    const seat = seats.find((box) => labelClear(box, polylines, blockers, env.plot) && (!geometry.narrowLaneGrid || edge.flow !== 'return'
+      || polylines.every((line, i) => i === index || rectLineDistance(box, points) <= rectLineDistance(box, line))));
     if (seat) {
       out.set(edge.id, seat);
       blockers.push(seat);

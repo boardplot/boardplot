@@ -8,9 +8,9 @@
 import { describe, expect, it } from 'vitest';
 import { render } from '../src/cli/render';
 import { layoutDiagram } from '../src/core/charts/diagram/layout';
-import type { Rect } from '../src/core/geometry';
-import type { DiagramData, DiagramOptions, DiagramPolylineRoute } from '../src/core/types/diagram';
-import { canDraw, getChartDefinition, resolveChartRequest } from '../src/index';
+import { rectLineDistance, type Rect } from '../src/core/geometry';
+import type { DiagramData, DiagramMarks, DiagramOptions, DiagramPolylineRoute } from '../src/core/types/diagram';
+import { canDraw, getChartDefinition, measure, resolveChartRequest } from '../src/index';
 import { getFixtures } from '../src/fixtures';
 import { checkedColor } from '../src/core/svg/paint';
 import { compositeColor, contrastRatio } from '../src/core/color';
@@ -145,6 +145,22 @@ describe('actionable input refusals', () => {
     const layout = layoutDiagram({ nodes: [{ id: 'a', kind: 'step', shape: { kind: 'rectangle' }, label: 'A', laneId: 'l' }], lanes: [{ id: 'l', label: 'W'.repeat(100), orientation: 'horizontal' }] } as DiagramData,
       { variant: 'architecture', flow: 'lanes', size: { width: 600, height: 540 } } as DiagramOptions);
     expect(layout.marks.nodes[0]!.rect.w).toBeGreaterThan(300);
+  });
+
+  // A narrow architecture lane hid its zone name and placed a return label closer to another edge.
+  it('keeps a zone name and its return label readable', () => {
+    const fixture = getFixtures('diagram').find((item) => item.id === 'journey-attribution')!;
+    const layout = measure({ type: 'diagram', data: fixture.data, options: { ...fixture.options, size: { width: 480 } }, theme: 'notation' }).geometry!;
+    const group = layout.labels.find((label) => label.id === 'group-label:personal');
+    expect(group?.text).toBe('Personal data');
+    expect(group?.hidden).toBeUndefined();
+    const label = layout.labels.find((item) => item.id === 'edge-label:loop')!;
+    expect(label.hidden).toBeUndefined();
+    const edges = layout.marks.edges as DiagramMarks['edges'];
+    const own = edges.find((edge) => edge.id === 'loop')!;
+    const other = edges.filter((edge) => edge.id !== 'loop');
+    const distance = (edge: typeof own) => rectLineDistance(label.rect, (edge.route as DiagramPolylineRoute).points);
+    expect(distance(own)).toBeLessThan(Math.min(...other.map(distance)));
   });
 
   // Many unlike edges between two nodes pushed their ends past the node sides, and the lines floated.
