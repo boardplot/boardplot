@@ -321,13 +321,15 @@ export function layoutValueAxis(input: ValueAxisInput, occupied: OccupiedIndex):
   // something already on it (the y-axis tick column beside a scatter's
   // corner) anchors inward, at its tick: an end label anchored by
   // default would sit 6 to 11 px off a tick at the plot edge.
+  // An axis that runs right to left (a mirrored butterfly pane) has its first tick at the right.
+  const mirrored = requestedTicks.length > 1 && scale(requestedTicks[0]!) > scale(requestedTicks[requestedTicks.length - 1]!);
   const labelX = (pos: number, width: number, index: number, count: number): number => {
     const centred = pos - width / 2;
     const end = count > 1 && (index === 0 || index === count - 1);
     if (!end) return centred;
     const box = { x: centred, y: plot.y + plot.h + 6, w: width, h: font.size * (font.lineHeight ?? 1.2) };
     const inside = centred >= 0 && centred + width <= (input.canvasWidth ?? Infinity);
-    return inside && occupied.hitsWhich(box, 0).length === 0 ? centred : tickLabelX(pos, width, index, count, true);
+    return inside && occupied.hitsWhich(box, 0).length === 0 ? centred : tickLabelX(pos, width, mirrored ? count - 1 - index : index, count, true);
   };
   const ticks = thinAxisTicks(requestedTicks, scale, orient, formatTick, font, measure, labelX, input.keepEndTicks === true, input.keepTopTick === true);
 

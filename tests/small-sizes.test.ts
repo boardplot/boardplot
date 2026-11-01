@@ -1142,6 +1142,14 @@ it('draws a column whose names cannot fit or rotate as bars, or lists the names 
   expect(hiddenNames(tall)).toEqual([]);
 });
 
+// The break glyph's claim reached below the axis and hid the name of the last column on a phone, so the plan column had no name.
+it('keeps the name of the column after an axis break on a phone', () => {
+  const fixture = getFixtures('column').find(f => f.id === 'stacked-series-cagr')!;
+  const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'column', data: fixture.data, options: { ...fixture.options, size: { width: 343, height: 476 } } })) as Geometry;
+  const name = geometry.labels.find(label => label.id === 'category:y2022')!;
+  expect(name.hidden).toBeUndefined();
+});
+
 // A width pinned below the floor refuses, and the size search laid out a bar for every probe at the floor width, which the refusal never drew.
 it('lays out no bar for the probes that price a refusal at a pinned width', () => {
   const names = Array.from({ length: 20 }, (_, i) => `Sector number ${i + 1} of the survey`);

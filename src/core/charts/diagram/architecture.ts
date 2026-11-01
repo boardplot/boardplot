@@ -180,10 +180,10 @@ function insetPanel(inset: NonNullable<NormalizedDiagram['inset']>, box: { x: nu
     y += tallest + 2 * u;
   }
   (inset.rows ?? []).forEach((row, index) => {
-    const value = Math.ceil(measure(row.value, fonts.name).width) + 1;
+    const value = Math.min(Math.ceil(measure(row.value, fonts.name).width) + 1, Math.floor(box.w / 2));
     const name = seat(`row:${index}:label`, row.label, fonts.text, box.x, y, box.w - value - 2 * u);
-    seat(`row:${index}:value`, row.value, fonts.name, box.x + box.w - value, y, value, true);
-    y += name + u;
+    const worth = seat(`row:${index}:value`, row.value, fonts.name, box.x + box.w - value, y, value, true);
+    y += Math.max(name, worth) + u;
   });
   return { labels, height: y - box.y - u };
 }

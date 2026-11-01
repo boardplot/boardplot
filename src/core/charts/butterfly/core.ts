@@ -21,6 +21,6 @@ export const butterflyCore: ChartCore<
   layout: (data, options) => layoutButterfly(prepareFractionData(data), options),
   categoryLabels: calendarCategories,
   prepare: prepareFractionData,
-  defaults: { sortBy: 'sheet', sharedScale: true },
+  defaults: { sortBy: 'sheet', sharedScale: true, negatives: 'direction' },
   annotationKinds: ['cagr', 'delta', 'diff', 'note', 'callout', 'abs']
 };
