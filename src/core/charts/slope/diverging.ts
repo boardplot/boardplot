@@ -11,7 +11,7 @@ import { chartString } from '../../strings/slope';
 import { chartTheme } from '../chartEnv';
 import { fitText } from '../../label/fitText';
 import { formatAuthoredPercent, formatAutomaticNumber, numberRange, seriesValueFormatter } from '../../format';
-import { formatterFromExample } from '../../formatSpec';
+import { differenceExample, formatterFromExample, signedFormatterFromExample } from '../../formatSpec';
 import { autoDecimals } from '../../formatPrecision';
 import { cleanDiff, cleanFloat, type Rect } from '../../geometry';
 import { createOccupiedIndex } from '../../label/occupied';
@@ -103,7 +103,6 @@ export function layoutDivergingSlope(
     example && example === options.format ? (chartFormat ??= formatterFromExample(example, language, undefined, panels.flatMap((p) => [...p.g.positive, ...p.g.negative])))(v)
     : example ? formatterFromExample(example, options.locale?.language)(v)
       : isPct ? formatAuthoredPercent(v, language) : formatAutomaticNumber(v, { locale: language, decimals: autoDecimals(v) });
-  const signed = (v: number): string => formatAutomaticNumber(v, { locale: language, signed: true, decimals: autoDecimals(v) });
 
   // ---- normalize ----
   if (!data || !Array.isArray(data.categories) || data.categories.length < 2) {
@@ -206,6 +205,10 @@ export function layoutDivergingSlope(
     order.sort((a, b) => key(b.x) - key(a.x) || a.i - b.i);
   }
   const panels = order.map((o) => o.x);
+  // Net and net change are differences of two shares, so a percent format prints them in percentage points.
+  const signed = options.format
+    ? signedFormatterFromExample(differenceExample(options.format), language, undefined, panels.flatMap((p) => [...p.g.positive, ...p.g.negative]))
+    : (v: number): string => formatAutomaticNumber(v, { locale: language, signed: true, decimals: autoDecimals(v) });
 
   // ---- notes ----
   const posName = opt.labels?.positive ?? chartString(options, 'positiveName');

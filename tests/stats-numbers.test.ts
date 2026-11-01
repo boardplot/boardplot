@@ -125,6 +125,37 @@ it('prints the trend rate in the reporting period', () => {
   expect(unitOf(['2026-01-01', '2026-01-02', '2026-01-04'])[1]).toBe('per day');
 });
 
+// Prevents trend keys from losing the value unit or calling dated yearly observations generic periods,
+// and numeric labels such as "1000" from being read as years.
+it('prints trend rates with their value units and calendar periods', () => {
+  const categories = ['2021', '2022', '2023F'].map((label, i) => ({ id: `p${i}`, label, date: `${2021 + i}-01-01` }));
+  const cases = [
+    { options: { unit: '$m' }, series: {}, expected: '+$2.0m per year' },
+    { options: {}, series: { unit: 'kg' }, expected: '+2.0 kg per year' },
+    { options: { unit: '$m', format: '1.0' }, series: {}, expected: '+$2.0m per year' },
+    { options: { unit: '$', format: '$1.0' }, series: {}, expected: '+$2.0 per year' },
+    { options: { unit: '%', format: '1.0%' }, series: {}, expected: '+2.0pp per year' },
+    { options: { unit: '€m', locale: { language: 'de' } }, series: {}, expected: '+2,0m\u00a0€ pro Jahr' },
+  ];
+  for (const variant of ['line', 'area'] as const) for (const c of cases) {
+    const out = layoutLine({ categories, series: [{ id: 'a', label: 'Output', values: [10, 12, 14], ...c.series }] },
+      lineOptionsSchema.parse({ trend: true, variant, size: { width: 960, height: 540 }, ...c.options }));
+    expect(sceneText(out)).toContain(c.expected);
+    expect(out.a11y.desc).toContain(c.expected);
+  }
+  const skipped = layoutLine({ categories: [{ id: 'FY2020', date: '2020-01-01' }, { id: 'FY2022', date: '2022-01-01' }, { id: 'FY2025F', date: '2025-01-01' }], series: [{ id: 'a', values: [10, 14, 20] }] },
+    lineOptionsSchema.parse({ trend: true, unit: '$m', size: { width: 960, height: 540 } }));
+  expect(skipped.derived.trends![0]).toMatchObject({ slope: expect.closeTo(2, 12), unit: 'year' });
+  expect(sceneText(skipped)).toContain('+$2.0m per year');
+  const numeric = layoutLine({ categories: ['1000', '2000', '3000', '4000'].map(id => ({ id })), series: [{ id: 'a', label: 'Fuel use', values: [10, 12, 14, 16] }] },
+    lineOptionsSchema.parse({ trend: true, unit: 'l', size: { width: 960, height: 540 } }));
+  expect(numeric.derived.trends![0]).toMatchObject({ slope: expect.closeTo(2, 12), unit: 'period' });
+  expect(sceneText(numeric)).toContain('per period');
+  const scatter = layoutScatter({ points: [{ id: 'a', x: 1, y: 10 }, { id: 'b', x: 2, y: 12 }, { id: 'c', x: 3, y: 14 }] },
+    { trend: true, unit: 'kg', size: { width: 960, height: 540 } });
+  expect(sceneText(scatter)).toContain('2.0 kg');
+});
+
 describe('likert', () => {
   const FIVE = [
     { id: 'sd', label: 'Strongly disagree' }, { id: 'd', label: 'Disagree' },
@@ -315,6 +346,20 @@ describe('pyramid', () => {
     expect(sumOf('m')).not.toBeCloseTo(100, 6);
     expect(sumOf('f')).not.toBeCloseTo(100, 6);
     expect(sumOf('m') + sumOf('f')).toBeCloseTo(100, 9);
+  });
+
+  // Prevents a pooled share across two snapshots, where a band whose own share fell reads as a rise.
+  it('shareOfTotal on two dated groups draws each snapshot as its own 100%', () => {
+    const dated = doc(FIVE, A, B) as { groups: { date?: string }[] };
+    dated.groups[0]!.date = '2021-12-31';
+    dated.groups[1]!.date = '2023-12-31';
+    const { derived, geo } = run(dated as never, { basis: 'shareOfTotal' });
+    expect(derived.basis).toBe('shareOfGroup');
+    for (const group of ['m', 'f']) {
+      expect(derived.order.reduce((s, bandId) => s + derived.shares![bandId]![group]!, 0)).toBeCloseTo(100, 9);
+    }
+    expect(sceneText(geo)).not.toContain('of all');
+    expect(run(dated as never, { basis: 'shareOfGroup' }).derived.basis).toBe('shareOfGroup');
   });
 });
 

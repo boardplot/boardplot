@@ -61,7 +61,7 @@ One form; its chart ID is `choropleth`.
 | overlays[].glyph.kind (overlays[].glyph branch 3) | string | yes | Draw a semantic status glyph. One of `'status'`. |
 | overlays[].glyph.status (overlays[].glyph branch 3) | string | yes | Status judgment shown by the glyph. One of `'good'`, `'bad'`, `'warn'`, `'neutral'`. |
 | overlays[].glyph.kind (overlays[].glyph branch 4) | string | yes | Draw a named built-in icon. One of `'icon'`. |
-| overlays[].glyph.name (overlays[].glyph branch 4) | string | yes | Name from the built-in icon catalogue: alert calendar check conversation document flag gear lightbulb people star target workflow. |
+| overlays[].glyph.name (overlays[].glyph branch 4) | string | yes | Name from the built-in icon catalogue: alert calendar check conversation document flag gear lightbulb lock people star target workflow. |
 | overlays[].glyph.tone (overlays[].glyph branch 4) | string |  | Semantic glyph tone resolved through the theme. One of `'good'`, `'bad'`, `'warn'`, `'neutral'`, `'info'`. |
 | overlays[].glyph.kind (overlays[].glyph branch 5) | string | yes | Draw a geometric location marker. One of `'marker'`. |
 | overlays[].glyph.shape (overlays[].glyph branch 5) | string |  | Marker outline; defaults to circle. One of `'circle'`, `'square'`, `'diamond'`. |
@@ -133,6 +133,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | eu-inflation-values | example | EU inflation with each region value printed after its code |
 | eu-inflation-colorblind | example | EU inflation around 2% in the colorblind-safe good/bad pair |
 | us-margin-versus-target | example | State margins above the target are favorable |
+| us-margin-wide-slot | example | State margins on a wide slot: the key and the unlabelled states stand beside the map |
 | dach-all-region-labels | example | All three DACH markets carry their region labels |
 | german-states-bremen-on-map | torture | Bremen keeps its label on the map through labelRegions, under an authored key title |
 | german-states-table-below | example | The value table stands under the map |

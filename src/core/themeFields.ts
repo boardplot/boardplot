@@ -235,6 +235,7 @@ const THEME_FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze
   surface: 'Surface anatomy for chips, row tints, and schedule washes.',
   'surface.chipTint': 'How far a chip background steps toward the surface (0.05 to 0.97).',
   'surface.rowTint': 'Opacity of the zebra row tint (0.85 to 0.98).',
+  'surface.ganttRowTint': 'How far Gantt row and weekend shading washes color.others toward color.background (0 to 1). Default 0.25. The Weekend key uses the same wash, capped at 0.8. Table zebra shading keeps surface.rowTint.',
   'surface.elapsedTint': 'Opacity of the elapsed-era wash in schedule charts (0.85 to 0.99).',
   'surface.anchorTint': 'Opacity of the structural wash on level-0 parent rows (0.85 to 0.99).',
   'surface.heatSteps': 'Band alphas of a stepped table heat lane, lightest first, over the background (0 to 1). Five bands need four entries: the band above the last one is the full ink with inverse text. Default 0.06 / 0.14 / 0.26 / 0.42.',
@@ -245,6 +246,7 @@ const THEME_FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze
   'surface.chipRadius': 'Chip corner radius in px (0 to 6).',
   'surface.sparkWash': "Whether a spark whose data asks for kind 'area' (a kpi card's spark) draws the wash under its line. false draws it as its line and last point alone, the look of a line spark. Absent means true. Column sparks keep their columns.",
   'surface.sparkAreaBase': "Where an area spark (a kpi card's spark of kind 'area') starts its scale and its wash. 'zero' (the default) starts at zero, so the filled height is the value. 'min' starts at the series minimum and fills to the foot of the spark, which stretches the change. Line and column sparks ignore it.",
+  'surface.shortfallCap': "How an integrated variance chart draws a cap that ends past the actual's edge, the stretch of the reference the actual does not reach. 'outline' (the default) draws it as an outline in its good or bad colour, so the solid shape ends at the actual. 'solid' fills it, the look before. A cap over the actual column, a beat, stays solid either way.",
   'surface.panelShadow': 'CSS box-shadow of the notes popover a React chart opens, in the documented grammar (`0 1px 2px rgba(...)` style). Absent draws no shadow.',
 
   // ── table ──────────────────────────────────────────────────────────────────

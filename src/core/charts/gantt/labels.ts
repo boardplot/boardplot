@@ -104,10 +104,18 @@ function spanLabel(ctx: LabelCtx, row: RowPlace, place: ItemPlace): void {
   const rowMilestoneItems = ctx.domain.rows.find((row) => row.id === it.rowId)!.items.filter((item) => item.kind === 'milestone');
   const rowMilestones = rowMilestoneItems.map((item) => ({ x: ctx.body.x(item.startDay + 0.5), halfWidth: milestoneHalf }));
   if (ctx.flagRows.has(it.rowId)) {
-    const free = spanFreeRuns({ ...rect, x: ctx.body.bodyX, w: ctx.body.inner.x + ctx.body.inner.w - ctx.body.bodyX }, rowMilestones);
-    offCentre = offCentre.flatMap(candidate => free.filter(run => run.end - run.start >= tsize.width).map(run => ({
-      ...candidate, rect: { ...candidate.rect, x: Math.max(run.start, Math.min(run.end - tsize.width, candidate.rect.x)) },
-    })));
+    // A flag's leader runs on its own side of the row, so a name seats clear of the leaders on its side
+    // and of every diamond whose flag has no seat. A seat pushed off its bar by a leader is dropped.
+    const flagSeats = planRowFlags(ctx.domain, ctx.body, row).seats;
+    const timeline = { ...rect, x: ctx.body.bodyX, w: ctx.body.inner.x + ctx.body.inner.w - ctx.body.bodyX };
+    offCentre = offCentre.flatMap(candidate => {
+      const above = candidate.slot === 'aboveBar';
+      const free = spanFreeRuns(timeline, rowMilestoneItems.filter(item => (flagSeats.get(item.id)?.above ?? above) === above)
+        .map(item => ({ x: ctx.body.x(item.startDay + 0.5), halfWidth: milestoneHalf })));
+      return free.filter(run => run.end - run.start >= tsize.width).map(run => ({
+        ...candidate, rect: { ...candidate.rect, x: Math.max(run.start, Math.min(run.end - tsize.width, candidate.rect.x)) },
+      }));
+    }).filter(candidate => candidate.rect.x < rect.x + rect.w && candidate.rect.x + candidate.rect.w > rect.x);
   }
   // A clustered milestone is labelled in the shared lane on the right, its
   // leader running from the diamond along the row: no bar label sits on
@@ -166,9 +174,10 @@ function spanLabel(ctx: LabelCtx, row: RowPlace, place: ItemPlace): void {
     .filter(nextToArrow)
     .map((rect, index): SlotCandidate => ({ ...backed, slot: `backedPast:${index + 1}`, rect, penalty: 4.5 + index * 0.1 }));
   const duration = it.endDay - it.startDay;
+  // The repair pass seats a name that spills over its bar beside it, even where an event or today rule runs through that seat: the rule breaks around the text.
   const seats = clearOfLeader((fits
     ? [inside, ...insideShape, ...slideCandidates, insideStart, insideEnd, right, left, ...past, ...offCentre]
-    : [right, left, backed, ...past, ...offCentre]).filter(clearOfMarks));
+    : [ctx.crossRules ? { ...right, overRules: true } : right, left, backed, ...past, ...offCentre]).filter(clearOfMarks));
   ctx.requests.push({
     id: `item:${it.rowId}:${it.id}`,
     kind: 'item', typeRole: 'label',

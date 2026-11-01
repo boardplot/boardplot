@@ -351,6 +351,8 @@ describe('published option behaviour census', () => {
     'cohort.steps': { options: { variant: 'stepped', formatScope: 'classic' }, reason: 'Only absolute stepped classes read steps.' },
     'table.figures': { options: { encodings: { actual: 'heat' } }, reason: 'Figures can be hidden only on a heat lane.' },
     'dimswitch.figures': { options: { encodings: { range: 'heat' } }, reason: 'Figures can be hidden only on a heat lane.' },
+    'waffle.heightFill': { options: { target: 'slide', size: { width: 1184, height: 528 } }, reason: 'Only a pinned height has spare height to fill.' },
+    'diagram.heightFill': { options: { size: { width: 900, height: 900 } }, reason: 'Only a set height has spare height to fill.' },
   };
   // notes also gets one footnote (except creative, which refuses footnotes).
   // unitShown also gets an explicit unit. Both renders get the same companion.
@@ -417,7 +419,7 @@ describe('published option behaviour census', () => {
     ["bar column combo", "referenceStyle", "This fixture has no reference mark that responds to this style."],
     ["bar combo", "referenceTick", "This fixture has no reference tick that responds to this width."],
     ["bartable box grid heatmap kpi line slope sparkline status dimswitch table variance waffle", "labelDensity", "This fixture keeps the same label set at minimal density."],
-    ["bartable cohort column combo dot histogram kpi pvm sparkline status dimswitch table sankey treemap variance waffle waterfall", "legend", "The requested key position changes no SVG on this fixture."],
+    ["bartable cohort column combo dot histogram kpi pvm sparkline status dimswitch table tilemap sankey treemap variance waffle waterfall", "legend", "The requested key position changes no SVG on this fixture."],
     ["bartable mekko slope", "highlight", "The selected id changes no mark in this representative fixture."],
     ["bartable box bullet choropleth cohort gantt grid histogram kpi likert pvm pyramid scatter sparkline status dimswitch table tilemap sankey treemap waffle", "annotations", "This note or edited annotation changes no SVG and gives no new warning naming annotations."],
     ["box", "showObservations", "The representative fixture has no observation marks to remove."],
@@ -538,6 +540,8 @@ describe('published option behaviour census', () => {
       const series = data.series?.map(s => s.id) ?? [];
       for (const [key, field] of Object.entries(schema.properties ?? {})) {
         if ('not' in field) continue;
+        // Only the architecture variant reads highlight, and the agent-approval golden shows it.
+        if (type === 'diagram' && key === 'highlight') continue;
         const current = authored[key] ?? (definition.defaults as Options)[key] ?? field.default;
         let value = key in VALUES && JSON.stringify(VALUES[key]) !== JSON.stringify(current)
           ? VALUES[key] : sample(field, current);
@@ -553,6 +557,8 @@ describe('published option behaviour census', () => {
         if (key === 'a' || key === 'b') value = series.find(id => id !== current) ?? value;
         if (key === 'labelRegions') value = []; // An explicit empty set removes the authored region labels.
         if (key === 'today') value = '2026-05-20';
+        // The fixture highlights Purchase, a final node. An unset linkColor already colours the ribbons into it, as 'target' does; 'source' leaves them neutral.
+        if (type === 'sankey' && key === 'linkColor') value = 'source';
         if (type === 'dimswitch' && key === 'depth') value = 1;
         if (type === 'dimswitch' && key === 'order') value = { by: 'revenue', desc: true };
         if (type === 'dimswitch' && key === 'expansion') value = { depth: 1 };

@@ -8,9 +8,10 @@
 import { describe, expect, it } from 'vitest';
 import { render } from '../src/cli/render';
 import { layoutDiagram } from '../src/core/charts/diagram/layout';
-import type { Rect } from '../src/core/geometry';
-import type { DiagramData, DiagramOptions, DiagramPolylineRoute } from '../src/core/types/diagram';
-import { canDraw, getChartDefinition, resolveChartRequest } from '../src/index';
+import { diagramSceneId } from '../src/core/charts/diagram/ids';
+import { rectLineDistance, type Rect } from '../src/core/geometry';
+import type { DiagramData, DiagramMarks, DiagramOptions, DiagramPolylineRoute } from '../src/core/types/diagram';
+import { canDraw, getChartDefinition, measure, resolveChartRequest } from '../src/index';
 import { getFixtures } from '../src/fixtures';
 import { checkedColor } from '../src/core/svg/paint';
 import { compositeColor, contrastRatio } from '../src/core/color';
@@ -105,6 +106,9 @@ describe('design system colours', () => {
 describe('actionable input refusals', () => {
   const bar = { type: 'bar', data: { categories: ['a', 'b'], series: [{ id: 's', values: [1, 2] }] }, options: { title: 'Example' } };
   const errors = (spec: unknown) => (render({ spec }).body.errors ?? []) as { code: string; path: string; message: string; suggest?: string }[];
+  const architectureNode = (id: string, fields: Partial<DiagramData['nodes'][number]> = {}): DiagramData['nodes'][number] => ({ id, kind: 'step', shape: { kind: 'rectangle' }, label: id, ...fields });
+  const architectureLane = { id: 'l', label: 'Layer', orientation: 'horizontal' as const };
+  const architectureLanes = { variant: 'architecture', flow: 'lanes' } as const;
 
   // An unknown theme colour key must name the supported roles so the caller can repair it.
   it('lists the accepted theme colour keys', () => {
@@ -132,6 +136,78 @@ describe('actionable input refusals', () => {
       .toThrow(expect.objectContaining({ code: 'diagram-track-conflict', message: expect.stringContaining("'a' and 'b'") }));
   });
 
+  // An ungrouped node without a lane was never placed, so an edge on it crashed the layout.
+  it('refuses a lane node without a lane when there is no policy strip', () => {
+    const data = { nodes: [architectureNode('a'), architectureNode('b', { laneId: 'l' })], lanes: [architectureLane],
+      edges: [{ id: 'e', source: { nodeId: 'a' }, target: { nodeId: 'b' } }] };
+    expect(() => getChartDefinition('diagram')!.layout(data, architectureLanes))
+      .toThrow(expect.objectContaining({ code: 'invalid-membership', path: 'nodes[a].laneId', suggest: expect.stringContaining('laneId') }));
+    const withPolicy = { nodes: [architectureNode('a', { groupId: 'p' }), architectureNode('b', { laneId: 'l' })], lanes: [architectureLane],
+      groups: [{ id: 'p', title: 'Policy', kind: 'policy' }] };
+    expect(() => getChartDefinition('diagram')!.layout(withPolicy, architectureLanes)).not.toThrow();
+  });
+
+  // A callout on an empty lane zone crashed because the zone has no frame.
+  it('refuses a callout on an empty zone in lanes flow', () => {
+    const data = { nodes: [architectureNode('a', { laneId: 'l' })], lanes: [architectureLane],
+      groups: [{ id: 'z', title: 'Zone' }], callouts: [{ id: 'c', target: { groupId: 'z' } }] };
+    expect(() => getChartDefinition('diagram')!.layout(data, architectureLanes))
+      .toThrow(expect.objectContaining({ code: 'invalid-membership', path: 'callouts[c].target', suggest: expect.stringContaining('add a node') }));
+    expect(() => getChartDefinition('diagram')!.layout({ ...data, groups: [{ id: 'z', title: 'Policy', kind: 'policy' }] }, architectureLanes)).not.toThrow();
+    expect(() => getChartDefinition('diagram')!.layout({ ...data, nodes: [architectureNode('a')], lanes: [] }, { variant: 'architecture' })).not.toThrow();
+  });
+
+  // Every other variant has no panel to draw, so an inset there would vanish without a word.
+  it('refuses an inset outside the architecture variant', () => {
+    const data = { nodes: [architectureNode('a')], inset: { title: 'Levels', rows: [{ label: 'Loads', value: '3' }] } };
+    expect(() => getChartDefinition('diagram')!.layout(data, { variant: 'hierarchy' }))
+      .toThrow(expect.objectContaining({ code: 'invalid-membership', path: 'inset' }));
+  });
+
+  // The panel moves under the exhibit at narrow widths, and its text must not land on the nodes.
+  it('keeps the inset clear of the exhibit at both placements', () => {
+    const data = { nodes: [architectureNode('a')], inset: { title: 'Levels', kpis: [{ value: '99%', label: 'On time' }], rows: [{ label: 'Loads', value: '3' }] } };
+    for (const width of [960, 480]) {
+      const { marks, labels } = layoutDiagram(data, { variant: 'architecture', size: { width } } as DiagramOptions);
+      const node = marks.nodes[0]!.rect;
+      const inset = labels.filter((label) => label.id.startsWith('inset-label:'));
+      expect(inset.filter((label) => !label.hidden)).toHaveLength(5);
+      expect(inset.every((label) => label.rect.x >= node.x + node.w || label.rect.y >= node.y + node.h)).toBe(true);
+    }
+  });
+
+  // A policy node assigned to a lane was placed outside its policy strip without a warning.
+  it('refuses a policy node assigned to a lane', () => {
+    const data = { nodes: [architectureNode('p', { groupId: 'policy', laneId: 'l' }), architectureNode('a', { laneId: 'l' })], lanes: [architectureLane],
+      groups: [{ id: 'policy', title: 'Policy', kind: 'policy' }] };
+    expect(() => getChartDefinition('diagram')!.layout(data, architectureLanes))
+      .toThrow(expect.objectContaining({ code: 'invalid-membership', path: 'nodes[p].laneId', suggest: expect.stringContaining('remove laneId') }));
+  });
+
+  // A protected lane zone's background covered its inner frame and hid the double border.
+  it('draws a protected lane zone frame over its background', () => {
+    const data = { nodes: [architectureNode('a', { laneId: 'l', groupId: 'z' })], lanes: [architectureLane], groups: [{ id: 'z', title: 'Zone', protected: true }] };
+    const { scene } = layoutDiagram(data, architectureLanes);
+    const background = scene.findIndex((item) => item.id === diagramSceneId('group', 'z'));
+    const inner = scene.findIndex((item) => item.id === diagramSceneId('protected', 'z'));
+    expect(background).toBeGreaterThanOrEqual(0);
+    expect(inner).toBeGreaterThan(background);
+  });
+
+  // Two callouts on one target overlap and hide one number even on a larger canvas.
+  it('refuses repeated callout targets by node, edge and zone', () => {
+    const data = { nodes: [architectureNode('same'), architectureNode('b', { groupId: 'same' })],
+      groups: [{ id: 'same', title: 'Zone' }], edges: [{ id: 'same', source: { nodeId: 'same' }, target: { nodeId: 'b' } }] };
+    const targets = [{ nodeId: 'same' }, { edgeId: 'same' }, { groupId: 'same' }];
+    for (const target of targets) {
+      const callouts = [{ id: 'one', target }, { id: 'two', target }];
+      expect(() => getChartDefinition('diagram')!.layout({ ...data, callouts }, { variant: 'architecture' }))
+        .toThrow(expect.objectContaining({ code: 'invalid-membership', path: 'callouts[two].target', suggest: expect.stringContaining('merge the callout text') }));
+    }
+    const callouts = targets.map((target, index) => ({ id: String(index), target }));
+    expect(() => getChartDefinition('diagram')!.layout({ ...data, callouts }, { variant: 'architecture' })).not.toThrow();
+  });
+
   // Two channels with one id emit one scene id twice, which crashes the React renderer.
   it('refuses two diagram channels with one id', () => {
     const node = (id: string) => ({ id, kind: 'step', shape: { kind: 'rectangle' }, label: id });
@@ -147,6 +223,22 @@ describe('actionable input refusals', () => {
     expect(layout.marks.nodes[0]!.rect.w).toBeGreaterThan(300);
   });
 
+  // A narrow architecture lane hid its zone name and placed a return label closer to another edge.
+  it('keeps a zone name and its return label readable', () => {
+    const fixture = getFixtures('diagram').find((item) => item.id === 'journey-attribution')!;
+    const layout = measure({ type: 'diagram', data: fixture.data, options: { ...fixture.options, size: { width: 480 } }, theme: 'notation' }).geometry!;
+    const group = layout.labels.find((label) => label.id === 'group-label:personal');
+    expect(group?.text).toBe('Personal data');
+    expect(group?.hidden).toBeUndefined();
+    const label = layout.labels.find((item) => item.id === 'edge-label:loop')!;
+    expect(label.hidden).toBeUndefined();
+    const edges = layout.marks.edges as DiagramMarks['edges'];
+    const own = edges.find((edge) => edge.id === 'loop')!;
+    const other = edges.filter((edge) => edge.id !== 'loop');
+    const distance = (edge: typeof own) => rectLineDistance(label.rect, (edge.route as DiagramPolylineRoute).points);
+    expect(distance(own)).toBeLessThan(Math.min(...other.map(distance)));
+  });
+
   // Many unlike edges between two nodes pushed their ends past the node sides, and the lines floated.
   it('keeps every architecture edge end on its node', () => {
     const node = (id: string) => ({ id, kind: 'step', shape: { kind: 'rectangle' }, label: id });
@@ -160,6 +252,34 @@ describe('actionable input refusals', () => {
       expect(on(points[0]!, a)).toBe(true);
       expect(on(points.at(-1)!, b)).toBe(true);
     }
+  });
+
+  // Two zones that hold each other have no outer frame, and the parent walk would never end.
+  it('refuses a cycle in nested architecture zones', () => {
+    const data = { nodes: [{ id: 'a', kind: 'step', shape: { kind: 'rectangle' }, label: 'A', groupId: 'x' }],
+      groups: [{ id: 'x', title: 'X', parentId: 'y' }, { id: 'y', title: 'Y', parentId: 'x' }] };
+    expect(() => getChartDefinition('diagram')!.layout(data, { variant: 'architecture' }))
+      .toThrow(expect.objectContaining({ code: 'diagram-group-cycle' }));
+  });
+
+  // A mistyped highlight would mute the whole exhibit and emphasize nothing.
+  it('refuses a highlight id that names no node or edge', () => {
+    const data = { nodes: [{ id: 'a', kind: 'step', shape: { kind: 'rectangle' }, label: 'A' }] };
+    expect(() => getChartDefinition('diagram')!.layout(data, { variant: 'architecture', highlight: 'nope' }))
+      .toThrow(expect.objectContaining({ code: 'invalid-membership', message: expect.stringContaining("'nope'") }));
+  });
+
+  // A self-loop or a zone end that floats off its target claims a link the diagram does not have.
+  it('ends a self-loop on its node and a zone edge on the frame', () => {
+    const node = (id: string, groupId?: string) => ({ id, kind: 'step', shape: { kind: 'rectangle' }, label: id, groupId });
+    const edges = [{ id: 'loop', source: { nodeId: 'a' }, target: { nodeId: 'a' } }, { id: 'zone', source: { nodeId: 'a' }, target: { groupId: 'z' } }];
+    const { marks } = layoutDiagram({ nodes: [node('a'), node('b', 'z')], groups: [{ id: 'z', title: 'Zone' }], edges } as DiagramData, { variant: 'architecture', size: { width: 960, height: 500 } } as DiagramOptions);
+    const a = marks.nodes.find((item) => item.id === 'a')!.rect;
+    const frame = marks.groups[0]!.bounds;
+    const on = (point: { x: number; y: number }, rect: Rect) => point.x >= rect.x && point.x <= rect.x + rect.w && point.y >= rect.y && point.y <= rect.y + rect.h;
+    const points = (id: string) => (marks.edges.find((edge) => edge.id === id)!.route as DiagramPolylineRoute).points;
+    expect(on(points('loop')[0]!, a) && on(points('loop').at(-1)!, a)).toBe(true);
+    expect(points('zone').at(-1)!.x).toBe(frame.x);
   });
 
   // The key must show what the nodes wear, and architecture draws structural nodes on the background.

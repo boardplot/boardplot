@@ -596,7 +596,9 @@ export function layoutColumnMarks(
     const { band } = area;
     const glyph = categoryBreakGlyph(theme, { x: (band.position(ci) + band.bandwidth + band.position(ci + 1)) / 2, y: y0 }, 'x', `axis:x:categoryBreak:${c.id}`);
     nodes.push(...glyph.nodes);
-    claims.claim(glyph.rect, 'axis', {}, 'categoryBreak');
+    // The strokes end a hair above the first row of names, so only the part over the baseline is claimed.
+    // The whole box would hide a name beside the glyph on a narrow chart.
+    claims.claim({ ...glyph.rect, h: y0 - glyph.rect.y }, 'axis', {}, 'categoryBreak');
   });
   if (anomaly) {
     const anomalyMarks = anomalyFurniture(domain, paints, area, bars.flagMarkers, nodes, claims);
@@ -617,6 +619,8 @@ export function layoutColumnMarks(
     claims.claim({ x: plot.x, y: y(v) - 1, w: plot.w, h: 2 }, 'annotation', {
       annotationId: annId,
     }, 'referenceLine');
+    // A part the rule crosses seats its value in the stretch the rule leaves, as it does for a tick.
+    for (const c of domain.cats) refTickYs.set(c.id, [...(refTickYs.get(c.id) ?? []), y(v)]);
   });
   return { nodes, claims, axes, marks, ...bars, refTickYs, netLineEnd };
 }

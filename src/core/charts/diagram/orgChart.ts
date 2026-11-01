@@ -2,11 +2,11 @@ import type { Point, Rect } from '../../geometry';
 import type { FontSpec, TextMeasurer } from '../../text';
 import type { DiagramNode, DiagramOptions } from '../../types/diagram';
 import type { OwnerRef } from '../../types/cell';
-import type { LintWarning, Paint } from '../../types/scene';
+import type { LintWarning, Paint, SceneNode } from '../../types/scene';
 import type { NormalizedDiagram } from './model';
 import type { PresetLayout } from './presets';
 import { compareDiagramIds } from './ids';
-import { qRect } from './primitives';
+import { gapSpread, qRect } from './primitives';
 import { maxOf, minOf } from '../../arrays';
 
 /**
@@ -58,11 +58,15 @@ export interface OrgChartLayout {
   /** The type of a node's secondary text, where it differs from the name. */
   secondaryFont?: FontSpec;
   /** Group frames in the layout's own paint. A dashed group has its title on the frame. */
-  groupPaint?: { fill: Paint; stroke: Paint; dashed: ReadonlySet<string> };
+  groupPaint?: { fill: Paint; stroke: Paint; dashed: ReadonlySet<string>; fills?: ReadonlyMap<string, Paint> };
+  /** Marks above the nodes and lines: inner frames, locks, boundary markers. */
+  overlay?: SceneNode[];
+  /** Numbered discs that no node's badge owns. */
+  discs?: Array<{ id: string; text: string; rect: Rect; owner: OwnerRef }>;
   /** Lints of the layout itself. */
   warnings?: LintWarning[];
   /** Labels with a seat of their own that no single edge owns. */
-  channelLabels?: Array<{ id: string; text: string; rect: Rect; owner: OwnerRef }>;
+  channelLabels?: Array<{ id: string; text: string; rect: Rect; owner: OwnerRef; font?: FontSpec }>;
 }
 
 export interface FixedRoute {
@@ -128,6 +132,7 @@ export function layoutOrgChart(
   labelFont: FontSpec,
   measure: TextMeasurer,
   u: number,
+  fixedHeight = false,
 ): OrgChartLayout | undefined {
   const levels = levelsOf(data)!;
   const root = data.nodes.find((node) => levels.get(node.id) === 0)!;
@@ -176,8 +181,11 @@ export function layoutOrgChart(
     if (leafW >= maxNeed(allLeaves, 'tree') && branchW >= maxNeed(branches, 'tree')) {
       mode = 'tree';
       const [h0, h1, h2] = heightsFor(mode);
-      const [gap0, gap1] = (wide ? [7.2, 5.2] : [7.2, 4.8]).map((value) => value * u);
-      height = h0! + gap0! + h1! + (allLeaves.length > 0 ? gap1! + h2! : 0);
+      const natural = (wide ? [7.2, 5.2] : [7.2, 4.8]).map((value) => value * u);
+      const bodies = h0! + h1! + (allLeaves.length > 0 ? h2! : 0);
+      const spread = gapSpread(fixedHeight, plot.h, bodies + natural[0]! + (allLeaves.length > 0 ? natural[1]! : 0), natural[0]! + (allLeaves.length > 0 ? natural[1]! : 0));
+      const [gap0, gap1] = natural.map((value) => value * spread);
+      height = bodies + gap0! + (allLeaves.length > 0 ? gap1! : 0);
       const top = plot.y + Math.max(0, (plot.h - height) / 2);
       const rootW = Math.min(plot.w, Math.max(rootNeed, Math.min(1.29 * branchW, 0.36 * plot.w)));
       const span = columns.reduce((sum, value) => sum + value, 0) + (branches.length - 1) * columnGap;
@@ -218,13 +226,13 @@ export function layoutOrgChart(
       if (column < maxNeed(branches, 'stacked') || column - 3.6 * u < maxNeed(allLeaves, 'stacked')) continue;
       mode = 'stacked';
       const [h0, h1, h2] = heightsFor(mode);
-      const gap0 = 4.8 * u;
       const first = 2.4 * u;
       const pitch = h2! + 1.4 * u;
       const deepest = Math.max(0, maxOf(branches.map((branch) => {
         const count = leaves.get(branch.id)!.length;
         return count === 0 ? 0 : first + count * pitch - 1.4 * u;
       })));
+      const gap0 = 4.8 * u * gapSpread(fixedHeight, plot.h, h0! + 4.8 * u + h1! + deepest, 4.8 * u);
       height = h0! + gap0 + h1! + deepest;
       const top = plot.y + Math.max(0, (plot.h - height) / 2);
       const rootW = Math.min(plot.w, Math.max(rootNeed, Math.min(1.29 * column, 0.36 * plot.w)));

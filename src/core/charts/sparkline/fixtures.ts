@@ -58,6 +58,15 @@ fixtures.push({
   options: { ...ordersSpark.options, stroke: 2.5, title: 'Orders rise into late summer and ease in September' },
 });
 
+// Coverage: the last value and the high only, without the low, first and reference values.
+fixtures.push({
+  ...ordersSpark,
+  kind: 'torture', id: 'orders-last-and-high',
+  title: "valueLabel 'last-and-high': the last value and the high, as before the low and first values were named",
+  tags: ['coverage'],
+  options: { ...ordersSpark.options, valueLabel: 'last-and-high', title: 'Orders climb into August and ease to 13.1k in September' },
+});
+
 // a dashed reference inside the domain and the end ring in a tone.
 fixtures.push(
   {

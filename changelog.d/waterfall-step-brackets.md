@@ -1,0 +1,3 @@
+### Added
+
+- A waterfall takes a new annotation kind, `bracket`. `{ "kind": "bracket", "from": "volume", "to": "mix", "label": "Commercial" }` draws a bracket over the steps from `from` to `to`, inclusive, and prints the sum of their values after the label: "Commercial +81". All brackets of a chart stand in one row above the steps, and the plot makes room for that row. A span that holds a total is refused with `bracket-span-total`, a bridge with cases with `bracket-cases`, and a span written in reverse order with `bracket-span-order`. Charts without a bracket draw as before, so no old look needs restoring. A vertical bridge only; a horizontal bridge keeps suppressing its annotations.

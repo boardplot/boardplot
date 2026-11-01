@@ -545,6 +545,8 @@ export interface Theme {
   surface?: {
     chipTint?: number;
     rowTint?: number;
+    /** Gantt row and weekend wash toward the page, from 0 to 1. Default 0.25. */
+    ganttRowTint?: number;
     elapsedTint?: number;
     chipRadius?: number;
     /** Structural wash for level-0 parent rows (anchor wash) — quieter than rowTint. */
@@ -589,6 +591,8 @@ export interface Theme {
     sparkWash?: boolean;
     /** Where an area spark's scale and wash start; see themeFields. */
     sparkAreaBase?: 'zero' | 'min';
+    /** How an integrated variance chart draws a cap past the actual; see themeFields. */
+    shortfallCap?: 'outline' | 'solid';
     /** CSS box-shadow of the React notes popover; see themeFields. */
     panelShadow?: string;
   };

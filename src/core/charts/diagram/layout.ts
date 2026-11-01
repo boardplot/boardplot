@@ -49,7 +49,7 @@ import {
 import { circularLabelBand, circularRing, layoutPreset, strategyHouseBands } from './presets';
 import { layoutOrgChart, orgChartEligible } from './orgChart';
 import { issueTreeEligible, layoutIssueTreeCompact } from './issueTreeCompact';
-import { architectureEligible, architectureFill, layoutArchitecture } from './architecture';
+import { ARCHITECTURE_PLANS, architectureEligible, architectureFill, layoutArchitecture, type ArchitecturePlans } from './architecture';
 import { journeyEligible, layoutJourneyCompact } from './journeyCompact';
 import { layoutLinearCompact, linearEligible } from './linearCompact';
 import { layoutRoadmapCompact, roadmapEligible } from './roadmapCompact';
@@ -68,7 +68,8 @@ export function layoutDiagram(
   rawOptions?: DiagramOptions,
   measureMinimum = true,
 ): Geometry<DiagramMarks, DiagramDerived> {
-  return layoutDiagramPass(rawData, rawOptions, measureMinimum);
+  const planned = rawOptions?.variant === 'architecture' && !(ARCHITECTURE_PLANS in rawOptions);
+  return layoutDiagramPass(rawData, planned ? { ...rawOptions!, [ARCHITECTURE_PLANS]: new Map() } as DiagramOptions : rawOptions, measureMinimum);
 }
 
 type DiagramFit = Pick<Geometry<DiagramMarks, DiagramDerived>, 'warnings'>;
@@ -123,18 +124,22 @@ function layoutDiagramPass(
       suggest: `name it in data.key, for example { role: '${unkeyed[0]}', label: '…' }`,
     });
   }
-  const keyItems: LegendItemInput[] = data.key.map((entry, index) => {
+  const calloutItems: LegendItemInput[] = data.callouts.flatMap((callout, index) => {
+    const label = [callout.title, callout.text].filter(Boolean).join(': ');
+    return label ? [{ id: `callout:${index}`, label, paint: { token: 'ink' as const }, key: 'glyph' as const, glyph: String(index + 1) }] : [];
+  });
+  const keyItems: LegendItemInput[] = [...data.key.map((entry, index): LegendItemInput => {
     // A line style is keyed as the edges draw it.
     if (entry.line !== undefined) return { id: `key:${index}`, label: entry.label, paint: { token: 'leader' }, key: 'line', width: strokeToken(theme, 'rule'), ...(entry.line === 'solid' ? {} : { dash: edgeDash(theme, entry.line)!, lineCap: entry.line === 'dotted' ? 'round' as const : 'butt' as const }) };
     const node = data.nodes.find((item) => item.role === entry.role && item.paletteKey === entry.paletteKey) ??
       ({ id: `key:${index}`, kind: 'step', label: entry.label, shape: { kind: 'rectangle' }, role: entry.role, paletteKey: entry.paletteKey } as DiagramNode);
     if (options.variant === 'architecture') {
       const { fill, ring } = architectureFill(node, data.lanes, diagramPalette);
-      return { id: `key:${index}`, label: entry.label, ...(ring ? { paint: { token: ring }, hollow: true } : { paint: fill }) };
+      return { id: `key:${index}`, label: entry.label, ...(ring && 'token' in fill && fill.token === 'background' ? { paint: { token: ring }, hollow: true } : { paint: fill }) };
     }
     // The fill the nodes of that role wear, as nodeFillPaint paints them.
     return { id: `key:${index}`, label: entry.label, paint: nodeFillPaint(node, diagramPalette, theme) };
-  });
+  }), ...calloutItems];
   const occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
   const frame = solveFrame(
     {
@@ -206,11 +211,14 @@ function layoutDiagramPass(
   // A canvas height the host gave (a size with a height) is a limit; an open height grows to the content instead.
   const fixedHeight = (rawOptions as TargetSizeOptions)[TARGET_SIZE]?.fixed.height
     ?? (typeof rawOptions.size === 'object' && rawOptions.size.height !== undefined);
+  // heightFill 'none' keeps the org chart and journey gaps at their natural size.
+  const spreadGaps = (options as { heightFill?: string }).heightFill !== 'none';
   // The compact org chart and issue tree lay out and route themselves.
-  const org = architectureEligible(options) ? layoutArchitecture(data, options, plot, { name: stepFont, text: labelFont, title: laneFont }, measure, u, diagramPalette, theme, badgeSizes)
-    : orgChartEligible(data, options) ? layoutOrgChart(data, plot, labelFont, measure, u)
+  const org = architectureEligible(options) ? layoutArchitecture(data, options, plot, { name: stepFont, text: labelFont, title: laneFont }, measure, u, diagramPalette, theme, badgeSizes,
+      (rawOptions as { [ARCHITECTURE_PLANS]?: ArchitecturePlans })[ARCHITECTURE_PLANS])
+    : orgChartEligible(data, options) ? layoutOrgChart(data, plot, labelFont, measure, u, fixedHeight && spreadGaps)
     : issueTreeEligible(data, options) ? layoutIssueTreeCompact(data, plot, labelFont, measure, u, headingWeight(theme))
-    : journeyEligible(data, options) ? layoutJourneyCompact(data, options, plot, labelFont, axisFont, measure, u, diagramPalette, headingWeight(theme))
+    : journeyEligible(data, options) ? layoutJourneyCompact(data, options, plot, labelFont, axisFont, measure, u, diagramPalette, headingWeight(theme), fixedHeight && spreadGaps)
     : linearEligible(data, options) ? layoutLinearCompact(data, plot, stepFont, badgeFont, captionFont, measure, u, badgeText,
       size.width >= 720 ? 2 * stepFont.size : 0, fixedHeight)
     : roadmapEligible(data, options) ? layoutRoadmapCompact(data, options, plot, labelFont, laneFont, measure, u, diagramPalette, theme) : undefined;
@@ -308,7 +316,7 @@ function layoutDiagramPass(
       t: 'rect',
       id: nodeId,
       rect: group.bounds,
-      fill: org?.groupPaint?.fill ?? { token: 'others', tint: 0.82 },
+      fill: org?.groupPaint?.fills?.get(group.id) ?? org?.groupPaint?.fill ?? { token: 'others', tint: 0.82 },
       stroke: org?.groupPaint && authored.role === undefined ? org.groupPaint.stroke : diagramPalette.paint(authored.role, authored.paletteKey),
       // A group frame follows the node ring's width and corner.
       strokeWidth: theme.marks?.nodeStrokeWidth ?? strokeToken(theme, 'hair'),
@@ -527,6 +535,11 @@ function layoutDiagramPass(
     nodeMarks.push(resolved);
   }
 
+  org?.discs?.forEach((disc) => {
+    const paint: Paint = { token: 'neutralMark' };
+    badgeScene.push({ t: 'circle', id: diagramSceneId('callout', disc.id), cx: q(disc.rect.x + disc.rect.w / 2), cy: q(disc.rect.y + disc.rect.h / 2), r: q(disc.rect.w / 2), fill: paint, owner: disc.owner, part: 'diagramBadge' });
+    addBoxLabelRequest(labelRequests, labelKinds, `callout-label:${disc.id}`, 'diagramBadge', disc.owner, disc.text, disc.rect, badgeFont, measure, PRIORITY.endpoint, options.target, paintColor(theme, paint), paint, 'value');
+  });
   const structuralCtx = labelCtx(theme, size, {}, {
     density: 'full',
     measure,
@@ -629,7 +642,7 @@ function layoutDiagramPass(
     );
   });
   org?.channelLabels?.forEach((label) => addBoxLabelRequest(edgeLabelRequests, edgeLabelKinds, label.id, 'diagramEdge', label.owner, label.text,
-    label.rect, labelFont, measure, PRIORITY.interior, options.target));
+    label.rect, label.font ?? labelFont, measure, PRIORITY.interior, options.target));
   const solvedEdges = solveLabels(edgeLabelRequests, occupied, labelCtx(theme, size, {}, {
     density: 'full',
     measure,
@@ -638,7 +651,8 @@ function layoutDiagramPass(
   }));
   remapLabelKinds(solvedEdges.placed, edgeLabelKinds);
   pushAll(warnings, solvedEdges.warnings);
-  const edgeLabelNodes = labelsToNodes(theme, solvedEdges.placed, () => labelFont);
+  const edgeLabelFonts = new Map(org?.channelLabels?.map((label) => [label.id, label.font ?? labelFont]));
+  const edgeLabelNodes = labelsToNodes(theme, solvedEdges.placed, (label) => edgeLabelFonts.get(label.id) ?? labelFont);
 
   const { laneGroupLabels, nodeLabels, accessoryLabels } = groupStructuralLabels(structuralLabelNodes);
   const scene = [
@@ -647,6 +661,7 @@ function layoutDiagramPass(
     ...preset.decorationScene,
     ...routed.scene,
     ...nodeScene,
+    ...(org?.overlay ?? []),
     ...laneGroupLabels,
     ...nodeLabels,
     ...badgeScene,
@@ -1307,15 +1322,24 @@ function diagramA11y(
     nodes: DiagramNode[];
     groups: NonNullable<DiagramData['groups']>;
     lanes: NonNullable<DiagramData['lanes']>;
+    groupEnds?: NormalizedDiagram['groupEnds'];
+    inset?: NormalizedDiagram['inset'];
   },
   options: DiagramOptions,
   readingOrder: readonly string[],
-  edges: readonly { source: { nodeId: string }; target: { nodeId: string } }[],
+  edges: readonly { id?: string; source: { nodeId: string }; target: { nodeId: string } }[],
 ): { title: string; desc: string; counts: StructureCount[] } {
-  const labels = new Map(data.nodes.map((node) => [node.id, node.label]));
+  const labels = new Map(data.nodes.map((node) => {
+    const copies = node.repeat ? chartString(options, 'diagramCopies', { v1: node.label, v2: node.repeat }) : node.label;
+    return [node.id, node.protected ? chartString(options, 'diagramProtected', { v1: copies }) : copies];
+  }));
+  const end = (edge: typeof edges[number], side: 'source' | 'target') => {
+    const group = data.groupEnds?.get(edge.id ?? '')?.[side];
+    return group !== undefined ? data.groups.find((item) => item.id === group)?.title ?? group : labels.get(edge[side].nodeId) ?? edge[side].nodeId;
+  };
   const order = readingOrder.map((id) => labels.get(id) ?? id).join('; ');
   const relationships = edges
-    .map((edge) => `${labels.get(edge.source.nodeId) ?? edge.source.nodeId} → ${labels.get(edge.target.nodeId) ?? edge.target.nodeId}`)
+    .map((edge) => `${end(edge, 'source')} → ${end(edge, 'target')}`)
     .join('; ');
   const groups = data.groups
     .map((group) => {
@@ -1342,6 +1366,7 @@ function diagramA11y(
       chartString(options, 'diagramDesc', { v1: chartString(options, ({"hierarchy":"diagramHierarchy","issue-tree":"diagramIssueTree","linear-process":"diagramLinearProcess","customer-journey":"diagramCustomerJourney","circular-process":"diagramCircularProcess","strategy-house":"diagramStrategyHouse","roadmap":"diagramRoadmap","architecture":"diagramArchitecture"} as const)[options.variant]), v2: data.nodes.length, v3: edges.length }),
       chartString(options, 'readingOrder', { v1: order }),
       relationships ? chartString(options, 'relationshipsSentence', { v1: relationships }) : '',
+      data.inset ? `${data.inset.title}: ${[...(data.inset.kpis ?? []).map((kpi) => `${kpi.value} ${kpi.label}`), ...(data.inset.rows ?? []).map((row) => `${row.label} ${row.value}`)].join('; ')}.` : '',
       groups ? chartString(options, 'groupsSentence', { v1: groups }) : '',
       lanes ? chartString(options, 'lanesSentence', { v1: lanes }) : '',
     ]
