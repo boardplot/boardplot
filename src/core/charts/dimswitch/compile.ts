@@ -634,23 +634,28 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
       for (const g of statementGroups) {const last=rows.slice(start).filter(r=>r.kind==='result' && groupOf(measures.get((JSON.parse(r.id) as string[]).pop()!)!)===g).pop(); if (last) last.final=true;}
     };
     const totalRow=dimswitchRowId(variant,totalId);
-    rows.push({id:totalRow,label:data.dimension.total.label,kind:'member',rung:0,totalPolicy:'source',relation:'displayOnly'});
+    // A member row carries its headline measure. So does a folded Total, which would print dashes otherwise;
+    // an open Total shows its measures right below, so its own row stays empty.
+    const headRow=(h:DimSwitchMeasure,member:string,id:string,parentRow:string|undefined,rung:number,label:string) => {
+      const summary=addMeasure(h,member,parentRow,rung,label,'member');
+      const oldId=summary.id; summary.id=id; delete summary.divider;
+      for (const r of rows.slice(rows.indexOf(summary)+1)) {if (r.parentId===oldId) {r.id=r.id.replace(oldId,id); r.parentId=id;}}
+      for (const r of records) {if (r.rowId===oldId) r.rowId=id;else if (r.rowId===`${oldId}:change`) r.rowId=`${id}:change`;else if (r.rowId===`${oldId}:effect`) r.rowId=`${id}:effect`;}
+      summary.unitAffix=[h.label,affix(h)].filter(Boolean).join(', ');
+      // The card form puts the headline and its unit under the member name, on the change line's label.
+      const changeRow=rows.find(r=>r.id===`${id}:change`);
+      if (form.card && changeRow && changeRow.label==='') {changeRow.label=summary.unitAffix; delete summary.unitAffix;}
+    };
+    const totalHead=options.expansion?.collapsed?.includes(totalRow) ? headline(totalId) : undefined;
+    if (totalHead) headRow(totalHead,totalId,totalRow,undefined,0,data.dimension.total.label);
+    else rows.push({id:totalRow,label:data.dimension.total.label,kind:'member',rung:0,totalPolicy:'source',relation:'displayOnly'});
     block(totalId,totalRow,0);
     // No section row here: the label column's head already names the dimension, and a heading prints only for an authored group.
     const walk=(parentMember:string|undefined,parentRow:string|undefined,rung:number) => {
       for (const member of ordered(parentMember)) {
         const h=headline(member.id), id=dimswitchRowId(variant,member.id);
-        let summary:TableRow;
-        if (h) {
-          summary=addMeasure(h,member.id,parentRow,rung,member.label,'member');
-          const oldId=summary.id; summary.id=id; delete summary.divider;
-          for (const r of rows.slice(rows.indexOf(summary)+1)) {if (r.parentId===oldId) {r.id=r.id.replace(oldId,id); r.parentId=id;}}
-          for (const r of records) {if (r.rowId===oldId) r.rowId=id;else if (r.rowId===`${oldId}:change`) r.rowId=`${id}:change`;else if (r.rowId===`${oldId}:effect`) r.rowId=`${id}:effect`;}
-          summary.unitAffix=[h.label,affix(h)].filter(Boolean).join(', ');
-          // The card form puts the headline and its unit under the member name, on the change line's label.
-          const changeRow=rows.find(r=>r.id===`${id}:change`);
-          if (form.card && changeRow && changeRow.label==='') {changeRow.label=summary.unitAffix; delete summary.unitAffix;}
-        } else {summary={id,label:member.label,parentId:parentRow,rung,kind:'member',totalPolicy:'source',relation:'displayOnly'};rows.push(summary);}
+        if (h) headRow(h,member.id,id,parentRow,rung,member.label);
+        else rows.push({id,label:member.label,parentId:parentRow,rung,kind:'member',totalPolicy:'source',relation:'displayOnly'});
         block(member.id,id,rung);
         levels[id]=rung+2;
         walk(member.id,id,rung+1);

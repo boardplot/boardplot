@@ -372,3 +372,17 @@ it('warns once per measure when a ratio divides by a negative sum', () => {
   expect(found.map(w=>w.severity)).toEqual(['info']);
   expect(found[0]!.message).toContain("Measure 'neg'");
 });
+
+// A fixed slide height that misses the authored depth refused the whole table, though one fold shallower draws it.
+it('draws the deepest depth that fits a fixed height and warns with the folded depth', () => {
+  const draw = (variant: DimSwitchVariant, depth: number, height: number) => requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'dimswitch', data: exampleData, options: { variant, depth, size: { width: 1400, height } } } as never)));
+  const folded = (geometry: { warnings: { code: string; message: string }[] }) => geometry.warnings.find(w => w.code === 'dimswitch-depth-folded');
+  expect(folded(draw('by-measure', 3, 1200))).toBeUndefined();
+  const byMeasure = draw('by-measure', 3, 400);
+  expect(folded(byMeasure)?.message).toMatch(/draws depth [12]\.$/);
+  // By member the Total folds after depth 1, and its row prints the headline figure, not dashes.
+  const byMember = draw('by-member', 1, 300);
+  expect(folded(byMember)?.message).toContain('with the Total folded');
+  const total = (byMember.derived as unknown as DimSwitchDerived).table.rows.find(r => r.id === dimswitchRowId('by-member', 'total'))!;
+  expect(total.cells.range).toMatchObject({ displayed: expect.stringMatching(/\d/) });
+});
