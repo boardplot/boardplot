@@ -1414,3 +1414,23 @@ it('reads arrows, sort and ratios of a sign -1 row from the printed figures', ()
   // The cost change prints -20 and the fee change -10, so both fall.
   expect(arrows.map((node) => node.lines.join(''))).toEqual(['→', '↓', '↓']);
 });
+
+// A pinned canvas with spare height used to leave a short table and a short cohort grid floating above the source line.
+it('gives the spare height of a pinned canvas to table rows and cohort rows', () => {
+  const data = tableDataSchema.parse({
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'v', kind: 'value' }],
+    rows: ['Alpha', 'Beta', 'Gamma'].map((label, i) => ({ id: label, label, cells: { v: 10 + i } })),
+  });
+  const rowH = (options: object) => (layout('table', data, { size: { width: 720, height: 420 }, ...options }).marks as { rows: { h: number }[] }).rows.map((row) => row.h);
+  const natural = rowH({ heightFill: 'none' });
+  const filled = rowH({});
+  expect(Math.min(...filled)).toBeGreaterThan(Math.max(...natural));
+  // 16 px of air above and below the line is the most a row takes.
+  expect(Math.max(...filled)).toBeLessThanOrEqual(2 * 16 + 24);
+  const cohort = { periodLabel: 'Month', cohorts: [{ id: 'a', label: 'Jan', active: [100, 60, 40] }, { id: 'b', label: 'Feb', active: [100, 55] }] };
+  const stepped = { variant: 'stepped', formatScope: 'classic', steps: [40, 60] };
+  const grid = layout('cohort', cohort, { ...stepped, size: { width: 720, height: 420 } });
+  expect(grid.plot.h).toBeGreaterThan(layout('cohort', cohort, { ...stepped, size: { width: 720 } }).plot.h);
+  // The period columns of a stepped grid share the free width, as a pure grid's do.
+  expect(grid.plot.w).toBeGreaterThan(600);
+});

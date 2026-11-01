@@ -56,7 +56,7 @@ import { lastObservedIndex, type SparklineDomain } from '../sparkline/layout';
 import { resolveTable, ZERO_LIFT, type ZeroLiftOptions } from './resolve';
 import { DEFAULT_EMPTY_MESSAGE } from '../../emptyData';
 import { cellDrawsTabular, cellHoldsNumber, emptyMessageRow, expansionRootsHidden, finalClosers, hasNoDataRows, groupSpans, heatColumn, printsFigures, rowGrounds, tableFootnotes, visibleColumns, visibleInlineRows, visibleRows } from './view';
-import { rowDrivenHeight } from '../../rowCanvas';
+import { fixedHeightCanvas, rowDrivenHeight, spareShare } from '../../rowCanvas';
 import { CARD_CLASS_WIDTH, heightOmitted, rowSizing, VERIFY_ADVICE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { textScaleOf } from '../../typeFloors';
@@ -117,6 +117,12 @@ const TIGHT_SPACING = Symbol('tableTightSpacing');
 const HEAD_AIR_MIN = Symbol('tableHeadAirMin');
 /** The tight rung's cell air; a column gap is twice this, the side margin too. */
 const TIGHT_PAD = 2;
+/** The most air a row takes above and below its line, as the theme's `table.rows.pad` allows. */
+const TABLE_PAD_MAX = 16;
+/** The air kept between the stretched rows and the footer. */
+const STANDOFF_BELOW = 12;
+/** A body row that holds no rows of its own: the rows that take spare canvas height. */
+const isLeafRow = (row: ResolvedRow): boolean => row.role !== 'total' && row.role !== 'section' && !row.hasChildren;
 /** The last height step: sub-labels on one line, cut with a title, where a pinned height misses. */
 const SUB_LINES = Symbol('tableSubLines');
 /** Regular spacing only: no tight rung. A caller that has other regular forms to try first (dimswitch) or only reads the floor (classFloor) sets it. */
@@ -1025,7 +1031,7 @@ function layoutTableOnce(authoredData: TableData, options: LayoutOptions, initia
     rowY.set(row.id, { y, h });
     y += h;
   }
-  const tableH = y - gridY;
+  const naturalTableH = y - gridY;
   // Row-driven canvas: a table the author did not size
   // takes the height its rows need, never a 16:9 canvas with a blank third.
   {
@@ -1085,7 +1091,26 @@ function layoutTableOnce(authoredData: TableData, options: LayoutOptions, initia
         : {}),
     };
   // A floor probe only reads sizing; its tracks and wrapped rows are already measured.
-  if (sizingOnly) return sizingProbe(sizing, { table: { x: gridX, y: gridY, w: tableW, h: tableH }, columns: cols.map(col => ({ id: col.id, ...colX.get(col.id)! })), rows: [], headerBand: { x: gridX, y: gridY, w: tableW, h: headerH } });
+  if (sizingOnly) return sizingProbe(sizing, { table: { x: gridX, y: gridY, w: tableW, h: naturalTableH }, columns: cols.map(col => ({ id: col.id, ...colX.get(col.id)! })), rows: [], headerBand: { x: gridX, y: gridY, w: tableW, h: headerH } });
+
+  // A pinned canvas with height to spare gives it to the leaf rows as air, up to the theme's 16 px a side.
+  // The sizing above keeps the natural height, so the table still reports the least it needs.
+  let tableH = naturalTableH;
+  if (options.heightFill !== 'none' && fixedHeightCanvas(options) && ladder.rowHeight === undefined && figures) {
+    const leaves = rows.filter(isLeafRow);
+    const room = Math.min(...leaves.map((row) => 2 * (TABLE_PAD_MAX - levelPad(row.step, false))));
+    const extra = spareShare(plot.y + plot.h - y - 4 - STANDOFF_BELOW, leaves.length, room, true);
+    if (extra > 0) {
+      let shift = 0;
+      for (const row of rows) {
+        const at = rowY.get(row.id)!;
+        const h = isLeafRow(row) ? at.h + extra : at.h;
+        rowY.set(row.id, { y: at.y + shift, h });
+        if (isLeafRow(row)) shift += extra;
+      }
+      tableH += shift;
+    }
+  }
 
   const numericStats = new Map<
     Id,

@@ -87,7 +87,7 @@ export interface CohortOptionsBase extends BaseOptionsFor<'cohort'> {
   exhibitLabel?: string;
 }
 
-/** Consulting exhibit table. Stepped columns use measured content widths, normally 56–72px, with content sizing. Omitted preserves the legacy heatmap. */
+/** Consulting exhibit table. Stepped columns share the free width, as pure columns do, and keep their measured content width as the floor. Omitted preserves the legacy heatmap. */
 export type CohortOptions = CohortOptionsBase & CohortExhibitLabelsSlot;
 
 export interface CohortRowDerived {

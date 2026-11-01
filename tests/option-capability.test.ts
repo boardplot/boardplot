@@ -351,6 +351,8 @@ describe('published option behaviour census', () => {
     'cohort.steps': { options: { variant: 'stepped', formatScope: 'classic' }, reason: 'Only absolute stepped classes read steps.' },
     'table.figures': { options: { encodings: { actual: 'heat' } }, reason: 'Figures can be hidden only on a heat lane.' },
     'dimswitch.figures': { options: { encodings: { range: 'heat' } }, reason: 'Figures can be hidden only on a heat lane.' },
+    'dimswitch.heightFill': { options: { size: { width: 900, height: 900 } }, reason: 'Only a pinned height has spare height to fill.' },
+    'table.heightFill': { options: { size: { width: 900, height: 900 } }, reason: 'Only a pinned height has spare height to fill.' },
   };
   // notes also gets one footnote (except creative, which refuses footnotes).
   // unitShown also gets an explicit unit. Both renders get the same companion.

@@ -82,7 +82,7 @@ export const cohortOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptio
     .enum(['heatmap', 'pure', 'stepped'])
     .optional()
     .describe(
-      "Form. 'heatmap' (the default) draws the heatmap surface, which honours 'labels'. 'pure' and 'stepped' draw the exhibit. Stepped columns fit measured content, normally 56–72px, and preserve weighted-average and missing-cell notes. The exhibit variants draw a fixed label set, so authoring 'labels' together with variant is refused (the legacy surface honours it).",
+      "Form. 'heatmap' (the default) draws the heatmap surface, which honours 'labels'. 'pure' and 'stepped' draw the exhibit. Stepped columns share the width the label and size columns leave, as pure columns do, and preserve weighted-average and missing-cell notes. The exhibit variants draw a fixed label set, so authoring 'labels' together with variant is refused (the legacy surface honours it).",
     ),
   formatScope: z
     .enum(['classic', 'column'])

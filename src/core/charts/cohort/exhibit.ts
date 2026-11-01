@@ -43,7 +43,7 @@ import type {
 import { emphasisInk } from '../../markVisibility';
 import { fieldHeadFont, fieldHeadText, headInk, headRule, totalGround, totalRule } from '../table/headFace';
 import { tableRuleInk } from '../table/statement';
-import { rowDrivenHeight } from '../../rowCanvas';
+import { fixedHeightCanvas, rowDrivenHeight, spareShare } from '../../rowCanvas';
 import { heightOmitted, rowSizing, SIZE_TOLERANCE, VERIFY_ADVICE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { disclosureNote } from '../../notes';
@@ -55,6 +55,10 @@ import { maxOf, minOf, pushAll } from '../../arrays';
 const LABEL_TRACK = 118;
 const SIZE_TRACK = 96;
 const ROW_H = 28;
+/** The most height a row gains on a pinned canvas, as a share of its natural height (1.8 times in all). */
+const MAX_ROW_GROWTH = 0.8;
+/** The air kept between the stretched rows and the footer. */
+const STANDOFF_BELOW = 12;
 /** The line under the average row that names each average's base. */
 const BASE_LINE_H = 16;
 const HEADER_H = 28;
@@ -599,7 +603,8 @@ function buildExhibit(
   const scale = Math.min(1, frame.plot.w / desiredWidth);
   const labelW = tracks.label * scale;
   const sizeW = tracks.size * scale;
-  const monthW = style === 'stepped' ? tracks.month * scale : (frame.plot.w - labelW - sizeW) / visible.length;
+  // The period columns share the width the label and size columns leave, as a pure table's do.
+  const monthW = (frame.plot.w - labelW - sizeW) / visible.length;
   const tableLeft = frame.plot.x;
   const sizeLeft = tableLeft + labelW;
   const monthLeft = sizeLeft + sizeW;
@@ -637,7 +642,9 @@ function buildExhibit(
   headerRowH = Math.max(headerRowH, sizeHeaderLines.length * lineH(sizeHeaderFont) + rowAir);
   const baseLineH = averageBases ? baseRowH + extraLines(baseLines) * lineH(baseFont) : 0;
   const headerH = headerRowH + (columnRanges ? baseRowH + extraLines(rangeLines) * lineH(axisFont) : 0);
-  const tableBottom = tableTop + headerH + rowData.length * rowH + totalGap + baseLineH;
+  const naturalRowH = rowH;
+  const naturalBottom = tableTop + headerH + rowData.length * rowH + totalGap + baseLineH;
+  let tableBottom = naturalBottom;
   {
     const grow = rowDrivenHeight({
       options,
@@ -647,6 +654,12 @@ function buildExhibit(
       rowsH: tableBottom - tableTop + 6,
     });
     if (grow !== undefined) return buildExhibit(data, derived, visible, { ...options, size: { width: size.width, height: grow } }, warnings, exclusion);
+  }
+  // A pinned canvas with height to spare gives it to the rows, up to 1.8 times their natural height.
+  if (fixedHeightCanvas(options)) {
+    const extra = spareShare(frame.plot.y + frame.plot.h - naturalBottom - 6 - STANDOFF_BELOW, rowData.length, naturalRowH * MAX_ROW_GROWTH, true);
+    rowH += extra;
+    tableBottom += rowData.length * extra;
   }
   // Cell values use the label step and headers the axis step. Headers and
   // cells use their role weight; totals and focus use emphasis.
@@ -705,11 +718,12 @@ function buildExhibit(
     fontById.set(id, font);
     labelInk.set(id, ink);
   };
-  const measuredRect = (text: string, font: FontSpec, x: number, y: number, align: 'start' | 'middle' | 'end'): Rect => {
+  // A head or the exhibit label centres in the natural row height, so rows that took spare height do not move it.
+  const measuredRect = (text: string, font: FontSpec, x: number, y: number, align: 'start' | 'middle' | 'end', band = rowH): Rect => {
     const measured = measure(text, font);
     return {
       x: align === 'start' ? x : align === 'middle' ? x - measured.width / 2 : x - measured.width,
-      y: y + (rowH - measured.height) / 2,
+      y: y + (band - measured.height) / 2,
       w: measured.width,
       h: measured.height,
     };
@@ -735,16 +749,16 @@ function buildExhibit(
   const corner = unitCorner ?? fieldHeadText(chartString(options, 'cohort'), theme);
   const cornerFont = unitCorner === undefined ? headFont : headerFont;
   const headPaint = headInk();
-  addLabel('cohort-header-label', corner, measuredRect(corner, cornerFont, tableLeft, tableTop, 'start'), cornerFont, headPaint, {}, 'axisTitle');
+  addLabel('cohort-header-label', corner, measuredRect(corner, cornerFont, tableLeft, tableTop, 'start', naturalRowH), cornerFont, headPaint, {}, 'axisTitle');
   if (sizeHeaderLines.length > 1) addBlock('cohort-header-size', sizeHeaderLines, headFont, sizeEnd, tableTop, headerRowH, 'end', headPaint, {}, 'axisTitle');
-  else addLabel('cohort-header-size', sizeHeader, measuredRect(sizeHeader, headFont, sizeEnd, tableTop, 'end'), headFont, headPaint, {}, 'axisTitle');
+  else addLabel('cohort-header-size', sizeHeader, measuredRect(sizeHeader, headFont, sizeEnd, tableTop, 'end', naturalRowH), headFont, headPaint, {}, 'axisTitle');
   visible.forEach((period, column) => {
     const text = periodName(data.periodLabel, period, options.locale?.language);
     const ink: Paint = style === 'pure' && period === designated ? emphasisInk(theme) : headPaint;
     addLabel(
       `cohort-header-period:${period}`,
       text,
-      measuredRect(text, headerFont, monthLeft + (column + 0.5) * monthW, tableTop, 'middle'),
+      measuredRect(text, headerFont, monthLeft + (column + 0.5) * monthW, tableTop, 'middle', naturalRowH),
       headerFont,
       ink,
       {},
@@ -907,7 +921,7 @@ function buildExhibit(
   if (options.exhibitLabel) {
     // The label step, letter-spaced.
     const font: FontSpec = { family: theme.type.family, ...theme.type.label, letterSpacing: 2.2 };
-    addLabel('cohort-exhibit-label', options.exhibitLabel, measuredRect(options.exhibitLabel, font, frame.plot.x, 12, 'start'), font, mutedInk, {}, 'axisTitle');
+    addLabel('cohort-exhibit-label', options.exhibitLabel, measuredRect(options.exhibitLabel, font, frame.plot.x, 12, 'start', naturalRowH), font, mutedInk, {}, 'axisTitle');
   }
   if (frame.frame.sourceNodeId) {
     const sourceNode = nodes.find((node) => node.id === frame.frame.sourceNodeId);
@@ -950,8 +964,8 @@ function buildExhibit(
     size,
     sizing: rowSizing('cohort', size, {
       chromeH: size.height - frame.plot.h + legendOffset,
-      minimumRowsH: headerH + rowData.length * Math.max(rowH, measure('0', cellFont).height) + totalGap + baseLineH + 6,
-      naturalRowsH: tableBottom - tableTop + 6,
+      minimumRowsH: headerH + rowData.length * Math.max(naturalRowH, measure('0', cellFont).height) + totalGap + baseLineH + 6,
+      naturalRowsH: naturalBottom - tableTop + 6,
       minWidth: size.width - frame.plot.w + desiredWidth,
       naturalWidth: size.width - frame.plot.w + desiredWidth,
     }),
