@@ -94,6 +94,83 @@ const codes = (geometry: Warned): string[] => (geometry.warnings ?? []).map((w) 
 const annOf = (geometry: { annotations: Ann[] }, kind: string): Ann | undefined =>
   geometry.annotations.find((a) => a.kind === kind);
 
+// Step annotations must read the step amount and explicit stack totals must read every band without changing level comparisons.
+it('reads step amounts and explicit stack totals while keeping level comparisons', () => {
+  const waterfall = {
+    items: [
+      { id: 'opening', label: 'Opening', type: 'total', value: 100 },
+      { id: 'gain', label: 'Increase', date: '2022-01-01', segments: [
+        { id: 'a', label: 'A', value: 10 }, { id: 'b', label: 'B', value: 20 },
+      ] },
+      { id: 'drop', label: 'Decrease', date: '2023-01-01', value: -10 },
+      { id: 'subtotal', label: 'Subtotal', type: 'subtotal' },
+      { id: 'ending', label: 'Ending', type: 'total' },
+    ],
+  };
+  const checks: [object, string][] = [
+    [{ kind: 'callout', at: 'gain', headline: '${value}', text: 'Increase' }, '30\nIncrease'],
+    [{ kind: 'note', at: 'drop', text: 'Change ${value}' }, 'Change −10'],
+    [{ kind: 'abs', at: 'drop' }, '−10'],
+    [{ kind: 'abs', at: { categoryId: 'gain', edge: 'total' } }, '30'],
+    [{ kind: 'abs', at: { categoryId: 'gain', edge: 'start' } }, '100'],
+    [{ kind: 'abs', at: { categoryId: 'gain', edge: 'end' } }, '130'],
+    [{ kind: 'abs', at: 'subtotal' }, '120'],
+    [{ kind: 'abs', at: 'ending' }, '120'],
+    [{ kind: 'delta', at: 'gain', vs: 0 }, '+30'],
+    // A delta against another anchor compares running levels, so it must not subtract a total from a step amount (it read 10 minus 100 here).
+    [{ kind: 'delta', at: 'drop', vs: 'opening' }, '+20'],
+    [{ kind: 'delta', at: 'gain', vs: 'opening' }, '+30'],
+    [{ kind: 'diff', from: 'gain', to: 'drop', mode: 'absolute' }, '−10'],
+    [{ kind: 'cagr', from: 'gain', to: 'drop' }, '−7.7% p.a.'],
+  ];
+  for (const [annotation, expected] of checks) {
+    const geometry = layoutWaterfall(waterfall as never, { annotations: [annotation] } as never);
+    expect.soft(geometry.annotations[0]?.computedText, JSON.stringify(annotation)).toBe(expected);
+  }
+  const data = {
+    categories: [{ id: 'a', label: 'A', date: '2022-01-01' }, { id: 'b', label: 'B', date: '2023-01-01' }],
+    series: [{ id: 'x', label: 'X', values: [10, 20] }, { id: 'y', label: 'Y', values: [30, 40] }],
+  };
+  for (const variant of ['stacked-area', 'stacked100-area'] as const) {
+    const options = { variant, valueLabels: 'none', seriesLabels: 'none' } as const;
+    for (const [at, expected] of [
+      [{ categoryId: 'b', edge: 'total' }, '60'],
+      ['b', '20'],
+      [{ categoryId: 'b' }, '20'],
+      [{ categoryId: 'b', seriesId: 'x', edge: 'total' }, '20'],
+    ] as const) {
+      const geometry = layoutLine(data, { ...options, annotations: [{ kind: 'abs', at }] });
+      expect.soft(geometry.annotations[0]?.computedText, `${variant} ${JSON.stringify(at)}`).toBe(expected);
+    }
+    const growth = layoutLine(data, { ...options, annotations: [{ kind: 'cagr' }] });
+    expect.soft(annOf(growth, 'cagr')?.computedText, variant).toBe('X +100.0% p.a.');
+  }
+});
+
+// A category drawn as n.m. has no total, and a category of authored shares has a total in percent.
+it('keeps explicit stack totals honest on a 100% area with signed or authored shares', () => {
+  const categories = [{ id: 'a', label: 'A', date: '2022-01-01' }, { id: 'b', label: 'B', date: '2023-01-01' }];
+  const options = { variant: 'stacked100-area', valueLabels: 'none', seriesLabels: 'none' } as const;
+  const at = { categoryId: 'a', edge: 'total' } as const;
+  const signed = layoutLine({ categories, series: [{ id: 'x', label: 'X', values: [40, 20] }, { id: 'y', label: 'Y', values: [-10, 30] }] },
+    { ...options, annotations: [{ kind: 'abs', at }] });
+  expect(signed.annotations).toHaveLength(0);
+  expect(codes(signed)).toContain('bad-anchor');
+  const shares = layoutLine({ categories, series: [{ id: 'x', label: 'X', values: [{ pct: 40 }, { pct: 20 }] }, { id: 'y', label: 'Y', values: [{ pct: 60 }, { pct: 80 }] }] },
+    { ...options, annotations: [{ kind: 'abs', at }, { kind: 'note', at, text: 'Sum ${value}' }] });
+  expect(shares.annotations.map((a) => a.computedText)).toEqual(['100%', 'Sum 100%']);
+});
+
+// An explicit stack total must print in the series number format, as the string anchor and the segment anchor do.
+it('prints an explicit stack total and its delta in the series format', () => {
+  const categories = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+  const series = [{ id: 'x', values: [10.5, 20.25, 30.5], format: '$0.0' }, { id: 'y', values: [30, 40.5, 50], format: '$0.0' }];
+  const total = (id: string) => ({ categoryId: id, edge: 'total' }) as const;
+  const geometry = layoutLine({ categories, series }, { variant: 'stacked-area', valueLabels: 'none', seriesLabels: 'none',
+    annotations: [{ kind: 'abs', at: total('c') }, { kind: 'delta', at: total('c'), vs: total('a') }] });
+  expect(geometry.annotations.map((a) => a.computedText)).toEqual(['$80.5', '+$40.0']);
+});
+
 // A computed reference must use the observations on its axis, not differences on a level axis.
 it('measures variance value-line statistics on the drawn axis', () => {
   for (const percent of [false, true]) for (const variant of ['absolute', 'integrated'] as const) {

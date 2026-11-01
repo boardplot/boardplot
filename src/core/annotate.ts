@@ -93,6 +93,8 @@ export interface AnchorResolution {
   /** Pixel y of the anchored level (top of bar / segment edge / point). */
   y: number;
   value: number;
+  /** Value of the running level for diff and CAGR when the mark's value is a step amount. */
+  comparisonValue?: number;
   /** The absolute value in the point label's format, which can use another precision. */
   pointValueText?: string;
   /** Format of the single series this anchor reads. */
@@ -384,7 +386,7 @@ function calloutAttachment(at: AnchorResolution, kind: string, glyph?: CalloutGl
 }
 
 function comparisonAnchor(anchor: AnchorResolution | null): AnchorResolution | null {
-  return anchor?.comparisonPoint ? { ...anchor, ...anchor.comparisonPoint } : anchor;
+  return anchor ? { ...anchor, ...anchor.comparisonPoint, value: anchor.comparisonValue ?? anchor.value } : null;
 }
 
 /**
@@ -894,11 +896,13 @@ function placeDelta(s: AnnotationScope, ann: Extract<Annotation, { kind: 'delta'
   const at = input.resolve(ann.at);
   if (!at) return warn(s, 'bad-anchor', `delta '${id}': unresolvable anchor`);
   const vsAnchor = typeof ann.vs === 'number' ? null : input.resolve(ann.vs);
-  const vsValue = typeof ann.vs === 'number' ? ann.vs : (vsAnchor?.value ?? null);
+  // Against a literal the delta reads the mark's own value. Against another anchor both ends read the running level, as diff does, so the two stay in one unit.
+  const vsValue = typeof ann.vs === 'number' ? ann.vs : (vsAnchor ? (vsAnchor.comparisonValue ?? vsAnchor.value) : null);
   if (vsValue === null) return warn(s, 'bad-anchor', `delta '${id}': unresolvable vs`);
   if (valueless(s, 'delta', [at, vsAnchor])) return;
   warnPartialComparison(s, 'delta', partialAnchors(s, at, vsAnchor));
-  const d = at.value - vsValue;
+  const atValue = vsAnchor ? (at.comparisonValue ?? at.value) : at.value;
+  const d = atValue - vsValue;
   const computed = s.run.fmtSigned(d);
   // A difference that prints as zero has no direction to judge.
   const tone = s.run.printsZero(d) ? undefined : d > 0 ? 'good' : 'bad';
@@ -910,7 +914,7 @@ function placeDelta(s: AnnotationScope, ann: Extract<Annotation, { kind: 'delta'
     basis: 'derived',
     op: 'annotation-delta@1',
     inputs: [
-      { ref: `at:${anchorRefLabel(ann.at)}`, value: at.value },
+      { ref: `at:${anchorRefLabel(ann.at)}`, value: atValue },
       { ref: typeof ann.vs === 'number' ? 'vs:literal' : `vs:${anchorRefLabel(ann.vs)}`, value: vsValue },
     ],
     raw: d,
