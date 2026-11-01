@@ -216,6 +216,38 @@ describe('variance growth values print in the pin tone', () => {
   });
 });
 
+// The column above a forecast quarter hatches, while its growth tier drew the same solid mark as an actual quarter.
+describe('a grid variance tier hatches its forecast categories', () => {
+  const forecast = { ...data, series: series.map((s) => s.role === 'reference' ? s : {
+    ...s, values: s.values.map((v, i) => i < 2 ? v : { number: v, scenario: 'FC' as const }),
+  }) };
+  const tier = (variant: 'relative' | 'absolute', body = forecast) => getChart('grid')!.layout({
+    panels: [
+      { id: 'rev', type: 'column', data: body, options: { variant: 'stacked' } },
+      { id: 'dpy', type: 'variance', data: body, options: { variant, variance: { vs: 'py' } } },
+    ],
+  }, { size: { width: 480 }, sharedAxis: 'category', locale: 'en' }) as Geometry;
+  const mark = (g: Geometry, id: string) => g.scene.find((n) => n.id === id) as unknown as { fill: Paint; pattern?: string };
+
+  it('draws forecast pin heads hollow and actual ones solid', () => {
+    const g = tier('relative');
+    expect(mark(g, 'dpy/mark:head:q2').fill).not.toEqual({ token: 'background' });
+    expect(mark(g, 'dpy/mark:head:q3').fill).toEqual({ token: 'background' });
+    expect(mark(g, 'dpy/mark:head:q4').fill).toEqual({ token: 'background' });
+  });
+
+  it('hatches forecast bars of the absolute tier', () => {
+    const g = tier('absolute');
+    expect(mark(g, 'dpy/mark:delta:q2').pattern).toBeUndefined();
+    expect(mark(g, 'dpy/mark:delta:q4').pattern).toBe('hatch45');
+  });
+
+  it('keeps every mark solid when no category is forecast', () => {
+    const g = tier('relative', data);
+    expect(mark(g, 'dpy/mark:head:q4').fill).not.toEqual({ token: 'background' });
+  });
+});
+
 // A combo panel over a line panel with anchors.categories 'all' put the category centres 3.3 px apart:
 // the plot edges matched, but combo insets its bands inside the plot.
 describe('grid anchors.categories across panel types', () => {

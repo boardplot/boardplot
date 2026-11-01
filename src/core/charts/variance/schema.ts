@@ -34,7 +34,7 @@ const seriesSchema = z.strictObject({
   id: idSchema.describe("Series identity used by keyed options, annotations and legend entries."),
   label: z.string().optional().describe("Displayed series name; defaults to the series id."),
   values: z.array(z.union([cellSchema, z.strictObject({ categoryId: idSchema.describe("Category id identifying this value independently of array position."), value: cellSchema.describe("Cell assigned to the named category in this series.") })])).describe("Values in category order, or keyed entries pairing a categoryId with its value."),
-  scenario: scenarioField("Read only on the variance.vs series, where it names the tier (ΔPL). Every data value draws as the actual, so name a forecast or plan value in its category label or a footnote."),
+  scenario: scenarioField("Read only on the variance.vs series, where it names the tier (ΔPL). Every data value draws as the actual, so name a forecast or plan value in its category label or a footnote. In a grid tier, a category whose values are all FC draws hatched, like a partial one."),
   direction: z.enum(['higherIsBetter', 'lowerIsBetter']).optional().describe("Whether increases are favorable; defaults to higherIsBetter for directional comparisons."),
   role: z.enum(['data', 'reference']).optional().describe("Data series or comparison-only reference series; references are excluded from the main plotted data."),
   colorRole: colorRoleField("Theme color role of the integrated actual columns and their key when this series is the actual and sets no fill; no effect in the other modes or on a reference series."),
