@@ -17,7 +17,7 @@ import { structureCount } from '../../structureCounts';
 import type { AnchorResolution } from '../../annotate';
 import { runAnnotatePass } from '../../annotatePass';
 import { marginBracketLayout } from '../../annotateLinks';
-import { defaultNumberDecimals, formatAutomaticNumber, NOT_AVAILABLE, numberRange } from '../../format';
+import { defaultNumberDecimals, formatAutomaticNumber, lowBaseKeyLabel, NOT_AVAILABLE, numberRange } from '../../format';
 import { AUTOMATIC_FORMAT, type AutomaticFormatSource, defaultFormatSpec, exampleSpec, formatNonzeroWithSpec, formatterFromExample, rasterDecimals, seriesRasterFormatter, parseFormatExample, specUnitKind } from '../../formatSpec';
 import { cleanFloat, round2, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
@@ -565,7 +565,7 @@ export function layoutHeatmap(
   // `legend: 'none'` drops the key, as on the table: a host that
   // draws its own key for the same scale would otherwise show two.
   const anyLowBase = rows.some((r) => r.cells.some((c) => c.v !== null && lowBase(c)));
-  const lowBaseKey = `n < ${formatAutomaticNumber(options.minBase ?? 0, { locale: options.locale?.language })}`;
+  const lowBaseKey = lowBaseKeyLabel(options.minBase ?? 0, options.locale?.language);
   const scaleItems = glyph !== 'harvey' && !bubble && allValues.length > 0 && panelTypeClass(options) === undefined
     ? options.heatKey?.items ?? [...(continuousKey ? [] : colourScaleKey()), ...(missingCells
       ? [...(plainNoData ? [noDataKey('scale:none', chartString(options, 'noData'))] : []), ...statesPresent.map((state) => noDataKey(`scale:${state}`, stateNames[state], NAMED_STATE_PATTERN[state]))]

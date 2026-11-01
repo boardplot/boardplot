@@ -88,11 +88,13 @@ describe("bullet band names on the rows (bandKey 'row')", () => {
     expect(washes.map((fill) => paintColor(full, fill)).sort()).toEqual([full.color.badFill ?? full.color.bad, full.color.goodFill ?? full.color.good].sort());
   });
 
-  // The rows no longer show which mark is the actual and which the target.
-  it('keys the bar, the target tick and the ramp at the bottom', () => {
+  // The key named the bands a second time with built-in words (Worse, Lower middle ...) next to the author's names on the rows.
+  it('keys the bar and the target tick at the bottom, and names a band only with the author\'s word', () => {
     const geometry = slide();
     const keyLabels = geometry.scene.filter((node) => node.t === 'text' && node.part === 'legendLabel');
-    expect(keyLabels.map((node) => node.t === 'text' && node.lines[0])).toEqual(['Actual', 'Target', 'Worse', 'Lower middle', 'Upper middle', 'Better']);
+    expect(keyLabels.map((node) => node.t === 'text' && node.lines[0])).toEqual(['Actual', 'Target']);
+    const authored = draw({ size: { width: 1200, height: 620 }, strings: { bandKey: ['Weak', 'Low', 'Fine', 'Top'] } });
+    expect(authored.scene.flatMap((node) => (node.t === 'text' && node.part === 'legendLabel' ? node.lines : []))).toEqual(['Actual', 'Target', 'Weak', 'Low', 'Fine', 'Top']);
     const lastBand = bandRect(geometry, 'band:cost:3').rect;
     expect(keyLabels.every((node) => node.t === 'text' && node.y > lastBand.y + lastBand.h)).toBe(true);
   });
