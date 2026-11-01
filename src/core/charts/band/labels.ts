@@ -199,6 +199,30 @@ export function keepValuesWithoutAxis(requests: LabelRequest[], density: LabelDe
 }
 
 /**
+ * A stacked part keeps its label when a value line crosses it. The seats the
+ * line leaves clear come first (the part's stretches past the line); the
+ * inside seat across the line comes after them, on a halo, before any seat
+ * outside the part.
+ */
+export function acrossValueLines(seats: SlotCandidate[]): SlotCandidate[] {
+  const inside = seats.findIndex((seat) => seat.insideFill === undefined);
+  const held = inside < 0 ? seats : seats.slice(0, inside);
+  if (held.length === 0) return seats;
+  const across = { ...held[0]!, slot: `${held[0]!.slot}Across`, penalty: held[held.length - 1]!.penalty + 0.05, overValueLines: true };
+  return [...held, across, ...seats.slice(held.length)];
+}
+
+/**
+ * Seats that keep their place when a value line (an average, a target, a
+ * benchmark) runs across them. The rule breaks around the glyphs when the
+ * scene is built, and a label across one sits on a halo, so the rule never
+ * costs a part, a total or a name its label.
+ */
+export function overValueLines(seats: SlotCandidate[]): SlotCandidate[] {
+  return seats.map((seat) => ({ ...seat, overValueLines: true }));
+}
+
+/**
  * A value label a reference rule runs through (an
  * average, a median, a mean line) sits on a halo, so the rule never cuts its
  * digits. The claims tagged 'referenceLine' are the rules the chart drew.

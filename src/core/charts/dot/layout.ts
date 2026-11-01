@@ -32,6 +32,7 @@ import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { CONTENT_PLOT_HEIGHT, HARD_MINIMUM, type ContentPlotHeight } from '../../sizing';
 import { REFERENCE_LABEL_CLEARANCE } from '../../markVisibility';
 import { averageMarkerLine, averageMarkerScope } from '../band/stacks';
+import { overValueLines } from '../band/labels';
 import { rowLabelX, type Rect } from '../../geometry';
 import { clamp, cleanDiff, round2, unionRect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
@@ -1234,9 +1235,16 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     const lx = lineXs.find((lineX) => lineX > label.rect.x - LINE_CLEAR && lineX < label.rect.x + label.rect.w + LINE_CLEAR);
     if (lx === undefined) continue;
     const dot = anchorByDot.get(`${label.owner.categoryId}:${label.owner.seriesId}`);
-    if (dot && dot.x < lx && label.rect.x > dot.x) label.rect = { ...label.rect, x: lx + LINE_CLEAR };
-    else if (dot && dot.x > lx && label.rect.x < dot.x) label.rect = { ...label.rect, x: lx - LINE_CLEAR - label.rect.w };
-    else {
+    let step: Rect | undefined;
+    if (dot && dot.x < lx && label.rect.x > dot.x) step = { ...label.rect, x: lx + LINE_CLEAR };
+    else if (dot && dot.x > lx && label.rect.x < dot.x) step = { ...label.rect, x: lx - LINE_CLEAR - label.rect.w };
+    // The step must land clear of every other dot and label, and inside the canvas; else the value stays and reads on a halo.
+    if (step && step.x >= 0 && step.x + step.w <= size.width && !occupied.hitsWhich(step, solveCtx.labelPad).some((claim) => claim.part !== 'referenceLine'
+      && !(claim.kind === 'mark' && isOwnMark(claim.owner, label.owner, 'point', claim.part))
+      && !(claim.kind === 'label' && claim.owner.seriesId === label.owner.seriesId && claim.owner.categoryId === label.owner.categoryId))) {
+      label.rect = step;
+      occupied.claim(step, 'label', label.owner);
+    } else {
       label.halo = true;
       lineGaps.push(label.rect);
     }
@@ -1558,9 +1566,10 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
       seatsPastBlockers(from, 'x', lo, hi, obstacles, 3).map((rect) => ({ slot, rect, penalty: 4 }));
     const rightPast = past('rightPast', right.rect.x, Math.min(valueBody.x + valueBody.w, right.rect.x + reach), right.rect);
     const leftPast = past('leftPast', Math.max(valueBody.x, left.rect.x + tsize.width - reach), left.rect.x + tsize.width, left.rect);
-    return primary === 'left'
+    // A value line across a seat does not move the value: the pass below steps it past the line or sets it on a halo.
+    return overValueLines(primary === 'left'
       ? [left, right, above, below, ...leftPast, ...rightPast, rowLane]
-      : [right, left, above, below, ...rightPast, ...leftPast, rowLane];
+      : [right, left, above, below, ...rightPast, ...leftPast, rowLane]);
   }
 
   function buildLegend(): { options: LegendOptions; items: LegendItemInput[] } | undefined {

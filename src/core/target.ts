@@ -119,6 +119,17 @@ export function scaleTextAtFloor(size: number, textScale: number, floor: number)
   return textScale >= 1 ? scaled : Math.max(scaled, Math.min(size, floor));
 }
 
+/**
+ * The `textScale` that sets a slide or print label at its reader floor (12 pt over 14 pt, 9 pt over 11 pt),
+ * the farthest the type steps down before a size refusal; scaleTextAtFloor holds every other role at its own floor.
+ * Report and dashboard have no step: their class sizes are the sizes their canvases are built for.
+ */
+export function floorTextScale(target: RenderTarget): number | undefined {
+  if (target !== 'slide' && target !== 'print') return undefined;
+  const { M, floors } = TARGET_TYPE_TABLES[target];
+  return floors.label / M.label;
+}
+
 /** The target's readability floors, raised with a `textScale` above 1; a smaller scale stops at them (scaleTextAtFloor). */
 export function targetFloorsPx(target: RenderTarget, textScale = 1): Readonly<Record<TypographyRole, number>> {
   const table = TARGET_TYPE_TABLES[target];

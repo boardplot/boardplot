@@ -228,6 +228,7 @@ Defaults are the `standard` preset.
 | surface.chipTint | number |  |  | `0.9` | How far a chip background steps toward the surface (0.05 to 0.97). |
 | surface.rowTint | number |  |  | `0.94` | Opacity of the zebra row tint (0.85 to 0.98). |
 | surface.elapsedTint | number |  |  | `0.95` | Opacity of the elapsed-era wash in schedule charts (0.85 to 0.99). |
+| surface.ganttRowTint | number |  |  |  | How far Gantt row and weekend shading washes color.others toward color.background (0 to 1). Default 0.25. The Weekend key uses the same wash, capped at 0.8. Table zebra shading keeps surface.rowTint. |
 | surface.anchorTint | number |  |  | `0.97` | Opacity of the structural wash on level-0 parent rows (0.85 to 0.99). |
 | surface.bandTint | number |  |  |  | Weight of color.neutral over color.background for the group-band ground (0 to 1); default 0.06, the zebra weight. The total row takes twice it, capped at 1. A theme whose neutral IS the band colour, a sand over a white canvas, sets 0.5: the band then draws at half the neutral and the total at the whole of it. At 1 both grounds are the full neutral and the total no longer reads as the heavier of the two. |
 | surface.gapTint | number |  |  |  | How far a line chart's gapFill wash steps toward the background (0.5 to 0.95); default 0.82 on a light page and 0.65 on a dark one. |

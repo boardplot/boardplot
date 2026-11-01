@@ -1420,6 +1420,11 @@ export function separatedWashPaint(token: PaintToken, amount: number | 'surface-
   return { token, theme: { kind: 'visible-tint', base: { token }, amount, floor: FILL_SEPARATION_FLOOR } };
 }
 
+/** Gantt row and weekend shading resolves its tint in the active theme. */
+export function ganttRowPaint(key?: true): Paint {
+  return { token: 'others', theme: { kind: 'gantt-row-tint', ...(key ? { key } : {}) } };
+}
+
 /**
  * The fill of a plan mark under a theme's 'solidMuted' plan look:
  * color.inkMuted at 35 % over the background, with no outline.
@@ -1469,11 +1474,12 @@ export function warnColor(theme: Theme): string {
 /** Surface anatomy with defaults (chip/badge wash, row/elapsed tints, chip radius). */
 export function resolveSurface(
   theme: Theme,
-): { chipTint: number; rowTint: number; elapsedTint: number; anchorTint: number; bandTint: number; gapTint: number; ribbonAlpha: number; ribbonSheetAlpha: number; chipRadius: number } {
+): { chipTint: number; rowTint: number; ganttRowTint: number; elapsedTint: number; anchorTint: number; bandTint: number; gapTint: number; ribbonAlpha: number; ribbonSheetAlpha: number; chipRadius: number } {
   const surface = theme.surface as SurfaceWithAnchorTint | undefined;
   return {
     chipTint: surface?.chipTint ?? 0.9,
     rowTint: surface?.rowTint ?? 0.94,
+    ganttRowTint: surface?.ganttRowTint ?? 0.25,
     elapsedTint: surface?.elapsedTint ?? 0.95,
     anchorTint: surface?.anchorTint ?? 0.97,
     bandTint: surface?.bandTint ?? 0.06,
@@ -1797,6 +1803,10 @@ function themePaintSourceColor(theme: Theme, source: ThemePaintSource): string {
 }
 
 function sourceColor(theme: Theme, source: ThemePaintSource): string {
+  if (source.kind === 'gantt-row-tint') {
+    const amount = Math.min(resolveSurface(theme).ganttRowTint, source.key ? 0.8 : 1);
+    return tint(paintTokenColor(theme, 'others'), amount, theme.color.background);
+  }
   if (source.kind === 'series-text') {
     let cache = SERIES_TEXT_COLORS.get(theme);
     const known = cache?.get(source);

@@ -617,6 +617,8 @@ export function layoutColumnMarks(
     claims.claim({ x: plot.x, y: y(v) - 1, w: plot.w, h: 2 }, 'annotation', {
       annotationId: annId,
     }, 'referenceLine');
+    // A part the rule crosses seats its value in the stretch the rule leaves, as it does for a tick.
+    for (const c of domain.cats) refTickYs.set(c.id, [...(refTickYs.get(c.id) ?? []), y(v)]);
   });
   return { nodes, claims, axes, marks, ...bars, refTickYs, netLineEnd };
 }

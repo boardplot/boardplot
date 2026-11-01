@@ -52,6 +52,8 @@ export interface SankeyOptions extends BaseOptionsFor<'sankey'> {
   other?: false | { share?: number; label?: string };
   /** What a node prints after its name: 'value' (default), 'share' of its column, or 'value-share'. */
   nodeValue?: 'value' | 'share' | 'value-share';
+  /** Flow values on the ribbons: 'large' (default) prints the value of a ribbon at least one line high at its arriving end; 'none' prints no flow value. */
+  linkValue?: 'none' | 'large';
 }
 
 export interface SankeyNodeDerived {
