@@ -173,6 +173,12 @@ describe('histogram binning arithmetic', () => {
     expect(layoutHistogram({ observations: [0, 5, 7, 10] }, { bins: 5 }).derived.binning.edges).toEqual([0, 2, 4, 6, 8, 10]);
     expect(layoutHistogram({ observations: [0, 0.5, 0.75, 1] }, { bins: 5 }).derived.binning.width).toBe(0.2);
   });
+
+  // Prevents a refusal main does not make: above 2^52 the half-integer edges of width 1 collapse, so the next whole width draws.
+  it('skips width 1 when its centred whole-number edges are not representable', () => {
+    const big = [4503599627370496, 4503599627370497, 4503599627370504, 4503599627370505];
+    expect(layoutHistogram({ observations: big }, { bins: 8 }).derived.binning.width).toBe(2);
+  });
 });
 
 describe('histogram open last bin', () => {

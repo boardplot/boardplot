@@ -213,7 +213,12 @@ function wholeWidthForCount(min: number, max: number, count: number): { width: n
   const range = max - min;
   const options = [Math.ceil(range / count), Math.max(1, Math.floor(range / count))]
     .map((width) => ({ width, count: Math.floor(range / width) + 1 }))
-    .filter((option) => option.count <= MAX_BINS);
+    .filter((option) => option.count <= MAX_BINS)
+    // Beyond 2^52 the half-integer edges of width 1 are not representable and collapse: keep the exact count there.
+    .filter((option) => {
+      const edgeAt = edgeSequence(option.width === 1 ? min - 0.5 : min, option.width, option.count);
+      return Array.from({ length: option.count }, (_, i) => edgeAt(i + 1) > edgeAt(i)).every(Boolean);
+    });
   return options.reduce<{ width: number; count: number } | undefined>(
     (best, option) => (best === undefined || Math.abs(option.count - count) < Math.abs(best.count - count) ? option : best),
     undefined,
