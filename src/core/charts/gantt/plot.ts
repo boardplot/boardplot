@@ -19,7 +19,7 @@ import type { RenderTarget } from '../../types/options';
 import type { Id } from '../../types/cell';
 import type { GanttCell } from '../../types/data';
 import type { LintWarning, Paint } from '../../types/scene';
-import { GANTT_ROW_PITCH, MAX_COLS } from './domain';
+import { GANTT_ROW_PITCH, MAX_COLS, ganttItemPrintsName } from './domain';
 import { barSurfaces, cadenceRowPaint, milestonePaints } from './marks';
 import { badgeStrip, markerBand } from './events';
 import { LABEL_PAD, laneTop, MIN_ROW_H, NO_LANE, rowTextFloor, RULE_LABEL_GAP, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv, type GanttPaints, type MetadataColumns, type NormItem, type NormRow, type RowLabel, type RowNames } from './model';
@@ -206,7 +206,7 @@ function encodingKey(env: GanttEnv, domain: GanttDomain, paints: GanttPaints): L
   // A diamond that carries its own name needs no key to say what it is. An authored legend position keeps the key.
   const milestones = items.filter(it => it.kind === 'milestone');
   const autoKey = env.options.legend === undefined || env.options.legend === 'auto';
-  if (autoKey && milestones.length > 0 && env.labelOn('item') && milestones.every(it => it.label)) {
+  if (autoKey && milestones.length > 0 && milestones.every(it => ganttItemPrintsName(it, env))) {
     for (let i = keyed.length - 1; i >= 0; i--) if (keyed[i]!.id.startsWith('key:milestone')) keyed.splice(i, 1);
   }
   const milestoneKeys = keyed.filter(item => item.id.startsWith('key:milestone'));

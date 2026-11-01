@@ -448,3 +448,11 @@ it('gantt drops owner and status columns on a 432 pt wide slide instead of squee
   expect(body.ok).toBe(true);
   expect(body.svg).not.toContain('>Owner<');
 });
+
+// A diamond that prints only its date has no name to explain it, so the "Milestone" key must stay (main draws it).
+it('gantt keeps the Milestone key when labels.item selects only the date', () => {
+  const data = { rows: [{ id: 'review', label: 'Review', items: [{ id: 'gate', kind: 'milestone', label: 'Review gate', start: '2026-04-13' }] }] };
+  const draw = (item: string[]) => (render({ spec: { type: 'gantt', data, options: { size: { width: 900 }, labels: { item } } }, return: ['svg'] }).body as { svg: string }).svg;
+  expect(draw(['value'])).toContain('>Milestone<');
+  expect(draw(['category', 'value'])).not.toContain('>Milestone<');
+});
