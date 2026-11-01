@@ -95,8 +95,18 @@ export interface ComboDomain {
   anatomy: boolean;
   /** The chosen scales keep the secondary lines above the columns. */
   lineBand: boolean;
-  /** Recompute only scales and the anomaly corridor when measured clearance changes the pair. */
-  withLineBandClearance?: (clearance: number) => { domain: ComboDomain; warnings: LintWarning[] } | undefined;
+  /**
+   * No zero-based pair keeps the line above the columns: the columns keep the
+   * lower part of the plot and the secondary lines float in the band above
+   * them on their own scale. `range` holds the primary values the secondary
+   * domain maps to.
+   */
+  lineFloat?: { range: [number, number] };
+  /**
+   * Recompute only scales and the anomaly corridor when measured clearance changes the pair.
+   * `floatClearance` is the clearance a floated line keeps over the tallest column: its low value prints under its point.
+   */
+  withLineBandClearance?: (clearance: number, floatClearance?: number) => { domain: ComboDomain; warnings: LintWarning[] } | undefined;
   showPrimaryAxis: boolean;
   interpolationFor: (s: NormSer) => LineInterpolation;
   fmt: (v: number) => string;

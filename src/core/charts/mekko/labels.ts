@@ -17,7 +17,7 @@ import { warnIncompleteComposition, warnShareRoundingDrift } from '../../dataGap
 import { shareSetDecimals } from '../../formatPrecision';
 import type { LintWarning } from '../../types/scene';
 import { colCx, colW, type MekkoArea, type MekkoDomain, type MekkoEnv, type MekkoMarkGeometry, type MekkoPaints } from './model';
-import { GUTTER_GAP, kindSetting } from './plot';
+import { GUTTER_GAP, UPPER_TIER_GAP, kindSetting } from './plot';
 import { composedTextRole } from '../../textRole';
 import { planValueAxisTitle, valueAxisTitleRequest } from '../../axis';
 import { unitPrinted } from '../../frame';
@@ -324,24 +324,17 @@ function categoryLabel(ctx: LabelCtx, ci: number, visibleCol: boolean, edges: { 
   const { catPlan, dateNumericTicks } = area;
   const c = ctx.domain.cats[ci]!;
   if (!visibleCol && ctx.domain.incomplete.has(c.id)) return;
-  const named = catPlan.infos[ci]!;
-  // The column's width rides one line under its name, both centred.
-  const width = area.widthTexts?.[ci];
-  const info = width
-    ? {
-      ...named,
-      lines: [...named.lines, width],
-      w: Math.max(named.w, ctx.env.measure(width, catPlan.font).width),
-      h: named.h + area.widthLineH,
-    }
-    : named;
-  const tx = area.catsOnTop && ci === area.xEdge.length - 2 ? headLeft(area, ci, info.w) : width ? catPlan.anchor(ci, info.w) : catPlan.x(ci);
+  const { info, left: tx, width } = nameBlock(ctx, ci);
   const at = (slot: string, y: number, penalty: number): SlotCandidate => ({ slot, rect: { x: tx, y, w: info.w, h: info.h }, penalty });
   const aboveY = edges.top - (area.showTotals ? area.totalH + 4 : 2) - info.h - 2;
   const pack = area.namePack;
   const packed = (slot: string, y: number, penalty: number): SlotCandidate => ({ slot, rect: { x: pack!.left[ci]!, y, w: info.w, h: info.h }, penalty });
+  // Percent: a name that did not fit its column stands on a second tier over the first names and their totals.
+  const upperY = edges.top - (area.showTotals ? area.totalH + 4 : 2) - 2 - (catPlan.rowHeight + area.widthLineH) - UPPER_TIER_GAP - info.h;
   const candidates: SlotCandidate[] = area.catsOnTop
-    ? [at('aboveColumn', aboveY, 0), ...(dateNumericTicks ? [] : [at('aboveColumnShifted', aboveY - catPlan.rowHeight, 1)])]
+    ? pack?.row[ci] === 1
+      ? [{ ...packed('aboveTier', upperY, 0), ...upperLeader(ctx, ci, info.w, edges) }]
+      : [at('aboveColumn', aboveY, 0), ...(dateNumericTicks ? [] : [at('aboveColumnShifted', aboveY - catPlan.rowHeight, 1)])]
     : pack
       ? (pack.row[ci] === 1 ? [{ ...packed('belowShifted', area.catRowY + info.h + 2, 0), ...tierLeader(ctx, ci, info.w, edges) }] : [packed('below', area.catRowY, 0), packed('belowShifted', area.catRowY + info.h + 2, 1)])
       : [
@@ -354,13 +347,57 @@ function categoryLabel(ctx: LabelCtx, ci: number, visibleCol: boolean, edges: { 
     owner: { categoryId: c.id },
     text: c.label ?? c.id,
     lines: info.lines,
-    ...(width || pack ? { align: 'middle' as const } : categoryLineAlign(catPlan, ci)),
+    ...(width || (pack && !area.catsOnTop) || pack?.row[ci] === 1 ? { align: 'middle' as const } : categoryLineAlign(catPlan, ci)),
     ...(info.title !== undefined ? { title: info.title } : {}),
     font: catPlan.font,
     priority: PRIORITY.endpoint,
     redundant: !catPlan.keep[ci] || !visibleCol,
     candidates,
   });
+}
+
+/** A name with its width line under it, and the left edge of the block on the first tier. */
+function nameBlock(ctx: LabelCtx, ci: number): { info: MekkoArea['catPlan']['infos'][number]; left: number; width: string | undefined } {
+  const { area } = ctx;
+  const { catPlan } = area;
+  const named = catPlan.infos[ci]!;
+  // The column's width rides one line under its name, both centred.
+  const width = area.widthTexts?.[ci];
+  const info = width
+    ? {
+      ...named,
+      lines: [...named.lines, width],
+      w: Math.max(named.w, ctx.env.measure(width, catPlan.font).width),
+      h: named.h + area.widthLineH,
+    }
+    : named;
+  const left = area.catsOnTop && ci === area.xEdge.length - 2 ? headLeft(area, ci, info.w) : width ? catPlan.anchor(ci, info.w) : catPlan.x(ci);
+  return { info, left, width };
+}
+
+/**
+ * A name on the second tier over a percent mekko hangs from a thin vertical
+ * leader down to the top of its column's total, on a line that no
+ * first-tier name covers; with no such line the name draws without one.
+ */
+function upperLeader(ctx: LabelCtx, ci: number, w: number, edges: { top: number; bot: number }): Pick<SlotCandidate, 'leaderFrom' | 'leaderVertical'> {
+  const { area, domain } = ctx;
+  const pack = area.namePack!;
+  const left = pack.left[ci]!;
+  const lo = Math.max(area.xEdge[ci]! + 1, left + 2);
+  const hi = Math.min(area.xEdge[ci + 1]! - 1, left + w - 2);
+  if (lo > hi) return {};
+  const first = domain.cats.flatMap((_, cj) => {
+    if (cj === ci || pack.row[cj] !== 0 || !area.catPlan.keep[cj] || area.catPlan.infos[cj]!.w === 0) return [];
+    const block = nameBlock(ctx, cj);
+    return [{ left: block.left, right: block.left + block.info.w }];
+  });
+  const clear = (x: number) => first.every((name) => x < name.left - 3 || x > name.right + 3);
+  const centre = Math.max(lo, Math.min(hi, (area.xEdge[ci]! + area.xEdge[ci + 1]!) / 2));
+  const xs = [centre, ...Array.from({ length: Math.floor(hi - lo) + 1 }, (_, k) => lo + k).sort((a, b) => Math.abs(a - centre) - Math.abs(b - centre))];
+  const x = xs.find(clear);
+  if (x === undefined) return {};
+  return { leaderFrom: { x, y: edges.top - (area.showTotals ? area.totalH + 3 : 1) }, leaderVertical: true };
 }
 
 /**

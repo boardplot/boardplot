@@ -70,7 +70,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 |---|---|---|---|---|
 | axisTitles | object |  |  | Title of the value axis when it is drawn: over the value axis, in the top row left of the plot. Drawn only when authored. |
 | axisTitles.primary | string |  |  | 'Measure, unit' title of the value axis, e.g. 'Margin, %'. |
-| variant | string | `'stacked100'`, `'stacked'`, `'bar'` | `'stacked100'` | stacked100 by default gives 100% stacks with widths proportional to category totals. stacked uses absolute stack heights; bar uses one value-height rectangle per category. |
+| variant | string | `'stacked100'`, `'stacked'`, `'bar'` | `'stacked100'` | stacked100 by default gives 100% stacks with widths proportional to category totals. stacked uses absolute stack heights; bar uses one value-height rectangle per category; with several data series it draws them as stacked columns and warns. |
 | widthSeriesId | string |  |  | Series supplying category widths; omitted uses category totals, or equal widths in bar mode. |
 | ridge | string |  |  | Data-series id whose top boundary is emphasized across the variable-width columns. |
 

@@ -50,7 +50,9 @@ function comboAxes(ctx: MarkCtx): void {
     const axisResult = layoutValueAxis(
       { scale: y, plot, orient: 'y', gridlines: domain.options.valueAxis?.gridlines ?? domain.anatomy, format: domain.fmt, formatSpec: domain.valueSpec, theme: env.theme, measure: env.measure, ticks: domain.pticks,
         // A Pareto scaled to its total reads its top row as the total and 100%: thinning keeps that row.
-        ...((domain.options as { [SECONDARY_FULL_DOMAIN]?: unknown })[SECONDARY_FULL_DOMAIN] && Math.abs(domain.pticks.at(-1)! - domain.dHi) < 1e-9 ? { keepTopTick: true } : {}) },
+        // Under a floated line the top tick marks the top of the column band: thinning keeps it.
+        ...(((domain.options as { [SECONDARY_FULL_DOMAIN]?: unknown })[SECONDARY_FULL_DOMAIN] && Math.abs(domain.pticks.at(-1)! - domain.dHi) < 1e-9)
+          || domain.lineFloat ? { keepTopTick: true } : {}) },
       claims,
     );
     pushAll(nodes, axisResult.nodes);

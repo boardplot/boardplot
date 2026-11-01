@@ -706,7 +706,7 @@ export function comboPlotArea(
   // 'none' or `labels.point: false` neither); an authored cell label there
   // still prints, its `${value}` as the plain value.
   const pointContent = contentOf(domain, 'point', ['absolute']);
-  const valueLabels = comboValueLabels(options, domain.anatomy, domain.cats.length);
+  const valueLabels = comboValueLabels(options, domain.anatomy, domain.cats.length, domain.lineFloat !== undefined);
   const texts = prepareComboEndpointTexts(
     lines,
     (series, ci) => {
@@ -884,7 +884,7 @@ export function comboPlotArea(
   }
   plot.w = Math.max(10, plot.w - rightReserve);
   const { dLo, dHi, pticks, secondaryDomain } = domain;
-  const secondaryRange = secondaryDomain ? secondaryPrimaryRange(options, secondaryDomain, pticks) : undefined;
+  const secondaryRange = secondaryDomain ? domain.lineFloat?.range ?? secondaryPrimaryRange(options, secondaryDomain, pticks) : undefined;
   // A line end needs a free text row above its point and any column there.
   // Reserve only the missing room inside the scale. Frame height is unchanged.
   const endpointAir = columns.length === 0 || !(dHi > dLo) || sharesOnColumns ? 0 : Math.max(0,

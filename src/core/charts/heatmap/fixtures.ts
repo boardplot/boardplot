@@ -63,7 +63,7 @@ export const fixtures: Fixture<HeatmapData, HeatmapOptions>[] = [
       // The two rows the title names, so the tint points at what it says; the
       // note names the tint on the canvas.
       highlight: ['digital-channels', 'data-analytics'],
-      footnotes: ['Shaded rows: the digital and analytics capabilities the title names.'],
+      footnotes: ['Highlighted rows: the digital and analytics capabilities the title names.'],
     },
   },
   {

@@ -486,6 +486,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | theme-dual-axis-anatomy | combo.dual-axis | example | A theme draws every acknowledged dual axis with its anatomy |
 | revenue-units-dual-axis-anatomy | combo.dual-axis | example | Dual-axis anatomy: shared gridlines, the line above the columns, both growth rates stated |
 | daily-columns-rate-reference | combo.dual-axis | torture | Daily columns, rate endpoints and a named reference on a flat dashboard |
+| dual-axis-line-floated | combo.dual-axis | example | A margin line floats over the revenue columns on its own scale |
 | option-step-after | combo.overlay | example | Output and available capacity |
 | option-step-before | combo.overlay | example | Output and available capacity |
 | combo-end-label-collision | combo.dual-axis | torture | Line end value and last column total placed as a pair |
@@ -793,7 +794,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | ID | Chart | Kind | Use case |
 |---|---|---|---|
 | orders-nine-months | sparkline | example | Nine months of orders, the last point ringed and valued, both ends named |
-| bare-card-spark | sparkline | example | The bare 176 by 36 mark: no ring, no labels, a gap the line does not bridge |
+| bare-card-spark | sparkline | example | The bare 176 by 36 mark: no end ring, no labels, a null bridged by a dotted segment |
 | orders-heavy-stroke | sparkline | torture | A 2.5 px line instead of the default 1.5 px |
 | reference-above-data | sparkline | example | A target above every point: the scale reaches up to the reference, the ring in warn |
 | reference-inside-data | sparkline | example | A reference the line crosses twice, the ring in good |

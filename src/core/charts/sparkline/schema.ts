@@ -11,7 +11,7 @@ export const sparklineDataSchema = z
   .strictObject({
     valueKind: valueKindSchema,
     values: z.array(cellSchema).min(2)
-      .describe('The series in order, at least two points. A null leaves a gap; the line does not bridge it.'),
+      .describe('The series in order, at least two points. A null is bridged by a dotted segment with a ring on the missing point.'),
     labels: z.array(z.string().min(1).describe('Name of one point.')).optional()
       .describe('One name per value, in the same order. The end labels and the hover records read them; without them a point is named by its position.'),
   })
