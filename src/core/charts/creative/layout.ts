@@ -432,7 +432,12 @@ export function layoutCreative(data: CreativeData, options: CreativeOptions & Pi
   const forms: Form[] = [...(wide ? [{ three: true as const }] : []), { ...(wide ? { three: true as const } : {}), notes: true }, { ...(wide ? { three: true as const } : {}), notes: true, tight: true }];
   let best = first;
   for (const form of forms) {
-    const next = layoutForm(data, options, form);
+    // A narrower column can overflow its text; that form is then no fit, and the first form still reports the size.
+    let next: typeof first;
+    try { next = layoutForm(data, options, form); } catch (error) {
+      if (error instanceof NormalizeError && error.code === 'creative-text-overflow') continue;
+      throw error;
+    }
     if (fits(next)) return next;
     if ((next.sizing?.minHeight ?? 0) < (best.sizing?.minHeight ?? 0)) best = next;
   }

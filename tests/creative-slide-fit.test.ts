@@ -23,6 +23,12 @@ describe('creative card on a short slide canvas', () => {
     expect(body.notes.some((note: any) => note.kind === 'method')).toBe(true);
   });
 
+  // A narrower fallback column can overflow its text; that threw creative-text-overflow where main returns a size refusal with a repair.
+  it('refuses with a size repair when a fallback column overflows its text', () => {
+    const body = render({ spec: { type: 'creative', data, options: { ...options, textScale: 1.5 } }, format: 'svg', target: 'slide', width: '900', height: '800' }).body as any;
+    expect(body.errors.map((error: any) => error.code)).toEqual(['size-below-floor']);
+  });
+
   it('keeps the two-column form where it fits', () => {
     const body = draw('720pt', '560pt');
     expect(body.ok).toBe(true);
