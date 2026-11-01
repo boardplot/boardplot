@@ -66,7 +66,8 @@ export const fixtures: Fixture<LikertData, LikertOptions>[] = [
       sortBy: 'net',
       // A share too narrow for its segment is listed under the chart, so every value prints.
       labelDensity: 'full',
-      notes: { show: ['note', 'disclosure'] },
+      // 'method' prints the split-neutral note: the centre line is not the agree/disagree boundary here.
+      notes: { show: ['note', 'method', 'disclosure'] },
       title: 'Engagement survey — agreement by statement',
       subtitle: {
         measure: 'Share of responses',
@@ -74,7 +75,7 @@ export const fixtures: Fixture<LikertData, LikertOptions>[] = [
       },
       legend: 'bottom',
       source: 'Employee pulse survey, n = 900 per statement',
-      // The source states the base, so it does not print twice. The engine states the neutral treatment that the option sets.
+      // The source states the base, so it does not print twice.
       requiredNotes: { base: false },
     },
   },
