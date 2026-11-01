@@ -96,3 +96,30 @@ it('gives bar length back to the panes when a comparison bracket takes room on o
   expect(pyramid.labels.filter((l) => l.kind === 'annotation' && !l.hidden)).toHaveLength(0);
   expect(longest(pyramid)).toBeGreaterThan(100);
 });
+
+// A negative bar pointed the same way as a positive one and a blank value drew nothing, so a reader
+// took -2,398 for the biggest gain and a missing value for zero.
+it('draws negatives toward the names, a not-applicable mark for blanks and an axis per own scale', () => {
+  const data = {
+    categories: [{ id: 'x', label: 'X' }, { id: 'y', label: 'Y' }, { id: 'z', label: 'Z' }],
+    series: [{ id: 'a', values: [-30, 20, null] }, { id: 'b', values: [10, -5, 8] }],
+  };
+  const options = { a: 'a', b: 'b', size: { width: 960, height: 540 } };
+  const g = layoutButterfly(data, options);
+  const [left, right] = [g.marks.left, g.marks.right];
+  // Pane A: the negative bar starts at its zero line and runs toward the names, the positive one ends there.
+  expect(left[1]!.rect.x + left[1]!.rect.w).toBeCloseTo(left[0]!.rect.x, 3);
+  expect(left[0]!.rect.x + left[0]!.rect.w).toBeLessThan(g.marks.center.x);
+  // Pane B mirrors it, on the one shared scale.
+  expect(right[1]!.rect.x + right[1]!.rect.w).toBeCloseTo(right[0]!.rect.x, 3);
+  expect(right[0]!.rect.w / left[0]!.rect.w).toBeCloseTo(10 / 30);
+  expect(g.labels.filter((l) => !l.hidden && l.text === 'n/a').map((l) => l.id)).toEqual(['na:a:z']);
+  expect(g.warnings.map((w) => w.code)).not.toContain('butterfly-negative');
+  // The old look stays behind `negatives: 'magnitude'`.
+  const old = layoutButterfly(data, { ...options, negatives: 'magnitude' });
+  expect(old.marks.left.every((m) => Math.abs(m.rect.x + m.rect.w - old.marks.center.x) < 1e-6)).toBe(true);
+  expect(old.warnings.map((w) => w.code)).toContain('butterfly-negative');
+  // Own scales draw a value axis under each pane; a shared scale draws none.
+  expect(layoutButterfly(data, { ...options, sharedScale: false }).axes.filter((axis) => axis.axis === 'x')).toHaveLength(2);
+  expect(g.axes.filter((axis) => axis.axis === 'x')).toHaveLength(0);
+});

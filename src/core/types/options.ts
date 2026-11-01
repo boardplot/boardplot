@@ -895,6 +895,8 @@ export interface ButterflyOptions extends BaseOptionsFor<'butterfly'> {
   centerColumnWidth?: number;
   sortBy?: 'sheet' | 'a' | 'b' | 'sum' | 'diff';
   sharedScale?: boolean; // default true
+  /** A negative value: 'direction' runs its bar from the pane's zero line toward the names, 'magnitude' draws |value| outward in a lighter tint. Default 'direction'. */
+  negatives?: 'direction' | 'magnitude';
 }
 export interface WaterfallOptions extends BaseOptionsFor<'waterfall'> {
   /** Authored value-axis title above a vertical bridge; horizontal bridges do not print it. */

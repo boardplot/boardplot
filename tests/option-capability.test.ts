@@ -423,6 +423,7 @@ describe('published option behaviour census', () => {
     ["bartable mekko slope", "highlight", "The selected id changes no mark in this representative fixture."],
     ["bartable box bullet choropleth cohort gantt grid histogram kpi likert pvm pyramid scatter sparkline status dimswitch table tilemap sankey treemap waffle", "annotations", "This note or edited annotation changes no SVG and gives no new warning naming annotations."],
     ["box", "showObservations", "The representative fixture has no observation marks to remove."],
+    ["butterfly", "negatives", "Fixture customer-spend has no SVG or option-warning change with \"magnitude\"."],
     ["butterfly", "sortBy", "Fixture customer-spend has no SVG or option-warning change with \"sheet\"."],
     ["choropleth", "topN", "Fixture german-states-revenue has no SVG or option-warning change with {\"n\":2}."],
     ["choropleth", "labelRegions", "Fixture german-states-revenue has no SVG or option-warning change with []."],
