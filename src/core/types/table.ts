@@ -534,6 +534,13 @@ export interface TableOptions extends BaseOptionsFor<'table'> {
    */
   frameFill?: 'values' | 'none';
   /**
+   * Spare height of a pinned canvas (a slide, a print page, an authored
+   * height). 'rows' (default) spreads it over the leaf rows as air, up to
+   * 16 px above and below each line. 'none' keeps the rows at their natural
+   * height. An open height takes the rows' own height either way.
+   */
+  heightFill?: 'rows' | 'none';
+  /**
    * Lines a row label may take before it is cut with an ellipsis (default 2).
    * A label breaks at a space or after `_`, `-`, `/` or `.`, so a long
    * campaign name such as `Brand_Paid-Social_FB_Q4` wraps instead of ending

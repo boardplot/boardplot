@@ -3281,6 +3281,7 @@ fixtures.push(
   { id: 'group-ground-none', title: 'No group ground at all', kind: 'example', tags: [], data: groupsData(), options: { title: 'Revenue is folded and costs are open', groupGround: 'none', expansion: { collapsed: ['revenue'] } } },
   { id: 'frame-fill-values', title: 'Under rowExtent frame the value tracks grow until every layer ends at the frame edge', kind: 'example', tags: [], data: groupsData(), options: { title: 'Rows and columns end together', rowExtent: 'frame', frameFill: 'values', size: { width: 720 } } },
   { id: 'frame-fill-none', title: 'The old frame: columns keep their widths and an empty stretch carries the rows to the edge', kind: 'example', tags: [], data: groupsData(true), options: { title: 'The rows run on past the columns', rowExtent: 'frame', frameFill: 'none', fitFormats: true, size: { width: 720 } } },
+  { id: 'height-fill-none', title: 'A pinned height keeps the rows at their natural height and leaves the rest empty', kind: 'example', tags: [], data: groupsData(), options: { title: 'Rows keep their natural height', heightFill: 'none', size: { width: 720, height: 405 } } },
   { id: 'table-look-keys', title: 'A theme sets the quiet row rule, its width and the secondary ink; each open block opens on the rule ink', kind: 'example', tags: [], data: groupsData(), options: { title: 'Costs rose less than revenue', theme: { preset: 'boardroom', overrides: { table: { ruleInk: '#B9C7D6', ruleWidths: { row: 1 }, inks: { secondary: '#3A5F86' }, blockRule: 'rule' } } } } },
 );
 

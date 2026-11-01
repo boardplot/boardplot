@@ -33,7 +33,7 @@ import { rowLabelBand } from '../../label/rowLabels';
 import { labelCtx, PRIORITY, solveLabels, type LabelRequest } from '../../label/solver';
 import { accessibleTitle, NormalizeError, resolveSize, resolveSubtitle } from '../../normalize/shared';
 import { formatAutomaticPercent, formatShare, numberRange } from '../../format';
-import { rowDrivenHeight } from '../../rowCanvas';
+import { fixedHeightCanvas, rowDrivenHeight } from '../../rowCanvas';
 import { CARD_CLASS_WIDTH, heightOmitted, rowSizing } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { isNumberAlone } from '../../textRole';
@@ -80,6 +80,9 @@ const MIN_RUN = 40;
 const PREFERRED_RUN = 48;
 const ROW_PITCH = 28;
 const BAR_H = 14;
+/** The most a pinned canvas stretches a row, as a multiple of the natural pitch, and the share of that growth the bar takes. */
+const MAX_ROW_GROWTH = 1.25;
+const BAR_GROWTH = 0.9;
 // A panel prints its parts inside the bars up to this many decimals; a part keeps this padding each side.
 const PART_DECIMALS = 1;
 const PART_PAD = 3;
@@ -818,7 +821,7 @@ function layoutBarTableOnce(
   // tightens them down to the bar and the label plus a little air.
   const house = fixedBarRow(theme, rowText.map((text) => text.h + 4));
   const naturalRowH = house?.step ?? Math.max(ROW_PITCH, maxOf(rowText.map((text) => text.h + 4)));
-  const barH = house ? house.step * house.fraction : BAR_H;
+  let barH = house ? house.step * house.fraction : BAR_H;
   const floorRowH = Math.max(barH + 4, maxOf(rowText.map((text) => text.h + 2)));
   const rowCount = rows.length + (showTotal ? 1 : 0);
   const blockH = headH + HEAD_GAP + (showTotal ? TOTAL_GAP : 0);
@@ -865,7 +868,11 @@ function layoutBarTableOnce(
   const compactTotalH = interleaved ? totalLineH + totalBars.length * barLineH : totalLineH + barLineH;
   const compactBlockH = (p: number) => headH + HEAD_GAP + rowsSpan + (showTotal ? TOTAL_GAP : 0) + (totalIn(p) ? compactTotalH : 0);
   const compactRowsH = interleaved ? compactBlockH(0) : panels.reduce((sum, _entry, p) => sum + compactBlockH(p), 0) + (panels.length - 1) * BLOCK_GAP;
-  const rowH = compact ? barLineH : Math.max(floorRowH, Math.min(naturalRowH, (plot.h - blockH) / rowCount));
+  // A pinned canvas with height to spare gives it to the rows, up to a quarter over the natural pitch,
+  // and the bar thickens with them (14 px in a 28 px row, 20 px in a 35 px row). A theme row is fixed.
+  const spareRowH = options.heightFill !== 'none' && fixedHeightCanvas(options) && !compact && !house ? Math.floor(Math.min(naturalRowH * MAX_ROW_GROWTH, (plot.h - blockH) / rowCount)) : 0;
+  const rowH = compact ? barLineH : Math.max(floorRowH, Math.min(naturalRowH, (plot.h - blockH) / rowCount), spareRowH);
+  if (rowH > naturalRowH) barH += Math.round((rowH - naturalRowH) * BAR_GROWTH);
   // Cascade bars fill the row, so a value reads inside them.
   // Full form: 20 px bars in a 28 px row, the Total bar 22 px; interleaved bars keep barH.
   const cellBarH = cascade ? (interleaved ? barH : Math.max(barH, rowH - (compact ? 6 : 8))) : barH;

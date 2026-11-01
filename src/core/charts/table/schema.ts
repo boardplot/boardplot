@@ -433,18 +433,21 @@ export const tableOptionsObject = baseOptionsSchema.safeExtend(refusedBaseOption
   frameFill: z.enum(['values', 'none']).optional()
     .meta({ default: 'values' })
     .describe("Under rowExtent 'frame'. 'values' (default): automatic value tracks grow in whole pixels, up to maxGrowth (default 2.5). An unauthored label track takes the rest. 'none': columns keep their widths; an empty track carries the row ground and rules to the edge."),
+  heightFill: z.enum(['rows', 'none']).optional()
+    .meta({ default: 'rows' })
+    .describe("Spare canvas height. 'rows' (default) spreads it over leaf rows as air, up to 16 px a side. 'none' leaves it empty."),
   rowLabelLines: z.union([z.literal(1), z.literal(2)]).optional()
     .meta({ default: 2 })
-    .describe("Lines a row label may take before it is cut with an ellipsis (default 2). A label breaks at a space or after _ - / or a dot, so a long campaign name wraps instead of ending in '…'. 1 keeps every label on one line. The hover card always prints the full name."),
+    .describe("Lines a row label may take before a cut (default 2). A label breaks at a space or after _ - / or a dot, so a long campaign name wraps instead of ending in '…'. 1 keeps every label on one line. The hover card always prints the full name."),
   lastTrackFlex: z.boolean().optional()
-    .describe('Extend the last track to the frame edge only when it has no authored width and rowExtent is tracks. Default false.'),
+    .describe('Last unauthored track takes the spare frame width when rowExtent is tracks. Default false.'),
   rowExtent: z.enum(['tracks', 'frame']).optional()
     .meta({ default: 'frame' })
     .describe("Where rows end. 'frame' (default) fills the width inside the frame margins. An explicit 'frame' also carries row grounds and rules through authored side margins. frameFill controls track growth. 'tracks' stops rows at the last column. Column bands stop at their columns. Tables use horizontal rules and explicit column separators; there is no single vertical end rule."),
   sortIndicator: z.enum(['all', 'sorted']).optional()
-    .describe("Which sortable headers draw a chevron. 'all' (the default) draws one on every sortable header; 'sorted' draws it on the sorted one alone and keeps the others' reserve, so no track moves."),
+    .describe("Sortable headers with a chevron. 'all' (the default) draws one on every sortable header; 'sorted' draws it on the sorted one alone and keeps the others' reserve, so no track moves."),
   levelOffset: z.number().int().min(-4).max(4).optional()
-    .describe('Shift non-total rows down the level ladder. Default 0. A board whose top rows are groups rather than KPI lines reads one rung too heavy: 1 steps them down in size, weight, air, ground, indent and label ink, -1 steps them up. The rungs stay floored at the top and at the deepest step.'),
+    .describe('Shift body rows down the ladder. Default 0. A board whose top rows are groups rather than KPI lines reads one rung too heavy: 1 steps them down in size, weight, air, ground, indent and label ink, -1 steps them up. The rungs stay floored at the top and at the deepest step.'),
   cellPadX: z.number().min(0).max(24).optional()
     .describe('Horizontal cell padding in px. Default 12; only when it cannot fit, use 5 for 20–24 columns or 3 for 25 or more.'),
   groupRule: z.enum(['label', 'span']).optional()
