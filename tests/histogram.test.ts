@@ -659,6 +659,19 @@ function svg(geometry: Geometry<HistogramMarks, HistogramDerived>): string {
 
 
 describe('histogram boundaries and frequency', () => {
+  // At width 1400 with 20 bins the maximum edge label was missing and two labels collided, because the spacing check assumed every label is centred.
+  it('keeps the outer bin edges visible without crowding their neighbours', () => {
+    const geometry = layoutHistogram({ observations: ramp(81, 2500, 100000) }, { bins: 20, size: { width: 1400, height: 675 } });
+    const labels = geometry.labels.filter((label) => label.kind === 'category' && !label.hidden)
+      .sort((a, b) => a.rect.x - b.rect.x);
+    expect(labels[0]!.id).toBe('edge:0');
+    expect(labels.at(-1)!.id).toBe(`edge:${geometry.derived.counts.length}`);
+    expect(geometry.labels.filter((label) => label.kind === 'category' && label.hidden)).toHaveLength(0);
+    for (let i = 1; i < labels.length; i++) {
+      const previous = labels[i - 1]!.rect;
+      expect(labels[i]!.rect.x - previous.x - previous.w).toBeGreaterThanOrEqual(16);
+    }
+  });
   it('places labelled boundaries at one stride, with a tick at every boundary', () => {
     const f = fixtures.find((f) => f.id === 'order-value-distribution')!;
     for (const bins of [1, 10]) {
