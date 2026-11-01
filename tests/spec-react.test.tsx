@@ -75,9 +75,9 @@ it('applies explicit host settings after document and chart settings', async () 
   } }] };
   const resolve = vi.spyOn(tableResolver, 'resolveTable');
   await mountedMarkup(<BoardplotTheme theme="studio" locale="it"><BoardplotChart spec={document} /></BoardplotTheme>);
-  expect(resolve.mock.calls.at(-1)![1]).toMatchObject({ theme: 'capital', locale: { language: 'de-x-marks-pc' } });
+  expect(resolve.mock.calls.at(-1)![1]).toMatchObject({ theme: 'capital', locale: { language: 'de-x-marks-cp' } });
   await mountedMarkup(<BoardplotTheme theme="studio" locale="it"><BoardplotChart spec={document} theme="boardroom" /></BoardplotTheme>);
-  expect(resolve.mock.calls.at(-1)![1]).toMatchObject({ theme: 'boardroom', locale: { language: 'de-x-marks-pc' } });
+  expect(resolve.mock.calls.at(-1)![1]).toMatchObject({ theme: 'boardroom', locale: { language: 'de-x-marks-cp' } });
 });
 
 it('recovers from an explicit small frame and changes selected chart types', () => {

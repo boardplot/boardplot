@@ -334,14 +334,14 @@ describe('histogram disclosures', () => {
       const texts = ['1,234', '1.234k'];
       expect(exact.labels.filter(label => label.kind === 'point').every(label => texts.includes(label.text))).toBe(true);
     }
-    for (const language of ['de-DE', 'fr-FR']) {
+    for (const [language, text] of [['de-DE', '1,1k'], ['fr-FR', '1.1k']] as const) {
       const localized = requireGeometry(getChart('histogram')!.layout({ observations: Array.from({ length: 10 }, (_, i) => Array(1100).fill(i + 0.5)).flat() }, {
         target: 'dashboard', title: false, bins: { width: 1, anchor: 0 }, canvas: { margin: 0 }, size: { width: 320, height: 400 }, locale: { language },
       }));
       const points = localized.labels.filter(label => label.kind === 'point' && !label.hidden);
       expect(points).toHaveLength(10);
-      // The language changes words only, never the marks.
-      expect(points.every(label => label.text === '1.1k')).toBe(true);
+      // German takes its own decimal mark; French keeps the default marks.
+      expect(points.every(label => label.text === text)).toBe(true);
     }
   });
 

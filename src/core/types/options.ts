@@ -64,11 +64,11 @@ export interface Subtitle {
 }
 
 export interface LocaleSpec {
-  /** BCP 47 tag ('de', 'fr-FR'). Changes words only, such as notes and month names; English when absent. It never changes the decimal or grouping marks. */
+  /** BCP 47 tag ('de', 'fr-FR'). Changes words, such as notes and month names, and the default number marks: German prints 1.234,5; English when absent. */
   language?: string;
-  /** Decimal mark of every number the chart prints. Default '.'. The language does not change it. */
+  /** Decimal mark of every number the chart prints. Default by language: ',' for German, '.' otherwise. */
   decimal?: '.' | ',';
-  /** Grouping mark of every number the chart prints. Default ',', or '.' with decimal ','. A value equal to the decimal mark uses that fallback. */
+  /** Grouping mark of every number the chart prints. Default by language: '.' for German, otherwise ',' ('.' with decimal ','). A value equal to the decimal mark uses that fallback. */
   thousands?: ',' | '.' | '’' | ' ';
   minusGlyph?: '−' | '-';
   weekStartsOn?: 0 | 1;

@@ -187,15 +187,19 @@ describe('categoryAxis.dateTicks', () => {
 describe('provider locale reaches chart layout', () => {
   const data = { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }],
     series: [{ id: 'value', label: 'Value', values: [12.5, 1234.5] }] };
-  // The language changes words only: an inherited German language must not switch the marks, and the inherited marks reach authored examples too.
-  it.each(['column', 'bar', 'line', 'dot'])('%s keeps the default marks under an inherited language and takes inherited marks', (type) => {
-    const request = resolveChartRequest({ type, data, options: { size: { width: 1000, height: 550 } } }, { locale: 'de-DE' });
-    const geo = requireGeometry(getChartDefinition(type)!.layout(request.data as never, request.options as never));
-    expect(texts(geo)).toContain('1,234.5');
-    expect(texts(geo)).not.toContain('1.234,5');
-    const explicit = resolveChartRequest({ type, data, options: { format: '1,234.5', size: { width: 1000, height: 550 } } }, { locale: { language: 'de-DE', decimal: ',' } });
-    expect(texts(requireGeometry(getChartDefinition(type)!.layout(explicit.data as never, explicit.options as never))))
-      .toContain('1.234,5');
+  // German text printed English marks (1,234.5) beside authored German ones; the language now gives the default marks and an authored mark still wins per key.
+  it.each(['column', 'bar', 'line', 'dot'])('%s takes the default marks from the language and the authored marks over them', (type) => {
+    const printed = (locale: unknown, format?: string) => {
+      const request = resolveChartRequest({ type, data, options: { ...(format ? { format } : {}), size: { width: 1000, height: 550 } } }, { locale: locale as never });
+      return texts(requireGeometry(getChartDefinition(type)!.layout(request.data as never, request.options as never)));
+    };
+    expect(printed('de-DE')).toContain('1.234,5');
+    expect(printed('de-AT')).toContain('1.234,5');
+    expect(printed('de-CH')).toContain("1'234.5");
+    expect(printed('en-GB')).toContain('1,234.5');
+    expect(printed({ language: 'de-DE', decimal: '.', thousands: ',' })).toContain('1,234.5');
+    expect(printed({ language: 'de-DE', decimal: '.' })).toContain('1,234.5');
+    expect(printed({ language: 'de-DE', decimal: ',' }, '1,234.5')).toContain('1.234,5');
   });
   // Explicit marks reach charts outside the table family: an axis tick or value label from an English example must not keep its point.
   it('prints axis ticks and value labels with explicit locale marks', () => {
@@ -203,18 +207,17 @@ describe('provider locale reaches chart layout', () => {
     expect(texts(geo)).toMatch(/\d,\d/);
     expect(texts(geo)).not.toMatch(/\d\.\d/);
   });
-  it('keeps the default marks for unauthored table numbers under a language', () => {
+  it('prints unauthored table numbers with the marks of the language', () => {
     const request = resolveChartRequest({ type: 'table', data: {
       columns: [{ id: 'name', kind: 'rowLabel', label: 'Name' }, { id: 'value', kind: 'value', label: 'Value' }],
       rows: [{ id: 'a', label: 'A', cells: { value: 12.5 } }],
     }, options: {} }, { locale: 'de-DE' });
     const table = getChartDefinition('table')!.layout(request.data as never, request.options as never) as any;
-    expect(JSON.stringify(table)).toContain('12.5');
-    expect(JSON.stringify(table)).not.toContain('12,5');
+    expect(JSON.stringify(table)).toContain('"displayed":"12,5"');
   });
 });
 
-// Cohort defaults must use German words without changing authored labels or number separators.
+// Cohort defaults must use German words and German number marks without changing authored labels.
 it('uses German wording in cohort heatmaps and exhibit tables', () => {
   const data = { cohorts: [
     { id: 'a', label: 'Authored Alpha', active: [1000, 600, 400] },
@@ -229,7 +232,8 @@ it('uses German wording in cohort heatmaps and exhibit tables', () => {
     expect(words).toContain('Authored Alpha');
     expect(words).toContain('Periode 0');
     expect(words).not.toMatch(/Retention|Cohort size|Weighted average|Period [0-9]|Low|High|blank|cohorts/);
-    expect(words).not.toContain('1.000');
+    expect(words).toContain('1.000');
+    expect(words).not.toContain('1,000');
     expect(geo.a11y.desc).not.toMatch(/Cohort |cohorts|Weighted average|not reached/);
   }
 });

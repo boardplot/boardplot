@@ -1215,16 +1215,16 @@ export const baseOptionsSchema = z.object({
     .object({
       language: z.string().min(2).max(35)
         .refine((tag) => canonicalLanguage(tag) !== null, { message: 'not a BCP 47 language tag; use a tag such as "de" or "de-DE"' })
-        .optional().describe('BCP 47 language tag. Changes words only, such as notes and month names. It never changes the decimal or grouping marks; they come only from locale.decimal and locale.thousands. E.g. "de"; "de_DE" is read as "de-DE"; "en-US" puts the month first (Sep 4).'),
-      decimal: z.enum(['.', ',']).optional().describe("Decimal mark of every number the chart prints. Default '.'. The language does not change it."),
-      thousands: z.enum([',', '.', '’', ' ']).optional().describe("Grouping mark of every number the chart prints. Default ',', or '.' with decimal ','. The language does not change it. A value equal to the decimal mark uses that fallback."),
+        .optional().describe('BCP 47 language tag. Changes words, such as notes and month names, and the default number marks: German (de, de-DE, de-AT) prints 1.234,5 and Swiss German (de-CH, de-LI) prints 1 234.5 with an apostrophe as the grouping mark; locale.decimal and locale.thousands win per key. E.g. "de"; "de_DE" is read as "de-DE"; "en-US" puts the month first (Sep 4).'),
+      decimal: z.enum(['.', ',']).optional().describe("Decimal mark of every number the chart prints. Default by language: ',' for German, '.' otherwise."),
+      thousands: z.enum([',', '.', '’', ' ']).optional().describe("Grouping mark of every number the chart prints. Default by language: '.' for German, otherwise ',' ('.' with decimal ','). A value equal to the decimal mark uses that fallback."),
       minusGlyph: z.enum(['−', '-']).optional().describe('Minus glyph for locale-derived table formats; default Unicode minus.'),
       weekStartsOn: z.union([
         z.literal(0).describe('Sunday as the requested first weekday.'),
         z.literal(1).describe('Monday as the requested first weekday.'),
       ]).optional().describe('First weekday for week-granularity date ticks; default Monday. Line date ticks read this field, other layouts ignore it and report it.'),
     })
-    .optional().describe('Language and number marks. decimal and thousands set the marks of every number, as in a spreadsheet (default 1,234.5); a format example gives only the shape. language changes words only, never the marks.'),
+    .optional().describe('Language and number marks. decimal and thousands set the marks of every number, as in a spreadsheet (default 1,234.5, or 1.234,5 for German); a format example gives only the shape. language sets the default marks and the words.'),
   strings: z
     .object({
       newItems: z.string().min(1).optional().describe('PVM entry-bar name; default New items.'),

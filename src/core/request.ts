@@ -44,7 +44,7 @@ export interface RequestContext {
   /** Inherited primary label size in px (options.textSize); a chart's own textSize or textScale wins. */
   textSize?: number;
   theme?: ThemeRef;
-  /** Inherited locale. decimal and thousands set the marks of every number, and a format example gives only the shape; language changes words only. */
+  /** Inherited locale. decimal and thousands set the marks of every number, and a format example gives only the shape. Without them the language gives the marks: German prints 1.234,5. */
   locale?: LocaleSpec | string;
   /** Host wording for renderer-composed labels; an explicit chart option wins per key. */
   strings?: StringsSpec;
