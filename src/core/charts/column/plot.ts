@@ -570,11 +570,10 @@ function columnBand(
       const widest = () => Math.max(1, maxOf(plan.infos.filter((_, ci) => plan.keep[ci]).map(info => info.w)));
       const before = widest();
       const boldFont = { ...plan.font, weight: emphasisWeight(theme) };
-      plan.infos.forEach((info, ci) => {
-        if (cats[ci]!.role === 'total' || domain.highlights.has(cats[ci]!.id)) {
-          info.w = Math.max(info.w, ...info.lines.map(line => measure(line, boldFont).width));
-        }
-      });
+      // The row plan cache shares infos with this plan, so the drawn widths go on copies.
+      plan.infos = plan.infos.map((info, ci) => cats[ci]!.role === 'total' || domain.highlights.has(cats[ci]!.id)
+        ? { ...info, w: Math.max(info.w, ...info.lines.map(line => measure(line, boldFont).width)) }
+        : info);
       plan.rowHeight += (widest() - before) * (plan.rotation === 90 ? 1 : Math.SQRT1_2);
     }
     return plan;

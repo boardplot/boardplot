@@ -26,14 +26,15 @@ describe('the description states the drawn numbers', () => {
 });
 
 describe('drawn text stays on the canvas', () => {
+  const names = [
+    'Membership-supported equipment', 'Subscription-supported training',
+    'Equipment-maintenance contracts', 'Distribution-management services',
+    'Subscription-management services', 'Software-maintenance agreements',
+    'Equipment-rental arrangements', 'Warehouse-management services',
+  ];
+
   // A highlighted rotated column name measured at regular weight was clipped at the left edge.
   it('column: highlighted rotated names fit at their drawn weight in every variant', () => {
-    const names = [
-      'Membership-supported equipment', 'Subscription-supported training',
-      'Equipment-maintenance contracts', 'Distribution-management services',
-      'Subscription-management services', 'Software-maintenance agreements',
-      'Equipment-rental arrangements', 'Warehouse-management services',
-    ];
     const data = {
       categories: names.map((label, i) => ({ id: `c${i}`, label })),
       series: [
@@ -53,6 +54,23 @@ describe('drawn text stays on the canvas', () => {
       expect(label.font.weight).toBe(700);
       expect(clippedTextWarnings(geometry, defaultMeasurer)).toEqual([]);
     }
+  });
+
+  // A retried row plan read the bold widths back from the plan cache and lost the extra row height.
+  it('column: a retried row plan keeps the height of a highlighted rotated name', () => {
+    const fixture = getFixtures('column').find((f) => f.id === 'stacked-series-cagr')!;
+    const data = structuredClone(fixture.data) as { categories: { id: string; label?: string }[] };
+    data.categories.forEach((c, i) => { c.label = names[i % names.length]; });
+    const first = data.categories[0]!.id;
+    const baseline = (highlight?: string) => {
+      const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'column', data,
+        options: { ...fixture.options, ...(highlight ? { highlight } : {}), size: { width: 720, height: 700 } },
+        annotations: fixture.annotations,
+      } as never)) as Geometry;
+      const axis = geometry.scene.find(node => node.id === 'axis:baseline');
+      return axis?.t === 'line' ? axis.y1 : NaN;
+    };
+    expect(baseline()).toBeGreaterThan(baseline(first));
   });
 
   // A bold extreme label was seated at its regular width and ran 5 px past the right edge.
