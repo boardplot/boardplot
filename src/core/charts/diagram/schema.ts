@@ -133,7 +133,7 @@ const nodeSchema = z
     position: pointSchema.optional().describe('Authored node position in normalized plot coordinates.'),
     ports: z.array(portSchema).max(16).optional().describe('Up to 16 named connection ports, unique within this node.'),
     groupId: boundedIdSchema.optional().describe('Id of an existing group containing this node.'),
-    laneId: boundedIdSchema.optional().describe('Id of an existing lane containing this node.'),
+    laneId: boundedIdSchema.optional().describe("Id of an existing lane containing this node. Architecture with flow 'lanes' requires it except on policy-strip nodes, which must omit it."),
     order: z.number().int().safe().optional().describe('Ordering key: nodes sort by order, a node without one by its 0-based position in nodes, ties by id. Automatic step numbers follow this order.'),
     track: boundedIdSchema.optional().describe('Architecture only: named cross-axis track. Nodes in one track line up across zones or lanes.'),
     span: z.enum(['full']).optional().describe('Architecture only: a wide band across its lane, or a full-height rail in its zone.'),
@@ -231,7 +231,7 @@ const calloutSchema = z.strictObject({
     z.strictObject({ nodeId: boundedIdSchema.describe('Id of the node this callout marks.') }),
     z.strictObject({ edgeId: boundedIdSchema.describe('Id of the edge this callout marks.') }),
     z.strictObject({ groupId: boundedIdSchema.describe('Id of the zone this callout marks.') }),
-  ]).describe('The node, edge or zone that carries the number.'),
+  ]).describe("The node, edge or zone that carries the number. Each target takes one callout. In flow 'lanes', a zone must contain a node."),
   title: textSchema(80, true).describe('Short name in the key row, at most 80 Unicode code points.'),
   text: textSchema(200, true).describe('Explanation in the key row, at most 200 Unicode code points.'),
 }).describe('Architecture only: a numbered disc, explained in a key row when it has a title or text.');

@@ -96,7 +96,7 @@ Deterministic node-edge diagrams with eight consulting presets, obstacle-aware r
 | nodes[].ports[].intent | string |  | Allowed edge direction: incoming, outgoing or both. One of `'in'`, `'out'`, `'bidi'`. |
 | nodes[].ports[].capacity | integer |  | Maximum number of edge endpoints assigned to this port. |
 | nodes[].groupId | string |  | Id of an existing group containing this node. |
-| nodes[].laneId | string |  | Id of an existing lane containing this node. |
+| nodes[].laneId | string |  | Id of an existing lane containing this node. Architecture with flow 'lanes' requires it except on policy-strip nodes, which must omit it. |
 | nodes[].order | integer |  | Ordering key: nodes sort by order, a node without one by its 0-based position in nodes, ties by id. Automatic step numbers follow this order. |
 | nodes[].track | string |  | Architecture only: named cross-axis track. Nodes in one track line up across zones or lanes. |
 | nodes[].span | string |  | Architecture only: a wide band across its lane, or a full-height rail in its zone. One of `'full'`. |
@@ -153,7 +153,7 @@ Deterministic node-edge diagrams with eight consulting presets, obstacle-aware r
 | channels[].label | string | yes | The shared label, at most 80 Unicode code points. |
 | callouts | array |  | Architecture only: up to 16 numbered discs, numbered in this order. |
 | callouts[].id | string | yes | Trimmed identifier of at most 80 Unicode code points; control characters and the auto: prefix are reserved. |
-| callouts[].target | object | yes | The node, edge or zone that carries the number. |
+| callouts[].target | object | yes | The node, edge or zone that carries the number. Each target takes one callout. In flow 'lanes', a zone must contain a node. |
 | callouts[].target.nodeId (callouts[].target branch 1) | string | yes | Id of the node this callout marks. |
 | callouts[].target.edgeId (callouts[].target branch 2) | string | yes | Id of the edge this callout marks. |
 | callouts[].target.groupId (callouts[].target branch 3) | string | yes | Id of the zone this callout marks. |

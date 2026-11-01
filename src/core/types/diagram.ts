@@ -93,6 +93,7 @@ export interface DiagramNode {
   position?: DiagramFractionPoint;
   ports?: DiagramPort[];
   groupId?: string;
+  /** Architecture with flow 'lanes': required except on policy-strip nodes, which must omit it. */
   laneId?: string;
   order?: number;
   /** Architecture: a named cross-axis track. Nodes in one track line up across zones or lanes. */
@@ -169,7 +170,7 @@ export interface DiagramChannel {
   label: string;
 }
 
-/** Architecture: a numbered disc on a node, edge or zone, explained in a key row. */
+/** Architecture: one numbered disc per node, edge or zone, explained in a key row. A zone in lanes flow must contain a node. */
 export interface DiagramCallout {
   id: string;
   target: { nodeId: string } | { edgeId: string } | { groupId: string };

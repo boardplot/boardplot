@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import { render } from '../src/cli/render';
 import { layoutDiagram } from '../src/core/charts/diagram/layout';
+import { diagramSceneId } from '../src/core/charts/diagram/ids';
 import { rectLineDistance, type Rect } from '../src/core/geometry';
 import type { DiagramData, DiagramMarks, DiagramOptions, DiagramPolylineRoute } from '../src/core/types/diagram';
 import { canDraw, getChartDefinition, measure, resolveChartRequest } from '../src/index';
@@ -105,6 +106,9 @@ describe('design system colours', () => {
 describe('actionable input refusals', () => {
   const bar = { type: 'bar', data: { categories: ['a', 'b'], series: [{ id: 's', values: [1, 2] }] }, options: { title: 'Example' } };
   const errors = (spec: unknown) => (render({ spec }).body.errors ?? []) as { code: string; path: string; message: string; suggest?: string }[];
+  const architectureNode = (id: string, fields: Partial<DiagramData['nodes'][number]> = {}): DiagramData['nodes'][number] => ({ id, kind: 'step', shape: { kind: 'rectangle' }, label: id, ...fields });
+  const architectureLane = { id: 'l', label: 'Layer', orientation: 'horizontal' as const };
+  const architectureLanes = { variant: 'architecture', flow: 'lanes' } as const;
 
   // An unknown theme colour key must name the supported roles so the caller can repair it.
   it('lists the accepted theme colour keys', () => {
@@ -130,6 +134,59 @@ describe('actionable input refusals', () => {
     const node = (id: string) => ({ id, kind: 'step', shape: { kind: 'rectangle' }, label: id, laneId: 'l', track: 't' });
     expect(() => getChartDefinition('diagram')!.layout({ nodes: [node('a'), node('b')], lanes: [{ id: 'l', label: 'Layer', orientation: 'horizontal' }] }, { variant: 'architecture', flow: 'lanes' }))
       .toThrow(expect.objectContaining({ code: 'diagram-track-conflict', message: expect.stringContaining("'a' and 'b'") }));
+  });
+
+  // An ungrouped node without a lane was never placed, so an edge on it crashed the layout.
+  it('refuses a lane node without a lane when there is no policy strip', () => {
+    const data = { nodes: [architectureNode('a'), architectureNode('b', { laneId: 'l' })], lanes: [architectureLane],
+      edges: [{ id: 'e', source: { nodeId: 'a' }, target: { nodeId: 'b' } }] };
+    expect(() => getChartDefinition('diagram')!.layout(data, architectureLanes))
+      .toThrow(expect.objectContaining({ code: 'invalid-membership', path: 'nodes[a].laneId', suggest: expect.stringContaining('laneId') }));
+    const withPolicy = { nodes: [architectureNode('a', { groupId: 'p' }), architectureNode('b', { laneId: 'l' })], lanes: [architectureLane],
+      groups: [{ id: 'p', title: 'Policy', kind: 'policy' }] };
+    expect(() => getChartDefinition('diagram')!.layout(withPolicy, architectureLanes)).not.toThrow();
+  });
+
+  // A callout on an empty lane zone crashed because the zone has no frame.
+  it('refuses a callout on an empty zone in lanes flow', () => {
+    const data = { nodes: [architectureNode('a', { laneId: 'l' })], lanes: [architectureLane],
+      groups: [{ id: 'z', title: 'Zone' }], callouts: [{ id: 'c', target: { groupId: 'z' } }] };
+    expect(() => getChartDefinition('diagram')!.layout(data, architectureLanes))
+      .toThrow(expect.objectContaining({ code: 'invalid-membership', path: 'callouts[c].target', suggest: expect.stringContaining('add a node') }));
+    expect(() => getChartDefinition('diagram')!.layout({ ...data, groups: [{ id: 'z', title: 'Policy', kind: 'policy' }] }, architectureLanes)).not.toThrow();
+    expect(() => getChartDefinition('diagram')!.layout({ ...data, nodes: [architectureNode('a')], lanes: [] }, { variant: 'architecture' })).not.toThrow();
+  });
+
+  // A policy node assigned to a lane was placed outside its policy strip without a warning.
+  it('refuses a policy node assigned to a lane', () => {
+    const data = { nodes: [architectureNode('p', { groupId: 'policy', laneId: 'l' }), architectureNode('a', { laneId: 'l' })], lanes: [architectureLane],
+      groups: [{ id: 'policy', title: 'Policy', kind: 'policy' }] };
+    expect(() => getChartDefinition('diagram')!.layout(data, architectureLanes))
+      .toThrow(expect.objectContaining({ code: 'invalid-membership', path: 'nodes[p].laneId', suggest: expect.stringContaining('remove laneId') }));
+  });
+
+  // A protected lane zone's background covered its inner frame and hid the double border.
+  it('draws a protected lane zone frame over its background', () => {
+    const data = { nodes: [architectureNode('a', { laneId: 'l', groupId: 'z' })], lanes: [architectureLane], groups: [{ id: 'z', title: 'Zone', protected: true }] };
+    const { scene } = layoutDiagram(data, architectureLanes);
+    const background = scene.findIndex((item) => item.id === diagramSceneId('group', 'z'));
+    const inner = scene.findIndex((item) => item.id === diagramSceneId('protected', 'z'));
+    expect(background).toBeGreaterThanOrEqual(0);
+    expect(inner).toBeGreaterThan(background);
+  });
+
+  // Two callouts on one target overlap and hide one number even on a larger canvas.
+  it('refuses repeated callout targets by node, edge and zone', () => {
+    const data = { nodes: [architectureNode('same'), architectureNode('b', { groupId: 'same' })],
+      groups: [{ id: 'same', title: 'Zone' }], edges: [{ id: 'same', source: { nodeId: 'same' }, target: { nodeId: 'b' } }] };
+    const targets = [{ nodeId: 'same' }, { edgeId: 'same' }, { groupId: 'same' }];
+    for (const target of targets) {
+      const callouts = [{ id: 'one', target }, { id: 'two', target }];
+      expect(() => getChartDefinition('diagram')!.layout({ ...data, callouts }, { variant: 'architecture' }))
+        .toThrow(expect.objectContaining({ code: 'invalid-membership', path: 'callouts[two].target', suggest: expect.stringContaining('merge the callout text') }));
+    }
+    const callouts = targets.map((target, index) => ({ id: String(index), target }));
+    expect(() => getChartDefinition('diagram')!.layout({ ...data, callouts }, { variant: 'architecture' })).not.toThrow();
   });
 
   // Two channels with one id emit one scene id twice, which crashes the React renderer.

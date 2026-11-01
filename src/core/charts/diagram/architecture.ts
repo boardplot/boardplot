@@ -1610,7 +1610,7 @@ function emit(arrangement: Arrangement, geometry: Geometry, routed: Routed, env:
   }
   for (const zone of geometry.zones) {
     if (!groupById.get(zone.id)!.protected) continue;
-    scene.push(innerFrame(zone.id, zone.bounds, { seriesId: zone.id }));
+    (zone.dashed ? overlay : scene).push(innerFrame(zone.id, zone.bounds, { seriesId: zone.id }));
     lock(zone.id, geometry.locks.get(zone.id)!, { seriesId: zone.id });
   }
   // A hollow marker where a channel edge or any edge crosses a protected frame. It claims no security property.

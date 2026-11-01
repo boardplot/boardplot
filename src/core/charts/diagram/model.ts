@@ -145,8 +145,10 @@ function validateArchitecture(data: NormalizedDiagram, options: DiagramOptions &
     if (data.lanes.length === 0) throw new NormalizeError('invalid-membership', 'lanes', "flow 'lanes' requires data.lanes", 'add data.lanes, or remove options.flow');
     const vertical = data.lanes.find((lane) => lane.orientation !== 'horizontal');
     if (vertical) throw new NormalizeError('invalid-membership', `lanes[${vertical.id}].orientation`, "flow 'lanes' stacks horizontal lanes", `set lane '${vertical.id}' to orientation 'horizontal'`);
-    const outside = data.nodes.find((node) => !node.laneId && node.groupId !== policy);
+    const outside = data.nodes.find((node) => !node.laneId && (policy === undefined || node.groupId !== policy));
     if (outside) throw new NormalizeError('invalid-membership', `nodes[${outside.id}].laneId`, `flow 'lanes' requires every node to name its lane, and '${outside.id}' names none`, `set nodes[${outside.id}].laneId`);
+    const policyNode = data.nodes.find((node) => policy !== undefined && node.groupId === policy && node.laneId !== undefined);
+    if (policyNode) throw new NormalizeError('invalid-membership', `nodes[${policyNode.id}].laneId`, `policy node '${policyNode.id}' cannot also belong to a lane`, 'remove laneId from the policy node, or move it out of the policy strip');
   } else if (data.lanes.length > 0 || data.nodes.some((node) => node.laneId)) {
     throw new NormalizeError('invalid-membership', 'lanes', "flow 'columns' reads groups, not lanes", "set options.flow to 'lanes', or remove the lanes");
   }
@@ -199,10 +201,17 @@ function validateArchitecture(data: NormalizedDiagram, options: DiagramOptions &
     if (ends.target === undefined ? false : data.groups.find((group) => group.id === ends.target)?.kind === 'policy') throw new NormalizeError('invalid-membership', `edges[${id}]`, 'a policy strip takes no edges', 'end the edge on a zone');
   }
   const groupIds = new Set(data.groups.map((group) => group.id));
+  const calloutTargets = new Set<string>();
   for (const callout of data.callouts) {
     const target = callout.target;
     const known = 'nodeId' in target ? data.nodes.some((node) => node.id === target.nodeId) : 'edgeId' in target ? edgeIds.has(target.edgeId) : groupIds.has(target.groupId);
     if (!known) throw new NormalizeError('invalid-membership', `callouts[${callout.id}].target`, `callout '${callout.id}' names an unknown target`, 'name a node, edge or group of this diagram');
+    if ('groupId' in target && options.flow === 'lanes' && data.groups.find((group) => group.id === target.groupId)?.kind !== 'policy' && !data.nodes.some((node) => node.groupId === target.groupId)) {
+      throw new NormalizeError('invalid-membership', `callouts[${callout.id}].target`, `callout '${callout.id}' targets empty zone '${target.groupId}', which has no frame in flow 'lanes'`, `add a node to zone '${target.groupId}', or choose another target`);
+    }
+    const targetKey = 'nodeId' in target ? `node:${target.nodeId}` : 'edgeId' in target ? `edge:${target.edgeId}` : `group:${target.groupId}`;
+    if (calloutTargets.has(targetKey)) throw new NormalizeError('invalid-membership', `callouts[${callout.id}].target`, `callout '${callout.id}' targets a node, edge or zone that already has a callout`, 'merge the callout text into one callout');
+    calloutTargets.add(targetKey);
   }
 }
 
