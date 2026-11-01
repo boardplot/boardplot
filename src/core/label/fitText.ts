@@ -104,7 +104,19 @@ export function fitText(
     for (const width of widths) {
       for (const candidate of texts) {
         const tried = attempt(candidate, candidateFont, width, lines, measure, options.typeRole, options.breakAfter);
-        if (!tried.cut) return tried.fitted;
+        if (tried.cut) continue;
+        if (width === maxWidth) return tried.fitted;
+        // The wider budget is the most a name may take, not what it takes: it
+        // keeps the narrowest width, in whole px, that still holds it in `lines`.
+        let narrow = Math.ceil(maxWidth);
+        let fitted = tried.fitted;
+        for (let wide = width; wide - narrow >= 2;) {
+          const mid = Math.floor((narrow + wide) / 2);
+          const fewer = attempt(candidate, candidateFont, mid, lines, measure, options.typeRole, options.breakAfter);
+          if (fewer.cut) narrow = mid;
+          else { wide = mid; fitted = fewer.fitted; }
+        }
+        return fitted;
       }
     }
     return undefined;
