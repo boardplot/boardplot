@@ -36,3 +36,29 @@ describe('diverging classes and the midpoint', () => {
     expect(edges.every((edge, i) => i === 0 || edge > edges[i - 1]!)).toBe(true);
   });
 });
+
+// Regions the data never names drew the darkest outline on the page and carried automatic codes, and
+// a dark theme's land could match the lowest class: the land must stay quiet, unlabelled and apart.
+describe('regions the data never names', () => {
+  it('draw as quiet land like their key swatch, without codes, apart from the lowest class in a dark theme', async () => {
+    await import('../src/core/charts');
+    await import('../src/core/geo/packs');
+    const { layoutResolvedRequest, resolveChartRequest } = await import('../src/core/request');
+    const { paintColor } = await import('../src/core/theme');
+    const { palettePerceptualDistance } = await import('../src/core/themeRules');
+    const regions = [['DE', 10], ['FR', 20], ['AT', 30], ['IT', 40], ['ES', 50]].map(([id, value]) => ({ id, value }));
+    const layout = (theme: string) => layoutResolvedRequest(resolveChartRequest({
+      type: 'choropleth', data: { pack: 'eu27', regions }, options: { title: 'Sales by market', classes: 5 }, theme,
+    } as never)) as unknown as { scene: { id: string; fill?: unknown; stroke?: unknown }[]; labels: { owner: { categoryId?: string }; hidden?: boolean }[] };
+    const light = layout('standard');
+    const land = light.scene.find((node) => node.id === 'region:PT')!;
+    const swatch = light.scene.find((node) => node.id === 'legend-swatch:not-in-data')!;
+    expect(land.fill).toEqual(swatch.fill);
+    expect(swatch.stroke).toBeUndefined();
+    expect(land.stroke).toEqual({ token: 'background' });
+    expect(light.labels.filter((label) => !label.hidden).map((label) => label.owner.categoryId).filter((id) => id === 'PT' || id === 'PL')).toEqual([]);
+    const dark = resolveTheme('notation-dark');
+    const lowest = light.scene.find((node) => node.id === 'region:DE')!;
+    expect(palettePerceptualDistance(paintColor(dark, land.fill as never), paintColor(dark, lowest.fill as never))).toBeGreaterThanOrEqual(6);
+  });
+});

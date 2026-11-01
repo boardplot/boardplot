@@ -42,7 +42,7 @@ import type {
   ChoroplethMarks,
   ChoroplethOptions,
 } from './types';
-import { buildGeoScale, geoLabelFont, ingestGeoRegions, geoStatePattern, geoStateLabel, geoStateLegend, geoStateSummary, geoStateCounts, geoPolarityCaption, geoScaleHints } from '../geoScale';
+import { buildGeoScale, geoLabelFont, quietLandPaint, ingestGeoRegions, geoStatePattern, geoStateLabel, geoStateLegend, geoStateSummary, geoStateCounts, geoPolarityCaption, geoScaleHints } from '../geoScale';
 import { autoDecimals } from '../../formatPrecision';
 import { compareText } from '../../text';
 import { geoOverlayDiameter, geoOverlayInFrame, geoOverlayLegend, renderGeoOverlays, reserveGeoOverlayGlyphs } from './overlays';
@@ -276,8 +276,9 @@ export function layoutChoropleth(
   // The key and the summary name only states a reader can see: as a polygon, a marker or a label.
   const visibleStates = pack.regions.filter(region => region.polygons.length > 0 || visibleMarkerIds.has(region.id)).flatMap(region => statesById.has(region.id) ? [statesById.get(region.id)!] : []);
   pushAll(scale.legend, geoStateLegend(visibleStates, options));
+  const landPaint = quietLandPaint(scale.legend);
   if (pack.regions.some((region) => !valuesById.has(region.id))) scale.legend.push({
-    id: 'not-in-data', label: chartString(options, 'notInData'), paint: { token: 'inkMuted' }, pattern: 'outline', hollow: true,
+    id: 'not-in-data', label: chartString(options, 'notInData'), paint: landPaint,
   });
   warnings.push(...geoScaleHints(numericValues, options, fmt));
   const overlays = (data.overlays ?? []).filter(overlay => !omittedOverlays.has(overlay.id));
@@ -567,6 +568,9 @@ export function layoutChoropleth(
   // Visible no-data regions too small to contain hatch ink (desc discloses).
   const chipOnlyNoData: string[] = [];
   let undrawnUnlisted = 0;
+  // Regions the data never names draw first, as quiet land under the data regions' outlines.
+  const landStart = nodes.length;
+  const landNodes: SceneNode[] = [];
   for (const region of fitted.regions) {
     const value = valuesById.get(region.id) ?? null;
     const unlisted = !valuesById.has(region.id);
@@ -591,13 +595,13 @@ export function layoutChoropleth(
             regionStroke,
           )
       : '';
-    const fill: Paint = state ? { token: 'inkMuted' } : noData ? { token: 'background' } : scale.paint(value);
-    nodes.push({
+    const fill: Paint = state ? { token: 'inkMuted' } : noData ? { token: 'background' } : unlisted ? landPaint : scale.paint(value);
+    (unlisted ? landNodes : nodes).push({
       t: 'path',
       id: pathNodeId,
       d,
       fill,
-      stroke: { token: 'inkMuted' },
+      stroke: unlisted ? { token: 'background' } : { token: 'inkMuted' },
       width: regionStroke,
       owner,
       part: 'region',
@@ -657,6 +661,7 @@ export function layoutChoropleth(
       ));
     }
   }
+  nodes.splice(landStart, 0, ...landNodes);
   for (const boundary of fitted.boundaries) {
     const pathNodeId = `boundary:${boundary.id}`;
     const stroke: Paint = { token: 'leader' };
@@ -1361,7 +1366,10 @@ function resolveRegionLabelPolicy(
     };
   }
   if (mode === 'all' || pack.id !== 'world') {
-    const eligibleIds = new Set(pack.regions.map((region) => region.id));
+    // Automatic codes name the regions the data lists; a region the data never
+    // names stays quiet land unless `labels: 'all'` or `labelRegions` asks for it.
+    const eligibleIds = new Set(pack.regions.flatMap((region) =>
+      mode === 'all' || valuesById.has(region.id) || explicitIds.has(region.id) ? [region.id] : []));
     return {
       mode,
       eligibleIds,
