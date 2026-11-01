@@ -61,6 +61,28 @@ describe('currency signs print where the locale puts them', () => {
   });
 });
 
+describe('text read back from the SVG matches the drawn text', () => {
+  const textOf = (svg: string, id: string) => {
+    const node = new RegExp(`<text data-id="${id}"[^>]*>([\\s\\S]*?)</text>`).exec(svg)?.[1] ?? '';
+    return node.replace(/<[^>]*>/g, '');
+  };
+  // A wrapped title read back from the SVG joined its two lines as "reopenedat".
+  it('a wrapped line break keeps a space and does not move the lines', () => {
+    const svg = svgOf({ type: 'column', data: { categories: ['A', 'B'], series: [{ id: 's', label: 'Sales', values: [4, 5] }] },
+      options: { title: 'Total orders rose every single week after the store reopened at 15:00 UTC in late October, website first and then the app', size: { width: 760 } } });
+    expect(textOf(svg, 'frame:title:0')).toContain('reopened at 15:00');
+    expect(svg).toMatch(/<tspan x="24" dy="0"> <\/tspan><tspan x="24" dy="25">at 15:00/);
+  });
+
+  // A cut label kept its full text in a <title> inside <text>, so read-back text ran the full and the cut text together.
+  it('the hover title of a cut label sits on its group, not inside the text', () => {
+    const fixture = getFixtures('dot').find((f) => f.id === 'long-labels-lollipop')!;
+    const svg = svgOf({ type: 'dot', data: fixture.data, options: fixture.options, annotations: fixture.annotations });
+    expect(svg).not.toMatch(/<text\b[^>]*><title>/);
+    expect(svg).toMatch(/<g role="img" aria-label="[^"]+"><title>[^<]+<\/title>(<rect[^>]*\/>)?<text\b/);
+  });
+});
+
 describe('number census', () => {
   // The census scaled "$k" box statistics by 1,000 twice and flagged correct medians as wrong-scale.
   it('reads $k box statistics once', () => {
@@ -68,5 +90,17 @@ describe('number census', () => {
     fixture.options.unit = '$k';
     const { findings } = censusCase('box', fixture, 720, 'en') as { findings: { class: string }[] };
     expect(findings.filter((f) => f.class === 'wrong-scale')).toEqual([]);
+  });
+});
+
+describe('a key label leaves room for its own value', () => {
+  // The key label wrapped as if it had no value, so a long group name pushed its total past the edge and cut '1,664' to '1,'.
+  it('treemap key: label and group total fit a 320 px frame at textScale 1.5', () => {
+    const names = ['Training and certification', 'Enterprise software licences', 'Managed services and support', 'Subscription revenue, monthly plans'];
+    const groups = names.map((label, i) => ({ id: `g${i}`, label }));
+    const items = names.flatMap((_, i) => [0, 1].map((j) => ({ id: `i${i}${j}`, label: `Item ${i}${j}`, group: `g${i}`, value: 800 + i * 20 + j * 5 })));
+    const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'treemap', data: { groups, items }, options: { variant: 'rect', size: { width: 320, height: 600 }, cellValue: 'value-share', textScale: 1.5 } } as never)) as Geometry;
+    expect(geometry.scene.some((n) => n.t === 'text' && n.part === 'legendValue')).toBe(true);
+    expect(geometry.warnings.map((w) => w.code)).not.toContain('text-clipped');
   });
 });

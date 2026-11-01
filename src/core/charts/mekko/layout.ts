@@ -290,9 +290,25 @@ function commitClaims(occupied: OccupiedIndex, phase: OccupiedIndex): void {
  * and a second lays the chart out with them; the widths do not move, since a
  * note only takes height.
  */
-/** The columns drawn under 0.5 px wide: one rule for the note and the key. */
-function notDrawnColumns(domain: MekkoDomain, area: MekkoArea): string[] {
-  return domain.cats.flatMap((c, ci) => (area.xEdge[ci + 1]! - area.xEdge[ci]! < 0.5 && !domain.invalidAt(ci) ? [c.label ?? c.id] : []));
+/** Columns with no value or under 0.5 px wide share one explanation in the note and the key. */
+function notDrawnColumns(env: MekkoEnv, domain: MekkoDomain, area: MekkoArea): string[] {
+  const missing: string[] = [];
+  const negative: string[] = [];
+  const narrow: string[] = [];
+  domain.cats.forEach((c, ci) => {
+    const tooThin = area.xEdge[ci + 1]! - area.xEdge[ci]! < 0.5;
+    const name = c.label ?? c.id;
+    if (domain.incomplete.has(c.id) && (tooThin || !domain.anyByCat[ci])) missing.push(name);
+    else if (tooThin && !domain.invalidAt(ci)) {
+      if (domain.columnTotals[c.id]! < 0) negative.push(`${name} ${columnTotalText(env, domain, ci)}`);
+      else narrow.push(name);
+    }
+  });
+  return [
+    ...(narrow.length > 0 ? [chartString(env.options, 'mekkoZeroNote', { v1: narrow.join(', ') })] : []),
+    ...(negative.length > 0 ? [chartString(env.options, 'mekkoNegativeNote', { v1: negative.join(', ') })] : []),
+    ...(missing.length > 0 ? [chartString(env.options, 'mekkoMissingNote', { v1: missing.join(', ') })] : []),
+  ];
 }
 
 function mekkoNotes(env: MekkoEnv, domain: MekkoDomain, area: MekkoArea): string[] {
@@ -303,8 +319,7 @@ function mekkoNotes(env: MekkoEnv, domain: MekkoDomain, area: MekkoArea): string
     const unnamed = area.unnamed.map(name);
     notes.push(disclosureNote(chartString(env.options, 'mekkoUnnamedNote', { v1: unnamed.join(', ') })));
   }
-  const dropped = notDrawnColumns(domain, area);
-  if (dropped.length > 0) notes.push(disclosureNote(chartString(env.options, 'mekkoZeroNote', { v1: dropped.join(', ') })));
+  for (const text of notDrawnColumns(env, domain, area)) notes.push(disclosureNote(text));
   const others = domain.othersId === null ? undefined : domain.cats.find((c) => c.id === domain.othersId);
   if (others && domain.othersMembers.length > 0) notes.push(disclosureNote(`${others.label ?? others.id}: ${domain.othersMembers.join(', ')}.`));
   return notes;
@@ -350,7 +365,7 @@ function layoutMekkoPass(
   const { frame, claims } = solveMekkoFrame(env, domain, paints);
   const area = mekkoPlotArea(env, domain, frame, warnings);
   // The key names the columns this pass could not draw; a key row takes height, not width, so the set holds.
-  const notDrawn = notDrawnColumns(domain, area);
+  const notDrawn = notDrawnColumns(env, domain, area);
   if (notDrawn.length > 0 && !disclosuresShown(options) && !(options as { [MEKKO_NOT_DRAWN]?: string[] })[MEKKO_NOT_DRAWN]) {
     return layoutMekkoPass(data, { ...options, [MEKKO_NOT_DRAWN]: notDrawn } as MekkoOptions, addNotes, named);
   }
