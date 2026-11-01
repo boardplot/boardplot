@@ -7,6 +7,7 @@ import type { GanttMarks } from '../src/core/charts/gantt/layout';
 import type { Annotation } from '../src/core/types/annotations';
 import { render } from '../src/cli/render';
 import { callTool } from '../src/mcp/server';
+import { defaultMeasurer } from '../src/core/text';
 import { renderSvg } from '../src/core/svg/renderSvg';
 
 // A hidden arrow must be named once in warnings, while other missing labels stay disclosed.
@@ -464,6 +465,17 @@ it('gantt seats phone bar names beside their bars and still names some weeks', (
   const care = name('hypercare');
   expect(care.rect.x < bar('hypercare').x + bar('hypercare').w && care.rect.x + care.rect.w > bar('hypercare').x).toBe(true);
   expect(geometry.scene.filter(node => node.id.startsWith('header:minor:') && node.id.endsWith(':text')).length).toBeGreaterThan(0);
+});
+
+// A last week name clamped into the tier landed on the name before it (wide glyphs, a 280 px chart) instead of staying unprinted.
+it('gantt keeps spanning week names apart when the last one is clamped into the tier', () => {
+  const data = { rows: [{ id: 'build', label: 'Build', items: [{ id: 'core', kind: 'bar', label: 'Core', start: '2026-04-13', end: '2026-05-18' }] }] };
+  const wide = (text: string, font: Parameters<typeof defaultMeasurer>[1]) => ({ ...defaultMeasurer(text, font), width: defaultMeasurer(text, font).width * 2 });
+  const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'gantt', data, options: { size: { width: 280 } }, fontMetrics: wide } as never));
+  if (geometry.refused) throw new Error('gantt refused');
+  const names = geometry.scene.filter((node): node is Extract<typeof node, { t: 'text' }> => node.t === 'text' && node.id.startsWith('header:minor:'));
+  expect(names.length).toBeGreaterThan(1);
+  names.sort((a, b) => a.x - b.x).slice(1).forEach((node, i) => expect(node.x).toBeGreaterThan(names[i]!.x + wide(names[i]!.lines[0]!, names[i]!.font).width));
 });
 
 // A diamond that prints only its date has no name to explain it, so the "Milestone" key must stay (main draws it).

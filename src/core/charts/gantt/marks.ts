@@ -311,6 +311,7 @@ function headerRow(
   let stride = 1;
   if (kindTag === 'minor') while (stride < starts.length && !starts.some((_, i) => i % stride === 0 && nameOf(i, stride) !== undefined)) stride++;
   let printed = false;
+  let prevRight = -Infinity;
   const spill: SceneNode[] = [];
   starts.forEach((_, i) => {
     const cell = cells[i]!;
@@ -322,6 +323,9 @@ function headerRow(
       // A spanning name stays inside the tier.
       const at = startDay ? cell.x + 6 : cell.x + cell.w / 2 - tw / 2;
       const name = { x: stride > 1 ? Math.max(cells[0]!.x, Math.min(at, cells[cells.length - 1]!.x + cells[cells.length - 1]!.w - tw)) : at, y: cell.y + (headerRowH - th) / 2, w: tw, h: th };
+      // Clamping a last spanning name into the tier can push it onto the name before it: that name stays unprinted.
+      if (name.x < prevRight + 4) return;
+      prevRight = name.x + name.w;
       ctx.headNames.push(name);
       // A name that spans cells lies over the next ones, so it paints after them.
       (stride > 1 ? spill : ctx.nodes).push({ t: 'text', typeRole: 'axis', id: `header:${kindTag}:${i}:text`, x: name.x, y: name.y, lines: [text], align: 'start', font, ink, owner: {}, part: 'scale' });
