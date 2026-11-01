@@ -279,6 +279,8 @@ it('stacked100 drops diff, total cagr and a value line at the axis end, and warn
       ['valueline-percent-stacked100', 'valueLine-4', true],
     ]);
     expect(share.annotations.map((a) => a.kind).filter((kind) => kind !== 'indicator100').sort(), type).toEqual(['cagr', 'valueLine']);
+    // A retained annotation keeps its authored position's id, so a pin or note that names it still finds it.
+    expect(share.annotations.map((a) => a.id).filter((id) => !id.startsWith('indicator100')).sort(), type).toEqual(['cagr-5', 'valueLine-4']);
     expect(drawn('stacked').annotations.map((a) => a.kind).sort(), type).toEqual(['cagr', 'cagr', 'diff', 'valueLine', 'valueLine']);
   }
 });

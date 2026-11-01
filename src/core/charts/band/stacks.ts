@@ -11,7 +11,7 @@ import { localeStrings } from '../../strings';
 import { warnIncompleteComposition } from '../../dataGaps';
 import { formatWithSpec, specUnitKind, type NumberFormatSpec } from '../../formatSpec';
 import { SHARES_OF_ONE_WHOLE_FIX } from '../../stackAdds';
-import type { Annotation } from '../../types/annotations';
+import { defaultAnnotationId, type Annotation } from '../../types/annotations';
 import type { Id } from '../../types/cell';
 import type { LintWarning } from '../../types/scene';
 
@@ -356,11 +356,12 @@ const seriesScoped = (annotation: { from?: unknown; to?: unknown }): boolean =>
  * units would read as a percent. A growth bracket of one series keeps its own
  * rate. A value line strictly inside the axis stays with a
  * warning, because it can be a valid share target. Other annotations pass.
+ * A retained annotation keeps its original id, so pins and notes still find it.
  */
 export function withoutShareAnnotations<O extends { annotations?: Annotation[] }>(options: O, share: boolean, warnings: LintWarning[]): O {
   if (!share || !options.annotations?.length) return options;
-  const kept = options.annotations.filter((annotation, index) => {
-    const owner = { annotationId: annotation.id ?? `${annotation.kind}-${index + 1}` };
+  const kept = options.annotations.map((annotation, index) => ({ ...annotation, id: defaultAnnotationId(annotation, index) })).filter((annotation) => {
+    const owner = { annotationId: annotation.id };
     if (annotation.kind === 'diff' || (annotation.kind === 'cagr' && !seriesScoped(annotation))) {
       warnings.push({
         code: 'annotation-unsupported-stacked100',
