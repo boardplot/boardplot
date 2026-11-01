@@ -14,7 +14,7 @@ import { fitText } from '../../label/fitText';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { PRIORITY, type LabelRequest } from '../../label/solver';
 import type { FontSpec, TextMeasurer } from '../../text';
-import { strokeToken, canvasMargin, surfaceFloorPaint } from '../../theme';
+import { strokeToken, canvasMargin, surfaceFloorPaint, ganttRowPaint } from '../../theme';
 import type { RenderTarget } from '../../types/options';
 import type { Id } from '../../types/cell';
 import type { GanttCell } from '../../types/data';
@@ -152,7 +152,7 @@ function colorKey(env: GanttEnv, domain: GanttDomain, paints: GanttPaints, warni
   const outlineRank = (entry: { label?: string; authored?: true }) => (entry.authored ? 2 : entry.label === 'Workstream' ? 0 : 1);
   // A swatch carries the outline its bars take on a tinted row (marks.ts separatedFill).
   const outline = (paint: Paint) => (env.options.rowTint
-    ? separationStroke(paints.css(paint), paints.css({ token: 'others', tint: env.surface.rowTint }), env.theme, true)?.stroke : undefined);
+    ? separationStroke(paints.css(paint), paints.css(ganttRowPaint()), env.theme, true)?.stroke : undefined);
   return {
     options,
     items: [
@@ -163,7 +163,7 @@ function colorKey(env: GanttEnv, domain: GanttDomain, paints: GanttPaints, warni
           const paint = surfaceFloorPaint(entry.paint, barSurfaces(env));
           const stroke = outline(paint);
           // The swatch carries its bars' separation rule, so it takes their edge with them.
-          const backing: Paint = env.options.rowTint ? { token: 'others', tint: env.surface.rowTint } : { token: 'background' };
+          const backing: Paint = env.options.rowTint ? ganttRowPaint() : { token: 'background' };
           return { id: entry.first.id, label: entry.label!, paint, ...(stroke ? { stroke } : {}), separation: { fill: paint, backing, surface: true as const, grounds: barSurfaces(env) } };
         }) : []),
       ...encodings,
@@ -210,7 +210,7 @@ function encodingKey(env: GanttEnv, domain: GanttDomain, paints: GanttPaints): L
   }
   // A wash at its plot tint vanishes in a 12 px swatch and the key reads as empty: the swatch takes a stronger tint of the same hue.
   if (env.options.weekends && domain.granularity === 'weeks') {
-    keyed.push({ id: 'key:weekend', label: chartString(env.options, 'weekend'), paint: { token: 'others', tint: Math.min(env.surface.rowTint, KEY_WASH_TINT) } });
+    keyed.push({ id: 'key:weekend', label: chartString(env.options, 'weekend'), paint: ganttRowPaint(true) });
   }
   if (domain.todayDay !== null && env.options.elapsed !== false) {
     keyed.push({ id: 'key:elapsed', label: chartString(env.options, 'elapsedToday'), paint: { token: 'focus', tint: Math.min(env.surface.elapsedTint, KEY_WASH_TINT) } });

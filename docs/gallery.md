@@ -2863,7 +2863,9 @@ Timeline with spans and events. [Reference](reference/gantt.md)
     "colHeaders": ["Owner"],
     "source": "Illustrative launch plan; each phase is anchored to the one before it",
     "today": "2026-05-06",
-    "weekends": true
+    "weekends": true,
+    "rowTint": true,
+    "theme": { "preset": "boardroom", "overrides": { "surface": { "ganttRowTint": 0.25 } } }
   }
 }
 ```

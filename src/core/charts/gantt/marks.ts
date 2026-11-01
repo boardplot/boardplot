@@ -6,13 +6,13 @@ import { chartString } from '../../strings/gantt';
  * order. Everything the phase claims goes into an OccupiedIndex of its own.
  */
 
-import { contrastRatio, tint } from '../../color';
+import { contrastRatio } from '../../color';
 import { formatDate } from '../../dateFormat';
 import type { Rect } from '../../geometry';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { separationStroke } from '../../markVisibility';
 import type { FontSpec } from '../../text';
-import { strokeToken, markRolePaint, markRoleToken, paintColor, semanticPalettePaint, surfaceFloorPaint } from '../../theme';
+import { strokeToken, markRolePaint, markRoleToken, paintColor, semanticPalettePaint, surfaceFloorPaint, ganttRowPaint } from '../../theme';
 import type { Id, OwnerRef } from '../../types/cell';
 import type { LintWarning, Paint, PlacedAnnotation, SceneNode } from '../../types/scene';
 import { dateFromDay, dayNum, floorTo, nextOf, type Unit } from './calendar';
@@ -65,7 +65,7 @@ function displayForItem(env: GanttEnv, item: NormItem): string {
 }
 
 export function ganttPaints(env: GanttEnv, rows: NormRow[]): GanttPaints {
-  const { options, theme, surface, highlights } = env;
+  const { options, theme, highlights } = env;
   const rowById = new Map(rows.map((row) => [row.id, row]));
   const rowIndex = new Map(rows.map((r, i) => [r.id, i]));
   const paletteActive = options.palette !== undefined && theme.color.palettes?.[options.palette] !== undefined;
@@ -88,13 +88,7 @@ export function ganttPaints(env: GanttEnv, rows: NormRow[]): GanttPaints {
     if (!paletteActive) return { token: workstream ? 'status-gantt-workstream' : 'status-gantt-detail' };
     return semanticPalettePaint(theme, options.palette, workstream ? 'neutral' : 'neutralLight');
   };
-  /**
-   * MARK VISIBILITY (src/core/markVisibility.ts): what a row's marks are
-   * actually painted ON. The alternate-row tint is `others` washed by
-   * `surface.rowTint` (a full-strength zebra equalled a shade item's fill —
-   * see backgroundLayers), so on a tinted row the backing is that resolved
-   * mix. Marks on an untinted row sit on the page.
-   */
+  // Marks use the same backing paint as the drawn row tint.
   const tinted = (rowId: Id): boolean => {
     const i = rowIndex.get(rowId);
     return !!options.rowTint && i !== undefined && i % 2 === 1;
@@ -102,8 +96,8 @@ export function ganttPaints(env: GanttEnv, rows: NormRow[]): GanttPaints {
   return {
     item,
     css: (p: Paint): string => paintColor(theme, p),
-    rowBacking: (rowId) => (tinted(rowId) ? tint(theme.color.others, surface.rowTint, theme.color.background) : theme.color.background),
-    rowBackingPaint: (rowId) => (tinted(rowId) ? { token: 'others', tint: surface.rowTint } : { token: 'background' }),
+    rowBacking: (rowId) => (tinted(rowId) ? paintColor(theme, ganttRowPaint()) : theme.color.background),
+    rowBackingPaint: (rowId) => (tinted(rowId) ? ganttRowPaint() : { token: 'background' }),
   };
 }
 
@@ -114,7 +108,7 @@ export function ganttPaints(env: GanttEnv, rows: NormRow[]): GanttPaints {
  */
 export function barSurfaces(env: GanttEnv): Paint[] {
   return [
-    ...(env.options.rowTint ? [{ token: 'others', tint: env.surface.rowTint } as Paint] : []),
+    ...(env.options.rowTint ? [ganttRowPaint()] : []),
     ...(env.options.elapsed !== false ? [{ token: 'focus', tint: env.surface.elapsedTint } as Paint] : []),
   ];
 }
@@ -126,7 +120,7 @@ function separatedFill(ctx: MarkCtx, authored: Paint, rowId: Id) {
   const fallback = { stroke: fill, strokeWidth: theme.pattern.outlineStrokeWidth };
   // A fill outlined on a tinted row is outlined on every row, so the outline
   // never reads as a second kind of bar (fixture dense-14-rows).
-  const tinted: Paint = { token: 'others', tint: ctx.env.surface.rowTint };
+  const tinted = ganttRowPaint();
   const alternateBackings = ctx.env.options.rowTint ? [tinted] : [];
   const css = ctx.paints.css(fill);
   const backing = [ctx.paints.rowBackingPaint(rowId), ...alternateBackings].map((paint) => ctx.paints.css(paint))
@@ -144,7 +138,7 @@ function separatedFill(ctx: MarkCtx, authored: Paint, rowId: Id) {
 }
 
 /**
- * Elapsed era, alternate-row tint, weekend bands, full-row shade items and the
+ * Alternate-row tint, weekend bands, elapsed era, full-row shade items and the
  * row rules: behind the grid and the marks, never claimed.
  */
 function backgroundLayers(ctx: MarkCtx, domain: GanttDomain): { elapsed: PlacedAnnotation[]; shades: Map<Id, { nodeId: Id; rect: Rect }> } {
@@ -154,13 +148,7 @@ function backgroundLayers(ctx: MarkCtx, domain: GanttDomain): { elapsed: PlacedA
   const { rowsTop, rowsBottom } = band;
   const { x, bodyX, bodyW } = body;
   const elapsed: PlacedAnnotation[] = [];
-  // Alternate-row tint (decorative, not claimed). Washed through the theme's
-  // `surface.rowTint` knob — the SAME recipe the table chart's zebra uses —
-  // because at full token strength the zebra was the identical hex as a
-  // `shade` item, and a summary band on a tinted row kept only its separation
-  // outline (fill on fill, contrast 1.00:1 in every preset). Washing the decorative layer, not the mark,
-  // follows the heatmap highlight-wash precedent, and the theme knob keeps
-  // "alternate row" meaning one strength across chart types.
+  // Gantt row shading uses its own wash and leaves table zebra shading unchanged.
   if (options.rowTint) {
     rows.forEach((r, i) => {
       if (i % 2 !== 1) return;
@@ -168,13 +156,30 @@ function backgroundLayers(ctx: MarkCtx, domain: GanttDomain): { elapsed: PlacedA
         t: 'rect',
         id: `rowTint:${r.id}`,
         rect: { x: body.inner.x, y: band.rowY[i]!, w: bodyX + bodyW - body.inner.x, h: band.stacked ? band.rowY[i + 1]! - band.rowY[i]! : band.rowHs[i]! },
-        fill: { token: 'others', tint: surface.rowTint },
+        fill: ganttRowPaint(),
         owner: { categoryId: r.id },
         part: 'rowTint',
       });
     });
   }
-  // The elapsed wash lies over the row tint, so the past reads on every row.
+  // Weekend bands use the row wash at week granularity, starting on Saturday.
+  if (options.weekends && domain.granularity === 'weeks') {
+    let wk = 0;
+    for (let saturday = dayNum(floorTo('week', dateFromDay(d0Day))) + 5; saturday < body.dayTo; saturday += 7) {
+      const day = Math.max(saturday, body.dayFrom);
+      const to = Math.min(saturday + 2, body.dayTo);
+      if (to <= day) continue;
+      nodes.push({
+        t: 'rect',
+        id: `weekend:${wk++}`,
+        rect: { x: x(day), y: rowsTop, w: x(to) - x(day), h: rowsBottom - rowsTop },
+        fill: ganttRowPaint(),
+        owner: {},
+        part: 'weekend',
+      });
+    }
+  }
+  // The elapsed wash covers row and weekend shading, so the past stays continuous.
   if (todayDay !== null && options.elapsed !== false) {
     const nodeId = 'ann:elapsed:band';
     nodes.push({
@@ -187,25 +192,6 @@ function backgroundLayers(ctx: MarkCtx, domain: GanttDomain): { elapsed: PlacedA
       part: 'elapsedEra',
     });
     elapsed.push({ id: 'elapsed', kind: 'band', computedText: chartString(env.options, 'elapsed'), nodeIds: [nodeId] });
-  }
-  // Weekend bands (week granularity only; counted from the Monday on or before the span start, which a data span need not be). Same wash as
-  // the zebra: a full-strength weekend band is the same hex as a `shade` item
-  // crossing it, which would hide the item.
-  if (options.weekends && domain.granularity === 'weeks') {
-    let wk = 0;
-    for (let saturday = dayNum(floorTo('week', dateFromDay(d0Day))) + 5; saturday < body.dayTo; saturday += 7) {
-      const day = Math.max(saturday, body.dayFrom);
-      const to = Math.min(saturday + 2, body.dayTo);
-      if (to <= day) continue;
-      nodes.push({
-        t: 'rect',
-        id: `weekend:${wk++}`,
-        rect: { x: x(day), y: rowsTop, w: x(to) - x(day), h: rowsBottom - rowsTop },
-        fill: { token: 'others', tint: surface.rowTint },
-        owner: {},
-        part: 'weekend',
-      });
-    }
   }
   // A shade is a band inside its row: from the bracket-arm line, under a rule
   // across its full extent, to 4 px above the row's foot, so it never runs
