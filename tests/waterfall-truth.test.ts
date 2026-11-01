@@ -17,7 +17,7 @@ import { z } from 'zod';
 import '../src/core/charts';
 import { getChartDefinition } from '../src/core/registry';
 import { unscaledFormatLint } from '../src/core/formatSpec';
-import { resolveChartRequest } from '../src/index';
+import { layoutResolvedRequest, resolveChartRequest } from '../src/index';
 import { getFixtures } from '../src/fixtures';
 import type { Geometry } from '../src/core/types/scene';
 
@@ -378,6 +378,21 @@ describe('mixed-sign segments draw in sequence', () => {
   });
 });
 
+// The bars form seated a segment's value on the whole bar, so a total of three segments printed one value in the wrong segment and sent the rest to the notes.
+describe('segment values of the bars form', () => {
+  it('print each value inside its own segment, and none goes to the notes', () => {
+    const fixture = getFixtures('waterfall').find((entry) => entry.id === 'interview-status-buildup')!;
+    const geometry = def.layout(def.normalize(fixture.data) as never, { ...fixture.options, variant: 'horizontal' } as never) as unknown as Geometry<{ bars: { id: string; segments: { id: string; rect: { x: number; w: number } }[] }[] }, object>;
+    const misplaced = geometry.marks.bars.flatMap((bar) => bar.segments.map((segment) => ({ bar, segment })))
+      .filter(({ bar, segment }) => {
+        const label = geometry.labels.find((entry) => entry.id === `segment:${bar.id}:${segment.id}`);
+        return label !== undefined && (label.hidden !== undefined || label.rect.x < segment.rect.x || label.rect.x + label.rect.w > segment.rect.x + segment.rect.w);
+      })
+      .map(({ bar, segment }) => `${bar.id}:${segment.id}`);
+    expect(misplaced).toEqual([]);
+  });
+});
+
 describe('a check value off by its inputs\' rounding agrees', () => {
   // Large totals and segment checks must disclose integer gaps without treating decimal addition noise as a gap.
   it('discloses large exact gaps with a binary rounding bound for decimal sums', () => {
@@ -532,5 +547,16 @@ describe('waterfall variant option text', () => {
     const text = json.properties.variant.description;
     expect(text).toContain('horizontal-annotations-unsupported');
     expect(text).toContain('no annotations');
+  });
+});
+
+// An 'auto' break that finds no break cut the whole-axis plot allowance, so the chart drew 100 px shorter than with break false.
+describe('waterfall automatic break with none found', () => {
+  it('keeps the height of a whole-axis bridge', () => {
+    const fixture = getFixtures('waterfall').find((candidate) => candidate.id === 'build-down')!;
+    const heightWith = (valueAxis: object) => layoutResolvedRequest(resolveChartRequest({
+      type: 'waterfall', data: fixture.data, options: { ...fixture.options, size: { width: 720 }, valueAxis },
+    } as never)).size.height;
+    expect(heightWith({ break: 'auto' })).toBe(heightWith({ break: false }));
   });
 });

@@ -26,6 +26,53 @@ describe('the description states the drawn numbers', () => {
 });
 
 describe('drawn text stays on the canvas', () => {
+  const names = [
+    'Membership-supported equipment', 'Subscription-supported training',
+    'Equipment-maintenance contracts', 'Distribution-management services',
+    'Subscription-management services', 'Software-maintenance agreements',
+    'Equipment-rental arrangements', 'Warehouse-management services',
+  ];
+
+  // A highlighted rotated column name measured at regular weight was clipped at the left edge.
+  it('column: highlighted rotated names fit at their drawn weight in every variant', () => {
+    const data = {
+      categories: names.map((label, i) => ({ id: `c${i}`, label })),
+      series: [
+        { id: 'a', label: 'Online', values: [25, 20, 35, 30, 20, 25, 10, 20] },
+        { id: 'b', label: 'Stores', values: [20, 10, 15, 10, 5, 20, 10, 25] },
+      ],
+    };
+    for (const variant of ['grouped', 'stacked', 'stacked100']) {
+      const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'column', data,
+        options: { variant, highlight: 'c0', size: { width: 720, height: 700 } },
+      } as never)) as Geometry;
+      const label = geometry.scene.find(node => node.id === 'label:category:c0');
+      expect(label?.t).toBe('text');
+      if (label?.t !== 'text') continue;
+      expect(label.rotate).toBe(-45);
+      expect(label.lines).toEqual([names[0]]);
+      expect(label.font.weight).toBe(700);
+      expect(clippedTextWarnings(geometry, defaultMeasurer)).toEqual([]);
+    }
+  });
+
+  // A retried row plan read the bold widths back from the plan cache and lost the extra row height.
+  it('column: a retried row plan keeps the height of a highlighted rotated name', () => {
+    const fixture = getFixtures('column').find((f) => f.id === 'stacked-series-cagr')!;
+    const data = structuredClone(fixture.data) as { categories: { id: string; label?: string }[] };
+    data.categories.forEach((c, i) => { c.label = names[i % names.length]; });
+    const first = data.categories[0]!.id;
+    const baseline = (highlight?: string) => {
+      const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'column', data,
+        options: { ...fixture.options, ...(highlight ? { highlight } : {}), size: { width: 720, height: 700 } },
+        annotations: fixture.annotations,
+      } as never)) as Geometry;
+      const axis = geometry.scene.find(node => node.id === 'axis:baseline');
+      return axis?.t === 'line' ? axis.y1 : NaN;
+    };
+    expect(baseline()).toBeGreaterThan(baseline(first));
+  });
+
   // A bold extreme label was seated at its regular width and ran 5 px past the right edge.
   it('column: the bold extreme label fits at its drawn width', () => {
     const fixture = getFixtures('column').find((f) => f.id === 'anomaly-torture')!;
@@ -102,5 +149,27 @@ describe('a key label leaves room for its own value', () => {
     const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'treemap', data: { groups, items }, options: { variant: 'rect', size: { width: 320, height: 600 }, cellValue: 'value-share', textScale: 1.5 } } as never)) as Geometry;
     expect(geometry.scene.some((n) => n.t === 'text' && n.part === 'legendValue')).toBe(true);
     expect(geometry.warnings.map((w) => w.code)).not.toContain('text-clipped');
+  });
+});
+
+describe('mekko column names', () => {
+  // On a percent mekko, a column too narrow for its name lost the name, and its footnote mark then pushed the wide columns' names out of the row too.
+  it('percent: every column keeps its name, a narrow one on a second tier', () => {
+    const ids = ['home', 'kitchen', 'garden', 'light', 'storage', 'textiles'];
+    const names = ['Home goods', 'Kitchen and dining', 'Garden and outdoor', 'Lighting', 'Storage', 'Textiles'];
+    const spec = {
+      type: 'mekko',
+      data: {
+        categories: ids.map((id, i) => ({ id, label: names[i], ...(i >= 4 ? { footnote: i - 3 } : {}) })),
+        series: [
+          { id: 'a', label: 'Marlowe', values: [2.4, 0.5, 0.3, 0.2, 0.2, 0.1] },
+          { id: 'b', label: 'Other', values: [3.0, 1.1, 0.9, 0.5, 0.4, 0.2] },
+        ],
+      },
+      options: { variant: 'stacked100', footnotes: ['Storage and organisation', 'Home textiles'], target: 'slide' },
+    };
+    const geometry = layoutResolvedRequest(resolveChartRequest(spec as never)) as Geometry;
+    const drawn = (id: string) => geometry.scene.flatMap((n) => (n.t === 'text' && n.id === `label:category:${id}` ? [n.lines.join(' ')] : []))[0] ?? '';
+    expect(ids.map(drawn).map((text, i) => text.startsWith(names[i]!))).toEqual(ids.map(() => true));
   });
 });

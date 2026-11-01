@@ -23,11 +23,11 @@ import { percentLevels, runAnnotatePass } from '../../annotatePass';
 import { categoryTargetFields, spliceAnnotationNodes } from '../../annotateFields';
 import { rectSeriesAdjacentWarnings } from '../../adjacentSeries';
 import { applyValueAxisTitleInk, layoutValueAxis, planValueAxisTitle, tickRowTitleEnd, valueAxisTitleRequest, valueAxisTitleText, valueAxisUnit } from '../../axis';
-import { formatShare, NOT_AVAILABLE } from '../../format';
+import { NOT_AVAILABLE } from '../../format';
 import { seriesRasterFormatter } from '../../formatSpec';
 import { rectContains, rectsOverlap, rowLabelX, unionRect, type Rect, type Size } from '../../geometry';
 import { bandValueLabelUniformity, keepValuesWithoutAxis } from '../band/labels';
-import { stackParts } from '../band/stacks';
+import { stackParts, withoutShareAnnotations } from '../band/stacks';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import {
@@ -199,7 +199,8 @@ export function layoutBar(
   options: BarOptions = {},
   annotationPass?: BarAnnotationPass,
 ): Geometry<BarMarks, BarDerived> {
-  options = withValueLabelDefaults(withLocaleStrings(options), 'bar', options.variant);
+  const dropped: LintWarning[] = [];
+  options = withoutShareAnnotations(withValueLabelDefaults(withLocaleStrings(options), 'bar', options.variant), options.variant === 'stacked100', dropped);
   const layout = (next: BarOptions) => layoutBarSized(data, next, annotationPass);
   const geo = withBandValueNotes(data, options, layout);
   const natural = geo.sizing?.naturalHeight;
@@ -208,6 +209,7 @@ export function layoutBar(
     const probe = withBandValueNotes(data, { ...options, size: { width: geo.size.width, height: natural } }, layout);
     if (probe.sizing && probe.sizing.minHeight > natural) geo.sizing = { ...geo.sizing!, naturalHeight: probe.sizing.minHeight };
   }
+  geo.warnings.push(...dropped);
   return geo;
 }
 
@@ -495,7 +497,7 @@ function assembleBarGeometry(
       !domain.stacks[ci]!.hasValue
         ? `${c.label} ${NOT_AVAILABLE}`
         : variant === 'stacked100'
-          ? `${c.label} ${totalFmt(totals[ci]!)} (${dataSeries.map((s, si) => `${s.label} ${formatShare(shares[ci]![si]!, options.locale?.language)}`).join(', ')})`
+          ? `${c.label} ${totalFmt(totals[ci]!)} (${dataSeries.map((s, si) => `${s.label} ${domain.pctFmt(shares[ci]![si]!)}`).join(', ')})`
           : `${c.label} ${oneValueText(ci) ?? totalFmt(totals[ci]!)}`,
     )
     .join(', ');
@@ -1085,7 +1087,7 @@ function layoutRowIntervals(
     const stepEst = theme.space.barRow?.pitch ?? availH / cats.length;
     const fittedCats = rowLabelBand(
       cats.map((cat) => ({ id: cat.id, label: cat.label ?? cat.id, footnote: cat.footnote })), tickFont, catCap, stepEst >= Math.max(30, 2 * lineH + (targetSizing ? 4 : 0)) ? 2 : 1, lineH, measure,
-      { target: options.target, textScale: textScaleOf(options), typeRole: 'axis', wider: gutterBudget(24, plot0.w), shrink: stepDownFont(theme, tickFont, 'axis', options.target, textScaleOf(options)), footnoteRefs: { count: authoredFootnoteCount(options), warnings: rowWarnings } },
+      { target: options.target, textScale: textScaleOf(options), typeRole: 'axis', wider: gutterBudget(24, plot0.w), tightLines: Math.floor((stepEst - (targetSizing ? 4 : 0)) / lineH), shrink: stepDownFont(theme, tickFont, 'axis', options.target, textScaleOf(options)), footnoteRefs: { count: authoredFootnoteCount(options), warnings: rowWarnings } },
     );
     // A tornado driver's name prints bold over its range (tornadoHead): its seat and the band take the bold width.
     const catLines = fittedCats.labels.map((label, ci) => tornadoHead(cats[ci]!, label)

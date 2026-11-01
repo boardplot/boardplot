@@ -8,7 +8,9 @@
  *   3. widen      into the extra width the layout can still hand out (a row
  *                 gutter that may grow before its label is cut)
  *   4. shrink     one type step, where the theme's floor for the role allows
- *   5. ellipsis   last, and the full text travels as the node's `<title>`
+ *   5. one line   more where the caller's rows hold it (`tightLines`): steps
+ *                 2 to 4 run again with that line before the text is cut
+ *   6. ellipsis   last, and the full text travels as the node's `<title>`
  *
  * A caller that has no extra width or no smaller step simply leaves those
  * options out; the order stays the same. Frame text (title, subtitle) never
@@ -44,6 +46,8 @@ export interface FitOptions extends TypographyMetadata {
   wider?: number;
   /** The one-step-smaller font from `stepDownFont` (step 4); absent when the theme allows none. */
   shrink?: FontSpec;
+  /** How many lines the caller's row pitch holds. A text the line limit, the wider gutter and the smaller step would all cut may take one more line, up to this count (step 5). */
+  tightLines?: number;
   /** A name: its lines may also break after `_`, `-`, `/` or `.` (wrapText). */
   breakAfter?: boolean;
 }
@@ -96,24 +100,25 @@ export function fitText(
   // paragraphs than lines it becomes a space before any text is cut.
   const joined = text.includes('\n') ? text.replace(/\s*\n\s*/g, ' ') : text;
   const texts = joined === text ? [text] : [text, joined];
-  for (const width of widths) {
-    for (const candidate of texts) {
-      const tried = attempt(candidate, font, width, maxLines, measure, options.typeRole, options.breakAfter);
-      if (!tried.cut) return tried.fitted;
-    }
-  }
-  const step = shrinkFont(font, options);
-  if (step) {
+  const fits = (candidateFont: FontSpec, lines: number) => {
     for (const width of widths) {
       for (const candidate of texts) {
-        const tried = attempt(candidate, step, width, maxLines, measure, options.typeRole, options.breakAfter);
+        const tried = attempt(candidate, candidateFont, width, lines, measure, options.typeRole, options.breakAfter);
         if (!tried.cut) return tried.fitted;
       }
     }
+    return undefined;
+  };
+  const step = shrinkFont(font, options);
+  // A text every step above would cut may take one more line, where the caller's rows hold it.
+  const limits = options.tightLines !== undefined && options.tightLines > maxLines ? [maxLines, maxLines + 1] : [maxLines];
+  for (const lines of limits) {
+    const fitted = fits(font, lines) ?? (step && fits(step, lines));
+    if (fitted) return fitted;
   }
   // The cut keeps the smaller step when the caller allowed one: it shows more of the text.
   const width = widths[widths.length - 1]!;
-  const last = attempt(joined, step ?? font, width, maxLines, measure, options.typeRole, options.breakAfter).fitted;
+  const last = attempt(joined, step ?? font, width, limits[limits.length - 1]!, measure, options.typeRole, options.breakAfter).fitted;
   // wrapText can stop at a word boundary without an ellipsis; the cut still
   // shows. A word it cut on an earlier line already shows it.
   const end = last.lines.length - 1;

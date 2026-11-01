@@ -51,7 +51,7 @@ describe("notes.show 'ranks'", () => {
   it('prints the rank key and no other disclosure', () => {
     const drawn = notes(spec('ranked-campaigns-rank-key-only'));
     expect(drawn.filter((note) => note.inFrame && note.text.startsWith('Columns by rank')).length).toBeGreaterThan(0);
-    expect(drawn.find((note) => note.text.startsWith('Not labelled on the chart'))?.inFrame).toBe(false);
+    expect(drawn.some((note) => note.inFrame && note.text.startsWith('Not labelled on the chart'))).toBe(false);
   });
 
   // A static footer rebuilt for authored notes past the line budget dropped the rank

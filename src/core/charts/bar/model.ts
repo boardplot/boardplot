@@ -135,6 +135,8 @@ export interface BarDomain {
   options: BarOptions;
   /** rounding 'sum-consistent': the printed share per `categoryId\0seriesId`. */
   shareTexts: Map<string, string>;
+  /** A computed share as the chart prints it alone: at a percent options.format's decimals, else the share precision. */
+  pctFmt: (percent: number) => string;
   /** rounding 'sum-consistent': the shares printed off their nearest rounding. */
   roundingAdjustments: import('../../shareRounding').RoundingAdjustment[];
   /** The hidden method note on moved or rescaled shares. */

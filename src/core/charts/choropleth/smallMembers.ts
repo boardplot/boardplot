@@ -150,7 +150,8 @@ function mapKeysOnce(input: MapKeysInput) {
   // ---- key block: what its labels ask for ----
   const { min, max, midpoint } = scale;
   const noData = scale.legend.find((item) => item.id === 'no-data');
-  const noValueKeys = scale.legend.filter((item) => item.id === 'no-data' || item.id === 'not-in-data' || item.id.startsWith('state:'));
+  // A value on an even-count midpoint break is grey; its entry stands beside the other swatches.
+  const noValueKeys = scale.legend.filter((item) => item.id === 'midpoint' || item.id === 'no-data' || item.id === 'not-in-data' || item.id.startsWith('state:'));
   const hasRamp = min !== null && max !== null;
   const classes = hasRamp && (max !== min || scale.explicitSteps) ? (scale.edges ? scale.edges.length - 1 : input.classes) : undefined;
   const named = (value: number) => `${fmt(value)}${input.midpointLabel && value === midpoint ? ` ${input.midpointLabel}` : ''}`;
@@ -171,7 +172,11 @@ function mapKeysOnce(input: MapKeysInput) {
     : tickEdges.map(value => classes ? edgeText(value) : named(value));
   const midIn = hasRamp && midpoint !== null && midpoint > min! && midpoint < max!
     && !(classes && input.midpointLabel === undefined && tickEdges.includes(midpoint));
-  const midText = midIn ? named(midpoint!) : '';
+  // A classed key prints the midpoint as its ticks do ('15%' beside '14%') when that is exact.
+  const midText = !midIn ? ''
+    : classes && scale.edgeExact(midpoint!)
+      ? `${edgeText(midpoint!)}${input.midpointLabel ? ` ${input.midpointLabel}` : ''}`
+      : named(midpoint!);
   const rowW = (label: string) => SWATCH + SWATCH_GAP + width(label);
   const labelsWant = (f: FontSpec) => {
     const widths = edgeTexts.map((text) => width(text, f));
@@ -330,6 +335,7 @@ function mapKeysOnce(input: MapKeysInput) {
   const items: LegendGeometry['items'] = [];
   if (titleLines.length) addText('legend-title', titleLines, keyX, keyY, heading, 'caption', titleWrap!.truncated ? input.title : undefined);
   if (hasRamp) {
+    const classItems = scale.legend.filter((item) => item.id.startsWith('class-'));
     const steps = classes ?? (max === min ? 1 : Math.max(1, Math.round(keyW / 4)));
     for (let i = 0; i < steps; i++) {
       // The slice takes the paint the map gives its centre value: a class's own paint on a classed map.
@@ -344,7 +350,7 @@ function mapKeysOnce(input: MapKeysInput) {
         t: 'rect', id: `legend-ramp:${i}`,
         // Each slice overlaps the next by half a pixel so no seam shows between them.
         rect: { x: keyX + (i * keyW) / steps, y: keyY + rampY, w: keyW / steps + (i < steps - 1 ? 0.5 : 0), h: RAMP_H },
-        fill: classes ? scale.legend[i]!.paint : scale.paint(value), owner: {}, part: 'swatch',
+        fill: classes ? classItems[i]!.paint : scale.paint(value), owner: {}, part: 'swatch',
       });
     }
     occupied.claim({ x: keyX, y: keyY + rampY, w: keyW, h: RAMP_H }, 'legend', {}, 'swatch');
@@ -370,7 +376,7 @@ function mapKeysOnce(input: MapKeysInput) {
   for (const [index, item] of noValueKeys.entries()) {
     const ry = keyY + noDataY + index * rowH;
     const rect = { x: keyX, y: ry + (rowH - SWATCH) / 2, w: SWATCH, h: SWATCH };
-    nodes.push({ t: 'rect', id: `legend-swatch:${item.id}`, rect, fill: item.paint, ...(item.hollow ? { pattern: 'hollow' as const } : item.pattern ? { pattern: item.pattern } : {}), ...(item.id === 'not-in-data' ? { stroke: { token: 'inkMuted' as const }, strokeWidth: strokeToken(theme, 'hair') } : {}), owner: {}, part: 'swatch' });
+    nodes.push({ t: 'rect', id: `legend-swatch:${item.id}`, rect, fill: item.paint, ...(item.hollow ? { pattern: 'hollow' as const } : item.pattern ? { pattern: item.pattern } : {}), owner: {}, part: 'swatch' });
     occupied.claim(rect, 'legend', {}, 'swatch');
     addText(`legend-label:${item.id}`, [item.label], keyX + SWATCH + SWATCH_GAP, ry + (rowH - lineOf(font)) / 2, font, 'caption');
     items.push({ id: item.id, swatchNodeId: `legend-swatch:${item.id}`, labelId: `label:legend-label:${item.id}` });

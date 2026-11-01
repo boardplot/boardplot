@@ -93,6 +93,51 @@ it('measures the height the note growth draws', () => {
   expect(measure(spec as never).naturalHeight).toBe(body.size.height);
 });
 
+// Bubble matrices must keep their circles and rows unchanged when value labels or decimals change.
+it('keeps bubble matrix geometry stable across value label settings and formats', () => {
+  const data = {
+    categories: Array.from({ length: 12 }, (_, ci) => ({ id: `c${ci}`, label: `Step ${ci + 1}` })),
+    series: Array.from({ length: 6 }, (_, ri) => ({
+      id: `s${ri}`, label: `Group ${ri + 1}`,
+      values: Array.from({ length: 12 }, (_, ci) => ({ pct: 9 + (13 * ci + 17 * ri) % 62 })),
+      sizes: Array.from({ length: 12 }, (_, ci) => 1 + (ci + ri) % 3),
+    })),
+  };
+  const options = { variant: 'bubble', scale: 'discrete', breaks: [0, 30, 50, 100],
+    bubble: { levels: ['Low', 'Medium', 'High'] }, title: 'Results by group and step' };
+  const layout = (extra: Record<string, unknown>, size: { width: number; height?: number }) => {
+    const result = layoutResolvedRequest(resolveChartRequest({ type: 'heatmap', data, options: { ...options, ...extra, size } }));
+    if (result.refused) throw new Error(result.warnings[0]!.message);
+    return result;
+  };
+  const geometry = (result: Geometry) => ({
+    size: result.size,
+    cells: result.scene.flatMap(node => node.t === 'rect' && node.part === 'cell' ? [node.rect] : []),
+    circles: result.scene.flatMap(node => node.t === 'circle' && node.part === 'bubble' ? [{ id: node.id, cx: node.cx, cy: node.cy, r: node.r }] : []),
+  });
+  for (const size of [{ width: 960 }, { width: 960, height: 350 }]) {
+    const reference = geometry(layout({}, size));
+    expect(reference.circles).toHaveLength(72);
+    for (const extra of [{}, { labels: false }, { labels: { point: false } }, { format: '1.0' }]) {
+      const result = layout(extra, size);
+      expect(geometry(result)).toEqual(reference);
+      const values = result.scene.filter(node => node.t === 'text' && node.part === 'point');
+      expect(values).toHaveLength('labels' in extra ? 0 : 24);
+      if (values.length) expect(new Set(values.map(node => node.t === 'text' && node.font.size)).size).toBe(1);
+    }
+  }
+});
+
+// A levelled bubble matrix with no top-level cell prints its values in every circle, so its rows must stay tall enough for them.
+it('prints every value of a levelled bubble matrix that holds no top-level cell', () => {
+  const fixture = getFixtures('heatmap').find(f => f.id === 'survey-journey-bubbles')!;
+  const data = structuredClone(fixture.data) as { series: { sizes: (number | null)[] }[] };
+  for (const s of data.series) s.sizes = s.sizes.map(v => v === 3 ? 2 : v);
+  const result = layoutResolvedRequest(resolveChartRequest({ type: 'heatmap', data, options: { ...fixture.options, size: { width: 960 } } }));
+  if (result.refused) throw new Error(result.warnings[0]!.message);
+  expect(result.scene.filter(node => node.t === 'text' && node.part === 'point')).toHaveLength(72);
+});
+
 // A host needs the refusal's minimum to size its card without a separate measurement.
 it('keeps canDraw minimum on a fixed-size refusal', () => {
   expect(canDraw(shortCombo)).toMatchObject({ ok: false, code: 'size-below-floor', minimum: { width: 480, height: 240 } });
@@ -436,6 +481,19 @@ it('draws a compact pie only when the radius and the explode fit, and names a si
   const repair = exploded.warnings[0]!.expected!.minimum as { width: number; height: number };
   expect(repair).toEqual({ width: 320, height: 283 });
   expect(draw('full-explode-envelope', repair).refused).toBeUndefined();
+});
+
+// Prevents a pie with labels off from leaving its colours unnamed and from growing taller than the labelled pie.
+it('keeps the height of a pie with labels off and names its slices in a key', () => {
+  const fixture = getFixtures('pie').find(f => f.id === 'doughnut-device-revenue')!;
+  const draw = (extra: object) => layoutResolvedRequest(resolveChartRequest({
+    type: 'pie', data: fixture.data, options: { ...fixture.options, ...extra } } as never)) as unknown as Geometry;
+  const labelled = draw({});
+  const off = draw({ labels: false });
+  expect(off.size.height).toBe(labelled.size.height);
+  expect(off.legend?.items.map(item => item.id)).toEqual(['mobile', 'pc', 'tablet']);
+  expect(off.labels.filter(label => !label.hidden)).toEqual([]);
+  expect(draw({ labels: false, legend: 'none' }).legend).toBeUndefined();
 });
 
 // Prevents a narrow diagram card from drawing one sibling group's frame inside another's (false nesting),
@@ -1140,4 +1198,31 @@ it('keeps a cycle step secondary text inside its node', () => {
     const node = result.marks.nodes.find(mark => mark.id === label.owner.pointId)!;
     expect(label.rect.w).toBeLessThanOrEqual(node.contentRect.w);
   }
+});
+
+// Prevents a bubble matrix with few wide columns from reserving a size key as tall as a column is wide: at a 380 pt
+// height the key left the rows no room and the chart refused, though the bubbles it draws are small.
+describe('bubble matrix key height', () => {
+  const stages = ['Seed', 'Series A', 'Series B', 'Growth'];
+  const sizes = [[4, 12, 30, 0], [3, 9, 22, 48], [0, 8, 26, 0], [2, 14, 0, 0], [0, 0, 35, 70], [5, 10, 18, 0], [2, 6, 20, 41], [6, 16, 0, 0]];
+  const spec = (size: { width: number; height?: number; unit?: string }) => ({
+    type: 'heatmap',
+    data: {
+      categories: stages.map((label, i) => ({ id: `c${i}`, label })),
+      series: sizes.map((row, i) => ({ id: `s${i}`, label: `Company ${i + 1}`, values: row.map(v => (v > 0 ? v : null)), sizes: row })),
+    },
+    options: { variant: 'bubble', scale: 'discrete', breaks: [0, 50, 70, 100], bubble: { sizeLabel: 'Invested, EUR m', colorLabel: 'Invested, EUR m' }, title: 'Invested capital by stage', source: 'Invented ledger', target: 'slide', size },
+  });
+
+  it('draws at 380 pt of height', () => {
+    expect(canDraw(spec({ width: 960, height: 380, unit: 'pt' }) as never)).toMatchObject({ ok: true });
+  });
+
+  it('keeps a content-fit height: the pinned render at the height it returns is the same SVG', () => {
+    const open = render({ spec: spec({ width: 960 }), return: ['svg'] }).body as { svg: string; size: { width: number; height: number } };
+    const pinned = render({ spec: spec({ width: open.size.width, height: open.size.height }), return: ['svg'] }).body as { svg: string };
+    // The ids hash the request and the sizing attribute names the request's size; the drawing is the rest.
+    const drawing = (svg: string) => svg.replace(/-[0-9a-f]{10}\b/g, '').replace(/ data-bp-sizing="[^"]*"/, '');
+    expect(drawing(pinned.svg)).toBe(drawing(open.svg));
+  });
 });
