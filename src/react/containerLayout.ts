@@ -1,4 +1,4 @@
-import { INTERACTIVE_LAYOUT, LIVE_NOTE_SHOW } from '../core/footer';
+import { INTERACTIVE_LAYOUT, LIVE_NOTE_SHOW, STORY_NAVIGATION } from '../core/footer';
 import { shownNoteKinds } from '../core/notes';
 import { linkStaticFooter } from '../core/staticFooter';
 import { getChart } from '../core/registry';
@@ -32,6 +32,8 @@ function withOpenHeight(request: ResolvedChartRequest): ResolvedChartRequest {
  * it is asked for: at the same width both surfaces draw the same plot at the same height.
  */
 export function layoutContainerRequest(request: ResolvedChartRequest, fit?: ContainerFit) {
+  // React draws the Back and Next row of a story; static output does not (core/story).
+  if ((request.options as { story?: unknown }).story) request = { ...request, options: { ...request.options, [STORY_NAVIGATION]: true } as typeof request.options };
   if (fit === 'content') {
     linkStaticFooter();
     const open = withOpenHeight(request);

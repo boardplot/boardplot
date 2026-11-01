@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '../src/core/charts';
 import { getChart } from '../src/core/registry';
 import { storyView } from '../src/core/story';
+import { STORY_NAVIGATION } from '../src/core/footer';
 import '../src/core/storyLayer';
 import type { Geometry, SceneNode } from '../src/core/types/scene';
 import { getFixtures } from '../src/fixtures';
@@ -28,6 +29,8 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const fixture = getFixtures('scatter').find(item => item.id === 'story-use-case-matrix')!;
 const options = fixture.options as Record<string, unknown> & { story: { steps: { id: string; title: string; highlight?: string[] }[] } };
 const layout = (opts: object) => getChart('scatter')!.layout(fixture.data as never, opts as never) as Geometry;
+// React's layout keeps the room and the rects of the Back and Next row (react/containerLayout).
+const reactLayout = (opts: object) => layout({ ...opts, [STORY_NAVIGATION]: true });
 
 describe('story layout', () => {
   // Story text cut at a line limit must stay in the returned notes and omissions, including inactive steps.
@@ -100,6 +103,51 @@ describe('story below the chart', () => {
     expect(body.size.height).toBe(geo.size.height);
     expect(body.naturalSize.height).toBe(geo.size.height);
     expect(body.naturalHeight).toBeGreaterThanOrEqual(geo.size.height);
+  });
+
+  // Problem: the static canvas kept room for the Back and Next row that only React draws, which left a gap of 64 px or more above the source line.
+  it('static output reserves no row for buttons it does not draw; React keeps the row at the same height in every step', () => {
+    const size = { width: 360 };
+    const still = layout({ ...options, size });
+    const live = reactLayout({ ...options, size });
+    const row = live.story!.panel.h - live.story!.staticPanel.h;
+    expect(row).toBeGreaterThan(40);
+    expect(still.story!.panel).toEqual(still.story!.staticPanel);
+    expect(live.size.height - still.size.height).toBeCloseTo(row, 6);
+    const sourceTop = (geo: Geometry) => (geo.scene.find(node => node.id === geo.frame.sourceNodeId) as { y: number }).y;
+    const gap = sourceTop(still) - (still.story!.staticPanel.y + still.story!.staticPanel.h);
+    expect(gap).toBeGreaterThan(0);
+    expect(gap).toBeLessThan(row);
+    expect(sourceTop(live) - (live.story!.panel.y + live.story!.panel.h)).toBeCloseTo(gap, 6);
+    // The row is in the geometry for every step: no step changes the height.
+    expect(live.story!.nav.nodes.length).toBe(4);
+  });
+
+  // Problem: React's content fit started the notes at the panel without its button row, so they were drawn over Back and Next.
+  it('a content-fit React story starts its notes below the button row', async () => {
+    const footnotes = ['Values are workshop estimates from 15 use cases and are not measured savings.', 'Cost savings are shown as a share of the cost base of each function.'];
+    const { result } = await prepareChart({ type: 'scatter', data: fixture.data, options: { ...options, footnotes }, size: 'container', fit: 'content', fallbackSize: { width: 400, height: 400 } });
+    if (result.refused || !result.story) throw new Error('Expected a prepared story');
+    const panelBottom = result.story.panel.y + result.story.panel.h;
+    const noteNodes = result.frame!.footnoteNodeIds!.map(id => result.scene.find(node => node.id === id) as { y: number });
+    expect(noteNodes.length).toBeGreaterThan(0);
+    for (const node of noteNodes) expect(node.y).toBeGreaterThanOrEqual(panelBottom);
+  });
+
+  // Problem: a fixed 400 x 300 canvas squeezed the plot to a 45 px strip with a cut title once the row was dropped, so it must keep the size refusal.
+  it('a fixed canvas too small for its story is still refused', () => {
+    const geo = layout({ ...options, size: { width: 400, height: 300 } }) as unknown as { refused?: boolean };
+    expect(geo.refused).toBe(true);
+  });
+
+  // Problem: a prepared React story that lost the marker would lay out without the room for its buttons, which then sit over the source line.
+  it('a prepared React chart keeps the button row at every fit', async () => {
+    for (const fit of ['fill', 'content'] as const) {
+      const { result } = await prepareChart({ type: 'scatter', data: fixture.data, options, size: 'container', fit, fallbackSize: { width: 360, height: 400 } });
+      if (result.refused || !result.story) throw new Error('Expected a prepared story');
+      expect(result.story.panel.h).toBeGreaterThan(result.story.staticPanel.h);
+      expect(result.story.nav.nodes.length).toBe(4);
+    }
   });
 });
 
@@ -246,7 +294,7 @@ describe('story React', () => {
 
   it('uses full authored control names even when the drawn labels are clipped', () => {
     const strings = { storyBack: 'Vorheriger Schritt', storyNext: 'Nächster Schritt' };
-    const geo = layout({ ...options, strings });
+    const geo = reactLayout({ ...options, strings });
     const story = { ...geo.story!, nav: { ...geo.story!.nav,
       nodes: geo.story!.nav.nodes.map(node => node.t === 'text' ? { ...node, lines: [''] } : node) } };
     root = createRoot(host);
@@ -323,7 +371,7 @@ describe('story React', () => {
   it('keeps a body omitted from a fixed panel in the live region', () => {
     // At 480 px the hard-minimum plot leaves room for one cut body line; this test needs the body omitted.
     // The engine notes print (notes.show) as they did when this height was chosen; without them the body fits.
-    const geo = layout({ ...options, target: 'dashboard', notes: { show: ['note', 'disclosure', 'method'] }, size: { width: 400, height: 460 } });
+    const geo = reactLayout({ ...options, target: 'dashboard', notes: { show: ['note', 'disclosure', 'method'] }, size: { width: 400, height: 460 } });
     const story = geo.story!;
     expect(story.steps[0]!.nodes.some(node => node.id === 'story:body')).toBe(false);
     expect(story.steps[0]!.body).not.toBe('');

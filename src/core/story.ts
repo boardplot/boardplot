@@ -11,7 +11,7 @@
  */
 
 import type { Rect } from './geometry';
-import { copyFrame, footerPlans } from './footer';
+import { STORY_NAVIGATION, copyFrame, footerPlans } from './footer';
 import { interactionTokens } from './a11y/theme';
 import { strokeToken, canvasMargin, panelTypeClass, resolveTargetTheme, themeForWidth, typeWidthClass } from './theme';
 import { DEFAULT_TARGET } from './target';
@@ -38,6 +38,7 @@ interface StoryOptions extends Pick<BaseOptions, 'margin' | 'canvas'> {
   locale?: LocaleSpec;
   theme?: ThemeRef;
   target?: RenderTarget;
+  [STORY_NAVIGATION]?: boolean;
   measure?: TextMeasurer;
   strings?: StringsSpec;
   size?: { width?: number; height?: number };
@@ -219,11 +220,19 @@ export function applyStory(geo: Geometry<object, object>, data: unknown, options
   const gap = Math.max(12, space * 3);
   const margin = { ...canvasMargin(theme, geo.size.width), ...options.margin, ...options.canvas?.margin };
   const fixed = typeof options.size === 'string' || options.size?.height !== undefined;
+  // Only React draws the Back and Next row. Static output reserves the text panel alone, so the source line sits one gap below it.
+  const navigation = options[STORY_NAVIGATION] === true;
+  // A fixed canvas first decides its text cuts and refusal with the row, as before: a plot squeezed to a strip is no chart. Then it lays out again without the row.
+  let holdRow = false;
+  const laidOut = (width: number, limits?: { title: number; body: number }) => {
+    const layout = panelLayout(spec, width, fonts, space, strings, measure, limits);
+    return navigation || holdRow ? layout : { ...layout, height: layout.staticHeight };
+  };
   let placed: { geo: Geometry<object, object>; rect: Rect; placement: StoryGeometry['placement']; layout: ReturnType<typeof panelLayout> } | undefined;
   // A side column must leave a chart that still meets its measured floor.
   if (typeWidthClass(geo.size.width) !== 'S') {
     const sideW = Math.min(320, Math.max(240, Math.round(geo.size.width * 0.3)));
-    const side = panelLayout(spec, sideW, fonts, space, strings, measure);
+    const side = laidOut(sideW);
     const chartW = geo.size.width - sideW - margin.right - gap;
     const narrowed = chartW >= (geo.sizing?.minWidth ?? 0) ? again({ width: chartW, ...(fixed ? { height: geo.size.height } : {}) }) : undefined;
     if (narrowed) {
@@ -239,7 +248,8 @@ export function applyStory(geo: Geometry<object, object>, data: unknown, options
   }
   if (!placed) {
     let base = geo;
-    let below = panelLayout(spec, base.plot.w, fonts, space, strings, measure);
+    holdRow = fixed;
+    let below = laidOut(base.plot.w);
     let reserve = below.height + gap;
     if (fixed) {
       // First let the plot shrink. At its floor, remove body lines, then
@@ -259,8 +269,15 @@ export function applyStory(geo: Geometry<object, object>, data: unknown, options
           base = { ...result, size: { ...result.size, height: result.size.height - reserve },
             ...(result.sizing ? { sizing: { ...result.sizing, naturalHeight: result.sizing.naturalHeight - reserve } } : {}),
           } as Geometry<object, object>;
-          below = panelLayout(spec, base.plot.w, fonts, space, strings, measure, below.limits);
-          if (below.height + gap <= reserve + 0.01) break;
+          below = laidOut(base.plot.w, below.limits);
+          if (below.height + gap <= reserve + 0.01) {
+            if (!holdRow || navigation) break;
+            holdRow = false;
+            below = laidOut(base.plot.w, below.limits);
+            reserve = below.height + gap;
+            widthPass = 0;
+            continue;
+          }
           reserve = below.height + gap;
           if (++widthPass < 4) continue;
         }
@@ -270,7 +287,7 @@ export function applyStory(geo: Geometry<object, object>, data: unknown, options
           return sizeRefusal(geo.type, geo.a11y.title, geo.size, sizing);
         }
         const limits = bodyLines > 0 ? { ...below.limits, body: bodyLines - 1 } : { title: 1, body: 0 };
-        below = panelLayout(spec, base.plot.w, fonts, space, strings, measure, limits);
+        below = laidOut(base.plot.w, limits);
         reserve = below.height + gap;
         widthPass = 0;
       }
@@ -298,9 +315,11 @@ export function applyStory(geo: Geometry<object, object>, data: unknown, options
   });
   // A relaid chart carries other node ids for the same marks only in theory; read its sets again.
   const sets = placed.geo === geo ? first.sets : stepSets(placed.geo, data, spec).sets;
-  const navY = rect.y + rect.h - layout.pad - layout.buttonsH;
-  const next = { x: rect.x + rect.w - layout.navPad - layout.nextW, y: navY + (layout.stacked ? layout.buttonH + layout.gap : 0), w: layout.nextW, h: layout.buttonH };
-  const back = { x: layout.stacked ? rect.x : next.x - layout.gap - layout.backW, y: navY, w: layout.backW, h: layout.buttonH };
+  // Static output has no row: the button rects collapse to the panel edge, and only React reads them.
+  const navY = navigation ? rect.y + rect.h - layout.pad - layout.buttonsH : rect.y + rect.h;
+  const buttonH = navigation ? layout.buttonH : 0;
+  const next = { x: rect.x + rect.w - layout.navPad - layout.nextW, y: navY + (layout.stacked ? buttonH + layout.gap : 0), w: layout.nextW, h: buttonH };
+  const back = { x: layout.stacked ? rect.x : next.x - layout.gap - layout.backW, y: navY, w: layout.backW, h: buttonH };
   const textY = (font: FontSpec, box: Rect, lines = 1) => box.y + (box.h - lines * layout.lineH(font)) / 2;
   const button = (id: 'back' | 'next', box: Rect, lines: string[]): SceneNode[] => [
     { t: 'rect', id: `${STORY}${id}`, rect: box, radius: 6, fill: { token: id === 'next' ? 'ink' : 'background' }, stroke: { token: 'ink' }, strokeWidth: strokeToken(theme, 'hair'), owner: {}, part: 'storyButton' },
@@ -331,7 +350,7 @@ export function applyStory(geo: Geometry<object, object>, data: unknown, options
   const story: StoryGeometry = {
     stepLabel: strings.storyStep,
     step: staticStep, placement, panel: rect, staticPanel: { ...rect, h: layout.staticHeight },
-    nav: { back, next, nodes: spec.steps.length > 1 ? [...button('back', back, layout.backLines), ...button('next', next, layout.nextLines)] : [] },
+    nav: { back, next, nodes: navigation && spec.steps.length > 1 ? [...button('back', back, layout.backLines), ...button('next', next, layout.nextLines)] : [] },
     steps, base, desc: placed.geo.a11y.desc, bold: theme.type.title.weight, dim: interactionTokens(theme).dim,
   };
   const panel: SceneNode = { t: 'rect', id: `${STORY}panel`, rect, radius: 6, fill: { token: 'background' }, stroke: { token: 'grid' }, strokeWidth: strokeToken(theme, 'hair'), owner: {}, part: 'storyPanel' };

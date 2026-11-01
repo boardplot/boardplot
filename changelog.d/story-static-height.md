@@ -1,0 +1,3 @@
+### Fixed
+
+- A story chart drawn as SVG, PNG or PDF no longer leaves a gap of 64 px or more between the story panel and the source line. The static canvas reserved room for the Back and Next row, which only the React chart draws. The static canvas now ends one normal gap below the panel text. In a fixed-height canvas the plot takes the room that the row no longer holds. The text cuts and the `size-below-floor` refusal of a fixed canvas stay as before, so a canvas that was too small for its story is still refused. The React chart keeps the row and its height does not change between steps. In React content fit, the notes now start below the button row and no longer sit over Back and Next. No option brings back the old static height: the reserve was an internal value.

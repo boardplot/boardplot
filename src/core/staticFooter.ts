@@ -298,7 +298,8 @@ function withStaticFooter<G extends Geometry<object, object>>(geometry: G, minim
   // extension belongs to footerRect, so the plot-share denominator stays intact.
   const occupied = geometry.debug.occupied.filter(item => !oldRects.some(rect => item.kind === 'frame' && item.rect.x === rect.x
     && item.rect.y >= rect.y - 1e-6 && item.rect.y + item.rect.h <= rect.y + rect.h + 1e-6));
-  const last = geometry.story?.staticPanel;
+  // The panel with its button row in React, without it in static output: the notes start below what is drawn.
+  const last = geometry.story?.panel;
   let bottom = occupied.reduce((edge, { rect }) => Math.max(edge, rect.y + rect.h),
     Math.max(geometry.plot.y + geometry.plot.h, last ? last.y + last.h : 0));
   // Axis claims can predate text rotation. Measure those line boxes about the
