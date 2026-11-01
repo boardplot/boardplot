@@ -265,3 +265,29 @@ describe('a KPI card in a fixed slot keeps every text it draws at natural size',
     expect(shown(long, 'point:delta')).toBe(true);
   });
 });
+
+describe('a value matrix steps its text down before it hides a value', () => {
+  // A cell too narrow for "117.80" used to lose every number and keep only its colour.
+  const cells = Array.from({ length: 12 }, (_, i) => ({ id: `c${i}`, label: `C${i}` }));
+  const series = ['a', 'b', 'c'].map((id, r) => ({ id, label: id.toUpperCase(), values: cells.map((_, i) => 80 + r * 40 + i * 7.31 + 0.07) }));
+  const printed = (width: number, options: object = {}) => {
+    const geometry = layoutHeatmap({ categories: cells, series } as never, { variant: 'value', size: { width, height: 300 }, ...options } as never);
+    return { geometry, texts: geometry.labels.filter((label) => label.kind === 'point' && !label.hidden).map((label) => label.text) };
+  };
+
+  it('prints every value with fewer decimals while the hover card keeps them all', () => {
+    const wide = printed(640);
+    expect(wide.texts).toHaveLength(36);
+    expect(wide.texts[0]).toBe('80.07');
+    const narrow = printed(432);
+    expect(narrow.texts).toHaveLength(36);
+    expect(narrow.texts.every((value) => !value.includes('.'))).toBe(true);
+    expect(narrow.geometry.scene.find((node) => node.part === 'cell')?.display).toEqual({ value: '80.07' });
+  });
+
+  it('leaves an authored format as written', () => {
+    const { texts } = printed(432, { format: '1,234.00' });
+    expect(texts.length).toBeLessThan(36);
+    expect(texts.every((value) => /\.\d\d$/.test(value))).toBe(true);
+  });
+});
