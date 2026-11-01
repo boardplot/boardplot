@@ -7,7 +7,7 @@ import { asFirstFrame, DeferredCoreError, deferredFailure, type DeferredName } f
 import type { ChartRequest, RequestContext, ResolvedChartRequest } from '../core/request';
 import type { LayoutResult } from '../core/types/scene';
 import type { Size } from '../core/geometry';
-import { isFullGeometry, type PreparedChart, type RenderGeometry } from './prepared';
+import { isFullGeometry, preparedResult, type PreparedChart, type RenderGeometry } from './prepared';
 import { layoutContainerRequest, type ContainerFit } from './containerLayout';
 import { useDeferredRevision } from './deferredCore';
 import { useResolvedChartRequest } from './useResolvedChartRequest';
@@ -94,7 +94,7 @@ export function useDeferrableChartLayout(
     // A refused chart lays nothing out, but its card still needs the resolved
     // theme: a patch waits on the theme checks either way.
     if (skip) return { deferred: themeDeferred };
-    if (initial) return { geometry: initial.result };
+    if (initial) return { geometry: preparedResult(initial) };
     if (themeDeferred || !layoutRequest) return { deferred: themeDeferred };
     try { return { geometry: revision === 0 ? asFirstFrame(linked, () => layoutContainerRequest(layoutRequest, shownFit)) : layoutContainerRequest(layoutRequest, shownFit) }; }
     catch (error) {

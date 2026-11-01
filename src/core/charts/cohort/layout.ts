@@ -444,10 +444,12 @@ function restoreCohortLabelPaints(
   host: Pick<Geometry, 'scene' | 'labels'>,
   cellPaint: ReadonlyMap<string, Paint>,
 ): void {
+  // The matrix list the engine was given held explicit fills: it now lists the symbolic paints, each once.
+  const matrix = [...new Map([...cellPaint.values()].map((paint) => [JSON.stringify(paint), paint])).values()];
   for (const target of [...host.scene.filter(node => node.t === 'text'), ...host.labels]) {
     const paint = cellPaint.get(`cell:${target.owner.seriesId}:${target.owner.categoryId}`);
     if (paint && 'ink' in target && 'token' in target.ink && target.ink.theme?.kind === 'contrast-ink') {
-      target.ink = { ...target.ink, theme: { ...target.ink.theme, fill: paint } };
+      target.ink = { ...target.ink, theme: { ...target.ink.theme, fill: paint, ...(target.ink.theme.matrix ? { matrix } : {}) } };
     }
   }
 }

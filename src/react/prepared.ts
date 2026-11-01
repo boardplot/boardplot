@@ -4,7 +4,7 @@ import type { InteractionRecord } from '../core/a11y/types';
 import type { Theme, ThemeRef } from '../core/types/theme';
 import type { ResolvedChartRequest } from '../core/request';
 import { defaultMeasurer } from '../core/text';
-import type { Geometry, LayoutResult, RefusedLayout } from '../core/types/scene';
+import type { Geometry, LayoutResult, Paint, RefusedLayout, SceneNode } from '../core/types/scene';
 import type { OverlayInputs } from './hover/placement';
 import { chartRefusals, refusalFindings, type RefusalFinding } from '../core/schema/refusals';
 import { footerFrame, type FooterFrame } from './footerFrame';
@@ -46,6 +46,8 @@ export interface PreparedChart extends PreparedHeader {
   /** Safe placement inputs for interactive attachment without layout. */
   overlay?: OverlayInputs;
   paintThemes?: Array<{ prefix: string; theme: ThemeRef }>;
+  /** The value matrices of the scene's labels, each listed once; a label holds its index (see `sharedMatrices`). Read the scene through `preparedResult`. */
+  matrices?: Paint[][];
   /** The data `prepareChart` mapped from `rows`: the chart draws it until the rows chunk loads. */
   rows?: PreparedRows;
 }
@@ -112,7 +114,38 @@ export function prepareChartRender(request: ResolvedChartRequest, layout: Layout
     ...(footerFrame(layout.frame) ? { frame: footerFrame(layout.frame) } : {}),
     ...refusalsOf(layout),
   };
-  return JSON.parse(canonicalJson({ kind: 'svg', engineRev: ENGINE_REV, requestKey, result })) as PreparedChart;
+  if (layout.refused) return JSON.parse(canonicalJson({ kind: 'svg', engineRev: ENGINE_REV, requestKey, result })) as PreparedChart;
+  const { scene, matrices } = sharedMatrices(layout.scene);
+  return JSON.parse(canonicalJson({ kind: 'svg', engineRev: ENGINE_REV, requestKey, result: { ...result, scene }, ...(matrices.length ? { matrices } : {}) })) as PreparedChart;
+}
+
+type MatrixInk = { token: string; theme: { kind: 'contrast-ink'; matrix?: Paint[] | number } };
+const matrixInk = (node: SceneNode): MatrixInk | undefined => node.t === 'text' && 'token' in node.ink && node.ink.theme?.kind === 'contrast-ink' && node.ink.theme.matrix !== undefined
+  ? node.ink as unknown as MatrixInk : undefined;
+
+/**
+ * Every value of a heatmap or cohort matrix carries the matrix's fills (the contrast-ink recipe's `matrix`), one list
+ * shared by all of them. JSON would copy it into each label. The prepared chart lists each matrix once and a label holds its index.
+ */
+function sharedMatrices(scene: SceneNode[]): { scene: SceneNode[]; matrices: Paint[][] } {
+  const matrices: Paint[][] = [];
+  return { matrices, scene: scene.map((node) => {
+    const ink = matrixInk(node);
+    if (!ink) return node;
+    const matrix = ink.theme.matrix as Paint[];
+    const index = matrices.includes(matrix) ? matrices.indexOf(matrix) : matrices.push(matrix) - 1;
+    return { ...node, ink: { ...ink, theme: { ...ink.theme, matrix: index } } } as unknown as SceneNode;
+  }) };
+}
+
+/** The result of a prepared chart with each label's matrix list put back, shared again so one decision serves the whole matrix. */
+export function preparedResult(prepared: PreparedChart): PreparedChart['result'] {
+  const { result, matrices } = prepared;
+  if (!matrices || result.refused) return result;
+  return { ...result, scene: result.scene.map((node) => {
+    const ink = matrixInk(node);
+    return ink ? { ...node, ink: { ...ink, theme: { ...ink.theme, matrix: matrices[ink.theme.matrix as number] } } } as SceneNode : node;
+  }) };
 }
 
 function refusalsOf(layout: Geometry): { refusals?: RefusalFinding[] } {
