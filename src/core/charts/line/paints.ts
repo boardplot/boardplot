@@ -406,9 +406,9 @@ export function linePaints(env: LineEnv, domain: LineDomain, warnings: LintWarni
     !s.fill && !s.colorRole && !scenarioStyleOf(s)?.ink && s.scenario !== 'PY' && s.scenario !== 'PL';
   // Series whose order is the encoding read one ramp, weakest first. Stacked bands are
   // parts of one total, so unset emphasis gives them the ordered ramp too; a highlight,
-  // palette or series fill keeps its own colours, and emphasis 'none' the theme hues.
+  // palette, series fill or scenario ink keeps its own colours, and emphasis 'none' the theme hues.
   const emphasis = options.emphasis ??
-    (isStacked && !grey && !fade && options.palette === undefined && dataSeries.every((s) => !s.fill) ? 'ordered' : undefined);
+    (isStacked && !grey && !fade && options.palette === undefined && dataSeries.every((s) => !s.fill && !scenarioStyleOf(s)?.ink) ? 'ordered' : undefined);
   // A series with its own paint keeps it; the ramp series skip a step that
   // paints the same colour, so no two series of one chart look alike.
   // An area series reserves the paint its area draws: the focus when it is
