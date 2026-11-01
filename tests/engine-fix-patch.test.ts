@@ -275,8 +275,22 @@ describe('design advice fixes', () => {
   // A bridge that ends on a step: the appended total must draw as the closing bar.
   it('design-waterfall-closing-total', () => applyAdvice(fixtureSpec('waterfall', 'repeated-segment-key'), 'design-waterfall-closing-total'));
 
-  // Rotated step names at 360 px: the horizontal bridge must draw at the same width.
-  it('design-waterfall-horizontal', () => applyAdvice(fixtureSpec('waterfall', 'build-down'), 'design-waterfall-horizontal', 360));
+  // Rotated step names at 360 px under an authored vertical bridge: the horizontal bridge must draw at the same width.
+  it('design-waterfall-horizontal', () => {
+    const spec = fixtureSpec('waterfall', 'build-down');
+    spec.options.variant = 'vertical';
+    applyAdvice(spec, 'design-waterfall-horizontal', 360);
+  });
+
+  // A bridge whose names would rotate turns horizontal by itself; an authored vertical keeps its columns and its finding.
+  it('turns a crowded bridge horizontal under the default variant', () => {
+    const crowded = (spec: any) => (render({ spec, width: 360 }).body as any).warnings.map((warning: any) => warning.code).includes('category-labels-rotated');
+    const spec = fixtureSpec('waterfall', 'build-down');
+    delete spec.options.variant;
+    expect(crowded(spec)).toBe(false);
+    spec.options.variant = 'vertical';
+    expect(crowded(spec)).toBe(true);
+  });
 
   const markets = ['Austria', 'Belgium', 'Croatia', 'Denmark', 'Estonia', 'Finland'].map((label) => ({ id: label.toLowerCase(), label }));
   const codes = (spec: unknown) => (render({ spec }).body as any).warnings.map((warning: any) => warning.code);

@@ -899,7 +899,7 @@ export interface ButterflyOptions extends BaseOptionsFor<'butterfly'> {
 export interface WaterfallOptions extends BaseOptionsFor<'waterfall'> {
   /** Authored value-axis title above a vertical bridge; horizontal bridges do not print it. */
   axisTitles?: { primary?: string };
-  variant?: 'vertical' | 'horizontal'; // default 'vertical'
+  variant?: 'vertical' | 'horizontal'; // default: vertical, or horizontal when the step names would rotate
   build?: 'up' | 'down'; // default 'up'
   /** Paint each plain step good or bad by its sign times the item's direction; false paints the neutral. */
   signColor?: boolean;

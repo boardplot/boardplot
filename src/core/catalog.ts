@@ -186,7 +186,7 @@ const DERIVED_FORMS: Readonly<Record<string, readonly string[]>> = {
 };
 
 /** The variant these types draw when `variant` is omitted; their schema registers no default. */
-const IMPLIED_VARIANT: Readonly<Record<string, string>> = { funnel: 'rows', slope: 'lines', bartable: 'panels' };
+const IMPLIED_VARIANT: Readonly<Record<string, string>> = { funnel: 'rows', slope: 'lines', bartable: 'panels', waterfall: 'vertical' };
 
 type Loose = Record<string, any> | undefined;
 
