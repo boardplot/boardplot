@@ -106,11 +106,25 @@ export function fitText(
     for (const width of widths) {
       for (const candidate of texts) {
         const tried = attempt(candidate, candidateFont, width, lines, measure, options.typeRole, options.breakAfter);
-        if (!tried.cut) return tried.fitted;
-        if (options.hyphenRetry && !options.breakAfter) {
-          const marked = attempt(candidate, candidateFont, width, lines, measure, options.typeRole, true);
-          if (!marked.cut) return marked.fitted;
+        let breakFlag = options.breakAfter;
+        let ok = tried;
+        if (ok.cut && options.hyphenRetry && !options.breakAfter) {
+          ok = attempt(candidate, candidateFont, width, lines, measure, options.typeRole, true);
+          breakFlag = true;
         }
+        if (ok.cut) continue;
+        if (width === maxWidth) return ok.fitted;
+        // The wider budget is the most a name may take, not what it takes: it
+        // keeps the narrowest width, in whole px, that still holds it in `lines`.
+        let narrow = Math.ceil(maxWidth);
+        let fitted = ok.fitted;
+        for (let wide = width; wide - narrow >= 2;) {
+          const mid = Math.floor((narrow + wide) / 2);
+          const fewer = attempt(candidate, candidateFont, mid, lines, measure, options.typeRole, breakFlag);
+          if (fewer.cut) narrow = mid;
+          else { wide = mid; fitted = fewer.fitted; }
+        }
+        return fitted;
       }
     }
     return undefined;
