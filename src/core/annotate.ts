@@ -183,6 +183,13 @@ export interface AnnotatePassInput {
     | { error: string };
   /** First/last defaults for cagr. */
   defaultSpan?: { from: AnchorRef; to: AnchorRef };
+  /**
+   * A bridge's bracket span: the drawn x range of the steps `from` to `to` (inclusive), their
+   * signed sum and the y of the one row every bracket stands in. A refusal names its cause.
+   */
+  resolveSpan?: (from: Id, to: Id) =>
+    | { left: number; right: number; y: number; sum: number; steps: { id: Id; value: number }[] }
+    | { code: string; error: string };
   /** The exact years between two readings of a time axis (zoneYearSpan); a CAGR uses them instead of dates or labels. */
   elapsedYears?: (from: AnchorResolution, to: AnchorResolution) => number | undefined;
   occupied: OccupiedIndex;
@@ -563,6 +570,8 @@ function placeAnnotation(s: AnnotationScope, ann: Annotation): void {
       return placeCagr(s, ann);
     case 'diff':
       return placeDiff(s, ann);
+    case 'bracket':
+      return placeBracket(s, ann);
     case 'callout':
     case 'note':
       return placeNote(s, ann);
@@ -766,6 +775,48 @@ function spanLead(s: AnnotationScope, a: AnchorResolution, b: AnchorResolution, 
   const period = periodOn && a.label && b.label && a.label !== b.label ? `${a.label}–${b.label}` : '';
   const lead = [named, period].filter(Boolean).join(' ');
   return lead && (period || colon) ? `${lead}:` : lead;
+}
+
+/** Bracket ticks hang this far down from the bracket's run. */
+const BRACKET_TICK = 5;
+
+function placeBracket(s: AnnotationScope, ann: Extract<Annotation, { kind: 'bracket' }>): void {
+  const { input, id } = s;
+  if (!input.resolveSpan) return warn(s, 'unsupported', `bracket '${id}': this chart has no steps to add up`);
+  const span = input.resolveSpan(ann.from, ann.to);
+  if ('error' in span) return warn(s, span.code, `bracket '${id}': ${span.error}`);
+  const sumText = s.run.fmtSigned(span.sum);
+  const composed = ann.label ? `${ann.label} ${sumText}` : sumText;
+  const label = authored(s, 'bracket', composed, ann.text, sumText);
+  const lineId = s.nid('bracket');
+  const { left, right, y } = span;
+  s.nodes.push({
+    t: 'path', id: lineId,
+    d: `M${left} ${y + BRACKET_TICK}L${left} ${y}L${right} ${y}L${right} ${y + BRACKET_TICK}`,
+    stroke: { token: 'ink' }, width: strokeToken(input.theme, 'rule'), owner: { annotationId: id }, part: 'bracket',
+  });
+  input.occupied.claim({ x: left - 1, y: y - 1, w: right - left + 2, h: BRACKET_TICK + 2 }, 'annotation', { annotationId: id }, 'bracket');
+  const font = { family: input.theme.type.family, ...input.theme.type.label };
+  const size = input.measure(label.text, font);
+  s.labelRequests.push({
+    id: `annotation:${id}`,
+    kind: 'annotation',
+    role: computedTextRole(label.text, label.computed),
+    owner: { annotationId: id },
+    text: label.text,
+    lines: [label.text],
+    typeRole: 'label', font,
+    priority: ann.priority ?? PRIORITY.valueLine,
+    candidates: [{ slot: 'aboveBracket', rect: { x: (left + right - size.width) / 2, y: y - 3 - size.height, w: size.width, h: size.height }, penalty: 0 }],
+  });
+  s.placed.push({
+    id, kind: 'bracket', computedText: label.computed, nodeIds: [lineId], labelId: `annotation:${id}`,
+    derivation: {
+      basis: 'derived', op: 'sum@1',
+      inputs: span.steps.map((step) => ({ ref: step.id, value: step.value })),
+      raw: span.sum,
+    },
+  });
 }
 
 function placeDiff(s: AnnotationScope, ann: Extract<Annotation, { kind: 'diff' }>): void {

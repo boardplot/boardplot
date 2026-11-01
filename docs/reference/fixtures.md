@@ -413,6 +413,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | ebit-bridge | waterfall.vertical | example | EBIT bridge FY21→FY24 |
 | interview-status-buildup | waterfall.vertical | example | Interview pipeline build-up by status |
 | revenue-build-up | waterfall.vertical | example | Revenue → EBIT build-up with diff arrow |
+| step-brackets | waterfall.vertical | example | Brackets over bridge steps print their sums |
 | build-down | waterfall.vertical | example | Build-down: revenue to net income |
 | whole-axis-opt-out | waterfall.vertical | example | Whole value axis kept with an explicit false |
 | automatic-axis-break | waterfall.vertical | example | Explicit automatic break makes small steps on a large base easier to compare |

@@ -20,5 +20,5 @@ export const waterfallCore: ChartCore<
   layout: layoutWaterfall,
   namesMustPrint: true,
   defaults: { build: 'up', variant: 'vertical' },
-  annotationKinds: ['cagr', 'diff', 'delta', 'note', 'callout', 'valueLine', 'abs']
+  annotationKinds: ['cagr', 'diff', 'delta', 'note', 'callout', 'valueLine', 'abs', 'bracket']
 };

@@ -1317,7 +1317,11 @@ function layoutWaterfallWithPad(
   if (categoryRow) pushAll(warnings, catPlan.warnings);
   // spanning annotations (cagr) need arm headroom above the tallest bar
   // 12 px for the arms; the second pass adds what the arms still lack.
-  const annPad = (options.annotations ?? []).some((a) => a.kind === 'cagr') ? 12 + extraAnnPad : extraAnnPad;
+  // A bracket over steps stands above the highest value label: its own label, its ticks, and
+  // the room a value label needs over the tallest bar.
+  const bracketLabelH = measure('X', { family: theme.type.family, ...theme.type.label }).height;
+  const bracketRoom = (options.annotations ?? []).some((a) => a.kind === 'bracket') ? Math.ceil(2 * bracketLabelH + 8) : 0;
+  const annPad = ((options.annotations ?? []).some((a) => a.kind === 'cagr') ? 12 + extraAnnPad : extraAnnPad) + bracketRoom;
   const axisTitle = categoryRow && axisTitleAllowed(options.labels) ? planValueAxisTitle(options.axisTitles?.primary, theme, measure, plotWidth) : undefined;
   const axisTitleBand = valueAxisTitleBand(axisTitle, theme, measure, annPad);
   const plot: Rect = {
@@ -2004,6 +2008,23 @@ function layoutWaterfallWithPad(
     solveCtx,
     yScale: y,
     annotationBandReserved: true,
+    resolveSpan: (fromId, toId) => {
+      if (cases.length > 0) return { code: 'bracket-cases', error: 'a bridge with cases has no one sum to print' };
+      const i = items.findIndex((x) => x.id === fromId);
+      const j = items.findIndex((x) => x.id === toId);
+      if (i < 0 || j < 0) return { code: 'bad-anchor', error: `unknown step '${i < 0 ? fromId : toId}'; valid step ids: ${items.map((x) => x.id).join(', ')}` };
+      if (i > j) return { code: 'bracket-span-order', error: `'${fromId}' comes after '${toId}'; give the earlier step as from` };
+      const steps = items.slice(i, j + 1);
+      const total = steps.find((x) => x.type !== 'delta');
+      if (total) return { code: 'bracket-span-total', error: `step '${total.id}' is a total, so the span has no one sum; bracket only delta steps` };
+      return {
+        left: band.position(i),
+        right: band.position(j) + band.bandwidth,
+        y: annPlot.y + bracketLabelH + 3,
+        sum: steps.reduce((all, x) => all + levels[x.id]!.end - levels[x.id]!.start, 0),
+        steps: steps.map((x) => ({ id: x.id, value: levels[x.id]!.end - levels[x.id]!.start })),
+      };
+    },
   });
   pushAll(warnings, annResult.warnings);
 
