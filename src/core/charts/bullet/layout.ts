@@ -538,8 +538,11 @@ export function layoutBullet(
   /** Signed delta: '+7' / '−1.5pp', and with its comparison '+7 vs target'. */
   const deltaBody = (row: NormRow, d: number): string => {
     const spec = rowSpecs.get(row)!;
-    return formatWithSpec(shownDelta(row, d), { ...spec, signed: true, automatic: false, nonzero: undefined,
-      ...(row.isPct ? { prefix: '', suffix: 'pp' } : {}) });
+    const shown = shownDelta(row, d);
+    const gapSpec = { ...spec, signed: true, ...(row.isPct ? { prefix: '', suffix: 'pp' } : {}) };
+    const fixedSpec = { ...gapSpec, automatic: false, nonzero: undefined };
+    // A nonzero gap that the fixed decimals round to zero (operands in scientific form) prints in the operands' own form.
+    return formatWithSpec(shown, shown !== 0 && roundedNumber(shown, fixedSpec) === 0 ? gapSpec : fixedSpec);
   };
   const deltaText = (row: NormRow, d: number): string => `${deltaBody(row, d)} ${shownDelta(row, d) === 0
     ? chartString(options, 'gapOn', { v1: targetWord(options) }) : `vs ${targetWord(options)}`}`;

@@ -49,6 +49,15 @@ describe('bullet target and gap columns', () => {
     }
   });
 
+  // A value and target in scientific notation printed their nonzero gap as "0.0000" beside "above target".
+  it('prints a nonzero gap in scientific notation when the value and target do', () => {
+    const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'bullet',
+      data: { rows: [{ id: 'rate', label: 'Rate', value: 0.00004, target: 0.00003 }] },
+      options: { size: { width: 1200, height: 300 } } }));
+    if (geometry.refused) throw new Error('refused');
+    expect(label(geometry, 'delta:rate')?.text).toBe('+1.0\u00a0×\u00a010⁻⁵');
+  });
+
   // A reader had to find each target above its tick and read "−7 vs target" at the row end.
   it('prints the target and the gap under headed columns, in English and German', () => {
     const wide = draw({ size: { width: 1200, height: 620 } });
