@@ -1,15 +1,16 @@
-import type { Point, Rect, Size } from '../../geometry';
+import { rectLineDistance, type Point, type Rect, type Size } from '../../geometry';
 import { NormalizeError } from '../../normalize/shared';
 import { fitText } from '../../label/fitText';
+import { compileIcon } from '../../icons';
 import { wrapText, type FontSpec, type TextMeasurer } from '../../text';
 import type { DiagramEdge, DiagramGroup, DiagramLane, DiagramNode, DiagramOptions } from '../../types/diagram';
 import type { LintWarning, Paint, SceneNode } from '../../types/scene';
 import { dashToken, strokeToken } from '../../theme';
 import type { Theme } from '../../types/theme';
 import { diagramSceneId } from './ids';
-import type { NormalizedDiagram } from './model';
+import { groupWithin, type NormalizedDiagram } from './model';
 import { snap, type FixedRoute, type OrgChartLayout } from './orgChart';
-import { edgeOwner, laneOwner, q, qRect, type DiagramPalette } from './primitives';
+import { edgeOwner, laneOwner, nodeOwner, q, qRect, storePath, type DiagramPalette } from './primitives';
 
 /**
  * The architecture diagram: zones side by side or labelled lanes, with every
@@ -34,6 +35,17 @@ const SIDE_COST = 48;
 /** Tints toward the background of the lane ramp, lightest lane first. */
 const LANE_RAMP = [0.9, 0.78, 0.6, 0.22, 0];
 const ZONE_TINT = 0.93;
+/** The tint of a protected node or zone, and the inset of its inner frame. */
+const PROTECTED_TINT = 0.89;
+const PROTECTED_INSET = 3;
+/** Each stacked copy of a repeated node steps this far down and right. */
+const REPEAT_STEP = 3;
+/** How far a self-loop hangs below its node, in spacing units. */
+const LOOP_REACH = 2.25;
+/** A callout's disc across, in spacing units. */
+const DISC_UNITS = 3.5;
+/** A route pays this for each zone frame it need not cross. */
+const ZONE_COST = 160;
 /** One pass learns the tracks, one fits them, one moves a label without a seat to the outer corridors, one fits that. */
 const ROUTE_PASSES = 4;
 
@@ -52,7 +64,10 @@ interface Env {
 }
 
 interface Cell { node: DiagramNode; band: number; c0: number; c1: number; r0: number; r1: number }
-interface Unit { group?: DiagramGroup; nodes: DiagramNode[]; c0: number; c1: number }
+/** A run of nodes in the zones of `chain`, outermost first. An empty chain has no frame. */
+interface Unit { chain: DiagramGroup[]; nodes: DiagramNode[]; c0: number; c1: number }
+/** A zone in one band, with its depth in the zone tree. */
+interface BandFrame { group: DiagramGroup; depth: number; c0: number; c1: number }
 interface Band { cols: number; rows: number; units: Unit[] }
 interface LaneRows { lane: DiagramLane; r0: number; r1: number }
 interface Arrangement { cells: Map<string, Cell>; bands: Band[]; lanes?: LaneRows[]; labelAbove?: boolean }
@@ -64,13 +79,18 @@ interface Geometry {
   textBoxes: Map<string, Rect>;
   icons: Map<string, Rect>;
   badges: Map<string, Rect>;
-  zones: Array<{ id: string; bounds: Rect; titleBox: Rect; memberNodeIds: string[]; dashed: boolean }>;
+  zones: Array<{ id: string; bounds: Rect; titleBox: Rect; memberNodeIds: string[]; dashed: boolean; depth: number; policy?: boolean }>;
+  /** What the self-loops take below their nodes. */
+  loops: Rect[];
+  /** The lock beside a protected zone's title. */
+  locks: Map<string, Rect>;
   lanes: Array<{ id: string; bounds: Rect; headerBox?: Rect; memberNodeIds: string[]; rule?: number }>;
   labelClaims: Rect[];
   xs: Line[];
   ys: Line[];
   gaps: Gap[];
   width: number;
+  narrowLaneGrid: boolean;
 }
 
 type Side = 'top' | 'right' | 'bottom' | 'left';
@@ -106,7 +126,8 @@ export function layoutArchitecture(
       if (routed.problems.length === 0) clean = last;
       let grew = false;
       for (const id of routed.unseated) {
-        if (!outward.has(id)) {
+        // An edge inside one zone keeps its path, and its gutter grows instead.
+        if (!outward.has(id) && !heldInZone(env.data.edges.find((edge) => edge.id === id)!, geometry, env.data)) {
           outward.add(id);
           grew = true;
         }
@@ -134,7 +155,7 @@ export function layoutArchitecture(
 /** Longest path over the forward edges, with each return edge read backward. */
 function rankNodes(data: NormalizedDiagram): Map<string, number> {
   const rank = new Map(data.nodes.map((node) => [node.id, 0]));
-  const steps = data.edges.map((edge) => edge.flow === 'return'
+  const steps = data.edges.filter((edge) => !selfLoop(edge)).map((edge) => edge.flow === 'return'
     ? [edge.target.nodeId, edge.source.nodeId] as const : [edge.source.nodeId, edge.target.nodeId] as const);
   for (let pass = 0; pass < data.nodes.length; pass++) {
     let changed = false;
@@ -149,11 +170,13 @@ function rankNodes(data: NormalizedDiagram): Map<string, number> {
   return rank;
 }
 
+const selfLoop = (edge: DiagramEdge) => edge.source.nodeId === edge.target.nodeId;
+
 function neighboursOf(data: NormalizedDiagram): Map<string, DiagramNode[]> {
   const byId = new Map(data.nodes.map((node) => [node.id, node]));
   const out = new Map<string, DiagramNode[]>(data.nodes.map((node) => [node.id, []]));
   for (const edge of data.edges) {
-    if (edge.flow === 'return') continue;
+    if (edge.flow === 'return' || selfLoop(edge)) continue;
     out.get(edge.source.nodeId)!.push(byId.get(edge.target.nodeId)!);
     out.get(edge.target.nodeId)!.push(byId.get(edge.source.nodeId)!);
   }
@@ -163,17 +186,50 @@ function neighboursOf(data: NormalizedDiagram): Map<string, DiagramNode[]> {
 /** Zones in authored order, each run of nodes without a zone in a frameless unit where its edges lead. */
 function unitsOf(env: Env): Unit[] {
   const { data } = env;
-  const units: Unit[] = data.groups.map((group) => ({ group, nodes: data.nodes.filter((node) => node.groupId === group.id), c0: 0, c1: 0 }));
+  const tree = (parent: string | undefined, chain: DiagramGroup[]): Unit[] => data.groups
+    .filter((group) => group.kind !== 'policy' && group.parentId === parent).flatMap((group) => {
+      const inner = [...chain, group];
+      const nodes = data.nodes.filter((node) => node.groupId === group.id);
+      const children = tree(group.id, inner);
+      return nodes.length > 0 || children.length === 0 ? [{ chain: inner, nodes, c0: 0, c1: 0 }, ...children] : children;
+    });
+  const units = tree(undefined, []);
   const free = data.nodes.filter((node) => !node.groupId).sort((a, b) => env.order.get(a.id)! - env.order.get(b.id)!);
   for (const node of free) {
-    const to = data.edges.filter((edge) => edge.flow !== 'return' && edge.source.nodeId === node.id).map((edge) => unitIndex(units, edge.target.nodeId)).filter((index) => index >= 0);
-    const from = data.edges.filter((edge) => edge.flow !== 'return' && edge.target.nodeId === node.id).map((edge) => unitIndex(units, edge.source.nodeId)).filter((index) => index >= 0);
-    const seat = to.length > 0 ? Math.min(...to) : from.length > 0 ? Math.max(...from) + 1 : units.length;
-    const beside = units[seat - 1]?.group === undefined ? units[seat - 1] : units[seat]?.group === undefined ? units[seat] : undefined;
+    const to = data.edges.filter((edge) => edge.flow !== 'return' && !selfLoop(edge) && edge.source.nodeId === node.id).map((edge) => unitIndex(units, edge.target.nodeId)).filter((index) => index >= 0);
+    const from = data.edges.filter((edge) => edge.flow !== 'return' && !selfLoop(edge) && edge.target.nodeId === node.id).map((edge) => unitIndex(units, edge.source.nodeId)).filter((index) => index >= 0);
+    let seat = to.length > 0 ? Math.min(...to) : from.length > 0 ? Math.max(...from) + 1 : units.length;
+    // A frameless run stays out of a nested zone.
+    while (seat > 0 && seat < units.length && units[seat]!.chain[0] !== undefined && units[seat - 1]!.chain[0] === units[seat]!.chain[0]) seat++;
+    const beside = units[seat - 1]?.chain.length === 0 ? units[seat - 1] : units[seat]?.chain.length === 0 ? units[seat] : undefined;
     if (beside) beside.nodes.push(node);
-    else units.splice(seat, 0, { nodes: [node], c0: 0, c1: 0 });
+    else units.splice(seat, 0, { chain: [], nodes: [node], c0: 0, c1: 0 });
   }
-  return units.filter((unit) => unit.nodes.length > 0 || unit.group);
+  return units.filter((unit) => unit.nodes.length > 0 || unit.chain.length > 0);
+}
+
+/** The units of each root zone stay together, and each frameless run stands alone. */
+function rootsOf(units: readonly Unit[]): Unit[][] {
+  const roots: Unit[][] = [];
+  for (const unit of units) {
+    const last = roots.at(-1);
+    if (last && unit.chain[0] !== undefined && last[0]!.chain[0] === unit.chain[0]) last.push(unit);
+    else roots.push([unit]);
+  }
+  return roots;
+}
+
+/** The zones of a band, outermost first. */
+function bandFrames(band: Band): BandFrame[] {
+  const frames = new Map<string, BandFrame>();
+  for (const unit of band.units) {
+    unit.chain.forEach((group, depth) => {
+      const frame = frames.get(group.id);
+      if (frame) frame.c1 = unit.c1;
+      else frames.set(group.id, { group, depth, c0: unit.c0, c1: unit.c1 });
+    });
+  }
+  return [...frames.values()];
 }
 
 const unitIndex = (units: readonly Unit[], id: string): number => units.findIndex((unit) => unit.nodes.some((node) => node.id === id));
@@ -196,7 +252,7 @@ function* arrangements(env: Env): Generator<Arrangement> {
   }
   const units = unitsOf(env);
   const cap = columnsFor(env);
-  for (let perBand = Math.min(5, units.length); perBand >= 1; perBand--) {
+  for (let perBand = Math.min(5, rootsOf(units).length); perBand >= 1; perBand--) {
     for (let inner = cap; inner >= 1; inner--) {
       const arrangement = arrangeColumns(env, units, perBand, inner, cap);
       if (arrangement) yield arrangement;
@@ -216,8 +272,31 @@ function arrangeColumns(env: Env, units: readonly Unit[], perBand: number, inner
   const tracks = [...new Set(env.data.nodes.flatMap((node) => (node.track === undefined ? [] : [node.track])))];
   const cells = new Map<string, Cell>();
   const bands: Band[] = [];
-  for (let start = 0; start < units.length; start += perBand) {
-    const members = units.slice(start, start + perBand).map((unit) => ({ ...unit }));
+  const width = (unit: Unit) => Math.min(inner, Math.max(1, new Set(localColumns(unit, env).values()).size));
+  const slices: Unit[][] = [];
+  const roots = rootsOf(units);
+  for (let start = 0; start < roots.length; start += perBand) {
+    const slice = roots.slice(start, start + perBand);
+    if (slice.length > 1 || slice.flat().reduce((sum, unit) => sum + width(unit), 0) <= cap) {
+      slices.push(slice.flat());
+      continue;
+    }
+    // A nested zone too wide for the width breaks across bands, and has them to itself.
+    let line: Unit[] = [];
+    let used = 0;
+    for (const unit of slice.flat()) {
+      if (line.length > 0 && used + width(unit) > cap) {
+        slices.push(line);
+        line = [];
+        used = 0;
+      }
+      line.push(unit);
+      used += width(unit);
+    }
+    slices.push(line);
+  }
+  for (const slice of slices) {
+    const members = slice.map((unit) => ({ ...unit }));
     const band = bands.length;
     const taken = new Map<string, string>();
     const claim = (id: string, c: number, r: number) => {
@@ -275,7 +354,7 @@ function arrangeColumns(env: Env, units: readonly Unit[], perBand: number, inner
 function localColumns(unit: Unit, env: Env): Map<string, number> {
   const ids = new Map(unit.nodes.map((node) => [node.id, node]));
   const col = new Map(unit.nodes.map((node) => [node.id, 0]));
-  const steps = env.data.edges.filter((edge) => ids.has(edge.source.nodeId) && ids.has(edge.target.nodeId))
+  const steps = env.data.edges.filter((edge) => ids.has(edge.source.nodeId) && ids.has(edge.target.nodeId) && !selfLoop(edge))
     .map((edge) => (edge.flow === 'return' ? [edge.target.nodeId, edge.source.nodeId] : [edge.source.nodeId, edge.target.nodeId]) as [string, string]);
   for (let pass = 0; pass < unit.nodes.length; pass++) {
     let changed = false;
@@ -344,6 +423,7 @@ function arrangeLanes(env: Env, cap: number): Arrangement | undefined {
   const tracks = [...new Set(data.nodes.flatMap((node) => (node.track === undefined ? [] : [node.track])))];
   const members = data.lanes.map((lane) => data.nodes.filter((node) => node.laneId === lane.id));
   const seats = Math.max(tracks.length, ...members.map((nodes) => nodes.filter((node) => node.span !== 'full').length), 1);
+  const placed = data.nodes.filter((node) => node.laneId !== undefined);
   const cols = Math.min(seats, cap);
   const reflow = seats > cap;
   const cells = new Map<string, Cell>();
@@ -368,7 +448,7 @@ function arrangeLanes(env: Env, cap: number): Arrangement | undefined {
     lanes.push({ lane, r0, r1: row - 1 });
   });
   if (!reflow) widenToNeighbours(cells, env);
-  const units: Unit[] = [{ nodes: data.nodes, c0: 0, c1: cols - 1 }];
+  const units: Unit[] = [{ chain: [], nodes: placed, c0: 0, c1: cols - 1 }];
   return { cells, lanes, bands: [{ cols, rows: row, units }], labelAbove: env.plot.w < 520 };
 }
 
@@ -414,9 +494,23 @@ function widenToNeighbours(cells: Map<string, Cell>, env: Env): void {
 
 interface NodeText { height: number }
 
+const lockWidth = (node: DiagramNode, u: number) => (node.protected ? 3.5 * u : 0);
+
+/** What a repeated node gives up to its stacked copies. */
+const stackOf = (node: DiagramNode) => (node.repeat ? (node.repeat - 1) * REPEAT_STEP : 0);
+
+/** A repeated node's own card, in the top left of the rectangle that its stack fills. */
+function frontRect(node: DiagramNode, rect: Rect): Rect {
+  const stack = stackOf(node);
+  return stack === 0 ? rect : { ...rect, w: rect.w - stack, h: rect.h - stack };
+}
+
+/** The curve of a store's ends. */
+const storeCap = (node: DiagramNode, u: number) => (node.shape.kind === 'store' ? 2 * u : 0);
+
 function nodeText(node: DiagramNode, width: number, env: Env): NodeText | undefined {
   const { name, text, measure, options, u } = env;
-  const inner = width - 4 * u - (node.icon ? 3.5 * u : 0);
+  const inner = width - 4 * u - (node.icon ? 3.5 * u : 0) - lockWidth(node, u);
   if (inner < 1) return undefined;
   const lineH = (font: FontSpec) => font.size * (font.lineHeight ?? 1.2);
   const lead = fitText(node.label, name, inner, 3, measure, { target: options.target, typeRole: 'label' });
@@ -432,28 +526,37 @@ function place(arrangement: Arrangement, gaps: ReadonlyMap<string, number>, env:
   const lanesFlow = arrangement.lanes !== undefined;
   const pad = 2.5 * u;
   const titleH = title.size * (title.lineHeight ?? 1.2);
+  const narrowLaneGrid = !!arrangement.labelAbove && arrangement.bands.some((band) => band.cols > 1);
+  const laneZoneGap = narrowLaneGrid ? Math.max(0, titleH / 2 + 2 - 2 * u) : 0;
   const innerGap = 2 * GAP_HALF;
   const unitGap = 2 * GAP_HALF;
   const gap = (key: string, base: number) => Math.max(base, gaps.get(key) ?? 0);
-  const geometry: Geometry = { rects: new Map(), textBoxes: new Map(), icons: new Map(), badges: new Map(), zones: [], lanes: [], labelClaims: [], xs: [], ys: [], gaps: [], width: plot.w };
+  const geometry: Geometry = { rects: new Map(), textBoxes: new Map(), icons: new Map(), badges: new Map(), zones: [], loops: [], locks: new Map(), lanes: [], labelClaims: [], xs: [], ys: [], gaps: [], width: plot.w, narrowLaneGrid };
   const outerL = gap('oL', 0);
   const outerR = gap('oR', 0);
   const laneLabel = lanesFlow && !arrangement.labelAbove ? laneLabelWidth(env) : 0;
   // A dashed zone's frame stands 1.5 u off its nodes and stays in the plot.
-  const frameInset = lanesFlow && env.data.groups.length > 0 ? 1.5 * u + 1 : 0;
+  const frameInset = lanesFlow && env.data.groups.some((group) => group.kind !== 'policy') ? 1.5 * u + 1 : 0;
   const left = plot.x + laneLabel + outerL + frameInset;
   const right = plot.x + plot.w - outerR - frameInset;
   const axisX: Array<[number, string?]> = [[left - Math.max(outerL, 2 * PITCH) / 2, 'oL'], [right + Math.max(outerR, 2 * PITCH) / 2, 'oR']];
   const axisY: Array<[number, string?]> = [];
-  let y = plot.y;
+  const strip = placePolicy(geometry, env);
+  if (strip === undefined) {
+    if (!force) return undefined;
+  }
+  const flowTop = plot.y + (strip ?? 0);
+  let y = flowTop;
+  const spans = new Map<string, { frame: BandFrame; x0: number; x1: number; y0: number; y1: number; lines: string[]; opened: number }>();
 
   for (const [b, band] of arrangement.bands.entries()) {
     const key = (axis: string, index: number) => `${axis}:${b}:${index}`;
-    const framed = band.units.filter((unit) => unit.group);
+    const frames = lanesFlow ? [] : bandFrames(band);
+    const opening = frames.filter((frame) => !spans.has(frame.group.id));
     const unitAfter = new Set(band.units.map((unit) => unit.c1));
     let fixed = 0;
     for (let c = 0; c + 1 < band.cols; c++) fixed += gap(key('v', c), unitAfter.has(c) ? unitGap : innerGap);
-    if (!lanesFlow) fixed += framed.length * 2 * pad;
+    if (!lanesFlow) fixed += frames.length * 2 * pad;
     const avail = right - left - fixed;
     if (avail / band.cols < 1 && !force) return undefined;
     const fair = Math.max(1, avail / band.cols);
@@ -462,13 +565,11 @@ function place(arrangement: Arrangement, gaps: ReadonlyMap<string, number>, env:
     const spare = band.cols > 1 ? (avail - columnW * band.cols) / (band.cols - 1) : 0;
     const colX: number[] = [];
     let x = left;
-    const unitOf = (c: number) => band.units.find((unit) => c >= unit.c0 && c <= unit.c1)!;
     for (let c = 0; c < band.cols; c++) {
-      const unit = unitOf(c);
-      if (c === unit.c0 && unit.group && !lanesFlow) x += pad;
+      x += frames.filter((frame) => frame.c0 === c).length * pad;
       colX[c] = q(x);
       x += columnW;
-      if (c === unit.c1 && unit.group && !lanesFlow) x += pad;
+      x += frames.filter((frame) => frame.c1 === c).length * pad;
       if (c + 1 < band.cols) {
         const width = gap(key('v', c), unitAfter.has(c) ? unitGap : innerGap) + spare;
         geometry.gaps.push({ key: key('v', c), axis: 'v', rect: { x, y: 0, w: width, h: 0 } });
@@ -484,30 +585,35 @@ function place(arrangement: Arrangement, gaps: ReadonlyMap<string, number>, env:
     const rowH = new Array<number>(band.rows).fill(11 * u);
     for (const cell of own) {
       const width = columnW * (cell.c1 - cell.c0 + 1) + colX[cell.c1]! - colX[cell.c0]! - columnW * (cell.c1 - cell.c0);
-      const text = nodeText(cell.node, width, env);
+      const stack = stackOf(cell.node);
+      const text = nodeText(cell.node, width - stack, env);
       if (!text) {
         if (!force) return undefined;
       }
       const badge = env.badges.get(cell.node.id);
-      const height = Math.max(11 * u, (text?.height ?? 0) + 3 * u + (badge ? badge.height + 0.5 * u : 0));
+      const height = Math.max(11 * u, (text?.height ?? 0) + 3 * u + (badge ? badge.height + 0.5 * u : 0) + 2 * storeCap(cell.node, u)) + stack;
       textH.set(cell.node.id, text?.height ?? 0);
       heights.set(cell.node.id, height);
       if (cell.r0 === cell.r1) rowH[cell.r0] = Math.max(rowH[cell.r0]!, height);
     }
 
-    const titled = !lanesFlow && framed.length > 0;
-    const lines = new Map<Unit, string[]>();
-    let head = 0;
-    if (titled) {
-      for (const unit of framed) {
-        const width = colX[unit.c1]! + columnW - colX[unit.c0]! + 2 * pad - 2 * u;
-        const wrapped = wrapText(unit.group!.title, title, width, 2, measure);
-        if (wrapped.truncated && !force) return undefined;
-        lines.set(unit, wrapped.lines);
-        head = Math.max(head, wrapped.lines.length * titleH);
-      }
-      head += 2 * u + 1.5 * u;
+    const lines = new Map<string, string[]>();
+    // One title row for each depth that opens here. A child's frame starts below its parent's title.
+    const rowsAt: number[] = [];
+    for (const frame of opening) {
+      const width = colX[frame.c1]! + columnW - colX[frame.c0]! + 2 * pad - 2 * u - (frame.group.protected ? 3.5 * u : 0);
+      const wrapped = wrapText(frame.group.title, title, width, 2, measure);
+      if (wrapped.truncated && !force) return undefined;
+      lines.set(frame.group.id, wrapped.lines);
+      rowsAt[frame.depth] = Math.max(rowsAt[frame.depth] ?? 0, wrapped.lines.length * titleH + 2 * u);
     }
+    const topAt = (depth: number) => {
+      let at = 0;
+      for (let d = 0; d < depth; d++) at += (rowsAt[d] ?? 0) + u;
+      return at;
+    };
+    const deepest = Math.max(-1, ...frames.map((frame) => frame.depth));
+    const head = opening.length > 0 ? topAt(rowsAt.length - 1) + rowsAt.at(-1)! + 1.5 * u : 0;
     const laneOfRow = (r: number) => arrangement.lanes?.find((lane) => r >= lane.r0 && r <= lane.r1);
     const rowY: number[] = [];
     let cursor = y + head;
@@ -522,11 +628,14 @@ function place(arrangement: Arrangement, gaps: ReadonlyMap<string, number>, env:
           memberNodeIds: env.data.nodes.filter((node) => node.laneId === lane.lane.id).map((node) => node.id), ...(r > 0 ? { rule: cursor } : {}) });
         // A dashed zone's title sits on its frame, clear of the lane rule above.
         const framedLane = env.data.nodes.some((node) => node.laneId === lane.lane.id && node.groupId !== undefined);
-        cursor += headerH + 2 * u + (framedLane ? titleH / 2 + u : 0);
+        cursor += headerH + 2 * u + (framedLane ? titleH / 2 + u + laneZoneGap : 0);
       }
       rowY[r] = q(cursor);
       cursor += rowH[r]!;
       axisY.push([rowY[r]! + rowH[r]! / 2]);
+      // A self-loop hangs below its node, with its label under it, clear of any corridor.
+      const loop = env.data.edges.filter((edge) => selfLoop(edge) && own.some((cell) => cell.r1 === r && cell.node.id === edge.source.nodeId));
+      if (loop.length > 0) cursor += LOOP_REACH * u + PITCH + (loop.some((edge) => edge.label) ? env.text.size * (env.text.lineHeight ?? 1.2) + TEXT_CLEARANCE + 1 : 0);
       if (lane && r === lane.r1) {
         const laneBox = geometry.lanes.at(-1)!;
         cursor += 2 * u;
@@ -539,7 +648,7 @@ function place(arrangement: Arrangement, gaps: ReadonlyMap<string, number>, env:
         cursor += width;
       }
     }
-    const bandBottom = cursor + (titled ? pad : 0);
+    const bandBottom = cursor + (deepest + 1) * pad;
     for (const item of geometry.gaps) {
       if (item.axis === 'v' && item.rect.h === 0) {
         item.rect.y = top;
@@ -552,29 +661,35 @@ function place(arrangement: Arrangement, gaps: ReadonlyMap<string, number>, env:
       const x1 = colX[cell.c1]! + columnW;
       const y0 = rowY[cell.r0]!;
       const y1 = rowY[cell.r1]! + rowH[cell.r1]!;
-      const rect = qRect({ x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
       const id = cell.node.id;
-      geometry.rects.set(id, rect);
+      geometry.rects.set(id, qRect({ x: x0, y: y0, w: x1 - x0, h: y1 - y0 }));
+      // The stack takes the bottom right of the cell, and the rest reads as an ordinary node.
+      const rect = frontRect(cell.node, geometry.rects.get(id)!);
       const badge = env.badges.get(id);
-      const reserve = badge ? badge.height + 0.5 * u : 0;
-      if (badge) geometry.badges.set(id, qRect({ x: rect.x + rect.w - badge.width - u, y: rect.y + u, ...{ w: badge.width, h: badge.height } }));
+      const cap = storeCap(cell.node, u);
+      const reserve = (badge ? badge.height + 0.5 * u : 0) + 2 * cap;
+      if (badge) geometry.badges.set(id, qRect({ x: rect.x + rect.w - badge.width - u - lockWidth(cell.node, u), y: rect.y + u, ...{ w: badge.width, h: badge.height } }));
       const icon = cell.node.icon ? 3.5 * u : 0;
       const box = textH.get(id)!;
       const bodyTop = rect.y + reserve + (rect.h - reserve - box) / 2;
-      geometry.textBoxes.set(id, qRect({ x: rect.x + 2 * u + icon, y: bodyTop - 0.5, w: rect.w - 4 * u - icon, h: box + 1 }));
+      geometry.textBoxes.set(id, qRect({ x: rect.x + 2 * u + icon, y: bodyTop - 0.5, w: rect.w - 4 * u - icon - lockWidth(cell.node, u), h: box + 1 }));
       if (icon) geometry.icons.set(id, qRect({ x: rect.x + 2 * u, y: bodyTop + (env.name.size * 1.2 - 2.5 * u) / 2, w: 2.5 * u, h: 2.5 * u }));
     }
 
-    for (const unit of framed) {
-      if (lanesFlow) continue;
-      const x0 = colX[unit.c0]! - pad;
-      const x1 = colX[unit.c1]! + columnW + pad;
-      const text = lines.get(unit)!;
-      const width = Math.max(...text.map((line) => measure(line, title).width));
-      const titleBox = qRect({ x: x0 + 2 * u - 4, y: top + 2 * u, w: width + 8, h: text.length * titleH });
-      geometry.labelClaims.push(titleBox);
-      geometry.zones.push({ id: unit.group!.id, bounds: qRect({ x: x0, y: top, w: x1 - x0, h: bandBottom - top }), titleBox,
-        memberNodeIds: unit.nodes.map((node) => node.id), dashed: false });
+    for (const frame of frames) {
+      // A frame stands one pad outside each frame that opens or closes on the same column inside it.
+      const within = (edge: 'c0' | 'c1') => frames.filter((other) => other[edge] === frame[edge] && other.depth > frame.depth).length + 1;
+      const x0 = colX[frame.c0]! - within('c0') * pad;
+      const x1 = colX[frame.c1]! + columnW + within('c1') * pad;
+      const y1 = bandBottom - frame.depth * pad;
+      // A route that stays in the parent runs between the parent's frame and this one.
+      if (frame.depth > 0) axisX.push([x0 - pad / 2], [x1 + pad / 2]);
+      const span = spans.get(frame.group.id);
+      if (span) {
+        span.x0 = Math.min(span.x0, x0);
+        span.x1 = Math.max(span.x1, x1);
+        span.y1 = y1;
+      } else spans.set(frame.group.id, { frame, x0, x1, y0: top + topAt(frame.depth), y1, lines: lines.get(frame.group.id)!, opened: b });
     }
     y = bandBottom;
     if (b + 1 < arrangement.bands.length) {
@@ -584,16 +699,73 @@ function place(arrangement: Arrangement, gaps: ReadonlyMap<string, number>, env:
       y += width;
     }
   }
-  geometry.gaps.push({ key: 'oL', axis: 'v', rect: { x: left - Math.max(outerL, 2 * PITCH), y: plot.y, w: Math.max(outerL, 2 * PITCH), h: y - plot.y } });
-  geometry.gaps.push({ key: 'oR', axis: 'v', rect: { x: right, y: plot.y, w: Math.max(outerR, 2 * PITCH), h: y - plot.y } });
+  for (const { frame, x0, x1, y0, y1, lines } of spans.values()) {
+    const width = Math.max(...lines.map((line) => measure(line, title).width));
+    const titleBox = qRect({ x: x0 + 2 * u - 4, y: y0 + 2 * u, w: width + 8, h: lines.length * titleH });
+    geometry.labelClaims.push(titleBox);
+    if (frame.group.protected) addZoneLock(geometry, frame.group.id, titleBox, u);
+    geometry.zones.push({ id: frame.group.id, bounds: qRect({ x: x0, y: y0, w: x1 - x0, h: y1 - y0 }), titleBox,
+      memberNodeIds: zoneMembers(frame.group.id, env), dashed: false, depth: frame.depth });
+  }
+  geometry.gaps.push({ key: 'oL', axis: 'v', rect: { x: left - Math.max(outerL, 2 * PITCH), y: flowTop, w: Math.max(outerL, 2 * PITCH), h: y - flowTop } });
+  geometry.gaps.push({ key: 'oR', axis: 'v', rect: { x: right, y: flowTop, w: Math.max(outerR, 2 * PITCH), h: y - flowTop } });
   const bottom = gap('oB', 0);
   axisY.push([y + Math.max(bottom, 2 * PITCH) / 2, 'oB']);
   geometry.gaps.push({ key: 'oB', axis: 'h', rect: { x: plot.x, y, w: plot.w, h: Math.max(bottom, 2 * PITCH) } });
 
-  if (lanesFlow) laneZones(geometry, env);
+  if (lanesFlow) laneZones(geometry, env, laneZoneGap);
   geometry.xs = corridorLines(axisX);
   geometry.ys = corridorLines(axisY);
   return geometry;
+}
+
+const zoneMembers = (id: string, env: Env) => env.data.nodes.filter((node) => node.groupId !== undefined && groupWithin(env.data.groups, node.groupId, id)).map((node) => node.id);
+
+function addZoneLock(geometry: Geometry, id: string, titleBox: Rect, u: number): void {
+  const size = 2.5 * u;
+  const lock = qRect({ x: titleBox.x + titleBox.w, y: titleBox.y + (Math.min(titleBox.h, 3 * u) - size) / 2, w: size, h: size });
+  geometry.locks.set(id, lock);
+  geometry.labelClaims.push(lock);
+}
+
+/**
+ * The policy strip: a dashed frame across the top, with its title on the frame
+ * and its items in equal columns, as many as keep each on one line.
+ */
+function placePolicy(geometry: Geometry, env: Env): number | undefined {
+  const { data, plot, name, title, measure, u } = env;
+  const group = data.groups.find((item) => item.kind === 'policy');
+  if (!group) return 0;
+  const items = data.nodes.filter((node) => node.groupId === group.id);
+  const titleH = title.size * (title.lineHeight ?? 1.2);
+  const pad = 2 * u;
+  const inner = plot.w - 2 * pad;
+  const wide = (node: DiagramNode) => measure(node.label, name).width + (node.icon ? 3.5 * u : 0);
+  const longest = Math.max(1, ...items.map(wide));
+  const columnsWide = Math.max(1, Math.min(items.length, Math.floor((inner + pad) / (longest + pad))));
+  const columnW = (inner - (columnsWide - 1) * pad) / columnsWide;
+  const y0 = plot.y + titleH / 2;
+  // The items start below the title that sits on the frame.
+  let y = y0 + titleH / 2 + u;
+  for (let start = 0; start < items.length; start += columnsWide) {
+    const row = items.slice(start, start + columnsWide);
+    const texts = row.map((node) => nodeText(node, columnW + 4 * u, env));
+    if (texts.some((text) => !text)) return undefined;
+    const height = Math.max(...texts.map((text) => text!.height));
+    row.forEach((node, index) => {
+      const rect = qRect({ x: plot.x + pad + index * (columnW + pad), y, w: columnW, h: height });
+      const icon = node.icon ? 3.5 * u : 0;
+      geometry.rects.set(node.id, rect);
+      geometry.textBoxes.set(node.id, { ...rect, x: q(rect.x + icon), w: q(rect.w - icon) });
+      if (icon) geometry.icons.set(node.id, qRect({ x: rect.x, y: rect.y + (name.size * 1.2 - 2.5 * u) / 2, w: 2.5 * u, h: 2.5 * u }));
+    });
+    y += height + u;
+  }
+  const y1 = y - u + 1.5 * u;
+  const titleBox = qRect({ x: plot.x + 2 * u - 4, y: y0 - titleH / 2, w: measure(group.title, title).width + 8, h: titleH });
+  geometry.labelClaims.push(titleBox);
+  geometry.zones.push({ id: group.id, bounds: qRect({ x: plot.x, y: y0, w: plot.w, h: y1 - y0 }), titleBox, memberNodeIds: items.map((node) => node.id), dashed: true, depth: 0, policy: true });
+  return y1 + 3 * u - plot.y;
 }
 
 function laneLabelWidth(env: Env): number {
@@ -615,15 +787,15 @@ function laneHeader(label: string, x: number, y: number, width: number, env: Env
 }
 
 /** In lanes a zone wraps its members across neighbouring lanes, with its title on the frame. */
-function laneZones(geometry: Geometry, env: Env): void {
+function laneZones(geometry: Geometry, env: Env, clearance: number): void {
   const { data, title, measure, u } = env;
   for (const group of data.groups) {
     const members = data.nodes.filter((node) => node.groupId === group.id);
-    if (members.length === 0) continue;
+    if (members.length === 0 || group.kind === 'policy') continue;
     const rects = members.map((node) => geometry.rects.get(node.id)!);
     const x0 = Math.min(...rects.map((rect) => rect.x)) - 1.5 * u;
     // The title centres on the top line and keeps clear of the nodes below it.
-    const y0 = Math.min(...rects.map((rect) => rect.y)) - 2 * u;
+    const y0 = Math.min(...rects.map((rect) => rect.y)) - 2 * u - clearance;
     const x1 = Math.max(...rects.map((rect) => rect.x + rect.w)) + 1.5 * u;
     const y1 = Math.max(...rects.map((rect) => rect.y + rect.h)) + 1.5 * u;
     const bounds = qRect({ x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
@@ -631,7 +803,8 @@ function laneZones(geometry: Geometry, env: Env): void {
     const width = measure(group.title, title).width;
     const titleBox = qRect({ x: x0 + 2 * u - 4, y: y0 - height / 2, w: width + 8, h: height });
     geometry.labelClaims.push(titleBox);
-    geometry.zones.push({ id: group.id, bounds, titleBox, memberNodeIds: members.map((node) => node.id), dashed: true });
+    if (group.protected) addZoneLock(geometry, group.id, titleBox, u);
+    geometry.zones.push({ id: group.id, bounds, titleBox, memberNodeIds: members.map((node) => node.id), dashed: true, depth: 0 });
   }
 }
 
@@ -662,7 +835,13 @@ interface Routed {
   unseated: string[];
 }
 
-const styleOf = (edge: DiagramEdge) => [edge.dash ?? 'solid', edge.weight ?? 'normal', edge.role ?? '', edge.paletteKey ?? '', edge.flow ?? 'forward', edge.arrowStart ? 1 : 0].join('|');
+// The router asks for this on every grid step, so each edge keeps its key.
+const styleKeys = new WeakMap<DiagramEdge, string>();
+function styleOf(edge: DiagramEdge): string {
+  let key = styleKeys.get(edge);
+  if (key === undefined) styleKeys.set(edge, key = [edge.dash ?? 'solid', edge.weight ?? 'normal', edge.role ?? '', edge.paletteKey ?? '', edge.flow ?? 'forward', edge.arrowStart ? 1 : 0].join('|'));
+  return key;
+}
 
 function compatible(a: DiagramEdge, b: DiagramEdge): boolean {
   if (styleOf(a) !== styleOf(b)) return false;
@@ -682,7 +861,14 @@ function routeEdges(geometry: Geometry, env: Env, outward: ReadonlySet<string>):
   const { xs, ys, rects } = geometry;
   const W = xs.length;
   const H = ys.length;
+  // Each self-loop holds its corner of the gutter before any other edge routes.
+  const loops = new Map(data.edges.filter(selfLoop).map((edge) => [edge.id, selfLoopRoute(rects.get(edge.source.nodeId)!, env)]));
+  geometry.loops = [...loops.values()].map(([a, b, c]) => ({ x: a!.x, y: a!.y, w: c!.x - a!.x, h: b!.y - a!.y }));
   const blocked = obstacleGrid(geometry, W, H);
+  const zones = geometry.zones.filter((zone) => !zone.policy);
+  const frameUse = frameCrossings(geometry, zones, W, H);
+  const walledH = new Uint8Array(W * H);
+  const walledV = new Uint8Array(W * H);
   const order = [...data.edges].sort((a, b) => Number(a.flow === 'return') - Number(b.flow === 'return')
     || env.order.get(a.source.nodeId)! - env.order.get(b.source.nodeId)! || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const useH = new Map<number, number[]>();
@@ -697,8 +883,20 @@ function routeEdges(geometry: Geometry, env: Env, outward: ReadonlySet<string>):
   const down = env.options.flow === 'lanes';
 
   order.forEach((edge, edgeIndex) => {
-    const sourceRect = rects.get(edge.source.nodeId)!;
-    const targetRect = rects.get(edge.target.nodeId)!;
+    if (loops.has(edge.id)) {
+      runs.push([]);
+      sides.push({ source: 'bottom', target: 'bottom' });
+      return;
+    }
+    const sourceRect = endRect(edge, 'source', geometry, data);
+    const targetRect = endRect(edge, 'target', geometry, data);
+    walledH.fill(0);
+    walledV.fill(0);
+    zones.forEach((zone, index) => {
+      if (mustCross(edge, zone, data)) return;
+      for (const seg of frameUse[index]!.h) walledH[seg] = 1;
+      for (const seg of frameUse[index]!.v) walledV[seg] = 1;
+    });
     cost.fill(Infinity);
     prev.fill(-1);
     goal.fill(Infinity);
@@ -729,7 +927,7 @@ function routeEdges(geometry: Geometry, env: Env, outward: ReadonlySet<string>):
           ? [{ x: edgePos, y: crossPos }, { x: lines[index]!.pos, y: crossPos }]
           : [{ x: crossPos, y: edgePos }, { x: crossPos, y: lines[index]!.pos }];
         // A port stub stays off a lane or zone title too.
-        if (geometry.labelClaims.some((claim) => segmentHits(stubA, stubB, grown(claim, TEXT_CLEARANCE)))) continue;
+        if ([...geometry.labelClaims, ...geometry.loops].some((claim) => segmentHits(stubA, stubB, grown(claim, TEXT_CLEARANCE)))) continue;
         const state = (i + j * W) * 4 + dir;
         const stub = Math.abs(lines[index]!.pos - edgePos) + penalty;
         if (source) {
@@ -786,6 +984,7 @@ function routeEdges(geometry: Geometry, env: Env, outward: ReadonlySet<string>):
         else if (friendly(users)) step *= 0.15;
         // A return keeps to the outer corridors, off the forward flow.
         if ((edge.flow === 'return' || outward.has(edge.id)) && !(horizontal ? ys[j]! : xs[i]!).keys.some((key) => key.startsWith('o'))) step *= outward.has(edge.id) ? 40 : 2.5;
+        if ((horizontal ? walledH : walledV)[seg]) step += ZONE_COST;
         if (next !== dir) step += BEND_COST;
         else {
           const across = horizontal
@@ -834,10 +1033,14 @@ function routeEdges(geometry: Geometry, env: Env, outward: ReadonlySet<string>):
   const offsets = (run: Run) => trackOffset(run, counts);
   let polylines = runs.map((path) => polyline(path, geometry, offsets));
   polylines = settleCrossings(all, runs, counts, order, geometry, polylines);
+  order.forEach((edge, index) => {
+    const loop = loops.get(edge.id);
+    if (loop) polylines[index] = loop;
+  });
 
   const routes = new Map<string, FixedRoute>();
   order.forEach((edge, index) => {
-    if (runs[index]!.length === 0) return;
+    if (polylines[index]!.length === 0) return;
     routes.set(edge.id, { points: polylines[index]!, sourceSide: sides[index]!.source, targetSide: sides[index]!.target });
   });
 
@@ -850,12 +1053,69 @@ function routeEdges(geometry: Geometry, env: Env, outward: ReadonlySet<string>):
     if (outer) need(line.keys, tracks * PITCH + 2 * PITCH);
     else if (tracks > 1) need(line.keys, (tracks - 1) * PITCH + 2 * GAP_HALF);
   }
-  problems.push(...lineProblems(order, polylines, rects));
+  problems.push(...lineProblems(order, polylines, rects, geometry, data, zones));
   const unseated: string[] = [];
   const labels = placeLabels(order, polylines, geometry, env, needs, unseated, outward);
   problems.push(...unseated);
   const channels = placeChannels(order, polylines, geometry, labels, env, needs, problems);
   return { routes, dots: junctions(order, polylines), labels, channels, problems, needs, unseated };
+}
+
+/** What an edge end stands on: its node, or the zone it names. */
+function endRect(edge: DiagramEdge, end: 'source' | 'target', geometry: Geometry, data: NormalizedDiagram): Rect {
+  const group = data.groupEnds.get(edge.id)?.[end];
+  return group === undefined ? geometry.rects.get(edge[end].nodeId)! : geometry.zones.find((zone) => zone.id === group)!.bounds;
+}
+
+/** Whether an end sits inside a zone. An end on the zone's own frame counts as outside. */
+function endInside(edge: DiagramEdge, end: 'source' | 'target', zone: Geometry['zones'][number], data: NormalizedDiagram): boolean {
+  const group = data.groupEnds.get(edge.id)?.[end];
+  if (group === undefined) return zone.memberNodeIds.includes(edge[end].nodeId);
+  return group !== zone.id && groupWithin(data.groups, group, zone.id);
+}
+
+const heldInZone = (edge: DiagramEdge, geometry: Geometry, data: NormalizedDiagram) =>
+  geometry.zones.some((zone) => !zone.policy && endInside(edge, 'source', zone, data) && endInside(edge, 'target', zone, data));
+
+const mustCross = (edge: DiagramEdge, zone: Geometry['zones'][number], data: NormalizedDiagram) => endInside(edge, 'source', zone, data) !== endInside(edge, 'target', zone, data);
+
+/** The grid steps that cross each zone's frame. */
+function frameCrossings(geometry: Geometry, zones: Geometry['zones'], W: number, H: number): Array<{ h: number[]; v: number[] }> {
+  const { xs, ys } = geometry;
+  const stepOver = (lines: readonly { pos: number }[], frame: number) => lines.findIndex((line, index) => index + 1 < lines.length && line.pos < frame && frame < lines[index + 1]!.pos);
+  return zones.map(({ bounds: { x, y, w, h: tall } }) => {
+    const h: number[] = [];
+    const v: number[] = [];
+    for (const frame of [x, x + w]) {
+      const i = stepOver(xs, frame);
+      if (i >= 0) for (let j = 0; j < H; j++) if (ys[j]!.pos > y && ys[j]!.pos < y + tall) h.push(i + j * W);
+    }
+    for (const frame of [y, y + tall]) {
+      const j = stepOver(ys, frame);
+      if (j >= 0) for (let i = 0; i < W; i++) if (xs[i]!.pos > x && xs[i]!.pos < x + w) v.push(i + j * W);
+    }
+    return { h, v };
+  });
+}
+
+/** Where a route crosses a zone's frame. */
+function frameHits(points: readonly Point[], { x, y, w, h }: Rect): Point[] {
+  const hits: Point[] = [];
+  forSegments(points, (a, b) => {
+    const [lo, hi] = [{ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y) }, { x: Math.max(a.x, b.x), y: Math.max(a.y, b.y) }];
+    if (a.y === b.y && a.y > y && a.y < y + h) for (const frame of [x, x + w]) if (lo.x < frame && frame < hi.x) hits.push({ x: frame, y: a.y });
+    if (a.x === b.x && a.x > x && a.x < x + w) for (const frame of [y, y + h]) if (lo.y < frame && frame < hi.y) hits.push({ x: a.x, y: frame });
+  });
+  return hits;
+}
+
+/** A small loop under the right end of a node, clear of the ports at the middle of its sides. */
+function selfLoopRoute(rect: Rect, env: Env): Point[] {
+  const bottom = rect.y + rect.h;
+  const reach = snap(bottom + LOOP_REACH * env.u);
+  const right = snap(rect.x + rect.w - 2 * env.u);
+  const left = snap(right - 4 * env.u);
+  return [{ x: left, y: bottom }, { x: left, y: reach }, { x: right, y: reach }, { x: right, y: bottom }];
 }
 
 function findLast<T>(items: readonly T[], test: (item: T) => boolean): number {
@@ -869,6 +1129,7 @@ function obstacleGrid(geometry: Geometry, W: number, H: number): { h: Uint8Array
   const boxes = [
     ...[...geometry.rects.values()].map((rect) => ({ x: rect.x - NODE_CLEARANCE, y: rect.y - NODE_CLEARANCE, w: rect.w + 2 * NODE_CLEARANCE, h: rect.h + 2 * NODE_CLEARANCE })),
     ...geometry.labelClaims.map((rect) => ({ x: rect.x - TEXT_CLEARANCE, y: rect.y - TEXT_CLEARANCE, w: rect.w + 2 * TEXT_CLEARANCE, h: rect.h + 2 * TEXT_CLEARANCE })),
+    ...geometry.loops,
   ];
   for (const box of boxes) {
     const x1 = box.x + box.w;
@@ -1040,12 +1301,20 @@ function settleCrossings(all: readonly Run[], runs: readonly Run[][], counts: Re
   return polylines;
 }
 
-function lineProblems(order: readonly DiagramEdge[], polylines: readonly Point[][], rects: ReadonlyMap<string, Rect>): string[] {
+function lineProblems(order: readonly DiagramEdge[], polylines: readonly Point[][], rects: ReadonlyMap<string, Rect>, geometry: Geometry, data: NormalizedDiagram, zones: Geometry['zones']): string[] {
   const problems: string[] = [];
   order.forEach((edge, index) => {
     const points = polylines[index]!;
+    if (points.length === 0) return;
     // A track offset can push an end past its node's side, so the line would float.
-    if (!touches(points[0]!, rects.get(edge.source.nodeId)!) || !touches(points.at(-1)!, rects.get(edge.target.nodeId)!)) problems.push(edge.id);
+    if (!touches(points[0]!, endRect(edge, 'source', geometry, data)) || !touches(points.at(-1)!, endRect(edge, 'target', geometry, data))) problems.push(edge.id);
+    // Each edge crosses the frames on its path through the zones, once each.
+    // A return edge inside an open zone may loop out through its gutter and back.
+    for (const zone of zones) {
+      const loops = edge.flow === 'return' && endInside(edge, 'source', zone, data) && endInside(edge, 'target', zone, data)
+        && !data.groups.find((group) => group.id === zone.id)?.protected;
+      if (frameHits(points, zone.bounds).length > (mustCross(edge, zone, data) ? 1 : loops ? 2 : 0)) problems.push(edge.id);
+    }
     forSegments(points, (a, b) => {
       for (const [id, rect] of rects) {
         const own = id === edge.source.nodeId || id === edge.target.nodeId;
@@ -1113,10 +1382,12 @@ function placeLabels(
     const off = TEXT_CLEARANCE + 1;
     const one = Math.ceil(measure(edge.label, text).width) + 1;
     const two = wrapText(edge.label, text, Math.ceil(one * 0.6), 2, measure);
-    const blocks = [{ width: one, height: lineH }];
+    // A callout on this edge sits at the end of its label, inside the same seat.
+    const disc = env.data.callouts.some((callout) => 'edgeId' in callout.target && callout.target.edgeId === edge.id) ? DISC_UNITS * env.u + 2 : 0;
+    const blocks = [{ width: one + disc, height: Math.max(lineH, disc) }];
     const three = wrapText(edge.label, text, Math.ceil(one * 0.42), 3, measure);
     for (const wrapped of [two, three]) {
-      if (!wrapped.truncated && wrapped.lines.length > 1) blocks.push({ width: Math.ceil(Math.max(...wrapped.lines.map((line) => measure(line, text).width))) + 1, height: wrapped.lines.length * lineH });
+      if (!wrapped.truncated && wrapped.lines.length > 1) blocks.push({ width: Math.ceil(Math.max(...wrapped.lines.map((line) => measure(line, text).width))) + 1 + disc, height: wrapped.lines.length * lineH });
     }
     const rows = geometry.gaps.filter((item) => item.axis === 'h');
     const seats = blocks.flatMap(({ width, height }) => [
@@ -1125,7 +1396,10 @@ function placeLabels(
         const inPlot = (x: number) => Math.max(env.plot.x, Math.min(x, env.plot.x + env.plot.w - width));
         // Besides the middle of the run, each side of a gutter it crosses, clear of a trunk there.
         const columns = geometry.gaps.filter((item) => item.axis === 'v' && Math.min(a.x, b.x) <= item.rect.x && Math.max(a.x, b.x) >= item.rect.x + item.rect.w);
-        const spots = [(a.x + b.x) / 2, ...columns.flatMap(({ rect }) => [rect.x + rect.w / 4, rect.x + (3 * rect.w) / 4])];
+        // And the middle of each stretch between a zone frame and the end of the run.
+        const walls = geometry.zones.flatMap(({ bounds }) => [bounds.x, bounds.x + bounds.w]).filter((x) => x > Math.min(a.x, b.x) && x < Math.max(a.x, b.x));
+        const spots = [(a.x + b.x) / 2, ...columns.flatMap(({ rect }) => [rect.x + rect.w / 4, rect.x + (3 * rect.w) / 4]),
+          ...walls.flatMap((x) => [(a.x + x) / 2, (b.x + x) / 2])];
         return spots.flatMap((spot) => [{ x: inPlot(spot - width / 2), y: a.y - off - height, w: width, h: height }, { x: inPlot(spot - width / 2), y: a.y + off, w: width, h: height }]);
       }),
       ...upright.flatMap(([a, b]) => {
@@ -1136,13 +1410,17 @@ function placeLabels(
         const inset = (top: number) => geometry.zones.flatMap(({ bounds }) => (a.x > bounds.x + bounds.w && a.x - bounds.x - bounds.w < width + 2 * off
           ? [{ x: bounds.x + bounds.w - off - width, y: top, w: width, h: height }]
           : a.x < bounds.x && bounds.x - a.x < width + 2 * off ? [{ x: bounds.x + off, y: top, w: width, h: height }] : []));
-        return [...beside(y), ...crossed.flatMap((row) => {
+        // The middle of each stretch between a zone frame and the end of the run.
+        const walls = geometry.zones.flatMap(({ bounds }) => [bounds.y, bounds.y + bounds.h]).filter((wall) => wall > Math.min(a.y, b.y) && wall < Math.max(a.y, b.y));
+        return [...beside(y), ...walls.flatMap((wall) => [...beside((a.y + wall) / 2 - height / 2), ...beside((b.y + wall) / 2 - height / 2)]), ...crossed.flatMap((row) => {
           const top = row.rect.y + (row.rect.h - height) / 2;
           return [...beside(top), ...inset(top)];
         })];
       }),
     ]).map(qRect);
-    const seat = seats.find((box) => labelClear(box, polylines, blockers, env.plot));
+    // In a narrow lane grid, a return label must be closer to its own line.
+    const seat = seats.find((box) => labelClear(box, polylines, blockers, env.plot) && (!geometry.narrowLaneGrid || edge.flow !== 'return'
+      || polylines.every((line, i) => i === index || rectLineDistance(box, points) <= rectLineDistance(box, line))));
     if (seat) {
       out.set(edge.id, seat);
       blockers.push(seat);
@@ -1266,8 +1544,10 @@ function laneRamp(index: number, count: number): Paint {
 
 /** The fill of a node, with the ring of one that sits on the background. The diagram key shows the same paints. */
 export function architectureFill(node: DiagramNode, lanes: readonly { id: string }[], palette: DiagramPalette): { fill: Paint; ring?: 'axis' | 'grid' } {
+  if (node.shape.kind === 'text') return { fill: { token: 'background' } };
   const plain = node.role === undefined || node.role === 'primary';
   const lane = lanes.findIndex((item) => item.id === node.laneId);
+  if (node.protected && (plain || node.role === 'secondary' || node.role === 'muted')) return { fill: { token: 'total', tint: PROTECTED_TINT }, ring: 'axis' };
   if (plain && lane >= 0) return { fill: laneRamp(lane, lanes.length) };
   if (plain || node.role === 'secondary' || node.role === 'muted') return { fill: { token: 'background' }, ring: node.role === 'muted' ? 'grid' : 'axis' };
   // The focal node stays apart from the solid lane, which shares its colour in some themes.
@@ -1285,13 +1565,93 @@ function emit(arrangement: Arrangement, geometry: Geometry, routed: Routed, env:
     fills.set(node.id, fill);
     if (ring) rings.set(node.id, { stroke: { token: ring }, width: hair });
   }
+  const groupById = new Map(data.groups.map((group) => [group.id, group]));
+  const zoneFills = new Map<string, Paint>();
+  for (const zone of geometry.zones) {
+    if (groupById.get(zone.id)!.protected) zoneFills.set(zone.id, { token: 'total', tint: PROTECTED_TINT });
+    // Nested zones alternate, so a child stands apart from its parent without a stronger tint.
+    else if (zone.depth % 2 === 1) zoneFills.set(zone.id, { token: 'background' });
+  }
 
+  const calloutEdges = new Set(data.callouts.flatMap((callout) => ('edgeId' in callout.target ? [callout.target.edgeId] : [])));
   for (const [id, label] of routed.labels) {
     const route = routed.routes.get(id);
-    if (route) route.labelBox = label;
+    // A callout's disc takes the end of the seat, and the label keeps the rest.
+    if (route) route.labelBox = calloutEdges.has(id) ? { ...label, w: label.w - DISC_UNITS * env.u - 2 } : label;
   }
   const scene: SceneNode[] = [];
   const claims: OrgChartLayout['preset']['decorationClaims'] = [];
+  const overlay: SceneNode[] = [];
+  const ink: Paint = { token: 'inkMuted' };
+  const lock = (id: string, box: Rect, owner: SceneNode['owner']) => compileIcon('lock', box).forEach((primitive, index) => {
+    const common = { id: diagramSceneId('lock', id, String(index)), owner, part: 'diagramIcon' };
+    overlay.push((primitive.kind === 'circle'
+      ? { t: 'circle', ...common, cx: primitive.cx, cy: primitive.cy, r: primitive.r, stroke: ink, strokeWidth: strokeToken(theme, 'rule') }
+      : { t: 'path', ...common, d: primitive.d, stroke: ink, width: strokeToken(theme, 'rule'), lineCap: 'round' }) as SceneNode);
+  });
+  const innerFrame = (id: string, rect: Rect, owner: SceneNode['owner']) => {
+    const [x, y, w, h] = [q(rect.x + PROTECTED_INSET), q(rect.y + PROTECTED_INSET), q(rect.w - 2 * PROTECTED_INSET), q(rect.h - 2 * PROTECTED_INSET)];
+    return { t: 'path', id: diagramSceneId('protected', id), d: `M${x} ${y}H${q(x + w)}V${q(y + h)}H${x}Z`, stroke: { token: 'axis' }, width: hair, owner, part: 'diagramGroup' } as SceneNode;
+  };
+  const fronts = new Map<string, Rect>();
+  for (const node of data.nodes) {
+    const rect = geometry.rects.get(node.id)!;
+    const front = frontRect(node, rect);
+    fronts.set(node.id, front);
+    for (let copy = (node.repeat ?? 1) - 1; copy >= 1; copy--) {
+      scene.push({ t: 'rect', id: diagramSceneId('node', node.id, `copy-${copy}`), rect: qRect({ ...front, x: front.x + copy * REPEAT_STEP, y: front.y + copy * REPEAT_STEP }),
+        fill: fills.get(node.id)!, stroke: { token: 'axis' }, strokeWidth: hair, owner: nodeOwner(node.id), part: 'diagramNode' } as SceneNode);
+    }
+    if (node.protected) {
+      overlay.push(innerFrame(node.id, front, nodeOwner(node.id)));
+      const size = 2.5 * env.u;
+      lock(node.id, qRect({ x: front.x + front.w - size - 1.5 * env.u, y: front.y + 1.5 * env.u, w: size, h: size }), nodeOwner(node.id));
+    }
+  }
+  for (const zone of geometry.zones) {
+    if (!groupById.get(zone.id)!.protected) continue;
+    (zone.dashed ? overlay : scene).push(innerFrame(zone.id, zone.bounds, { seriesId: zone.id }));
+    lock(zone.id, geometry.locks.get(zone.id)!, { seriesId: zone.id });
+  }
+  // A hollow marker where a channel edge or any edge crosses a protected frame. It claims no security property.
+  const channelled = new Set(data.channels.flatMap((channel) => channel.edgeIds));
+  const marked = new Map<string, Point>();
+  for (const edge of data.edges) {
+    const route = routed.routes.get(edge.id);
+    if (!route) continue;
+    for (const zone of geometry.zones) {
+      if (zone.policy || (!channelled.has(edge.id) && !groupById.get(zone.id)!.protected)) continue;
+      for (const hit of frameHits(route.points, zone.bounds)) marked.set(`${hit.x}:${hit.y}`, hit);
+    }
+  }
+  [...marked.keys()].sort().forEach((key, index) => {
+    const hit = marked.get(key)!;
+    overlay.push({ t: 'circle', id: diagramSceneId('boundary', String(index)), cx: hit.x, cy: hit.y, r: 2.5, fill: { token: 'background' }, stroke: { token: 'axis' }, strokeWidth: hair, owner: {}, part: 'diagramJunction' } as SceneNode);
+  });
+  const disc = DISC_UNITS * env.u;
+  const discs = data.callouts.map((callout, index) => {
+    const target = callout.target;
+    const seat = (point: Point) => qRect({ x: point.x - disc / 2, y: point.y - disc / 2, w: disc, h: disc });
+    const text = String(index + 1);
+    if ('nodeId' in target) {
+      const front = fronts.get(target.nodeId)!;
+      const node = data.nodes.find((item) => item.id === target.nodeId)!;
+      // The top right corner, clear of a zone title and of a lock or badge inside the node.
+      const inset = (node.protected || node.badge ? 6 : 2) * env.u;
+      return { id: callout.id, text, rect: seat({ x: front.x + front.w - inset - disc / 2, y: front.y }), owner: nodeOwner(target.nodeId) };
+    }
+    if ('groupId' in target) {
+      const zone = geometry.zones.find((item) => item.id === target.groupId)!;
+      return { id: callout.id, text, rect: seat({ x: zone.bounds.x + zone.bounds.w - 3 * env.u, y: zone.bounds.y }), owner: { seriesId: zone.id } };
+    }
+    const label = routed.labels.get(target.edgeId);
+    if (label) return { id: callout.id, text, rect: qRect({ x: label.x + label.w - disc, y: label.y + (label.h - disc) / 2, w: disc, h: disc }), owner: edgeOwner(target.edgeId) };
+    const points = routed.routes.get(target.edgeId)!.points;
+    let longest: [Point, Point] = [points[0]!, points[1]!];
+    const length = ([a, b]: [Point, Point]) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+    forSegments(points, (a, b) => { if (length([a, b]) > length(longest)) longest = [a, b]; });
+    return { id: callout.id, text, rect: seat({ x: (longest[0].x + longest[1].x) / 2, y: (longest[0].y + longest[1].y) / 2 }), owner: edgeOwner(target.edgeId) };
+  });
   const lanes = geometry.lanes.map(({ rule, ...lane }) => {
     if (rule !== undefined) {
       const y = snap(rule);
@@ -1302,7 +1662,7 @@ function emit(arrangement: Arrangement, geometry: Geometry, routed: Routed, env:
   });
   for (const zone of geometry.zones.filter((item) => item.dashed)) {
     const { x, y, w, h } = zone.bounds;
-    scene.push({ t: 'path', id: diagramSceneId('group', zone.id), d: `M${x} ${y}H${x + w}V${y + h}H${x}Z`, fill: { token: 'background' }, stroke: { token: 'axis' }, width: hair,
+    scene.push({ t: 'path', id: diagramSceneId('group', zone.id), d: `M${x} ${y}H${x + w}V${y + h}H${x}Z`, fill: zoneFills.get(zone.id) ?? { token: 'background' }, stroke: { token: 'axis' }, width: hair,
       dash: dashToken(theme, 'reference'), owner: { seriesId: zone.id }, part: 'diagramGroup' } as SceneNode);
     scene.push({ t: 'rect', id: diagramSceneId('group', zone.id, 'title'), rect: zone.titleBox, fill: { token: 'background' }, owner: { seriesId: zone.id }, part: 'diagramGroupTitle' } as SceneNode);
   }
@@ -1325,26 +1685,28 @@ function emit(arrangement: Arrangement, geometry: Geometry, routed: Routed, env:
       suggest: 'widen the canvas, shorten the edge labels, or split the exhibit',
     });
   }
+  const paths = new Map(data.nodes.filter((node) => node.shape.kind === 'store').map((node) => [node.id, storePath(fronts.get(node.id)!, storeCap(node, env.u))]));
   const extent = [...routed.routes.values()].flatMap((route) => [...route.points.map((point) => ({ x: point.x, y: point.y, w: 1, h: 1 })), ...(route.labelBox ? [route.labelBox] : [])]);
   const bottom = Math.max(...extent.map((rect) => rect.y + rect.h), ...[...geometry.rects.values()].map((rect) => rect.y + rect.h));
   if (bottom > env.plot.y + env.plot.h + 1) {
     warnings.push({ code: 'diagram-size-too-small', severity: 'error', message: `architecture needs ${Math.ceil(bottom - env.plot.y - env.plot.h)} px more height` });
   }
 
-  const readingOrder = [...arrangement.cells.values()].sort((a, b) => a.band - b.band || a.c0 - b.c0 || a.r0 - b.r0 || (a.node.id < b.node.id ? -1 : 1)).map((cell) => cell.node.id);
+  const policy = data.nodes.filter((node) => geometry.zones.some((zone) => zone.policy && zone.memberNodeIds.includes(node.id))).map((node) => node.id);
+  const readingOrder = [...policy, ...[...arrangement.cells.values()].sort((a, b) => a.band - b.band || a.c0 - b.c0 || a.r0 - b.r0 || (a.node.id < b.node.id ? -1 : 1)).map((cell) => cell.node.id)];
   const fonts = new Map(data.nodes.map((node) => [node.id, name]));
   return {
     mode: 'columns',
     preset: {
-      nodeRects: geometry.rects, readingOrder, edges, syntheticEdgeIds: [],
+      nodeRects: fronts, readingOrder, edges, syntheticEdgeIds: [],
       groups: geometry.zones.map(({ id, bounds, titleBox, memberNodeIds }) => ({ id, bounds, titleBox, memberNodeIds })),
       lanes, decorationScene: scene, decorationClaims: claims, contentTopReserves: new Map(),
     },
-    routes: routed.routes, fonts, labelBoxes: geometry.textBoxes, icons: geometry.icons, rings, fills, plainShape: true,
+    routes: routed.routes, fonts, labelBoxes: geometry.textBoxes, icons: geometry.icons, rings, fills, plainShape: true, paths, overlay, discs,
     badges: geometry.badges, labelInks: new Map(), laneFills: new Map(data.lanes.map((lane) => [lane.id, { token: 'background' as const }])),
     extent, edgePaint: { token: 'inkMuted' }, secondaryFont: env.text,
     groupPaint: {
-      fill: { token: 'total', tint: ZONE_TINT }, stroke: { token: 'axis' },
+      fill: { token: 'total', tint: ZONE_TINT }, stroke: { token: 'axis' }, fills: zoneFills,
       dashed: new Set(geometry.zones.filter((zone) => zone.dashed).map((zone) => zone.id)),
     },
     warnings,
