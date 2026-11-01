@@ -172,8 +172,9 @@ const BUBBLE_AIR_TIGHT = 1;
 /** How far a value's figures may reach past the edge of its circle. */
 const VALUE_OVERHANG = 1.5;
 /** Air between the two tiers of a staggered header, and between two names of one tier. */
-const TIER_GAP = 2;
+const TIER_GAP = 3;
 const TIER_NAME_GAP = 8;
+const TIER_LEAN_MAX = 0.25;
 /** Air between a tier tick and a lower-tier name beside it (a line never touches text). */
 const TICK_CLEAR = 4;
 /** A bubble matrix laid out turned: categories as rows, series as columns (internal pass flag). */
@@ -810,7 +811,7 @@ export function layoutHeatmap(
     const lineHt = font.size * (font.lineHeight ?? 1.2);
     // A name may take two columns; near the plot's edge it wraps to stay
     // centred, and a word wider than that ends at the edge.
-    const info = (label: string, width: number) => {
+    const info = (label: string, width: number, maxLines = 2) => {
       // A two-tier name wider than its own column wraps on two lines, so it does not reach
       // across the column rules beside it.
       const one = measure(label, font).width;
@@ -821,7 +822,7 @@ export function layoutHeatmap(
         if (!narrow.truncated && narrow.lines.length === 2) return { lines: narrow.lines, w: nw, h: 2 * lineHt, truncated: false };
         return { lines: [label], w: one, h: lineHt, truncated: false };
       }
-      const wrapped = wrapText(label, font, Math.max(1, width), 2, measure);
+      const wrapped = wrapText(label, font, Math.max(1, width), maxLines, measure);
       const w = Math.max(1, ...wrapped.lines.map((line) => measure(line, font).width));
       return { lines: wrapped.lines, w, h: wrapped.lines.length * lineHt, truncated: wrapped.truncated || w > width + 1e-6 };
     };
@@ -849,11 +850,18 @@ export function layoutHeatmap(
       const apartOf = (list: ReturnType<typeof info>[], xs: number[]) => list.every((item, ci) => !item.truncated
         && xs[ci]! >= room(ci)[0] - 1e-6 && xs[ci]! + item.w <= room(ci)[1] + 1e-6
         && (ci < 2 || xs[ci]! >= xs[ci - 2]! + list[ci - 2]!.w + TIER_NAME_GAP));
+      // A name that cannot stand centred over its column leans toward its neighbours, and its tick then
+      // meets the name away from its middle. Names that lean more than a quarter column wrap narrower, on
+      // three lines where two do not fit, so the tick stays under the name. A one-line header skips this.
+      const leans = (list: ReturnType<typeof info>[], xs: number[]) => !oneLine && list.some((item, ci) => Math.abs(xs[ci]! + item.w / 2 - colCenter(ci)) > TIER_LEAN_MAX * colStep);
+      const nearOf = (maxLines: number) => cols.map((c, ci) => { const near = info(c.label, Math.min(limitOf(ci), Math.max(centred(ci), Math.min(twoCols, widestWord(c.label)))), maxLines); return near.truncated ? info(c.label, limitOf(ci)) : near; });
       let infos = cols.map((c, ci) => info(c.label, limitOf(ci)));
       let xs = xsOf(infos);
-      if (!apartOf(infos, xs)) {
-        infos = cols.map((c, ci) => { const near = info(c.label, Math.min(limitOf(ci), Math.max(centred(ci), Math.min(twoCols, widestWord(c.label))))); return near.truncated ? info(c.label, limitOf(ci)) : near; });
-        xs = xsOf(infos);
+      const plain = apartOf(infos, xs);
+      if (!plain || leans(infos, xs)) {
+        const tries = (oneLine ? [2] : [2, 3]).map((maxLines) => { const list = nearOf(maxLines); return [list, xsOf(list)] as const; });
+        const best = tries.find(([list, listXs]) => apartOf(list, listXs) && !leans(list, listXs)) ?? (plain ? undefined : tries[0]);
+        if (best) [infos, xs] = [best[0], best[1]];
       }
       if (apartOf(infos, xs) && infos.every((info) => !info.truncated && (!oneLine || info.lines.length === 1))) {
         const upper = (ci: number) => ci % 2 === up;
@@ -875,7 +883,9 @@ export function layoutHeatmap(
   if (turnable && !flatHeader(headerPlan) && !keepUpright) {
     return layoutHeatmap(data, { ...options, [TURNED]: true }, bracketGutter, valueNote, forceRows, compactKey);
   }
-  if (turned && !flatHeader(headerPlan) && cols.length >= 2) tiered();
+  // Names that would rotate stagger on two tiers first, and rotation stays the last resort. A
+  // name row that stands flat on three lines keeps those lines, and a month row keeps its own thinning.
+  if ((turned || (!monthColumns && headerPlan.step !== 'stride' && headerPlan.rotation !== 0)) && !flatHeader(headerPlan) && cols.length >= 2) tiered();
   // The Harvey list names its one column as a heading at the plot edge, on one line.
   if (harveyList) {
     const lineHt = tickFont.size * (tickFont.lineHeight ?? 1.2);
