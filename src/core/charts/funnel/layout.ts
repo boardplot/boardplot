@@ -306,8 +306,12 @@ export function layoutFunnel(
   }
   // A CAGR bracket stands in its own column right of the stage totals, as on the
   // centered funnel, so its label sits beside the arm and not on a row's value line.
-  const cagrReserve = (options.annotations ?? []).some((a) => a.kind === 'cagr')
+  // Only when the longest bar keeps its shortest readable length: a narrower
+  // frame draws as before, with the label hidden, and the minimum width stays.
+  const cagrColumn = (options.annotations ?? []).some((a) => a.kind === 'cagr')
     ? measure('−100.0% p.a.', strongFont).width + (compactForm ? 24 : 48) : 0;
+  const cagrReserve = inner.w - bandW - totalReserve - (callout?.reserve ?? 0) - cagrColumn >= MIN_LONGEST_BAR
+    ? cagrColumn : 0;
   const noteReserve = (callout?.reserve ?? 0) + cagrReserve;
 
   // The step conversion stands in the gap between its two rows, just
@@ -1079,7 +1083,7 @@ export function layoutFunnel(
       naturalRowsH,
       // The frame around the rows, the stage-name column, the longest bar
       // at its shortest readable length, and the stage totals after it.
-      minWidth: size.width - inner.w + bandW + MIN_LONGEST_BAR + totalReserve + cagrReserve,
+      minWidth: size.width - inner.w + bandW + MIN_LONGEST_BAR + totalReserve,
     }),
     plot,
     scene: withSegmentSeams(nodes, theme),

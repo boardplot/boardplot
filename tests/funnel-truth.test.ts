@@ -323,6 +323,14 @@ describe('funnel truth contract', () => {
     expect(cagr.rect.x + cagr.rect.w).toBeLessThanOrEqual(geometry.size.width);
   });
 
+  // A frame too narrow for the CAGR column must draw as before, not refuse: the column never raises the minimum width.
+  it('draws a rows funnel with a CAGR annotation at the narrowest supported width', () => {
+    const { data, options } = fixture('annual-cohort-retention');
+    const spec = { ...options, variant: 'rows' as const };
+    const geometry = layout(data, { ...spec, size: { width: 280, height: 562 } });
+    expect((geometry as unknown as { refused?: boolean }).refused).toBeFalsy();
+  });
+
   it('keeps fixture visibility claims honest and the automatic note source-owned', () => {
     for (const item of getFixtures(definition.type)) {
       expect(item.title.toLowerCase()).not.toContain('overlap-free');
