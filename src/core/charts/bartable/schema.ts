@@ -176,6 +176,7 @@ export const bartableOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOpt
       });
     });
   }).optional().describe("A note with the combined share of these rows in each summed panel: their sum over the panel's, at the low and the high end where rows carry ranges ('Core segments: 120 of 300 $bn at the low end, 40%; 210 of 500 at the high end, 42%'). A row id that names no row is refused."),
+  segmentValues: z.boolean().optional().describe("Default true: variant 'panels' prints each part's value inside its segment, in the ink that reads on the fill, where the text and 3 px of padding on each side fit. A panel whose format has more than one decimal prints end labels only, and so does a row with a range. false prints end labels only everywhere. Rounded parts can miss the printed row sum by one step; the notes list says so. Refused with variant 'cascade'."),
   variant: z.enum(['panels', 'cascade']).optional().describe(
     "'panels' (default): one stacked-bar panel per measure. 'cascade': share cascade, each panel splits its total; a row starts where the row above ended, on a light track over the total. " +
     'The Total row is a dark bar. combinedShare draws a bracket over its rows, which must follow one another. Needs one segment, no ends, no nulls.',
