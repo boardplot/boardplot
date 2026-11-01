@@ -46,10 +46,10 @@ const longNames: [string, number][] = [['Other operating expenses', 234.1], ['No
   ['Maintenance and repairs', 609.8], ['General and administrative costs', 308.3], ['Net revenue retention, enterprise', 457.4], ['Other operating income', 441.4],
   ['Income from equity-accounted firms', 504.6], ['Subcontracted logistics overseas', 497.5], ['Change in net working capital', 270], ['Depreciation and amortisation', 606],
   ['Other comprehensive income items', 200]];
-const drawLongNames = () => {
+const drawLongNames = (width = 888) => {
   const items = longNames.map(([label, value], i) => ({ id: `n${i}`, label, group: `g${i % 5}`, value }));
   const request = resolveChartRequest({ type: 'treemap', data: { groups: [0, 1, 2, 3, 4].map((i) => ({ id: `g${i}`, label: `Group ${i}` })), items },
-    options: { target: 'slide', size: { width: 888, height: 396, unit: 'pt' }, cellValue: 'value-share' } });
+    options: { target: 'slide', size: { width, height: 396, unit: 'pt' }, cellValue: 'value-share' } });
   return requireGeometry(layoutResolvedRequest(request));
 };
 
@@ -65,4 +65,12 @@ it('breaks a treemap name at its own hyphen before it blanks the cell', () => {
   const request = resolveChartRequest({ type: 'treemap', data: { items }, options: { target: 'slide', size: { width: 280, height: 400, unit: 'pt' }, cellValue: 'value-share' } });
   const lines = requireGeometry(layoutResolvedRequest(request)).scene.flatMap((n) => (n.t === 'text' && n.id === 'label:item:n0' ? n.lines : []));
   expect(lines).toEqual(['Northumberland-', 'Westmoreland']);
+});
+
+// Problem: the syllable step cut words at an open vowel ("Westmo-" "reland", "Custo-" "mer") where a reader expects "West-" "moreland" and "Cus-" "tomer".
+it('breaks a treemap word between consonants or before a word ending, not inside a syllable', () => {
+  const lines = drawLongNames(432).scene.flatMap((n) => (n.t === 'text' && n.id.startsWith('label:item:') ? n.lines : []));
+  expect(lines).not.toContain('Westmo-');
+  expect(lines).not.toContain('Custo-');
+  expect(lines).toContain('Westmore-');
 });

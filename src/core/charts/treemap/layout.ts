@@ -798,19 +798,29 @@ const VOWEL = /[aeiouyäöüáàâéèêíìîóòôúùû]/iu;
 /** Letter pairs that read as one sound, or a consonant and a liquid that start a syllable together. */
 const ONE_SOUND = /^(?:ch|sh|th|ph|gh|ck|qu|sch|tz|[bcdfgpt][lr]|sp|st|sk)$/iu;
 
-/** The cut points of a word at syllable edges, from the longest head. A cut sits before a consonant, or a pair that reads as one sound, that starts the next vowel; the head ends in a vowel or in one consonant after a vowel. */
+/** Word endings that read as a unit, English and German. A cut before one is the cleanest break. */
+const WORD_ENDS = new Set(['ing', 'ings', 'tion', 'tions', 'sion', 'ment', 'ments', 'ness', 'land', 'ship', 'house', 'ware', 'able', 'ible', 'ity', 'ful', 'less', 'ance', 'ence', 'ung', 'ungen', 'heit', 'keit', 'schaft']);
+
+/**
+ * The cut points of a word at syllable edges, best first. A cut before a word ending comes first, then a
+ * cut between consonants ("cus-tomer", "West-moreland"), then a cut before a single consonant after a
+ * vowel. Within a kind the longest head comes first. A cut never splits a letter pair that reads as one sound.
+ */
 function syllableCuts(chars: readonly string[]): number[] {
   const vowel = (i: number) => VOWEL.test(chars[i]!);
-  const cuts: number[] = [];
+  const cuts: { at: number; kind: number }[] = [];
   for (let i = chars.length - 3; i >= 3; i--) {
     let j = i;
     while (j < chars.length && !vowel(j)) j++;
     const onset = chars.slice(i, j).join('');
     const starts = j < chars.length && (j - i === 1 || j - i === 2 && ONE_SOUND.test(onset) || j - i === 3 && /^(?:sch|str|spr|spl)$/iu.test(onset));
-    const ends = vowel(i - 1) || vowel(i - 2) && !ONE_SOUND.test(`${chars[i - 1]}${chars[i]}`);
-    if (starts && ends) cuts.push(i);
+    if (/^(?:ch|sh|th|ph|gh|ck|qu|tz|[bcdfgpt][lr])$/iu.test(`${chars[i - 1]}${chars[i]}`)) continue;
+    if (WORD_ENDS.has(chars.slice(i).join('').toLowerCase())) cuts.push({ at: i, kind: 0 });
+    else if (!starts) continue;
+    else if (!vowel(i - 1) && chars.slice(0, i).some((_, k) => vowel(k))) cuts.push({ at: i, kind: 1 });
+    else if (vowel(i - 1) || vowel(i - 2) && !ONE_SOUND.test(`${chars[i - 1]}${chars[i]}`)) cuts.push({ at: i, kind: 2 });
   }
-  return cuts;
+  return cuts.sort((x, y) => x.kind - y.kind || y.at - x.at).map((cut) => cut.at);
 }
 
 /**
