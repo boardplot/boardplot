@@ -272,7 +272,7 @@ export interface KpiData {
 export interface SparklineData {
   /** Convert numeric values from fractions to percent cells at input. */
   valueKind?: 'fraction';
-  /** The series, in order. A null leaves a gap; the line does not bridge it. */
+  /** The series, in order. A null is bridged by a dotted segment with a ring on the missing point. */
   values: Cell[];
   /** One name per value, used for the end labels and the hover records. */
   labels?: string[];

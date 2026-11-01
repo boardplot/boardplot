@@ -1,5 +1,5 @@
 import { pickedValues, withValueLabelDefaults } from '../band/valueSelection';
-import { sk, stackParts } from '../band/stacks';
+import { sk, stackParts, withoutShareAnnotations } from '../band/stacks';
 import { chartString } from '../../strings/column';
 import { REFERENCE_LABEL_CLEARANCE, textBreaksLine, withSegmentSeams } from '../../markVisibility';
 import { TEXT_ASCENT } from '../../svg/renderSvg';
@@ -576,8 +576,13 @@ export function layoutColumn(
   options: AnomalyColumnOptions = {},
   keepEachValue = false,
 ): Geometry<ColumnMarks, ColumnDerived> {
-  const resolved = withValueLabelDefaults(ribbonDefaults(withLocaleStrings(options)), 'column', options.valueAxis?.percent ? 'stacked100' : options.variant);
-  return layoutColumnKeyed(data, resolved, keepEachValue);
+  const dropped: LintWarning[] = [];
+  const resolved = withoutShareAnnotations(
+    withValueLabelDefaults(ribbonDefaults(withLocaleStrings(options)), 'column', options.valueAxis?.percent ? 'stacked100' : options.variant),
+    options.variant === 'stacked100' || Boolean(options.valueAxis?.percent), dropped);
+  const geometry = layoutColumnKeyed(data, resolved, keepEachValue);
+  geometry.warnings.push(...dropped);
+  return geometry;
 }
 
 /** Whether the value axis was turned on for columns left with no number: decided once per chart. */
