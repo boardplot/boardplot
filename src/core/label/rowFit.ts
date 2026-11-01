@@ -142,3 +142,18 @@ export function fittedLabel(fitted: FittedText, base: FontSpec): TypographyMetad
     ...(fitted.font !== base ? { fontStep: fitted.font } : {}),
   };
 }
+
+/** Leading of a row-name column that takes a smaller font to hold two lines in a pinned row pitch. */
+export const PINNED_ROW_LEADING = 1.1;
+
+/**
+ * The font a row-name column takes on a pinned height when its row pitch
+ * holds two lines of names only at a smaller size: the theme's next step
+ * down, else the target's own floor for the role, at a leading of 1.1. A
+ * layout tries it after the role size failed and before it cuts a name.
+ * Absent when the floor leaves no smaller size.
+ */
+export function pinnedRowFont(theme: Theme, font: FontSpec, role: TypeRoleName, target: RenderTarget = DEFAULT_TARGET, textScale = 1): FontSpec | undefined {
+  const size = stepDownFont(theme, font, role, target, textScale)?.size ?? targetFloorsPx(target, textScale)[role];
+  return size < font.size ? { ...font, size, lineHeight: PINNED_ROW_LEADING } : undefined;
+}

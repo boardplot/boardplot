@@ -56,7 +56,7 @@ export const heatmapDataSchema = z
 
 export const heatmapOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions('heatmap')).safeExtend({
   scale: z.enum(['continuous', 'discrete']).optional().describe("Continuous color interpolation by default, or a discrete color ladder."),
-  variant: z.enum(['value', 'harvey', 'bubble']).optional().describe("Value labels fit as a whole row; authored labels and valid pins retain precedence. Harvey glyphs suppress values and take ratings 0 to 4 only; any other value is refused. 'bubble': one circle per cell, colour = value, area = series sizes; values print where they fit."),
+  variant: z.enum(['value', 'harvey', 'bubble']).optional().describe("Value labels fit as a whole row, and an automatic number text loses a % sign the unit names, then takes fewer decimals, before a value is hidden; authored labels and valid pins retain precedence. Harvey glyphs suppress values and take ratings 0 to 4 only; any other value is refused. 'bubble': one circle per cell, colour = value, area = series sizes; values print where they fit."),
   cap: z.strictObject({
     pct: z.number().positive().optional().describe('Cap in points when every cell is a percent. Example: 20 saturates at ±20%.'),
     abs: z.number().positive().optional().describe('Cap in source units for other values.'),

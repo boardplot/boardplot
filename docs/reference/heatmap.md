@@ -69,7 +69,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
 | scale | string | `'continuous'`, `'discrete'` | `'continuous'` | Continuous color interpolation by default, or a discrete color ladder. |
-| variant | string | `'value'`, `'harvey'`, `'bubble'` | `'value'` | Value labels fit as a whole row; authored labels and valid pins retain precedence. Harvey glyphs suppress values and take ratings 0 to 4 only; any other value is refused. 'bubble': one circle per cell, colour = value, area = series sizes; values print where they fit. |
+| variant | string | `'value'`, `'harvey'`, `'bubble'` | `'value'` | Value labels fit as a whole row, and an automatic number text loses a % sign the unit names, then takes fewer decimals, before a value is hidden; authored labels and valid pins retain precedence. Harvey glyphs suppress values and take ratings 0 to 4 only; any other value is refused. 'bubble': one circle per cell, colour = value, area = series sizes; values print where they fit. |
 | cap | object |  |  | Where the continuous scale saturates, as table heat's cap: a value at or past it paints full strength, measured from zero. Without it the good/bad scale is symmetric, full at the largest \|value\|, and the magnitude ramp spans the data. The discrete ladder and harvey glyphs ignore it (cap-ignored). |
 | cap.pct | number |  |  | Cap in points when every cell is a percent. Example: 20 saturates at ±20%. |
 | cap.abs | number |  |  | Cap in source units for other values. |

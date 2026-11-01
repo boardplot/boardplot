@@ -16,7 +16,7 @@ import { distinguishSeries } from '../../seriesIdentity';
  */
 
 import { rowLabelBand } from '../../label/rowLabels';
-import { fittedLabel, gutterBudget, stepDownFont } from '../../label/rowFit';
+import { fittedLabel, gutterBudget, pinnedRowFont, stepDownFont } from '../../label/rowFit';
 import { namedLineText } from '../../annotateParts';
 import type { AnchorResolution } from '../../annotate';
 import { percentCellsOnly, percentLevels, runAnnotatePass } from '../../annotatePass';
@@ -541,12 +541,25 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   const air = (options as { [HARD_MINIMUM]?: boolean })[HARD_MINIMUM] === true ? 1 : 4;
   const catMaxLines = rowHeaders ? 1 : openHeight ? Infinity : stepEst >= 2 * lineH + 4 ? 2 : 1;
   const capW = rowHeaders ? plot0.w : Math.max(24, plot0.w * 0.28);
-  const { labels: catLines, width: catColumnW } = rowLabelBand(cats, tickFont, capW, catMaxLines, lineH, measure, {
+  let { labels: catLines, width: catColumnW } = rowLabelBand(cats, tickFont, capW, catMaxLines, lineH, measure, {
     wider: gutterBudget(24, plot0.w), ...(rowHeaders ? {} : { tightLines: Math.floor((stepEst - air) / lineH) }),
     target: options.target, textScale: textScaleOf(options), typeRole: 'axis',
     shrink: stepDownFont(theme, tickFont, 'axis', options.target, textScaleOf(options)),
     footnoteRefs: { count: authoredFootnoteCount(options), warnings },
   });
+  // A pinned height whose rows hold two lines of names only in a smaller font, set tighter, draws them
+  // there before it cuts a name; a column the role size already draws whole keeps that size.
+  const pinnedFont = !rowHeaders && !openHeight && catLines.some(label => label.title !== undefined)
+    ? pinnedRowFont(theme, tickFont, 'axis', options.target, textScaleOf(options)) : undefined;
+  if (pinnedFont && stepEst >= 2 * pinnedFont.size * pinnedFont.lineHeight! + air) {
+    const pinned = rowLabelBand(cats, pinnedFont, capW, 2, pinnedFont.size * pinnedFont.lineHeight!, measure, {
+      wider: gutterBudget(24, plot0.w), target: options.target, textScale: textScaleOf(options), typeRole: 'axis',
+      footnoteRefs: { count: authoredFootnoteCount(options), warnings: [] },
+    });
+    if (pinned.labels.filter(label => label.title !== undefined).length < catLines.filter(label => label.title !== undefined).length) {
+      ({ labels: catLines, width: catColumnW } = pinned);
+    }
+  }
   // each category keeps one measured value row before automatic sizing.
   // Refuse-less: at the hard minimum (the last fixed-slot step) a row keeps 1 px of air, not 4.
   const rowHeight = rowHeaders ? measure('0', labelFont).height + headerH + air : Math.max(measure('0', labelFont).height, maxOf(catLines.map(label => label.h))) + air;
