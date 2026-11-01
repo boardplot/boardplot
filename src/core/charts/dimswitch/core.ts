@@ -1,10 +1,10 @@
 import type { ChartCore } from '../../registry';
 import type { Geometry } from '../../types/scene';
-import { CARD_MIN_WIDTH, chartSizing, isWidthProbe, WIDTH_PROBE } from '../../sizing';
+import { CARD_MIN_WIDTH, chartSizing, heightOmitted, isWidthProbe, VERIFY_ADVICE, WIDTH_PROBE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { cardHeightFloor, classFloor, layoutKey, layoutTable, memoLayout, REGULAR_SPACING, type TableMarks } from '../table/layout';
 import { resolveTable } from '../table/resolve';
-import { compileDimSwitch, dimSwitchTableWarnings, type DimSwitchForm } from './compile';
+import { compileDimSwitch, dimSwitchTableWarnings, dimswitchRowId, FOLDED, type DimSwitchForm } from './compile';
 import type { DimSwitchData, DimSwitchOptions, DimSwitchDerived } from './types';
 import { minOf } from '../../arrays';
 
@@ -61,8 +61,10 @@ function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwi
     && compiled.options.size.height !== geometry.size.height) compiled.options={...compiled.options,size:geometry.size};
   const originalRows=new Map(resolved.table.rows.map(row=>[row.id,row]));
   const drawnRows=new Map(geometry.derived.table.rows.map(row=>[row.id,row]));
+  // Only measure() sets VERIFY_ADVICE; the geometry it returns must equal the one React draws.
+  const {[VERIFY_ADVICE]:_verify,...kept}=compiled.options as typeof compiled.options & {[VERIFY_ADVICE]?:boolean};
   const records=compiled.computedCells.map(record=>({...record,displayed:record.kind==='calc' ? originalRows.get(record.rowId)?.cells[record.colId]?.displayed ?? '' : record.displayed}));
-  return {...geometry,type:'dimswitch',warnings:[...dimSwitchTableWarnings(geometry.warnings),...compiled.warnings,...(options.format ? [{code:'format-unused',severity:'warn' as const,field:['options','format'],message:'DimSwitch measures supply their own formats. Set measures[].format.'}] : [])],derived:{...geometry.derived,compiled:{data:compiled.data,options:compiled.options},omissions:compiled.omissions,computedCells:[...resolved.computedCells,...records].map(record=>({...record,displayed:record.kind==='calc' ? drawnRows.get(record.rowId)?.cells[record.colId]?.displayed ?? record.displayed : record.displayed}))}};
+  return {...geometry,type:'dimswitch',warnings:[...dimSwitchTableWarnings(geometry.warnings),...compiled.warnings,...(options.format ? [{code:'format-unused',severity:'warn' as const,field:['options','format'],message:'DimSwitch measures supply their own formats. Set measures[].format.'}] : [])],derived:{...geometry.derived,compiled:{data:compiled.data,options:kept},omissions:compiled.omissions,computedCells:[...resolved.computedCells,...records].map(record=>({...record,displayed:record.kind==='calc' ? drawnRows.get(record.rowId)?.cells[record.colId]?.displayed ?? record.displayed : record.displayed}))}};
 }
 
 /**
@@ -193,11 +195,48 @@ function latestThatFit(card: (hide: number) => Form, periods: number): { shown: 
   return undefined;
 }
 
+/**
+ * On a fixed height, a table that misses it draws one fold shallower, down to depth 1 and then, by member, with the
+ * Total folded too, instead of refusing. The first fold that fits draws and its warning names the depth. Where none
+ * fits, the most folded table answers, so the refusal names the least height the table can draw at. An open height
+ * grows to its rows and never folds.
+ */
+function foldToFit(data: DimSwitchData, options: DimSwitchOptions, formsOf: (fold: string) => Map<string, PreparedForm>): Geometry<TableMarks, DimSwitchDerived> {
+  const first=layoutDimSwitch(data,options,formsOf(''));
+  const missesHeight=(geometry: Form) => (options as TargetSizeOptions)[TARGET_SIZE]?.fixed?.height === true && !heightOmitted(options.size)
+    && geometry.sizing !== undefined && geometry.size.height < geometry.sizing.minHeight;
+  // A table that misses the width refuses on width, and its floor names the authored depth.
+  if (options.belowMinimum === 'refuse' || first.refused || !fixedFits(first) || !missesHeight(first)) return first;
+  const depth=options.depth ?? 1, byMember=options.variant === 'by-member';
+  const total=dimswitchRowId('by-member',data.dimension.total.id);
+  const folds: { depth: number; total: boolean }[]=[];
+  for (let d=depth-1; d>=1; d--) folds.push({depth:d,total:false});
+  if (byMember && !options.expansion?.collapsed?.includes(total)) folds.push({depth:Math.min(depth,1),total:true});
+  let last=first;
+  for (const fold of folds) {
+    const collapsed=fold.total ? [...(options.expansion?.collapsed ?? []),total] : options.expansion?.collapsed;
+    const step={...options,[FOLDED]:true,depth:fold.depth,...(collapsed ? {expansion:{...options.expansion,collapsed}} : {})};
+    const drawn=layoutDimSwitch(data,step,formsOf(`${fold.depth}:${fold.total}`));
+    if (!drawn.refused && !missesHeight(drawn)) {
+      const size=`${Math.round(first.size.width)} × ${Math.round(first.size.height)} px`;
+      drawn.warnings.push({code:'dimswitch-depth-folded',severity:'warn',field:['options','depth'],
+        message:`Depth ${depth} needs more height than the ${size} given, so the table draws depth ${fold.depth}${fold.total ? ' with the Total folded' : ''}.`,
+        suggest:`Give the table at least ${Math.ceil(first.sizing!.minHeight)} px of height for depth ${depth}, or set options.depth to ${fold.depth}${fold.total ? ' and add the Total row to options.expansion.collapsed' : ''}.`,
+        // The Total stays open at depth 1: the fix that reproduces the drawn table folds it as well.
+        fix:[{op:'add',path:'/options/depth',value:fold.depth},...(fold.total ? [{op:'replace' as const,path:'/options/expansion/collapsed',value:collapsed}] : [])]});
+      return drawn;
+    }
+    last=drawn;
+  }
+  return last;
+}
+
 /** The registered layout: the forms above, then the height floor at card widths (320 >= 400 >= 480). */
 function layoutDimSwitchCard(data: DimSwitchData, options: DimSwitchOptions = {}): Geometry<TableMarks, DimSwitchDerived> {
   return memoLayout(data, options, () => {
-    const forms=new Map<string,PreparedForm>();
-    const layout=(input:DimSwitchData,step:DimSwitchOptions)=>layoutDimSwitch(input,step,forms);
+    const folded=new Map<string,Map<string,PreparedForm>>();
+    const formsOf=(fold:string)=>{let forms=folded.get(fold); if (!forms) folded.set(fold,forms=new Map()); return forms;};
+    const layout=(input:DimSwitchData,step:DimSwitchOptions)=>foldToFit(input,step,formsOf);
     return cardHeightFloor(layoutDimSwitchCard,data,options,classFloor(layout,data,options,layout(data,options)));
   });
 }

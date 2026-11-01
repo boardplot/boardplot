@@ -61,7 +61,7 @@ One form; its chart ID is `tilemap`.
 | overlays[].glyph.kind (overlays[].glyph branch 3) | string | yes | Draw a semantic status glyph. One of `'status'`. |
 | overlays[].glyph.status (overlays[].glyph branch 3) | string | yes | Status judgment shown by the glyph. One of `'good'`, `'bad'`, `'warn'`, `'neutral'`. |
 | overlays[].glyph.kind (overlays[].glyph branch 4) | string | yes | Draw a named built-in icon. One of `'icon'`. |
-| overlays[].glyph.name (overlays[].glyph branch 4) | string | yes | Name from the built-in icon catalogue: alert calendar check conversation document flag gear lightbulb people star target workflow. |
+| overlays[].glyph.name (overlays[].glyph branch 4) | string | yes | Name from the built-in icon catalogue: alert calendar check conversation document flag gear lightbulb lock people star target workflow. |
 | overlays[].glyph.tone (overlays[].glyph branch 4) | string |  | Semantic glyph tone resolved through the theme. One of `'good'`, `'bad'`, `'warn'`, `'neutral'`, `'info'`. |
 | overlays[].glyph.kind (overlays[].glyph branch 5) | string | yes | Draw a geometric location marker. One of `'marker'`. |
 | overlays[].glyph.shape (overlays[].glyph branch 5) | string |  | Marker outline; defaults to circle. One of `'circle'`, `'square'`, `'diamond'`. |
@@ -74,7 +74,6 @@ One form; its chart ID is `tilemap`.
 
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
-| legend | string \| object | `'top'`, `'bottom'`, `'none'`, `'auto'` (or another value of its type) | `'top'` | A key without a named position sits in one row above the plot, flush with it, under the subtitle; more items wrap to further rows and move the plot down. 'bottom' puts the row under the plot. 'right' is refused: a key beside the plot takes the plot's width. 'auto' adds keys when visible labels do not name every drawn series. A displayed subtitle measure or unit can name one primary series, matching the complete phrase without case sensitivity. Required explanatory keys remain, except the keys of a table, heatmap, cohort and variance, which 'none' drops for a host that draws its own. Automatic keys use footnote type in the top row. Explicit settings override theme.legend.auto, which defaults to false. Multi-series column, bar, combo, dot and scatter charts add a key when direct names are missing. A series key explains its scenario styling. Grids keep a required key under 'none' when direct names are incomplete. |
 | scale | object |  | `{"kind":"sequential"}` | Sequential magnitude or diverging midpoint color scale. |
 | scale.kind (scale branch 1) | string | `'sequential'` | `'sequential'` | Encode ordered magnitudes with one color ramp. |
 | scale.kind (scale branch 2) | string | `'diverging'` | `'sequential'` | Encode values on favorable and unfavorable sides of a midpoint, on one span both ways: the farther side sets full strength. |
@@ -113,6 +112,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | eu27-demand-versus-plan | example | Demand above plan is favorable |
 | eu27-cost-versus-plan | example | Cost below plan is favorable |
 | eu27-demand-colorblind | example | Demand versus plan in the colorblind-safe good/bad pair |
+| us-state-tile-grid-wide-slot | example | US states on a wide slot: the value key stands beside the tiles |
 | tile-key-bottom | example | The value key in one row below the tiles |
 | us-states-overlay-tones | example | Five state overlays in every tone, the tones and the ball measure named in the overlay key |
 | us-states-overlay-glyphs | torture | Status, pie, icon and marker overlays in every tone, shape and size |

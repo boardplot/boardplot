@@ -243,6 +243,9 @@ export function nodeShapeScene(
         });
       }
       break;
+    case 'store':
+      out.push({ t: 'path', ...common, d: org?.d ?? storePath(rect, q(Math.min(rect.h / 4, 2 * theme.space.labelPad))), fill, stroke, width: ringWidth });
+      break;
     case 'chevron': {
       const tip = q(Math.min(rect.w * (node.shape.tip ?? 0.16), rect.h));
       out.push({
@@ -339,6 +342,14 @@ export function nodeShapeScene(
     });
   }
   return out;
+}
+
+/** A cylinder: the body with both curved ends, then the rim of the top. */
+export function storePath(rect: Rect, cap: number): string {
+  const [x0, x1, y0, y1] = [q(rect.x), q(rect.x + rect.w), q(rect.y + cap), q(rect.y + rect.h - cap)];
+  const curve = (from: number, to: number, y: number, bulge: number) => `C${from} ${q(y + bulge)} ${to} ${q(y + bulge)} ${to} ${q(y)}`;
+  return `M${x0} ${y0}${curve(x0, x1, y0, -(4 * cap) / 3)}L${x1} ${y1}${curve(x1, x0, y1, (4 * cap) / 3)}Z`
+    + `M${x0} ${y0}${curve(x0, x1, y0, (4 * cap) / 3)}`;
 }
 
 function roundedRectPath(rect: Rect, radius: number): string {
