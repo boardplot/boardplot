@@ -318,7 +318,7 @@ Defaults are the `standard` preset.
 | table.inks.operator | string |  |  |  | Statement operator ink. Default table.inks.secondary. |
 | table.inks.driver | string |  |  |  | Driver label, figure and change ink. A good, warn or bad figure of a driver that options.driverTones allows (grouped by default: a driver under a line) keeps its tone, and a neutral figure and the label keep this ink. Default table.inks.secondary. |
 | table.inks.toggle | string |  |  |  | Fold toggle ink: the +/- mark, and the box under mark boxed. Default table.inks.secondary. |
-| table.inks.secondary | string |  |  |  | The one table ink that steps back behind a value: change lines, unit affixes, group notes, cell notes and hints, state glyphs, zero figures, muted columns and the fold toggle. On the SVG and in the grid. Boardroom #305B86, standard-dark #9EC3E2; absent, color.inkMuted. |
+| table.inks.secondary | string |  |  |  | The one table ink that steps back behind a value: change lines, unit affixes, group notes, cell notes and hints, state glyphs, zero figures, muted columns and the fold toggle. On the SVG and in the grid. Boardroom #5B6878, standard-dark #9EC3E2; absent, color.inkMuted. |
 | table.ruleInk | string |  |  |  | The quiet table rule, on the SVG and in the grid: row rules, the column-group rule and the column dividers. Boardroom #C3D3E3, standard-dark #344B60; absent, 25% of color.ink mixed into the background. |
 | table.ruleWidths | object |  |  | `{"head":1,"row":1}` | Table rule widths in px. |
 | table.ruleWidths.head | number |  |  | `1` | Head rule width in px. Default 1. |

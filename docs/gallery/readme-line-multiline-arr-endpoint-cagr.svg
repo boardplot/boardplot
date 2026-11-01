@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 448" width="840" height="448" direction="ltr" style="max-width:100%;height:auto;text-transform:none;letter-spacing:normal;word-spacing:normal;font-style:normal;font-variant:normal" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Cloud ARR compounds at 31.5% p.a. and overtakes license by FY23" aria-describedby="bp-desc-f02ac8d3dd" data-bp-sizing="{&quot;aspect&quot;:&quot;16:9&quot;,&quot;minWidth&quot;:480,&quot;minHeight&quot;:270,&quot;fit&quot;:&quot;fill&quot;,&quot;compactFloor&quot;:{&quot;width&quot;:280,&quot;height&quot;:180},&quot;measuredMinWidth&quot;:0,&quot;measuredMinHeight&quot;:252,&quot;naturalWidth&quot;:840,&quot;naturalHeight&quot;:473,&quot;comfortableWidth&quot;:600,&quot;comfortableHeight&quot;:338}" data-bp-mode="full" font-family="'Helvetica Neue', Helvetica, Arial, Roboto, sans-serif">
-<desc id="bp-desc-f02ac8d3dd">line chart, 3 series × 6 categories. Latest values: Cloud ARR 189, License 71, Maintenance 78.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 448" width="840" height="448" direction="ltr" style="max-width:100%;height:auto;text-transform:none;letter-spacing:normal;word-spacing:normal;font-style:normal;font-variant:normal" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Cloud ARR compounds at 31.5% p.a. and overtakes license by FY23" aria-describedby="bp-desc-f7a088968d" data-bp-sizing="{&quot;aspect&quot;:&quot;16:9&quot;,&quot;minWidth&quot;:480,&quot;minHeight&quot;:270,&quot;fit&quot;:&quot;fill&quot;,&quot;compactFloor&quot;:{&quot;width&quot;:280,&quot;height&quot;:180},&quot;measuredMinWidth&quot;:0,&quot;measuredMinHeight&quot;:252,&quot;naturalWidth&quot;:840,&quot;naturalHeight&quot;:473,&quot;comfortableWidth&quot;:600,&quot;comfortableHeight&quot;:338}" data-bp-mode="full" font-family="'Helvetica Neue', Helvetica, Arial, Roboto, sans-serif">
+<desc id="bp-desc-f7a088968d">line chart, 3 series × 6 categories. Latest values: Cloud ARR 189, License 71, Maintenance 78.</desc>
 <rect x="0" y="0" width="840" height="448" fill="#FFFFFF"/>
 <text data-id="frame:title:0" data-part="title" data-bp-role="title" x="28" y="37.60" text-anchor="start" font-size="20" font-weight="700" fill="#0D2A43"><tspan x="28" dy="0">Cloud ARR compounds at 31.5% p.a. and overtakes license by FY23</tspan></text>
 <text data-id="frame:subtitle:1" data-part="subtitle" data-bp-role="subtitle" x="28" y="61.32" text-anchor="start" font-size="14" font-weight="400" fill="#0D2A43"><tspan>Brevinth Software · </tspan><tspan font-weight="700">Revenue run-rate</tspan><tspan> in $m · FY20–FY25 · AC vs FC</tspan></text>
@@ -46,19 +46,19 @@
 <path data-id="marker:maintenance:fy24" data-part="marker" d="M596.81 321.98L600.81 325.98L596.81 329.98L592.81 325.98Z" fill="#8193a2" stroke-linejoin="round"/>
 <path data-id="marker:maintenance:fy25" data-part="marker" d="M716.88 325.09L720.88 329.09L716.88 333.09L712.88 329.09Z" fill="#FFFFFF" stroke="#8193a2" stroke-width="1.5" stroke-linejoin="round"/>
 <path data-id="casing:mark:line:cloud:0" data-part="lineCasing" d="M116.53 375.68L236.60 347.72L356.67 316.66L476.74 266.96L596.81 214.16" fill="none" stroke="#FFFFFF" stroke-width="5" stroke-linejoin="round"/>
-<path data-id="mark:line:cloud:0" data-part="line" d="M116.53 375.68L236.60 347.72L356.67 316.66L476.74 266.96L596.81 214.16" fill="none" stroke="#1D4ED8" stroke-width="2.5" stroke-linejoin="round"/>
+<path data-id="mark:line:cloud:0" data-part="line" d="M116.53 375.68L236.60 347.72L356.67 316.66L476.74 266.96L596.81 214.16" fill="none" stroke="#10529E" stroke-width="2.5" stroke-linejoin="round"/>
 <path data-id="casing:mark:line:cloud:0:fc" data-part="lineCasing" d="M596.81 214.16L716.88 156.70" fill="none" stroke="#FFFFFF" stroke-width="5" stroke-linejoin="round"/>
-<path data-id="mark:line:cloud:0:fc" data-part="line" d="M596.81 214.16L716.88 156.70" fill="none" stroke="#1D4ED8" stroke-width="2.5" stroke-dasharray="4 3" stroke-linecap="butt" stroke-linejoin="round"/>
-<circle data-id="marker:cloud:fy20" data-part="marker" cx="116.53" cy="375.68" r="3" fill="#1D4ED8"/>
-<circle data-id="marker:cloud:fy21" data-part="marker" cx="236.60" cy="347.72" r="3" fill="#1D4ED8"/>
-<circle data-id="marker:cloud:fy22" data-part="marker" cx="356.67" cy="316.66" r="3" fill="#1D4ED8"/>
-<circle data-id="marker:cloud:fy23" data-part="marker" cx="476.74" cy="266.96" r="3" fill="#1D4ED8"/>
-<circle data-id="marker:cloud:fy24" data-part="marker" cx="596.81" cy="214.16" r="3" fill="#1D4ED8"/>
-<circle data-id="marker:cloud:fy25" data-part="marker" cx="716.88" cy="156.70" r="3" fill="#FFFFFF" stroke="#1D4ED8" stroke-width="1.5"/>
+<path data-id="mark:line:cloud:0:fc" data-part="line" d="M596.81 214.16L716.88 156.70" fill="none" stroke="#10529E" stroke-width="2.5" stroke-dasharray="4 3" stroke-linecap="butt" stroke-linejoin="round"/>
+<circle data-id="marker:cloud:fy20" data-part="marker" cx="116.53" cy="375.68" r="3" fill="#10529E"/>
+<circle data-id="marker:cloud:fy21" data-part="marker" cx="236.60" cy="347.72" r="3" fill="#10529E"/>
+<circle data-id="marker:cloud:fy22" data-part="marker" cx="356.67" cy="316.66" r="3" fill="#10529E"/>
+<circle data-id="marker:cloud:fy23" data-part="marker" cx="476.74" cy="266.96" r="3" fill="#10529E"/>
+<circle data-id="marker:cloud:fy24" data-part="marker" cx="596.81" cy="214.16" r="3" fill="#10529E"/>
+<circle data-id="marker:cloud:fy25" data-part="marker" cx="716.88" cy="156.70" r="3" fill="#FFFFFF" stroke="#10529E" stroke-width="1.5"/>
 <path data-id="ann:cagr-1:arm:0" data-part="arm" d="M116.53472222222223 112.69999999999999L116.53472222222223 102.69999999999999L715.400639191692 102.69999999999999" fill="none" stroke="#0D2A43" stroke-width="1" stroke-linejoin="round"/>
 <path data-id="ann:cagr-1:arrowHead:1" data-part="arrowHead" d="M716.88 102.70L712.43 104.97L712.43 100.43Z" fill="#0D2A43" stroke-linejoin="round"/>
 <line data-id="forecast-divider:fy25" data-part="forecastDivider" x1="656.85" y1="135.70" x2="656.85" y2="388.10" stroke="#97A6B4" stroke-width="1" stroke-dasharray="4 3"/>
-<text data-id="label:series:cloud" data-part="series" data-bp-role="category" x="732.88" y="161.36" text-anchor="start" font-size="13" font-weight="700" fill="#1D4ED8"><tspan>Cloud ARR </tspan><tspan>189</tspan></text>
+<text data-id="label:series:cloud" data-part="series" data-bp-role="category" x="732.88" y="161.36" text-anchor="start" font-size="13" font-weight="700" fill="#10529E"><tspan>Cloud ARR </tspan><tspan>189</tspan></text>
 <text data-id="label:forecast:fy25" data-part="annotation" data-bp-role="caption" x="660.85" y="126.75" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="660.85" dy="0">FC</tspan></text>
 <text data-id="label:series:license" data-part="series" data-bp-role="category" x="732.88" y="349.18" text-anchor="start" font-size="12" font-weight="400" fill="#51677b"><tspan>License </tspan><tspan>71</tspan></text>
 <text data-id="label:series:maintenance" data-part="series" data-bp-role="category" x="732.88" y="329.18" text-anchor="start" font-size="12" font-weight="400" fill="#687783"><tspan>Maintenance </tspan><tspan>78</tspan></text>
@@ -69,5 +69,5 @@
 <text data-id="label:category:fy24" data-part="category" data-bp-role="category" x="580.81" y="406.56" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070"><tspan x="580.81" dy="0">FY24</tspan></text>
 <text data-id="label:category:fy25" data-part="category" data-bp-role="category" x="696.88" y="406.56" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070"><tspan x="696.88" dy="0">FY25F</tspan></text>
 <text data-id="label:annotation:cagr-1" data-part="annotation" data-bp-role="note" x="344.21" y="95.38" text-anchor="start" font-size="13" font-weight="700" fill="#0D2A43"><tspan x="344.21" dy="0">Cloud ARR +31.5% p.a.</tspan></text>
-<text data-id="label:annotation:abs-2" data-part="annotation" data-bp-role="value" x="109.03" y="364.34" text-anchor="start" font-size="13" font-weight="700" fill="#1D4ED8" style="font-variant-numeric: tabular-nums"><tspan x="109.03" dy="0">48</tspan></text>
+<text data-id="label:annotation:abs-2" data-part="annotation" data-bp-role="value" x="109.03" y="364.34" text-anchor="start" font-size="13" font-weight="700" fill="#10529E" style="font-variant-numeric: tabular-nums"><tspan x="109.03" dy="0">48</tspan></text>
 </svg>
