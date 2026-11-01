@@ -2153,7 +2153,16 @@ function neutralRampStep(theme: Theme, source: { index: number; count: number; h
   if (source.count < 2) return muted;
   // A hatch draws its step in stripes that must reach 3:1 on the page. The light steps would all
   // deepen to the same 3:1 grey, so a hatched step runs from the neutral mark to the muted mark.
-  if (source.hatched) return mixColors(muted, paintTokenColor(theme, 'neutralMark'), source.index / (source.count - 1));
+  // Where the neutral mark sits on the muted mark (a grey theme), the strong end deepens toward the ink until the steps read apart.
+  if (source.hatched) {
+    const mark = paintTokenColor(theme, 'neutralMark');
+    const ink = paintTokenColor(theme, 'markInk');
+    let strong = mark;
+    for (let weight = 0.05; weight <= 0.6 && palettePerceptualDistance(strong, muted, 'normal') / (source.count - 1) < NEUTRAL_RAMP_STEP; weight += 0.05) {
+      strong = mixColors(ink, mark, weight);
+    }
+    return mixColors(muted, strong, source.index / (source.count - 1));
+  }
   const roomy = palettePerceptualDistance(muted, quiet, 'normal') / (source.count - 1) >= NEUTRAL_RAMP_STEP;
   const strong = roomy ? muted : paintTokenColor(theme, 'neutralMark');
   return mixColors(quiet, strong, source.index / (source.count - 1));
