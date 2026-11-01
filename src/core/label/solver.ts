@@ -164,6 +164,8 @@ export interface SlotCandidate {
   insideFill?: string;
   /** Original fill recipe, retained for paint-only theme changes. */
   insidePaint?: Paint;
+  /** The fills of the whole value matrix this seat belongs to (see the contrast-ink recipe). */
+  insideMatrix?: Paint[];
   insidePattern?: import('../types/scene').HatchPattern | 'outline';
   /** Identity key box drawn with the label in this slot only (the request's swatch holds for every slot). */
   swatch?: Paint;
@@ -1353,6 +1355,7 @@ function finalize(
         kind: 'contrast-ink',
         fill: paint,
         ...(pattern ? { pattern } : {}),
+        ...(cand.insideMatrix ? { matrix: cand.insideMatrix } : {}),
       },
     };
   }

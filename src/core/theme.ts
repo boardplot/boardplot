@@ -8,7 +8,7 @@ import { adaptivePaintColor } from './colorRecipes';
  * and 'notation' (+ dark pairs) are the other presets.
  */
 
-import { apcaContrast, compositeColor, contrastRatio, mixColors, onFillInks, parseColor, pickOnFillInk, tint } from './color';
+import { apcaContrast, compositeColor, contrastRatio, mixColors, onFillInks, parseColor, pickMatrixInk, pickOnFillInk, tint } from './color';
 import type { Margin } from './geometry';
 import { markVisibilityFloor } from './markVisibility';
 import { READER_LABEL_MIN_PX, tableHeadFloorPx } from './typeFloors';
@@ -1918,6 +1918,10 @@ function sourceColor(theme: Theme, source: ThemePaintSource): string {
   if (source.kind === 'contrast-ink') {
     const fill = compositeColor(paintColor(theme, source.fill), theme.color.background);
     const ground = source.pattern ? effectiveFill(fill, source.pattern, theme) : fill;
+    if (source.matrix?.length && !source.also?.length) {
+      const grounds = source.matrix.map((paint) => compositeColor(paintColor(theme, paint), theme.color.background));
+      return pickMatrixInk(ground, grounds, theme.color.ink, theme.color.inkInverse, onFillInks(theme.color));
+    }
     const ink = pickOnFillInk(ground, theme.color.ink, theme.color.inkInverse, onFillInks(theme.color));
     if (!source.also?.length) return ink;
     // Text across several grounds: of the inks that may print on a fill, the one whose

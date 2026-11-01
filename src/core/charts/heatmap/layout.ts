@@ -1100,6 +1100,8 @@ export function layoutHeatmap(
     valueFont = { ...valueFont, size: Math.max(valueFloor, valueFont.size - 1) };
     fitted = rowValues(valueFont);
   }
+  // The fills under the printed values: their dark values share one ink (the contrast-ink recipe's `matrix`).
+  const matrixPaints: Paint[] = [];
   rows.forEach((r, ri) => {
     const values = fitted[ri]!;
     for (const value of values) if (value) valueCellW = Math.max(valueCellW, value.size.width + 4);
@@ -1207,6 +1209,7 @@ export function layoutHeatmap(
           cell.v !== null && (cell.v === extremeMax || cell.v === extremeMin)
             ? PRIORITY.extreme
             : PRIORITY.interior + Math.min(99, Math.abs(cell.v ?? 0));
+        if (!low) matrixPaints.push(insidePaint);
         labelRequests.push({
           id: `point:${r.id}:${c.id}`,
           kind: 'point',
@@ -1229,6 +1232,7 @@ export function layoutHeatmap(
               penalty: 0,
               insideFill: low ? paintColor(theme, { token: 'background' }) : css,
               insidePaint: low ? { token: 'background' } : insidePaint,
+              ...(low ? {} : { insideMatrix: matrixPaints }),
             },
           ],
         });
@@ -1238,6 +1242,13 @@ export function layoutHeatmap(
       }
     });
   });
+
+  // One entry per distinct fill keeps the shared list short.
+  const distinctFills = new Set<string>();
+  matrixPaints.splice(0, matrixPaints.length, ...matrixPaints.filter((paint) => {
+    const key = JSON.stringify(paint);
+    return !distinctFills.has(key) && (distinctFills.add(key), true);
+  }));
 
   if (missingSizes > 0) warnings.push({ code: 'bubble-size-missing', severity: 'warn', message: `${missingSizes} cell${missingSizes === 1 ? ' has' : 's have'} a value but no size, so no circle is drawn`, suggest: 'give every cell with a value a size' });
   // A row track runs behind its circles, through their centres, to an arrow past the last column.

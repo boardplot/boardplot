@@ -421,3 +421,24 @@ it('pairs sorted bar scenarios with their own actual', () => {
   expect(paint('pb')).toBe(paint('b'));
   expect(paint('a')).not.toBe(paint('b'));
 });
+
+// A value matrix printed its dark values in the theme ink on light fills and in near-black on mid fills, so 0.61 stood bold beside 0.55. Its dark values now share one ink, in each theme.
+it('prints the dark values of one heatmap matrix in one ink', () => {
+  const request = {
+    type: 'heatmap',
+    data: {
+      categories: Array.from({ length: 12 }, (_, i) => ({ id: `c${i}`, label: `C${i}` })),
+      series: Array.from({ length: 6 }, (_, s) => ({ id: `s${s}`, label: `S${s}`, values: Array.from({ length: 12 }, (_, i) => 0.25 + ((s * 7 + i * 5) % 13) * 0.05) })),
+    },
+    options: { variant: 'value', scale: 'continuous' },
+  };
+  for (const themeName of ['standard', 'standard-dark']) {
+    const scene = layoutResolvedRequest(resolveChartRequest({ ...request, theme: themeName }));
+    if (scene.refused) throw new Error('refused');
+    const theme = resolveTheme(themeName);
+    const inks = scene.labels.filter(label => label.id.startsWith('point:')).map(label => resolvePaint(label.ink, theme).toLowerCase());
+    const darkInks = inks.filter(css => contrastRatio(css, '#000000') < contrastRatio(css, '#ffffff'));
+    expect(inks.length, themeName).toBe(72);
+    expect(new Set(darkInks).size, themeName).toBe(1);
+  }
+});
