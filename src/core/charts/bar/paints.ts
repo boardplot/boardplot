@@ -4,7 +4,7 @@
  */
 
 import { partialPattern } from '../../partialPeriod';
-import { colorRolePaints, effectiveFill, paintColor, recedingSeriesId, seriesPaint as themeSeriesPaint, stackApartPaint, stackRampPaint } from '../../theme';
+import { colorRolePaints, effectiveFill, neutralRampPaint, paintColor, recedingSeriesId, seriesPaint as themeSeriesPaint, stackApartPaint, stackRampPaint } from '../../theme';
 import { signColorOverrides, signPaint } from '../band/sign';
 import { scenarioSlotPaint, seriesScenarioRole } from '../../scenarioPairs';
 import type { CellMeta, Id } from '../../types/cell';
@@ -52,10 +52,10 @@ export function barPaints(domain: BarDomain, warnings: LintWarning[]): BarLegend
     // enough to carry white value labels inside its bar ends; lines and slopes
     // keep the lighter muted tint.
     if (s.id === receding) return { token: 'neutralMark' };
-    // Several plain parts of a stack beside a highlight recede in two greys,
-    // dark and light in turn, so neighbours stay apart.
+    // Several plain parts of a stack beside a highlight recede on the neutral
+    // ramp, strongest to quietest in authored order.
     const grey = stackGreys.indexOf(s.id);
-    if (grey >= 0) return grey % 2 === 0 ? { token: 'neutralMark' } : { token: 'rest' };
+    if (grey >= 0) return neutralRampPaint(grey, stackGreys.length, scenario === 'FC');
     if (beyondNet.has(s.id)) return { token: 'rest' };
     const partner = domain.scenarioPartner.get(s.id);
     if (partner) return seriesIdentityPaint(partner, scenario);
