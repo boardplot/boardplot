@@ -136,6 +136,7 @@ export const THEME_SHAPE: ShapeNode = object({
     gap: opt(object(each(['titleSubtitle', 'subtitlePlot', 'subtitlePlotWide', 'axisFootnote', 'axisFootnoteWide', 'footnoteSource', 'legend'] as const, () => optNum(0, 32)))),
     legendRowH: optNum(12, 28),
     barRow: opt(object({ thickness: num(2, 96), pitch: num(4, 120) })),
+    footerFollows: flag,
   }),
   legend: opt(object({ auto: flag, required: optOneOf('bottom', 'top') })),
   marks: opt(object({

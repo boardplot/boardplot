@@ -17,6 +17,7 @@ import { copyFrame, liveFooterExtra, partNeedOf, staticFrame } from './footer';
 import { rankKeyShown, withEngineNotes } from './notes';
 import { withCategoryRowPlans } from './label/categoryRow';
 import { maxOf } from './arrays';
+import { sourceFollowsContent } from './sourceFollows';
 
 const ROW_TYPES = new Set(['bar', 'bartable', 'bullet', 'butterfly', 'gantt', 'likert', 'cohort', 'table', 'funnel', 'status', 'heatmap']);
 /** Row charts whose width floor is their measured content. Table keeps its own 100 px. */
@@ -837,6 +838,7 @@ export function prepareFitLayout<D, O extends ChartOptions, M extends object, DV
       const fitted = fitOrRepair(definition, data, options, at);
       const copy = copyLayout(fitted);
       origins.set(copy, origins.get(fitted) ?? fitted);
+      if (!copy.refused) sourceFollowsContent(copy, options);
       return withPlotFloorWarning(copy, options, definition.title);
     } finally {
       if (!borrowed) { memo.active = false; memo.heights.clear(); memo.references = undefined; }

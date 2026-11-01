@@ -290,6 +290,12 @@ export interface Theme {
      * top of the canvas and leaves the rest empty.
      */
     barRow?: { thickness: number; pitch: number };
+    /**
+     * On a canvas the host gave a height, the notes and the source line (and a key under the plot)
+     * stand right under the drawn content and the spare height stays below them. `false` keeps them
+     * at the canvas bottom, with the empty band above them. Absent means true.
+     */
+    footerFollows?: boolean;
   };
   /** Automatic keys for series without visible names; omitted or false keeps existing defaults. */
   legend?: {
