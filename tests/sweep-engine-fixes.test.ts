@@ -515,6 +515,22 @@ describe('chart layout edge cases', () => {
     expect(lay('Orders').size.width).toBe(176);
   });
 
+  // A framed sparkline has no axis, so it printed only its last value and its high: a line that fell below zero
+  // never said so. valueLabel 'last' also prints the low, the first value and the reference; 'last-and-high' keeps the old pair.
+  it('a framed sparkline names its low, first value and reference, and last-and-high keeps the old pair', () => {
+    const request = (valueLabel: string) => ({
+      type: 'sparkline',
+      data: { values: [-2.7, 2.6, -2.5, 2.55, 2.7, 2.9, 2.7, 2.6, -2.7, 3.0, -2.9, 2.88] },
+      options: { title: 'Trend', size: { width: 520 }, valueLabel, reference: 1 },
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ids = (valueLabel: string) => (layoutResolvedRequest(resolveChartRequest(request(valueLabel) as any) as any) as any).labels
+      .filter((l: { hidden?: unknown }) => !l.hidden).map((l: { id: string }) => l.id);
+    expect(ids('last')).toEqual(expect.arrayContaining(['spark:last', 'spark:high', 'spark:low', 'spark:first', 'spark:referenceValue']));
+    expect(ids('last-and-high')).toEqual(expect.arrayContaining(['spark:last', 'spark:high']));
+    expect(ids('last-and-high').some((id: string) => /low|first|referenceValue/.test(id))).toBe(false);
+  });
+
   // A bar row name stopped at three lines and was cut with an ellipsis although its row held a fourth line.
   it('a bar name that would be cut at three lines takes a fourth when the row holds it', () => {
     const request = {
