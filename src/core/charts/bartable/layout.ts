@@ -684,7 +684,8 @@ function layoutBarTableOnce(
   // column and the growth column; else each bar keeps room for its end label.
   const shareColW = showShare ? SHARE_GAP + Math.max(0, maxOf(shareWs)) : 0;
   // Interleaved cascade: each period is named at the end of its track in the first row, so the run leaves room for the longest name.
-  const periodNameW = interleaved && cascade ? maxOf(panels.map((entry) => width(entry.head, headFont))) + END_GAP : 0;
+  // A name wider than a third of the plot is cut, so one long name cannot squeeze the tracks of every panel.
+  const periodNameW = interleaved && cascade ? Math.min(maxOf(panels.map((entry) => width(entry.head, headFont))), plot.w / 3) + END_GAP : 0;
   const interleavedRun = (p: number) => Math.max(0, cascade ? plot.w - growthW - shareColW - periodNameW : plot.w - endReserves[p]!);
   const interleavedK = minOf(spans.map((span, p) => (span > 0 ? interleavedRun(p) / span : Infinity)));
   const commonShareRight = plot.x + plot.w - growthW;
@@ -934,7 +935,7 @@ function layoutBarTableOnce(
       const top = cascade ? place(p, 0).barTop : tableTop + headH - keyH + panelTracks.slice(0, p).reduce((sum, other) => sum + other.headFit.h + 2, 0);
       if (cascade) {
         label(`head:${track.panel.id}`, 'axisTitle', { colId: track.panel.id }, track.head, track.face,
-          rowText1(track.head, track.face, top, { left: track.origin + track.trackW + END_GAP }), track.headFit);
+          { ...rowText1(track.headFit.lines[0] ?? track.head, track.face, top, { left: track.origin + track.trackW + END_GAP }), w: track.headFit.w }, track.headFit);
       } else {
         const h = Math.max(3, Math.round(panelBarH(p) * 0.7));
         scene.push({ t: 'rect', id: `panel-key:${track.panel.id}`, rect: { x: plot.x, y: top + lineBox(headFont) / 2 - h / 2, w: KEY_W, h }, fill: { token: 'inkMuted' }, owner: {}, part: 'panelKey' });

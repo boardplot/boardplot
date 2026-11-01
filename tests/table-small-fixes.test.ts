@@ -1454,3 +1454,17 @@ it('keys the rest rows, keeps the Total off the group colours and names compact 
   expect(name.x).toBeGreaterThanOrEqual(track.rect.x + track.rect.w);
   expect(Math.abs(name.y - (track.rect.y + track.rect.h / 2))).toBeLessThan(track.rect.h);
 });
+
+// A compact cascade names each period beside its bars. A very long period name must be cut, so it does not squeeze the bars of every period to nothing.
+it('cuts a long period name of a compact cascade so the bars keep their width', () => {
+  const years = getFixtures('bartable').find((f) => f.id === 'cascade-four-years')!;
+  const names = ['Fiscal year 2022 actual', 'FY23', 'Fiscal year 2024 forecast figures', '2025'];
+  const data = { ...years.data, panels: years.data.panels.map((panel: { label: string }, i: number) => ({ ...panel, label: names[i] })) };
+  for (const width of [280, 320]) {
+    const compact = layout('bartable', data, { ...years.options, mode: 'compact', size: { width } });
+    const tracks = compact.scene.filter((node): node is Extract<SceneNode, { t: 'rect' }> => node.t === 'rect' && node.id.startsWith('track:'));
+    expect(tracks.length).toBeGreaterThan(0);
+    expect(Math.min(...tracks.map((node) => node.rect.w)), `track width at ${width}`).toBeGreaterThan(60);
+    for (const id of ['y22', 'y23', 'y24', 'y25']) expect(compact.scene.some((node) => node.t === 'text' && node.id === `label:head:${id}`), `${id} at ${width}`).toBe(true);
+  }
+});
