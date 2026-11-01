@@ -70,7 +70,7 @@ import type {
 } from '../../types/scene';
 import { footnoteSuffix } from '../../footnoteMark';
 import { textScaleOf } from '../../typeFloors';
-import { DEFAULT_TARGET, targetFloorsPx } from '../../target';
+import { DEFAULT_TARGET, TARGET_SIZE, targetFloorsPx, type TargetSizeOptions } from '../../target';
 import { seriesTextPaint } from '../../theme';
 import { defaultAnnotationId } from '../../types/annotations';
 import { disclosureNote } from '../../notes';
@@ -439,14 +439,33 @@ export function layoutButterfly(
   });
   // under a render target, rows tighter than a name's line give the
   // whole name column its one type step, bounded by the target floor.
-  const smallestName = stepDownFont(theme, tickFont, 'axis', opts.target, textScaleOf(opts));
+  // A pyramid on a pinned height keeps its canvas, so a tight row may take its target's readability floor as the one step
+  // when the type scale has no smaller role above it. An unpinned one grows to its floor and keeps the full line box.
+  const pinnedRows = !rowDriven && (opts as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === true;
+  const oneStep = (font: FontSpec, role: 'axis' | 'label'): FontSpec | undefined => {
+    const step = stepDownFont(theme, font, role, opts.target, textScaleOf(opts));
+    const floor = targetFloorsPx(opts.target ?? DEFAULT_TARGET, textScaleOf(opts))[role];
+    return step ?? (pinnedRows && floor < font.size ? { ...font, size: floor } : undefined);
+  };
+  const smallestName = oneStep(tickFont, 'axis');
   const nameStep = band.step < catLineH + LABEL_PAD ? smallestName : undefined;
+  // On a pinned height, a row tighter than a line of its value type gives the values the same one step, and every
+  // label of such a row takes the height of its ink instead of a full line box. The row keeps 4 px around the ink.
+  const smallestValue = oneStep(labelFont, 'label');
+  const tightValues = pinnedRows && band.step < lineBox(labelFont) + LABEL_PAD;
+  const valueFont: FontSpec = tightValues ? smallestValue ?? labelFont : labelFont;
+  const inkBox = (font: FontSpec) => measure.capHeight?.(font) ?? font.size * 0.72;
+  const tightRows = pinnedRows && band.step < catLineH + LABEL_PAD;
   // a pyramid keeps its canvas, so under a render target its rows
   // report the height a value and a name need. The size gate then grows an
   // unsized pyramid to it and refuses a fixed frame with that size, instead
   // of hiding half the rows into a note that shrinks the plot further.
   if (!rowDriven) {
-    const rowNeed = Math.max(measure('0', labelFont).height, lineBox(smallestName ?? tickFont)) + LABEL_PAD;
+    // Only the text that is drawn is charged, and a tight row charges the ink of its text, not a line box.
+    const stepped = (font: FontSpec, step: FontSpec | undefined) => inkBox(step ?? font) + 4;
+    const rowNeed = pinnedRows
+      ? Math.max(valuesOff ? 0 : stepped(labelFont, smallestValue), labelsOff('category') ? 0 : stepped(tickFont, smallestName), 4)
+      : Math.max(measure('0', labelFont).height, lineBox(smallestName ?? tickFont)) + LABEL_PAD;
     // Reported where it holds too, so the size a refusal names reports the same minimum.
     const short = rows.length * rowNeed - (rowsBottom - rowsTop);
     frameResult.frame.plotMinHeight = Math.max(frameResult.frame.plotMinHeight ?? 0, size.height + (frameResult.deficit ?? 0) + short);
@@ -609,7 +628,7 @@ export function layoutButterfly(
   // is as tall as its type; a thinner bar left the digits half on the page
   // in the page-colour ink.
   function fitsInsideBar(len: number, textW: number): boolean {
-    return len >= textW + 8 && band.bandwidth >= labelFont.size;
+    return len >= textW + 8 && band.bandwidth >= valueFont.size;
   }
   // The room a delta label on this row and side takes after its value label.
   function deltaTail(r: Row, side: 'a' | 'b'): number {
@@ -717,7 +736,8 @@ export function layoutButterfly(
       // ---- value label at the bar end (outside-end; inside-end fallback) ----
       if (v === null) continue;
       const text = textOf(v, meta, side);
-      const tsize = measure(text, labelFont);
+      const tsize = measure(text, valueFont);
+      if (tightRows) tsize.height = inkBox(valueFont);
       const outsideGap = paneFit ? VALUE_GAP : 6;
       const outside: SlotCandidate = {
         slot: 'outsideEnd',
@@ -763,7 +783,7 @@ export function layoutButterfly(
         owner: { seriesId: series.id, categoryId: r.id },
         text,
         lines: [text],
-        font: labelFont,
+        font: valueFont,
         priority,
         redundant: meta?.label === false || labelsOff('point'),
         // A hidden value's note names its side and row: a pyramid's data has no
@@ -777,7 +797,7 @@ export function layoutButterfly(
     const catFont = catFontOf(r);
     const fitted = centerNames[i]!;
     const catW = fitted.w;
-    const catH = fitted.lines.length * (fitted.font === catFont ? nameLineH : lineBox(fitted.font));
+    const catH = tightRows && fitted.lines.length === 1 ? inkBox(fitted.font) : fitted.lines.length * (fitted.font === catFont ? nameLineH : lineBox(fitted.font));
     labelRequests.push({
       id: `category:${r.id}`,
       kind: 'category',
@@ -990,7 +1010,7 @@ export function layoutButterfly(
             : nameFont
           : l.kind === 'annotation' || l.kind === 'valueLine'
             ? { ...labelFont, weight: emphasisWeight(theme) }
-            : labelFont, nodes,
+            : l.kind === 'point' ? valueFont : labelFont, nodes,
     ));
 
   // Each line of a centre name is centred in the column, not only the block.
