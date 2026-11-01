@@ -189,4 +189,7 @@ export const bartableOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOpt
       }).optional().describe('Growth column after the last panel.'),
   }).optional().describe("Settings of variant 'cascade'; refused with variant 'panels'."),
   sharedScale: z.boolean().optional().describe("false: each panel its own scale. true: one scale, panel width follows its longest bar; weights refused. Default false, true under cascade."),
+  heightFill: z.enum(['rows', 'none']).optional()
+    .meta({ default: 'rows' })
+    .describe("Spare canvas height. 'rows' (default): a pinned canvas stretches the rows up to 1.25 times their pitch and thickens the bars. 'none': natural pitch."),
 }) as unknown as z.ZodType<BarTableOptions>;

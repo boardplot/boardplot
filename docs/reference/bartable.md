@@ -113,6 +113,7 @@ Table rows with number columns and stacked bars. One panel when the rows compare
 | cascade.growth.years | number |  |  | Years from first to last panel for 'cagr'; default read from the panel labels (2019, FY24). |
 | cascade.growth.label | string |  |  | Column head; default from the panel labels. |
 | sharedScale | boolean |  |  | false: each panel its own scale. true: one scale, panel width follows its longest bar; weights refused. Default false, true under cascade. |
+| heightFill | string | `'rows'`, `'none'` | `'rows'` | Spare canvas height. 'rows' (default): a pinned canvas stretches the rows up to 1.25 times their pitch and thickens the bars. 'none': natural pitch. |
 
 Plus the [shared options](options.md). This type does not accept `detailFields`, `labels`, `categoryLabels`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `topN`, `bandFraction`, `hatchStrength`, `colorblindSafe`.
 

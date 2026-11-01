@@ -1433,6 +1433,20 @@ it('gives the spare height of a pinned canvas to table rows and cohort rows', ()
   expect(grid.plot.h).toBeGreaterThan(layout('cohort', cohort, { ...stepped, size: { width: 720 } }).plot.h);
   // The period columns of a stepped grid share the free width, as a pure grid's do.
   expect(grid.plot.w).toBeGreaterThan(600);
+  // heightFill 'none' brings back the old cohort look: natural rows and stepped columns at their measured width, as an open height draws them.
+  const cell = (options: object) => (layout('cohort', cohort, { ...stepped, ...options }).marks as { cells: { rect: { w: number; h: number } }[] }).cells[0]!.rect;
+  const old = cell({ size: { width: 720 }, heightFill: 'none' });
+  expect(cell({ size: { width: 720, height: 420 }, heightFill: 'none' })).toEqual(old);
+  expect(cell({ size: { width: 720, height: 420 } }).w).toBeGreaterThan(old.w);
+  // A bartable takes the same switch: 'none' keeps the 28 px pitch and the 14 px bar on a pinned canvas.
+  const bars = bartableDataSchema.parse({
+    categories: ['Alpha', 'Beta', 'Gamma', 'Delta'].map((label) => ({ id: label, label })),
+    series: [{ id: 's', label: 'S' }],
+    panels: [{ id: 'p', label: 'P', values: { s: [10, 20, 30, 40] } }],
+  });
+  const barH = (options: object) => (layout('bartable', bars, { size: { width: 720, height: 420 }, ...options }).marks as { segments: { rect: { h: number } }[] }).segments[0]!.rect.h;
+  expect(barH({ heightFill: 'none' })).toBe(14);
+  expect(barH({})).toBeGreaterThan(14);
 });
 
 // A diverging heat lane with a cap and no bins tints continuously, yet its key named default point bands ("1 to under 4") that no cell takes.

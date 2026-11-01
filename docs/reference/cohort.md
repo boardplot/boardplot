@@ -68,6 +68,7 @@ Cohorts by periods-since-start: counts in, every retention rate derived, weighte
 | total | false \| string | `false`, `'weighted'` |  | Exhibit summary row: weighted retention by default, or false to hide it. Never averages cohort percentages equally. |
 | excludeCurrentPeriod | boolean |  |  | Remove the newest cohort and longest period before exhibit derivation. |
 | exhibitLabel | string |  |  | Short exhibit heading above the assertion title. |
+| heightFill | string | `'rows'`, `'none'` | `'rows'` | Exhibit variants. 'rows' (default): rows take the spare height of a pinned canvas, up to 1.8 times, and stepped columns share the free width. 'none': natural row height, stepped columns at measured width. |
 
 Plus the [shared options](options.md). This type does not accept `detailFields`, `categoryLabels`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `topN`, `bandFraction`, `colorblindSafe`, `rounding`.
 

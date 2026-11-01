@@ -123,6 +123,8 @@ export interface BarTableOptions extends BaseOptionsFor<'bartable'> {
   cascade?: BarTableCascade;
   /** false: each panel scales to its own longest bar; true: one scale for all, panel width follows the panel's longest bar (its total under cascade). Default false, true under cascade. */
   sharedScale?: boolean;
+  /** 'rows' (default): a pinned canvas gives its spare height to the rows, up to 1.25 times the natural pitch, and the bar thickens with them. 'none': rows keep the natural pitch. A theme `space.barRow` fixes the row either way. */
+  heightFill?: 'rows' | 'none';
 }
 
 export interface BarTablePanelDerived {

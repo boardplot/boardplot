@@ -604,7 +604,9 @@ function buildExhibit(
   const labelW = tracks.label * scale;
   const sizeW = tracks.size * scale;
   // The period columns share the width the label and size columns leave, as a pure table's do.
-  const monthW = (frame.plot.w - labelW - sizeW) / visible.length;
+  // heightFill 'none' keeps a stepped column at its measured width.
+  const heightFill = options.heightFill !== 'none';
+  const monthW = style === 'stepped' && !heightFill ? tracks.month * scale : (frame.plot.w - labelW - sizeW) / visible.length;
   const tableLeft = frame.plot.x;
   const sizeLeft = tableLeft + labelW;
   const monthLeft = sizeLeft + sizeW;
@@ -656,7 +658,7 @@ function buildExhibit(
     if (grow !== undefined) return buildExhibit(data, derived, visible, { ...options, size: { width: size.width, height: grow } }, warnings, exclusion);
   }
   // A pinned canvas with height to spare gives it to the rows, up to 1.8 times their natural height.
-  if (fixedHeightCanvas(options)) {
+  if (heightFill && fixedHeightCanvas(options)) {
     const extra = spareShare(frame.plot.y + frame.plot.h - naturalBottom - 6 - STANDOFF_BELOW, rowData.length, naturalRowH * MAX_ROW_GROWTH, true);
     rowH += extra;
     tableBottom += rowData.length * extra;

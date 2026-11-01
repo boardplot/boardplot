@@ -837,7 +837,7 @@ function layoutBarTableOnce(
   const compactRowsH = interleaved ? compactBlockH(0) : panels.reduce((sum, _entry, p) => sum + compactBlockH(p), 0) + (panels.length - 1) * BLOCK_GAP;
   // A pinned canvas with height to spare gives it to the rows, up to a quarter over the natural pitch,
   // and the bar thickens with them (14 px in a 28 px row, 20 px in a 35 px row). A theme row is fixed.
-  const spareRowH = fixedHeightCanvas(options) && !compact && !house ? Math.floor(Math.min(naturalRowH * MAX_ROW_GROWTH, (plot.h - blockH) / rowCount)) : 0;
+  const spareRowH = options.heightFill !== 'none' && fixedHeightCanvas(options) && !compact && !house ? Math.floor(Math.min(naturalRowH * MAX_ROW_GROWTH, (plot.h - blockH) / rowCount)) : 0;
   const rowH = compact ? barLineH : Math.max(floorRowH, Math.min(naturalRowH, (plot.h - blockH) / rowCount), spareRowH);
   if (rowH > naturalRowH) barH += Math.round((rowH - naturalRowH) * BAR_GROWTH);
   // Cascade bars fill the row, so a value reads inside them.

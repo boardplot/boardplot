@@ -85,6 +85,13 @@ export interface CohortOptionsBase extends BaseOptionsFor<'cohort'> {
   excludeCurrentPeriod?: boolean;
   /** Optional exhibit eyebrow above the assertion title. */
   exhibitLabel?: string;
+  /**
+   * Exhibit variants. 'rows' (default): rows take the spare height of a pinned
+   * canvas, up to 1.8 times their natural height, and stepped period columns
+   * share the free width as pure columns do. 'none': rows keep their natural
+   * height and stepped columns keep their measured width.
+   */
+  heightFill?: 'rows' | 'none';
 }
 
 /** Consulting exhibit table. Stepped columns share the free width, as pure columns do, and keep their measured content width as the floor. Omitted preserves the legacy heatmap. */

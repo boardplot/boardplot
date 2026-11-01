@@ -100,6 +100,9 @@ export const cohortOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptio
   total: z.union([z.literal(false), z.literal('weighted')]).optional().describe("Exhibit summary row: weighted retention by default, or false to hide it. Never averages cohort percentages equally."),
   excludeCurrentPeriod: z.boolean().optional().describe("Remove the newest cohort and longest period before exhibit derivation."),
   exhibitLabel: z.string().min(1).optional().describe("Short exhibit heading above the assertion title."),
+  heightFill: z.enum(['rows', 'none']).optional()
+    .meta({ default: 'rows' })
+    .describe("Exhibit variants. 'rows' (default): rows take the spare height of a pinned canvas, up to 1.8 times, and stepped columns share the free width. 'none': natural row height, stepped columns at measured width."),
 })
   // Cohort honours `labels` only on the legacy heatmap surface: the exhibit
   // presets return early into layoutCohortExhibit, which draws a fixed
