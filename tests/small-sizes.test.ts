@@ -1244,3 +1244,17 @@ it('draws the house, the stack and the cycle on a full slide with the height the
   expect(cycle.ok).toBe(true);
   expect(cycle.warnings.filter((warning: any) => warning.code === 'diagram-arrowhead-unplaced')).toEqual([]);
 });
+
+// Prevents the roof cut from hiding a required vision: a three-line vision on a 720 x 316 house that main draws was refused
+// ("label unplaced") because the cut left the roof shorter than the vision's three lines.
+it('keeps a three-line vision when the strategy house is a little short', () => {
+  const node = (id: string, kind: string, label: string, extra: object = {}) => ({ id, kind, shape: { kind: kind === 'vision' ? 'roof' : 'rectangle' }, label, role: 'primary', ...extra });
+  const data = {
+    groups: [{ id: 'g', title: 'Grow', role: 'primary', order: 1 }],
+    nodes: [node('v', 'vision', 'Trusted growth\npartner for\nevery customer'), node('o', 'objective', 'Grow', { groupId: 'g' }),
+      node('a', 'initiative', 'New segments', { groupId: 'g', order: 1 }), node('b', 'initiative', 'Pricing', { groupId: 'g', order: 2 }),
+      node('e', 'enabler', 'People', { order: 1 }), node('f', 'foundation', 'Customer trust')],
+  };
+  const body = render({ spec: { type: 'diagram', data, options: { variant: 'strategy-house', size: { width: 720, height: 316 } } } }).body as any;
+  expect(body.errors).toEqual([]);
+});
