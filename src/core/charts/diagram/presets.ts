@@ -2,7 +2,7 @@ import type { Theme } from '../../types/theme';
 import { boundsOf, clamp, inflate, rectsOverlap, type Point, type Rect, type Size } from '../../geometry';
 import { monotonePath, monotoneSegments } from '../../curve';
 import { resolveSize } from '../../normalize/shared';
-import { wrapText, type FontSpec, type TextMeasurer } from '../../text';
+import { wrapNameText, wrapText, type FontSpec, type TextMeasurer } from '../../text';
 import { strokeToken, dashToken, panelTypeClass, resolveTheme, themeForWidth } from '../../theme';
 import type {
   DiagramEdge,
@@ -505,7 +505,7 @@ function layoutIssueTree(context: PresetContext): PresetLayout {
   for (const node of context.data.nodes) {
     if (!node.secondaryLabel) continue;
     const width = Math.max(1, widths.get(ranks.get(node.id) ?? 0)! - 4 * context.u);
-    const primary = wrapText(node.label, context.font, width, 3, context.measure).lines.length;
+    const primary = wrapNameText(node.label, context.font, width, 3, context.measure).lines.length;
     const secondary = wrapText(node.secondaryLabel, context.font, width, 2, context.measure).lines.length;
     const size = context.sizes.get(node.id)!;
     const icon = node.icon || node.shape.kind === 'icon' ? 4.5 * context.u : 0;
@@ -532,7 +532,7 @@ function layoutIssueTree(context: PresetContext): PresetLayout {
     const heights = context.data.nodes.map(node => {
       const size = context.sizes.get(node.id)!;
       const width = Math.max(1, widths.get(ranks.get(node.id) ?? 0)! - 4 * context.u);
-      const primary = wrapText(node.label, context.font, width, 3, context.measure).lines.length;
+      const primary = wrapNameText(node.label, context.font, width, 3, context.measure).lines.length;
       const icon = node.icon || node.shape.kind === 'icon' ? 4.5 * context.u : 0;
       const minimum = Math.max(7 * context.u, primary * context.lineHeight + icon + 3 * context.u,
         node.minSize?.height ?? 0, node.size?.height ?? 0);
@@ -974,7 +974,7 @@ export function strategyHouseBands(
   const groups = data.groups;
   const columnW = width / Math.max(1, groups.length);
   const lines = (node: DiagramNode | undefined, w: number) => node
-    ? wrapText(node.label, node.kind === 'initiative' || node.kind === 'enabler' ? font : headFont, Math.max(1, w - 4 * u), 3, measure).lines.length : 1;
+    ? wrapNameText(node.label, node.kind === 'initiative' || node.kind === 'enabler' ? font : headFont, Math.max(1, w - 4 * u), 3, measure).lines.length : 1;
   const objectives = data.nodes.filter((node) => node.kind === 'objective').sort(nodeOrder);
   const enablers = data.nodes.filter((node) => node.kind === 'enabler').sort(nodeOrder);
   const foundation = data.nodes.find((node) => node.kind === 'foundation');

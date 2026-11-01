@@ -550,6 +550,33 @@ it('does not refuse a diagram for its badges', () => {
   expect(tree.warnings.filter((warning) => warning.severity === 'error').map((warning) => warning.message).join(' ')).not.toMatch(/badge/i);
 });
 
+// Prevents a strategy house from refusing at half slide because a hyphenated name is one unbreakable word in a pillar,
+// and a two-line label from sitting flush left in a centred cell.
+it('breaks hyphenated house names at the hyphen instead of refusing', () => {
+  const cell = (id: string, kind: string, label: string, extra: object = {}) => ({ id, kind, shape: { kind: 'rectangle' }, label, role: 'primary', ...extra });
+  const house = {
+    groups: ['g1', 'g2', 'g3'].map((id, order) => ({ id, title: `Pillar ${order + 1}`, role: 'primary', order: order + 1 })),
+    nodes: [
+      cell('roof', 'vision', 'Research and development expenses', { shape: { kind: 'roof' } }),
+      cell('o0', 'objective', 'North-Westmoor (Riverland)', { groupId: 'g1' }),
+      cell('o1', 'objective', 'Depreciation of fixed assets', { groupId: 'g2' }),
+      cell('o2', 'objective', 'Depreciation and amortisation', { groupId: 'g3' }),
+      cell('a', 'initiative', 'Northumberland-Westmoreland', { groupId: 'g2', order: 1, role: 'secondary' }),
+      cell('b', 'initiative', 'Reinvoiced transportation costs', { groupId: 'g3', order: 1, role: 'secondary' }),
+      cell('c', 'initiative', 'Selling and distribution overheads', { groupId: 'g1', order: 1, role: 'secondary' }),
+      cell('e1', 'enabler', 'Other operating income', { order: 1, role: 'muted' }),
+      cell('base', 'foundation', 'Income from equity-accounted firms'),
+    ],
+  };
+  const half = getChart('diagram')!.layout(house as never, { variant: 'strategy-house', target: 'slide', size: { width: 432, height: 396, unit: 'pt' } } as never);
+  if (half.refused) throw new Error('the house is refused at half a slide');
+  expect(half.warnings.filter((warning) => warning.severity === 'error')).toEqual([]);
+  // The three-line label of the first pillar is centred, not flush left.
+  const aligned = half.scene.flatMap((n) => (n.t === 'text' && n.lines.length > 1 ? [n.align] : []));
+  expect(aligned.length).toBeGreaterThan(0);
+  expect(aligned.every((align) => align === 'middle')).toBe(true);
+});
+
 // Prevents measure and render from naming different floors: a height that render refuses, a card width
 // that render refuses while measure says it draws, and a pinned choropleth that draws taller than measure says.
 it('names the size that render draws in measure', () => {
