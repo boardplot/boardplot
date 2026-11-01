@@ -465,6 +465,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | attainment-bad-column-spark | kpi | torture | Attainment chip in the bad tone over a monthly column spark |
 | compact-spark-floor | kpi | torture | Compact card keeps its sparkline readable |
 | neutral-change | kpi | example | A change without a favorable direction |
+| slot-natural-sizes | kpi | example | A card in a fixed slot that keeps its natural sizes at the top |
 | value-bands | kpi | example | The band that holds the value colours the main value; the comparison keeps its own tone |
 
 ## combo
