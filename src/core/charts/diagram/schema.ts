@@ -225,6 +225,19 @@ const channelSchema = z.strictObject({
   label: textSchema(80).describe('The shared label, at most 80 Unicode code points.'),
 }).describe('Architecture only: one shared label for edges in one gutter.');
 
+const insetSchema = z.strictObject({
+  title: textSchema(80).describe('Panel title, at most 80 Unicode code points.'),
+  kpis: z.array(z.strictObject({
+    value: textSchema(16).describe('The large number as text, at most 16 Unicode code points.'),
+    label: textSchema(60).describe('What the number means, at most 60 Unicode code points.'),
+  })).min(1).max(4).optional().describe('Up to 4 large numbers.'),
+  rows: z.array(z.strictObject({
+    label: textSchema(60).describe('Row name, at most 60 Unicode code points.'),
+    value: textSchema(24).describe('Row value as text, at most 24 Unicode code points.'),
+  })).min(1).max(12).optional().describe('Up to 12 short rows.'),
+}).refine((inset) => inset.kpis !== undefined || inset.rows !== undefined, { message: 'an inset needs kpis or rows' })
+  .describe('Architecture only: a detail panel after a rule, beside the exhibit from 800 px and under it below that.');
+
 const calloutSchema = z.strictObject({
   id: boundedIdSchema,
   target: z.union([
@@ -259,6 +272,7 @@ export const diagramDataSchema = z
     key: z.array(keyEntrySchema).min(1).max(8).optional().describe('Up to 8 entries naming what a node fill or an edge line style means, drawn as the diagram key above the plot; a good, bad or warn node fill needs one, and so does a dashed or dotted edge.'),
     channels: z.array(channelSchema).max(16).optional().describe('Architecture only: up to 16 shared labels, each for edges that cross one gutter.'),
     callouts: z.array(calloutSchema).max(16).optional().describe('Architecture only: up to 16 numbered discs, numbered in this order.'),
+    inset: insetSchema.optional(),
   })
   .superRefine((data, ctx) => {
     addDuplicateIdIssues(ctx, data.nodes, ['nodes'], {

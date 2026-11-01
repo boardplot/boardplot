@@ -49,7 +49,7 @@ import {
 import { circularLabelBand, circularRing, layoutPreset, strategyHouseBands } from './presets';
 import { layoutOrgChart, orgChartEligible } from './orgChart';
 import { issueTreeEligible, layoutIssueTreeCompact } from './issueTreeCompact';
-import { architectureEligible, architectureFill, layoutArchitecture } from './architecture';
+import { ARCHITECTURE_PLANS, architectureEligible, architectureFill, layoutArchitecture, type ArchitecturePlans } from './architecture';
 import { journeyEligible, layoutJourneyCompact } from './journeyCompact';
 import { layoutLinearCompact, linearEligible } from './linearCompact';
 import { layoutRoadmapCompact, roadmapEligible } from './roadmapCompact';
@@ -68,7 +68,8 @@ export function layoutDiagram(
   rawOptions?: DiagramOptions,
   measureMinimum = true,
 ): Geometry<DiagramMarks, DiagramDerived> {
-  return layoutDiagramPass(rawData, rawOptions, measureMinimum);
+  const planned = rawOptions?.variant === 'architecture' && !(ARCHITECTURE_PLANS in rawOptions);
+  return layoutDiagramPass(rawData, planned ? { ...rawOptions!, [ARCHITECTURE_PLANS]: new Map() } as DiagramOptions : rawOptions, measureMinimum);
 }
 
 type DiagramFit = Pick<Geometry<DiagramMarks, DiagramDerived>, 'warnings'>;
@@ -211,7 +212,8 @@ function layoutDiagramPass(
   const fixedHeight = (rawOptions as TargetSizeOptions)[TARGET_SIZE]?.fixed.height
     ?? (typeof rawOptions.size === 'object' && rawOptions.size.height !== undefined);
   // The compact org chart and issue tree lay out and route themselves.
-  const org = architectureEligible(options) ? layoutArchitecture(data, options, plot, { name: stepFont, text: labelFont, title: laneFont }, measure, u, diagramPalette, theme, badgeSizes)
+  const org = architectureEligible(options) ? layoutArchitecture(data, options, plot, { name: stepFont, text: labelFont, title: laneFont }, measure, u, diagramPalette, theme, badgeSizes,
+      (rawOptions as { [ARCHITECTURE_PLANS]?: ArchitecturePlans })[ARCHITECTURE_PLANS])
     : orgChartEligible(data, options) ? layoutOrgChart(data, plot, labelFont, measure, u)
     : issueTreeEligible(data, options) ? layoutIssueTreeCompact(data, plot, labelFont, measure, u, headingWeight(theme))
     : journeyEligible(data, options) ? layoutJourneyCompact(data, options, plot, labelFont, axisFont, measure, u, diagramPalette, headingWeight(theme))
@@ -638,7 +640,7 @@ function layoutDiagramPass(
     );
   });
   org?.channelLabels?.forEach((label) => addBoxLabelRequest(edgeLabelRequests, edgeLabelKinds, label.id, 'diagramEdge', label.owner, label.text,
-    label.rect, labelFont, measure, PRIORITY.interior, options.target));
+    label.rect, label.font ?? labelFont, measure, PRIORITY.interior, options.target));
   const solvedEdges = solveLabels(edgeLabelRequests, occupied, labelCtx(theme, size, {}, {
     density: 'full',
     measure,
@@ -647,7 +649,8 @@ function layoutDiagramPass(
   }));
   remapLabelKinds(solvedEdges.placed, edgeLabelKinds);
   pushAll(warnings, solvedEdges.warnings);
-  const edgeLabelNodes = labelsToNodes(theme, solvedEdges.placed, () => labelFont);
+  const edgeLabelFonts = new Map(org?.channelLabels?.map((label) => [label.id, label.font ?? labelFont]));
+  const edgeLabelNodes = labelsToNodes(theme, solvedEdges.placed, (label) => edgeLabelFonts.get(label.id) ?? labelFont);
 
   const { laneGroupLabels, nodeLabels, accessoryLabels } = groupStructuralLabels(structuralLabelNodes);
   const scene = [
@@ -1318,6 +1321,7 @@ function diagramA11y(
     groups: NonNullable<DiagramData['groups']>;
     lanes: NonNullable<DiagramData['lanes']>;
     groupEnds?: NormalizedDiagram['groupEnds'];
+    inset?: NormalizedDiagram['inset'];
   },
   options: DiagramOptions,
   readingOrder: readonly string[],
@@ -1360,6 +1364,7 @@ function diagramA11y(
       chartString(options, 'diagramDesc', { v1: chartString(options, ({"hierarchy":"diagramHierarchy","issue-tree":"diagramIssueTree","linear-process":"diagramLinearProcess","customer-journey":"diagramCustomerJourney","circular-process":"diagramCircularProcess","strategy-house":"diagramStrategyHouse","roadmap":"diagramRoadmap","architecture":"diagramArchitecture"} as const)[options.variant]), v2: data.nodes.length, v3: edges.length }),
       chartString(options, 'readingOrder', { v1: order }),
       relationships ? chartString(options, 'relationshipsSentence', { v1: relationships }) : '',
+      data.inset ? `${data.inset.title}: ${[...(data.inset.kpis ?? []).map((kpi) => `${kpi.value} ${kpi.label}`), ...(data.inset.rows ?? []).map((row) => `${row.label} ${row.value}`)].join('; ')}.` : '',
       groups ? chartString(options, 'groupsSentence', { v1: groups }) : '',
       lanes ? chartString(options, 'lanesSentence', { v1: lanes }) : '',
     ]

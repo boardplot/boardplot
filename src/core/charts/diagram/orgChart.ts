@@ -66,7 +66,7 @@ export interface OrgChartLayout {
   /** Lints of the layout itself. */
   warnings?: LintWarning[];
   /** Labels with a seat of their own that no single edge owns. */
-  channelLabels?: Array<{ id: string; text: string; rect: Rect; owner: OwnerRef }>;
+  channelLabels?: Array<{ id: string; text: string; rect: Rect; owner: OwnerRef; font?: FontSpec }>;
 }
 
 export interface FixedRoute {
