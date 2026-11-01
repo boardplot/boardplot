@@ -1902,3 +1902,14 @@ it('keeps the unit after a head comma as written, on column and group heads, on 
   // The grid's capitals are in its text. A CSS capital rule on the group row would turn "kW" into "KW".
   expect(tableStylesheet(resolveTheme('boardroom'), 'report')).not.toMatch(/\.bp-groups>\*\{[^}]*text-transform/);
 });
+
+// Switching every column group on shrank the label track below the one the default columns use, so rows with a folded-row hint wrapped and the table grew.
+it('keeps the label track of the default columns when every column group is switched on', () => {
+  const labelTrack = (): number => Number.parseFloat(gridElement().style.getPropertyValue('--bp-cols'));
+  renderTable({ size: { width: 2060 } });
+  const initial = labelTrack();
+  const groups = Object.fromEntries(managementFixture().data.columnToggles!.map((toggle) => [toggle.id, true]));
+  renderTable({ size: { width: 2060 }, columnVisibility: groups });
+  expect(columnIds().length).toBeGreaterThan(21);
+  expect(labelTrack()).toBe(initial);
+});

@@ -9,7 +9,7 @@ import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { labelCtx, PRIORITY, seatLeader, solveLabels, type LabelRequest, type SolveCtx } from '../../label/solver';
 import { accessibleTitle, NormalizeError, resolveSize } from '../../normalize/shared';
-import { defaultMeasurer, wrapText, type FontSpec } from '../../text';
+import { defaultMeasurer, wrapNameText, wrapText, type FontSpec } from '../../text';
 import { emphasisWeight, headingWeight, resolveSurface, strokeToken, canvasMargin, paintColor, panelTypeClass } from '../../theme';
 import type {
   DiagramData,
@@ -49,6 +49,7 @@ import {
 import { circularLabelBand, circularRing, layoutPreset, strategyHouseBands } from './presets';
 import { layoutOrgChart, orgChartEligible } from './orgChart';
 import { issueTreeEligible, layoutIssueTreeCompact } from './issueTreeCompact';
+import { ARCHITECTURE_PLANS, architectureEligible, architectureFill, layoutArchitecture, type ArchitecturePlans } from './architecture';
 import { journeyEligible, layoutJourneyCompact } from './journeyCompact';
 import { layoutLinearCompact, linearEligible } from './linearCompact';
 import { layoutRoadmapCompact, roadmapEligible } from './roadmapCompact';
@@ -67,7 +68,8 @@ export function layoutDiagram(
   rawOptions?: DiagramOptions,
   measureMinimum = true,
 ): Geometry<DiagramMarks, DiagramDerived> {
-  return layoutDiagramPass(rawData, rawOptions, measureMinimum);
+  const planned = rawOptions?.variant === 'architecture' && !(ARCHITECTURE_PLANS in rawOptions);
+  return layoutDiagramPass(rawData, planned ? { ...rawOptions!, [ARCHITECTURE_PLANS]: new Map() } as DiagramOptions : rawOptions, measureMinimum);
 }
 
 type DiagramFit = Pick<Geometry<DiagramMarks, DiagramDerived>, 'warnings'>;
@@ -122,20 +124,22 @@ function layoutDiagramPass(
       suggest: `name it in data.key, for example { role: '${unkeyed[0]}', label: '…' }`,
     });
   }
-  const keyItems: LegendItemInput[] = data.key.map((entry, index) => entry.line !== undefined
+  const calloutItems: LegendItemInput[] = data.callouts.flatMap((callout, index) => {
+    const label = [callout.title, callout.text].filter(Boolean).join(': ');
+    return label ? [{ id: `callout:${index}`, label, paint: { token: 'ink' as const }, key: 'glyph' as const, glyph: String(index + 1) }] : [];
+  });
+  const keyItems: LegendItemInput[] = [...data.key.map((entry, index): LegendItemInput => {
     // A line style is keyed as the edges draw it.
-    ? { id: `key:${index}`, label: entry.label, paint: { token: 'leader' }, key: 'line', width: strokeToken(theme, 'rule'), ...(entry.line === 'solid' ? {} : { dash: edgeDash(theme, entry.line)!, lineCap: entry.line === 'dotted' ? 'round' as const : 'butt' as const }) }
-    : {
-      id: `key:${index}`,
-      label: entry.label,
-      // The fill the nodes of that role wear, as nodeFillPaint paints them.
-      paint: nodeFillPaint(
-        data.nodes.find((node) => node.role === entry.role && node.paletteKey === entry.paletteKey) ??
-          ({ id: `key:${index}`, kind: 'step', label: entry.label, shape: { kind: 'rectangle' }, role: entry.role, paletteKey: entry.paletteKey } as DiagramNode),
-        diagramPalette,
-        theme,
-      ),
-    });
+    if (entry.line !== undefined) return { id: `key:${index}`, label: entry.label, paint: { token: 'leader' }, key: 'line', width: strokeToken(theme, 'rule'), ...(entry.line === 'solid' ? {} : { dash: edgeDash(theme, entry.line)!, lineCap: entry.line === 'dotted' ? 'round' as const : 'butt' as const }) };
+    const node = data.nodes.find((item) => item.role === entry.role && item.paletteKey === entry.paletteKey) ??
+      ({ id: `key:${index}`, kind: 'step', label: entry.label, shape: { kind: 'rectangle' }, role: entry.role, paletteKey: entry.paletteKey } as DiagramNode);
+    if (options.variant === 'architecture') {
+      const { fill, ring } = architectureFill(node, data.lanes, diagramPalette);
+      return { id: `key:${index}`, label: entry.label, ...(ring && 'token' in fill && fill.token === 'background' ? { paint: { token: ring }, hollow: true } : { paint: fill }) };
+    }
+    // The fill the nodes of that role wear, as nodeFillPaint paints them.
+    return { id: `key:${index}`, label: entry.label, paint: nodeFillPaint(node, diagramPalette, theme) };
+  }), ...calloutItems];
   const occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
   const frame = solveFrame(
     {
@@ -160,7 +164,7 @@ function layoutDiagramPass(
   const stepFont: FontSpec = { ...labelFont, weight: emphasisWeight(theme) };
   const headFont: FontSpec = { ...labelFont, weight: headingWeight(theme) };
   const badgeFont: FontSpec = options.variant === 'linear-process' ? { ...labelFont, weight: emphasisWeight(theme) } : labelFont;
-  const laneFont: FontSpec = options.variant === 'roadmap' ? { ...axisFont, weight: headingWeight(theme) } : axisFont;
+  const laneFont: FontSpec = options.variant === 'roadmap' || options.variant === 'architecture' ? { ...axisFont, weight: headingWeight(theme) } : axisFont;
   const nodeFontById = (id: string): FontSpec | undefined => {
     const node = data.nodes.find((candidate) => candidate.id === id);
     return node ? presetFont(node) : undefined;
@@ -204,12 +208,19 @@ function layoutDiagramPass(
   );
   const presetContext = { data, options, plot, sizes: nodeSizes, lineHeight, u,
     palette: diagramPalette, measure, font: labelFont, titleFont: axisFont, headFont };
+  // A canvas height the host gave (a size with a height) is a limit; an open height grows to the content instead.
+  const fixedHeight = (rawOptions as TargetSizeOptions)[TARGET_SIZE]?.fixed.height
+    ?? (typeof rawOptions.size === 'object' && rawOptions.size.height !== undefined);
+  // heightFill 'none' keeps the org chart and journey gaps at their natural size.
+  const spreadGaps = (options as { heightFill?: string }).heightFill !== 'none';
   // The compact org chart and issue tree lay out and route themselves.
-  const org = orgChartEligible(data, options) ? layoutOrgChart(data, plot, labelFont, measure, u)
+  const org = architectureEligible(options) ? layoutArchitecture(data, options, plot, { name: stepFont, text: labelFont, title: laneFont }, measure, u, diagramPalette, theme, badgeSizes,
+      (rawOptions as { [ARCHITECTURE_PLANS]?: ArchitecturePlans })[ARCHITECTURE_PLANS])
+    : orgChartEligible(data, options) ? layoutOrgChart(data, plot, labelFont, measure, u, fixedHeight && spreadGaps)
     : issueTreeEligible(data, options) ? layoutIssueTreeCompact(data, plot, labelFont, measure, u, headingWeight(theme))
-    : journeyEligible(data, options) ? layoutJourneyCompact(data, options, plot, labelFont, axisFont, measure, u, diagramPalette, headingWeight(theme))
+    : journeyEligible(data, options) ? layoutJourneyCompact(data, options, plot, labelFont, axisFont, measure, u, diagramPalette, headingWeight(theme), fixedHeight && spreadGaps)
     : linearEligible(data, options) ? layoutLinearCompact(data, plot, stepFont, badgeFont, captionFont, measure, u, badgeText,
-      size.width >= 720 ? 2 * stepFont.size : 0)
+      size.width >= 720 ? 2 * stepFont.size : 0, fixedHeight)
     : roadmapEligible(data, options) ? layoutRoadmapCompact(data, options, plot, labelFont, laneFont, measure, u, diagramPalette, theme) : undefined;
   // Refuse-less: every layout draws on a card under 480 px when it reads
   // there: no card or group text cut, no group frame over another. Otherwise it keeps the
@@ -221,6 +232,7 @@ function layoutDiagramPass(
   // that full path; all other search probes have an explicit, fixed size.
   const probe = fitOnly && !narrowCard;
   let preset = org?.preset ?? layoutPreset(theme, presetContext);
+  if (org?.warnings) pushAll(warnings, org.warnings);
   // constrained columns wrap primary labels even without secondary text.
   // Measure those lines before the preset assigns row heights and badge clearance.
   if (!externalLabels && !org) {
@@ -230,7 +242,7 @@ function layoutDiagramPass(
         const rect = preset.nodeRects.get(node.id);
         if (!rect) continue;
         const width = Math.max(1, rect.w - 4 * u);
-        const lines = wrapText(node.label, presetFont(node) ?? labelFont, width, 3, measure).lines.length;
+        const lines = wrapNameText(node.label, presetFont(node) ?? labelFont, width, 3, measure).lines.length;
         const secondary = node.secondaryLabel ? wrapText(node.secondaryLabel, labelFont, width, 2, measure).lines.length * lineHeight + u : 0;
         const icon = Math.max(preset.contentTopReserves.get(node.id) ?? 0, node.icon || node.shape.kind === 'icon' ? Math.max(4.5 * u, 28) : 0);
         const height = lines * lineHeight + secondary + icon + 3 * u + (badgeSizes.get(node.id)?.height ?? 0);
@@ -299,19 +311,20 @@ function layoutDiagramPass(
   const groups: ResolvedDiagramGroup[] = preset.groups.map((group) => {
     const authored = data.groups.find((candidate) => candidate.id === group.id)!;
     const nodeId = diagramSceneId('group', group.id);
-    if (framedGroups) groupScene.push({
+    const drawn = framedGroups && !org?.groupPaint?.dashed.has(group.id);
+    if (drawn) groupScene.push({
       t: 'rect',
       id: nodeId,
       rect: group.bounds,
-      fill: { token: 'others', tint: 0.82 },
-      stroke: diagramPalette.paint(authored.role, authored.paletteKey),
+      fill: org?.groupPaint?.fills?.get(group.id) ?? org?.groupPaint?.fill ?? { token: 'others', tint: 0.82 },
+      stroke: org?.groupPaint && authored.role === undefined ? org.groupPaint.stroke : diagramPalette.paint(authored.role, authored.paletteKey),
       // A group frame follows the node ring's width and corner.
       strokeWidth: theme.marks?.nodeStrokeWidth ?? strokeToken(theme, 'hair'),
       radius: theme.marks?.nodeRadius ?? resolveSurface(theme).chipRadius,
       owner: groupOwner(group.id),
       part: 'diagramGroup',
     });
-    if (options.variant === 'hierarchy') {
+    if (options.variant === 'hierarchy' || options.variant === 'architecture') {
       addBoxLabelRequest(
         labelRequests,
         labelKinds,
@@ -320,7 +333,7 @@ function layoutDiagramPass(
         groupOwner(group.id),
         authored.title,
         group.titleBox,
-        axisFont,
+        laneFont,
         measure,
         PRIORITY.endpoint,
         options.target,
@@ -375,7 +388,7 @@ function layoutDiagramPass(
     const icon = node.icon ?? (node.shape.kind === 'icon' ? node.shape.name : undefined);
     const room = rect.h - pill.height / 2 - 2.5 * u - Math.max(0, pill.height / 2 + u - 1.25 * u)
       - (preset.contentTopReserves.get(id) ?? (icon ? Math.min(rect.h * 0.42, 28) : 0));
-    const lines = fitText(node.label, presetFont(node) ?? labelFont, Math.max(1, rect.w - 4 * u), 3, measure, { target: options.target, typeRole: 'label' }).lines.length;
+    const lines = fitText(node.label, presetFont(node) ?? labelFont, Math.max(1, rect.w - 4 * u), 3, measure, { target: options.target, typeRole: 'label', hyphenRetry: true }).lines.length;
     if (room + 0.5 < lines * lineHeight) badgeFlush.add(id);
     else preset.nodeRects.set(id, qRect({ ...rect, y: rect.y + pill.height / 2, h: rect.h - pill.height / 2 }));
   }
@@ -449,7 +462,8 @@ function layoutDiagramPass(
       options.variant === 'roadmap' ? preset.lanes.find(lane => lane.id === node.laneId)?.bounds : undefined,
       org !== undefined && !org.centred,
       emphasisWeight(theme),
-      org?.captionBoxes ? { font: captionFont, box: org.captionBoxes.get(node.id) } : org?.seats ? { font: labelFont, seat: org.seats.get(node.id) } : undefined,
+      org?.captionBoxes ? { font: captionFont, box: org.captionBoxes.get(node.id) } : org?.seats ? { font: labelFont, seat: org.seats.get(node.id) }
+        : org?.secondaryFont ? { font: captionFont, secondaryFont: org.secondaryFont } : undefined,
       joinedLabels,
     );
     if (node.badge || options.variant === 'linear-process') {
@@ -521,6 +535,11 @@ function layoutDiagramPass(
     nodeMarks.push(resolved);
   }
 
+  org?.discs?.forEach((disc) => {
+    const paint: Paint = { token: 'neutralMark' };
+    badgeScene.push({ t: 'circle', id: diagramSceneId('callout', disc.id), cx: q(disc.rect.x + disc.rect.w / 2), cy: q(disc.rect.y + disc.rect.h / 2), r: q(disc.rect.w / 2), fill: paint, owner: disc.owner, part: 'diagramBadge' });
+    addBoxLabelRequest(labelRequests, labelKinds, `callout-label:${disc.id}`, 'diagramBadge', disc.owner, disc.text, disc.rect, badgeFont, measure, PRIORITY.endpoint, options.target, paintColor(theme, paint), paint, 'value');
+  });
   const structuralCtx = labelCtx(theme, size, {}, {
     density: 'full',
     measure,
@@ -531,7 +550,7 @@ function layoutDiagramPass(
   remapLabelKinds(solvedStructural.placed, labelKinds);
   // A compact layout's own inks: a muted description, a numeral in its step's fill.
   for (const label of solvedStructural.placed) {
-    const node = org?.badges && label.id.startsWith('badge-label:') ? data.nodes.find((candidate) => candidate.id === label.owner.pointId) : undefined;
+    const node = org?.badgePaint && label.id.startsWith('badge-label:') ? data.nodes.find((candidate) => candidate.id === label.owner.pointId) : undefined;
     const ink = org?.labelInks?.get(label.id) ?? (node ? nodeFillPaint(node, diagramPalette, theme) : undefined);
     if (ink && !label.hidden) label.ink = ink;
   }
@@ -561,8 +580,9 @@ function layoutDiagramPass(
 
   const structuralLabelNodes = probe ? [] : labelsToNodes(theme, solvedStructural.placed, (label) =>
     ['diagramLane', 'diagramGroup', 'diagramBadge'].includes(label.kind as string)
-      ? (labelKinds.get(label.id) === 'diagramBadge' ? badgeFont : labelKinds.get(label.id) === 'diagramLane' ? laneFont : axisFont)
+      ? (labelKinds.get(label.id) === 'diagramBadge' ? badgeFont : labelKinds.get(label.id) === 'diagramLane' || options.variant === 'architecture' ? laneFont : axisFont)
       : labelKinds.get(label.id) === 'diagramCaption' && org?.captionBoxes ? captionFont
+      : org?.secondaryFont && label.id.startsWith('secondary-label:') ? org.secondaryFont
       : (label.owner.pointId ? org?.fonts.get(label.owner.pointId) ?? (label.id.startsWith('node-label:') ? nodeFontById(label.owner.pointId) : undefined) : undefined) ?? labelFont,
   ).flatMap((node) => splitBoldLead(node, boldLeads, emphasisWeight(theme)));
   const reservedForRouting = solvedStructural.placed
@@ -581,11 +601,12 @@ function layoutDiagramPass(
     nodeRects: preset.nodeRects,
     edges: preset.edges,
     plot,
-    clearance: u,
+    // The smaller arrowhead of a dense flow exhibit.
+    clearance: options.variant === 'architecture' ? 0.7 * u : u,
     labelSizes: edgeLabelSizes,
     reserved: reservedForRouting,
     palette: diagramPalette,
-    ...(org ? { fixedRoutes: org.routes, ...(org.centred ? {} : { edgePaint: { token: 'neutral' as const, tint: 0.2 } }) }
+    ...(org ? { fixedRoutes: org.routes, ...(org.edgePaint ? { edgePaint: org.edgePaint } : org.centred ? {} : { edgePaint: { token: 'neutral' as const, tint: 0.2 } }) }
       // The cycle's arrows read in the neutral grey, darker than a leader.
       : options.variant === 'circular-process' ? { edgePaint: { token: 'neutral' as const } } : {}),
   });
@@ -620,6 +641,8 @@ function layoutDiagramPass(
       options.target,
     );
   });
+  org?.channelLabels?.forEach((label) => addBoxLabelRequest(edgeLabelRequests, edgeLabelKinds, label.id, 'diagramEdge', label.owner, label.text,
+    label.rect, label.font ?? labelFont, measure, PRIORITY.interior, options.target));
   const solvedEdges = solveLabels(edgeLabelRequests, occupied, labelCtx(theme, size, {}, {
     density: 'full',
     measure,
@@ -628,7 +651,8 @@ function layoutDiagramPass(
   }));
   remapLabelKinds(solvedEdges.placed, edgeLabelKinds);
   pushAll(warnings, solvedEdges.warnings);
-  const edgeLabelNodes = labelsToNodes(theme, solvedEdges.placed, () => labelFont);
+  const edgeLabelFonts = new Map(org?.channelLabels?.map((label) => [label.id, label.font ?? labelFont]));
+  const edgeLabelNodes = labelsToNodes(theme, solvedEdges.placed, (label) => edgeLabelFonts.get(label.id) ?? labelFont);
 
   const { laneGroupLabels, nodeLabels, accessoryLabels } = groupStructuralLabels(structuralLabelNodes);
   const scene = [
@@ -637,6 +661,7 @@ function layoutDiagramPass(
     ...preset.decorationScene,
     ...routed.scene,
     ...nodeScene,
+    ...(org?.overlay ?? []),
     ...laneGroupLabels,
     ...nodeLabels,
     ...badgeScene,
@@ -675,7 +700,7 @@ function layoutDiagramPass(
   // A width-only card keeps it: the minimum height feeds the regrow that judges it at its content height.
   const refusedNarrow = unreadable && (rawOptions as TargetSizeOptions)[TARGET_SIZE]?.fixed.height !== false;
   // A repair size is a rendered result, not a multiplier on the failed canvas.
-  const requiredAccessoryLoss = warnings.some(warning => warning.code === 'diagram-size-too-small' && warning.severity === 'error');
+  const requiredAccessoryLoss = warnings.some(warning => (warning.code === 'diagram-size-too-small' || warning.code === 'diagram-route-unresolved') && warning.severity === 'error');
   const minimumRequiredSize = (tooSmall || requiredAccessoryLoss || refusedIds.size > 0) && measureMinimum && !refusedNarrow
     ? measuredDiagramMinimum(size, sizing.naturalHeight, panelTypeClass(options) !== undefined,
       (candidate, structuralOnly) => layoutDiagramPass(rawData, { ...rawOptions, size: candidate }, false,
@@ -766,7 +791,7 @@ function addNodeLabels(
   /** The weight of a cycle step's name line. */
   leadWeight = font.weight,
   /** A compact layout's caption type and its seat. */
-  caption?: { font: FontSpec; box?: { rect: Rect; lines: string[] }; seat?: { rect: Rect; lines: string[] } },
+  caption?: { font: FontSpec; box?: { rect: Rect; lines: string[] }; seat?: { rect: Rect; lines: string[] }; secondaryFont?: FontSpec },
   /** Per node label id, what the label block needs once the solver has seated it with its secondary lines or without them. */
   joinedLabels?: Map<string, JoinedLabel>,
 ): void {
@@ -782,7 +807,7 @@ function addNodeLabels(
   const maxWidth = ring ? Math.max(Math.min(18 * u, plot.w / 4), ringWidth)
     : external ? Math.min(18 * u, plot.w / Math.max(2, options.variant === 'roadmap' ? 5 : 4))
     : resolved.contentRect.w;
-  const externalFit = { target: options.target, typeRole: 'label' as const,
+  const externalFit = { target: options.target, typeRole: 'label' as const, hyphenRetry: true,
     ...(external && !ring ? { wider: plot.w / (options.variant === 'roadmap' ? 5 : 4) } : {}) };
   const id = `node-label:${node.id}`;
   // A cycle step written "Name\nwhat it does" keeps its name above the detail.
@@ -798,7 +823,8 @@ function addNodeLabels(
     : fitText(node.label, font, maxWidth, 3, measure, externalFit);
   if (lead) boldLeads.set(id, lead.lines.length);
   const lineH = font.size * (font.lineHeight ?? 1.2);
-  const secondary = node.secondaryLabel ? fitText(node.secondaryLabel, font, resolved.contentRect.w, 2, measure, { target: options.target, typeRole: 'label' }) : undefined;
+  const secondaryFont = caption?.secondaryFont ?? font;
+  const secondary = node.secondaryLabel ? fitText(node.secondaryLabel, secondaryFont, resolved.contentRect.w, 2, measure, { target: options.target, typeRole: 'label' }) : undefined;
   const secondaryHeight = (secondary?.lines.length ?? 0) * lineH;
   const height = primary.lines.length * lineH;
   const secondaryFits = secondary && !secondary.title && height + secondaryHeight + u <= resolved.contentRect.h;
@@ -841,7 +867,7 @@ function addNodeLabels(
       ...(block.title !== undefined ? { title: block.title } : {}),
       font,
       priority: PRIORITY.valueLine,
-      ...(ring === 'left' ? { align: 'end' as const } : ring === 'above' || ring === 'below' ? { align: 'middle' as const } : { align: 'start' as const }),
+      ...(ring === 'left' ? { align: 'end' as const } : ring === 'above' || ring === 'below' || !external && !start && !seat && block.lines.length > 1 ?{ align: 'middle' as const } : { align: 'start' as const }),
       candidates,
     };
   };
@@ -872,7 +898,7 @@ function addNodeLabels(
   }
 
   function secondaryRequest(lines: { lines: string[]; title?: string | undefined }): LabelRequest {
-    const secondaryWidth = Math.max(1, ...lines.lines.map((line) => measure(line, font).width));
+    const secondaryWidth = Math.max(1, ...lines.lines.map((line) => measure(line, secondaryFont).width));
     const secondaryId = `secondary-label:${node.id}`;
     kinds.set(secondaryId, 'diagramSecondary');
     return {
@@ -882,13 +908,13 @@ function addNodeLabels(
       text: node.secondaryLabel!,
       lines: lines.lines,
       ...(lines.title !== undefined ? { title: lines.title } : {}),
-      font,
+      font: secondaryFont,
       priority: PRIORITY.interior,
       candidates: !secondaryFits ? [] : [
         {
           slot: 'inside-secondary',
           rect: qRect({
-            x: resolved.contentRect.x + (resolved.contentRect.w - secondaryWidth) / 2,
+            x: caption?.secondaryFont ? resolved.contentRect.x : resolved.contentRect.x + (resolved.contentRect.w - secondaryWidth) / 2,
             y: resolved.contentRect.y + resolved.contentRect.h - secondaryHeight,
             w: secondaryWidth,
             h: secondaryHeight,
@@ -1067,7 +1093,9 @@ function addBoxLabelRequest(
   insidePaint?: Paint,
   role?: TextRole,
 ): void {
-  const wrapped = fitText(text, font, Math.max(1, box.w - (kind === 'diagramEdge' ? 0 : 8)), 2, measure, { target, typeRole: kind === 'diagramBadge' || kind === 'diagramEdge' ? 'label' : 'axis' });
+  // An edge label takes the lines its box was seated for.
+  const maxLines = kind === 'diagramEdge' ? Math.max(2, Math.round(box.h / (font.size * (font.lineHeight ?? 1.2)))) : 2;
+  const wrapped = fitText(text, font, Math.max(1, box.w - (kind === 'diagramEdge' ? 0 : 8)), maxLines, measure, { target, typeRole: kind === 'diagramBadge' || kind === 'diagramEdge' ? 'label' : 'axis' });
   const lineH = font.size * (font.lineHeight ?? 1.2);
   const width = Math.max(1, ...wrapped.lines.map((line) => measure(line, font).width));
   const height = wrapped.lines.length * lineH;
@@ -1294,15 +1322,24 @@ function diagramA11y(
     nodes: DiagramNode[];
     groups: NonNullable<DiagramData['groups']>;
     lanes: NonNullable<DiagramData['lanes']>;
+    groupEnds?: NormalizedDiagram['groupEnds'];
+    inset?: NormalizedDiagram['inset'];
   },
   options: DiagramOptions,
   readingOrder: readonly string[],
-  edges: readonly { source: { nodeId: string }; target: { nodeId: string } }[],
+  edges: readonly { id?: string; source: { nodeId: string }; target: { nodeId: string } }[],
 ): { title: string; desc: string; counts: StructureCount[] } {
-  const labels = new Map(data.nodes.map((node) => [node.id, node.label]));
+  const labels = new Map(data.nodes.map((node) => {
+    const copies = node.repeat ? chartString(options, 'diagramCopies', { v1: node.label, v2: node.repeat }) : node.label;
+    return [node.id, node.protected ? chartString(options, 'diagramProtected', { v1: copies }) : copies];
+  }));
+  const end = (edge: typeof edges[number], side: 'source' | 'target') => {
+    const group = data.groupEnds?.get(edge.id ?? '')?.[side];
+    return group !== undefined ? data.groups.find((item) => item.id === group)?.title ?? group : labels.get(edge[side].nodeId) ?? edge[side].nodeId;
+  };
   const order = readingOrder.map((id) => labels.get(id) ?? id).join('; ');
   const relationships = edges
-    .map((edge) => `${labels.get(edge.source.nodeId) ?? edge.source.nodeId} → ${labels.get(edge.target.nodeId) ?? edge.target.nodeId}`)
+    .map((edge) => `${end(edge, 'source')} → ${end(edge, 'target')}`)
     .join('; ');
   const groups = data.groups
     .map((group) => {
@@ -1323,12 +1360,13 @@ function diagramA11y(
     })
     .join('; ');
   return {
-    title: accessibleTitle(options.title, chartString(options, 'diagramTitle', { v1: chartString(options, ({"hierarchy":"diagramHierarchy","issue-tree":"diagramIssueTree","linear-process":"diagramLinearProcess","customer-journey":"diagramCustomerJourney","circular-process":"diagramCircularProcess","strategy-house":"diagramStrategyHouse","roadmap":"diagramRoadmap"} as const)[options.variant]) })),
+    title: accessibleTitle(options.title, chartString(options, 'diagramTitle', { v1: chartString(options, ({"hierarchy":"diagramHierarchy","issue-tree":"diagramIssueTree","linear-process":"diagramLinearProcess","customer-journey":"diagramCustomerJourney","circular-process":"diagramCircularProcess","strategy-house":"diagramStrategyHouse","roadmap":"diagramRoadmap","architecture":"diagramArchitecture"} as const)[options.variant]) })),
     counts: [structureCount('nodes', data.nodes.length, undefined, options), structureCount('relationships', edges.length, undefined, options)],
     desc: [
-      chartString(options, 'diagramDesc', { v1: chartString(options, ({"hierarchy":"diagramHierarchy","issue-tree":"diagramIssueTree","linear-process":"diagramLinearProcess","customer-journey":"diagramCustomerJourney","circular-process":"diagramCircularProcess","strategy-house":"diagramStrategyHouse","roadmap":"diagramRoadmap"} as const)[options.variant]), v2: data.nodes.length, v3: edges.length }),
+      chartString(options, 'diagramDesc', { v1: chartString(options, ({"hierarchy":"diagramHierarchy","issue-tree":"diagramIssueTree","linear-process":"diagramLinearProcess","customer-journey":"diagramCustomerJourney","circular-process":"diagramCircularProcess","strategy-house":"diagramStrategyHouse","roadmap":"diagramRoadmap","architecture":"diagramArchitecture"} as const)[options.variant]), v2: data.nodes.length, v3: edges.length }),
       chartString(options, 'readingOrder', { v1: order }),
       relationships ? chartString(options, 'relationshipsSentence', { v1: relationships }) : '',
+      data.inset ? `${data.inset.title}: ${[...(data.inset.kpis ?? []).map((kpi) => `${kpi.value} ${kpi.label}`), ...(data.inset.rows ?? []).map((row) => `${row.label} ${row.value}`)].join('; ')}.` : '',
       groups ? chartString(options, 'groupsSentence', { v1: groups }) : '',
       lanes ? chartString(options, 'lanesSentence', { v1: lanes }) : '',
     ]

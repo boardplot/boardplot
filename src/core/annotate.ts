@@ -93,6 +93,8 @@ export interface AnchorResolution {
   /** Pixel y of the anchored level (top of bar / segment edge / point). */
   y: number;
   value: number;
+  /** Value of the running level for diff and CAGR when the mark's value is a step amount. */
+  comparisonValue?: number;
   /** The absolute value in the point label's format, which can use another precision. */
   pointValueText?: string;
   /** Format of the single series this anchor reads. */
@@ -181,6 +183,13 @@ export interface AnnotatePassInput {
     | { error: string };
   /** First/last defaults for cagr. */
   defaultSpan?: { from: AnchorRef; to: AnchorRef };
+  /**
+   * A bridge's bracket span: the drawn x range of the steps `from` to `to` (inclusive), their
+   * signed sum and the y of the one row every bracket stands in. A refusal names its cause.
+   */
+  resolveSpan?: (from: Id, to: Id) =>
+    | { left: number; right: number; y: number; sum: number; steps: { id: Id; value: number }[] }
+    | { code: string; error: string };
   /** The exact years between two readings of a time axis (zoneYearSpan); a CAGR uses them instead of dates or labels. */
   elapsedYears?: (from: AnchorResolution, to: AnchorResolution) => number | undefined;
   occupied: OccupiedIndex;
@@ -384,7 +393,7 @@ function calloutAttachment(at: AnchorResolution, kind: string, glyph?: CalloutGl
 }
 
 function comparisonAnchor(anchor: AnchorResolution | null): AnchorResolution | null {
-  return anchor?.comparisonPoint ? { ...anchor, ...anchor.comparisonPoint } : anchor;
+  return anchor ? { ...anchor, ...anchor.comparisonPoint, value: anchor.comparisonValue ?? anchor.value } : null;
 }
 
 /**
@@ -561,6 +570,8 @@ function placeAnnotation(s: AnnotationScope, ann: Annotation): void {
       return placeCagr(s, ann);
     case 'diff':
       return placeDiff(s, ann);
+    case 'bracket':
+      return placeBracket(s, ann);
     case 'callout':
     case 'note':
       return placeNote(s, ann);
@@ -766,6 +777,50 @@ function spanLead(s: AnnotationScope, a: AnchorResolution, b: AnchorResolution, 
   return lead && (period || colon) ? `${lead}:` : lead;
 }
 
+/** Bracket ticks hang this far down from the bracket's run. */
+const BRACKET_TICK = 5;
+
+function placeBracket(s: AnnotationScope, ann: Extract<Annotation, { kind: 'bracket' }>): void {
+  const { input, id } = s;
+  if (!input.resolveSpan) return warn(s, 'unsupported', `bracket '${id}': this chart has no steps to add up`);
+  // The shared anchor check lets an object anchor through; a bracket takes step ids only.
+  if (typeof ann.from !== 'string' || typeof ann.to !== 'string' || !ann.from || !ann.to) return warn(s, 'bad-anchor', `bracket '${id}': from and to are step ids (non-empty strings)`);
+  const span = input.resolveSpan(ann.from, ann.to);
+  if ('error' in span) return warn(s, span.code, `bracket '${id}': ${span.error}`);
+  const sumText = s.run.fmtSigned(span.sum);
+  const composed = ann.label ? `${ann.label} ${sumText}` : sumText;
+  const label = authored(s, 'bracket', composed, ann.text, sumText);
+  const lineId = s.nid('bracket');
+  const { left, right, y } = span;
+  s.nodes.push({
+    t: 'path', id: lineId,
+    d: `M${left} ${y + BRACKET_TICK}L${left} ${y}L${right} ${y}L${right} ${y + BRACKET_TICK}`,
+    stroke: { token: 'ink' }, width: strokeToken(input.theme, 'rule'), owner: { annotationId: id }, part: 'bracket',
+  });
+  input.occupied.claim({ x: left - 1, y: y - 1, w: right - left + 2, h: BRACKET_TICK + 2 }, 'annotation', { annotationId: id }, 'bracket');
+  const font = { family: input.theme.type.family, ...input.theme.type.label };
+  const size = input.measure(label.text, font);
+  s.labelRequests.push({
+    id: `annotation:${id}`,
+    kind: 'annotation',
+    role: computedTextRole(label.text, label.computed),
+    owner: { annotationId: id },
+    text: label.text,
+    lines: [label.text],
+    typeRole: 'label', font,
+    priority: ann.priority ?? PRIORITY.valueLine,
+    candidates: [{ slot: 'aboveBracket', rect: { x: (left + right - size.width) / 2, y: y - 3 - size.height, w: size.width, h: size.height }, penalty: 0 }],
+  });
+  s.placed.push({
+    id, kind: 'bracket', computedText: label.computed, nodeIds: [lineId], labelId: `annotation:${id}`,
+    derivation: {
+      basis: 'derived', op: 'sum@1',
+      inputs: span.steps.map((step) => ({ ref: step.id, value: step.value })),
+      raw: span.sum,
+    },
+  });
+}
+
 function placeDiff(s: AnnotationScope, ann: Extract<Annotation, { kind: 'diff' }>): void {
   const { input, id } = s;
   const a = comparisonAnchor(input.resolve(ann.from));
@@ -894,11 +949,13 @@ function placeDelta(s: AnnotationScope, ann: Extract<Annotation, { kind: 'delta'
   const at = input.resolve(ann.at);
   if (!at) return warn(s, 'bad-anchor', `delta '${id}': unresolvable anchor`);
   const vsAnchor = typeof ann.vs === 'number' ? null : input.resolve(ann.vs);
-  const vsValue = typeof ann.vs === 'number' ? ann.vs : (vsAnchor?.value ?? null);
+  // Against a literal the delta reads the mark's own value. Against another anchor both ends read the running level, as diff does, so the two stay in one unit.
+  const vsValue = typeof ann.vs === 'number' ? ann.vs : (vsAnchor ? (vsAnchor.comparisonValue ?? vsAnchor.value) : null);
   if (vsValue === null) return warn(s, 'bad-anchor', `delta '${id}': unresolvable vs`);
   if (valueless(s, 'delta', [at, vsAnchor])) return;
   warnPartialComparison(s, 'delta', partialAnchors(s, at, vsAnchor));
-  const d = at.value - vsValue;
+  const atValue = vsAnchor ? (at.comparisonValue ?? at.value) : at.value;
+  const d = atValue - vsValue;
   const computed = s.run.fmtSigned(d);
   // A difference that prints as zero has no direction to judge.
   const tone = s.run.printsZero(d) ? undefined : d > 0 ? 'good' : 'bad';
@@ -910,7 +967,7 @@ function placeDelta(s: AnnotationScope, ann: Extract<Annotation, { kind: 'delta'
     basis: 'derived',
     op: 'annotation-delta@1',
     inputs: [
-      { ref: `at:${anchorRefLabel(ann.at)}`, value: at.value },
+      { ref: `at:${anchorRefLabel(ann.at)}`, value: atValue },
       { ref: typeof ann.vs === 'number' ? 'vs:literal' : `vs:${anchorRefLabel(ann.vs)}`, value: vsValue },
     ],
     raw: d,

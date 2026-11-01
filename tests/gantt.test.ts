@@ -7,7 +7,63 @@ import type { GanttMarks } from '../src/core/charts/gantt/layout';
 import type { Annotation } from '../src/core/types/annotations';
 import { render } from '../src/cli/render';
 import { callTool } from '../src/mcp/server';
+import { defaultMeasurer } from '../src/core/text';
 import { renderSvg } from '../src/core/svg/renderSvg';
+import { contrastRatio } from '../src/core/color';
+import { repaintGeometry } from '../src/core/repaintGeometry';
+import { resolvePaint } from '../src/core/svg/paint';
+import { resolveTheme } from '../src/core/theme';
+
+// Row and weekend shading must stay visible after repainting and must not cover the elapsed band.
+it('gantt paints visible row and weekend shading below the elapsed band', () => {
+  const spec = { type: 'gantt', data: { rows: [
+    { id: 'plan', label: 'Plan', items: [{ id: 'draft', kind: 'bar', start: '2026-03-02', end: '2026-03-12', label: 'Draft' }] },
+    { id: 'ship', label: 'Ship', items: [{ id: 'release', kind: 'bar', start: '2026-03-13', end: '2026-03-27', label: 'Release' }] },
+  ] }, options: { rowTint: true, weekends: true, today: '2026-03-16', size: { width: 600 } } };
+  const request = resolveChartRequest(spec);
+  const geometry = layoutResolvedRequest(request);
+  if (geometry.refused) throw new Error('gantt refused');
+  const elapsed = geometry.scene.findIndex(node => node.part === 'elapsedEra');
+  const bands = geometry.scene.flatMap((node, index) => node.t === 'rect' && (node.part === 'rowTint' || node.part === 'weekend')
+    ? [{ node, index }] : []);
+  expect(bands.some(({ node }) => node.part === 'rowTint')).toBe(true);
+  expect(bands.some(({ node }) => node.part === 'weekend')).toBe(true);
+  const key = geometry.scene.find(node => node.t === 'rect' && node.part === 'swatch' && node.owner.seriesId === 'key:weekend');
+  if (key?.t !== 'rect' || !key.fill) throw new Error('missing weekend key');
+  for (const { node, index } of bands) {
+    expect(contrastRatio(resolvePaint(node.fill!, request.theme), request.theme.color.background)).toBeGreaterThanOrEqual(1.08);
+    expect(index).toBeLessThan(elapsed);
+    expect(resolvePaint(node.fill!, request.theme)).toBe(resolvePaint(key.fill, request.theme));
+  }
+  for (const preset of ['boardroom', 'standard-dark']) {
+    const themeRef = { preset, overrides: { color: { others: '#60748A' }, surface: { ganttRowTint: 0.6, rowTint: 0.98 } } };
+    const theme = resolveTheme(themeRef);
+    const fresh = layoutResolvedRequest(resolveChartRequest({ ...spec, options: { ...spec.options, theme: themeRef } }));
+    if (fresh.refused) throw new Error('gantt refused');
+    const repainted = repaintGeometry(geometry, theme, {});
+    for (const source of [...bands.map(({ node }) => node), key]) {
+      const repaint = repainted.scene.find(node => node.id === source.id);
+      const target = fresh.scene.find(node => node.id === source.id);
+      if (repaint?.t !== 'rect' || target?.t !== 'rect') throw new Error('missing shading');
+      expect(resolvePaint(repaint.fill!, theme)).toBe(resolvePaint(target.fill!, theme));
+      expect(resolvePaint(repaint.fill!, theme)).not.toBe(resolvePaint(source.fill!, request.theme));
+    }
+  }
+});
+
+// A detail bar must keep the 3:1 floor against the weekend wash, which is drawn without rowTint too.
+it('gantt holds a bar to the 3:1 floor against the weekend wash', () => {
+  const request = resolveChartRequest({ type: 'gantt', data: { rows: [
+    { id: 'ws', label: 'Workstream', items: [{ id: 'w1', kind: 'bar', start: '2026-04-06', end: '2026-04-30', label: 'Phase' }] },
+    { id: 'd1', label: 'Detail', indent: 1, items: [{ id: 'a', kind: 'bar', start: '2026-04-08', end: '2026-04-20', label: 'Task' }] },
+  ] }, options: { weekends: true, elapsed: false, theme: 'standard-dark', size: { width: 720 } } });
+  const geometry = layoutResolvedRequest(request);
+  if (geometry.refused) throw new Error('gantt refused');
+  const wash = geometry.scene.find(node => node.t === 'rect' && node.part === 'weekend');
+  const bar = geometry.scene.find(node => node.t === 'rect' && node.id === 'mark:d1:a');
+  if (wash?.t !== 'rect' || bar?.t !== 'rect') throw new Error('missing weekend wash or bar');
+  expect(contrastRatio(resolvePaint(bar.fill!, request.theme), resolvePaint(wash.fill!, request.theme))).toBeGreaterThanOrEqual(3);
+});
 
 // A hidden arrow must be named once in warnings, while other missing labels stay disclosed.
 it('gantt names each hidden arrow in one warning', () => {
@@ -420,4 +476,67 @@ it('gantt keeps every row name at the declared minimum height for rows with and 
   const body = render({ spec: { type: 'gantt', data: { rows }, options: { ...options, size: { width: 1200, height } } }, return: ['reading'] }).body as { ok: boolean; reading: { omissions: { labelId: string }[] } };
   expect(body.ok).toBe(true);
   expect(body.reading.omissions.filter(omission => omission.labelId.startsWith('activity:') || omission.labelId.startsWith('sublabel:'))).toEqual([]);
+});
+
+// A named diamond needs no key, and the today date needs no "Elapsed" key, so a 12-row plan fits the 396 pt slide; a tight height then keeps its Owner and Status columns, which only need width.
+it('gantt fits 12 named-milestone rows with owner and status columns on a 888 x 396 pt slide', () => {
+  const owners = ['Alex', 'Maya', 'Dan'];
+  const rows = Array.from({ length: 12 }, (_, i) => ({ id: `r${i}`, label: `Workstream ${i + 1}`,
+    cols: [{ text: owners[i % 3]! }, { text: i % 2 ? 'Green' : 'Amber', tone: i % 2 ? 'good' : 'warn' }],
+    items: [{ id: `b${i}`, kind: 'bar', start: `2026-0${1 + (i % 4)}-10`, end: `2026-0${3 + (i % 4)}-20`, label: `Task ${i + 1}` },
+      ...(i % 4 === 0 ? [{ id: `m${i}`, kind: 'milestone', start: `2026-0${3 + (i % 4)}-20`, label: 'Gate' }] : [])] }));
+  const spec = { type: 'gantt', data: { rows }, options: { target: 'slide', size: { width: 1184, height: 528 }, colHeaders: ['Owner', 'Status'], today: '2026-03-01' } };
+  const body = render({ spec, return: ['reading', 'svg'] }).body as { ok: boolean; svg: string; reading: { omissions: { text: string }[] } };
+  expect(body.ok).toBe(true);
+  for (const text of ['Milestone', 'Elapsed to today']) expect(body.svg).not.toContain(`>${text}<`);
+  expect(body.svg).toContain('>Owner<');
+  expect(body.svg).toContain('>Status<');
+});
+
+// A half-width slide cannot give the timeline half the plot beside Owner and Status, so the columns go and the timeline stays readable.
+it('gantt drops owner and status columns on a 432 pt wide slide instead of squeezing the timeline', () => {
+  const owners = ['Alex', 'Maya', 'Dan'];
+  const rows = Array.from({ length: 12 }, (_, i) => ({ id: `r${i}`, label: `Workstream ${i + 1}`,
+    cols: [{ text: owners[i % 3]! }, { text: i % 2 ? 'Green' : 'Amber', tone: i % 2 ? 'good' : 'warn' }],
+    items: [{ id: `b${i}`, kind: 'bar', start: `2026-0${1 + (i % 4)}-10`, end: `2026-0${3 + (i % 4)}-20`, label: `Task ${i + 1}` }] }));
+  const spec = { type: 'gantt', data: { rows }, options: { target: 'slide', size: { width: 576, height: 528 }, colHeaders: ['Owner', 'Status'] } };
+  const body = render({ spec, return: ['svg'] }).body as { ok: boolean; svg: string };
+  expect(body.ok).toBe(true);
+  expect(body.svg).not.toContain('>Owner<');
+});
+
+// On a 358 px phone a bar name wider than its bar spilled over it on a halo or floated away from it, and the week row printed no name at all.
+it('gantt seats phone bar names beside their bars and still names some weeks', () => {
+  const fixture = getFixtures('gantt').find(f => f.id === 'product-launch')!;
+  const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'gantt', data: fixture.data,
+    options: { ...fixture.options, size: { width: 358 } }, annotations: fixture.annotations }));
+  if (geometry.refused) throw new Error('gantt refused');
+  const bar = (id: string) => (geometry.marks.rows as GanttMarks['rows']).flatMap(row => row.itemNodes).find(mark => mark.id === id)!.rect;
+  const name = (id: string) => geometry.labels.find(label => label.owner.segmentId === id && !label.hidden)!;
+  const scope = name('prep-scope');
+  expect(scope.slot).toBe('outsideRight');
+  expect(scope.halo).toBeFalsy();
+  expect(rectsOverlap(scope.rect, bar('prep-scope'))).toBe(false);
+  const care = name('hypercare');
+  expect(care.rect.x < bar('hypercare').x + bar('hypercare').w && care.rect.x + care.rect.w > bar('hypercare').x).toBe(true);
+  expect(geometry.scene.filter(node => node.id.startsWith('header:minor:') && node.id.endsWith(':text')).length).toBeGreaterThan(0);
+});
+
+// A last week name clamped into the tier landed on the name before it (wide glyphs, a 280 px chart) instead of staying unprinted.
+it('gantt keeps spanning week names apart when the last one is clamped into the tier', () => {
+  const data = { rows: [{ id: 'build', label: 'Build', items: [{ id: 'core', kind: 'bar', label: 'Core', start: '2026-04-13', end: '2026-05-18' }] }] };
+  const wide = (text: string, font: Parameters<typeof defaultMeasurer>[1]) => ({ ...defaultMeasurer(text, font), width: defaultMeasurer(text, font).width * 2 });
+  const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'gantt', data, options: { size: { width: 280 } }, fontMetrics: wide } as never));
+  if (geometry.refused) throw new Error('gantt refused');
+  const names = geometry.scene.filter((node): node is Extract<typeof node, { t: 'text' }> => node.t === 'text' && node.id.startsWith('header:minor:'));
+  expect(names.length).toBeGreaterThan(1);
+  names.sort((a, b) => a.x - b.x).slice(1).forEach((node, i) => expect(node.x).toBeGreaterThan(names[i]!.x + wide(names[i]!.lines[0]!, names[i]!.font).width));
+});
+
+// A diamond that prints only its date has no name to explain it, so the "Milestone" key must stay (main draws it).
+it('gantt keeps the Milestone key when labels.item selects only the date', () => {
+  const data = { rows: [{ id: 'review', label: 'Review', items: [{ id: 'gate', kind: 'milestone', label: 'Review gate', start: '2026-04-13' }] }] };
+  const draw = (item: string[]) => (render({ spec: { type: 'gantt', data, options: { size: { width: 900 }, labels: { item } } }, return: ['svg'] }).body as { svg: string }).svg;
+  expect(draw(['value'])).toContain('>Milestone<');
+  expect(draw(['category', 'value'])).not.toContain('>Milestone<');
 });

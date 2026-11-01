@@ -129,13 +129,14 @@ export const OPTION_CAPABILITY = {
     ],
   },
   // Choropleth and tilemap read highlight nowhere
-  // and draw the same map with and without it. Creative and diagram
-  // refuse it through their strict schemas. This row is the one refusal path.
+  // and draw the same map with and without it. Creative refuses it through
+  // its strict schema, and so does every diagram variant but architecture.
+  // This row is the one refusal path.
   highlight: {
     implementedBy: [
-      'bar', 'bartable', 'box', 'bullet', 'butterfly', 'cohort', 'column', 'combo', 'dot',
+      'bar', 'bartable', 'box', 'bullet', 'butterfly', 'cohort', 'column', 'combo', 'diagram', 'dot',
       'funnel', 'gantt', 'grid', 'heatmap', 'histogram', 'kpi', 'likert', 'line', 'mekko', 'pareto', 'pie', 'pvm',
-      'pyramid', 'scatter', 'slope', 'sparkline', 'status', 'table', 'dimswitch', 'variance', 'waterfall',
+      'pyramid', 'sankey', 'scatter', 'slope', 'sparkline', 'status', 'table', 'dimswitch', 'variance', 'waterfall',
     ],
   },
   // Story stepper: the types that fade marks by data id and keep

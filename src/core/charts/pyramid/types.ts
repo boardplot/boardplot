@@ -65,9 +65,12 @@ export interface PyramidOptions extends Omit<BaseOptionsFor<'pyramid'>, 'sort' |
    * 'count' (default) plots the authored numbers. 'shareOfTotal' plots
    * `value / grandTotal`, where the grand total spans BOTH groups and every
    * band — never per group, because two sides each summing to 100% hide the
-   * group-size imbalance a pyramid is read for.
+   * group-size imbalance a pyramid is read for. 'shareOfGroup' plots
+   * `value / groupTotal`, so each side sums to 100%; it suits two dated
+   * snapshots of one population, which have no common whole. 'shareOfTotal'
+   * on two groups that both carry a `date` plots 'shareOfGroup'.
    */
-  basis?: 'count' | 'shareOfTotal';
+  basis?: 'count' | 'shareOfTotal' | 'shareOfGroup';
   /**
    * Default false. true adds the band convention ([from, to), youngest at the
    * bottom, equal widths). An open-ended band and the share base print regardless.
@@ -88,9 +91,9 @@ export interface PyramidDerived {
   values: Record<Id, Record<Id, number>>;
   totals: Record<Id, number>;
   grandTotal: number;
-  basis: 'count' | 'shareOfTotal';
+  basis: 'count' | 'shareOfTotal' | 'shareOfGroup';
   /**
-   * Present only under `basis: 'shareOfTotal'`. PERCENT of the grand total
+   * Present under both share bases. PERCENT of the grand total ('shareOfTotal') or of the group total ('shareOfGroup')
    * (the plotted number), not a fraction — the value the reader sees.
    */
   shares?: Record<Id, Record<Id, number>>;

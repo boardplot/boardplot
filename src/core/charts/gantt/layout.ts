@@ -151,6 +151,8 @@ function labelNodes(env: GanttEnv, domain: GanttDomain, labels: PlacedLabel[]) {
     : node.id.startsWith('label:sublabel:') || (node.part === 'item' && rules.has(node.owner.segmentId ?? '')) ? { ...node, ink: { token: 'inkMuted' as const } } : node);
 }
 
+const spills = (label: PlacedLabel, bar: Rect): boolean => label.slot === 'insideBacked' && !rectContains(bar, label.rect);
+
 /** Phase 5: the scene in paint order, the sizing record, the axis ticks and the accessible description. */
 function assembleGanttGeometry(input: {
   env: GanttEnv;
@@ -184,7 +186,8 @@ function assembleGanttGeometry(input: {
     // A span name that an event or today rule hid retries inside its mark, across the rule.
     if (label.hidden) return label.hidden === 'collision' && ((span.item.it.kind === 'chevron'
       && !span.row.items.some(item => item.it.kind === 'milestone')) || body.ruleClaims.length > 0);
-    return ganttSpanBlockers(span.row, { id: span.item.it.id, rect: label.rect })
+    // A name backed over a bar it is wider than spills past it: it retries for a seat beside the bar.
+    return spills(label, span.item.rect) || ganttSpanBlockers(span.row, { id: span.item.it.id, rect: label.rect })
       .some(rect => rectsOverlap(label.rect, rect, 2)) || (!rectContains(span.item.rect, label.rect)
         && solved.placed.some(other => other !== label && !other.hidden && other.kind === 'item'
           && other.owner.categoryId === label.owner.categoryId
@@ -208,11 +211,11 @@ function assembleGanttGeometry(input: {
       focus: options.focus, density: 'full', pins: {}, measure: env.measure, plot: body.plot,
       canvas: { x: 0, y: 0, w: size.width, h: size.height }, darkInk: env.theme.color.ink, lightInk: env.theme.color.inkInverse, labelPad: LABEL_PAD,
     });
-    // A hidden arrow name that still finds no seat stays hidden; it does not undo the other repairs.
-    const retried = new Set(solved.placed.filter(label => unsafe.has(label.id) && label.hidden).map(label => label.id));
+    // A hidden arrow name that still finds no seat stays hidden, and a backed name keeps its seat; neither undoes the other repairs.
+    const retried = new Set(solved.placed.filter(label => unsafe.has(label.id) && (label.hidden || spills(label, spans.get(label.owner.segmentId ?? '')!.item.rect))).map(label => label.id));
     if (repair.placed.length === unsafe.size && repair.placed.every(label => !label.hidden || retried.has(label.id))) {
       const moved = new Map(repair.placed.filter(label => !label.hidden).map(label => [label.id, label]));
-      solved = { ...solved, placed: solved.placed.map(label => moved.has(label.id) ? { ...label, ...moved.get(label.id)!, hidden: undefined } : label),
+      solved = { ...solved, placed: solved.placed.map(label => moved.has(label.id) ? { ...label, halo: undefined, ...moved.get(label.id)!, hidden: undefined } : label),
         decisions: [...solved.decisions.filter(decision => !moved.has(decision.labelId)),
           ...repair.decisions.filter(decision => moved.has(decision.labelId))] };
       input.occupied = occupied;
@@ -428,7 +431,8 @@ function layoutGanttPass(data: GanttData, options: GanttOptions = {}, keyed: Rea
   // sat in the lane.
   if (body.laneEnabled && !(options as { [NO_LANE]?: true })[NO_LANE]) {
     const hidden = solved.placed.filter((label) => label.hidden).length;
-    const laneUsed = solved.placed.some((label) => label.kind === 'item' && !label.hidden && label.rect.x + label.rect.w > body.bodyX + body.bodyW + 0.5);
+    // A bar name that runs past the plot is no use of the lane: the wider timeline holds it.
+    const laneUsed = solved.placed.some((label) => label.kind === 'item' && !label.hidden && domain.milestones.laneIds.has(label.owner.segmentId ?? '') && label.rect.x + label.rect.w > body.bodyX + body.bodyW + 0.5);
     // Without the lane the timeline is wider: the flags are planned again.
     const wide = layoutGanttPass(data, { ...options, [NO_LANE]: true } as GanttOptions, keyed, autoHeight, { rows: flags.rows });
     const wideHidden = wide.refused ? Infinity : wide.labels.filter((label) => label.hidden).length;

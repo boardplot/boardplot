@@ -15,6 +15,7 @@ import { layoutDiagram } from '../src/core/charts/diagram/layout';
 import type { DiagramData } from '../src/core/types/diagram';
 import type { SlopeChartData } from '../src/core/types/data';
 import type { Geometry } from '../src/core/types/scene';
+import { cutLabels } from '../src/core/label/omissions';
 import { render } from '../src/cli/render';
 import { measure as cliMeasure } from '../src/cli/measure';
 import { callTool } from '../src/mcp/server';
@@ -396,6 +397,18 @@ it('draws readable tilemap codes in a fixed card before requiring full-width til
   expect(canDraw({ ...request, options: { ...request.options, belowMinimum: 'refuse' } }).ok).toBe(false);
 });
 
+// A narrow tile map printed codes alone and showed no value anywhere in the drawing, although every value fits its tile at the type floor.
+it('steps every tile of a narrow tile map down to the type floor so each value prints under its code', () => {
+  const f = getFixtures('tilemap').find(f => f.id === 'eu27-demand-versus-plan')!;
+  const geometry = measure({ type: 'tilemap', data: f.data, options: { ...f.options, size: { width: 400 } } }).geometry!;
+  const tiles = geometry.labels.filter(label => label.kind === 'category');
+  const valued = tiles.filter(label => label.lines?.length === 2);
+  expect(valued).toHaveLength(26);
+  expect(tiles.filter(label => label.hidden)).toEqual([]);
+  // 2 lines at the 11 px report floor and 1.2 line height, where the 12 px label size needs 28.8 px of a 30 px tile.
+  expect(new Set(valued.map(label => label.rect.h))).toEqual(new Set([26.4]));
+});
+
 // An authored dot-axis title must reach the drawing instead of refusing the whole chart.
 it('draws a dot value-axis title inside its fixed canvas', () => {
   const request = { type: 'dot', data: { categories: ['North', 'South'], series: [{ id: 'orders', values: [10, 20] }] },
@@ -503,6 +516,53 @@ it('draws a grid with a waffle panel on a phone card', () => {
   expect(shown.labels.filter(label => label.hidden)).toEqual([]);
 });
 
+// A one-panel, one-series waffle on a pinned slide stacked label, value and grid and drew a 28 px cell on a 528 px canvas; the value and label now stand beside the grid so the cell grows, and an unpinned height keeps the stack.
+it('puts the value and label of a single waffle panel beside a grid that fills the pinned height', () => {
+  const data = { categories: [{ id: 'all', label: 'Forest' }], series: [{ id: 'plus', label: 'Plus', values: [46.4] }] };
+  const draw = (size: { width: number; height?: number }) => layoutResolvedRequest(resolveChartRequest({ type: 'waffle', data, options: { variant: 'cells', target: 'slide', subtitle: { measure: 'Share of land', period: 'FY26' }, size } } as never)) as unknown as Geometry<{ panels: { rect: { x: number; w: number } }[] }>;
+  const pinned = draw({ width: 1184, height: 528 });
+  const rect = pinned.marks.panels[0]!.rect;
+  const value = pinned.labels.find(label => label.id === 'total:all')!;
+  const name = pinned.labels.find(label => label.id === 'category:all')!;
+  expect(rect.w).toBeGreaterThan(350);
+  expect(value.hidden).toBeFalsy();
+  expect(name.hidden).toBeFalsy();
+  expect(value.rect.x).toBeGreaterThan(rect.x + rect.w);
+  expect(name.rect.x).toBe(value.rect.x);
+  expect(draw({ width: 1184 }).marks.panels[0]!.rect.w).toBeLessThan(rect.w);
+});
+
+// Prevents the side readout from taking away the old stacked form: heightFill 'none' must give back the exact stacked drawing on a pinned height.
+it("keeps the stacked single waffle panel on a pinned height with heightFill 'none'", () => {
+  const data = { categories: [{ id: 'all', label: 'Forest' }], series: [{ id: 'plus', label: 'Plus', values: [46.4] }] };
+  const draw = (options: object) => layoutResolvedRequest(resolveChartRequest({ type: 'waffle', data, options: { variant: 'cells', target: 'slide', subtitle: { measure: 'Share of land', period: 'FY26' }, size: { width: 1184, height: 528 }, ...options } } as never)) as unknown as Geometry<{ panels: { rect: { x: number; w: number } }[] }>;
+  const stacked = draw({ heightFill: 'none' });
+  expect(stacked.marks.panels[0]!.rect.w).toBeLessThan(draw({}).marks.panels[0]!.rect.w);
+  expect(stacked.labels.find(label => label.id === 'total:all')!.rect.x).toBeLessThan(stacked.marks.panels[0]!.rect.x + stacked.marks.panels[0]!.rect.w);
+});
+
+// Prevents waffle panels from cutting a long name in one cells row, and from leaving one square alone on a second row (7 + 1).
+it('wraps waffle panels into evenly filled rows when a name is wider than its panel', () => {
+  const rowsOf = (variant: string, labels: string[], width: number): number[] => {
+    const data = { categories: labels.map(label => ({ id: label, label })), series: [{ id: 's', label: 'S', values: labels.map((_, i) => 20 + i * 7) }] };
+    const shown = layoutResolvedRequest(resolveChartRequest({ type: 'waffle', data, options: { variant, size: { width } } } as never)) as unknown as Geometry & { marks: { panels: { rect: { y: number } }[] } };
+    expect(cutLabels(shown)).toEqual([]);
+    const ys = [...new Set(shown.marks.panels.map(panel => panel.rect.y))];
+    return ys.map(y => shown.marks.panels.filter(panel => panel.rect.y === y).length);
+  };
+  expect(rowsOf('cells', ['Infrastructure', 'Manufacturing', 'Subscriptions', 'Distribution', 'International'], 440)).toEqual([3, 2]);
+  expect(rowsOf('square', ['Retail stores', 'Gross margin', 'Intercontinental', 'Telecommunications', 'Licence income', 'Marketing spend', 'Online shop', 'Warehouse costs'], 760)).toEqual([4, 4]);
+});
+
+// Prevents a pinned waffle with two series from wrapping its panels into 3.6 px cells, or refusing a height where one row with cut names draws.
+it('keeps one readable row when two wrapped waffle rows do not fit the pinned height', () => {
+  const names = ['Telecommunications', 'Manufacturing', 'Subscriptions', 'Distribution', 'International'];
+  const data = { categories: names.map(label => ({ id: label, label })), series: [{ id: 'a', label: 'Alpha', values: names.map(() => 20) }, { id: 'b', label: 'Beta', values: names.map(() => 30) }] };
+  const shown = layoutResolvedRequest(resolveChartRequest({ type: 'waffle', data, options: { variant: 'cells', size: { width: 550, height: 300 } } } as never)) as unknown as Geometry & { refused?: boolean };
+  expect(shown.refused).toBeUndefined();
+  expect(shown.warnings.map(w => w.code)).not.toContain('waffle-cells-small');
+});
+
 // Prevents pinned pies from drawing a radius under 36 px or an explode that leaves the frame.
 it('draws a compact pie only when the radius and the explode fit, and names a size that draws', () => {
   const pie = getChart('pie')!;
@@ -585,6 +645,33 @@ it('does not refuse a diagram for its badges', () => {
   const edges = [1, 2, 3, 4, 5, 6].map((n) => ({ id: `e${n}`, source: { nodeId: 'q' }, target: { nodeId: `l${n}` } }));
   const tree = getChart('diagram')!.layout({ nodes, edges } as never, { variant: 'issue-tree', target: 'slide', size: { width: 1184, height: 200 } } as never);
   expect(tree.warnings.filter((warning) => warning.severity === 'error').map((warning) => warning.message).join(' ')).not.toMatch(/badge/i);
+});
+
+// Prevents a strategy house from refusing at half slide because a hyphenated name is one unbreakable word in a pillar,
+// and a two-line label from sitting flush left in a centred cell.
+it('breaks hyphenated house names at the hyphen instead of refusing', () => {
+  const cell = (id: string, kind: string, label: string, extra: object = {}) => ({ id, kind, shape: { kind: 'rectangle' }, label, role: 'primary', ...extra });
+  const house = {
+    groups: ['g1', 'g2', 'g3'].map((id, order) => ({ id, title: `Pillar ${order + 1}`, role: 'primary', order: order + 1 })),
+    nodes: [
+      cell('roof', 'vision', 'Research and development expenses', { shape: { kind: 'roof' } }),
+      cell('o0', 'objective', 'North-Westmoor (Riverland)', { groupId: 'g1' }),
+      cell('o1', 'objective', 'Depreciation of fixed assets', { groupId: 'g2' }),
+      cell('o2', 'objective', 'Depreciation and amortisation', { groupId: 'g3' }),
+      cell('a', 'initiative', 'Northumberland-Westmoreland', { groupId: 'g2', order: 1, role: 'secondary' }),
+      cell('b', 'initiative', 'Reinvoiced transportation costs', { groupId: 'g3', order: 1, role: 'secondary' }),
+      cell('c', 'initiative', 'Selling and distribution overheads', { groupId: 'g1', order: 1, role: 'secondary' }),
+      cell('e1', 'enabler', 'Other operating income', { order: 1, role: 'muted' }),
+      cell('base', 'foundation', 'Income from equity-accounted firms'),
+    ],
+  };
+  const half = getChart('diagram')!.layout(house as never, { variant: 'strategy-house', target: 'slide', size: { width: 432, height: 396, unit: 'pt' } } as never);
+  if (half.refused) throw new Error('the house is refused at half a slide');
+  expect(half.warnings.filter((warning) => warning.severity === 'error')).toEqual([]);
+  // The three-line label of the first pillar is centred, not flush left.
+  const aligned = half.scene.flatMap((n) => (n.t === 'text' && n.lines.length > 1 ? [n.align] : []));
+  expect(aligned.length).toBeGreaterThan(0);
+  expect(aligned.every((align) => align === 'middle')).toBe(true);
 });
 
 // Prevents measure and render from naming different floors: a height that render refuses, a card width
@@ -1262,4 +1349,99 @@ describe('bubble matrix key height', () => {
     const drawing = (svg: string) => svg.replace(/-[0-9a-f]{10}\b/g, '').replace(/ data-bp-sizing="[^"]*"/, '');
     expect(drawing(pinned.svg)).toBe(drawing(open.svg));
   });
+});
+
+// Prevents a slide or print canvas a few percent under the class-size floor from being refused where the same chart
+// draws with a slightly smaller type that stays at the reader floor.
+describe('type steps toward the reader floor before a size refusal', () => {
+  const half = (options: object) => ({
+    type: 'bar',
+    data: { categories: ['FY21', 'FY22', 'FY23', 'FY24'], series: [{ id: 'cloud', label: 'Cloud', values: [100, 130, 160, 200] }, { id: 'license', label: 'License', values: [124, 118, 109, 97] }] },
+    options: { variant: 'grouped', title: 'Cloud doubles in three years while license declines', subtitle: { measure: 'Revenue', period: 'FY21–FY24' }, unit: '$m', source: 'Invented accounts', target: 'slide', size: { width: 360, height: 405 }, ...options },
+    annotations: [
+      { kind: 'cagr', from: { categoryId: 'FY21', seriesId: 'cloud' }, to: { categoryId: 'FY24', seriesId: 'cloud' } },
+      { kind: 'diff', mode: 'absolute', from: { categoryId: 'FY24', seriesId: 'license' }, to: { categoryId: 'FY24', seriesId: 'cloud' } },
+    ],
+  });
+  const run = (spec: object) => layoutResolvedRequest(resolveChartRequest(spec as never));
+
+  it('draws a slide slot 5 px under the floor, names the step and keeps every text at its floor', () => {
+    const result = run(half({})) as Geometry;
+    expect(result.refused).toBeUndefined();
+    expect(result.warnings.find(w => w.code === 'type-stepped')).toMatchObject({ severity: 'info', suggest: expect.stringContaining('360 × 410px') });
+    const sizes = result.scene.flatMap(n => n.t === 'text' ? [n.font.size] : []);
+    expect(Math.min(...sizes)).toBeGreaterThanOrEqual(11);
+  });
+
+  // Prevents measure() from refusing a canvas that render() and canDraw() draw after the type step, which hides the chart in a host that measures first.
+  it('measures a stepped canvas as drawn and a refused one as refused, like render and canDraw', () => {
+    for (const size of [{ width: 360, height: 405 }, { width: 360, height: 380 }, { width: 200, height: 405 }]) {
+      const spec = half({ size });
+      const refused = run(spec).refused === true;
+      expect(measure(spec as never).refused !== undefined).toBe(refused);
+      expect(canDraw(spec as never).ok).toBe(!refused);
+    }
+    const measured = measure(half({}) as never);
+    expect(measured.warnings.map(w => w.code)).toContain('type-stepped');
+  });
+
+  it('keeps the refusal when the author sets the text size or the refusal', () => {
+    expect(run(half({ textScale: 1 })).refused).toBe(true);
+    expect(run(half({ textSize: 18 })).refused).toBe(true);
+    expect(run(half({ belowMinimum: 'refuse' })).refused).toBe(true);
+  });
+
+  it('refuses with the stepped need when the stepped text does not fit either', () => {
+    const result = run(half({ size: { width: 200, height: 405 } }));
+    expect(result.refused).toBe(true);
+    expect(result.warnings[0]!.code).toBe('size-below-floor');
+  });
+});
+
+// Prevents three diagrams from refusing or crowding on a wide, short full slide: the strategy house refused 28 px short,
+// the eight-step stack refused 35 px short, and the six-step cycle drew a disc so wide that four of its six arrowheads were lost.
+it('draws the house, the stack and the cycle on a full slide with the height they have', () => {
+  const slide = { target: 'slide', size: { width: 888, height: 396, unit: 'pt' } };
+  const draw = (spec: object) => render({ spec: { type: 'diagram', ...spec } }).body as any;
+  const house = getFixtures('diagram').find(f => f.id === 'strategy-house')!;
+  expect(draw({ data: house.data, options: { ...house.options, ...slide } }).ok).toBe(true);
+
+  const named = (labels: string[], shape: string, extra: object = {}) => labels.map((label, i) => ({ id: `n${i}`, kind: 'step', shape: { kind: shape }, label, order: i + 1, role: 'primary', ...extra }));
+  const long = ['Depreciation of fixed assets', 'Customer acquisition cost', 'Depreciation and amortisation', 'Pension provisions, domestic',
+    'North-West Region (Lowlands)', 'Mid-Atlantic Operations', 'Change in net working capital', 'Maintenance and repair works'];
+  expect(draw({ data: { nodes: named(long, 'chevron', { caption: 'Phase' }) }, options: { variant: 'linear-process', ...slide } }).ok).toBe(true);
+
+  const cycle = draw({ data: { nodes: named(['Field service', 'Licence income', 'Net revenue', 'Upper region', 'Eastern Europe', 'Marketing spend'], 'circle') }, options: { variant: 'circular-process', ...slide } });
+  expect(cycle.ok).toBe(true);
+  expect(cycle.warnings.filter((warning: any) => warning.code === 'diagram-arrowhead-unplaced')).toEqual([]);
+});
+
+// Prevents the roof cut from hiding a required vision: a three-line vision on a 720 x 316 house that main draws was refused
+// ("label unplaced") because the cut left the roof shorter than the vision's three lines.
+it('keeps a three-line vision when the strategy house is a little short', () => {
+  const node = (id: string, kind: string, label: string, extra: object = {}) => ({ id, kind, shape: { kind: kind === 'vision' ? 'roof' : 'rectangle' }, label, role: 'primary', ...extra });
+  const data = {
+    groups: [{ id: 'g', title: 'Grow', role: 'primary', order: 1 }],
+    nodes: [node('v', 'vision', 'Trusted growth\npartner for\nevery customer'), node('o', 'objective', 'Grow', { groupId: 'g' }),
+      node('a', 'initiative', 'New segments', { groupId: 'g', order: 1 }), node('b', 'initiative', 'Pricing', { groupId: 'g', order: 2 }),
+      node('e', 'enabler', 'People', { order: 1 }), node('f', 'foundation', 'Customer trust')],
+  };
+  const body = render({ spec: { type: 'diagram', data, options: { variant: 'strategy-house', size: { width: 720, height: 316 } } } }).body as any;
+  expect(body.errors).toEqual([]);
+});
+
+// Prevents a short org chart from floating in the middle of a tall plot: under a host-set height the level gaps grow
+// into the spare height, and a plot with no spare height keeps the natural gaps.
+it('spreads an org chart over the height the host sets', () => {
+  const spec = getFixtures('diagram').find(f => f.id === 'org-structure')! as any;
+  const span = (height: number, heightFill?: string) => {
+    const result = layoutDiagram(spec.data, { ...spec.options, size: { width: 888, height }, ...(heightFill ? { heightFill } : {}) } as never, false);
+    const rects = result.marks.nodes.map(mark => mark.contentRect);
+    return Math.max(...rects.map(r => r.y + r.h)) - Math.min(...rects.map(r => r.y));
+  };
+  const natural = span(150);
+  expect(span(396)).toBeGreaterThan(1.3 * natural);
+  expect(span(396)).toBeLessThan(2.6 * natural);
+  // heightFill 'none' is the old look: the natural gaps at any canvas height.
+  expect(span(396, 'none')).toBe(natural);
 });

@@ -44,7 +44,7 @@ export interface SankeyData {
 }
 
 export interface SankeyOptions extends BaseOptionsFor<'sankey'> {
-  /** Which end's node colour a link takes: 'source' (default) or 'target'. */
+  /** Which end's node colour a link takes. Unset: neutral ribbons, coloured only by node fill, colorRole or highlight. 'source' or 'target': one palette step per node. */
   linkColor?: 'source' | 'target';
   /** 'flow': fewest crossings. 'data': the node order of `data.nodes`, then first seen. Default 'flow', or 'data' when stage-qualified ids repeat. */
   order?: 'flow' | 'data';
@@ -52,6 +52,8 @@ export interface SankeyOptions extends BaseOptionsFor<'sankey'> {
   other?: false | { share?: number; label?: string };
   /** What a node prints after its name: 'value' (default), 'share' of its column, or 'value-share'. */
   nodeValue?: 'value' | 'share' | 'value-share';
+  /** Flow values on the ribbons: 'large' (default) prints the value of a ribbon at least one line high at its arriving end; 'none' prints no flow value. */
+  linkValue?: 'none' | 'large';
 }
 
 export interface SankeyNodeDerived {

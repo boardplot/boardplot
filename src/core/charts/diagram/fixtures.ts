@@ -532,7 +532,7 @@ fixtures.push({
       : node.id === 'next-step' ? { ...node, badge: { text: '3', role: 'warn' as const } } : node)),
     key: [{ role: 'bad', label: 'Critical' }, { role: 'warn', label: 'At risk' }],
   },
-  options: { ...journey.options, variant: 'customer-journey', subtitle: 'Pain points customers report in each phase, by severity; joining is at risk' },
+  options: { ...journey.options, variant: 'customer-journey', subtitle: 'Pain points customers report in each phase, by severity; joining is at risk' } as DiagramOptions,
 });
 
 // a journey whose phase lanes, pain points and badges wear every
@@ -830,6 +830,219 @@ fixtures.push({
     ]
   },
   "options": {"variant": "issue-tree", "title": "Orders fell on four drivers", "source": "Invented data", "size": {"width": 960, "height": 540}}
+});
+
+const box = (id: string, label: string, more: Partial<DiagramData['nodes'][number]> = {}): DiagramData['nodes'][number] =>
+  ({ id, kind: 'step', shape: { kind: 'rectangle' }, label, ...more });
+const link = (id: string, source: string, target: string, more: Partial<NonNullable<DiagramData['edges']>[number]> = {}): NonNullable<DiagramData['edges']>[number] =>
+  ({ id, source: { nodeId: source }, target: { nodeId: target }, ...more });
+
+fixtures.push({
+  id: 'protected-request', title: 'A request stays protected on its way to private processing and back', kind: 'example',
+  data: {
+    groups: [{ id: 'client', title: 'Client environment' }, { id: 'processing', title: 'Processing environment' }],
+    nodes: [
+      box('application', 'Application', { groupId: 'client' }),
+      box('request', 'Protected request', { groupId: 'client', track: 'request' }),
+      box('response', 'Protected response', { groupId: 'client', track: 'response' }),
+      box('checks', 'Live checks', { groupId: 'processing', track: 'request' }),
+      box('private', 'Private processing', { groupId: 'processing', track: 'response', role: 'accent', secondaryLabel: 'Isolated execution with no retained payloads', badge: { text: 'Preview', role: 'secondary' } }),
+    ],
+    edges: [
+      link('prepare', 'application', 'request', { label: 'Prepare' }),
+      link('send', 'request', 'checks', { label: 'Request' }),
+      link('process', 'checks', 'private', { label: 'Process' }),
+      link('answer', 'private', 'response', { label: 'Response' }),
+      link('deliver', 'response', 'application', { label: 'Deliver', flow: 'return' }),
+    ],
+    channels: [{ id: 'transit', edgeIds: ['send', 'answer'], label: 'Encrypted in transit' }],
+  },
+  options: { variant: 'architecture', title: 'A request stays protected from the application to private processing and back', source: 'Illustrative', size: { width: 960 } },
+});
+
+fixtures.push({
+  id: 'marketing-pipeline', title: 'Rejected records return to the source for repair', kind: 'example',
+  data: {
+    groups: [{ id: 'sources', title: 'Sources' }, { id: 'ingest', title: 'Ingestion' }, { id: 'warehouse', title: 'Warehouse' }, { id: 'use', title: 'Use' }],
+    nodes: [
+      box('crm', 'CRM', { groupId: 'sources', secondaryLabel: 'Contacts' }),
+      box('ads', 'Ad platforms', { groupId: 'sources', secondaryLabel: 'Spend and clicks' }),
+      box('web', 'Web events', { groupId: 'sources', secondaryLabel: 'Sessions' }),
+      box('collector', 'Collector', { groupId: 'ingest' }),
+      box('validator', 'Validator', { groupId: 'ingest', secondaryLabel: 'Schema and consent' }),
+      box('staging', 'Staging', { groupId: 'warehouse' }),
+      box('marts', 'Marts', { groupId: 'warehouse', role: 'accent' }),
+      box('dashboards', 'Dashboards', { groupId: 'use' }),
+      box('models', 'Attribution models', { groupId: 'use' }),
+    ],
+    edges: [
+      link('crm-in', 'crm', 'collector'), link('ads-in', 'ads', 'collector'), link('web-in', 'web', 'collector'),
+      link('check', 'collector', 'validator'), link('load', 'validator', 'staging'), link('shape', 'staging', 'marts'),
+      link('report', 'marts', 'dashboards'), link('fit', 'marts', 'models'),
+      link('rejected', 'validator', 'crm', { flow: 'return', dash: 'dashed', label: 'Rejected records', role: 'bad' }),
+    ],
+    key: [{ line: 'dashed', label: 'Return for repair' }],
+  },
+  options: { variant: 'architecture', title: 'Rejected records return to the source for repair', source: 'Illustrative', size: { width: 960 } },
+});
+
+fixtures.push({
+  id: 'journey-attribution', title: 'Multi-touch attribution from customer journey to budget', kind: 'example',
+  data: {
+    lanes: [
+      { id: 'touchpoint', label: 'Touchpoint', orientation: 'horizontal' },
+      { id: 'consent', label: 'Consent and events', orientation: 'horizontal' },
+      { id: 'journey', label: 'Journey data', orientation: 'horizontal' },
+      { id: 'attribution', label: 'Attribution', orientation: 'horizontal' },
+      { id: 'budget', label: 'Budget', orientation: 'horizontal' },
+    ],
+    groups: [{ id: 'personal', title: 'Personal data' }],
+    nodes: [
+      box('social', 'Paid social', { laneId: 'touchpoint', track: 'a', secondaryLabel: 'Day 1' }),
+      box('search', 'Paid search', { laneId: 'touchpoint', track: 'b', secondaryLabel: 'Day 6' }),
+      box('email', 'Email', { laneId: 'touchpoint', track: 'c', secondaryLabel: 'Day 9' }),
+      box('direct', 'Direct', { laneId: 'touchpoint', track: 'd', secondaryLabel: 'Day 12' }),
+      box('consent', 'Consent check', { laneId: 'consent', track: 'a', secondaryLabel: 'Consented only' }),
+      box('events', 'Event collection', { laneId: 'consent', track: 'c', secondaryLabel: 'Impressions, clicks and orders' }),
+      box('identity', 'Identity stitching', { laneId: 'journey', groupId: 'personal', track: 'b', secondaryLabel: 'Links devices' }),
+      box('paths', 'Ordered paths', { laneId: 'journey', groupId: 'personal', track: 'd', secondaryLabel: 'One row per journey' }),
+      box('markov', 'Markov chain', { laneId: 'attribution', track: 'b', secondaryLabel: 'Removal effect', role: 'accent' }),
+      box('decay', 'Time decay', { laneId: 'attribution', track: 'c', secondaryLabel: 'Recency weight', role: 'secondary' }),
+      box('lastclick', 'Last click', { laneId: 'attribution', track: 'd', secondaryLabel: 'Baseline', role: 'secondary' }),
+      box('credit', 'Credit by channel', { laneId: 'budget', track: 'b', secondaryLabel: 'Share of conversions by model' }),
+      box('shift', 'Budget shift', { laneId: 'budget', track: 'd', secondaryLabel: 'Spend moves earlier' }),
+    ],
+    edges: [
+      link('t1', 'social', 'consent'), link('t2', 'search', 'consent'), link('t3', 'email', 'consent'), link('t4', 'direct', 'consent'),
+      link('c1', 'consent', 'events'), link('c2', 'events', 'identity'), link('j1', 'identity', 'paths'),
+      link('a1', 'paths', 'markov'), link('a2', 'paths', 'decay'), link('a3', 'paths', 'lastclick'),
+      link('b1', 'markov', 'credit'), link('b2', 'decay', 'credit'), link('b3', 'lastclick', 'credit'), link('b4', 'credit', 'shift'),
+      link('loop', 'shift', 'social', { flow: 'return', label: 'The budget shift changes the next media plan' }),
+    ],
+  },
+  options: { variant: 'architecture', flow: 'lanes', title: 'Last-click credit hides the channels that start the journey', source: 'Illustrative', size: { width: 960 } },
+});
+
+fixtures.push({
+  id: 'nested-service', title: 'A service nested three levels deep, with one protected runtime', kind: 'example',
+  data: {
+    groups: [
+      { id: 'rules', title: 'Applies to every request', kind: 'policy' },
+      { id: 'public', title: 'Public edge' },
+      { id: 'region', title: 'Hosting region' },
+      { id: 'cluster', title: 'Service cluster', parentId: 'region' },
+      { id: 'runtime', title: 'Protected runtime', parentId: 'cluster', protected: true },
+      { id: 'data', title: 'Data stores', parentId: 'region' },
+    ],
+    nodes: [
+      { id: 'logged', kind: 'step', shape: { kind: 'rectangle' }, label: 'Every call is logged', groupId: 'rules' },
+      { id: 'expiry', kind: 'step', shape: { kind: 'rectangle' }, label: 'Payloads expire in 30 days', groupId: 'rules' },
+      { id: 'rotation', kind: 'step', shape: { kind: 'rectangle' }, label: 'Keys rotate each day', groupId: 'rules' },
+      { id: 'gateway', kind: 'step', shape: { kind: 'rectangle' }, label: 'API gateway', secondaryLabel: 'Rate limits', groupId: 'public', track: 'request' },
+      { id: 'router', kind: 'step', shape: { kind: 'rectangle' }, label: 'Request router', groupId: 'cluster', track: 'request' },
+      { id: 'workers', kind: 'step', shape: { kind: 'rectangle' }, label: 'Model workers', secondaryLabel: 'Three replicas', groupId: 'runtime', track: 'request', repeat: 3 },
+      { id: 'keys', kind: 'step', shape: { kind: 'rectangle' }, label: 'Key service', groupId: 'runtime', track: 'state', protected: true },
+      { id: 'sessions', kind: 'step', shape: { kind: 'store' }, label: 'Session store', groupId: 'data', track: 'request' },
+      { id: 'ledger', kind: 'step', shape: { kind: 'store' }, label: 'Audit ledger', groupId: 'data', track: 'state' },
+    ],
+    edges: [
+      { id: 'in', source: { nodeId: 'gateway' }, target: { nodeId: 'router' }, label: 'Requests' },
+      { id: 'run', source: { nodeId: 'router' }, target: { nodeId: 'workers' } },
+      { id: 'seal', source: { nodeId: 'keys' }, target: { nodeId: 'workers' }, label: 'Keys' },
+      { id: 'write', source: { nodeId: 'workers' }, target: { nodeId: 'sessions' } },
+      { id: 'audit', source: { groupId: 'runtime' }, target: { nodeId: 'ledger' }, label: 'Audit trail', dash: 'dashed' },
+    ],
+    callouts: [
+      { id: 'one', target: { nodeId: 'gateway' }, title: 'Entry', text: 'the only public address' },
+      { id: 'two', target: { edgeId: 'audit' }, title: 'Audit', text: 'the runtime writes each call' },
+    ],
+    key: [{ line: 'dashed', label: 'Audit flow' }],
+  },
+  options: { variant: 'architecture', title: 'Only the protected runtime reads the keys', source: 'Illustrative', size: { width: 960 } },
+});
+
+fixtures.push({
+  id: 'agent-approval', title: 'An agent reaches its tools through an approval gate', kind: 'example',
+  data: {
+    groups: [
+      { id: 'agent', title: 'Agent' },
+      { id: 'tools', title: 'Tools' },
+    ],
+    nodes: [
+      { id: 'planner', kind: 'step', shape: { kind: 'rectangle' }, label: 'Planner', groupId: 'agent', track: 'calls' },
+      { id: 'gate', kind: 'step', shape: { kind: 'rectangle' }, label: 'Approval gate', secondaryLabel: 'A person signs off', track: 'calls' },
+      { id: 'search', kind: 'step', shape: { kind: 'rectangle' }, label: 'Document search', groupId: 'tools', track: 'calls' },
+      { id: 'email', kind: 'step', shape: { kind: 'rectangle' }, label: 'Send email', groupId: 'tools', track: 'side' },
+    ],
+    edges: [
+      { id: 'ask', source: { nodeId: 'planner' }, target: { nodeId: 'gate' } },
+      { id: 'allow', source: { nodeId: 'gate' }, target: { nodeId: 'search' }, label: 'Allowed' },
+      { id: 'send', source: { nodeId: 'gate' }, target: { nodeId: 'email' } },
+      { id: 'denied', source: { nodeId: 'gate' }, target: { nodeId: 'planner' }, label: 'Denied', flow: 'return', dash: 'dashed' },
+      { id: 'retry', source: { nodeId: 'planner' }, target: { nodeId: 'planner' }, label: 'Retry' },
+    ],
+    key: [{ line: 'dashed', label: 'Refused call' }],
+  },
+  options: { variant: 'architecture', highlight: ['ask', 'allow'], title: 'Every tool call passes one approval gate', source: 'Illustrative', size: { width: 960 } },
+});
+
+fixtures.push({
+  id: 'pipeline-health', title: 'A data pipeline with its service levels beside it', kind: 'example',
+  data: {
+    groups: [{ id: 'sources', title: 'Sources' }, { id: 'warehouse', title: 'Warehouse' }],
+    nodes: [
+      box('orders', 'Order system', { groupId: 'sources', track: 'main' }),
+      box('events', 'Web events', { groupId: 'sources', track: 'side' }),
+      box('raw', 'Raw tables', { groupId: 'warehouse', track: 'main', shape: { kind: 'store' } }),
+      box('models', 'Clean models', { groupId: 'warehouse', track: 'side', shape: { kind: 'store' } }),
+    ],
+    edges: [
+      link('copy', 'orders', 'raw', { label: 'Hourly' }),
+      link('stream', 'events', 'models', { label: 'Live' }),
+      link('clean', 'raw', 'models'),
+    ],
+    inset: {
+      title: 'Service levels',
+      kpis: [{ value: '99.9%', label: 'Loads on time' }, { value: '12 min', label: 'Median delay' }],
+      rows: [{ label: 'Failed loads this month', value: '3' }, { label: 'Tables with an owner', value: '41 of 44' }],
+    },
+  },
+  options: { variant: 'architecture', title: 'The warehouse meets its service levels', source: 'Illustrative', size: { width: 960 } },
+});
+
+fixtures.push({
+  id: 'long-names', title: 'Long names keep every word at every width', kind: 'torture',
+  data: {
+    groups: [{ id: 'intake', title: 'Regional intake and validation services' }, { id: 'core', title: 'Central settlement and reconciliation platform' }],
+    nodes: [
+      box('gateway', 'Cross-border payment instruction gateway', { groupId: 'intake', secondaryLabel: 'Validates every incoming instruction', track: 'main' }),
+      box('screen', 'Sanctions and counterparty screening service', { groupId: 'intake', track: 'side' }),
+      box('ledger', 'Multi-currency general ledger posting engine', { groupId: 'core', track: 'main', shape: { kind: 'store' } }),
+      box('recon', 'End-of-day reconciliation and exception workbench', { groupId: 'core', track: 'side' }),
+    ],
+    edges: [
+      link('post', 'gateway', 'ledger', { label: 'Validated instructions' }),
+      link('check', 'gateway', 'screen'),
+      link('match', 'ledger', 'recon', { label: 'Posted entries' }),
+      link('reject', 'recon', 'gateway', { label: 'Rejected items', flow: 'return', dash: 'dashed' }),
+    ],
+    key: [{ line: 'dashed', label: 'Returned for repair' }],
+  },
+  options: { variant: 'architecture', title: 'Every payment passes screening before it posts', source: 'Illustrative', size: { width: 960 } },
+});
+
+const zones = ['Channels', 'Services', 'Platform', 'Data'];
+fixtures.push({
+  id: 'twenty-node-platform', title: 'Twenty nodes and thirty edges across four zones', kind: 'torture',
+  data: {
+    groups: zones.map((title, index) => ({ id: `z${index}`, title })),
+    nodes: Array.from({ length: 20 }, (_, index) => box(`n${index}`, `${zones[index % 4]} ${Math.floor(index / 4) + 1}`, { groupId: `z${index % 4}`, track: `t${Math.floor(index / 4)}` })),
+    edges: Array.from({ length: 16 }, (_, index) => index).flatMap((index) => [
+      ...(index % 4 === 3 ? [] : [link(`across${index}`, `n${index}`, `n${index + 1}`)]),
+      ...(index === 15 ? [] : [link(`down${index}`, `n${index}`, `n${index + 4}`)]),
+    ]),
+  },
+  options: { variant: 'architecture', title: 'Twenty nodes keep clear routes across four zones', source: 'Illustrative', size: { width: 960 } },
 });
 
 registerFixtures('diagram', fixtures);

@@ -1,33 +1,31 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 364" width="720" height="364" direction="ltr" style="max-width:100%;height:auto;text-transform:none;letter-spacing:normal;word-spacing:normal;font-style:normal;font-variant:normal" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Go-live lands mid-June with two weeks of hypercare" aria-describedby="bp-desc-ac34e392b7" data-bp-sizing="{&quot;aspect&quot;:&quot;content&quot;,&quot;minWidth&quot;:371,&quot;minHeight&quot;:316,&quot;fit&quot;:&quot;content&quot;,&quot;compactFloor&quot;:{&quot;width&quot;:280,&quot;height&quot;:28},&quot;measuredMinWidth&quot;:371,&quot;measuredMinHeight&quot;:316,&quot;naturalWidth&quot;:720,&quot;naturalHeight&quot;:364,&quot;comfortableWidth&quot;:464,&quot;comfortableHeight&quot;:395}" data-bp-mode="full" font-family="'Helvetica Neue', Helvetica, Arial, Roboto, sans-serif">
-<desc id="bp-desc-ac34e392b7">Gantt chart at weeks scale from 6 Apr 2026 to 5 Jul 2026. Preparation 6 Apr 2026 – 17 Apr 2026; Build 20 Apr 2026 – 22 May 2026; Test &amp; QA 25 May 2026 – 12 Jun 2026; Launch 15 Jun 2026 – 3 Jul 2026.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 364" width="720" height="364" direction="ltr" style="max-width:100%;height:auto;text-transform:none;letter-spacing:normal;word-spacing:normal;font-style:normal;font-variant:normal" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Go-live lands mid-June with two weeks of hypercare" aria-describedby="bp-desc-7a5848f46b" data-bp-sizing="{&quot;aspect&quot;:&quot;content&quot;,&quot;minWidth&quot;:371,&quot;minHeight&quot;:316,&quot;fit&quot;:&quot;content&quot;,&quot;compactFloor&quot;:{&quot;width&quot;:280,&quot;height&quot;:28},&quot;measuredMinWidth&quot;:371,&quot;measuredMinHeight&quot;:316,&quot;naturalWidth&quot;:720,&quot;naturalHeight&quot;:364,&quot;comfortableWidth&quot;:464,&quot;comfortableHeight&quot;:395}" data-bp-mode="full" font-family="'Helvetica Neue', Helvetica, Arial, Roboto, sans-serif">
+<desc id="bp-desc-7a5848f46b">Gantt chart at weeks scale from 6 Apr 2026 to 5 Jul 2026. Preparation 6 Apr 2026 – 17 Apr 2026; Build 20 Apr 2026 – 22 May 2026; Test &amp; QA 25 May 2026 – 12 Jun 2026; Launch 15 Jun 2026 – 3 Jul 2026.</desc>
 <rect x="0" y="0" width="720" height="364" fill="#FFFFFF"/>
 <text data-id="frame:title:0" data-part="title" data-bp-role="title" x="24" y="37.60" text-anchor="start" font-size="20" font-weight="700" fill="#0D2A43"><tspan x="24" dy="0">Go-live lands mid-June with two weeks of hypercare</tspan></text>
 <text data-id="frame:subtitle:1" data-part="subtitle" data-bp-role="subtitle" x="24" y="61.32" text-anchor="start" font-size="14" font-weight="400" fill="#0D2A43"><tspan font-weight="700">Launch plan</tspan><tspan> · Q2 2026</tspan></text>
 <text data-id="frame:source:2" data-part="source" data-bp-role="source" x="24" y="349.38" text-anchor="start" font-size="11" font-weight="400" fill="#4E6070"><tspan x="24" dy="0">Source: Illustrative launch plan; each phase is anchored to the one before it</tspan></text>
 <rect data-id="frame:swatch:3" data-part="swatch" x="24" y="77.26" width="12" height="12" fill="#12395E"/>
 <text data-id="frame:legendLabel:4" data-part="legendLabel" data-bp-role="category" x="41" y="87.56" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="41" dy="0">Workstream</tspan></text>
-<rect data-id="frame:swatch:5" data-part="swatch" x="121" y="77.26" width="12" height="12" fill="#c3cfd8"/>
+<rect data-id="frame:swatch:5" data-part="swatch" x="121" y="77.26" width="12" height="12" fill="#bfcbd5"/>
 <text data-id="frame:legendLabel:6" data-part="legendLabel" data-bp-role="category" x="138" y="87.56" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="138" dy="0">After go-live</tspan></text>
-<path data-id="frame:swatch:7" data-part="swatch" d="M 223 78.26 L 228 83.26 L 223 88.26 L 218 83.26 Z" fill="#12395E" stroke="#12395E" stroke-width="1.5" stroke-linejoin="round"/>
-<text data-id="frame:legendLabel:8" data-part="legendLabel" data-bp-role="category" x="234" y="87.56" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="234" dy="0">Milestone</tspan></text>
-<rect data-id="frame:swatch:9" data-part="swatch" x="300.50" y="77.26" width="12" height="12" fill="#f9fbfd"/>
-<text data-id="frame:legendLabel:10" data-part="legendLabel" data-bp-role="category" x="317.50" y="87.56" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="317.50" dy="0">Weekend</tspan></text>
-<rect data-id="frame:swatch:11" data-part="swatch" x="383" y="77.26" width="12" height="12" fill="#cfdcec"/>
-<text data-id="frame:legendLabel:12" data-part="legendLabel" data-bp-role="category" x="400" y="87.56" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="400" dy="0">Elapsed to today</tspan></text>
+<rect data-id="frame:swatch:7" data-part="swatch" x="217" y="77.26" width="12" height="12" fill="#eaf2f8"/>
+<text data-id="frame:legendLabel:8" data-part="legendLabel" data-bp-role="category" x="234" y="87.56" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="234" dy="0">Weekend</tspan></text>
+<rect data-id="rowTint:build" data-part="rowTint" x="24" y="207.20" width="672" height="40" fill="#eaf2f8"/>
+<rect data-id="rowTint:launch" data-part="rowTint" x="24" y="287.20" width="672" height="40" fill="#eaf2f8"/>
+<rect data-id="weekend:0" data-part="weekend" x="191.81" y="167.20" width="11.73" height="160" fill="#eaf2f8"/>
+<rect data-id="weekend:1" data-part="weekend" x="232.85" y="167.20" width="11.73" height="160" fill="#eaf2f8"/>
+<rect data-id="weekend:2" data-part="weekend" x="273.89" y="167.20" width="11.73" height="160" fill="#eaf2f8"/>
+<rect data-id="weekend:3" data-part="weekend" x="314.93" y="167.20" width="11.73" height="160" fill="#eaf2f8"/>
+<rect data-id="weekend:4" data-part="weekend" x="355.97" y="167.20" width="11.73" height="160" fill="#eaf2f8"/>
+<rect data-id="weekend:5" data-part="weekend" x="397.01" y="167.20" width="11.73" height="160" fill="#eaf2f8"/>
+<rect data-id="weekend:6" data-part="weekend" x="438.04" y="167.20" width="11.73" height="160" fill="#eaf2f8"/>
+<rect data-id="weekend:7" data-part="weekend" x="479.08" y="167.20" width="11.73" height="160" fill="#eaf2f8"/>
+<rect data-id="weekend:8" data-part="weekend" x="520.12" y="167.20" width="11.73" height="160" fill="#eaf2f8"/>
+<rect data-id="weekend:9" data-part="weekend" x="561.16" y="167.20" width="11.73" height="160" fill="#eaf2f8"/>
+<rect data-id="weekend:10" data-part="weekend" x="602.20" y="167.20" width="11.73" height="160" fill="#eaf2f8"/>
+<rect data-id="weekend:11" data-part="weekend" x="643.24" y="167.20" width="11.73" height="160" fill="#eaf2f8"/>
+<rect data-id="weekend:12" data-part="weekend" x="684.27" y="167.20" width="11.73" height="160" fill="#eaf2f8"/>
 <rect data-id="ann:elapsed:band" data-part="elapsedEra" x="162.50" y="167.20" width="178.81" height="160" fill="#f3f6fa"/>
-<rect data-id="weekend:0" data-part="weekend" x="191.81" y="167.20" width="11.73" height="160" fill="#fdfefe"/>
-<rect data-id="weekend:1" data-part="weekend" x="232.85" y="167.20" width="11.73" height="160" fill="#fdfefe"/>
-<rect data-id="weekend:2" data-part="weekend" x="273.89" y="167.20" width="11.73" height="160" fill="#fdfefe"/>
-<rect data-id="weekend:3" data-part="weekend" x="314.93" y="167.20" width="11.73" height="160" fill="#fdfefe"/>
-<rect data-id="weekend:4" data-part="weekend" x="355.97" y="167.20" width="11.73" height="160" fill="#fdfefe"/>
-<rect data-id="weekend:5" data-part="weekend" x="397.01" y="167.20" width="11.73" height="160" fill="#fdfefe"/>
-<rect data-id="weekend:6" data-part="weekend" x="438.04" y="167.20" width="11.73" height="160" fill="#fdfefe"/>
-<rect data-id="weekend:7" data-part="weekend" x="479.08" y="167.20" width="11.73" height="160" fill="#fdfefe"/>
-<rect data-id="weekend:8" data-part="weekend" x="520.12" y="167.20" width="11.73" height="160" fill="#fdfefe"/>
-<rect data-id="weekend:9" data-part="weekend" x="561.16" y="167.20" width="11.73" height="160" fill="#fdfefe"/>
-<rect data-id="weekend:10" data-part="weekend" x="602.20" y="167.20" width="11.73" height="160" fill="#fdfefe"/>
-<rect data-id="weekend:11" data-part="weekend" x="643.24" y="167.20" width="11.73" height="160" fill="#fdfefe"/>
-<rect data-id="weekend:12" data-part="weekend" x="684.27" y="167.20" width="11.73" height="160" fill="#fdfefe"/>
 <line data-id="rowRule:1" data-part="rowRule" x1="24" y1="207.20" x2="696" y2="207.20" stroke="#E9EEF3" stroke-width="0.75"/>
 <line data-id="rowRule:2" data-part="rowRule" x1="24" y1="247.20" x2="696" y2="247.20" stroke="#E9EEF3" stroke-width="0.75"/>
 <line data-id="rowRule:3" data-part="rowRule" x1="24" y1="287.20" x2="696" y2="287.20" stroke="#E9EEF3" stroke-width="0.75"/>
@@ -95,7 +93,7 @@
 <rect data-id="mark:build:build-dev" data-part="bar" x="244.58" y="215.20" width="193.47" height="24" fill="#12395E" stroke="#12395E" stroke-width="1.5"/>
 <rect data-id="mark:test:test-qa" data-part="bar" x="449.77" y="255.20" width="111.39" height="24" fill="#12395E" stroke="#12395E" stroke-width="1.5"/>
 <path data-id="mark:launch:launch-go" data-part="milestone" d="M575.82 299.20L583.82 307.20L575.82 315.20L567.82 307.20Z" fill="#12395E" stroke="#12395E" stroke-width="1.5" stroke-linejoin="round"/>
-<path data-id="mark:launch:hypercare" data-part="chevron" d="M584.61 295.20L675.27 295.20L684.27 307.20L675.27 319.20L584.61 319.20Z" fill="#c3cfd8" stroke-linejoin="round"/>
+<path data-id="mark:launch:hypercare" data-part="chevron" d="M584.61 295.20L675.27 295.20L684.27 307.20L675.27 319.20L584.61 319.20Z" fill="#bfcbd5" stroke-linejoin="round"/>
 <path data-id="ann:today:line" data-part="todayLine" d="M341.31 165.2L341.31 169.2M341.31 172.2L341.31 176.2M341.31 179.2L341.31 183.2M341.31 186.2L341.31 190.2M341.31 193.2L341.31 197.2M341.31 200.2L341.31 204.2M341.31 207.2L341.31 211.2M341.31 214.2L341.31 215.21M341.31 242.2L341.31 246.2M341.31 249.2L341.31 253.2M341.31 256.2L341.31 260.2M341.31 263.2L341.31 267.2M341.31 270.2L341.31 274.2M341.31 277.2L341.31 281.2M341.31 284.2L341.31 288.2M341.31 291.2L341.31 295.2M341.31 298.2L341.31 302.2M341.31 305.2L341.31 309.2M341.31 312.2L341.31 316.2M341.31 319.2L341.31 323.2M341.31 326.2L341.31 327.2" fill="none" stroke="#0D2A43" stroke-width="1" stroke-dasharray="4 3" stroke-linecap="butt" stroke-linejoin="round"/>
 <path data-id="ann:today:line:over:0" data-part="todayLine" d="M341.31 215.21L341.31 218.2M341.31 221.2L341.31 225.2M341.31 228.2L341.31 232.2M341.31 235.2L341.31 239.19" fill="none" stroke="#FFFFFF" stroke-width="1" stroke-dasharray="4 3" stroke-linecap="butt" stroke-linejoin="round"/>
 <line data-id="ann:today:line:head:1" data-part="todayLine" x1="341.31" y1="123.20" x2="341.31" y2="147.20" stroke="#0D2A43" stroke-width="1" stroke-dasharray="4 3"/>

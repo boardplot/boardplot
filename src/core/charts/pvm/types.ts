@@ -73,6 +73,12 @@ export interface PvmOptions extends BaseOptionsFor<'pvm'> {
    * `notes` is set.
    */
   methodNote?: boolean;
+  /**
+   * Default true. Prints the net change from the opening to the closing total,
+   * absolute and in percent, in its sign colour above the closing column.
+   * false leaves the closing column with its value only.
+   */
+  netChange?: boolean;
 }
 
 export interface PvmEffect {

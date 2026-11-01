@@ -40,9 +40,9 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 |---|---|---|---|---|
 | ring | string | `'last'`, `'none'` | `'last'` | A ring on the last observed point, in the highlight. 'last' is the default; 'none' draws the bare line. |
 | endLabels | string | `'ends'`, `'none'` | `'none'` | 'ends' prints the first and last authored label under the ends of the line, at the micro step in the muted ink. Default 'none'. The key is endLabels because labels is the shared per-label-kind switch. The labels take one text line of the height, about half of a 36 px card, so the line and a reference inside its range share the rest. Use 'none' on a short card, or when a reference must read apart from the line. |
-| valueLabel | string | `'last'`, `'none'` | `'none'` | 'last' prints the last observed value beside the end of the line, in the format. On a framed sparkline (title, subtitle or source) whose line band keeps 60 px, it also marks the high point with a dot and its value, muted, above it, unless the last point is the high. Default 'none': a card that hosts the bare mark prints the figure itself. |
+| valueLabel | string | `'last'`, `'last-and-high'`, `'none'` | `'none'` | 'last' prints the last observed value beside the end of the line, in the format. On a framed sparkline (title, subtitle or source) whose line band keeps 60 px, it also marks the high point with a dot and its value, muted, above it, unless the last point is the high; then it also marks the low under its point (unless the low is the last point) and the first value away from the line (unless the first point is the high or the low), and a reference prints its value in the column of the last value, level with the dashed line. 'last-and-high' keeps the last value and the high only. Default 'none': a card that hosts the bare mark prints the figure itself. |
 | stroke | number |  | `2` | Stroke width of the line in px. Default uses the theme stroke.data token (2 px). |
-| reference | number |  |  | A 1 px dashed line at this value in the muted ink, with no label. The scale always includes it. |
+| reference | number |  |  | A 1 px dashed line at this value in the muted ink. The scale always includes it. On a framed sparkline with valueLabel 'last' its value prints in the column of the last value, muted. |
 | ringTone | string | `'good'`, `'warn'`, `'bad'` |  | Paints the end ring in this tone instead of the highlight. Refused with ring 'none'. |
 
 Plus the [shared options](options.md). This type does not accept `detailFields`, `labels`, `categoryLabels`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `topN`, `bandFraction`, `story`, `hatchStrength`, `colorblindSafe`, `rounding`.
@@ -64,6 +64,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | orders-nine-months | example | Nine months of orders, the last point ringed and valued, both ends named |
 | bare-card-spark | example | The bare 176 by 36 mark: no end ring, no labels, a null bridged by a dotted segment |
 | orders-heavy-stroke | torture | A 2.5 px line instead of the default 1.5 px |
+| orders-last-and-high | torture | valueLabel 'last-and-high': the last value and the high, as before the low and first values were named |
 | reference-above-data | example | A target above every point: the scale reaches up to the reference, the ring in warn |
 | reference-inside-data | example | A reference the line crosses twice, the ring in good |
 | reference-constant-values | example | A flat series under its reference: the line sits at the foot, the ring in bad |

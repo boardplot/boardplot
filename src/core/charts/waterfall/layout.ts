@@ -46,7 +46,7 @@ import { applyValueAxisTitleInk, axisTitleAllowed, planValueAxisTitle, valueAxis
 import { axisBreakInvalid } from '../../axisBreakInvalid';
 import { axisBreakHeightOrderWarning, breakReversesOrder, type BreakBar } from '../../axisBreakOrder';
 import { valueLineExtent } from '../../valueLineDomain';
-import { formatAutomaticNumber as plainNumber } from '../../format';
+import { changePercentText, formatAutomaticNumber as plainNumber } from '../../format';
 import { authoredDecimals } from '../../formatPrecision';
 import { authoredNotes, frameTextOptions, legendRequired, normalizeLegendOption, solveFrame, fixedPlotChrome, type LegendItemInput, plotHeightAfter } from '../../frame';
 import { defaultMeasurer, type FontSpec } from '../../text';
@@ -882,6 +882,20 @@ function layoutWaterfallWithPad(
   const bridges = cases.length > 0 ? caseItems.map(deriveBridge) : [deriveBridge(items)];
   const levels: WaterfallDerived['levels'] = bridges.reduce<WaterfallDerived['levels']>((all, bridge) => Object.assign(all, bridge.levels), emptyIdRecord());
   const totals: WaterfallDerived['totals'] = bridges.reduce<WaterfallDerived['totals']>((all, bridge) => Object.assign(all, bridge.totals), emptyIdRecord());
+  // A host (pvm) can ask for the closing total's change over the opening total, printed over the closing column.
+  const closingNet = (() => {
+    const open = items[0]!;
+    const close = items[items.length - 1]!;
+    if (!categoryRow || cases.length > 0 || options.labels === false || items.length < 2 || open.type === 'delta' || close.type === 'delta') return undefined;
+    // The host passes the change computed from its data: the accumulated closing level carries rounding residue.
+    const given = (options as { closingChange?: { delta: number; base: number } }).closingChange;
+    if (given === undefined) return undefined;
+    const { delta, base } = given;
+    if (!Number.isFinite(delta) || delta === 0) return undefined;
+    const change = fmtSigned(delta);
+    const percent = base > 0 ? `(${changePercentText((delta / base) * 100, 1, options.locale?.language)})` : '';
+    return { text: percent ? `${change} ${percent}` : change, lines: percent ? [change, percent] : [change], tone: stepTone(delta) };
+  })();
   const totalBasis: WaterfallDerived['totalBasis'] = bridges.reduce<WaterfallDerived['totalBasis']>((all, bridge, k) =>
     Object.assign(all, Object.fromEntries(Object.entries(bridge.totalBasis).map(([id, basis]) => [id, basis.authored && cases.length > 0
       ? { authored: true as const, ref: `${data.items[caseItems[k]!.findIndex((it) => it.id === id)]!.id}.values.${k}` }
@@ -1317,7 +1331,11 @@ function layoutWaterfallWithPad(
   if (categoryRow) pushAll(warnings, catPlan.warnings);
   // spanning annotations (cagr) need arm headroom above the tallest bar
   // 12 px for the arms; the second pass adds what the arms still lack.
-  const annPad = (options.annotations ?? []).some((a) => a.kind === 'cagr') ? 12 + extraAnnPad : extraAnnPad;
+  // A bracket over steps stands above the highest value label: its own label, its ticks, and
+  // the room a value label needs over the tallest bar.
+  const bracketLabelH = measure('X', { family: theme.type.family, ...theme.type.label }).height;
+  const bracketRoom = (options.annotations ?? []).some((a) => a.kind === 'bracket') ? Math.ceil(2 * bracketLabelH + 8) : 0;
+  const annPad = ((options.annotations ?? []).some((a) => a.kind === 'cagr') ? 12 + extraAnnPad : extraAnnPad) + bracketRoom;
   const axisTitle = categoryRow && axisTitleAllowed(options.labels) ? planValueAxisTitle(options.axisTitles?.primary, theme, measure, plotWidth) : undefined;
   const axisTitleBand = valueAxisTitleBand(axisTitle, theme, measure, annPad);
   const plot: Rect = {
@@ -1826,6 +1844,37 @@ function layoutWaterfallWithPad(
     };
     labelRequests.push(valueRequest);
     if (caseIndex !== undefined) caseValues[i]!.push(valueRequest);
+    // The closing total's net change over the opening total: a second bold value above the total's own.
+    if (closingNet !== undefined && isTotal && caseIndex === undefined && i === items.length - 1) {
+      const netId = `net:${it.id}`;
+      const netText = closingNet.text;
+      const netSize = measure(netText, strongFont);
+      const netY = negative ? outsideY + tsize.height + 2 : outsideY - netSize.height - 2;
+      boldValueIds.add(netId);
+      labelRequests.push({
+        id: netId,
+        kind: 'total',
+        owner: stepOwner,
+        // A derived difference with its percent: a composed text, not one of the source values.
+        role: composedTextRole(netText),
+        text: netText,
+        lines: [netText],
+        font: strongFont,
+        // A step's own value outranks the difference of the totals, which a note can carry.
+        priority: PRIORITY.interior,
+        candidates: [
+          { slot: outsideSlot, rect: { x: bx + bw / 2 - netSize.width / 2, y: netY, w: netSize.width, h: netSize.height }, penalty: 0 },
+          // Wider than the room beside the last bar: it hangs inward from the bar's outer edge.
+          { slot: outsideSlot, rect: { x: bx + bw - netSize.width, y: netY, w: netSize.width, h: netSize.height }, penalty: 1 },
+          // Still too wide: the change and its percent stand on two lines over the bar.
+          ...(closingNet.lines.length === 2 ? [(() => {
+            const w = Math.max(...closingNet.lines.map((line) => measure(line, strongFont).width));
+            const h = netSize.height * 2;
+            return { slot: outsideSlot, rect: { x: bx + bw / 2 - w / 2, y: negative ? outsideY + tsize.height + 2 : outsideY - h - 2, w, h }, penalty: 2, lines: closingNet.lines };
+          })()] : []),
+        ],
+      });
+    }
 
     // ---- category label: once per step ----
     if (caseIndex !== undefined && caseIndex > 0) return;
@@ -1942,6 +1991,10 @@ function layoutWaterfallWithPad(
       const tone = label.id.startsWith('sum:') ? stepTones.get(label.id.slice('sum:'.length)) : undefined;
       if (tone && tone !== 'neutral' && label.slot !== 'insideEnd') label.ink = { token: tone };
     }
+    if (closingNet !== undefined) {
+      const net = solved.placed.find((label) => label.id.startsWith('net:'));
+      if (net && closingNet.tone !== 'neutral') net.ink = { token: closingNet.tone };
+    }
   }
 
   // ---- annotations ----
@@ -1958,13 +2011,15 @@ function layoutWaterfallWithPad(
     const it = k < 0 ? step : caseItems[k]![i]!;
     const lvl = levels[it.id]!;
     const edge = norm.edge ?? 'total';
-    const value = edge === 'start' ? lvl.start : it.type === 'delta' ? lvl.end : totals[it.id]!;
+    const comparisonValue = edge === 'start' ? lvl.start : it.type === 'delta' ? lvl.end : totals[it.id]!;
+    const value = edge === 'total' && it.type === 'delta' ? lvl.end - lvl.start : comparisonValue;
     const anchorLevel =
       edge === 'start' ? lvl.start : edge === 'end' ? lvl.end : Math.max(lvl.start, lvl.end);
     return {
       x: k < 0 ? band.center(i) : band.position(i) + k * (caseW + CASE_GAP) + caseW / 2,
       y: y(anchorLevel),
       value,
+      comparisonValue,
       date: it.date,
       label: it.label,
       owner: k < 0 ? { categoryId: it.id } : { categoryId: step.id, seriesId: cases[k]!.id },
@@ -2002,6 +2057,25 @@ function layoutWaterfallWithPad(
     solveCtx,
     yScale: y,
     annotationBandReserved: true,
+    resolveSpan: (fromId, toId) => {
+      if (cases.length > 0) return { code: 'bracket-cases', error: 'a bridge with cases has no one sum to print' };
+      const i = items.findIndex((x) => x.id === fromId);
+      const j = items.findIndex((x) => x.id === toId);
+      if (i < 0 || j < 0) return { code: 'bad-anchor', error: `unknown step '${i < 0 ? fromId : toId}'; valid step ids: ${items.map((x) => x.id).join(', ')}` };
+      if (i > j) return { code: 'bracket-span-order', error: `'${fromId}' comes after '${toId}'; give the earlier step as from` };
+      const steps = items.slice(i, j + 1);
+      const total = steps.find((x) => x.type !== 'delta');
+      if (total) return { code: 'bracket-span-total', error: `step '${total.id}' is a total, so the span has no one sum; bracket only delta steps` };
+      // The step values, not level differences: next to a large balance the rounded levels lose a small step.
+      const values = steps.map((x) => ({ id: x.id, value: compensatedSum(x.segments.map((seg) => seg.value)) }));
+      return {
+        left: band.position(i),
+        right: band.position(j) + band.bandwidth,
+        y: annPlot.y + bracketLabelH + 3,
+        sum: compensatedSum(values.map((step) => step.value)),
+        steps: values,
+      };
+    },
   });
   pushAll(warnings, annResult.warnings);
 

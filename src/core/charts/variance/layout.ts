@@ -429,6 +429,17 @@ export function layoutVariance(
    */
   const capPattern: 'hatch45' | undefined = undefined;
   /**
+   * A cap that ends past the actual's edge is the shortfall: the stretch of
+   * the reference the actual does not fill. It draws as an outline, so the
+   * solid shape ends at the actual. A theme with `surface.shortfallCap:
+   * 'solid'` fills it. A cap over the column (a beat) stays solid.
+   */
+  const capIsShortfall = (ci: number): boolean => {
+    const ac = acArr[ci], ref = refArr[ci];
+    return theme.surface?.shortfallCap !== 'solid' && ac !== null && ac !== undefined && ref !== null && ref !== undefined
+      && (ac > 0 ? ref > ac : ac < 0 ? ref < ac : ref !== 0);
+  };
+  /**
    * The integrated actual column's paint, in column's order (paints.ts): the
    * cell fill, then the measured series' fill or colorRole, then the neutral.
    * The key swatch takes the series level, so it matches the columns.
@@ -483,6 +494,9 @@ export function layoutVariance(
     // the key names each cap the same way at every
     // width. The actual's value reads at the column foot, so no key clause
     // has to say where a cap stands past the actual's end.
+    // The categories whose cap is on one side of its reference in one tone.
+    const capsOf = (above: boolean, tone: 'good' | 'bad' | 'neutral'): number[] =>
+      cats.flatMap((_, ci) => dAbsArr[ci] !== null && dAbsArr[ci]! !== 0 && dAbsArr[ci]! > 0 === above && toneOf(dAbsArr[ci]!, ci) === tone ? [ci] : []);
     for (const above of [true, false]) {
       // A cap that prints as zero is neutral and, as in the other
       // modes, not keyed: one label per side, never a neutral twin.
@@ -494,12 +508,13 @@ export function layoutVariance(
           label: above ? chartString(options, 'aboveReference', { v1: refWord }) : chartString(options, 'belowReference', { v1: refWord }),
           paint: tonePaint(tone, undefined, true),
           ...(capPattern ? { pattern: capPattern } : {}),
+          ...(capsOf(above, tone).every(capIsShortfall) ? { hollow: true } : {}),
         });
       }
     }
     // A cap that prints as zero takes the muted tint, which no mark names.
     if (cats.some((_, ci) => { const d = dAbsArr[ci]!; return acArr[ci] !== null && refArr[ci] !== null && d !== null && d !== 0 && toneOf(d, ci) === 'neutral'; })) {
-      items.push({ id: 'cap:neutral', label: chartString(options, 'withinRounding', { v1: refWord }), paint: mutedMarkPaint() });
+      items.push({ id: 'cap:neutral', label: chartString(options, 'withinRounding', { v1: refWord }), paint: mutedMarkPaint(), ...(capsOf(true, 'neutral').concat(capsOf(false, 'neutral')).every(capIsShortfall) ? { hollow: true } : {}) });
     }
     items.push(...partialLegendKeys(partialCats.length > 0 && !partialNamed, options.strings));
     // A grid panel leaves its key to the grid legend, which collects it, and
@@ -1050,8 +1065,9 @@ export function layoutVariance(
         // neutral it extended the column, and a shortfall read as reaching the
         // reference; the muted tint keeps the actual's top edge.
         fill: capTone === 'neutral' ? mutedMarkPaint() : tonePaint(capTone, undefined, true),
-        pattern: capPattern,
-        ...partialFill(capTone === 'neutral' ? mutedMarkPaint() : tonePaint(capTone, undefined, true)),
+        ...(capIsShortfall(ci)
+          ? { pattern: 'hollow' as const }
+          : { pattern: capPattern, ...partialFill(capTone === 'neutral' ? mutedMarkPaint() : tonePaint(capTone, undefined, true)) }),
         owner,
         part: 'cap',
         display: { value: absolute(d, ci, true) },
@@ -1076,7 +1092,7 @@ export function layoutVariance(
       const acEdgeY = above ? acTop : acBot;
       // The label anchors to the actual edge, including when the cap covers
       // that edge.
-      const insideCap = capRect !== null && ref !== null && (above ? ref < ac : ref > ac);
+      const insideCap = capRect !== null && ref !== null && !capIsShortfall(ci) && (above ? ref < ac : ref > ac);
       const insidePaint = insideCap
         ? capTone === 'neutral' ? mutedMarkPaint() : tonePaint(capTone, undefined, true)
         : actualPaint(mv.fill);

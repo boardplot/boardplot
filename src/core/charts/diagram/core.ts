@@ -20,6 +20,9 @@ export function normalizeDiagramData(data: DiagramData): DiagramData {
     groups: data.groups ? [...data.groups] : [],
     lanes: data.lanes ? [...data.lanes] : [],
     ...(data.key ? { key: [...data.key] } : {}),
+    ...(data.channels ? { channels: [...data.channels] } : {}),
+    ...(data.callouts ? { callouts: [...data.callouts] } : {}),
+    ...(data.inset ? { inset: structuredClone(data.inset) } : {}),
   };
 }
 
@@ -35,7 +38,7 @@ export const diagramCore: ChartCore<
   sizing: { ...chartSizing('diagram'), minWidth: CARD_MIN_WIDTH },
   title: 'Diagram',
   summary:
-    'Deterministic node-edge diagrams with seven consulting presets, obstacle-aware routing, and structural descriptions',
+    'Deterministic node-edge diagrams with eight consulting presets, obstacle-aware routing, and structural descriptions',
   layout: layoutDiagram,
   defaults: {},
   annotationKinds: [],

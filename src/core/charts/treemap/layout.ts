@@ -28,8 +28,9 @@ import { labelCtx, PRIORITY, solveLabels, type LabelRequest, type SolveCtx } fro
 import { accessibleTitle, NormalizeError, resolveSize } from '../../normalize/shared';
 import { atHardMinimum, HARD_COMPACT_PLOT, CARD_HEIGHT_MEMO, type CardHeightMemo, chartSizing, resolveSizing } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
+import { textSizeOf } from '../../typeFloors';
 import { spread1DResult, warnSpreadOverflow } from '../../collide';
-import { defaultMeasurer, graphemes, wrapText, type FontSpec, type TextMeasurer } from '../../text';
+import { defaultMeasurer, graphemes, splitNameBreaks, wrapText, type FontSpec, type TextMeasurer } from '../../text';
 import { contrastInkPaint, emphasisWeight, groupRampPaint, strokeToken, canvasMargin, markRolePaint, paintColor, panelTypeClass, resolveTheme, seriesPaint, themeForWidth } from '../../theme';
 import type { Id } from '../../types/cell';
 import type { Geometry, LintWarning, Paint, SceneNode } from '../../types/scene';
@@ -87,11 +88,11 @@ export function treemapDefaultStrings(options: TreemapOptions): Record<string, s
 /** The label size of one fit step, set on the options of the stepped pass. */
 const FIT_STEP = Symbol('treemapFitStep');
 /** What a pass left unsolved: names not printed, words broken with a hyphen, and the circle's diameter. */
-const FIT_SCORE = new WeakMap<object, { hidden: number; broken: number; side: number; base: number; wanted: number }>();
-/** The smallest step a label takes: the secondary step. */
+type FitScore = { hidden: number; broken: number; side: number; base: number; wanted: number };
+const FIT_SCORE = new WeakMap<object, FitScore>();
+/** The smallest step a label takes: 11 px, and 10 pt (the slide's footnote step) on a slide. */
 const FIT_FLOOR = 11;
-/** At most this many extra passes, one per 1 px step. */
-const FIT_PASSES = 3;
+const SLIDE_FIT_FLOOR = 40 / 3;
 
 /**
  * Type steps. The labels of one tier step down
@@ -111,19 +112,28 @@ export function layoutTreemap(data: TreemapData, options: TreemapOptions = {}): 
   let best = layoutTreemapAt(data, options, memo);
   const first = FIT_SCORE.get(best);
   if (!first) return best;
+  // Fewer names that are blank or cut win. At the same count, fewer cut words win. A step that cuts a name main printed whole must not win by naming more cells.
+  const better = (got: FitScore, than: FitScore) => got.hidden + got.broken < than.hidden + than.broken
+    || got.hidden + got.broken === than.hidden + than.broken && got.broken < than.broken
+    || got.hidden === than.hidden && got.broken === than.broken && than.side < than.wanted && got.side >= than.side + 4;
+  // The sizes to try, from the next step down to the floor. The last one is the floor itself, not a whole pixel above it.
+  const floor = options.target === 'slide' ? SLIDE_FIT_FLOOR : FIT_FLOOR;
+  const steps: number[] = [];
+  const settled = first.hidden === 0 && first.broken === 0 && first.side >= first.wanted;
+  if (!settled && textSizeOf(options) === undefined) for (let px = first.base - 1; px > floor - 1 && first.base > floor; px--) steps.push(Math.max(px, floor));
+  // A smaller size can wrap a name differently, so the floor is not always the best step. Every step
+  // is laid out (a handful), and the largest size with the best result wins.
   let chosen = 0;
   let score = first;
-  for (let px = first.base - 1, pass = 0; px >= FIT_FLOOR && pass < FIT_PASSES; px--, pass++) {
+  for (const px of steps) {
     if (score.hidden === 0 && score.broken === 0 && score.side >= score.wanted) break;
-    const next = layoutTreemapAt(data, { ...options, [FIT_STEP]: px } as TreemapOptions, memo);
-    const got = FIT_SCORE.get(next)!;
-    const better = got.hidden < score.hidden
-      || got.hidden === score.hidden && got.broken < score.broken
-      || got.hidden === score.hidden && got.broken === score.broken && score.side < score.wanted && got.side >= score.side + 4;
-    if (!better) break;
-    best = next;
-    score = got;
-    chosen = px;
+    const geometry = layoutTreemapAt(data, { ...options, [FIT_STEP]: px } as TreemapOptions, memo);
+    const got = FIT_SCORE.get(geometry)!;
+    if (better(got, score)) {
+      best = geometry;
+      score = got;
+      chosen = px;
+    }
   }
   memo.set(memoKey, chosen);
   return best;
@@ -758,7 +768,7 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
   markNotedLabels(geometry, hiddenNote.ids, { strings: options.strings });
   FIT_SCORE.set(geometry, {
     hidden: solved.placed.filter((l) => l.hidden && l.kind !== 'grandTotal').length,
-    broken: texts.filter((t) => t.inside?.nameLines.some((line) => line.endsWith('-'))).length,
+    broken: texts.filter((t, k) => t.inside && brokeWord(ordered[k]!.label, t.inside.nameLines)).length,
     side: shape === 'circle' ? region.w : 0, wanted: shape === 'circle' ? Math.min(plot.w, contentSide) : 0, base: theme.type.label.size,
   });
   return geometry;
@@ -775,29 +785,65 @@ function searchMemo(owner: object): Map<string, unknown> {
   return memo;
 }
 
-/** Keep space breaks first; hyphenate each over-long word with at least three letters on each side, and give each break one more line. */
-function wrapCellName(text: string, font: FontSpec, width: number, measure: TextMeasurer): string[] | undefined {
-  const words = text.split(/\s+/).filter(Boolean);
-  let breaks = 0;
-  for (let wi = 0; wi < words.length; wi++) {
-    const word = words[wi]!;
-    if (measure(word, font).width <= width) continue;
-    if (!/^\p{L}[\p{L}\p{M}]*$/u.test(word)) return undefined;
-    const chars = graphemes(word);
-    let split = 0;
-    for (let i = chars.length - 3; i >= 3; i--) {
-      if (measure(`${chars.slice(0, i).join('')}-`, font).width <= width
-        && measure(chars.slice(i).join(''), font).width <= width) {
-        split = i;
-        break;
-      }
-    }
-    if (!split) return undefined;
-    words[wi] = `${chars.slice(0, split).join('')}-\n${chars.slice(split).join('')}`;
-    breaks++;
+const VOWEL = /[aeiouyäöüáàâéèêíìîóòôúùû]/iu;
+/** Letter pairs that read as one sound, or a consonant and a liquid that start a syllable together. */
+const ONE_SOUND = /^(?:ch|sh|th|ph|gh|ck|qu|sch|tz|[bcdfgpt][lr]|sp|st|sk)$/iu;
+
+/** Word endings that read as a unit, English and German. A cut before one is the cleanest break. */
+const WORD_ENDS = new Set(['ing', 'ings', 'tion', 'tions', 'sion', 'ment', 'ments', 'ness', 'land', 'ship', 'house', 'ware', 'able', 'ible', 'ity', 'ful', 'less', 'ance', 'ence', 'ung', 'ungen', 'heit', 'keit', 'schaft']);
+
+/**
+ * The cut points of a word at syllable edges, best first. A cut before a word ending comes first, then a
+ * cut between consonants ("cus-tomer", "West-moreland"), then a cut before a single consonant after a
+ * vowel. Within a kind the longest head comes first. A cut never splits a letter pair that reads as one sound.
+ */
+function syllableCuts(chars: readonly string[]): number[] {
+  const vowel = (i: number) => VOWEL.test(chars[i]!);
+  const cuts: { at: number; kind: number }[] = [];
+  for (let i = chars.length - 3; i >= 3; i--) {
+    let j = i;
+    while (j < chars.length && !vowel(j)) j++;
+    const onset = chars.slice(i, j).join('');
+    const starts = j < chars.length && (j - i === 1 || j - i === 2 && ONE_SOUND.test(onset) || j - i === 3 && /^(?:sch|str|spr|spl)$/iu.test(onset));
+    if (/^(?:ch|sh|th|ph|gh|ck|qu|tz|[bcdfgpt][lr])$/iu.test(`${chars[i - 1]}${chars[i]}`)) continue;
+    if (WORD_ENDS.has(chars.slice(i).join('').toLowerCase())) cuts.push({ at: i, kind: 0 });
+    else if (!starts) continue;
+    else if (!vowel(i - 1) && chars.slice(0, i).some((_, k) => vowel(k))) cuts.push({ at: i, kind: 1 });
+    else if (vowel(i - 1) || vowel(i - 2) && !ONE_SOUND.test(`${chars[i - 1]}${chars[i]}`)) cuts.push({ at: i, kind: 2 });
   }
-  const wrapped = wrapText(words.join(' '), font, width, 3 + breaks, measure);
-  return wrapped.truncated ? undefined : wrapped.lines;
+  return cuts.sort((x, y) => x.kind - y.kind || y.at - x.at).map((cut) => cut.at);
+}
+
+/**
+ * Break a cell name over lines without cutting a word where it can be avoided: first at the hyphens
+ * it has, then at a syllable edge inside a word that is still too wide, last at any letter (three on
+ * each side). Each syllable break gets one more line. A name that does not fit returns undefined.
+ */
+function wrapCellName(text: string, font: FontSpec, width: number, measure: TextMeasurer): string[] | undefined {
+  const fits = (piece: string) => measure(piece, font).width <= width;
+  const hyphens = wrapText(text, font, width, 3, measure, true);
+  if (!hyphens.truncated && hyphens.lines.every(fits)) return hyphens.lines;
+  let breaks = 0;
+  const words = text.split(/\s+/).filter(Boolean).map((word) => splitNameBreaks(word).map((piece) => {
+    if (fits(piece)) return piece;
+    if (!/^\p{L}[\p{L}\p{M}]*$/u.test(piece.replace(/[-_/.]$/, ''))) return undefined;
+    const chars = graphemes(piece);
+    const cuts = syllableCuts(chars);
+    const head = (i: number) => measure(`${chars.slice(0, i).join('')}-`, font).width <= width && measure(chars.slice(i).join(''), font).width <= width;
+    let split = cuts.find(head) ?? 0;
+    for (let i = chars.length - 3; !split && i >= 3; i--) if (head(i)) split = i;
+    if (!split) return undefined;
+    breaks++;
+    return `${chars.slice(0, split).join('')}-\n${chars.slice(split).join('')}`;
+  }));
+  if (words.some((pieces) => pieces.includes(undefined))) return undefined;
+  const wrapped = wrapText(words.map((pieces) => pieces.join('')).join(' '), font, width, 3 + breaks, measure, true);
+  return wrapped.truncated || !wrapped.lines.every(fits) ? undefined : wrapped.lines;
+}
+
+/** Whether a line ends in a hyphen that the name itself lacks: the engine broke a word there. */
+function brokeWord(label: string, lines: readonly string[]): boolean {
+  return lines.some((line, i) => line.endsWith('-') && !label.includes(`${line}${(lines[i + 1] ?? '').split(' ')[0]}`));
 }
 
 /**

@@ -61,6 +61,8 @@ export interface Binning {
   hAuto: number;
   /** Set only for `bins: <number>`; the realized count may differ (anchor rule). */
   requestedCount?: number;
+  /** Set only when whole-number data moved a count's fractional width onto a whole number: the width the count alone gave. */
+  exactWidth?: number;
   /**
    * Set only when the last bin is open: it holds every observation at or above
    * this value, and its upper edge is the largest observation.
