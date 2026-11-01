@@ -10,7 +10,7 @@ import { wrapText, type FontSpec, type TextMeasurer } from '../../text';
 import type { LegendGeometry, SceneNode, TextRole } from '../../types/scene';
 import type { Theme } from '../../types/theme';
 import { emphasisWeight, strokeToken } from '../../theme';
-import { geoStatePattern, geoStateLabel, type ScaleModel } from '../geoScale';
+import { decimalsOf, geoStatePattern, geoStateLabel, type ScaleModel } from '../geoScale';
 import { compareText } from '../../text';
 import type { ChoroplethOptions } from './types';
 import { composedTextRole } from '../../textRole';
@@ -171,7 +171,11 @@ function mapKeysOnce(input: MapKeysInput) {
     : tickEdges.map(value => classes ? edgeText(value) : named(value));
   const midIn = hasRamp && midpoint !== null && midpoint > min! && midpoint < max!
     && !(classes && input.midpointLabel === undefined && tickEdges.includes(midpoint));
-  const midText = midIn ? named(midpoint!) : '';
+  // A classed key prints the midpoint as its ticks do ('15%' beside '14%') when that is exact.
+  const midText = !midIn ? ''
+    : classes && decimalsOf(midpoint!) <= Math.max(0, ...tickEdges.map(decimalsOf))
+      ? `${edgeText(midpoint!)}${input.midpointLabel ? ` ${input.midpointLabel}` : ''}`
+      : named(midpoint!);
   const rowW = (label: string) => SWATCH + SWATCH_GAP + width(label);
   const labelsWant = (f: FontSpec) => {
     const widths = edgeTexts.map((text) => width(text, f));
@@ -330,6 +334,7 @@ function mapKeysOnce(input: MapKeysInput) {
   const items: LegendGeometry['items'] = [];
   if (titleLines.length) addText('legend-title', titleLines, keyX, keyY, heading, 'caption', titleWrap!.truncated ? input.title : undefined);
   if (hasRamp) {
+    const classItems = scale.legend.filter((item) => item.id.startsWith('class-'));
     const steps = classes ?? (max === min ? 1 : Math.max(1, Math.round(keyW / 4)));
     for (let i = 0; i < steps; i++) {
       // The slice takes the paint the map gives its centre value: a class's own paint on a classed map.
@@ -344,7 +349,7 @@ function mapKeysOnce(input: MapKeysInput) {
         t: 'rect', id: `legend-ramp:${i}`,
         // Each slice overlaps the next by half a pixel so no seam shows between them.
         rect: { x: keyX + (i * keyW) / steps, y: keyY + rampY, w: keyW / steps + (i < steps - 1 ? 0.5 : 0), h: RAMP_H },
-        fill: classes ? scale.legend[i]!.paint : scale.paint(value), owner: {}, part: 'swatch',
+        fill: classes ? classItems[i]!.paint : scale.paint(value), owner: {}, part: 'swatch',
       });
     }
     occupied.claim({ x: keyX, y: keyY + rampY, w: keyW, h: RAMP_H }, 'legend', {}, 'swatch');
