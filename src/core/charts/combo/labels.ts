@@ -299,7 +299,7 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
         typeRole: 'label', font: insideFont,
         fontStep: insideFont,
         priority: PRIORITY.grandTotal + (env.highlights.has(c.id) ? PRIORITY.highlightBonus : 0),
-        candidates: [{ ...at('insideTop', edgeY + 4, 0), ...paints.top(ci, true) }],
+        candidates: [{ ...at('insideTop', edgeY + 4, 0), ...paints.top(ci, true), overValueLines: true }],
       });
       return;
     }

@@ -411,10 +411,16 @@ export const diagramOptionsSchema = commonDiagramOptions
       'architecture',
     ]).describe('Required structural layout variant for the diagram.'),
     flow: z.enum(['columns', 'serpentine', 'lanes']).optional().describe('Layout flow: columns or serpentine for customer-journey, columns or lanes for architecture.'),
+    heightFill: z.enum(['rows', 'none']).optional()
+      .meta({ default: 'rows' })
+      .describe("Spare canvas height, read by hierarchy (org chart) and customer-journey. 'rows' (default): a canvas with a set height grows the gaps between the levels up to 2.6 times. 'none': natural gaps, the block centred."),
     highlight: z.union([boundedIdSchema, z.array(boundedIdSchema).min(1).max(32)]).optional().describe('Architecture only: the node and edge ids that carry the message. They take the accent, and everything else recedes.'),
   })
   .strict()
   .superRefine((options, ctx) => {
+    if (options.heightFill !== undefined && options.variant !== 'hierarchy' && options.variant !== 'customer-journey') {
+      ctx.addIssue({ code: 'custom', path: ['heightFill'], message: "'heightFill' is only read by diagram variants 'hierarchy' and 'customer-journey'" });
+    }
     if (options.highlight !== undefined && options.variant !== 'architecture') {
       ctx.addIssue({ code: 'custom', path: ['highlight'], message: `'highlight' is only read by diagram variant 'architecture'` });
     }

@@ -1,0 +1,3 @@
+### Changed
+
+- A value line no longer costs a column, bar, combo or dot chart a label. Before, an average marker or a value line across the seat of a stacked part, a stack total, a series name or a value past a bar took that label's place. The label went to the notes or to a worse seat. A stacked part dropped from the chart, a bar total moved into its last part, a combo total printed in the column disappeared, and a lollipop value ran to the edge of the plot on a leader. Now a stacked part on a column prints in the stretch of the part that the line leaves clear, or on the line when the part has no such stretch. The other labels keep their seat, and the line breaks around them. No option brings the old drawing back.

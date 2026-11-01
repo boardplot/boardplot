@@ -95,6 +95,7 @@ export function layoutPvm(
     interaction: _interaction,
     volumeMix: _volumeMix,
     methodNote: _methodNote,
+    netChange,
     ...pass
   } = options;
 
@@ -177,6 +178,7 @@ export function layoutPvm(
   const hostOptions: WaterfallOptions = withAuthoredFootnotes({
     ...(keepShownNotes(options, pass) as WaterfallOptions),
     ...(options.palette === undefined ? { bridgeDefault: 'sign' } : {}),
+    ...(netChange !== false ? { closingChange: { delta: derived.delta, base: derived.priorRevenue } } : {}),
     ...(options.valueAxis?.break === undefined && baseSwampsSteps(derived)
       ? { valueAxis: { ...options.valueAxis, break: 'auto' as const } }
       : {}),
@@ -188,6 +190,8 @@ export function layoutPvm(
 
   return {
     ...geometry,
+    // The net change label prints the claim `pvm:delta`.
+    labels: geometry.labels.map((label) => (label.id.startsWith('net:') ? { ...label, claimId: 'pvm:delta' } : label)),
     type: 'pvm',
     derived,
     warnings: [...warnings, ...geometry.warnings],

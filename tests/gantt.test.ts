@@ -8,6 +8,61 @@ import type { Annotation } from '../src/core/types/annotations';
 import { render } from '../src/cli/render';
 import { callTool } from '../src/mcp/server';
 import { renderSvg } from '../src/core/svg/renderSvg';
+import { contrastRatio } from '../src/core/color';
+import { repaintGeometry } from '../src/core/repaintGeometry';
+import { resolvePaint } from '../src/core/svg/paint';
+import { resolveTheme } from '../src/core/theme';
+
+// Row and weekend shading must stay visible after repainting and must not cover the elapsed band.
+it('gantt paints visible row and weekend shading below the elapsed band', () => {
+  const spec = { type: 'gantt', data: { rows: [
+    { id: 'plan', label: 'Plan', items: [{ id: 'draft', kind: 'bar', start: '2026-03-02', end: '2026-03-12', label: 'Draft' }] },
+    { id: 'ship', label: 'Ship', items: [{ id: 'release', kind: 'bar', start: '2026-03-13', end: '2026-03-27', label: 'Release' }] },
+  ] }, options: { rowTint: true, weekends: true, today: '2026-03-16', size: { width: 600 } } };
+  const request = resolveChartRequest(spec);
+  const geometry = layoutResolvedRequest(request);
+  if (geometry.refused) throw new Error('gantt refused');
+  const elapsed = geometry.scene.findIndex(node => node.part === 'elapsedEra');
+  const bands = geometry.scene.flatMap((node, index) => node.t === 'rect' && (node.part === 'rowTint' || node.part === 'weekend')
+    ? [{ node, index }] : []);
+  expect(bands.some(({ node }) => node.part === 'rowTint')).toBe(true);
+  expect(bands.some(({ node }) => node.part === 'weekend')).toBe(true);
+  const key = geometry.scene.find(node => node.t === 'rect' && node.part === 'swatch' && node.owner.seriesId === 'key:weekend');
+  if (key?.t !== 'rect' || !key.fill) throw new Error('missing weekend key');
+  for (const { node, index } of bands) {
+    expect(contrastRatio(resolvePaint(node.fill!, request.theme), request.theme.color.background)).toBeGreaterThanOrEqual(1.08);
+    expect(index).toBeLessThan(elapsed);
+    expect(resolvePaint(node.fill!, request.theme)).toBe(resolvePaint(key.fill, request.theme));
+  }
+  for (const preset of ['boardroom', 'standard-dark']) {
+    const themeRef = { preset, overrides: { color: { others: '#60748A' }, surface: { ganttRowTint: 0.6, rowTint: 0.98 } } };
+    const theme = resolveTheme(themeRef);
+    const fresh = layoutResolvedRequest(resolveChartRequest({ ...spec, options: { ...spec.options, theme: themeRef } }));
+    if (fresh.refused) throw new Error('gantt refused');
+    const repainted = repaintGeometry(geometry, theme, {});
+    for (const source of [...bands.map(({ node }) => node), key]) {
+      const repaint = repainted.scene.find(node => node.id === source.id);
+      const target = fresh.scene.find(node => node.id === source.id);
+      if (repaint?.t !== 'rect' || target?.t !== 'rect') throw new Error('missing shading');
+      expect(resolvePaint(repaint.fill!, theme)).toBe(resolvePaint(target.fill!, theme));
+      expect(resolvePaint(repaint.fill!, theme)).not.toBe(resolvePaint(source.fill!, request.theme));
+    }
+  }
+});
+
+// A detail bar must keep the 3:1 floor against the weekend wash, which is drawn without rowTint too.
+it('gantt holds a bar to the 3:1 floor against the weekend wash', () => {
+  const request = resolveChartRequest({ type: 'gantt', data: { rows: [
+    { id: 'ws', label: 'Workstream', items: [{ id: 'w1', kind: 'bar', start: '2026-04-06', end: '2026-04-30', label: 'Phase' }] },
+    { id: 'd1', label: 'Detail', indent: 1, items: [{ id: 'a', kind: 'bar', start: '2026-04-08', end: '2026-04-20', label: 'Task' }] },
+  ] }, options: { weekends: true, elapsed: false, theme: 'standard-dark', size: { width: 720 } } });
+  const geometry = layoutResolvedRequest(request);
+  if (geometry.refused) throw new Error('gantt refused');
+  const wash = geometry.scene.find(node => node.t === 'rect' && node.part === 'weekend');
+  const bar = geometry.scene.find(node => node.t === 'rect' && node.id === 'mark:d1:a');
+  if (wash?.t !== 'rect' || bar?.t !== 'rect') throw new Error('missing weekend wash or bar');
+  expect(contrastRatio(resolvePaint(bar.fill!, request.theme), resolvePaint(wash.fill!, request.theme))).toBeGreaterThanOrEqual(3);
+});
 
 // A hidden arrow must be named once in warnings, while other missing labels stay disclosed.
 it('gantt names each hidden arrow in one warning', () => {

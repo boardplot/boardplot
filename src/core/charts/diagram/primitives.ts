@@ -12,6 +12,13 @@ import type { Theme } from '../../types/theme';
 import { diagramSceneId } from './ids';
 
 export const q = (value: number): number => Math.round(value * 2) / 2;
+/**
+ * How much to grow the gaps between levels when the host sets a height the
+ * diagram does not need, only when the host fixed the height: up to 2.6 times, using 80 percent of the spare
+ * height. Natural height (no spare) gives 1.
+ */
+export const gapSpread = (fixedHeight: boolean, plotH: number, naturalH: number, gapSum: number): number =>
+  fixedHeight && gapSum > 0 ? Math.min(2.6, 1 + 0.8 * Math.max(0, plotH - naturalH) / gapSum) : 1;
 export const qPoint = (point: Point): Point => ({ x: q(point.x), y: q(point.y) });
 export const qRect = (rect: Rect): Rect => ({
   x: q(rect.x),
