@@ -57,7 +57,7 @@ Cohorts by periods-since-start: counts in, every retention rate derived, weighte
 | basis | string | `'cohort'`, `'previous'` | `'cohort'` | 'cohort' = active / cohort base (comparable down a column); 'previous' = active / the previous period's active. |
 | averages | false \| string | `false`, `'weighted'` | `false` | Weighted column average = total active / total base of the observed cohorts. |
 | methodNote | boolean |  |  | Default false. true adds the measure formula and explains the visible anchor column and blank cells. strings.cohortMeasure and strings.cohortFormula name another count-based measure, such as cumulative conversion. Required interpretation notes still print: the formula under basis 'previous', not-meaningful cells, weighted averages and rates too narrow to print. |
-| variant | string | `'heatmap'`, `'pure'`, `'stepped'` | `'heatmap'` | Form. 'heatmap' (the default) draws the heatmap surface, which honours 'labels'. 'pure' and 'stepped' draw the exhibit. Stepped columns fit measured content, normally 56–72px, and preserve weighted-average and missing-cell notes. The exhibit variants draw a fixed label set, so authoring 'labels' together with variant is refused (the legacy surface honours it). |
+| variant | string | `'heatmap'`, `'pure'`, `'stepped'` | `'heatmap'` | Form. 'heatmap' (the default) draws the heatmap surface, which honours 'labels'. 'pure' and 'stepped' draw the exhibit. Stepped columns share the width the label and size columns leave, as pure columns do, and preserve weighted-average and missing-cell notes. The exhibit variants draw a fixed label set, so authoring 'labels' together with variant is refused (the legacy surface honours it). |
 | formatScope | string | `'classic'`, `'column'` |  | Stepped fills use absolute bins ('classic') or normalize within each period ('column'). |
 | steps | array |  |  | Four ascending thresholds in percentage points that split the absolute ('classic') stepped fills into five classes the key names, such as [70, 80, 85, 90] for period-to-period retention. Default [30, 40, 50, 60]. |
 | visiblePeriods | array |  |  | Original zero-based period indices displayed in chronological order by exhibit presets. |
@@ -68,6 +68,7 @@ Cohorts by periods-since-start: counts in, every retention rate derived, weighte
 | total | false \| string | `false`, `'weighted'` |  | Exhibit summary row: weighted retention by default, or false to hide it. Never averages cohort percentages equally. |
 | excludeCurrentPeriod | boolean |  |  | Remove the newest cohort and longest period before exhibit derivation. |
 | exhibitLabel | string |  |  | Short exhibit heading above the assertion title. |
+| heightFill | string | `'rows'`, `'none'` | `'rows'` | Exhibit variants. 'rows' (default): rows take the spare height of a pinned canvas, up to 1.8 times, and stepped columns share the free width. 'none': natural row height, stepped columns at measured width. |
 
 Plus the [shared options](options.md). This type does not accept `detailFields`, `categoryLabels`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `topN`, `bandFraction`, `colorblindSafe`, `rounding`.
 

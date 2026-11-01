@@ -82,7 +82,7 @@ export const cohortOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptio
     .enum(['heatmap', 'pure', 'stepped'])
     .optional()
     .describe(
-      "Form. 'heatmap' (the default) draws the heatmap surface, which honours 'labels'. 'pure' and 'stepped' draw the exhibit. Stepped columns fit measured content, normally 56–72px, and preserve weighted-average and missing-cell notes. The exhibit variants draw a fixed label set, so authoring 'labels' together with variant is refused (the legacy surface honours it).",
+      "Form. 'heatmap' (the default) draws the heatmap surface, which honours 'labels'. 'pure' and 'stepped' draw the exhibit. Stepped columns share the width the label and size columns leave, as pure columns do, and preserve weighted-average and missing-cell notes. The exhibit variants draw a fixed label set, so authoring 'labels' together with variant is refused (the legacy surface honours it).",
     ),
   formatScope: z
     .enum(['classic', 'column'])
@@ -100,6 +100,9 @@ export const cohortOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptio
   total: z.union([z.literal(false), z.literal('weighted')]).optional().describe("Exhibit summary row: weighted retention by default, or false to hide it. Never averages cohort percentages equally."),
   excludeCurrentPeriod: z.boolean().optional().describe("Remove the newest cohort and longest period before exhibit derivation."),
   exhibitLabel: z.string().min(1).optional().describe("Short exhibit heading above the assertion title."),
+  heightFill: z.enum(['rows', 'none']).optional()
+    .meta({ default: 'rows' })
+    .describe("Exhibit variants. 'rows' (default): rows take the spare height of a pinned canvas, up to 1.8 times, and stepped columns share the free width. 'none': natural row height, stepped columns at measured width."),
 })
   // Cohort honours `labels` only on the legacy heatmap surface: the exhibit
   // presets return early into layoutCohortExhibit, which draws a fixed
