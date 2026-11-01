@@ -290,4 +290,11 @@ describe('a value matrix steps its text down before it hides a value', () => {
     expect(texts.length).toBeLessThan(36);
     expect(texts.every((value) => /\.\d\d$/.test(value))).toBe(true);
   });
+
+  // One wide number used to hide only its own cell, so the matrix printed the other 35 around a gap.
+  it('prints all of its values or none of them', () => {
+    const wideOne = series.map((s, r) => ({ ...s, values: s.values.map((_, i) => (r === 0 && i === 0 ? 123456 : 10 + i)) }));
+    const geometry = layoutHeatmap({ categories: cells, series: wideOne } as never, { variant: 'value', size: { width: 432, height: 300 }, format: '1,234' } as never);
+    expect(geometry.labels.filter((label) => label.kind === 'point' && !label.hidden)).toHaveLength(0);
+  });
 });
