@@ -136,7 +136,7 @@ export const OPTION_CAPABILITY = {
     implementedBy: [
       'bar', 'bartable', 'box', 'bullet', 'butterfly', 'cohort', 'column', 'combo', 'diagram', 'dot',
       'funnel', 'gantt', 'grid', 'heatmap', 'histogram', 'kpi', 'likert', 'line', 'mekko', 'pareto', 'pie', 'pvm',
-      'pyramid', 'scatter', 'slope', 'sparkline', 'status', 'table', 'dimswitch', 'variance', 'waterfall',
+      'pyramid', 'sankey', 'scatter', 'slope', 'sparkline', 'status', 'table', 'dimswitch', 'variance', 'waterfall',
     ],
   },
   // Story stepper: the types that fade marks by data id and keep

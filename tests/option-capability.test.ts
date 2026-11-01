@@ -558,6 +558,8 @@ describe('published option behaviour census', () => {
         if (key === 'a' || key === 'b') value = series.find(id => id !== current) ?? value;
         if (key === 'labelRegions') value = []; // An explicit empty set removes the authored region labels.
         if (key === 'today') value = '2026-05-20';
+        // The fixture highlights Purchase, a final node. An unset linkColor already colours the ribbons into it, as 'target' does; 'source' leaves them neutral.
+        if (type === 'sankey' && key === 'linkColor') value = 'source';
         if (type === 'dimswitch' && key === 'depth') value = 1;
         if (type === 'dimswitch' && key === 'order') value = { by: 'revenue', desc: true };
         if (type === 'dimswitch' && key === 'expansion') value = { depth: 1 };

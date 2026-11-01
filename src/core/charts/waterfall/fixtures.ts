@@ -161,6 +161,32 @@ export const fixtures: Fixture<WaterfallData, WaterfallOptions>[] = [
     ],
   },
   {
+    id: 'step-brackets',
+    title: 'Brackets over bridge steps print their sums',
+    kind: 'example',
+    data: {
+      items: [
+        { id: 'ebit24', label: 'EBIT 2024', type: 'total', value: 412 },
+        { id: 'volume', label: 'Volume', value: 64 },
+        { id: 'price', label: 'Price', value: 38 },
+        { id: 'mix', label: 'Mix', value: -21 },
+        { id: 'materials', label: 'Materials', value: -47 },
+        { id: 'labour', label: 'Labour', value: -33 },
+        { id: 'fx', label: 'FX', value: 12 },
+        { id: 'ebit25', label: 'EBIT 2025', type: 'total' },
+      ],
+    },
+    options: {
+      title: 'Commercial gains outweigh the cost increases',
+      unit: 'USD m',
+      source: 'Illustrative bridge; each bracket adds up its steps',
+    },
+    annotations: [
+      { kind: 'bracket', from: 'volume', to: 'mix', label: 'Commercial' },
+      { kind: 'bracket', from: 'materials', to: 'labour', label: 'Costs' },
+    ],
+  },
+  {
     id: 'build-down',
     title: 'Build-down: revenue to net income',
     kind: 'example',

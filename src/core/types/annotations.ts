@@ -46,6 +46,17 @@ export type Annotation<X extends string | number = Id> =
       /** 'bracket' (default) runs over the marks; 'arrow' is one straight arrow with the rate in an oval on it. */
       shape?: 'bracket' | 'arrow';
     })
+  | (AnnotationBase & {
+      /**
+       * A bracket over the steps `from` to `to` (inclusive) of a bridge. The engine adds up the
+       * steps and prints the sum, after `label` when one is given: "Commercial +81". Brackets
+       * over one chart stand in one row above the steps.
+       */
+      kind: 'bracket';
+      from: X;
+      to: X;
+      label?: string;
+    })
   | (AnnotationBase & { kind: 'delta'; at: AnchorRef<X>; vs: AnchorRef<X> | number } & GapPlacement)
   | (AnnotationBase & { kind: 'abs'; at: AnchorRef<X> }) // true-value flag (outlier marker)
   | (AnnotationBase & { kind: 'note'; at: AnchorRef<X>; text: string } & AnnotationGlyphSlot)
@@ -217,6 +228,7 @@ export function defaultAnnotationId(annotation: { kind: AnnotationKind; id?: Id 
 export const ANNOTATION_KIND_PURPOSES: Record<AnnotationKind, string> = {
   diff: 'Draws a level-difference arrow between two anchors and computes either percent change or their signed value difference.',
   cagr: 'Draws a growth arrow between two anchored points and computes the compound annual growth rate from their values and ISO-date span.',
+  bracket: 'Draws a bracket over an inclusive span of steps and prints the sum of their values, after an optional label.',
   delta: 'Computes the signed difference between an anchored value and another anchor or literal, then places a collision-managed label at the first anchor.',
   abs: 'Reads the anchored data value and places its formatted absolute value in a collision-managed label.',
   note: 'Places authored text at an anchored data element through collision avoidance, with an optional icon or status chip.',

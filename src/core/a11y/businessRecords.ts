@@ -486,9 +486,11 @@ function pyramid(ctx: RecordContext): InteractionRecord[] {
   return [geo.marks.left, geo.marks.right].flatMap((marks, index) => marks.map(mark => {
     const groupId = geo.derived.groupIds[index]!;
     const value = number(ctx, geo.derived.values[mark.id]?.[groupId]);
+    // Each side is its own whole under 'shareOfGroup'; otherwise both sides share the grand total.
+    const whole = geo.derived.basis === 'shareOfGroup' ? geo.derived.totals[groupId]! : geo.derived.grandTotal;
     return makeRecord(ctx, { categoryId: mark.id, seriesId: groupId }, value, {
       label: data.bands.find(band => band.id === mark.id)?.label ?? mark.id, anchor: mark.rect,
-      share: share(value, geo.derived.grandTotal, typeof value.raw === 'number' && geo.derived.grandTotal > 0 ? value.raw / geo.derived.grandTotal * 100 : undefined),
+      share: share(value, whole, typeof value.raw === 'number' && whole > 0 ? value.raw / whole * 100 : undefined),
     });
   }));
 }

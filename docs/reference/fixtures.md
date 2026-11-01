@@ -413,6 +413,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | ebit-bridge | waterfall.vertical | example | EBIT bridge FY21→FY24 |
 | interview-status-buildup | waterfall.vertical | example | Interview pipeline build-up by status |
 | revenue-build-up | waterfall.vertical | example | Revenue → EBIT build-up with diff arrow |
+| step-brackets | waterfall.vertical | example | Brackets over bridge steps print their sums |
 | build-down | waterfall.vertical | example | Build-down: revenue to net income |
 | whole-axis-opt-out | waterfall.vertical | example | Whole value axis kept with an explicit false |
 | automatic-axis-break | waterfall.vertical | example | Explicit automatic break makes small steps on a large base easier to compare |
@@ -525,6 +526,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | dpy-absolute-regions | variance.absolute | example | ΔPY absolute variance columns with forced signs |
 | dpl-relative-pins | variance.relative | example | ΔPL% relative variance pins, ≤1 decimal, forced signs |
 | integrated-fc-caps | variance.integrated | example | Integrated variance: AC columns with ΔFC caps |
+| integrated-solid-shortfall | variance.integrated | example | Integrated variance with a solid shortfall cap (surface.shortfallCap) |
 | ref-nonpositive-suppression | variance.relative | torture | Torture: REF zero and negative suppress Δ% with warnings |
 | all-positive-deltas | variance.absolute | torture | Total SaaS and services revenue growth by region versus prior year |
 | all-negative-deltas | variance.absolute | torture | Torture: all-negative ΔPL, labels mirrored below, category labels in one row under the bars |
@@ -817,7 +819,8 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 
 | ID | Chart | Kind | Use case |
 |---|---|---|---|
-| channel-journeys | sankey | example | Channel to landing page to outcome: stage headers, two small channels folded into Others and listed in the note |
+| channel-journeys | sankey | example | Channel to landing page to outcome: stage headers, two small channels folded into Others and listed in the note, Purchase highlighted |
+| channel-journeys-node-values | sankey | example | Channel journeys with linkValue none: node values only, no value on the ribbons |
 | budget-departments | sankey | example | Budget to departments to cost types, links coloured by target |
 | segment-migration | sankey | example | Customers moving between segments month to month: stage-qualified nodes, one segment order in every month |
 | sales-stages | sankey | torture | Six stages with drop-outs that skip columns as long links |
@@ -1050,7 +1053,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | workforce-tenure-gender | pyramid | example | Women outnumber men below four years of tenure and are outnumbered above ten |
 | torture-pyramid-degenerate | pyramid | torture | 22 bands, one empty in both groups, a 10:1 group imbalance and an open top band |
 | dated-population-comparison | pyramid | example | Growth within the same age band across two observation dates |
-| dated-share-difference | pyramid | example | An absolute difference between shares is measured in percentage points |
+| dated-share-difference | pyramid | example | Each snapshot is its own 100%, and a difference between shares is measured in percentage points |
 
 ## diagram
 
@@ -1087,6 +1090,9 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | journey-attribution | diagram.architecture | example | Multi-touch attribution from customer journey to budget |
 | nested-service | diagram.architecture | example | A service nested three levels deep, with one protected runtime |
 | agent-approval | diagram.architecture | example | An agent reaches its tools through an approval gate |
+| pipeline-health | diagram.architecture | example | A data pipeline with its service levels beside it |
+| long-names | diagram.architecture | torture | Long names keep every word at every width |
+| twenty-node-platform | diagram.architecture | torture | Twenty nodes and thirty edges across four zones |
 
 ## tilemap
 

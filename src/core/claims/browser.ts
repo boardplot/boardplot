@@ -928,13 +928,14 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
         groupIds: [string, string];
         values: Record<string, Record<string, number>>;
         grandTotal: number;
-        basis: 'count' | 'shareOfTotal';
+        totals: Record<string, number>;
+        basis: 'count' | 'shareOfTotal' | 'shareOfGroup';
         shares?: Record<string, Record<string, number>>;
         ratio: Record<string, number | null>;
       };
       const [ga, gb] = derived.groupIds;
       const shareClaims =
-        derived.basis === 'shareOfTotal' && derived.shares
+        derived.basis !== 'count' && derived.shares
           ? derived.order.flatMap((bandId) =>
               derived.groupIds.map((groupId) => ({
                 id: `pyramid:share:${bandId}:${groupId}`,
@@ -942,7 +943,9 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
                 op: 'share@1',
                 inputs: [
                   { ref: `${bandId}:${groupId}`, value: derived.values[bandId]?.[groupId] ?? null },
-                  { ref: 'grandTotal', value: derived.grandTotal },
+                  derived.basis === 'shareOfGroup'
+                    ? { ref: `total:${groupId}`, value: derived.totals[groupId] ?? null }
+                    : { ref: 'grandTotal', value: derived.grandTotal },
                 ],
                 output: {
                   raw: derived.shares![bandId]?.[groupId] ?? null,
