@@ -1031,9 +1031,9 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
   // at the chart's one share precision (or the share format's: shareLabels.format, else a percent options.format).
   const shareTexts = new Map<string, string>();
   const roundingAdjustments: RoundingAdjustment[] = [];
+  const shareExample = shareFormatExample(options);
+  const spec = shareExample ? parseFormatExample(shareExample) : undefined;
   if (options.rounding !== 'nearest') {
-    const shareExample = shareFormatExample(options);
-    const spec = shareExample ? parseFormatExample(shareExample) : undefined;
     for (const { c, parts } of wholes) {
       const rounded = sumConsistentShares(parts.map((part) => part.share), options.locale?.language, spec && withChartMarks(spec, options.locale?.language), shareSet.decimals);
       if (rounded?.warning) warnings.push(roundingUnavailable(c.label ?? c.id, rounded.warning));
@@ -1044,7 +1044,7 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
       });
     }
   } else if (sharesOn) {
-    warnShareRoundingDrift(warnings, wholes.map(({ c, parts }) => ({ name: c.label ?? c.id, shares: parts.map((part) => part.share), decimals: shareSet.decimals })));
+    warnShareRoundingDrift(warnings, wholes.map(({ c, parts }) => ({ name: c.label ?? c.id, shares: parts.map((part) => part.share), decimals: spec?.decimals ?? shareSet.decimals })));
   }
   // sharesOfOneWhole: a stack whose authored parts miss 100 prints shares of its own total.
   // Direct percent cells print as authored, so a stack holding one is not rescaled.

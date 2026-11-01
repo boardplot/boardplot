@@ -561,7 +561,7 @@ export function resolveBarDomain(data: ChartData, options: BarOptions, warnings:
       });
     }
   } else if (sharesOn) {
-    warnShareRoundingDrift(warnings, wholes.map(({ c, parts }) => ({ name: c.label, shares: parts.map((part) => part.share) })));
+    warnShareRoundingDrift(warnings, wholes.map(({ c, parts }) => ({ name: c.label, shares: parts.map((part) => part.share), decimals: shareSpec?.decimals })));
   }
   // sharesOfOneWhole: a bar whose authored parts miss 100 prints shares of its own total; direct percents print as authored.
   const rescaled = options.sharesOfOneWhole === true
