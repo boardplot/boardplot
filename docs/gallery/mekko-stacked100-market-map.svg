@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 511" width="720" height="511" direction="ltr" style="max-width:100%;height:auto;text-transform:none;letter-spacing:normal;word-spacing:normal;font-style:normal;font-variant:normal" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Acme leads in the two largest markets but trails in APAC and LatAm" aria-describedby="bp-desc-a23e51068e" data-bp-sizing="{&quot;aspect&quot;:&quot;16:9&quot;,&quot;minWidth&quot;:280,&quot;minHeight&quot;:270,&quot;fit&quot;:&quot;fill&quot;,&quot;measuredMinWidth&quot;:0,&quot;measuredMinHeight&quot;:258,&quot;naturalWidth&quot;:720,&quot;naturalHeight&quot;:405,&quot;comfortableWidth&quot;:350,&quot;comfortableHeight&quot;:338}" data-bp-mode="full" font-family="'Helvetica Neue', Helvetica, Arial, Roboto, sans-serif">
-<desc id="bp-desc-a23e51068e">percent-axis marimekko, 4 columns × 4 series; column widths proportional to category totals. Totals: Americas 13.9, EMEA 9.7, APAC 6.5, LatAm 1.9.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 511" width="720" height="511" direction="ltr" style="max-width:100%;height:auto;text-transform:none;letter-spacing:normal;word-spacing:normal;font-style:normal;font-variant:normal" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Acme leads in the two largest markets but trails in APAC and LatAm" aria-describedby="bp-desc-aee6c3ccad" data-bp-sizing="{&quot;aspect&quot;:&quot;16:9&quot;,&quot;minWidth&quot;:280,&quot;minHeight&quot;:270,&quot;fit&quot;:&quot;fill&quot;,&quot;measuredMinWidth&quot;:0,&quot;measuredMinHeight&quot;:258,&quot;naturalWidth&quot;:720,&quot;naturalHeight&quot;:405,&quot;comfortableWidth&quot;:350,&quot;comfortableHeight&quot;:338}" data-bp-mode="full" font-family="'Helvetica Neue', Helvetica, Arial, Roboto, sans-serif">
+<desc id="bp-desc-aee6c3ccad">percent-axis marimekko, 4 columns × 4 series; column widths proportional to category totals. Totals: Americas 13.9, EMEA 9.7, APAC 6.5, LatAm 1.9.</desc>
 <rect x="0" y="0" width="720" height="511" fill="#FFFFFF"/>
 <text data-id="frame:title:0" data-part="title" data-bp-role="title" x="24" y="37.60" text-anchor="start" font-size="20" font-weight="700" fill="#0D2A43"><tspan x="24" dy="0">Acme leads in the two largest markets but trails in APAC and LatAm</tspan></text>
 <text data-id="frame:subtitle:1" data-part="subtitle" data-bp-role="subtitle" x="24" y="61.32" text-anchor="start" font-size="14" font-weight="400" fill="#0D2A43"><tspan>Acme Corp · </tspan><tspan font-weight="700">Market share by region</tspan><tspan> in % of market · FY25 · AC</tspan></text>
@@ -14,19 +14,19 @@
 <rect data-id="mark:gamma:americas" data-part="segment" x="63.50" y="137.30" width="274.74" height="28.78" fill="#cfd9e2"/>
 <rect data-id="mark:beta:americas" data-part="segment" x="63.50" y="166.08" width="274.74" height="62.36" fill="#adb7c1"/>
 <rect data-id="mark:alpha:americas" data-part="segment" x="63.50" y="228.45" width="274.74" height="95.94" fill="#8b95a0"/>
-<rect data-id="mark:acme:americas" data-part="segment" x="63.50" y="324.39" width="274.74" height="146.31" fill="#1D4ED8"/>
+<rect data-id="mark:acme:americas" data-part="segment" x="63.50" y="324.39" width="274.74" height="146.31" fill="#10529E"/>
 <rect data-id="mark:gamma:emea" data-part="segment" x="338.24" y="137.30" width="191.73" height="30.93" fill="#cfd9e2"/>
 <rect data-id="mark:beta:emea" data-part="segment" x="338.24" y="168.23" width="191.73" height="51.56" fill="#adb7c1"/>
 <rect data-id="mark:alpha:emea" data-part="segment" x="338.24" y="219.79" width="191.73" height="106.55" fill="#8b95a0"/>
-<rect data-id="mark:acme:emea" data-part="segment" x="338.24" y="326.34" width="191.73" height="144.36" fill="#1D4ED8"/>
+<rect data-id="mark:acme:emea" data-part="segment" x="338.24" y="326.34" width="191.73" height="144.36" fill="#10529E"/>
 <rect data-id="mark:gamma:apac" data-part="segment" x="529.97" y="137.30" width="128.48" height="30.78" fill="#cfd9e2"/>
 <rect data-id="mark:beta:apac" data-part="segment" x="529.97" y="168.08" width="128.48" height="61.55" fill="#adb7c1"/>
 <rect data-id="mark:alpha:apac" data-part="segment" x="529.97" y="229.63" width="128.48" height="148.75" fill="#8b95a0"/>
-<rect data-id="mark:acme:apac" data-part="segment" x="529.97" y="378.37" width="128.48" height="92.33" fill="#1D4ED8"/>
+<rect data-id="mark:acme:apac" data-part="segment" x="529.97" y="378.37" width="128.48" height="92.33" fill="#10529E"/>
 <rect data-id="mark:gamma:latam" data-part="segment" x="658.45" y="137.30" width="37.55" height="52.64" fill="#cfd9e2"/>
 <rect data-id="mark:beta:latam" data-part="segment" x="658.45" y="189.94" width="37.55" height="87.74" fill="#adb7c1"/>
 <rect data-id="mark:alpha:latam" data-part="segment" x="658.45" y="277.68" width="37.55" height="122.83" fill="#8b95a0"/>
-<rect data-id="mark:acme:latam" data-part="segment" x="658.45" y="400.51" width="37.55" height="70.19" fill="#1D4ED8"/>
+<rect data-id="mark:acme:latam" data-part="segment" x="658.45" y="400.51" width="37.55" height="70.19" fill="#10529E"/>
 <line data-id="seam:mark:gamma:americas:0" data-part="segmentSeam" x1="338.24" y1="137.30" x2="338.24" y2="166.08" stroke="#FFFFFF" stroke-width="0.5"/>
 <line data-id="seam:mark:beta:americas:1" data-part="segmentSeam" x1="63.50" y1="166.08" x2="338.24" y2="166.08" stroke="#FFFFFF" stroke-width="0.5"/>
 <line data-id="seam:mark:beta:americas:2" data-part="segmentSeam" x1="338.24" y1="166.08" x2="338.24" y2="168.23" stroke="#FFFFFF" stroke-width="0.5"/>
