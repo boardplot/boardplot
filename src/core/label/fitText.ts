@@ -50,6 +50,8 @@ export interface FitOptions extends TypographyMetadata {
   tightLines?: number;
   /** A name: its lines may also break after `_`, `-`, `/` or `.` (wrapText). */
   breakAfter?: boolean;
+  /** A name that the line limit would cut is wrapped again with breaks after `_ - / .`, and the second result wins when it needs no cut. */
+  hyphenRetry?: boolean;
 }
 
 export function lineBox(font: FontSpec): number {
@@ -105,6 +107,10 @@ export function fitText(
       for (const candidate of texts) {
         const tried = attempt(candidate, candidateFont, width, lines, measure, options.typeRole, options.breakAfter);
         if (!tried.cut) return tried.fitted;
+        if (options.hyphenRetry && !options.breakAfter) {
+          const marked = attempt(candidate, candidateFont, width, lines, measure, options.typeRole, true);
+          if (!marked.cut) return marked.fitted;
+        }
       }
     }
     return undefined;

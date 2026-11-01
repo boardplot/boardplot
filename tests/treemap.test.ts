@@ -36,3 +36,33 @@ it('draws a treemap name with two over-long words on its tile', () => {
   const svg = renderSvg(requireGeometry(layoutResolvedRequest(request)), request.theme);
   expect(svg).toContain('data-id="label:item:c"');
 });
+
+// Problem: on a slide the size ladder stopped after three steps, so cells of a long-name treemap stayed blank
+// while a smaller label size would have named them, and a hyphenated name was left blank instead of breaking at its hyphen.
+const longNames: [string, number][] = [['Other operating expenses', 234.1], ['North-Westmoor (Riverland)', 286.4], ['Upper Midlands and South-East', 269],
+  ['Northumberland-Westmoreland', 372.6], ['Pension provisions, domestic', 411.6], ['Depreciation of fixed assets', 205], ['Research and development expenses', 260.6],
+  ['Lower-Rhine and Southland', 412.8], ['Customer acquisition cost', 321.7], ['Selling and distribution overheads', 449.2], ['Costs of purchased goods', 401.5],
+  ['Greater-Midlands and Bristol', 572.8], ['Average order value, marketplace', 335.2], ['Interest and similar expenses', 236.3], ['Reinvoiced transportation costs', 298.1],
+  ['Maintenance and repairs', 609.8], ['General and administrative costs', 308.3], ['Net revenue retention, enterprise', 457.4], ['Other operating income', 441.4],
+  ['Income from equity-accounted firms', 504.6], ['Subcontracted logistics overseas', 497.5], ['Change in net working capital', 270], ['Depreciation and amortisation', 606],
+  ['Other comprehensive income items', 200]];
+const drawLongNames = () => {
+  const items = longNames.map(([label, value], i) => ({ id: `n${i}`, label, group: `g${i % 5}`, value }));
+  const request = resolveChartRequest({ type: 'treemap', data: { groups: [0, 1, 2, 3, 4].map((i) => ({ id: `g${i}`, label: `Group ${i}` })), items },
+    options: { target: 'slide', size: { width: 888, height: 396, unit: 'pt' }, cellValue: 'value-share' } });
+  return requireGeometry(layoutResolvedRequest(request));
+};
+
+it('steps treemap names down to the slide floor and names every cell', () => {
+  const g = drawLongNames();
+  expect(g.labels.filter((l) => l.hidden)).toEqual([]);
+  const sizes = g.scene.flatMap((n) => (n.t === 'text' && n.id.startsWith('label:item:') ? [n.font.size] : []));
+  expect(Math.min(...sizes)).toBeGreaterThanOrEqual(40 / 3 - 1e-6);
+});
+
+it('breaks a treemap name at its own hyphen before it blanks the cell', () => {
+  const items = [['Northumberland-Westmoreland', 300], ['Other operating income', 400], ['Pension provisions', 300]].map(([label, value], i) => ({ id: `n${i}`, label: label as string, value: value as number }));
+  const request = resolveChartRequest({ type: 'treemap', data: { items }, options: { target: 'slide', size: { width: 280, height: 400, unit: 'pt' }, cellValue: 'value-share' } });
+  const lines = requireGeometry(layoutResolvedRequest(request)).scene.flatMap((n) => (n.t === 'text' && n.id === 'label:item:n0' ? n.lines : []));
+  expect(lines).toEqual(['Northumberland-', 'Westmoreland']);
+});
