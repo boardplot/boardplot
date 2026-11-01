@@ -423,4 +423,9 @@ it('a sum of cancelling amounts is exactly 0 on a table, a bridge, a stack and a
   }, {});
   expect(dimswitch.filter((text) => noise.test(text))).toEqual([]);
   expect(dimswitch).toContain('n.m.');
+  const combo = { ...stack, series: [...stack.series.map((s) => ({ ...s, kind: 'column' })), { id: 'l', label: 'Line', kind: 'line', values: [1, 2] }] };
+  expect(texts('combo', combo, { unit: 'EUR m' }).filter((text) => noise.test(text))).toEqual([]);
+  // topN folds C, D and E into Others; their sum cancels.
+  const topN = { categories: ['A', 'B', 'C', 'D', 'E'].map((id) => ({ id, label: id })), series: [{ id: 's', label: 'S', values: [50, 40, 0.1, 0.2, -0.3] }] };
+  for (const type of ['bar', 'column']) expect(texts(type, topN, { unit: 'EUR m', topN: { n: 2, rest: true } }).filter((text) => noise.test(text))).toEqual([]);
 });
