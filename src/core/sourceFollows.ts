@@ -52,11 +52,37 @@ function arcPoints(from: Pt, rx: number, ry: number, rotation: number, large: bo
   });
 }
 
-/** The largest y a path outline reaches (M L H V C Q A S T Z, absolute and relative); curves are sampled. */
-function pathLowest(d: string): number {
+const POLYLINE = /^[MLZ\d\s,.eE+-]*$/;
+
+/** Absolute polylines (every map region, every straight mark): the y of each second number, read by hand. */
+function polylineLowest(d: string, stop: number): number {
+  let lowest = -Infinity, index = 0;
+  const end = d.length;
+  for (let i = 0; i < end;) {
+    const c = d.charCodeAt(i);
+    // A number starts at a digit, a sign or a point; 'e' only continues one.
+    if (c >= 48 && c <= 57 || c === 45 || c === 46) {
+      const from = i++;
+      for (let e = d.charCodeAt(i); i < end && (e >= 48 && e <= 57 || e === 46 || e === 101 || e === 69 || (e === 45 || e === 43) && (d.charCodeAt(i - 1) | 32) === 101); e = d.charCodeAt(++i));
+      if (index++ & 1) {
+        const y = +d.slice(from, i);
+        if (y > lowest) { lowest = y; if (y >= stop) return lowest; }
+      }
+    } else i++;
+  }
+  return lowest;
+}
+
+/**
+ * The largest y a path outline reaches (M L H V C Q A S T Z, absolute and relative); curves are sampled.
+ * It may stop early with any value at or above `stop`, which is all a caller that only asks "does it reach `stop`" needs.
+ */
+function pathLowest(d: string, stop: number): number {
+  if (POLYLINE.test(d)) return polylineLowest(d, stop);
   let lowest = -Infinity, at: Pt = { x: 0, y: 0 }, start = at;
   const see = (y: number) => { if (y > lowest) lowest = y; };
   for (const [, command, args] of d.matchAll(/([MmLlHhVvCcSsQqTtAaZz])([^MmLlHhVvCcSsQqTtAaZz]*)/g)) {
+    if (lowest >= stop) return lowest;
     const n = (args!.match(/-?\d*\.?\d+(?:e[+-]?\d+)?/gi) ?? []).map(Number);
     const rel = command === command!.toLowerCase(), kind = command!.toUpperCase();
     if (kind === 'Z') { at = start; continue; }
@@ -95,8 +121,8 @@ function pathLowest(d: string): number {
   return lowest;
 }
 
-/** Top and bottom of a node in canvas px, with its translation. */
-function extent(node: SceneNode): [number, number] | undefined {
+/** Top and bottom of a node in canvas px, with its translation. A path's top is its bottom; it may stop early above `stop`. */
+function extent(node: SceneNode, stop = Infinity): [number, number] | undefined {
   const dy = node.ty ?? 0;
   switch (node.t) {
     case 'rect': case 'image': {
@@ -106,9 +132,10 @@ function extent(node: SceneNode): [number, number] | undefined {
     case 'line': return [Math.min(node.y1, node.y2) + dy - node.width / 2, Math.max(node.y1, node.y2) + dy + node.width / 2];
     case 'circle': return [node.cy + dy - node.r, node.cy + dy + node.r];
     case 'path': {
-      const low = pathLowest(node.d);
+      const half = node.stroke ? (node.width ?? 1) / 2 : 0;
+      const low = pathLowest(node.d, stop - dy - half);
       if (!Number.isFinite(low)) return undefined;
-      const bottom = low + dy + (node.stroke ? (node.width ?? 1) / 2 : 0);
+      const bottom = low + dy + half;
       return [bottom, bottom];
     }
     case 'text': {
@@ -168,20 +195,31 @@ export function sourceFollowsContent(geometry: Geometry<object, object>, options
   const blockTop = Math.min(...tops);
   const gap = blockTop - plotBottom;
   if (gap < 0) return;
+  // A lift needs the lowest mark above this line. Marks that reach it end the search, and a path only has to be read up to the block.
+  const line = plotBottom - LIFT_OVER;
+  const inBlock = blockTop - 0.01;
+  const boxes = geometry.scene.map(node => node.t === 'path' ? undefined : extent(node));
   let ink = -Infinity;
-  for (const node of geometry.scene) {
-    const box = extent(node);
-    if (!box || box[0] >= blockTop - 0.01 || !drawn(node, size)) continue;
+  geometry.scene.forEach((node, i) => {
+    const box = boxes[i];
+    if (box && box[0] < inBlock && drawn(node, size)) ink = Math.max(ink, box[1]);
+  });
+  if (ink >= line) return;
+  for (const [i, node] of geometry.scene.entries()) {
+    if (node.t !== 'path' || !drawn(node, size)) continue;
+    const box = boxes[i] = extent(node, inBlock);
+    if (!box || box[0] >= inBlock) continue;
     ink = Math.max(ink, box[1]);
+    if (ink >= line) return;
   }
   if (!Number.isFinite(ink)) return;
   const spare = blockTop - ink - gap;
   if (spare <= LIFT_OVER) return;
   if (resolveTheme((options as { theme?: ThemeRef } | undefined)?.theme).space.footerFollows === false) return;
   const dy = r2(spare);
-  geometry.scene = geometry.scene.map(node => {
-    const box = extent(node);
-    return box && box[0] >= blockTop - 0.01 ? moved(node, dy) : node;
+  geometry.scene = geometry.scene.map((node, i) => {
+    const box = node.t === 'path' ? boxes[i] ?? extent(node, inBlock) : boxes[i];
+    return box && box[0] >= inBlock ? moved(node, dy) : node;
   });
   const shifted: Partial<typeof frame> = {};
   if (frame.footerRect) shifted.footerRect = up(frame.footerRect, dy);
