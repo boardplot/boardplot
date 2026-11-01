@@ -112,37 +112,28 @@ export function layoutTreemap(data: TreemapData, options: TreemapOptions = {}): 
   let best = layoutTreemapAt(data, options, memo);
   const first = FIT_SCORE.get(best);
   if (!first) return best;
-  const better = (got: FitScore, than: FitScore) => got.hidden < than.hidden
-    || got.hidden === than.hidden && got.broken < than.broken
+  // Fewer names that are blank or cut win. At the same count, fewer cut words win. A step that cuts a name main printed whole must not win by naming more cells.
+  const better = (got: FitScore, than: FitScore) => got.hidden + got.broken < than.hidden + than.broken
+    || got.hidden + got.broken === than.hidden + than.broken && got.broken < than.broken
     || got.hidden === than.hidden && got.broken === than.broken && than.side < than.wanted && got.side >= than.side + 4;
   // The sizes to try, from the next step down to the floor. The last one is the floor itself, not a whole pixel above it.
   const floor = options.target === 'slide' ? SLIDE_FIT_FLOOR : FIT_FLOOR;
   const steps: number[] = [];
   const settled = first.hidden === 0 && first.broken === 0 && first.side >= first.wanted;
   if (!settled && textSizeOf(options) === undefined) for (let px = first.base - 1; px > floor - 1 && first.base > floor; px--) steps.push(Math.max(px, floor));
-  const tried = new Map<number, { geometry: Geometry<TreemapMarks, TreemapDerived>; score: FitScore }>();
-  const at = (px: number) => {
-    let entry = tried.get(px);
-    if (!entry) {
-      const geometry = layoutTreemapAt(data, { ...options, [FIT_STEP]: px } as TreemapOptions, memo);
-      tried.set(px, entry = { geometry, score: FIT_SCORE.get(geometry)! });
-    }
-    return entry;
-  };
-  // Cells only gain names as the size falls, so the floor shows the best result a step can reach. The
-  // search takes the largest size that reaches it, in about log2 of the steps.
+  // A smaller size can wrap a name differently, so the floor is not always the best step. Every step
+  // is laid out (a handful), and the largest size with the best result wins.
   let chosen = 0;
-  if (steps.length > 0 && better(at(steps[steps.length - 1]!).score, first)) {
-    const goal = at(steps[steps.length - 1]!).score;
-    let lo = 0;
-    let hi = steps.length - 1;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (better(goal, at(steps[mid]!).score)) lo = mid + 1;
-      else hi = mid;
+  let score = first;
+  for (const px of steps) {
+    if (score.hidden === 0 && score.broken === 0 && score.side >= score.wanted) break;
+    const geometry = layoutTreemapAt(data, { ...options, [FIT_STEP]: px } as TreemapOptions, memo);
+    const got = FIT_SCORE.get(geometry)!;
+    if (better(got, score)) {
+      best = geometry;
+      score = got;
+      chosen = px;
     }
-    chosen = steps[lo]!;
-    best = at(chosen).geometry;
   }
   memo.set(memoKey, chosen);
   return best;

@@ -74,3 +74,14 @@ it('breaks a treemap word between consonants or before a word ending, not inside
   expect(lines).not.toContain('Custo-');
   expect(lines).toContain('Westmore-');
 });
+
+// Problem: the size search ranked a blank cell above a cut word, so on an 853 x 315 px slide it chose 13.33 px, which names more
+// cells but cuts "Health" ("Hea-" "lth") where 14.67 px prints "Health" whole.
+it('does not cut a treemap name that a larger label size prints whole', () => {
+  const items = [['Warehouse-Fulfilment Operations', 114], ['Energy', 6], ['Reinsurance Premiums', 58], ['Warehousing', 9], ['Mecklenburg-Vorpommern', 115], ['Self-Service Onboarding', 21],
+    ['Pharmaceuticals', 24], ['Rail', 49], ['Self-Service Onboarding I', 197], ['Rail J', 47], ['Health', 11], ['Administration', 63]]
+    .map(([label, value], i) => ({ id: `n${i}`, label: label as string, value: value as number }));
+  const request = resolveChartRequest({ type: 'treemap', data: { items }, options: { target: 'slide', size: { width: 853, height: 315, unit: 'px' } } });
+  const lines = requireGeometry(layoutResolvedRequest(request)).scene.flatMap((n) => (n.t === 'text' && n.id === 'label:item:n10' ? n.lines : []));
+  expect(lines.join(' ')).toContain('Health');
+});
