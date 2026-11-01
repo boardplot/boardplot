@@ -40,10 +40,10 @@ Part of a whole in one or two levels (group, item): cell area is value. Squarifi
 
 | Path | Type | Required | Meaning |
 |---|---|---|---|
-| groups | array |  | Groups in source order. Each group is one hue and one contiguous region. Left out, the groups come from the items in first-seen order. |
+| groups | array |  | Groups in source order. Each group is one colour and one contiguous region; by default the groups share one colour family, the first drawn group strongest (the largest under the default order). Left out, the groups come from the items in first-seen order. |
 | groups[].id | string | yes | Group identity that items name in `group`. |
 | groups[].label | string |  | Group name in the legend; defaults to the id. |
-| groups[].colorRole | string |  | Theme color role of every cell in this group; the palette is used when absent. One of good, bad, warn, neutral, neutralLight, highlight, total, others; series-N for step N of the theme ramp, 1-based (series-2 is color.series[1]); or status-<key> for a theme status colour. A hex colour goes in fill. |
+| groups[].colorRole | string |  | Theme color role of every cell in this group. Absent, the group takes its rank step on color.treemap (else color.stack, else the first series colour stepped toward the page), or its palette hue when options.palette is set. One of good, bad, warn, neutral, neutralLight, highlight, total, others; series-N for step N of the theme ramp, 1-based (series-2 is color.series[1]); or status-<key> for a theme status colour. A hex colour goes in fill. |
 | groups[].fill | string |  | Authored fill of every cell in this group. |
 | items | array | yes | Items, one cell each. Items of one group sit next to each other. |
 | items[].id | string | yes | Item identity, one cell. |
@@ -78,6 +78,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 |---|---|---|
 | growth-rect | example | Squarified treemap: 19 items in 5 groups, exact areas, group key with totals, small names beside the region |
 | growth-circle | example | Circular Voronoi treemap of the same data: convex cells, leaders to both sides and a total callout |
+| growth-rect-group-hues | example | The same groups with one hue each: color.treemap set to the series colours |
 | one-level-shares | example | One level, no groups: one hue, value and share of the total on every cell |
 | source-order-shares-circle | example | Circle in source order with shares of the total and the key at the bottom |
 

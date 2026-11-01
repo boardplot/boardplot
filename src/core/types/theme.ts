@@ -147,6 +147,13 @@ export interface Theme {
      * categorical `series` order.
      */
     stack?: string[];
+    /**
+     * The fills of treemap groups by rank, the first drawn group the
+     * strongest (2 or more steps). More groups than steps share the ramp
+     * evenly between its ends. Absent takes `stack`; a theme without either
+     * steps the first series colour toward the page.
+     */
+    treemap?: string[];
     seriesOverflow?: 'repeatLast' | 'cycle'; // default 'repeatLast'
     /**
      * Named alternative categorical ramps (e.g. 'region', 'channel') so one
