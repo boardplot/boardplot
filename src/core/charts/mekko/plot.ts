@@ -100,10 +100,9 @@ export function mekkoPaints(env: MekkoEnv, domain: MekkoDomain, warnings: LintWa
  */
 function mekkoLegend(env: MekkoEnv, domain: MekkoDomain, paints: MekkoPaints): FrameInput['legend'] {
   const { options } = env;
-  // A column too thin to draw (a total of 0 included): when its disclosure does not print, the key names it.
-  // The names come from the drawn widths of a first pass (layoutMekkoPass), the rule the note uses.
-  const zero = disclosuresShown(options) ? [] : (options as { [MEKKO_NOT_DRAWN]?: string[] })[MEKKO_NOT_DRAWN] ?? [];
-  const omitted = zero.length > 0 ? [omittedKey('__omitted', chartString(options, 'mekkoZeroNote', { v1: zero.join(', ') }))] : [];
+  // A missing or undrawn column keeps its explanation in the key when its disclosure does not print.
+  const notDrawn = disclosuresShown(options) ? [] : (options as { [MEKKO_NOT_DRAWN]?: string[] })[MEKKO_NOT_DRAWN] ?? [];
+  const omitted = notDrawn.map((text, i) => omittedKey(i === 0 ? '__omitted' : `__omitted:${i}`, text));
   // The widest column names each series in place: no series key is needed.
   if (env.namesInPlace) return omitted.length > 0 && options.legend !== 'none' ? { options: normalizeLegendOption('top'), items: omitted } : undefined;
   // Two or more series are told apart by colour alone, so they
@@ -141,7 +140,7 @@ function mekkoLegend(env: MekkoEnv, domain: MekkoDomain, paints: MekkoPaints): F
   return { options: legendOpts, items };
 }
 
-/** Internal: the columns a first pass drew under 0.5 px wide (`notDrawnColumns`), for the key. */
+/** Internal: explanations for missing or undrawn columns from the first pass, for the key. */
 export const MEKKO_NOT_DRAWN = Symbol('mekkoNotDrawn');
 
 /** The frame, with the legend as a layout participant; it claims into an index of its own. */
