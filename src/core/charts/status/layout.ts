@@ -378,7 +378,8 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
   const fixedHeight = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height ?? !heightOmitted(options.size);
   // A row needs its name's height and the label gap. A fixed 28 px floor refused a 12-row board on a full slide,
   // where a row name needs about 24 px. Cell text that must be read sets its own floor below (namedCellHeights).
-  const rowFloorH = maxOf(rowText.map(text => text.h + LABEL_PAD - CELL_GAP));
+  // A board that cuts a row name keeps the 28 px floor: the lower one is for names that stay whole.
+  const rowFloorH = Math.max(rowText.some(text => text.title !== undefined) ? 28 : 0, maxOf(rowText.map(text => text.h + LABEL_PAD - CELL_GAP)));
   const minimumRowsH = rows.length * rowFloorH + (rows.length - 1) * CELL_GAP;
   if (fixedHeight && columnLabelH + COLUMN_GAP + minimumRowsH > framePlot.h) {
     // The two-line header form keeps accepted fixed frames drawable.
