@@ -470,14 +470,24 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
   const labelRequests: LabelRequest[] = [];
   // A panel whose host holds the key keeps its per-cell names: no key can be added here.
   const hostHoldsKey = options.legend === 'none' && panelTypeClass(options) !== undefined;
-  const namedCells = labelOn('point') && !keyNamesStates && (hostHoldsKey || cells.every(binding => {
+  // Under an explicit labelDensity 'full' the names step down the type scale to the floor before they are given up.
+  const namesFit = (font: FontSpec) => cells.every(binding => {
     const state = stateById.get(binding.state);
     if (!state) return true;
     const value = binding.value === undefined ? undefined : valueForStatus(binding.value, raster, options.format !== undefined);
     const lines = [state.label, ...(value ? [value] : [])];
-    return Math.max(...lines.map(line => measure(line, cellFont).width)) + 8 <= cellW
-      && lines.reduce((height, line) => height + measure(line, cellFont).height, 0) + 4 <= cellH;
-  }));
+    return Math.max(...lines.map(line => measure(line, font).width)) + 8 <= cellW
+      && lines.reduce((height, line) => height + measure(line, font).height, 0) + 4 <= cellH;
+  });
+  const namesRequested = labelOn('point') && !keyNamesStates && (options.labelDensity ?? 'smart') === 'full';
+  const nameFonts: FontSpec[] = [cellFont];
+  if (namesRequested) {
+    for (let next = stepDownFont(theme, cellFont, 'label', options.target, textScaleOf(options)); next;
+      next = stepDownFont(theme, next, 'label', options.target, textScaleOf(options))) nameFonts.push(next);
+  }
+  const nameFont = hostHoldsKey ? cellFont : nameFonts.find(namesFit);
+  const namedCells = labelOn('point') && !keyNamesStates && (hostHoldsKey || nameFont !== undefined);
+  const textFont = nameFont ?? cellFont;
 
   rows.forEach((row, rowIndex) => {
     columns.forEach((column, columnIndex) => {
@@ -528,7 +538,7 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
       // labels: false takes the state texts off: colour, hatch and the key carry the state.
       if (state && labelOn('point')) {
         const fit = (lines: string[]) => {
-          const sizes = lines.map(line => measure(line, cellFont));
+          const sizes = lines.map(line => measure(line, textFont));
           const size = { width: Math.max(...sizes.map(size => size.width)), height: sizes.reduce((sum, size) => sum + size.height, 0) };
           return { lines, size, fits: size.width + 8 <= rect.w && size.height + 4 <= rect.h };
         };
@@ -546,7 +556,8 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
             ...(lines.includes(state.label) ? {} : { printsFor: [] }),
             text,
             lines,
-            font: cellFont,
+            font: textFont,
+            ...(textFont !== cellFont ? { fontStep: textFont } : {}),
             priority: fits ? PRIORITY.interior : PRIORITY.valueLine,
             candidates: fits ? [{
               slot: 'inside',
@@ -557,6 +568,12 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
             }] : [],
           });
         }
+      }
+      // An authored labelDensity 'full' that no type step makes fit is a lost request: a seatless request
+      // is hidden, so the warning and reading.omissions name every cell whose state name is not drawn.
+      if (state && namesRequested && !namedCells) {
+        labelRequests.push({ id: `stateName:${row.id}:${column.id}`, kind: 'point', typeRole: 'label', role: 'category', owner,
+          text: state.label, lines: [state.label], font: cellFont, priority: PRIORITY.interior, candidates: [] });
       }
       marks.cells.push({
         row: row.id,

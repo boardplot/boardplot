@@ -622,4 +622,23 @@ describe('chart layout edge cases', () => {
     const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
     expect(geometry.labels.filter((l: { hidden?: unknown }) => l.hidden !== undefined)).toEqual([]);
   });
+  // labelDensity 'full' on a status board dropped every cell name without a word at phone width, so the
+  // reader got a board that ignored the request. The names now step down the type scale first, and
+  // names that still do not fit warn and appear in the omissions.
+  it('a status board with labelDensity full steps its names down, then names the ones it cannot draw', () => {
+    const board = (width: number) => {
+      const fixture = getFixtures('status').find((f) => f.id === 'programme-rollout-rag')!;
+      const request = { type: 'status', data: structuredClone(fixture.data), options: { ...structuredClone(fixture.options ?? {}), labelDensity: 'full', target: 'dashboard', size: { width } } };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+    };
+    const names = (g: { labels: { id: string; hidden?: unknown }[] }) => g.labels.filter((l) => l.id.startsWith('stateName:') && l.hidden);
+    const narrow = board(358);
+    expect(names(narrow).length).toBeGreaterThan(0);
+    expect(narrow.warnings.some((w: { code: string; severity: string }) => w.code === 'label-hidden' && w.severity === 'warn')).toBe(true);
+    // A width where the full-size names do not fit but the one smaller type step does.
+    const stepped = board(500);
+    expect(names(stepped)).toEqual([]);
+    expect(stepped.labels.filter((l: { id: string; hidden?: unknown }) => l.id.startsWith('state:') && !l.hidden).length).toBeGreaterThan(0);
+  });
 });
