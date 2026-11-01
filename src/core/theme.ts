@@ -8,7 +8,7 @@ import { adaptivePaintColor } from './colorRecipes';
  * and 'notation' (+ dark pairs) are the other presets.
  */
 
-import { apcaContrast, compositeColor, contrastRatio, mixColors, onFillInks, parseColor, pickOnFillInk, tint } from './color';
+import { apcaContrast, compositeColor, contrastRatio, matrixNeedsDarkInk, mixColors, onFillInks, parseColor, pickMatrixInk, pickOnFillInk, tint } from './color';
 import type { Margin } from './geometry';
 import { markVisibilityFloor } from './markVisibility';
 import { READER_LABEL_MIN_PX, tableHeadFloorPx } from './typeFloors';
@@ -1802,6 +1802,17 @@ function themePaintSourceColor(theme: Theme, source: ThemePaintSource): string {
   return color;
 }
 
+/** The matrix decision of the contrast-ink recipe, made once per matrix list and theme: every value of the matrix asks for it. */
+const matrixDecision = new WeakMap<Paint[], { theme: Theme; size: number; rescued: boolean }>();
+function matrixRescued(theme: Theme, matrix: Paint[]): boolean {
+  const known = matrixDecision.get(matrix);
+  if (known && known.theme === theme && known.size === matrix.length) return known.rescued;
+  const grounds = matrix.map((paint) => compositeColor(paintColor(theme, paint), theme.color.background));
+  const rescued = matrixNeedsDarkInk(grounds, theme.color.ink, theme.color.inkInverse, onFillInks(theme.color));
+  matrixDecision.set(matrix, { theme, size: matrix.length, rescued });
+  return rescued;
+}
+
 function sourceColor(theme: Theme, source: ThemePaintSource): string {
   if (source.kind === 'gantt-row-tint') {
     const amount = Math.min(resolveSurface(theme).ganttRowTint, source.key ? 0.8 : 1);
@@ -1928,6 +1939,9 @@ function sourceColor(theme: Theme, source: ThemePaintSource): string {
   if (source.kind === 'contrast-ink') {
     const fill = compositeColor(paintColor(theme, source.fill), theme.color.background);
     const ground = source.pattern ? effectiveFill(fill, source.pattern, theme) : fill;
+    if (source.matrix?.length && !source.also?.length) {
+      return pickMatrixInk(ground, matrixRescued(theme, source.matrix), theme.color.ink, theme.color.inkInverse, onFillInks(theme.color));
+    }
     const ink = pickOnFillInk(ground, theme.color.ink, theme.color.inkInverse, onFillInks(theme.color));
     if (!source.also?.length) return ink;
     // Text across several grounds: of the inks that may print on a fill, the one whose

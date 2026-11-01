@@ -1,0 +1,4 @@
+### Changed / may need action
+
+- The values in the cells of a heatmap or cohort matrix print in one dark ink and white. Before, each cell took the theme ink on a light fill and a near-black on a mid fill, so a value such as 0.61 stood bold beside 0.55. Now, when any cell needs the dark on-fill ink to reach 4.5:1, every dark value of the matrix takes that ink. The 4.5:1 floor is unchanged, white values stay white, and the choice is made again in each theme. A theme that sets `color.onFillInk` keeps its value. Bubble matrices and other charts are unchanged.
+  - Old look: no option brings back the per-cell mix of two dark inks, because the choice is now made for the whole matrix. The nearest look is one dark ink that is the theme ink: set the theme's `color.onFillInk` to the value of its `color.ink`. Mid fills where that ink reads below 4.5:1 then keep it instead of switching to near-black.
