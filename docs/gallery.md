@@ -4531,7 +4531,7 @@ Diverging bars for survey scales. [Reference](reference/likert.md)
     "summary": "net",
     "sortBy": "net",
     "labelDensity": "full",
-    "notes": { "show": ["note", "disclosure"] },
+    "notes": { "show": ["note", "method", "disclosure"] },
     "title": "Engagement survey — agreement by statement",
     "subtitle": { "measure": "Share of responses", "period": "FY25 pulse" },
     "legend": "bottom",
