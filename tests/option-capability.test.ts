@@ -420,7 +420,7 @@ describe('published option behaviour census', () => {
     ["bar column combo", "referenceStyle", "This fixture has no reference mark that responds to this style."],
     ["bar combo", "referenceTick", "This fixture has no reference tick that responds to this width."],
     ["bartable box grid heatmap kpi line slope sparkline status dimswitch table variance waffle", "labelDensity", "This fixture keeps the same label set at minimal density."],
-    ["bartable cohort column combo dot histogram kpi pvm sparkline status dimswitch table sankey treemap variance waffle waterfall", "legend", "The requested key position changes no SVG on this fixture."],
+    ["bartable cohort column combo dot histogram kpi pvm sparkline status dimswitch table tilemap sankey treemap variance waffle waterfall", "legend", "The requested key position changes no SVG on this fixture."],
     ["bartable mekko slope", "highlight", "The selected id changes no mark in this representative fixture."],
     ["bartable box bullet choropleth cohort gantt grid histogram kpi likert pvm pyramid scatter sparkline status dimswitch table tilemap sankey treemap waffle", "annotations", "This note or edited annotation changes no SVG and gives no new warning naming annotations."],
     ["box", "showObservations", "The representative fixture has no observation marks to remove."],
@@ -541,6 +541,8 @@ describe('published option behaviour census', () => {
       const series = data.series?.map(s => s.id) ?? [];
       for (const [key, field] of Object.entries(schema.properties ?? {})) {
         if ('not' in field) continue;
+        // Only the architecture variant reads highlight, and the agent-approval golden shows it.
+        if (type === 'diagram' && key === 'highlight') continue;
         const current = authored[key] ?? (definition.defaults as Options)[key] ?? field.default;
         let value = key in VALUES && JSON.stringify(VALUES[key]) !== JSON.stringify(current)
           ? VALUES[key] : sample(field, current);

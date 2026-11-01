@@ -105,6 +105,41 @@ it('keys a grid of two-series panels with no legend set, and leaves single-serie
   expect(keyOf([panel('North', [['Sales', [4, 5]]]), panel('South', [['Returns', [3, 4]]])])).toEqual([]);
 });
 
+// Identical grid swatches waste a key row when each panel title already names its only identity.
+it('omits repeated panel-title keys and keeps identities that the titles do not name', () => {
+  const panel = (label: string, title: string = label, extra = false) => ({
+    id: label.toLowerCase(), type: 'column', options: { title, variant: 'grouped' },
+    data: { categories: [{ id: 'q1' }, { id: 'q2' }], series: [
+      { id: 'sales', label, values: [4, 5], colorRole: 'series-1' },
+      ...(extra ? [{ id: 'target', label: 'Target', values: [5, 6], colorRole: 'series-1' }] : []),
+    ] },
+  });
+  const render = (panels: object[], legend: unknown, columns: number | number[] = 2, sharedAxis = 'none') =>
+    requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'grid', data: { panels },
+      options: { columns, sharedAxis, legend, size: { width: 720 } } })));
+  const keys = (geometry: ReturnType<typeof render>) => geometry.scene.flatMap(node =>
+    node.t === 'text' && node.part === 'legendLabel' && node.id.startsWith('frame:') ? node.lines : []);
+  for (const columns of [2, [1, 1]]) {
+    for (const legend of ['top', 'bottom', { position: 'top', order: ['sales'] }]) {
+      const geometry = render([panel('North'), panel('South')], legend, columns);
+      expect(keys(geometry)).toEqual([]);
+      expect(geometry.warnings).toContainEqual(expect.objectContaining({ code: 'grid-legend-redundant',
+        fix: [{ op: 'remove', path: '/options/legend' }] }));
+      expect(geometry.scene.flatMap(node => node.t === 'text' &&
+        (node.part === 'panelTitle' || node.part === 'title') ? node.lines : [])).toEqual(expect.arrayContaining(['North', 'South']));
+      expect(keys(render([panel('North'), panel('South', 'South region')], legend, columns))).toEqual(['North', 'South']);
+      expect(keys(render([panel('North', 'North', true), panel('South')], legend, columns)).sort()).toEqual(['North', 'South', 'Target']);
+    }
+  }
+  expect(keys(render([panel('North'), panel('South')], 'top', 1, 'category'))).toEqual([]);
+  const hiddenTitles = [panel('North'), panel('South')].map(p => ({ ...p, title: p.options.title,
+    options: { ...p.options, title: false } }));
+  expect(keys(render(hiddenTitles, 'top', [1], 'category'))).toEqual(['North', 'South']);
+  const distinct = [panel('North'), panel('South')];
+  distinct[1]!.data.series[0]!.colorRole = 'series-2';
+  expect(keys(render(distinct, 'top'))).toEqual(['North', 'South']);
+});
+
 // A written-out grid coloured a series by its place in each panel, so Online was blue in one panel and navy in the next.
 it('colours a series alike in every panel of a written-out grid', () => {
   const cats = ['a', 'b'].map(id => ({ id }));

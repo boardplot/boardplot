@@ -24,6 +24,10 @@ type IconCommand =
   | { t: 'cubic'; from: Pt; c1: Pt; c2: Pt; to: Pt };
 
 const ICONS = {
+  lock: [
+    { t: 'polyline', pts: [[5.5, 11], [18.5, 11], [18.5, 20], [5.5, 20]], closed: true },
+    { t: 'cubic', from: [8, 11], c1: [8, 2.5], c2: [16, 2.5], to: [16, 11] },
+  ],
   lightbulb: [
     { t: 'circle', cx: 12, cy: 9.5, r: 5.5 },
     { t: 'polyline', pts: [[9.8, 15], [9.8, 18], [14.2, 18], [14.2, 15]] },

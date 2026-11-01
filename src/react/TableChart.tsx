@@ -1017,18 +1017,23 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: TableChartProp
     const sides = { ...canvasMargin(theme, frameWidth), ...margin };
     return frameWidth - sides.left - sides.right;
   }, [size, container.size?.width, theme, margin, marginLeft, marginRight]);
+  // The label track is sized from the columns the table shows before any toggle, so a toggle never re-wraps the labels.
+  const defaultColumns = useMemo(
+    () => table ? visibleColumns(table, Object.fromEntries([...table.columnToggles.map((toggle) => [toggle.id, toggle.defaultVisible] as const), ...Object.entries(defaultColumnVisibility ?? {})])) : [],
+    [table, defaultColumnVisibility],
+  );
   const measured = useMemo(() => table && theme ? tableWidths(table, theme, width.measure, {
     ...tableOptions, density, target: request?.target, inlineVisibility,
     [SOFT_LABEL_CAP]: softLabelCap, [LABEL_WRAP_FLOOR]: labelWrapFloor,
   }, {
-    columns, allColumns, rows, available, frameStart, scroll: true,
+    columns, allColumns, defaultColumns, rows, available, frameStart, scroll: true,
     withMarks: !readOnlyTree || tableOptions?.outlineMarks === true,
     sortable: sortableIds, leadWidth: rowLabelLead?.width,
     trailingTracking: true, groupStart: groupMarks.groupStart, groupEnd: groupMarks.groupEnd,
     slack: width.browser ? undefined : browserSlack,
     fit: size === 'container' ? fit : undefined,
   }) : undefined, [table, theme, width, tableOptions, density, request?.target, inlineVisibility, softLabelCap, labelWrapFloor,
-    columns, allColumns, rows, available, frameStart, readOnlyTree, sortableIds, rowLabelLead?.width, groupMarks, size, fit]);
+    columns, allColumns, defaultColumns, rows, available, frameStart, readOnlyTree, sortableIds, rowLabelLead?.width, groupMarks, size, fit]);
   const padX = measured?.cellPadX ?? 12;
   const indents = measured?.indents ?? { base: 0, step: 16 };
   const operatorSlot = measured?.operatorSlot ?? 0;

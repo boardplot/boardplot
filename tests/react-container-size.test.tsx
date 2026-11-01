@@ -579,8 +579,8 @@ it('uses the original table and dimswitch floors for open-height fill containers
   for (const { type, id, Chart, minimum } of [
     // The first full-width floor needs more height at the narrower frame.
     { type: 'table', id: 'steering-monthly', Chart: TableChart, minimum: { width: 529, height: 311 } },
-    // Tight row air draws a fixed 280 px card at 440 px.
-    { type: 'dimswitch', id: 'by-measure', Chart: DimSwitchChart, minimum: { width: 280, height: 440 } },
+    // A fixed 280 px card folds its depth to fit the height, so its floor is the folded table's: 224 px, not the 440 px of depth 2.
+    { type: 'dimswitch', id: 'by-measure', Chart: DimSwitchChart, minimum: { width: 280, height: 224 } },
   ]) for (const fillHeight of [false, true]) {
     const fixture = getFixtures(type).find(candidate => candidate.id === id)!;
     const expected = measureRequest({ type, data: fixture.data, options: { ...fixture.options, size: { width: 99 } } }).refused!;

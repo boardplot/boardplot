@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { withNumberMarks } from '../src/core/numberMarks';
 import '../src/core/charts';
-import { compileDimSwitch, dimswitchRowId } from '../src/core/charts/dimswitch/compile';
+import { compileDimSwitch, dimswitchRowId, FOLDED } from '../src/core/charts/dimswitch/compile';
 import { resolveDimSwitch, dimswitchCore } from '../src/core/charts/dimswitch/core';
 import { exampleData } from '../src/core/charts/dimswitch/example';
 import { dimswitchDataSchema } from '../src/core/charts/dimswitch/schema';
@@ -9,7 +9,9 @@ import { visibleRows } from '../src/core/charts/table/view';
 import { renderSvg } from '../src/core/svg/renderSvg';
 import { resolveTheme } from '../src/core/theme';
 import { requireGeometry } from '../src/core/sizing';
-import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
+import { layoutResolvedRequest, measure, resolveChartRequest } from '../src/core/request';
+// @ts-expect-error The scorecard script has no declaration file.
+import { applyRepair } from '../scripts/layout-scorecard.mjs';
 import type { DimSwitchData, DimSwitchDerived, DimSwitchSums, DimSwitchVariant } from '../src/core/charts/dimswitch/types';
 import { claimsForChart } from '../src/core/claims/browser';
 import { tableCellNodeId } from '../src/core/charts/table/cellKey';
@@ -371,4 +373,41 @@ it('warns once per measure when a ratio divides by a negative sum', () => {
   const found=resolveDimSwitch(data).compileWarnings.filter(w=>w.code==='ratio-negative-base');
   expect(found.map(w=>w.severity)).toEqual(['info']);
   expect(found[0]!.message).toContain("Measure 'neg'");
+});
+
+// A fixed slide height that misses the authored depth refused the whole table, though one fold shallower draws it.
+it('draws the deepest depth that fits a fixed height and warns with the folded depth', () => {
+  const draw = (variant: DimSwitchVariant, depth: number, height: number) => requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'dimswitch', data: exampleData, options: { variant, depth, size: { width: 1400, height } } } as never)));
+  const folded = (geometry: { warnings: { code: string; message: string }[] }) => geometry.warnings.find(w => w.code === 'dimswitch-depth-folded');
+  expect(folded(draw('by-measure', 3, 1200))).toBeUndefined();
+  const byMeasure = draw('by-measure', 3, 400);
+  expect(folded(byMeasure)?.message).toMatch(/draws depth [12]\.$/);
+  // By member the Total folds after depth 1, and its row prints the headline figure, not dashes.
+  const byMember = draw('by-member', 1, 300);
+  expect(folded(byMember)?.message).toContain('with the Total folded');
+  const total = (byMember.derived as unknown as DimSwitchDerived).table.rows.find(r => r.id === dimswitchRowId('by-member', 'total'))!;
+  expect(total.cells.range).toMatchObject({ displayed: expect.stringMatching(/\d/) });
+});
+
+// The fold warning's fix set only the depth, which leaves the by-member Total open: the patched spec folded again and warned again.
+it('gives a fold fix that draws the same table without the fold warning', () => {
+  for (const depth of [1, 2]) {
+    const request = { type: 'dimswitch', data: exampleData, options: { variant: 'by-member', depth, size: { width: 1400, height: 300 } } } as never;
+    const warning = measure(request).warnings.find(w => w.code === 'dimswitch-depth-folded')!;
+    expect(warning.message, `depth ${depth}`).toContain('with the Total folded');
+    const fixed = measure(applyRepair(request, warning.fix));
+    expect(fixed.geometry, `depth ${depth}`).toBeDefined();
+    expect(fixed.warnings.map(w => w.code), `depth ${depth}`).not.toContain('dimswitch-depth-folded');
+  }
+});
+
+// A fold hides the rows below its depth, yet their small changes kept one decimal on every change figure of the column ("+130.0%" beside "+4.4%").
+it('settles the decimals of a folded table on the rows it draws', () => {
+  // The total's prior halves in orders, revenue and spend, so every change the fold draws is far above 5 %; the members stay small.
+  const halved = (sums: DimSwitchSums | undefined) => sums && { ...sums, orders: sums.orders! / 2, rev: sums.rev! / 2, spend: sums.spend! / 2 };
+  const data = { ...exampleData, facts: exampleData.facts.map(fact => fact.memberId === 'total' && fact.periodId === 'prior' ? { ...fact, sums: halved(fact.sums)! } : fact) };
+  const formatOf = (folded: boolean) => (compileDimSwitch(data, { variant: 'by-measure', depth: 1, ...(folded ? { [FOLDED]: true } : {}) } as never).data.rows
+    .find(r => r.id === dimswitchRowId('by-measure', 'total', 'orders'))!.cells!.pp as { format: string }).format;
+  expect(formatOf(false)).toBe('+1.2%');
+  expect(formatOf(true)).not.toContain('.');
 });

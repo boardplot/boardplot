@@ -75,6 +75,7 @@ const shapeSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('pill').describe('Select the pill node shape.') }).describe('Pill-shaped node outline.'),
   z.strictObject({ kind: z.literal('chevron').describe('Select the chevron node shape.'), tip: z.number().finite().min(0.05).max(0.45).optional().describe('Chevron tip depth as a fraction of width; defaults to 0.16 and is capped by shape height.') }).describe('Directional chevron node outline.'),
   z.strictObject({ kind: z.literal('text').describe('Select the text node shape.') }).describe('Node rendered as text without an enclosing outline.'),
+  z.strictObject({ kind: z.literal('store').describe('Select the store node shape.') }).describe('Architecture only: a database cylinder.'),
   z.strictObject({ kind: z.literal('icon').describe('Select the icon node shape.'), name: iconNameSchema }).describe('Node rendered as a built-in icon.'),
   z.strictObject({
     kind: z.literal('roof').describe('Select the roof node shape.'),
@@ -132,10 +133,12 @@ const nodeSchema = z
     position: pointSchema.optional().describe('Authored node position in normalized plot coordinates.'),
     ports: z.array(portSchema).max(16).optional().describe('Up to 16 named connection ports, unique within this node.'),
     groupId: boundedIdSchema.optional().describe('Id of an existing group containing this node.'),
-    laneId: boundedIdSchema.optional().describe('Id of an existing lane containing this node.'),
+    laneId: boundedIdSchema.optional().describe("Id of an existing lane containing this node. Architecture with flow 'lanes' requires it except on policy-strip nodes, which must omit it."),
     order: z.number().int().safe().optional().describe('Ordering key: nodes sort by order, a node without one by its 0-based position in nodes, ties by id. Automatic step numbers follow this order.'),
     track: boundedIdSchema.optional().describe('Architecture only: named cross-axis track. Nodes in one track line up across zones or lanes.'),
     span: z.enum(['full']).optional().describe('Architecture only: a wide band across its lane, or a full-height rail in its zone.'),
+    repeat: z.number().int().min(2).max(5).optional().describe('Architecture only: draws 2 to 5 stacked copies, for repeated workers.'),
+    protected: z.boolean().optional().describe('Architecture only: a lock and a double border. This is an authored claim.'),
   })
   .superRefine((node, ctx) => {
     addDuplicateIdIssues(ctx, node.ports ?? [], ['ports'], {
@@ -158,11 +161,15 @@ const endpointSchema = z.strictObject({
   portId: boundedIdSchema.optional().describe('Named port on the endpoint node; omission allows automatic port selection.'),
 }).describe('Node and optional named port at an edge endpoint.');
 
+const groupEndpointSchema = z.strictObject({
+  groupId: boundedIdSchema.describe('Id of the existing zone whose frame this edge ends on.'),
+}).describe('Architecture only: an edge end on a zone frame.');
+
 const edgeSchema = z
   .strictObject({
     id: boundedIdSchema,
-    source: endpointSchema.describe('Edge origin, with an optional named output port.'),
-    target: endpointSchema.describe('Edge destination, with an optional named input port.'),
+    source: z.union([endpointSchema, groupEndpointSchema]).describe('Edge origin: a node with an optional named output port, or a zone in variant architecture.'),
+    target: z.union([endpointSchema, groupEndpointSchema]).describe('Edge destination: a node with an optional named input port, or a zone in variant architecture.'),
     routing: z.enum(['straight', 'elbow', 'orthogonal', 'curved']).optional().describe('Requested edge path style. curved draws only in circular-process; other variants draw it orthogonal with diagram-route-degraded.'),
     arrowStart: z.boolean().optional().describe('Whether to draw an arrowhead at the source endpoint.'),
     arrowEnd: z.boolean().optional().describe('Whether to draw an arrowhead at the target endpoint.'),
@@ -182,6 +189,9 @@ const groupSchema = z
     padding: z.number().finite().nonnegative().optional().describe('Space in layout pixels around the group members.'),
     order: z.number().int().safe().optional().describe('Authored ordering key used by the selected diagram variant.'),
     ...roleFields,
+    kind: z.enum(['zone', 'policy']).optional().describe('Architecture only: a policy group is a strip across the exhibit, and its nodes take no edges. Default zone.'),
+    parentId: boundedIdSchema.optional().describe('Architecture only: the zone this zone sits in, up to three levels.'),
+    protected: z.boolean().optional().describe('Architecture only: a lock and a double frame. This is an authored claim.'),
   })
   .superRefine((group, ctx) => validateRole(group.role, group.paletteKey, ctx, [])).describe('Named visual grouping of member nodes.');
 
@@ -215,6 +225,17 @@ const channelSchema = z.strictObject({
   label: textSchema(80).describe('The shared label, at most 80 Unicode code points.'),
 }).describe('Architecture only: one shared label for edges in one gutter.');
 
+const calloutSchema = z.strictObject({
+  id: boundedIdSchema,
+  target: z.union([
+    z.strictObject({ nodeId: boundedIdSchema.describe('Id of the node this callout marks.') }),
+    z.strictObject({ edgeId: boundedIdSchema.describe('Id of the edge this callout marks.') }),
+    z.strictObject({ groupId: boundedIdSchema.describe('Id of the zone this callout marks.') }),
+  ]).describe("The node, edge or zone that carries the number. Each target takes one callout. In flow 'lanes', a zone must contain a node."),
+  title: textSchema(80, true).describe('Short name in the key row, at most 80 Unicode code points.'),
+  text: textSchema(200, true).describe('Explanation in the key row, at most 200 Unicode code points.'),
+}).describe('Architecture only: a numbered disc, explained in a key row when it has a title or text.');
+
 const keyEntrySchema = z.union([
   z.strictObject({
     role: roleSchema.describe('The node role whose fill this entry names.'),
@@ -237,6 +258,7 @@ export const diagramDataSchema = z
     lanes: z.array(laneSchema).max(32).optional().describe('Up to 32 named partitions referenced by node.laneId.'),
     key: z.array(keyEntrySchema).min(1).max(8).optional().describe('Up to 8 entries naming what a node fill or an edge line style means, drawn as the diagram key above the plot; a good, bad or warn node fill needs one, and so does a dashed or dotted edge.'),
     channels: z.array(channelSchema).max(16).optional().describe('Architecture only: up to 16 shared labels, each for edges that cross one gutter.'),
+    callouts: z.array(calloutSchema).max(16).optional().describe('Architecture only: up to 16 numbered discs, numbered in this order.'),
   })
   .superRefine((data, ctx) => {
     addDuplicateIdIssues(ctx, data.nodes, ['nodes'], {
@@ -259,6 +281,10 @@ export const diagramDataSchema = z
       name: 'diagram channel',
       keys: 'labels and scene identities',
     });
+    addDuplicateIdIssues(ctx, data.callouts ?? [], ['callouts'], {
+      name: 'diagram callout',
+      keys: 'numbers and scene identities',
+    });
     const nodes = new Map(data.nodes.map((node) => [node.id, node]));
     const groups = new Set((data.groups ?? []).map((group) => group.id));
     const lanes = new Set((data.lanes ?? []).map((lane) => lane.id));
@@ -270,12 +296,18 @@ export const diagramDataSchema = z
         ctx.addIssue({ code: 'custom', path: ['nodes', index, 'laneId'], message: `unknown lane '${node.laneId}'` });
       }
     });
+    (data.groups ?? []).forEach((group, index) => {
+      if (group.parentId && !groups.has(group.parentId)) {
+        ctx.addIssue({ code: 'custom', path: ['groups', index, 'parentId'], message: `unknown group '${group.parentId}'` });
+      }
+    });
     const usage = new Map<string, number>();
     (data.edges ?? []).forEach((edge, index) => {
-      if (edge.source.nodeId === edge.target.nodeId) {
-        ctx.addIssue({ code: 'custom', path: ['edges', index], message: 'self-loops are not supported in diagram v1' });
-      }
       for (const [end, endpoint] of [['source', edge.source], ['target', edge.target]] as const) {
+        if ('groupId' in endpoint) {
+          if (!groups.has(endpoint.groupId)) ctx.addIssue({ code: 'custom', path: ['edges', index, end, 'groupId'], message: `unknown group '${endpoint.groupId}'` });
+          continue;
+        }
         const node = nodes.get(endpoint.nodeId);
         if (!node) {
           ctx.addIssue({ code: 'custom', path: ['edges', index, end, 'nodeId'], message: `unknown node '${endpoint.nodeId}'` });
@@ -341,6 +373,7 @@ const diagramPresetOptions = z.discriminatedUnion('variant', [
   z.strictObject({
     variant: z.literal('architecture').describe('Select the architecture diagram layout: zones or lanes with routed flows, for system architecture and data flow exhibits.'),
     flow: z.enum(['columns', 'lanes']).optional().describe('Architecture flow: zones side by side, or labelled lanes from data.lanes. Default columns.'),
+    highlight: z.union([boundedIdSchema, z.array(boundedIdSchema).min(1).max(32)]).optional().describe('Architecture only: the node and edge ids that carry the message. They take the accent, and everything else recedes.'),
   }),
 ]);
 
@@ -364,14 +397,18 @@ export const diagramOptionsSchema = commonDiagramOptions
       'architecture',
     ]).describe('Required structural layout variant for the diagram.'),
     flow: z.enum(['columns', 'serpentine', 'lanes']).optional().describe('Layout flow: columns or serpentine for customer-journey, columns or lanes for architecture.'),
+    highlight: z.union([boundedIdSchema, z.array(boundedIdSchema).min(1).max(32)]).optional().describe('Architecture only: the node and edge ids that carry the message. They take the accent, and everything else recedes.'),
   })
   .strict()
   .superRefine((options, ctx) => {
-    const presetSpecific = diagramPresetOptions.safeParse(
-      options.flow === undefined
-        ? { variant: options.variant }
-        : { variant: options.variant, flow: options.flow },
-    );
+    if (options.highlight !== undefined && options.variant !== 'architecture') {
+      ctx.addIssue({ code: 'custom', path: ['highlight'], message: `'highlight' is only read by diagram variant 'architecture'` });
+    }
+    const presetSpecific = diagramPresetOptions.safeParse({
+      variant: options.variant,
+      ...(options.flow === undefined ? {} : { flow: options.flow }),
+      ...(options.highlight === undefined || options.variant !== 'architecture' ? {} : { highlight: options.highlight }),
+    });
     for (const issue of presetSpecific.success ? [] : presetSpecific.error.issues) {
       ctx.addIssue({
         code: 'custom',
