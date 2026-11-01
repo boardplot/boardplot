@@ -4,9 +4,9 @@
 
 ### Changed
 
-- An architecture return label now sits closer to its own line than to any other, when a layout allows that. This can move a return edge to an outer corridor, as in the `marketing-pipeline` fixture. No option brings back the old seat.
 - Architecture layouts plan each width once per render, so they take about half the time.
 
 ### Fixed
 
+- An architecture return label could sit closer to another line than to its own, which named the wrong line. The label now sits closer to its own line when a layout allows that. This can move a return edge to an outer corridor, as in the `marketing-pipeline` fixture.
 - The `store` shape no longer shows a hole in its lid.
