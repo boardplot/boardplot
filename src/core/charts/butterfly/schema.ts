@@ -52,4 +52,5 @@ export const butterflyOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOp
   sortBy: z.enum(['sheet', 'a', 'b', 'sum', 'diff']).optional().describe("Row order: sheet by default, or descending a, b, sum a+b, or difference b-a."),
   diffColumn: z.boolean().optional().describe("A right-aligned column of each row's difference, second series minus first, signed, under a bold delta head. Default true with sortBy 'diff', else false. A highlighted row prints bold. The panes give the column its width at one scale; it stays off below 576 px canvas width."),
   sharedScale: z.boolean().optional().describe("Use the same value scale on both sides by default. False gives independent scales and warns that lengths are not comparable."),
+  negatives: z.enum(['direction', 'magnitude']).optional().describe("A negative value: direction (default) runs its bar from the pane's zero line toward the category names, and positive bars run outward; magnitude draws the bar length of the absolute value outward in a lighter tint."),
 }) as unknown as z.ZodType<ButterflyOptions>;

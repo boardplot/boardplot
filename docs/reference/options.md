@@ -301,7 +301,7 @@ The keys of `labels` each type reads. A type refuses a key it does not read as `
 | `restSeries` | [bar](bar.md), [column](column.md), [line](line.md) |
 | `segment` | [bar](bar.md), [column](column.md), [combo](combo.md), [funnel](funnel.md), [likert](likert.md), [mekko](mekko.md) |
 | `series` | [butterfly](butterfly.md), [cohort](cohort.md), [heatmap](heatmap.md), [line](line.md), [pyramid](pyramid.md), [slope](slope.md), [status](status.md) |
-| `tick` | [bar](bar.md), [column](column.md), [combo](combo.md) |
+| `tick` | [bar](bar.md), [butterfly](butterfly.md), [column](column.md), [combo](combo.md) |
 | `total` | [funnel](funnel.md), [kpi](kpi.md), [mekko](mekko.md), [pie](pie.md), [variance](variance.md) |
 | `value` | [scatter](scatter.md) |
 | `valueLine` | [bar](bar.md), [column](column.md), [gantt](gantt.md) |

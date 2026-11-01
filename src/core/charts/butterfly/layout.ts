@@ -1,4 +1,6 @@
 import { chartString } from '../../strings/butterfly';
+import { chartString as commonString } from '../../strings';
+import { layoutValueAxis } from '../../axis';
 import { restDetailsWarning, restLabel, restSum, topNCut } from '../topN';
 import { structureCount } from '../../structureCounts';
 /**
@@ -57,6 +59,7 @@ import {
   strokeToken,
   seriesPaint as themeSeriesPaint,
   labelsOffKeepsNames,
+  secondaryFont,
 } from '../../theme';
 import type { AnchorRef } from '../../types/annotations';
 import { cellMeta, cellValue, isPctCell, type CellMeta, type Id, type Scenario } from '../../types/cell';
@@ -140,6 +143,8 @@ export function layoutButterfly(
      * row pitch, row type and pane-coloured heads stay the butterfly's own.
      */
     paneFit?: boolean;
+    /** Set where the rows do not fit under the value axes of panes on their own scales: they go, the rows stay. */
+    noAxis?: boolean;
   },
 ): Geometry<ButterflyMarks, ButterflyDerived> {
   const opts = options ?? ({} as ButterflyOptions);
@@ -155,6 +160,9 @@ export function layoutButterfly(
   const highlights = new Set(resolveHighlight(opts.highlight));
   const sortBy = opts.sortBy ?? 'sheet';
   const sharedScale = opts.sharedScale ?? true;
+  // The butterfly's own rows draw a negative value toward the names from the pane's zero line;
+  // `negatives: 'magnitude'` and the pyramid keep the bar length of |value|, a lighter bar and a sign.
+  const directed = comparison?.rowDriven !== false && opts.negatives !== 'magnitude';
 
   // ---- normalize ----
   if (!data || !Array.isArray(data.categories) || !Array.isArray(data.series)) {
@@ -222,10 +230,12 @@ export function layoutButterfly(
   // One precision per pane ("6.0" beside "7.9"), through the shared
   // raster: engine scale from 1e6, the nonzero lift, the unit rule,
   // and a pane's own format or unit.
-  const paneFmt = (series: typeof sA, cells: typeof aCells) =>
-    seriesRasterFormatter(opts.format, cells.map(cellValue), opts.locale?.language, opts.unit, opts.target).forSeries(series);
-  const fmtA = paneFmt(sA, aCells);
-  const fmtB = paneFmt(sB, bCells);
+  const paneRaster = (cells: typeof aCells) =>
+    seriesRasterFormatter(opts.format, cells.map(cellValue), opts.locale?.language, opts.unit, opts.target);
+  const rasterA = paneRaster(aCells);
+  const rasterB = paneRaster(bCells);
+  const fmtA = rasterA.forSeries(sA);
+  const fmtB = rasterB.forSeries(sB);
 
   let rows: Row[] = categories.map((c, i) => ({
     id: c.id,
@@ -296,7 +306,7 @@ export function layoutButterfly(
   // negatives are not meaningful on mirrored panes: clamp display to abs,
   // keep the sign in the label
   const hasNegative = rows.some((r) => (r.a ?? 0) < 0 || (r.b ?? 0) < 0);
-  if (hasNegative) {
+  if (hasNegative && !directed) {
     warnings.push({
       code: 'butterfly-negative',
       severity: 'warn',
@@ -332,6 +342,7 @@ export function layoutButterfly(
   // the theme's label size and never under the target floor, bars scaled to
   // the pane, and the delta after a wide gap.
   const redesign = comparison?.rowDriven !== false;
+  const signed = directed && hasNegative;
   const paneFit = redesign || comparison?.paneFit === true;
   // A paneFit card (the pyramid below 480 px) puts values inside the bar end.
   const insideCard = !redesign && paneFit && resolveSize(opts.size).width < 480;
@@ -421,7 +432,7 @@ export function layoutButterfly(
       size,
       margin,
       ...frameTextOptions(opts),
-      footnotes: [...authoredNotes(opts), ...scaleNotes(!sharedScale, hasNegative, opts).map(disclosureNote)],
+      footnotes: [...authoredNotes(opts), ...scaleNotes(!sharedScale, hasNegative && !directed, opts).map(disclosureNote)],
       legend: legendOpts ? { options: legendOpts, items: legendItems } : undefined,
       theme,
       measure,
@@ -442,7 +453,11 @@ export function layoutButterfly(
   // header band for series labels above each pane
   const headerH = labelFont.size * (labelFont.lineHeight ?? 1.2) + (paneFit ? 7 : 10);
   const rowsTop = plot.y + headerH;
-  const rowsBottom = plot.y + plot.h;
+  // Panes on their own scales each draw a thin value axis under the rows.
+  const ownAxis = redesign && !sharedScale && !labelsOff('tick') && comparison?.noAxis !== true;
+  const axisFont = secondaryFont(theme);
+  const axisH = ownAxis ? axisFont.size * (axisFont.lineHeight ?? 1.2) + AXIS_GAP + 4 : 0;
+  const rowsBottom = plot.y + plot.h - axisH;
   // Unpinned, the butterfly takes the height of its rows at their natural
   // pitch, room for a two-line name, so one row does not stand in a 16:9
   // frame. Names that keep one line (the gutter's 35%
@@ -455,6 +470,8 @@ export function layoutButterfly(
   const rowDriven = comparison?.rowDriven !== false;
   const grow = rowDriven ? rowDrivenHeight({ options: opts, width: size.width, height: size.height, chromeH, rowsH: rows.length * rowPitch }) : undefined;
   if (grow !== undefined) return layoutButterfly(data, { ...opts, size: { width: size.width, height: grow } }, comparison);
+  // A pinned canvas that holds the rows only without the axes keeps its rows.
+  if (ownAxis && rowsBottom - rowsTop < rows.length * catLineH - 1e-6) return layoutButterfly(data, options, { ...comparison, noAxis: true });
   // The advertised minimum drops ULP noise (ceilSizing), so the refusal does too:
   // 134.39999999999998 px of rows hold 8 lines of 16.8 px.
   if (rowsBottom <= rowsTop || (rowDriven && rowsBottom - rowsTop < rows.length * catLineH - 1e-6)) {
@@ -636,6 +653,7 @@ export function layoutButterfly(
     function rawPxPerUnit(side: 'a' | 'b', kIn: number): number {
       const bound = side === 'a' ? room.left : room.right;
       const w = side === 'a' ? paneWA : paneWB;
+      if (signed) return signedPxPerUnit(side, w - bound, w);
       let k = Infinity;
       for (const r of rows) {
         const v = Math.abs((side === 'a' ? r.a : r.b) ?? 0);
@@ -689,6 +707,58 @@ export function layoutButterfly(
     return tail;
   }
 
+  // The room after a bar end for its value label, and a delta after it.
+  function rowTail(r: Row, side: 'a' | 'b', w: number): number {
+    const text = valuesOff ? '' : textOf(side === 'a' ? r.a : r.b, side === 'a' ? r.aMeta : r.bMeta, side);
+    const valueTail = Math.min(w * 0.5, text ? VALUE_GAP + measure(text, labelFont).width : 0);
+    return Math.max(valueTail, Math.min(w * 0.7, valueTail + deltaTail(r, side)));
+  }
+  // Pixels per unit where the pane holds its negative bars between the zero line and the names
+  // and its positive bars (each with its label) outward from the zero line.
+  function signedPxPerUnit(side: 'a' | 'b', avail: number, w: number): number {
+    const items = rows.flatMap((r) => {
+      const v = side === 'a' ? r.a : r.b;
+      return v === null ? [] : [{ v, tail: rowTail(r, side, w) }];
+    });
+    const smallest = Math.min(...items.filter((item) => item.v !== 0).map((item) => Math.abs(item.v)));
+    if (!Number.isFinite(smallest)) return Infinity;
+    const need = (k: number): number => {
+      let neg = 0;
+      let pos = 0;
+      for (const { v, tail } of items) {
+        if (v < 0) neg = Math.max(neg, -v * k + tail); else pos = Math.max(pos, v * k + tail);
+      }
+      return neg + pos;
+    };
+    let lo = 0;
+    let hi = Math.max(0, avail) / smallest;
+    for (let i = 0; i < 48; i++) {
+      const mid = (lo + hi) / 2;
+      if (need(mid) <= avail) lo = mid; else hi = mid;
+    }
+    return lo;
+  }
+
+  // Where each pane's zero line stands: at the names' edge, or further out by the room its
+  // negative bars and their labels take. Positive bars run outward from it.
+  const zeroX = {
+    a: centerX0 - (signed ? negativeRoom('a') : 0),
+    b: centerX1 + (signed ? negativeRoom('b') : 0),
+  };
+  function negativeRoom(side: 'a' | 'b'): number {
+    const w = side === 'a' ? paneWA : paneWB;
+    return maxOf(rows.map((r) => {
+      const v = side === 'a' ? r.a : r.b;
+      return v !== null && v < 0 ? lenOf[side](-v) + rowTail(r, side, w) : 0;
+    }));
+  }
+  const zeroOf = (side: 'a' | 'b'): number => zeroX[side];
+  /** The way a value's bar runs from its zero line: -1 left, +1 right. Positive bars run outward. */
+  const dirOf = (side: 'a' | 'b', v: number | null): -1 | 1 =>
+    (side === 'a' ? -1 : 1) * (signed && v !== null && v < 0 ? -1 : 1) as -1 | 1;
+
+  const naText = opts.strings?.notApplicable ?? commonString(opts, 'notApplicable');
+
   // ---- marks ----
   const nodes: SceneNode[] = [...frameResult.nodes];
   const marks: ButterflyMarks = {
@@ -703,16 +773,16 @@ export function layoutButterfly(
   const baselineRightId = 'axis:baseline:right';
   nodes.push({
     t: 'line', id: baselineLeftId,
-    x1: centerX0, y1: rowsTop, x2: centerX0, y2: rowsBottom,
+    x1: zeroX.a, y1: rowsTop, x2: zeroX.a, y2: rowsBottom,
     stroke: { token: 'axis' }, width: strokeToken(theme, 'rule'), owner: {}, part: 'baseline',
   });
   nodes.push({
     t: 'line', id: baselineRightId,
-    x1: centerX1, y1: rowsTop, x2: centerX1, y2: rowsBottom,
+    x1: zeroX.b, y1: rowsTop, x2: zeroX.b, y2: rowsBottom,
     stroke: { token: 'axis' }, width: strokeToken(theme, 'rule'), owner: {}, part: 'baseline',
   });
-  occupied.claim({ x: centerX0 - 0.6, y: rowsTop, w: 1.2, h: rowsBottom - rowsTop }, 'axis', {});
-  occupied.claim({ x: centerX1 - 0.6, y: rowsTop, w: 1.2, h: rowsBottom - rowsTop }, 'axis', {});
+  occupied.claim({ x: zeroX.a - 0.6, y: rowsTop, w: 1.2, h: rowsBottom - rowsTop }, 'axis', {});
+  occupied.claim({ x: zeroX.b - 0.6, y: rowsTop, w: 1.2, h: rowsBottom - rowsTop }, 'axis', {});
 
   // extreme rows (largest |value| per series) get the 'extreme' priority band
   const extremeA = maxA > 0 ? rows[absA.indexOf(maxA)]?.id : undefined;
@@ -736,16 +806,14 @@ export function layoutButterfly(
       const meta = side === 'a' ? r.aMeta : r.bMeta;
       const fmt = side === 'a' ? fmtA : fmtB;
       const len = v === null ? 0 : Math.max(lenOf[side](Math.abs(v)), 0.5);
-      const tipX = side === 'a' ? centerX0 - len : centerX1 + len;
-      const rect: Rect =
-        side === 'a'
-          ? { x: tipX, y: rowY, w: len, h: rowH }
-          : { x: centerX1, y: rowY, w: len, h: rowH };
+      const dir = dirOf(side, v);
+      const tipX = zeroOf(side) + dir * len;
+      const rect: Rect = { x: Math.min(zeroOf(side), tipX), y: rowY, w: len, h: rowH };
       const nodeId = `mark:${series.id}:${r.id}`;
       const basePaint = side === 'a' ? paintA : paintB;
-      // A negative value draws lighter, its hue washed toward
+      // Under `negatives: 'magnitude'` a negative value draws lighter, its hue washed toward
       // the page down to the mark floor; its sign stays in the label.
-      const paint = v !== null && v < 0 ? negativePaint(barPaint(r.rest, meta, basePaint)) : barPaint(r.rest, meta, basePaint);
+      const paint = v !== null && v < 0 && !signed ? negativePaint(barPaint(r.rest, meta, basePaint)) : barPaint(r.rest, meta, basePaint);
       const scen =
         normalizeScenario(meta?.scenario as string | undefined, `series[${series.id}].values[${r.id}].scenario`) ??
         (side === 'a' ? scenA : scenB);
@@ -772,8 +840,31 @@ export function layoutButterfly(
       occupied.claim(rect, 'mark', { seriesId: series.id, categoryId: r.id });
       (side === 'a' ? marks.left : marks.right).push({ id: r.id, rect, nodeId });
 
+      // A value the data lacks prints the not-applicable mark at the pane's zero line, in the muted ink.
+      if (v === null) {
+        if (naText !== '' && !valuesOff && redesign) {
+          const naSize = measure(naText, valueFont);
+          labelRequests.push({
+            id: `na:${series.id}:${r.id}`,
+            kind: 'point',
+            owner: { seriesId: series.id, categoryId: r.id },
+            text: naText,
+            lines: [naText],
+            font: valueFont,
+            priority: PRIORITY.endpoint,
+            candidates: [{
+              slot: 'outsideEnd',
+              rect: {
+                x: side === 'a' ? zeroOf(side) - NA_GAP - naSize.width : zeroOf(side) + NA_GAP,
+                y: cy - naSize.height / 2, w: naSize.width, h: naSize.height,
+              },
+              penalty: 0,
+            }],
+          });
+        }
+        continue;
+      }
       // ---- value label at the bar end (outside-end; inside-end fallback) ----
-      if (v === null) continue;
       const text = textOf(v, meta, side);
       const tsize = measure(text, valueFont);
       if (tightRows) tsize.height = inkBox(valueFont);
@@ -781,7 +872,7 @@ export function layoutButterfly(
       const outside: SlotCandidate = {
         slot: 'outsideEnd',
         rect: {
-          x: side === 'a' ? tipX - outsideGap - tsize.width : tipX + outsideGap,
+          x: dir < 0 ? tipX - outsideGap - tsize.width : tipX + outsideGap,
           y: cy - tsize.height / 2,
           w: tsize.width,
           h: tsize.height,
@@ -797,7 +888,7 @@ export function layoutButterfly(
         candidates[insideCard ? 'unshift' : 'push']({
           slot: 'insideEnd',
           rect: {
-            x: side === 'a' ? tipX + 4 : tipX - 4 - tsize.width,
+            x: dir < 0 ? tipX + 4 : tipX - 4 - tsize.width,
             y: cy - tsize.height / 2,
             w: tsize.width,
             h: tsize.height,
@@ -907,6 +998,51 @@ export function layoutButterfly(
     labelRequests.push(headRequest('diff', 0, head, diffRight, plot.y, measure(head.lines[0]!, strongFont).height, false));
   }
 
+  // ---- value axes of panes on their own scales ----
+  const valueAxes: Geometry<ButterflyMarks, ButterflyDerived>['axes'] = [];
+  if (ownAxis) {
+    for (const side of ['a', 'b'] as const) {
+      const shown = rows.flatMap((r) => (side === 'a' ? r.a : r.b) ?? []);
+      if (shown.length === 0) continue;
+      // The axis spans the data: from the longest negative bar to the longest positive one.
+      const lo = signed ? Math.min(0, ...shown) : 0;
+      const hi = signed ? Math.max(0, ...shown) : Math.max(0, ...shown.map(Math.abs));
+      if (hi === lo) continue;
+      const outward = side === 'a' ? -1 : 1;
+      const at = (value: number): number => zeroOf(side) + outward * lenOf[side](value);
+      const axisY = rowsBottom;
+      const axis = layoutValueAxis({
+        scale: linearScale([lo, hi], [at(lo), at(hi)]),
+        plot: { ...plot, h: rowsBottom - plot.y },
+        orient: 'x',
+        gridlines: false,
+        format: side === 'a' ? fmtA : fmtB,
+        // The ticks read at the precision of their spacing: 0.5 steps over whole values print 0.5, not 1.
+        formatSpec: (side === 'a' ? rasterA : rasterB).specForSeries(side === 'a' ? sA : sB),
+        tickCount: 4,
+        theme,
+        measure,
+        canvasWidth: size.width,
+      }, occupied);
+      // Both axes number their nodes alike: tell the panes apart by id.
+      const id = (name: string): string => `${name}:${side}`;
+      const nodeIds = new Map(axis.nodes.map((node) => [node.id, id(node.id)] as const));
+      for (const node of axis.nodes) nodes.push({ ...node, id: nodeIds.get(node.id)! });
+      nodes.push({
+        t: 'line', id: id('axis:x:line'), x1: at(lo), y1: axisY, x2: at(hi), y2: axisY,
+        stroke: { token: 'axis' }, width: strokeToken(theme, 'hair'), owner: { seriesId: (side === 'a' ? sA : sB).id }, part: 'baseline',
+      });
+      for (const tick of axis.axis.ticks) {
+        nodes.push({
+          t: 'line', id: id(`axis:x:mark:${tick.at}`), x1: tick.pos, y1: axisY, x2: tick.pos, y2: axisY + 3,
+          stroke: { token: 'axis' }, width: strokeToken(theme, 'hair'), owner: { seriesId: (side === 'a' ? sA : sB).id }, part: 'tick',
+        });
+        if (tick.labelId) tick.labelId = nodeIds.get(tick.labelId);
+      }
+      valueAxes.push(axis.axis);
+    }
+  }
+
   // ---- solve labels ----
   const solveCtx: SolveCtx = labelCtx(theme, size, opts, {
     measure,
@@ -915,6 +1051,7 @@ export function layoutButterfly(
   });
   const solved = solveLabels(labelRequests, occupied, solveCtx);
   pushAll(warnings, solved.warnings);
+  for (const label of solved.placed) if (label.id.startsWith('na:')) label.ink = { token: 'inkMuted' };
   // A header names its pane in the pane's colour, lifted to the text contrast floor.
   if (redesign) {
     for (const label of solved.placed) {
@@ -926,10 +1063,10 @@ export function layoutButterfly(
   // ---- annotations ----
   // Point callouts clear outside value labels; two-anchor comparisons use actual tips.
   const placedById = new Map(solved.placed.map((l) => [l.id, l] as const));
-  const anchorX = (side: 'a' | 'b', sid: Id, catId: Id, tipX: number): number => {
+  const anchorX = (dir: -1 | 1, sid: Id, catId: Id, tipX: number): number => {
     const vl = placedById.get(`point:${sid}:${catId}`);
     if (!vl || vl.hidden || vl.slot !== 'outsideEnd') return tipX;
-    return side === 'a'
+    return dir < 0
       ? Math.min(tipX, vl.rect.x - 4)
       : Math.max(tipX, vl.rect.x + vl.rect.w + 4);
   };
@@ -946,7 +1083,7 @@ export function layoutButterfly(
     if (v === null) return null;
     const len = Math.max(lenOf[side](Math.abs(v)), 0.5);
     return {
-      x: anchorX(side, sid, r.id, side === 'a' ? centerX0 - len : centerX1 + len),
+      x: anchorX(dirOf(side, v), sid, r.id, zeroOf(side) + dirOf(side, v) * len),
       y: band.position(i) + band.bandwidth / 2,
       value: v,
       format: side === 'a' ? sA.format : sB.format,
@@ -1002,8 +1139,9 @@ export function layoutButterfly(
       const rowY = band.position(i);
       const cy = label.rect.y + label.rect.h / 2;
       if (cy < rowY || cy > rowY + band.bandwidth) return;
-      const right = sid === sB.id;
-      const bar = (right ? marks.right : marks.left)[i]!.rect;
+      const side = sid === sA.id ? 'a' : 'b';
+      const right = dirOf(side, side === 'a' ? rows[i]!.a : rows[i]!.b) > 0;
+      const bar = (side === 'b' ? marks.right : marks.left)[i]!.rect;
       const value = placedById.get(`point:${sid}:${rows[i]!.id}`);
       const outside = value && !value.hidden && value.slot === 'outsideEnd';
       const end = right ? (outside ? value.rect.x + value.rect.w : bar.x + bar.w) : (outside ? value.rect.x : bar.x);
@@ -1090,6 +1228,7 @@ export function layoutButterfly(
           labelId: `category:${r.id}`,
         })),
       },
+      ...valueAxes,
     ],
     annotations: annResult.placed,
     legend: frameResult.legend,
@@ -1140,6 +1279,12 @@ function centerColumnWidth(
 
 /** The gap between a bar's end and its outside value label. */
 const VALUE_GAP = 4;
+
+/** The gap between a pane's zero line and its not-applicable mark. */
+const NA_GAP = 8;
+
+/** The gap between the rows and the value axis of a pane on its own scale. */
+const AXIS_GAP = 6;
 
 /** A paneFit card's lane padding on each side of its widest name. */
 const LANE_PAD = 4;

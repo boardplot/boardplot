@@ -332,7 +332,7 @@ export const LABEL_KINDS: Readonly<Record<string, readonly string[]>> = {
   bar: ['category', 'segment', 'restSeries', 'point', 'grandTotal', 'percentIndicator', 'tick', 'axisTitle', 'valueLine'],
   box: ['category', 'point', 'axisTitle'],
   bullet: ['category', 'point', 'axisTitle', 'annotation'],
-  butterfly: ['category', 'series', 'point'],
+  butterfly: ['category', 'series', 'point', 'tick'],
   cohort: ['category', 'series', 'point'],
   column: ['category', 'segment', 'restSeries', 'point', 'grandTotal', 'percentIndicator', 'tick', 'axisTitle', 'valueLine', 'annotation', 'growth'],
   combo: ['category', 'segment', 'point', 'grandTotal', 'tick', 'axisTitle'],
