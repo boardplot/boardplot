@@ -245,6 +245,7 @@ const THEME_FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze
   'surface.chipRadius': 'Chip corner radius in px (0 to 6).',
   'surface.sparkWash': "Whether a spark whose data asks for kind 'area' (a kpi card's spark) draws the wash under its line. false draws it as its line and last point alone, the look of a line spark. Absent means true. Column sparks keep their columns.",
   'surface.sparkAreaBase': "Where an area spark (a kpi card's spark of kind 'area') starts its scale and its wash. 'zero' (the default) starts at zero, so the filled height is the value. 'min' starts at the series minimum and fills to the foot of the spark, which stretches the change. Line and column sparks ignore it.",
+  'surface.shortfallCap': "How an integrated variance chart draws a cap that ends past the actual's edge, the stretch of the reference the actual does not reach. 'outline' (the default) draws it as an outline in its good or bad colour, so the solid shape ends at the actual. 'solid' fills it, the look before. A cap over the actual column, a beat, stays solid either way.",
   'surface.panelShadow': 'CSS box-shadow of the notes popover a React chart opens, in the documented grammar (`0 1px 2px rgba(...)` style). Absent draws no shadow.',
 
   // ── table ──────────────────────────────────────────────────────────────────

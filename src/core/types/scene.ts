@@ -396,7 +396,8 @@ export type SceneNode = (
       /**
        * 'hatch45' is the forecast notation and 'outline' the plan notation, whose
        * look a theme sets (`scenario.PL`). 'hollow' draws like the notation
-       * outline under every theme: a key for a hollow point, which is not a plan bar.
+       * outline under every theme: a key for a hollow point, or a mark that
+       * is a gap and not a plan bar.
        */
       pattern?: HatchPattern | 'outline' | 'hollow';
       /**

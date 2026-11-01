@@ -622,4 +622,18 @@ describe('chart layout edge cases', () => {
     const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
     expect(geometry.labels.filter((l: { hidden?: unknown }) => l.hidden !== undefined)).toEqual([]);
   });
+
+  // The shortfall cap of an integrated variance chart was a solid block above a column labelled with the actual, so the solid shape read as the reference.
+  it('an integrated variance shortfall draws as an outline unless the theme asks for solid', () => {
+    const data = { categories: [{ id: 'jan', label: 'Jan' }, { id: 'feb', label: 'Feb' }], series: [
+      { id: 'act', label: 'Actual', values: [120, 90] }, { id: 'ref', label: 'Plan', role: 'reference', values: [100, 100] }] };
+    const caps = (theme?: object) => {
+      const request = { type: 'variance', data, options: { variant: 'integrated', variance: { of: 'act', vs: 'ref' }, ...(theme ? { theme } : {}) } };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+      return geometry.scene.filter((node: { part?: string }) => node.part === 'cap').map((node: { id: string; pattern?: string }) => [node.id, node.pattern]);
+    };
+    expect(caps()).toEqual([['mark:cap:jan', undefined], ['mark:cap:feb', 'hollow']]);
+    expect(caps({ preset: 'standard', overrides: { surface: { shortfallCap: 'solid' } } })).toEqual([['mark:cap:jan', undefined], ['mark:cap:feb', undefined]]);
+  });
 });
