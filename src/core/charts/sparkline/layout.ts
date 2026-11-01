@@ -73,6 +73,13 @@ export function cardFrameTheme(theme: Theme, options: { target?: RenderTarget },
 
 /** The side margin of a framed sparkline on a render target (28 px at every width). */
 const FRAMED_SIDE_MARGIN = 28;
+/**
+ * The width of a framed sparkline that authors none. At the 176 px of a bare tile its title, subtitle and source
+ * wrap word by word, the line is a tenth of the canvas and the two end names touch.
+ */
+const FRAMED_DEFAULT_WIDTH = 320;
+/** From this width a framed card draws the scaled line band on every target, the dashboard tile included. */
+const FRAMED_BAND_MIN_WIDTH = 320;
 
 type SparklineShape = 'line' | 'column' | 'area';
 export type TableSparklineShape = 'line' | 'column';
@@ -648,19 +655,20 @@ export function sparklinePointId(index: number): Id {
 
 /**
  * The card of a framed sparkline whose width is not authored: wide enough for its title on one line
- * between the two side margins, never under the 176 px card and never over the target's canvas.
+ * between the two side margins, never under 320 px and never over the target's canvas.
  * A longer title wraps as on any chart. A sized sparkline keeps the size it was given.
  */
 function framedCardSize(options: SparklineOptions, theme: Theme, measure: TextMeasurer): { width: number; height: number } {
   const card = resolveSize(cardSize(options, SPARKLINE_SIZE));
-  const title = options.title;
-  if (typeof title !== 'string' || title === '') return card;
   const constraints = (options as SparklineOptions & TargetSizeOptions)[TARGET_SIZE];
   if (options.size !== undefined && constraints?.fixed.width !== false) return card;
+  const canvas = resolveTargetSize(options.target ?? DEFAULT_TARGET).sizePx.width;
+  const base = Math.min(canvas, FRAMED_DEFAULT_WIDTH);
+  const title = options.title;
+  if (typeof title !== 'string' || title === '') return { ...card, width: base };
   const font: FontSpec = { family: theme.type.family, ...theme.type.title };
   const lineWidth = Math.max(...title.split('\n').map((line) => measure(line.trim(), font).width));
-  const canvas = resolveTargetSize(options.target ?? DEFAULT_TARGET).sizePx.width;
-  return { ...card, width: Math.max(card.width, Math.min(canvas, Math.ceil(lineWidth) + 2 * FRAMED_SIDE_MARGIN)) };
+  return { ...card, width: Math.max(base, Math.min(canvas, Math.ceil(lineWidth) + 2 * FRAMED_SIDE_MARGIN)) };
 }
 
 export function layoutSparkline(
@@ -937,10 +945,11 @@ export function layoutSparkline(
   const constraints = (options as SparklineOptions & TargetSizeOptions)[TARGET_SIZE];
   const automaticHeight = constraints?.fixed.height === false
     || constraints === undefined && (options.size === undefined || typeof options.size === 'object' && options.size.height === undefined);
-  // A framed exhibit with an authored width scales the trend; unsized cards keep their short band.
-  // Dashboard tiles keep the short band.
+  // A framed exhibit scales the trend with its width: an authored width on any target but a dashboard tile,
+  // and any framed card from 320 px, whose width was authored or not. A narrower tile keeps the short band.
   const authoredWidth = constraints?.fixed.width ?? options.size !== undefined;
-  const naturalLineHeight = framed && authoredWidth && automaticHeight && options.target !== 'dashboard'
+  const naturalLineHeight = framed && automaticHeight
+    && (authoredWidth && options.target !== 'dashboard' || size.width >= FRAMED_BAND_MIN_WIDTH)
     ? 2 * plotInput.style.padding + framedBand(size.width) + highRow
     : SPARKLINE_SIZE.height;
   return {

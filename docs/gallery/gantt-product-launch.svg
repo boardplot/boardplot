@@ -8,12 +8,8 @@
 <text data-id="frame:legendLabel:4" data-part="legendLabel" data-bp-role="category" x="41" y="87.56" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="41" dy="0">Workstream</tspan></text>
 <rect data-id="frame:swatch:5" data-part="swatch" x="121" y="77.26" width="12" height="12" fill="#bfcbd5"/>
 <text data-id="frame:legendLabel:6" data-part="legendLabel" data-bp-role="category" x="138" y="87.56" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="138" dy="0">After go-live</tspan></text>
-<path data-id="frame:swatch:7" data-part="swatch" d="M 223 78.26 L 228 83.26 L 223 88.26 L 218 83.26 Z" fill="#12395E" stroke="#12395E" stroke-width="1.5" stroke-linejoin="round"/>
-<text data-id="frame:legendLabel:8" data-part="legendLabel" data-bp-role="category" x="234" y="87.56" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="234" dy="0">Milestone</tspan></text>
-<rect data-id="frame:swatch:9" data-part="swatch" x="300.50" y="77.26" width="12" height="12" fill="#eaf2f8"/>
-<text data-id="frame:legendLabel:10" data-part="legendLabel" data-bp-role="category" x="317.50" y="87.56" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="317.50" dy="0">Weekend</tspan></text>
-<rect data-id="frame:swatch:11" data-part="swatch" x="383" y="77.26" width="12" height="12" fill="#cfdcec"/>
-<text data-id="frame:legendLabel:12" data-part="legendLabel" data-bp-role="category" x="400" y="87.56" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="400" dy="0">Elapsed to today</tspan></text>
+<rect data-id="frame:swatch:7" data-part="swatch" x="217" y="77.26" width="12" height="12" fill="#eaf2f8"/>
+<text data-id="frame:legendLabel:8" data-part="legendLabel" data-bp-role="category" x="234" y="87.56" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070"><tspan x="234" dy="0">Weekend</tspan></text>
 <rect data-id="rowTint:build" data-part="rowTint" x="24" y="207.20" width="672" height="40" fill="#eaf2f8"/>
 <rect data-id="rowTint:launch" data-part="rowTint" x="24" y="287.20" width="672" height="40" fill="#eaf2f8"/>
 <rect data-id="weekend:0" data-part="weekend" x="191.81" y="167.20" width="11.73" height="160" fill="#eaf2f8"/>

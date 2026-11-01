@@ -1,0 +1,3 @@
+### Changed / may need action
+
+- A bar or stacked mekko keeps the value above each column that has room for it. Before, one value that had no seat thinned the whole row of values: every column, then every second column, then none, so a slide with twelve columns of mixed width could print no value at all, and the bar variant draws no value axis. Now each value is placed on its own, and only a value with no seat is left out and named in the "Not labelled on the chart" note. The percent mekko keeps its single row of totals over equal-height columns. No setting brings the old thinning back. Goldens do not change.

@@ -428,7 +428,8 @@ function layoutGanttPass(data: GanttData, options: GanttOptions = {}, keyed: Rea
   // sat in the lane.
   if (body.laneEnabled && !(options as { [NO_LANE]?: true })[NO_LANE]) {
     const hidden = solved.placed.filter((label) => label.hidden).length;
-    const laneUsed = solved.placed.some((label) => label.kind === 'item' && !label.hidden && label.rect.x + label.rect.w > body.bodyX + body.bodyW + 0.5);
+    // A bar name that runs past the plot is no use of the lane: the wider timeline holds it.
+    const laneUsed = solved.placed.some((label) => label.kind === 'item' && !label.hidden && domain.milestones.laneIds.has(label.owner.segmentId ?? '') && label.rect.x + label.rect.w > body.bodyX + body.bodyW + 0.5);
     // Without the lane the timeline is wider: the flags are planned again.
     const wide = layoutGanttPass(data, { ...options, [NO_LANE]: true } as GanttOptions, keyed, autoHeight, { rows: flags.rows });
     const wideHidden = wide.refused ? Infinity : wide.labels.filter((label) => label.hidden).length;
