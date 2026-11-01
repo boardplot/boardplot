@@ -28,9 +28,14 @@ export function topNCut(sizes: readonly number[], n: number, threshold?: number)
   return { kept: all.filter((i) => keep.has(i)), dropped: all.filter((i) => !keep.has(i)) };
 }
 
-/** The rest bucket's name: the authored restLabel, else strings.others, else 'Others'; with the count when asked. */
-export function restLabel(topN: TopN, strings: StringsSpec | undefined, count: number): string {
-  return (topN.restLabel ?? strings?.others ?? 'Others') + (topN.showRestCount ? ` (${count})` : '');
+/**
+ * The rest bucket's name: the authored restLabel, else strings.others, else
+ * 'Others'; with the count when asked. A fold of one item has nothing to
+ * collect, so without an authored restLabel it keeps that item's own name and no count.
+ */
+export function restLabel(topN: TopN, strings: StringsSpec | undefined, folded: readonly string[]): string {
+  if (folded.length === 1 && topN.restLabel === undefined) return folded[0]!;
+  return (topN.restLabel ?? strings?.others ?? 'Others') + (topN.showRestCount ? ` (${folded.length})` : '');
 }
 
 /** The sum of the folded values; null when every folded value is null (no data is not zero). */

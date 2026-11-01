@@ -228,6 +228,18 @@ describe('pareto', () => {
     expect(g.derived.cumulativeShare.i0).toBe(100);
   });
 
+  // Prevents a single cause renamed "Rest (1)" when topN folds a tail of one, on a Pareto and on a bar.
+  it('keeps the own name of a single folded item', () => {
+    const g = lay(items([50, 30, 20, 10, 5, 1]), { topN: { n: 5, rest: true } });
+    expect(g.derived.restBucket?.label).toBe('Item 5');
+    expect(g.derived.restBucket?.memberIds).toEqual(['i5']);
+    expect(g.labels.some((l) => l.text.includes('Rest'))).toBe(false);
+    expect(g.labels.some((l) => l.text === 'Item 5')).toBe(true);
+    const bar = layoutBar({ categories: ['A', 'B', 'C'], series: [{ id: 's', values: [5, 3, 1] }] } as never, { topN: { n: 2 }, size: { width: 960 } } as never);
+    expect(bar.labels.some((l) => l.text === 'C')).toBe(true);
+    expect(bar.labels.some((l) => l.text === 'Others')).toBe(false);
+  });
+
   // Prevents a curve drawn from negative values, a zero total (0/0 shares) or no items.
   it('refuses a negative value, a total of zero and an empty item list', () => {
     const negative = throwsWith(() => lay(items([10, -1])));

@@ -275,7 +275,7 @@ export function layoutButterfly(
     if (opts.topN.rest !== false && dropped.length > 0) {
       rows.push({
         id: '__rest',
-        label: restLabel(opts.topN, opts.strings, dropped.length),
+        label: restLabel(opts.topN, opts.strings, dropped.map((r) => r.label)),
         a: restSum(dropped.map((r) => r.a)),
         b: restSum(dropped.map((r) => r.b)),
         aMeta: null,

@@ -1379,7 +1379,7 @@ export interface BulletOptions extends BaseOptionsFor<'bullet'> {
    * neutral; otherwise labels. A forced ramp that cannot apply keeps labels and warns.
    * 'row': each band's name prints above its band on every row, the band edges are
    * ticked under each row on per-row scales, the value sits just past the bar end and
-   * a key at the bottom names the bar, the target tick and the ramp. It needs a name
+   * a key at the bottom names the bar and the target tick, and the ramp when `strings.bandKey` sets its words. It needs a name
    * on every band, rows side by side with the target column, and room for each name;
    * elsewhere the key names the bands and a warning says so. 'auto' picks 'row' for at
    * most 4 rows that name every band, wherever 'row' can show.
