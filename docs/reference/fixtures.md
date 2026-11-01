@@ -793,7 +793,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | ID | Chart | Kind | Use case |
 |---|---|---|---|
 | orders-nine-months | sparkline | example | Nine months of orders, the last point ringed and valued, both ends named |
-| bare-card-spark | sparkline | example | The bare 176 by 36 mark: no ring, no labels, a gap the line does not bridge |
+| bare-card-spark | sparkline | example | The bare 176 by 36 mark: no end ring, no labels, a null bridged by a dotted segment |
 | orders-heavy-stroke | sparkline | torture | A 2.5 px line instead of the default 1.5 px |
 | reference-above-data | sparkline | example | A target above every point: the scale reaches up to the reference, the ring in warn |
 | reference-inside-data | sparkline | example | A reference the line crosses twice, the ring in good |
