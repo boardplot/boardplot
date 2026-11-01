@@ -364,9 +364,15 @@ export const diagramOptionsSchema = commonDiagramOptions
       'architecture',
     ]).describe('Required structural layout variant for the diagram.'),
     flow: z.enum(['columns', 'serpentine', 'lanes']).optional().describe('Layout flow: columns or serpentine for customer-journey, columns or lanes for architecture.'),
+    heightFill: z.enum(['rows', 'none']).optional()
+      .meta({ default: 'rows' })
+      .describe("Spare canvas height, read by hierarchy (org chart) and customer-journey. 'rows' (default): a canvas with a set height grows the gaps between the levels up to 2.6 times. 'none': natural gaps, the block centred."),
   })
   .strict()
   .superRefine((options, ctx) => {
+    if (options.heightFill !== undefined && options.variant !== 'hierarchy' && options.variant !== 'customer-journey') {
+      ctx.addIssue({ code: 'custom', path: ['heightFill'], message: "'heightFill' is only read by diagram variants 'hierarchy' and 'customer-journey'" });
+    }
     const presetSpecific = diagramPresetOptions.safeParse(
       options.flow === undefined
         ? { variant: options.variant }
