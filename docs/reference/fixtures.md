@@ -944,6 +944,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | eu-inflation-values | choropleth | example | EU inflation with each region value printed after its code |
 | eu-inflation-colorblind | choropleth | example | EU inflation around 2% in the colorblind-safe good/bad pair |
 | us-margin-versus-target | choropleth | example | State margins above the target are favorable |
+| us-margin-wide-slot | choropleth | example | State margins on a wide slot: the key and the unlabelled states stand beside the map |
 | dach-all-region-labels | choropleth | example | All three DACH markets carry their region labels |
 | german-states-bremen-on-map | choropleth | torture | Bremen keeps its label on the map through labelRegions, under an authored key title |
 | german-states-table-below | choropleth | example | The value table stands under the map |
@@ -1090,6 +1091,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | eu27-demand-versus-plan | tilemap | example | Demand above plan is favorable |
 | eu27-cost-versus-plan | tilemap | example | Cost below plan is favorable |
 | eu27-demand-colorblind | tilemap | example | Demand versus plan in the colorblind-safe good/bad pair |
+| us-state-tile-grid-wide-slot | tilemap | example | US states on a wide slot: the value key stands beside the tiles |
 | tile-key-bottom | tilemap | example | The value key in one row below the tiles |
 | us-states-overlay-tones | tilemap | example | Five state overlays in every tone, the tones and the ball measure named in the overlay key |
 | us-states-overlay-glyphs | tilemap | torture | Status, pie, icon and marker overlays in every tone, shape and size |

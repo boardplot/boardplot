@@ -119,6 +119,14 @@ fixtures.push({
   },
 });
 
+// A wide slot: the tiles are bound by the canvas height, so the key stands beside them.
+fixtures.push({
+  ...coverage,
+  id: 'us-state-tile-grid-wide-slot',
+  title: 'US states on a wide slot: the value key stands beside the tiles',
+  options: { ...coverage.options, size: { width: 1184, height: 528 } },
+});
+
 // The key below the tiles. 'none' draws
 // the key anyway (tilemap-legend-required), so it has no demo.
 const stateGrid = fixtures.find((fixture) => fixture.id === 'us-state-tile-grid')!;
