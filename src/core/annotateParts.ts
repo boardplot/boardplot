@@ -37,7 +37,7 @@ export function pruneOrphanAnnotationArms(
   for (let i = placed.length - 1; i >= 0; i--) {
     const ann = placed[i]!;
     if (!ann.labelId || !hiddenIds.has(ann.labelId)) continue;
-    const armKinds = ['indicator100', 'diff', 'cagr', 'callout', 'note', 'delta', 'abs'];
+    const armKinds = ['indicator100', 'diff', 'cagr', 'callout', 'note', 'delta', 'abs', 'bracket'];
     const bracket = nodes.some((node) => node.owner.annotationId === ann.id && node.part === 'bandBracket');
     if (!armKinds.includes(ann.kind) && !bracket) continue;
     const drop = new Set(nodes.filter((node) => node.owner.annotationId === ann.id).map((node) => node.id));

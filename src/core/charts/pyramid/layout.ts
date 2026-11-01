@@ -134,13 +134,13 @@ export function layoutPyramid(
     );
   }
 
-  const basis = options.basis ?? 'count';
-  if (basis !== 'count' && basis !== 'shareOfTotal') {
+  const requestedBasis = options.basis ?? 'count';
+  if (requestedBasis !== 'count' && requestedBasis !== 'shareOfTotal' && requestedBasis !== 'shareOfGroup') {
     throw new NormalizeError(
       'pyramid-basis-unknown',
       'options.basis',
-      `unknown basis '${String(basis)}'`,
-      "one of 'count', 'shareOfTotal'",
+      `unknown basis '${String(requestedBasis)}'`,
+      "one of 'count', 'shareOfTotal', 'shareOfGroup'",
     );
   }
 
@@ -180,6 +180,13 @@ export function layoutPyramid(
       'give each group its own id',
     );
   }
+  // Two dated snapshots share no common whole: pooling them gives each side a
+  // share of "both years together", and a band whose share fell can read as a
+  // rise. A share of the grand total on two dated groups is therefore a share
+  // of each snapshot.
+  const bothDated = groups[0].date !== undefined && groups[1].date !== undefined;
+  const basis: PyramidDerived['basis'] = requestedBasis === 'shareOfTotal' && bothDated ? 'shareOfGroup' : requestedBasis;
+  const isShare = basis !== 'count';
   const counts: [number[], number[]] = [
     readValues(groups[0], 0, bands),
     readValues(groups[1], 1, bands),
@@ -202,20 +209,23 @@ export function layoutPyramid(
   const grandTotal = totals[groupIds[0]]! + totals[groupIds[1]]!;
 
   let shares: PyramidDerived['shares'];
-  if (basis === 'shareOfTotal') {
-    if (!(grandTotal > 0)) {
+  if (isShare) {
+    if (basis === 'shareOfGroup' ? !(totals[groupIds[0]]! > 0 && totals[groupIds[1]]! > 0) : !(grandTotal > 0)) {
       throw new NormalizeError(
         'pyramid-zero-total',
         'groups',
-        `both groups sum to ${grandTotal} across every band, so every share would be 0/0`,
-        "supply at least one positive count, or use basis: 'count'",
+        basis === 'shareOfGroup'
+          ? `a group sums to 0 across every band (${groupIds[0]}: ${totals[groupIds[0]]}, ${groupIds[1]}: ${totals[groupIds[1]]}), so its shares would be 0/0`
+          : `both groups sum to ${grandTotal} across every band, so every share would be 0/0`,
+        "supply at least one positive count per group, or use basis: 'count'",
       );
     }
     shares = emptyIdRecord() as NonNullable<PyramidDerived['shares']>;
+    const whole = (id: Id) => (basis === 'shareOfGroup' ? totals[id]! : grandTotal);
     for (const band of bands) {
       shares[band.id] = {
-        [groupIds[0]]: (values[band.id]![groupIds[0]]! / grandTotal) * 100,
-        [groupIds[1]]: (values[band.id]![groupIds[1]]! / grandTotal) * 100,
+        [groupIds[0]]: (values[band.id]![groupIds[0]]! / whole(groupIds[0])) * 100,
+        [groupIds[1]]: (values[band.id]![groupIds[1]]! / whole(groupIds[1])) * 100,
       };
     }
   }
@@ -246,14 +256,14 @@ export function layoutPyramid(
   // ENGINE's number: 'thousands' on a percentage axis reads 12.4 as 12,400
   // people, and a format of '1,234' rounds 0.8% to 1%. Both are refused rather
   // than merged, and the refusal is visible instead of a silent override.
-  if (basis === 'shareOfTotal') {
+  if (isShare) {
     const authored = (['unit', 'format'] as const).filter((key) => options[key] !== undefined);
     if (authored.length > 0) {
       const keys = authored.map((key) => `options.${key}`).join(' and ');
       throw new NormalizeError(
         'pyramid-derived-presentation-authored',
         `options.${authored[0]}`,
-        `basis 'shareOfTotal' plots shares of the grand total, so the bars are percentages this engine derived; ${keys} (${authored.map((key) => `'${String(options[key])}'`).join(', ')}) would label or round a derived number the author did not compute`,
+        `basis '${basis}' plots shares, so the bars are percentages this engine derived; ${keys} (${authored.map((key) => `'${String(options[key])}'`).join(', ')}) would label or round a derived number the author did not compute`,
         `drop ${keys} — shares print as '${SHARE_FORMAT.replace('1.5', '12.4')}' in ${SHARE_UNIT} — or use basis 'count' to plot and label the authored numbers`,
       );
     }
@@ -262,7 +272,7 @@ export function layoutPyramid(
   // ---- constructed butterfly input: derived numbers only, no geometry ----
   const order: Id[] = [...bands].reverse().map((band) => band.id);
   const plotted = (bandId: Id, group: 0 | 1): number =>
-    basis === 'shareOfTotal' ? shares![bandId]![groupIds[group]]! : values[bandId]![groupIds[group]]!;
+    isShare ? shares![bandId]![groupIds[group]]! : values[bandId]![groupIds[group]]!;
 
   const comparableWidth = bandWidth === null ? '' : chartString(options, 'bandWidthClause', { v1: trim(bandWidth) });
   const footnotes = [
@@ -304,12 +314,12 @@ export function layoutPyramid(
     sharedScale: true,
     // Pinned with the basis, not beside it: refused above, so nothing authored
     // can reach here to move them.
-    ...(basis === 'shareOfTotal' ? { format: SHARE_FORMAT, unit: chartString(options, 'pyramidShareSubtitle') } : {}),
+    ...(isShare ? { format: SHARE_FORMAT, unit: chartString(options, basis === 'shareOfGroup' ? (bothDated ? 'pyramidShareSnapshotSubtitle' : 'pyramidShareGroupSubtitle') : 'pyramidShareSubtitle') } : {}),
   }, footnotes, options.footnotes);
 
   const comparison = {
     periods: Object.fromEntries(groups.map(g => [g.id, { date: g.date, label: g.label ?? g.id }])),
-    differenceFormat: basis === 'shareOfTotal' ? '1.5pp' : undefined,
+    differenceFormat: isShare ? '1.5pp' : undefined,
     rowDriven: false,
     // the scale fills each pane, heads stand at the lane, and
     // cards put values inside the bar end in a lane as narrow as the bands.
@@ -417,7 +427,7 @@ export function layoutPyramid(
 
   const labelA = groups[0].label ?? groupIds[0];
   const labelB = groups[1].label ?? groupIds[1];
-  const fmtPlotted = basis === 'shareOfTotal' ? (v: number) => formatAutomaticPercent(v, 1, false, options.locale?.language) : fmtCount;
+  const fmtPlotted = isShare ? (v: number) => formatAutomaticPercent(v, 1, false, options.locale?.language) : fmtCount;
   // Counts are only interpretable with the unit the frame prints beside them.
   // Under shareOfTotal the plotted numbers already carry '%', and the totals
   // below are counts in the authored unit either way.
@@ -433,8 +443,8 @@ export function layoutPyramid(
     // unit is off by a factor of 1000 for the one reader who cannot see the
     // frame, which is worse than omitting the totals entirely.
     chartString(options, 'pyramidTotals', { v1: labelA, v2: fmtCount(totals[groupIds[0]]!), v3: countUnit, v4: labelB, v5: fmtCount(totals[groupIds[1]]!), v6: countUnit, v7: fmtCount(grandTotal), v8: countUnit }) +
-    (basis === 'shareOfTotal'
-      ? chartString(options, 'pyramidShares')
+    (isShare
+      ? chartString(options, basis === 'shareOfGroup' ? 'pyramidSharesOfGroup' : 'pyramidShares')
       : chartString(options, 'pyramidCounts', { v1: countUnit === '' ? '' : chartString(options, 'inUnitClause', { v1: options.unit }) })) +
     [...bands]
       .reverse()

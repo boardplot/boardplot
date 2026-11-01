@@ -109,6 +109,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | dpy-absolute-regions | example | ΔPY absolute variance columns with forced signs |
 | dpl-relative-pins | example | ΔPL% relative variance pins, ≤1 decimal, forced signs |
 | integrated-fc-caps | example | Integrated variance: AC columns with ΔFC caps |
+| integrated-solid-shortfall | example | Integrated variance with a solid shortfall cap (surface.shortfallCap) |
 | ref-nonpositive-suppression | torture | Torture: REF zero and negative suppress Δ% with warnings |
 | all-positive-deltas | torture | Total SaaS and services revenue growth by region versus prior year |
 | all-negative-deltas | torture | Torture: all-negative ΔPL, labels mirrored below, category labels in one row under the bars |

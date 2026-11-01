@@ -413,6 +413,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | ebit-bridge | waterfall.vertical | example | EBIT bridge FY21→FY24 |
 | interview-status-buildup | waterfall.vertical | example | Interview pipeline build-up by status |
 | revenue-build-up | waterfall.vertical | example | Revenue → EBIT build-up with diff arrow |
+| step-brackets | waterfall.vertical | example | Brackets over bridge steps print their sums |
 | build-down | waterfall.vertical | example | Build-down: revenue to net income |
 | whole-axis-opt-out | waterfall.vertical | example | Whole value axis kept with an explicit false |
 | automatic-axis-break | waterfall.vertical | example | Explicit automatic break makes small steps on a large base easier to compare |
@@ -525,6 +526,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | dpy-absolute-regions | variance.absolute | example | ΔPY absolute variance columns with forced signs |
 | dpl-relative-pins | variance.relative | example | ΔPL% relative variance pins, ≤1 decimal, forced signs |
 | integrated-fc-caps | variance.integrated | example | Integrated variance: AC columns with ΔFC caps |
+| integrated-solid-shortfall | variance.integrated | example | Integrated variance with a solid shortfall cap (surface.shortfallCap) |
 | ref-nonpositive-suppression | variance.relative | torture | Torture: REF zero and negative suppress Δ% with warnings |
 | all-positive-deltas | variance.absolute | torture | Total SaaS and services revenue growth by region versus prior year |
 | all-negative-deltas | variance.absolute | torture | Torture: all-negative ΔPL, labels mirrored below, category labels in one row under the bars |
@@ -1047,7 +1049,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | workforce-tenure-gender | pyramid | example | Women outnumber men below four years of tenure and are outnumbered above ten |
 | torture-pyramid-degenerate | pyramid | torture | 22 bands, one empty in both groups, a 10:1 group imbalance and an open top band |
 | dated-population-comparison | pyramid | example | Growth within the same age band across two observation dates |
-| dated-share-difference | pyramid | example | An absolute difference between shares is measured in percentage points |
+| dated-share-difference | pyramid | example | Each snapshot is its own 100%, and a difference between shares is measured in percentage points |
 
 ## diagram
 

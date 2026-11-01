@@ -174,11 +174,11 @@ const dated = fixtures[fixtures.length - 1]!;
 fixtures.push({
   ...dated,
   id: 'dated-share-difference',
-  title: 'An absolute difference between shares is measured in percentage points',
+  title: 'Each snapshot is its own 100%, and a difference between shares is measured in percentage points',
   options: {
     ...dated.options!, basis: 'shareOfTotal',
-    title: 'The age-20-to-39 share differs by 4.3 percentage points',
-    annotations: [{ id: 'gap', kind: 'diff', mode: 'absolute', from: { categoryId: 'adult', seriesId: 'before' }, to: { categoryId: 'adult', seriesId: 'after' }, text: 'FY21 to FY23, both snapshots combined: ${value}' }],
+    title: 'The age-20-to-39 share fell by 1.9 percentage points',
+    annotations: [{ id: 'gap', kind: 'diff', mode: 'absolute', from: { categoryId: 'adult', seriesId: 'before' }, to: { categoryId: 'adult', seriesId: 'after' }, text: 'FY21 to FY23: ${value}' }],
   },
 });
 
