@@ -60,7 +60,7 @@ One form; its chart ID is `pyramid`.
 
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
-| basis | string | `'count'`, `'shareOfTotal'` | `'count'` | Default 'count'. 'shareOfTotal' divides by the grand total across BOTH groups and all bands — never per group, which would hide the group-size imbalance a pyramid is read for. |
+| basis | string | `'count'`, `'shareOfTotal'`, `'shareOfGroup'` | `'count'` | Default 'count'. 'shareOfTotal' divides by the grand total across BOTH groups and all bands — never per group, which would hide the group-size imbalance a pyramid is read for. 'shareOfGroup' divides each side by its own total, so each side sums to 100%; 'shareOfTotal' on two groups that both carry a date draws 'shareOfGroup', because two snapshots have no common whole. |
 | methodNote | boolean |  |  | Default false. true adds the method footnote stating the band convention: [from, to), youngest at the bottom, equal widths. An open-ended top band and the share base are required for interpretation and print regardless. |
 
 Plus the [shared options](options.md). This type does not accept `detailFields`, `categoryLabels`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `topN`, `hatchStrength`, `colorblindSafe`, `rounding`.
@@ -92,7 +92,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | workforce-tenure-gender | example | Women outnumber men below four years of tenure and are outnumbered above ten |
 | torture-pyramid-degenerate | torture | 22 bands, one empty in both groups, a 10:1 group imbalance and an open top band |
 | dated-population-comparison | example | Growth within the same age band across two observation dates |
-| dated-share-difference | example | An absolute difference between shares is measured in percentage points |
+| dated-share-difference | example | Each snapshot is its own 100%, and a difference between shares is measured in percentage points |
 
 ## Not for
 
