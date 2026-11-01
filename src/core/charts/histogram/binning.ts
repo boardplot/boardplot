@@ -29,6 +29,13 @@
  *    Edges on the integers would close the last bin over two values and draw
  *    a false spike. An 'auto' width that snaps below 1 rises to 1: a
  *    narrower bin on whole numbers leaves every other bin empty.
+ * 5b. An authored count on whole numbers whose width `range / count` is not a
+ *    whole number takes the whole width (the floor or the ceiling of it) that
+ *    gives the count nearest the request, with `exactWidth` recording what the
+ *    count alone would have given. Width 1 is one bin per value (5a). A wider
+ *    width starts on the smallest value, so every bin spans that many values
+ *    and the last bin ends past the maximum. An author who wants fractional
+ *    bins sets `bins.width`.
  * 6. Membership is left-closed, right-open `[lo, hi)`; the LAST bin is closed
  *    at its upper edge. Assignment compares against `edges`, never
  *    `floor((v - first)/h)` alone -- that expression lands one ULP low on
@@ -195,6 +202,24 @@ interface BinningInput {
   snap: boolean;
 }
 
+/**
+ * The whole-number width for an authored count on whole numbers: the floor or
+ * the ceiling of `range / count`, whichever gives the bin count nearer the
+ * request (the wider one on a tie). Width 1 gives one bin per value, any wider
+ * width gives `floor(range / width) + 1` bins. Undefined when neither fits.
+ */
+function wholeWidthForCount(min: number, max: number, count: number): { width: number; count: number } | undefined {
+  if (!Number.isSafeInteger(min) || !Number.isSafeInteger(max)) return undefined;
+  const range = max - min;
+  const options = [Math.ceil(range / count), Math.max(1, Math.floor(range / count))]
+    .map((width) => ({ width, count: Math.floor(range / width) + 1 }))
+    .filter((option) => option.count <= MAX_BINS);
+  return options.reduce<{ width: number; count: number } | undefined>(
+    (best, option) => (best === undefined || Math.abs(option.count - count) < Math.abs(best.count - count) ? option : best),
+    undefined,
+  );
+}
+
 /** Bins of width 1 centred on whole numbers: `min - 0.5` up to `max + 0.5`, within MAX_BINS. */
 function perValueFits(min: number, max: number): boolean {
   return Number.isSafeInteger(min) && Number.isSafeInteger(max) && max - min + 1 <= MAX_BINS;
@@ -234,6 +259,8 @@ export function computeBinning(input: BinningInput): Binning {
   let perValue = false;
   const wholeNumbers = sorted.every((value) => Number.isInteger(value));
   let requestedCount: number | undefined;
+  let exactWidth: number | undefined;
+  let wholeCount: number | undefined;
 
   if (typeof bins === 'number') {
     // An authored count is exact: that many equal bins from the
@@ -242,6 +269,15 @@ export function computeBinning(input: BinningInput): Binning {
     requestedCount = bins;
     width = range / bins;
     anchor = min;
+    // Whole numbers keep whole-number bins: a fractional width leaves empty slots between the values.
+    const whole = wholeNumbers && range % bins !== 0 ? wholeWidthForCount(min, max, bins) : undefined;
+    if (whole !== undefined) {
+      exactWidth = width;
+      width = whole.width;
+      wholeCount = whole.count;
+      perValue = width === 1;
+      if (perValue) anchor = min - 0.5;
+    }
   } else if (typeof bins === 'object' && (bins.width !== undefined || bins.openAbove === undefined)) {
     // An object without width or openAbove has no width to draw; the check below refuses it.
     rule = 'width';
@@ -318,7 +354,8 @@ export function computeBinning(input: BinningInput): Binning {
     }
   }
   const first = anchor;
-  const closedBins = rule === 'count' ? requestedCount! : binCountFor(closedTop, first, width);
+  const exactCount = rule === 'count' && wholeCount === undefined;
+  const closedBins = wholeCount ?? (rule === 'count' ? requestedCount! : binCountFor(closedTop, first, width));
   const k = closedBins + (openAbove === undefined ? 0 : 1);
   if (k > MAX_BINS) {
     throw new NormalizeError(
@@ -329,10 +366,10 @@ export function computeBinning(input: BinningInput): Binning {
     );
   }
 
-  const atEdge = (rule === 'count' ? countEdges(min, max, k) : undefined) ?? edgeSequence(first, width, closedBins);
+  const atEdge = (exactCount ? countEdges(min, max, k) : undefined) ?? edgeSequence(first, width, closedBins);
   const edges = Array.from({ length: closedBins + 1 }, (_, i) => atEdge(i));
   // An exact count ends on the maximum itself, not on a float sum a hair off it.
-  if (rule === 'count') edges[k] = max;
+  if (exactCount) edges[k] = max;
   // The open bin starts exactly on its authored value and ends on the maximum.
   if (openAbove !== undefined) {
     edges[closedBins] = closedTop;
@@ -359,6 +396,7 @@ export function computeBinning(input: BinningInput): Binning {
     hSturges,
     hAuto,
     ...(requestedCount === undefined ? {} : { requestedCount }),
+    ...(exactWidth === undefined ? {} : { exactWidth }),
     ...(openAbove === undefined ? {} : { openAbove }),
   };
 }
