@@ -188,9 +188,9 @@ function ruleEdge(fill: Paint, grounds: readonly string[], theme: Theme): { stro
   if (!parseColor(fillCss)) return undefined;
   const clears = (css: string) => grounds.every((ground) => contrastRatio(css, ground) >= MARK_CONTRAST_FLOOR);
   if (clears(fillCss)) return undefined;
-  // A pale step of the stack ramp takes the thin neutral outline Boardplot gives
+  // A pale step of the stack or neutral ramp takes the thin neutral outline Boardplot gives
   // pale fills (the bartable range: neutral at hair width), where that outline reaches 3:1.
-  if ('theme' in fill && fill.theme?.kind === 'stack-ramp' && clears(paintTokenColor(theme, 'neutral'))) {
+  if ('theme' in fill && (fill.theme?.kind === 'stack-ramp' || fill.theme?.kind === 'neutral-ramp') && clears(paintTokenColor(theme, 'neutral'))) {
     return { stroke: { token: 'neutral' }, strokeWidth: strokeToken(theme, 'hair') };
   }
   const luminance = (css: string) => relativeLuminance(parseColor(css)!);

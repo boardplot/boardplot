@@ -40,7 +40,7 @@ import type {
   TilemapMarks,
   TilemapOptions,
 } from './types';
-import { buildGeoScale, decimalsOf, geoLabelFont, ingestGeoRegions, type ScaleModel, geoStatePattern, geoStateLabel, geoStateLegend, geoStateSummary, geoStateCounts, geoScaleHints } from '../geoScale';
+import { buildGeoScale, decimalsOf, geoLabelFont, quietLandPaint, ingestGeoRegions, type ScaleModel, geoStatePattern, geoStateLabel, geoStateLegend, geoStateSummary, geoStateCounts, geoScaleHints } from '../geoScale';
 import { autoDecimals } from '../../formatPrecision';
 import { compareText } from '../../text';
 import { geoOverlayDiameter, geoOverlayLegend, renderGeoOverlays, reserveGeoOverlayGlyphs } from '../choropleth/overlays';
@@ -164,8 +164,9 @@ function layoutTilemapPass(
   // The tilemap names the hatched key entry "No data"; the choropleth keeps its own words.
   scale.legend.forEach((item, i) => { if (item.id === 'no-data') scale.legend[i] = { ...item, label: chartString(options, 'tilemapNoData') }; });
   pushAll(scale.legend, geoStateLegend(statesById.values(), options));
+  const landPaint = quietLandPaint(scale.legend);
   if (pack.regions.some((region) => !valuesById.has(region.id))) scale.legend.push({
-    id: 'not-in-data', label: chartString(options, 'notInData'), paint: { token: 'inkMuted' }, pattern: 'outline', hollow: true,
+    id: 'not-in-data', label: chartString(options, 'notInData'), paint: landPaint,
   });
   warnings.push(...geoScaleHints(numericValues, options, fmt));
   const legendOptions = legendRequired(options.legend, warnings, 'tilemap', theme);
@@ -372,7 +373,7 @@ function layoutTilemapPass(
       w: tileSize,
       h: tileSize,
     };
-    const fill: Paint = state ? { token: 'inkMuted' } : unlisted ? { token: 'background' } : noData ? { token: 'neutral' } : scale.paint(value);
+    const fill: Paint = state ? { token: 'inkMuted' } : unlisted ? landPaint : noData ? { token: 'neutral' } : scale.paint(value);
     const labelBackground: Paint = (noData || state) ? { token: 'background' } : fill;
     const nodeId = `tile:${region.id}`;
     const owner = { categoryId: region.id };
@@ -381,9 +382,9 @@ function layoutTilemapPass(
       id: nodeId,
       rect,
       fill,
-      // A 2 px gap in the page colour parts filled tiles; an outline stays on
-      // hatched, state and unlisted tiles, whose fill does not carry an edge.
-      ...(!unlisted && !noData && !state ? {} : { stroke: { token: 'inkMuted' } as Paint, strokeWidth: strokeToken(theme, 'hair') }),
+      // A 2 px gap in the page colour parts filled and quiet-land tiles; an
+      // outline stays on hatched and state tiles, whose fill does not carry an edge.
+      ...(!noData && !state ? {} : { stroke: { token: 'inkMuted' } as Paint, strokeWidth: strokeToken(theme, 'hair') }),
       ...(state ? { pattern: geoStatePattern(state) } : noData ? { pattern: 'hatch45' as const } : {}),
       owner,
       part: 'tile',

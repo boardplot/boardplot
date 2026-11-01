@@ -147,6 +147,13 @@ export interface Theme {
      * categorical `series` order.
      */
     stack?: string[];
+    /**
+     * The fills of treemap groups by rank, the first drawn group the
+     * strongest (2 or more steps). More groups than steps share the ramp
+     * evenly between its ends. Absent takes `stack`; a theme without either
+     * steps the first series colour toward the page.
+     */
+    treemap?: string[];
     seriesOverflow?: 'repeatLast' | 'cycle'; // default 'repeatLast'
     /**
      * Named alternative categorical ramps (e.g. 'region', 'channel') so one
@@ -427,6 +434,13 @@ export interface Theme {
      * Absent means true.
      */
     kpiCaret?: boolean;
+    /**
+     * false keeps a standalone kpi card in a slot of fixed height at its
+     * natural figure and delta sizes, at the top of the slot. Absent means
+     * true: the figure grows to a quarter of the slot height, the delta to
+     * 30% of the figure, and the block sits in the middle of the free height.
+     */
+    kpiSlotFill?: boolean;
     /**
      * How a bridge paints its steps, for the waterfall in
      * both orientations and the pvm bridge. 'sign' draws the totals in

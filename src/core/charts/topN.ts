@@ -62,6 +62,17 @@ export function restDetailsWarning(data: Pick<ChartData, 'categories' | 'series'
   };
 }
 
+/**
+ * The stacking mode of a mekko, shared by the drawing and its reading. A bar
+ * with several data series stacks them as units; a unit stack on a percent
+ * value axis is a percent stack.
+ */
+export function mekkoStackingMode(options: { variant?: 'stacked100' | 'stacked' | 'bar'; valueAxis?: { percent?: boolean } }, dataSeriesCount: number): 'percent' | 'unit' | 'bar' {
+  let mode: 'percent' | 'unit' | 'bar' = { stacked100: 'percent', stacked: 'unit', bar: 'bar' }[options.variant ?? 'stacked100'] as 'percent' | 'unit' | 'bar';
+  if (mode === 'bar' && dataSeriesCount > 1) mode = 'unit';
+  return options.valueAxis?.percent && mode === 'unit' ? 'percent' : mode;
+}
+
 /** A mekko cell as an amount: in percent mode a percent cell converts through its category basis. */
 export function mekkoAmount(cell: { v: number | null; isPct: boolean }, basis: number, percent: boolean): number | null {
   if (cell.v === null) return null;

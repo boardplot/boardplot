@@ -9,7 +9,7 @@ import { EMPTY_DATA, hasNoDataRows } from './emptyData';
 import { NormalizeError, canonicalLanguage } from './normalize/shared';
 import { withNumberMarks } from './numberMarks';
 import { chartRefusals, isRefused } from './schema/refusals';
-import { REMOVED_NAMES, removedNameWarnings, resolveTargetTheme } from './theme';
+import { REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, resolveTheme } from './theme';
 import { DEFAULT_TARGET, resolveTargetSize } from './target';
 import { textScaleOf, textSizeOf } from './typeFloors';
 import { defaultMeasurer, type TextMeasurer } from './text';
@@ -389,6 +389,17 @@ function stackPaletteWarnings(type: string, data: unknown, options: RequestOptio
   }
   const ref = options.theme;
   const color = typeof ref === 'object' ? ref.overrides?.color : undefined;
+  // Treemap groups read color.treemap, else color.stack: a preset ramp the color.series override leaves in place.
+  if (type === 'treemap') {
+    if (color?.series === undefined || color.treemap !== undefined || color.stack !== undefined ||
+      !geometry.scene.some(node => 'fill' in node && node.fill && 'theme' in node.fill && node.fill.theme?.kind === 'group-ramp')) return [];
+    const theme = resolveTheme(ref);
+    if ((theme.color.treemap ?? theme.color.stack) === undefined) return [];
+    return [{ code: 'stack-palette-used', severity: 'warn',
+      message: 'Treemap groups use color.treemap, else color.stack. The color.series override does not set that ramp.',
+      suggest: 'Set theme.overrides.color.treemap, or set options.palette or a fill on each group.',
+    }];
+  }
   if (type !== 'column' || color?.series === undefined || color.stack !== undefined ||
     !geometry.scene.some(node => 'fill' in node && node.fill && 'theme' in node.fill && node.fill.theme?.kind === 'stack-ramp')) return [];
   return [{ code: 'stack-palette-used', severity: 'warn',

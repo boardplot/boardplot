@@ -6,7 +6,7 @@ import { SPARKLINE_RING_RADIUS, kpiSparkSeries, lastObservedIndex, sparklinePoin
 import type { FunnelMarks, FunnelDerived } from '../charts/funnel/layout';
 import type { PieMarks, PieDerived } from '../charts/pie/layout';
 import type { MekkoMarks, MekkoDerived } from '../charts/mekko/layout';
-import { poolMekkoCell } from '../charts/topN';
+import { mekkoStackingMode, poolMekkoCell } from '../charts/topN';
 import type { ParetoMarks, ParetoData, ParetoDerived } from '../charts/pareto/layout';
 import type { PvmData, PvmDerived } from '../charts/pvm/types';
 import type { PyramidMarks } from '../charts/pyramid/layout';
@@ -313,13 +313,11 @@ function mekko(ctx: RecordContext): InteractionRecord[] {
   const source = seriesSource(ctx);
   const geo = geometry<MekkoMarks, MekkoDerived>(ctx);
   const options = ctx.request.options as MekkoOptions;
-  const variant = options.variant ?? 'stacked100';
-  const mode = variant === 'stacked' && options.valueAxis?.percent ? 'percent' : ({ stacked100: 'percent', stacked: 'unit', bar: 'bar' } as const)[variant];
   const activeSeries = source.series.filter(series => series.role !== 'reference' && series.id !== options.widthSeriesId);
-  const plottedSeries = mode === 'bar' ? activeSeries.slice(0, 1) : activeSeries;
+  const mode = mekkoStackingMode(options, activeSeries.length);
   const shown = new Set(geo.marks.columns.map(column => column.categoryId));
   const pooledCategories = source.categories.filter(category => !shown.has(category.id));
-  const bases = pooledCategories.map(category => category.total100 ?? plottedSeries.reduce((sum, series) => {
+  const bases = pooledCategories.map(category => category.total100 ?? activeSeries.reduce((sum, series) => {
     const raw = source.cell(category.id, series.id).raw;
     return sum + (!source.isPercent(category.id, series.id) && typeof raw === 'number' ? raw : 0);
   }, 0));
@@ -329,10 +327,10 @@ function mekko(ctx: RecordContext): InteractionRecord[] {
     const raw = widthSeries ? source.cell(category.id, options.widthSeriesId!).raw : 1;
     return typeof raw === 'number' ? Math.max(0, raw) : 0;
   });
-  const pooledCells = new Map(plottedSeries.map(series => [series.id, poolMekkoCell(pooledCategories.map((category, i) => {
+  const pooledCells = new Map(activeSeries.map(series => [series.id, poolMekkoCell(pooledCategories.map((category, i) => {
     const raw = source.cell(category.id, series.id).raw;
     return { v: typeof raw === 'number' ? raw : null, isPct: source.isPercent(category.id, series.id), basis: bases[i]!, weight: pooledWeights[i]! };
-  }), mode, widthSeries)]));
+  }), options.variant === 'bar' ? 'bar' : mode, widthSeries)]));
   const pooled = new Map([...pooledCells].map(([id, cell]) => [id, cell.v]));
   const pooledBasis = mode === 'percent' && pooledCategories.some(category => category.total100 !== undefined)
     ? bases.reduce((sum, basis) => sum + basis, 0) : undefined;
@@ -350,7 +348,7 @@ function mekko(ctx: RecordContext): InteractionRecord[] {
       anchor: segment.rect, scenario: source.series.find(series => series.id === segment.seriesId)?.scenario,
       share: !category && [...pooled.values()].some(v => v === null)
         ? { numerator: value, denominator: unavailable('Incomplete composition'), percent: unavailable('Incomplete composition') }
-        : mekkoShare(value, category ? category.total100 : pooledBasis, plottedSeries.map(series => ({ value: category ? source.cell(column.categoryId, series.id) : numericValue(pooled.get(series.id)), isPct: Boolean(category && source.isPercent(column.categoryId, segment.seriesId)) })), mode, Boolean(category && source.isPercent(column.categoryId, segment.seriesId))),
+        : mekkoShare(value, category ? category.total100 : pooledBasis, activeSeries.map(series => ({ value: category ? source.cell(column.categoryId, series.id) : numericValue(pooled.get(series.id)), isPct: Boolean(category && source.isPercent(column.categoryId, segment.seriesId)) })), mode, Boolean(category && source.isPercent(column.categoryId, segment.seriesId))),
     });
   }));
 }

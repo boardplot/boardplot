@@ -538,17 +538,17 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   const rowHeaders = variant === 'dumbbell' && labelOn('category') && options.rowLabels === undefined
     && size.width <= HEADER_ROWS_MAX_WIDTH && (openHeight || stepEst >= 2 * lineH + 8);
   const headerH = rowHeaders ? lineH + 3 : 0;
+  const air = (options as { [HARD_MINIMUM]?: boolean })[HARD_MINIMUM] === true ? 1 : 4;
   const catMaxLines = rowHeaders ? 1 : openHeight ? Infinity : stepEst >= 2 * lineH + 4 ? 2 : 1;
   const capW = rowHeaders ? plot0.w : Math.max(24, plot0.w * 0.28);
   const { labels: catLines, width: catColumnW } = rowLabelBand(cats, tickFont, capW, catMaxLines, lineH, measure, {
-    wider: gutterBudget(24, plot0.w),
+    wider: gutterBudget(24, plot0.w), ...(rowHeaders ? {} : { tightLines: Math.floor((stepEst - air) / lineH) }),
     target: options.target, textScale: textScaleOf(options), typeRole: 'axis',
     shrink: stepDownFont(theme, tickFont, 'axis', options.target, textScaleOf(options)),
     footnoteRefs: { count: authoredFootnoteCount(options), warnings },
   });
   // each category keeps one measured value row before automatic sizing.
   // Refuse-less: at the hard minimum (the last fixed-slot step) a row keeps 1 px of air, not 4.
-  const air = (options as { [HARD_MINIMUM]?: boolean })[HARD_MINIMUM] === true ? 1 : 4;
   const rowHeight = rowHeaders ? measure('0', labelFont).height + headerH + air : Math.max(measure('0', labelFont).height, maxOf(catLines.map(label => label.h))) + air;
   frameResult.frame.plotMinHeight = Math.max(frameResult.frame.plotMinHeight ?? 0,
     size.height + (frameResult.deficit ?? 0) + cats.length * rowHeight - (plot0.h - annPad - axisH));

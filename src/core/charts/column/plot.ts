@@ -548,7 +548,7 @@ function columnBand(
   const planRow = (b: typeof band, ticked?: ReturnType<typeof dateTickRow>) => {
     const row = categoryLabelsAndMarks(cats, { count: authoredFootnoteCount(options), warnings }, partialAxisWords(options.strings, options, frame.legend?.items.some((item) => item.id === '__partial') || partialNamedOnValues(domain)));
     ticked?.name(row);
-    return withCategoryRanks(planCategoryRow({
+    const plan = withCategoryRanks(planCategoryRow({
       target: options.target, textScale: textScaleOf(options),
       ...row,
       centers: cats.map((_, ci) => b.center(ci)),
@@ -565,6 +565,18 @@ function columnBand(
       ...(disclosuresShown(options) ? { cutMarkFrom: authoredFootnoteCount(options) + 1 } : rankKeyShown(options) ? {} : { everyName: true }),
       ...ticked?.plan,
     }), measure, cats.map((c) => c.label ?? c.id), (options as { [FORCE_CATEGORY_RANKS]?: true })[FORCE_CATEGORY_RANKS] === true, rankKeyShown(options));
+    // Rotated total and highlighted names need their drawn width for the row height and left overhang.
+    if (plan.rotation !== 0) {
+      const widest = () => Math.max(1, maxOf(plan.infos.filter((_, ci) => plan.keep[ci]).map(info => info.w)));
+      const before = widest();
+      const boldFont = { ...plan.font, weight: emphasisWeight(theme) };
+      // The row plan cache shares infos with this plan, so the drawn widths go on copies.
+      plan.infos = plan.infos.map((info, ci) => cats[ci]!.role === 'total' || domain.highlights.has(cats[ci]!.id)
+        ? { ...info, w: Math.max(info.w, ...info.lines.map(line => measure(line, boldFont).width)) }
+        : info);
+      plan.rowHeight += (widest() - before) * (plan.rotation === 90 ? 1 : Math.SQRT1_2);
+    }
+    return plan;
   };
   let catPlan = planRow(band);
   const ticked = longDayMonths(cats, catPlan.stride, options.locale?.language);

@@ -15,7 +15,7 @@ import type { PaintWarningRule } from '../../types/scene';
 import type { AnchorResolution } from '../../annotate';
 import { runAnnotatePass } from '../../annotatePass';
 import { formatterFromExample, seriesRasterFormatter, signedFormatterFromExample } from '../../formatSpec';
-import { boxGap, type Rect } from '../../geometry';
+import { boxGap, rectsOverlap, type Rect } from '../../geometry';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelsToNodes } from '../../label/emit';
 import {
@@ -488,8 +488,13 @@ function layoutHorizontalWaterfall(
       : undefined;
     const firstCase = categoryId !== undefined && cases.length > 0 ? barById.get(`${categoryId}:${cases[0]!.id}`) : undefined;
     const lastCase = categoryId !== undefined && cases.length > 0 ? barById.get(`${categoryId}:${cases.at(-1)!.id}`) : undefined;
-    const rowCenter = bar
-      ? bar.rect.y + bar.rect.h / 2
+    // A value of one segment sits on that segment's rect, not on the whole bar's.
+    const segment = label.kind === 'segment' && label.owner.segmentId !== undefined
+      ? bar?.segments.find((candidate) => candidate.id === label.owner.segmentId)
+      : undefined;
+    const box = segment?.rect ?? bar?.rect;
+    const rowCenter = box
+      ? box.y + box.h / 2
       : firstCase && lastCase
         ? (firstCase.rect.y + lastCase.rect.y + lastCase.rect.h) / 2
         : transformed.y + transformed.h / 2;
@@ -500,25 +505,33 @@ function layoutHorizontalWaterfall(
       h: transformed.h,
     };
     const outsideRight: Rect = {
-      x: (bar ? bar.rect.x + bar.rect.w : transformed.x + transformed.w) + 8,
+      x: (box ? box.x + box.w : transformed.x + transformed.w) + 8,
       y: rowCenter - transformed.h / 2,
       w: transformed.w,
       h: transformed.h,
     };
     const insideCenter: Rect = {
-      x: bar
-        ? bar.rect.x + bar.rect.w / 2 - transformed.w / 2
+      x: box
+        ? box.x + box.w / 2 - transformed.w / 2
         : transformed.x,
       y: rowCenter - transformed.h / 2,
       w: transformed.w,
       h: transformed.h,
     };
     const outsideLeft: Rect = {
-      x: (bar ? bar.rect.x : transformed.x) - transformed.w - 8,
+      x: (box ? box.x : transformed.x) - transformed.w - 8,
       y: rowCenter - transformed.h / 2,
       w: transformed.w,
       h: transformed.h,
     };
+    // A segment of a stack has no outside seat: beside the bar it would read as the step's value or as
+    // another segment's. Sub-rows of a mixed-sign step keep the seats that clear their siblings.
+    const siblings = segment ? bar!.segments.filter((other) => other !== segment) : [];
+    const stackedRow = siblings.every((other) => Math.abs(other.rect.y - segment!.rect.y) < 0.5);
+    const segmentNode = segment ? source.scene.find((node) => node.id === `mark:${label.owner.categoryId}:${segment.id}`) : undefined;
+    const segmentInside: Partial<SlotCandidate> = segmentNode?.t === 'rect' && segmentNode.fill && segmentNode.pattern !== 'hollow'
+      ? { insideFill: effectiveFill(paintColor(theme, segmentNode.fill), segmentNode.pattern, theme), insidePaint: segmentNode.fill, insidePattern: segmentNode.pattern }
+      : { needsBacking: true };
     const candidates: SlotCandidate[] =
       label.kind === 'category'
         ? [{ slot: 'left', rect: categoryRect, penalty: 0 }]
@@ -526,9 +539,10 @@ function layoutHorizontalWaterfall(
             // Case rows stand 1-2 px apart, so a value beside a shorter bar sits within the context pad of the longer one.
             { slot: 'outsideRight', rect: outsideRight, penalty: 0, ...(seriesId === undefined ? {} : { pad: 0 }) },
             // A value sits inside only with 4 px per side; wider, it would cross the bar's edge.
-            ...(!bar || transformed.w + 8 <= bar.rect.w ? [{ slot: 'insideCenter' as const, rect: insideCenter, penalty: 1, needsBacking: true }] : []),
+            ...(!box || transformed.w + 8 <= box.w ? [{ slot: 'insideCenter' as const, rect: insideCenter, penalty: 1, ...(segment ? segmentInside : { needsBacking: true }) }] : []),
             { slot: 'outsideLeft', rect: outsideLeft, penalty: 2 },
-          ];
+          ].filter((candidate) => !segment || candidate.slot === 'insideCenter'
+            || (!stackedRow && !siblings.some((other) => rectsOverlap(candidate.rect, other.rect))));
     const authoredPin = options.labelPlacements?.[label.id];
     return {
       id: label.id,

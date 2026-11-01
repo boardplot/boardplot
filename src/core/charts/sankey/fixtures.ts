@@ -62,8 +62,8 @@ const segments = ['gold', 'silver', 'bronze', 'lapsed'] as const;
 /** Customers per segment pair, month to month: rows of a transition table with the next month joined on. */
 const moves: Record<string, number[][]> = {
   'jan>feb': [[820, 90, 20, 10], [70, 1240, 150, 60], [15, 110, 1580, 240], [5, 30, 120, 2100]],
-  'feb>mar': [[790, 100, 15, 5], [95, 1210, 140, 25], [20, 140, 1490, 270], [10, 60, 155, 2075]],
-  'mar>apr': [[830, 80, 15, 5], [90, 1250, 140, 30], [25, 130, 1520, 125], [5, 45, 210, 2125]],
+  'feb>mar': [[790, 100, 15, 5], [95, 1210, 140, 25], [20, 140, 1440, 270], [10, 60, 155, 2185]],
+  'mar>apr': [[815, 80, 15, 5], [90, 1250, 140, 30], [25, 130, 1470, 125], [5, 45, 210, 2225]],
 };
 const migration: SankeyData = {
   links: Object.entries(moves).flatMap(([pair, matrix]) => {

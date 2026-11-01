@@ -649,7 +649,8 @@ describe('a stacked100 SEGMENT annotation reports the value, not the share', () 
         to: { categoryId: 'q2', seriesId: 'a' },
       },
     ]);
-    expect(annOf(geometry as never, 'diff')?.computedText).toBe('+100%');
+    // Column and bar drop the arrow on a 100% axis: it would state a change the equal columns do not show.
+    expect(annOf(geometry as never, 'diff')?.computedText).toBe(_name.startsWith('column') || _name.startsWith('bar') ? undefined : '+100%');
   });
 
   // bar, column, mekko, and line all declare cagr; each annualises the VALUE.
