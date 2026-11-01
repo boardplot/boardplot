@@ -11,7 +11,6 @@ import { getChartDefinition } from '../src/core/registry';
 import { requireGeometry } from '../src/core/sizing';
 import { dateTickKeep, formatDate } from '../src/core/dateFormat';
 import { resolveChartRequest } from '../src/core/request';
-import { chartString as funnelString } from '../src/core/strings/funnel';
 import { chartString as layoutString } from '../src/core/strings/createChartComponent';
 
 const pieFixture = () => getFixtures('pie').find((fixture) => fixture.id === 'streaming-genre-share')!;
@@ -80,18 +79,8 @@ describe('built-in wording block', () => {
 });
 
 describe('default reader wording', () => {
-  // The default notes read as plain sentences: no interval notation, no "Others includes", no capitals for emphasis, no "CVR" jargon.
-  it('words the pyramid method note, the sankey Other note, the funnel heads and the hover hint in plain words', () => {
-    const pyramid = getFixtures('pyramid').find((fixture) => fixture.id === 'dated-population-comparison')!;
-    const method = texts(layout('pyramid', pyramid, { methodNote: true, shareOfTotal: true }));
-    expect(method).not.toMatch(/\[from, to\)|equally wide|BOTH/);
-    expect(method).toContain('The youngest band is at the bottom.');
-    const sankey = getFixtures('sankey').find((fixture) => fixture.id === 'channel-journeys')!;
-    expect(texts(layout('sankey', sankey))).toContain('Others (Channel): Display 9, Affiliates 7');
-    for (const locale of [undefined, 'de']) {
-      const options = { locale: locale as 'de' | undefined };
-      expect(funnelString(options, 'stepCvr') + funnelString(options, 'totalCvr')).not.toContain('CVR');
-    }
+  // The hover hint is chosen by the React entry only, so no golden SVG draws it; this keeps touch readers from being told to hover.
+  it('words the React hover hint for touch and pointer', () => {
     expect(layoutString({}, 'hoverMoreListed')).toContain('tap or hover');
   });
 });
