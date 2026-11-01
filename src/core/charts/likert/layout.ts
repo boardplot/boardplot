@@ -59,6 +59,7 @@ import type { Geometry, LintWarning, Paint, PaintWarningRule, PlacedLabel } from
 import { defaultMeasurer, type FontSpec, type TextMeasurer } from '../../text';
 import { labelsToNodes } from '../../label/emit';
 import { PRIORITY } from '../../label/solver';
+import { COLUMN_GAP, COLUMN_MIN_WIDTH, columnWidth } from '../diffColumn';
 import type { Theme, ThemeRef } from '../../types/theme';
 import { layoutBar, type BarDerived, type BarMarks } from '../bar/layout';
 import { DEFER_ADJACENT, EXACT_DOMAIN, NO_NAME_COLUMN, RIGHT_ROOM, TOTAL_COLUMN } from '../bar/model';
@@ -130,6 +131,13 @@ export interface LikertOptions extends Omit<BaseOptionsFor<'likert'>, 'sort' | '
   neutral?: LikertNeutralMode;
   /** Default 'net'. */
   summary?: 'net' | 'none';
+  /**
+   * A right-aligned grey column of each statement's base n right of the net,
+   * under the head "n". One shared base prints once in the head instead ("n = 900").
+   * Default 'column' when the counts or an item's n give a base; percent input
+   * without n has none. The column stays off below 576 px canvas width.
+   */
+  base?: 'column' | 'none';
   /** Default 'sheet'. */
   sortBy?: 'sheet' | 'net';
   /**
@@ -821,7 +829,15 @@ export function layoutLikert(
     ? ordered.map((item) => wrapText(item.label, statementFont, statementW, 8, measure).lines)
     : [];
   const statementH = statements.length ? maxOf(statements.map((lines) => lines.length)) * statementLineH : 0;
-  const headH = summary === 'net' ? measure(chartString(opts, 'netPp'), statementFont).height + 4 : 0;
+  // The base of each statement prints in a column right of the net; one base shared by every statement prints once, in the head.
+  const rowBases = ordered.flatMap((item) => (item.base === undefined ? [] : [item.base]));
+  const baseWanted = (opts.base ?? 'column') === 'column' && rowBases.length > 0 && canvas.width >= COLUMN_MIN_WIDTH && !comparing;
+  const sharedBase = baseWanted && rowBases.length === ordered.length && maxOf(rowBases) === minOf(rowBases) ? rowBases[0] : undefined;
+  const baseTexts = baseWanted && sharedBase === undefined ? ordered.flatMap((item) => (item.base === undefined ? [] : [{ id: item.id, text: trimNumber(item.base) }])) : [];
+  const baseHeadText = chartString(opts, 'baseHead');
+  const baseW = baseTexts.length === 0 ? 0 : columnWidth(measure, baseTexts.map((cell) => ({ text: cell.text, font: statementFont })), { text: baseHeadText, font: statementFont });
+  const baseReserve = baseW > 0 ? baseW + COLUMN_GAP : 0;
+  const headH = summary === 'net' || baseWanted ? measure(chartString(opts, 'netPp'), statementFont).height + 4 : 0;
   interface Rows { bandFraction?: number; bandPad?: number }
   // One short line says that shares on narrow segments are not printed,
   // rather than a list of them or nothing.
@@ -859,9 +875,9 @@ export function layoutLikert(
       [EXACT_DOMAIN]: true,
       // The adjacent-colour check runs once, from the rebound rules, on the layout kept.
       [DEFER_ADJACENT]: true,
-      ...(rightRoom !== undefined ? { [RIGHT_ROOM]: rightRoom } : {}),
+      ...(rightRoom !== undefined || baseReserve > 0 ? { [RIGHT_ROOM]: (rightRoom ?? 0) + baseReserve } : {}),
       // The nets stand in their column (netColumn), not at the bars' ends.
-      ...(summary === 'net' && !comparing ? { [TOTAL_COLUMN]: canvas.width - margin.right } : {}),
+      ...(summary === 'net' && !comparing ? { [TOTAL_COLUMN]: canvas.width - margin.right - baseReserve } : {}),
       ...(rows.bandPad ? { [BAND_PAD]: rows.bandPad } : {}),
     } as never,
       likertAnnotationPass(data, shares, net, opts.format, brackets)) as Geometry<BarMarks, BarDerived>;
@@ -939,7 +955,11 @@ export function layoutLikert(
   const reboundPaintWarningRules = restoreLikertPaints(geo, ramp, scale, seriesIdOf, paintWarningRules, theme);
   const statementTop = stacked ? stackStatements(geo, theme, statements, statementFont, statementLineH, margin.left, measure) : undefined;
   // Comparison brackets stand right of the bars, so the nets stay left of them.
-  if (summary === 'net') netColumn(geo, theme, measure, opts, comparing ? -Infinity : canvas.width - margin.right, statementTop);
+  if (summary === 'net') netColumn(geo, theme, measure, opts, comparing ? -Infinity : canvas.width - margin.right - baseReserve, statementTop,
+    sharedBase === undefined ? undefined : chartString(opts, 'baseShared', { v1: trimNumber(sharedBase) }));
+  // One shared base without a net column still prints once, in a head at the content edge.
+  if (sharedBase !== undefined && summary !== 'net') baseColumn(geo, theme, measure, canvas.width - margin.right, statementTop, [], chartString(opts, 'baseShared', { v1: trimNumber(sharedBase) }));
+  if (baseReserve > 0) baseColumn(geo, theme, measure, canvas.width - margin.right, statementTop, baseTexts, baseHeadText);
   // Stacked rows are measured here: bar measured bars without names. A row
   // holds its statement, the gap, a bar that holds a share, and air.
   const chromeH = geo.size.height - geo.plot.h - (rows.bandPad ?? 0);
@@ -1080,7 +1100,7 @@ export function layoutLikert(
  * layout sets each net at its bar's end; the column takes the rightmost of
  * those edges, which lies right of every bar.
  */
-function netColumn(geo: Geometry<BarMarks, BarDerived>, theme: Theme, measure: TextMeasurer, options: LikertOptions, contentRight: number, statementTop?: number): void {
+function netColumn(geo: Geometry<BarMarks, BarDerived>, theme: Theme, measure: TextMeasurer, options: LikertOptions, contentRight: number, statementTop?: number, sharedBase?: string): void {
   const nets = geo.labels.filter((label) => label.kind === 'grandTotal' && !label.hidden);
   if (nets.length === 0) return;
   // The column stands at the content edge, apart from the bars.
@@ -1091,7 +1111,8 @@ function netColumn(geo: Geometry<BarMarks, BarDerived>, theme: Theme, measure: T
     const node = geo.scene.find((n) => n.id === `label:${label.id}`);
     if (node?.t === 'text') node.x += dx;
   }
-  const text = chartString(options, 'netPp');
+  // One base shared by every statement stands once in the head, after the unit.
+  const text = sharedBase === undefined ? chartString(options, 'netPp') : `${chartString(options, 'netPp')} · ${sharedBase}`;
   const font = { family: theme.type.family, ...theme.type.label };
   const size = measure(text, font);
   const top = statementTop ?? minOf(geo.marks.rows.flatMap((row) => row.bars.map((bar) => bar.rect.y)));
@@ -1102,6 +1123,32 @@ function netColumn(geo: Geometry<BarMarks, BarDerived>, theme: Theme, measure: T
   };
   geo.labels.push(head);
   geo.scene.push(...labelsToNodes(theme, [head], () => font));
+}
+
+/**
+ * The base of each statement as a right-aligned grey column at `right`, under
+ * a head in the net head's style. With no cells it is the head alone ("n = 900").
+ */
+function baseColumn(geo: Geometry<BarMarks, BarDerived>, theme: Theme, measure: TextMeasurer, right: number, statementTop: number | undefined, cells: { id: Id; text: string }[], headText: string): void {
+  const font = { family: theme.type.family, ...theme.type.label };
+  const top = statementTop ?? minOf(geo.marks.rows.flatMap((row) => row.bars.map((bar) => bar.rect.y)));
+  const size = measure(headText, font);
+  const labels: PlacedLabel[] = [{
+    id: 'likert:baseHead', kind: 'series', owner: {}, text: headText, lines: [headText], slot: 'columnHead', slots: ['columnHead'], pinned: false, priority: PRIORITY.endpoint,
+    ink: { token: 'inkMuted' }, rect: { x: right - size.width, y: top - 4 - size.height, w: size.width, h: size.height },
+  }];
+  for (const cell of cells) {
+    const row = geo.marks.rows.find((r) => r.id === cell.id);
+    const bar = row?.bars[0];
+    if (!bar) continue;
+    const cellSize = measure(cell.text, font);
+    labels.push({
+      id: `likert:base:${cell.id}`, kind: 'series', owner: { categoryId: cell.id }, text: cell.text, lines: [cell.text], slot: 'valueColumn', slots: ['valueColumn'], pinned: false, priority: PRIORITY.endpoint,
+      printsFor: [], ...(measure.capHeight?.(font) !== undefined ? { capHeight: measure.capHeight(font) } : {}), ink: { token: 'inkMuted' }, rect: { x: right - cellSize.width, y: bar.rect.y + bar.rect.h / 2 - cellSize.height / 2, w: cellSize.width, h: cellSize.height },
+    });
+  }
+  geo.labels.push(...labels);
+  geo.scene.push(...labelsToNodes(theme, labels, () => font));
 }
 
 /**
@@ -1453,6 +1500,7 @@ function likertBarOptions(options: LikertOptions, labelSize: number): BaseOption
     values: _values,
     neutral: _neutral,
     summary: _summary,
+    base: _base,
     sortBy: _sortBy,
     methodNote: _methodNote,
     format: _format,

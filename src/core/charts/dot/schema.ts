@@ -58,6 +58,10 @@ export const dotOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions(
     .boolean()
     .optional()
     .describe("Dumbbell only (warning arrow-dumbbell-only otherwise): an arrowhead at the second series' dot shows the direction of change. The connector is painted good or bad by the sign of the change when the second series declares direction, neutral otherwise; a pair whose dots nearly touch keeps a plain connector."),
+  gapColumn: z
+    .boolean()
+    .optional()
+    .describe("Dumbbell only: prints the gap, second series minus first, signed in a column right of the plot under a head such as 'Gap, pp' (pp for percent values). A highlighted row prints bold. Default false. The column stays off below 576 px canvas width."),
   methodNote: z
     .boolean()
     .optional()

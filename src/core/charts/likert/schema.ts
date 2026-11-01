@@ -122,6 +122,12 @@ export const likertOptionsSchema = baseOptionsSchema
       .describe(
         "Net column (% agree − % disagree). Default 'net'; refused with neutral 'positive'/'negative', where the signed stack sum is not the net score.",
       ),
+    base: z
+      .enum(['column', 'none'])
+      .optional()
+      .describe(
+        "The base n of each statement as a right-aligned grey column right of the net, under the head 'n'. Default 'column' when the counts or an item's n give a base; percent input without n has none. One base shared by every statement prints once in the head ('n = 900'). The column stays off below 576 px canvas width.",
+      ),
     sortBy: z
       .enum(['sheet', 'net'])
       .optional()

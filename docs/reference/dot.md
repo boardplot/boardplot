@@ -67,6 +67,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | averageMarker | boolean \| object |  |  | Computed dashed average rule with a solver-placed Ø label, as on bar and column: the mean of every dot of the series in scope ('all' by default, or the listed series). |
 | averageMarker.scope | string \| array | `'all'` (or another value of its type) |  | Series included in the computed average; defaults to 'all'. |
 | arrow | boolean |  |  | Dumbbell only (warning arrow-dumbbell-only otherwise): an arrowhead at the second series' dot shows the direction of change. The connector is painted good or bad by the sign of the change when the second series declares direction, neutral otherwise; a pair whose dots nearly touch keeps a plain connector. |
+| gapColumn | boolean |  |  | Dumbbell only: prints the gap, second series minus first, signed in a column right of the plot under a head such as 'Gap, pp' (pp for percent values). A highlighted row prints bold. Default false. The column stays off below 576 px canvas width. |
 | methodNote | boolean |  |  | Default false. true adds the method footnote that names the marker inside a range as its supplied mid-point. A supplied range.mid is drawn and keyed either way. |
 | range | object |  |  | What the drawn ranges are: their key entry and, on request, their bounds as numbers. |
 | range.label | string |  |  | The key entry for the drawn ranges, naming the interval, for example 'Peer range, min to max' or 'Interquartile range'. Default 'Range'. |

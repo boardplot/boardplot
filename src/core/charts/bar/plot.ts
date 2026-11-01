@@ -339,7 +339,11 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
     footnoteRefs: refs,
   });
   const noNameColumn = (options as { [NO_NAME_COLUMN]?: boolean })[NO_NAME_COLUMN] === true;
-  let { labels: catLines, width: catBandW } = band0(cats, { count: authored, warnings });
+  // The caller draws the names elsewhere: nothing fits them here, unless a reference mark on a name would warn.
+  const unfitted = noNameColumn && cats.every((cat) => cat.footnote === undefined);
+  let { labels: catLines, width: catBandW } = unfitted
+    ? { labels: cats.map((): ReturnType<typeof band0>['labels'][number] => ({ lines: [], w: 0, h: 0, font: tickFont })), width: 0 }
+    : band0(cats, { count: authored, warnings });
   // The caller draws the names elsewhere: no column, no gap, no cut and no row height for them.
   if (noNameColumn) {
     catLines = catLines.map((label) => ({ ...label, h: 0 }));

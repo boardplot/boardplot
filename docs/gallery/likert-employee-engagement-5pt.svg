@@ -140,5 +140,5 @@
 <text data-id="label:segment:likert:sa:workload" data-part="segment" data-bp-role="value" x="778.92" y="511.60" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="778.92" dy="0">2%</tspan></text>
 <rect data-id="swatch:segment:likert:sd:purpose" data-part="labelSwatch" x="515.21" y="117.72" width="8" height="8" fill="#E0524E" stroke="#0D2A43" stroke-width="0"/>
 <text data-id="label:segment:likert:sd:purpose" data-part="segment" data-bp-role="value" x="527.21" y="126.38" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="527.21" dy="0">2%</tspan></text>
-<text data-id="label:likert:netHead" data-part="series" data-bp-role="category" x="981" y="92.75" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070"><tspan x="981" dy="0">Net, pp</tspan></text>
+<text data-id="label:likert:netHead" data-part="series" data-bp-role="category" x="925" y="92.75" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070"><tspan x="925" dy="0">Net, pp · n = 900</tspan></text>
 </svg>
