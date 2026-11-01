@@ -832,7 +832,13 @@ interface Routed {
   unseated: string[];
 }
 
-const styleOf = (edge: DiagramEdge) => [edge.dash ?? 'solid', edge.weight ?? 'normal', edge.role ?? '', edge.paletteKey ?? '', edge.flow ?? 'forward', edge.arrowStart ? 1 : 0].join('|');
+// The router asks for this on every grid step, so each edge keeps its key.
+const styleKeys = new WeakMap<DiagramEdge, string>();
+function styleOf(edge: DiagramEdge): string {
+  let key = styleKeys.get(edge);
+  if (key === undefined) styleKeys.set(edge, key = [edge.dash ?? 'solid', edge.weight ?? 'normal', edge.role ?? '', edge.paletteKey ?? '', edge.flow ?? 'forward', edge.arrowStart ? 1 : 0].join('|'));
+  return key;
+}
 
 function compatible(a: DiagramEdge, b: DiagramEdge): boolean {
   if (styleOf(a) !== styleOf(b)) return false;
@@ -858,6 +864,8 @@ function routeEdges(geometry: Geometry, env: Env, outward: ReadonlySet<string>):
   const blocked = obstacleGrid(geometry, W, H);
   const zones = geometry.zones.filter((zone) => !zone.policy);
   const frameUse = frameCrossings(geometry, zones, W, H);
+  const walledH = new Uint8Array(W * H);
+  const walledV = new Uint8Array(W * H);
   const order = [...data.edges].sort((a, b) => Number(a.flow === 'return') - Number(b.flow === 'return')
     || env.order.get(a.source.nodeId)! - env.order.get(b.source.nodeId)! || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const useH = new Map<number, number[]>();
@@ -879,7 +887,13 @@ function routeEdges(geometry: Geometry, env: Env, outward: ReadonlySet<string>):
     }
     const sourceRect = endRect(edge, 'source', geometry, data);
     const targetRect = endRect(edge, 'target', geometry, data);
-    const entered = new Set(zones.flatMap((zone, index) => (mustCross(edge, zone, data) ? [index] : [])));
+    walledH.fill(0);
+    walledV.fill(0);
+    zones.forEach((zone, index) => {
+      if (mustCross(edge, zone, data)) return;
+      for (const seg of frameUse[index]!.h) walledH[seg] = 1;
+      for (const seg of frameUse[index]!.v) walledV[seg] = 1;
+    });
     cost.fill(Infinity);
     prev.fill(-1);
     goal.fill(Infinity);
@@ -967,7 +981,7 @@ function routeEdges(geometry: Geometry, env: Env, outward: ReadonlySet<string>):
         else if (friendly(users)) step *= 0.15;
         // A return keeps to the outer corridors, off the forward flow.
         if ((edge.flow === 'return' || outward.has(edge.id)) && !(horizontal ? ys[j]! : xs[i]!).keys.some((key) => key.startsWith('o'))) step *= outward.has(edge.id) ? 40 : 2.5;
-        if ((horizontal ? frameUse.h : frameUse.v).get(seg)?.some((zone) => !entered.has(zone))) step += ZONE_COST;
+        if ((horizontal ? walledH : walledV)[seg]) step += ZONE_COST;
         if (next !== dir) step += BEND_COST;
         else {
           const across = horizontal
@@ -1062,24 +1076,23 @@ const heldInZone = (edge: DiagramEdge, geometry: Geometry, data: NormalizedDiagr
 
 const mustCross = (edge: DiagramEdge, zone: Geometry['zones'][number], data: NormalizedDiagram) => endInside(edge, 'source', zone, data) !== endInside(edge, 'target', zone, data);
 
-/** Which zone frames each grid step crosses. */
-function frameCrossings(geometry: Geometry, zones: Geometry['zones'], W: number, H: number): { h: Map<number, number[]>; v: Map<number, number[]> } {
+/** The grid steps that cross each zone's frame. */
+function frameCrossings(geometry: Geometry, zones: Geometry['zones'], W: number, H: number): Array<{ h: number[]; v: number[] }> {
   const { xs, ys } = geometry;
-  const h = new Map<number, number[]>();
-  const v = new Map<number, number[]>();
-  const add = (map: Map<number, number[]>, seg: number, zone: number) => map.set(seg, [...(map.get(seg) ?? []), zone]);
-  const crosses = (from: number, to: number, frame: number) => from < frame && frame < to;
-  zones.forEach(({ bounds: { x, y, w, h: tall } }, zone) => {
-    for (let j = 0; j < H; j++) {
-      const at = ys[j]!.pos;
-      for (let i = 0; i < W; i++) {
-        if (i + 1 < W && at > y && at < y + tall && (crosses(xs[i]!.pos, xs[i + 1]!.pos, x) || crosses(xs[i]!.pos, xs[i + 1]!.pos, x + w))) add(h, i + j * W, zone);
-        const across = xs[i]!.pos;
-        if (j + 1 < H && across > x && across < x + w && (crosses(at, ys[j + 1]!.pos, y) || crosses(at, ys[j + 1]!.pos, y + tall))) add(v, i + j * W, zone);
-      }
+  const stepOver = (lines: readonly { pos: number }[], frame: number) => lines.findIndex((line, index) => index + 1 < lines.length && line.pos < frame && frame < lines[index + 1]!.pos);
+  return zones.map(({ bounds: { x, y, w, h: tall } }) => {
+    const h: number[] = [];
+    const v: number[] = [];
+    for (const frame of [x, x + w]) {
+      const i = stepOver(xs, frame);
+      if (i >= 0) for (let j = 0; j < H; j++) if (ys[j]!.pos > y && ys[j]!.pos < y + tall) h.push(i + j * W);
     }
+    for (const frame of [y, y + tall]) {
+      const j = stepOver(ys, frame);
+      if (j >= 0) for (let i = 0; i < W; i++) if (xs[i]!.pos > x && xs[i]!.pos < x + w) v.push(i + j * W);
+    }
+    return { h, v };
   });
-  return { h, v };
 }
 
 /** Where a route crosses a zone's frame. */
