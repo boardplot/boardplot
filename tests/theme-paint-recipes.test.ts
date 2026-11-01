@@ -11,6 +11,8 @@ import { compositeColor, contrastRatio } from '../src/core/color';
 import { marksOnBands } from '../src/core/markVisibility';
 import { markLostOnBandWarnings, refreshPaintWarnings } from '../src/core/paintWarnings';
 import type { Paint, SceneNode } from '../src/core/types/scene';
+import { prepareChart, serializePreparedChart } from '../src/react/prepare';
+import { preparedResult, type PreparedChart } from '../src/react/prepared';
 
 const dark = resolveTheme('standard-dark');
 
@@ -441,4 +443,22 @@ it('prints the dark values of one heatmap matrix in one ink', () => {
     expect(inks.length, themeName).toBe(72);
     expect(new Set(darkInks).size, themeName).toBe(1);
   }
+});
+
+// The matrix list sat in the recipe of every label, so JSON copied it 576 times for a 24 x 24 heatmap (13 MB where 1 MB suffices). The prepared chart lists it once and the labels share it again.
+it('lists a heatmap matrix once in the prepared chart', async () => {
+  const spec = {
+    type: 'heatmap' as const,
+    data: {
+      categories: Array.from({ length: 24 }, (_, i) => ({ id: `c${i}`, label: `C${i}` })),
+      series: Array.from({ length: 24 }, (_, s) => ({ id: `s${s}`, label: `S${s}`, values: Array.from({ length: 24 }, (_, i) => 0.2 + (((s * 7 + i * 5) * 37) % 576) / 576 * 0.7) })),
+    },
+    options: { variant: 'value' as const, scale: 'continuous' as const },
+  };
+  const prepared = await prepareChart({ ...spec, size: { width: 1200, height: 800 } } as Parameters<typeof prepareChart>[0]) as PreparedChart;
+  expect(serializePreparedChart(prepared).length).toBeLessThan(2_000_000);
+  const result = preparedResult(prepared);
+  if (result.refused) throw new Error('refused');
+  const lists = new Set(result.scene.flatMap(node => node.t === 'text' && 'token' in node.ink && node.ink.theme?.kind === 'contrast-ink' && node.ink.theme.matrix ? [node.ink.theme.matrix] : []));
+  expect(lists.size).toBe(1);
 });
