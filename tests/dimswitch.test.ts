@@ -9,7 +9,9 @@ import { visibleRows } from '../src/core/charts/table/view';
 import { renderSvg } from '../src/core/svg/renderSvg';
 import { resolveTheme } from '../src/core/theme';
 import { requireGeometry } from '../src/core/sizing';
-import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
+import { layoutResolvedRequest, measure, resolveChartRequest } from '../src/core/request';
+// @ts-expect-error The scorecard script has no declaration file.
+import { applyRepair } from '../scripts/layout-scorecard.mjs';
 import type { DimSwitchData, DimSwitchDerived, DimSwitchSums, DimSwitchVariant } from '../src/core/charts/dimswitch/types';
 import { claimsForChart } from '../src/core/claims/browser';
 import { tableCellNodeId } from '../src/core/charts/table/cellKey';
@@ -385,6 +387,18 @@ it('draws the deepest depth that fits a fixed height and warns with the folded d
   expect(folded(byMember)?.message).toContain('with the Total folded');
   const total = (byMember.derived as unknown as DimSwitchDerived).table.rows.find(r => r.id === dimswitchRowId('by-member', 'total'))!;
   expect(total.cells.range).toMatchObject({ displayed: expect.stringMatching(/\d/) });
+});
+
+// The fold warning's fix set only the depth, which leaves the by-member Total open: the patched spec folded again and warned again.
+it('gives a fold fix that draws the same table without the fold warning', () => {
+  for (const depth of [1, 2]) {
+    const request = { type: 'dimswitch', data: exampleData, options: { variant: 'by-member', depth, size: { width: 1400, height: 300 } } } as never;
+    const warning = measure(request).warnings.find(w => w.code === 'dimswitch-depth-folded')!;
+    expect(warning.message, `depth ${depth}`).toContain('with the Total folded');
+    const fixed = measure(applyRepair(request, warning.fix));
+    expect(fixed.geometry, `depth ${depth}`).toBeDefined();
+    expect(fixed.warnings.map(w => w.code), `depth ${depth}`).not.toContain('dimswitch-depth-folded');
+  }
 });
 
 // A fold hides the rows below its depth, yet their small changes kept one decimal on every change figure of the column ("+130.0%" beside "+4.4%").

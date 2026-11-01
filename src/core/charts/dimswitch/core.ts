@@ -1,6 +1,6 @@
 import type { ChartCore } from '../../registry';
 import type { Geometry } from '../../types/scene';
-import { CARD_MIN_WIDTH, chartSizing, heightOmitted, isWidthProbe, WIDTH_PROBE } from '../../sizing';
+import { CARD_MIN_WIDTH, chartSizing, heightOmitted, isWidthProbe, VERIFY_ADVICE, WIDTH_PROBE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { cardHeightFloor, classFloor, layoutKey, layoutTable, memoLayout, REGULAR_SPACING, type TableMarks } from '../table/layout';
 import { resolveTable } from '../table/resolve';
@@ -61,8 +61,10 @@ function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwi
     && compiled.options.size.height !== geometry.size.height) compiled.options={...compiled.options,size:geometry.size};
   const originalRows=new Map(resolved.table.rows.map(row=>[row.id,row]));
   const drawnRows=new Map(geometry.derived.table.rows.map(row=>[row.id,row]));
+  // Only measure() sets VERIFY_ADVICE; the geometry it returns must equal the one React draws.
+  const {[VERIFY_ADVICE]:_verify,...kept}=compiled.options as typeof compiled.options & {[VERIFY_ADVICE]?:boolean};
   const records=compiled.computedCells.map(record=>({...record,displayed:record.kind==='calc' ? originalRows.get(record.rowId)?.cells[record.colId]?.displayed ?? '' : record.displayed}));
-  return {...geometry,type:'dimswitch',warnings:[...dimSwitchTableWarnings(geometry.warnings),...compiled.warnings,...(options.format ? [{code:'format-unused',severity:'warn' as const,field:['options','format'],message:'DimSwitch measures supply their own formats. Set measures[].format.'}] : [])],derived:{...geometry.derived,compiled:{data:compiled.data,options:compiled.options},omissions:compiled.omissions,computedCells:[...resolved.computedCells,...records].map(record=>({...record,displayed:record.kind==='calc' ? drawnRows.get(record.rowId)?.cells[record.colId]?.displayed ?? record.displayed : record.displayed}))}};
+  return {...geometry,type:'dimswitch',warnings:[...dimSwitchTableWarnings(geometry.warnings),...compiled.warnings,...(options.format ? [{code:'format-unused',severity:'warn' as const,field:['options','format'],message:'DimSwitch measures supply their own formats. Set measures[].format.'}] : [])],derived:{...geometry.derived,compiled:{data:compiled.data,options:kept},omissions:compiled.omissions,computedCells:[...resolved.computedCells,...records].map(record=>({...record,displayed:record.kind==='calc' ? drawnRows.get(record.rowId)?.cells[record.colId]?.displayed ?? record.displayed : record.displayed}))}};
 }
 
 /**
@@ -219,8 +221,9 @@ function foldToFit(data: DimSwitchData, options: DimSwitchOptions, formsOf: (fol
       const size=`${Math.round(first.size.width)} × ${Math.round(first.size.height)} px`;
       drawn.warnings.push({code:'dimswitch-depth-folded',severity:'warn',field:['options','depth'],
         message:`Depth ${depth} needs more height than the ${size} given, so the table draws depth ${fold.depth}${fold.total ? ' with the Total folded' : ''}.`,
-        suggest:`Give the table at least ${Math.ceil(first.sizing!.minHeight)} px of height for depth ${depth}, or set options.depth to ${fold.depth}.`,
-        fix:[{op:'add',path:'/options/depth',value:fold.depth}]});
+        suggest:`Give the table at least ${Math.ceil(first.sizing!.minHeight)} px of height for depth ${depth}, or set options.depth to ${fold.depth}${fold.total ? ' and add the Total row to options.expansion.collapsed' : ''}.`,
+        // The Total stays open at depth 1: the fix that reproduces the drawn table folds it as well.
+        fix:[{op:'add',path:'/options/depth',value:fold.depth},...(fold.total ? [{op:'replace' as const,path:'/options/expansion/collapsed',value:collapsed}] : [])]});
       return drawn;
     }
     last=drawn;
