@@ -406,6 +406,13 @@ fixtures.push({
   options: { ...margin.options,
     scale: { kind: 'diverging', midpoint: 15, polarity: 'higherIsBetter' } },
 });
+// A wide slot: the key and the list of unlabelled states stand in a column beside the map.
+fixtures.push({
+  ...margin,
+  id: 'us-margin-wide-slot',
+  title: 'State margins on a wide slot: the key and the unlabelled states stand beside the map',
+  options: { ...margin.options, size: { width: 1184, height: 528 }, regionValues: false, labelDensity: 'smart' },
+});
 const dach = fixtures.find((fixture) => fixture.id === 'dach-market-shares')!;
 fixtures.push({
   ...dach,

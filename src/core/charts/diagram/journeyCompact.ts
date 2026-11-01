@@ -5,7 +5,7 @@ import type { Paint, SceneNode } from '../../types/scene';
 import { markRolePaint } from '../../theme';
 import type { NormalizedDiagram } from './model';
 import { byOrder, type OrgChartLayout } from './orgChart';
-import { chevronPath, laneOwner, q, qRect, type DiagramPalette } from './primitives';
+import { chevronPath, gapSpread, laneOwner, q, qRect, type DiagramPalette } from './primitives';
 import { diagramSceneId } from './ids';
 import { maxOf } from '../../arrays';
 
@@ -38,6 +38,7 @@ export function layoutJourneyCompact(
   u: number,
   palette: DiagramPalette,
   headWeight: number,
+  fixedHeight = false,
 ): OrgChartLayout | undefined {
   const lanes = data.lanes;
   const members = new Map(lanes.map((lane) => [lane.id, data.nodes.filter((node) => node.laneId === lane.id).sort(byOrder)]));
@@ -86,15 +87,20 @@ export function layoutJourneyCompact(
       const node = members.get(lane.id)![row];
       return node ? cardH(linesIn(node, boxW).lines.length) : 0;
     }))));
-    const height = headerH + (rows > 0 ? 2 * u : 0) + rowHeights.reduce((sum, value) => sum + value, 0) + Math.max(0, rows - 1) * 1.2 * u;
+    const gapSum = (rows > 0 ? 2 * u : 0) + Math.max(0, rows - 1) * 1.2 * u;
+    const bodies = headerH + rowHeights.reduce((sum, value) => sum + value, 0);
+    const spread = gapSpread(fixedHeight, plot.h, bodies + gapSum, gapSum);
+    const headGap = 2 * u * spread;
+    const rowGap = 1.2 * u * spread;
+    const height = bodies + (rows > 0 ? headGap : 0) + Math.max(0, rows - 1) * rowGap;
     const top = plot.y + Math.max(0, (plot.h - height) / 2);
     lanes.forEach((lane, index) => {
       const x = plot.x + index * pitch;
       const box = qRect({ x, y: top, w: boxW, h: headerH });
-      let y = top + headerH + 2 * u;
+      let y = top + headerH + headGap;
       members.get(lane.id)!.forEach((node, row) => {
         put(node.id, { x, y, w: boxW, h: rowHeights[row]! });
-        y += rowHeights[row]! + 1.2 * u;
+        y += rowHeights[row]! + rowGap;
       });
       const bottom = Math.max(box.y + box.h, maxOf(members.get(lane.id)!.map((node) => rects.get(node.id)!.y + rects.get(node.id)!.h)));
       result.lanes.push({ id: lane.id, bounds: qRect({ x, y: top, w: boxW, h: bottom - top }), headerBox: box, memberNodeIds: members.get(lane.id)!.map((node) => node.id) });
@@ -137,11 +143,14 @@ export function layoutJourneyCompact(
         placed.push({ lane: lane.id, box: { x: plot.x, y, w: chevronW, h: bodyH }, cards: out });
         y += bodyH + u;
       });
-      const height = y - u + tipH;
+      const natural = y - u + tipH;
+      const extra = (gapSpread(fixedHeight, plot.h, natural, (placed.length - 1) * u) - 1) * u;
+      const height = natural + (placed.length - 1) * extra;
       const top = plot.y + Math.max(0, (plot.h - height) / 2);
       placed.forEach(({ lane: laneId, box: raw, cards }, index) => {
-        const box = qRect({ ...raw, y: raw.y + top });
-        for (const [id, rect] of cards) put(id, { ...rect, y: rect.y + top });
+        const shift = top + index * extra;
+        const box = qRect({ ...raw, y: raw.y + shift });
+        for (const [id, rect] of cards) put(id, { ...rect, y: rect.y + shift });
         const lane = lanes.find((candidate) => candidate.id === laneId)!;
         const mid = box.x + box.w / 2;
         // A notch on top except for the first phase, a point at the bottom.

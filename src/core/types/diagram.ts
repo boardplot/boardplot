@@ -56,6 +56,7 @@ export type DiagramShape =
   | { kind: 'pill' }
   | { kind: 'chevron'; tip?: number }
   | { kind: 'text' }
+  | { kind: 'store' }
   | { kind: 'icon'; name: IconName }
   | { kind: 'roof'; apex?: number; eaveInset?: number };
 
@@ -92,17 +93,27 @@ export interface DiagramNode {
   position?: DiagramFractionPoint;
   ports?: DiagramPort[];
   groupId?: string;
+  /** Architecture with flow 'lanes': required except on policy-strip nodes, which must omit it. */
   laneId?: string;
   order?: number;
   /** Architecture: a named cross-axis track. Nodes in one track line up across zones or lanes. */
   track?: string;
   /** Architecture: a wide band across a lane, or a full-height rail in a zone. */
   span?: 'full';
+  /** Architecture: draws this many stacked copies, for repeated workers. */
+  repeat?: number;
+  /** Architecture: a lock and a double border. This is an authored claim. */
+  protected?: boolean;
 }
 
 export interface DiagramEndpoint {
   nodeId: string;
   portId?: string;
+}
+
+/** Architecture: an edge that ends on a zone's frame. */
+export interface DiagramGroupEndpoint {
+  groupId: string;
 }
 
 export interface DiagramEdge {
@@ -122,6 +133,12 @@ export interface DiagramEdge {
   flow?: 'forward' | 'return';
 }
 
+/** An edge as authored. Architecture lets an end name a zone. */
+export type DiagramAuthoredEdge = Omit<DiagramEdge, 'source' | 'target'> & {
+  source: DiagramEndpoint | DiagramGroupEndpoint;
+  target: DiagramEndpoint | DiagramGroupEndpoint;
+};
+
 export interface DiagramGroup {
   id: string;
   title: string;
@@ -129,6 +146,12 @@ export interface DiagramGroup {
   order?: number;
   role?: DiagramVisualRole;
   paletteKey?: string;
+  /** Architecture: a policy group is a strip across the exhibit, and its nodes take no edges. */
+  kind?: 'zone' | 'policy';
+  /** Architecture: the zone this zone sits in, up to three levels. */
+  parentId?: string;
+  /** Architecture: a lock and a double frame. This is an authored claim. */
+  protected?: boolean;
 }
 
 export interface DiagramLane {
@@ -147,6 +170,14 @@ export interface DiagramChannel {
   label: string;
 }
 
+/** Architecture: one numbered disc per node, edge or zone, explained in a key row. A zone in lanes flow must contain a node. */
+export interface DiagramCallout {
+  id: string;
+  target: { nodeId: string } | { edgeId: string } | { groupId: string };
+  title?: string;
+  text?: string;
+}
+
 /** One key entry: what the fill of the nodes in `role` (and `paletteKey`) means. */
 /**
  * One key entry: what a node fill means (role), or what a line style means
@@ -158,13 +189,15 @@ export type DiagramKeyEntry =
 
 export interface DiagramData {
   nodes: DiagramNode[];
-  edges?: DiagramEdge[];
+  edges?: DiagramAuthoredEdge[];
   groups?: DiagramGroup[];
   lanes?: DiagramLane[];
   /** Names what a node fill means; drawn as the diagram key. */
   key?: DiagramKeyEntry[];
   /** Architecture: one shared label for edges in one gutter. */
   channels?: DiagramChannel[];
+  /** Architecture: numbered discs, each explained in a key row. */
+  callouts?: DiagramCallout[];
 }
 
 type DiagramCommonOptionKeys =
@@ -197,16 +230,23 @@ type DiagramCommonOptionKeys =
 
 export type DiagramCommonOptions = Pick<BaseOptionsFor<'diagram'>, DiagramCommonOptionKeys>;
 
+/**
+ * Spare height of a canvas with a set height (a slide). 'rows' (default) grows
+ * the gaps between the levels of an org chart or a journey up to 2.6 times;
+ * 'none' keeps the natural gaps and centres the block.
+ */
+export type DiagramHeightFill = 'rows' | 'none';
+
 export type DiagramOptions = DiagramCommonOptions &
   (
-    | { variant: 'hierarchy' }
+    | { variant: 'hierarchy'; heightFill?: DiagramHeightFill }
     | { variant: 'issue-tree' }
     | { variant: 'linear-process' }
-    | { variant: 'customer-journey'; flow?: 'columns' | 'serpentine' }
+    | { variant: 'customer-journey'; flow?: 'columns' | 'serpentine'; heightFill?: DiagramHeightFill }
     | { variant: 'circular-process' }
     | { variant: 'strategy-house' }
     | { variant: 'roadmap' }
-    | { variant: 'architecture'; flow?: 'columns' | 'lanes' }
+    | { variant: 'architecture'; flow?: 'columns' | 'lanes'; highlight?: string | string[] }
   );
 
 export interface ResolvedDiagramPort {

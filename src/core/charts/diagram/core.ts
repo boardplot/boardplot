@@ -21,6 +21,7 @@ export function normalizeDiagramData(data: DiagramData): DiagramData {
     lanes: data.lanes ? [...data.lanes] : [],
     ...(data.key ? { key: [...data.key] } : {}),
     ...(data.channels ? { channels: [...data.channels] } : {}),
+    ...(data.callouts ? { callouts: [...data.callouts] } : {}),
   };
 }
 
