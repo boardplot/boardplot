@@ -144,6 +144,20 @@ it('reads step amounts and explicit stack totals while keeping level comparisons
   }
 });
 
+// A category drawn as n.m. has no total, and a category of authored shares has a total in percent.
+it('keeps explicit stack totals honest on a 100% area with signed or authored shares', () => {
+  const categories = [{ id: 'a', label: 'A', date: '2022-01-01' }, { id: 'b', label: 'B', date: '2023-01-01' }];
+  const options = { variant: 'stacked100-area', valueLabels: 'none', seriesLabels: 'none' } as const;
+  const at = { categoryId: 'a', edge: 'total' } as const;
+  const signed = layoutLine({ categories, series: [{ id: 'x', label: 'X', values: [40, 20] }, { id: 'y', label: 'Y', values: [-10, 30] }] },
+    { ...options, annotations: [{ kind: 'abs', at }] });
+  expect(signed.annotations).toHaveLength(0);
+  expect(codes(signed)).toContain('bad-anchor');
+  const shares = layoutLine({ categories, series: [{ id: 'x', label: 'X', values: [{ pct: 40 }, { pct: 20 }] }, { id: 'y', label: 'Y', values: [{ pct: 60 }, { pct: 80 }] }] },
+    { ...options, annotations: [{ kind: 'abs', at }, { kind: 'note', at, text: 'Sum ${value}' }] });
+  expect(shares.annotations.map((a) => a.computedText)).toEqual(['100%', 'Sum 100%']);
+});
+
 // A computed reference must use the observations on its axis, not differences on a level axis.
 it('measures variance value-line statistics on the drawn axis', () => {
   for (const percent of [false, true]) for (const variant of ['absolute', 'integrated'] as const) {
