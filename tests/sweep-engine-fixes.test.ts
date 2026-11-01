@@ -532,6 +532,23 @@ describe('chart layout edge cases', () => {
     expect(key.rect.x + key.rect.w).toBeLessThanOrEqual(400);
   });
 
+  // With the low-base key on its own row and the period key still beside the areas, the net definition sat on the low-base row and the solver hid the hatch key as a collision.
+  it('a diverging slope seats the net definition below an own-row low-base key', () => {
+    const request = {
+      type: 'slope',
+      data: { categories: [{ id: 'a', label: '1' }, { id: 'b', label: '2' }], series: [{ id: 'g', label: 'Group', values: [60, 55], negative: [15, 22], n: [18, 18] }] },
+      options: { variant: 'diverging', diverging: { minBase: 1000, labels: { positive: 'Favourable responses', negative: 'Unfavourable responses' } } },
+      size: { width: 400, height: 500 },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const lay = layoutResolvedRequest(resolveChartRequest(request) as any) as any;
+    const key = lay.labels.find((l: { id: string }) => l.id === 'series:n < 1,000');
+    const net = lay.labels.find((l: { id: string }) => l.id === 'legend:net:0');
+    expect(key.hidden).toBeFalsy();
+    expect(net.rect.y).toBeGreaterThanOrEqual(key.rect.y + key.rect.h);
+  });
+
   // An unsized sparkline with a title kept its 176 px card on slide, so the title wrapped one word a line and was cut.
   it('an unsized sparkline on slide is as wide as its title and keeps 320 px for a short one', () => {
     const request = (title: string) => ({

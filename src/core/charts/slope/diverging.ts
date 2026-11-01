@@ -317,7 +317,9 @@ export function layoutDivergingSlope(
   const netPitch = Math.max(lineH, textH + 3);
   const lowRowAt = 1;
   const periodRow = keyWraps ? (lowOwnRow ? 2 : 1) : 0;
-  const keyH = keyRowH * (1 + (lowOwnRow ? 1 : 0) + (keyWraps ? 1 : 0) + (showNet && !netInline ? 1 : 0)) + (netInline ? 0 : (netLines.length - 1) * netPitch);
+  // The net definition sits on the row after the last key row, whether the low-base key or the period key took it.
+  const lastKeyRow = (lowOwnRow ? 1 : 0) + (keyWraps ? 1 : 0);
+  const keyH = keyRowH * (1 + lastKeyRow + (showNet && !netInline ? 1 : 0)) + (netInline ? 0 : (netLines.length - 1) * netPitch);
   const keyCy = plot0.y + textH / 2;
   {
     let x = plot0.x;
@@ -350,7 +352,7 @@ export function layoutDivergingSlope(
   if (showNet) {
     const netX = netInline ? plot0.x + periodEnd + KEY_GAP : plot0.x;
     netLines.forEach((text, li) => {
-      const cy = netInline ? periodCy : periodCy + keyRowH + li * netPitch;
+      const cy = netInline ? periodCy : keyCy + (lastKeyRow + 1) * keyRowH + li * netPitch;
       const first = li === 0 && text.startsWith(netName);
       const w = first ? netNameW + measure(text.slice(netName.length), labelFont).width : measure(text, labelFont).width;
       const runs = first ? [{ text: netName, weight: headFont.weight }, { text: text.slice(netName.length) }] : undefined;
