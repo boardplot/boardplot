@@ -9,7 +9,7 @@ import { structureCount } from '../../structureCounts';
 import { boundsOf, type Rect } from '../../geometry';
 import { fmtPathNumber as fmtN } from '../../curve';
 import { inferLinearYDomain } from '../../axis';
-import { frameTextOptions, normalizeLegendOption, solveFrame, type FrameInput, type LegendItemInput } from '../../frame';
+import { frameTextOptions, normalizeLegendOption, slotDemandHeight, solveFrame, type FrameInput, type LegendItemInput } from '../../frame';
 import { collectGridLegendItems, gridLegendInput, gridPanelsKeepEndNames, hatchStrengthFor } from '../../grid/gridKey';
 import { balanceVarianceTierPlots, VARIANCE_TIER, varianceTierWeights } from '../../grid/varianceTiers';
 import { scalePanelSemantics } from '../../grid/sharedScale';
@@ -25,6 +25,7 @@ import {
   sharedCategoryLabelOwner,
   sharedYGroup,
   withoutCategoryLabels,
+  occupiedBounds,
   type GridDerived as ComposedGridDerived,
   type GridMarks as ComposedGridMarks,
 } from '../../grid/layoutGrid';
@@ -1279,6 +1280,9 @@ function layoutAuthoredGrid(
       });
     }
   }
+  let sizingRows = rowWeights;
+  let askedRows: number[] | undefined;
+  let packedTiers = false;
   if (naturalTierWeights) {
     // Final margins can change header wrapping and label rows. Balance the
     // plots after alignment, preserving the margins that alignment measured.
@@ -1292,7 +1296,7 @@ function layoutAuthoredGrid(
     }
     // Automatic tiers spend the canvas on visible content, like the compact
     // composition path. Empty child margins do not become extra tier gutters.
-    const contentHeight = () => children.reduce((sum, child) => sum + authoredOccupiedBounds(child.geometry).h, 0);
+    const contentHeight = () => children.reduce((sum, child) => sum + occupiedBounds(child.geometry, measure).h, 0);
     const available = area.h - rowGaps.reduce((sum, gap) => sum + gap, 0);
     const weight = naturalTierWeights.reduce((sum, value) => sum + value, 0);
     const packed = children.every(child => !child.panel.align) && !options.anchors?.baselines;
@@ -1323,12 +1327,23 @@ function layoutAuthoredGrid(
       }
     }
     rowWeights = rowWeights.map((_, row) => tierSlots[provisional.findIndex(p => p.row === row)]!.h);
+    // A packed tier takes the height its content needs, not its slot: the slots can add up to more
+    // than the canvas, and a minimum scaled by them refuses a canvas where every tier fits.
+    if (packed) {
+      packedTiers = true;
+      const rowChild = (row: number) => children.find(child => child.placement.row === row)?.geometry;
+      sizingRows = rowWeights.map((weight, row) => rowChild(row)?.sizing?.minHeight ?? weight);
+      // A tier below its plot floor draws a strip: the canvas then grows to what the panels ask for.
+      if (children.some(child => child.geometry.size.height + 1e-6 < (child.geometry.frame.plotMinHeight ?? 0))) {
+        askedRows = sizingRows.map((height, row) => Math.max(height, rowChild(row)?.frame.plotMinHeight ?? 0));
+      }
+    }
     rowBands = trackBands(area.y, area.h, rowWeights, rowGaps, options.gutters?.rows !== undefined);
     tierSlots.forEach((slot, index) => { slot.y = rowBands[provisional[index]!.row]!.start; });
     let bottom = area.y + area.h;
     for (const index of packed ? bottomUpTierOrder(panels) : []) {
       const child = children[index]!;
-      const bounds = authoredOccupiedBounds(child.geometry);
+      const bounds = occupiedBounds(child.geometry, measure);
       child.slot.y = bottom - bounds.y - bounds.h;
       rowBands[child.placement.row] = { start: bottom - bounds.h, size: bounds.h };
       bottom -= bounds.h + (rowGaps[child.placement.row - 1] ?? 0);
@@ -1457,11 +1472,12 @@ function layoutAuthoredGrid(
     marks.alignmentRules!.push({ id: rule.id, nodeId, orientation: rule.orientation });
   }
 
+  if (packedTiers) slotDemandHeight.add(frameResult.frame);
   const compactNotes = children.flatMap((child) => child.geometry.a11y.compactNotes ?? []);
   return {
     type: 'grid',
     size,
-    sizing: withReadoutPlotHeight(gridSizing(size, area, children.map(child => ({ geometry: child.geometry, ...child.placement })), rowWeights, columnWeights, rowGaps, columnGaps, automaticRows),
+    sizing: withReadoutPlotHeight(gridSizing(size, area, children.map(child => ({ geometry: child.geometry, ...child.placement })), rowWeights, columnWeights, rowGaps, columnGaps, automaticRows, sizingRows, askedRows),
       size, automaticRows ? children : []),
     plot: area,
     scene,

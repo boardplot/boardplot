@@ -456,7 +456,7 @@ export const plotChromeFloor = new WeakMap<object, number>();
 /** A raw layout already repeated at its final automatic height, without retained retry state. */
 export const settledAutoHeight = new WeakSet<FrameGeometry>();
 
-export { freedChromeOf, recordFreedChrome } from './footer';
+export { freedChromeOf, recordFreedChrome, slotDemandHeight } from './footer';
 /** The reference gaps the freeing rules measure against. */
 const REFERENCE_SUBTITLE_PLOT_GAP = 12;
 const REFERENCE_FOOTER_GAP = 12;

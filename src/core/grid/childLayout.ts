@@ -77,14 +77,21 @@ export function gridRowHeights(height: number, children: GridChild[], rows: numb
   return rows.map((weight, row) => fixed[row] ?? remaining * weight / flexibleWeight);
 }
 
-/** Each spanned slot must hold its child's requirement, including fixed content rows. */
+/**
+ * Each spanned slot must hold its child's requirement, including fixed content rows.
+ * `minimumRows` weights the rows for the minimum height only; the natural height keeps the slot `rows`.
+ * `askedRows` weights them for the height the panels ask for (a tier asks for its plot floor, above its
+ * minimum): the natural height is at least that.
+ */
 export function gridSizing(size: Size, area: Rect,
   children: GridChild[],
   rows: number[], columns: number[], rowGaps: number[], columnGaps: number[],
   automaticRows = false,
+  minimumRows = rows,
+  askedRows?: number[],
 ) {
   const fixed = contentRows(children, rows, rowGaps, automaticRows);
-  const required = (axis: 'row' | 'column', weights: number[], gaps: number[], natural = false) => {
+  const required = (axis: 'row' | 'column', weights: number[], gaps: number[], mode: 'minimum' | 'natural' | 'asked' = 'minimum') => {
     const heights = weights.map((_, row) => axis === 'row' ? fixed[row] : undefined);
     const flexible = weights.map((weight, row) => heights[row] === undefined ? weight : 0);
     const total = sum(flexible);
@@ -93,7 +100,8 @@ export function gridSizing(size: Size, area: Rect,
       const span = axis === 'row' ? child.rowSpan : child.columnSpan;
       const g = child.geometry;
       const need = axis === 'column' ? g.sizing?.minWidth ?? 0
-        : (natural ? g.sizing?.naturalHeight : g.sizing?.minHeight) ?? (g.refused ? 0 : Math.max(g.frame.minHeight ?? 0, g.frame.plotMinHeight ?? 0));
+        : (mode === 'natural' ? g.sizing?.naturalHeight : mode === 'asked' ? Math.max(g.sizing?.minHeight ?? 0, g.refused ? 0 : g.frame.plotMinHeight ?? 0) : g.sizing?.minHeight)
+          ?? (g.refused ? 0 : Math.max(g.frame.minHeight ?? 0, g.frame.plotMinHeight ?? 0));
       const weight = sum(flexible.slice(start, start + span));
       const held = sum(heights.slice(start, start + span).map(value => value ?? 0));
       return weight === 0 ? 0 : Math.max(0, need - held - sum(gaps.slice(start, start + span - 1))) * total / weight;
@@ -103,18 +111,21 @@ export function gridSizing(size: Size, area: Rect,
   const content = hasContentRows || (children.length > 0 && children.every(child => child.geometry.sizing?.fit === 'content'));
   const policy = chartSizing('grid');
   const chrome = size.height - area.h;
-  const minimumRows = required('row', rows, rowGaps);
+  const slotMinimum = required('row', rows, rowGaps);
+  const minimumHeight = minimumRows === rows ? slotMinimum : required('row', minimumRows, rowGaps);
   // Flexible rows keep their share of the grid's preferred aspect height.
   // Use that stable reference, not the current canvas, so measure and drawing agree.
-  const naturalRows = hasContentRows ? Math.max(minimumRows,
+  const naturalRows = hasContentRows ? Math.max(slotMinimum,
     sum(rowGaps) + sum(fixed.map(value => value ?? 0))
     + Math.max(0, resolveSizing(policy, size).naturalHeight - chrome - sum(rowGaps))
       * sum(rows.filter((_, row) => fixed[row] === undefined)) / sum(rows))
-    : required('row', rows, rowGaps, true);
+    : required('row', rows, rowGaps, 'natural');
   return resolveSizing(content ? { ...policy, fit: 'content', aspect: 'content', minHeight: 0 } : policy, size, {
     minWidth: size.width - area.w + required('column', columns, columnGaps),
-    minHeight: chrome + minimumRows,
-    ...(content ? { naturalHeight: chrome + naturalRows } : {}),
+    minHeight: chrome + minimumHeight,
+    ...(content ? { naturalHeight: chrome + naturalRows }
+      // The minimum may come from tier minimums, below what the panels ask for: the natural height keeps that demand.
+      : minimumHeight < slotMinimum ? { naturalHeight: Math.max(resolveSizing(policy, size).naturalHeight, chrome + slotMinimum, askedRows && size.height >= chrome + minimumHeight ? chrome + required('row', askedRows, rowGaps, 'asked') : 0) } : {}),
   });
 }
 
