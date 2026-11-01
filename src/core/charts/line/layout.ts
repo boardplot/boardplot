@@ -336,6 +336,21 @@ function annotateLine(
     const ci = catIndex.get(norm.categoryId);
     if (ci === undefined) return null;
     const c = cats[ci]!;
+    // An explicit total reads every band. String anchors keep reading the first series.
+    if (isStacked && typeof ref !== 'string' && norm.edge === 'total' && !norm.seriesId && drawnSeries.length > 1) {
+      const values = drawnSeries.map(s => rebased ? pv[rowOf.get(s)!]![ci]! : absOf(s, ci));
+      if (values.every(value => value === null)) return null;
+      const value = values.reduce<number>((total, value) => total + (value ?? 0), 0);
+      const top = drawnSeries[drawnSeries.length - 1]!;
+      return {
+        x: xOf(ci),
+        y: y(cumTop[dataSeries.indexOf(top)]![ci]!),
+        value,
+        date: c.date, label: c.label ?? c.id,
+        owner: { categoryId: c.id },
+        lineAnchored: true,
+      };
+    }
     // default series for category-level anchors (cagr span, valueLine): first data series
     const s = norm.seriesId ? anchorSeries.find((x) => x.id === norm.seriesId) : drawnSeries[0];
     if (!s) return null;

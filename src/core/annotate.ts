@@ -93,6 +93,8 @@ export interface AnchorResolution {
   /** Pixel y of the anchored level (top of bar / segment edge / point). */
   y: number;
   value: number;
+  /** Value of the running level for diff and CAGR when the mark's value is a step amount. */
+  comparisonValue?: number;
   /** The absolute value in the point label's format, which can use another precision. */
   pointValueText?: string;
   /** Format of the single series this anchor reads. */
@@ -384,7 +386,7 @@ function calloutAttachment(at: AnchorResolution, kind: string, glyph?: CalloutGl
 }
 
 function comparisonAnchor(anchor: AnchorResolution | null): AnchorResolution | null {
-  return anchor?.comparisonPoint ? { ...anchor, ...anchor.comparisonPoint } : anchor;
+  return anchor ? { ...anchor, ...anchor.comparisonPoint, value: anchor.comparisonValue ?? anchor.value } : null;
 }
 
 /**
