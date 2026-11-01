@@ -1487,8 +1487,9 @@ export interface KpiOptions extends BaseOptionsFor<'kpi'> {
 /**
  * The standalone sparkline: 176 by 36 by default, no axes, no
  * smoothing, no fill. A bare one draws edge to edge, because it is a mark
- * inside someone else's card; one that carries a title takes the canvas
- * margin, and `canvas.margin` overrides either.
+ * inside someone else's card; one that carries a title, subtitle, source or
+ * note is 320 px wide by default and takes the canvas margin, and
+ * `canvas.margin` overrides either.
  */
 export interface SparklineOptions extends BaseOptionsFor<'sparkline'> {
   /** A ring on the last observed point, in the highlight. Default 'last'. */
@@ -1499,11 +1500,15 @@ export interface SparklineOptions extends BaseOptionsFor<'sparkline'> {
    * shared per-label-kind switch every other type reads.
    */
   endLabels?: 'ends' | 'none';
-  /** 'last' prints the last observed value beside the end of the line. Default 'none'. */
-  valueLabel?: 'last' | 'none';
+  /**
+   * 'last' prints the last observed value beside the end of the line. On a framed sparkline with
+   * room it also names the high, the low and the first value, and the reference value. 'last-and-high'
+   * prints only the last value and the high. Default 'none'.
+   */
+  valueLabel?: 'last' | 'last-and-high' | 'none';
   /** Stroke width of the line. Default 1.5. */
   stroke?: number;
-  /** A 1 px dashed line at this value, unlabelled; the scale always includes it. */
+  /** A 1 px dashed line at this value; the scale always includes it. On a framed sparkline its value prints in the last value's column when valueLabel is 'last'. */
   reference?: number;
   /** The end ring in this tone instead of the highlight. Refused with ring 'none'. */
   ringTone?: 'good' | 'warn' | 'bad';

@@ -24,16 +24,16 @@ export const sparklineOptionsSchema = baseOptionsSchema
       .describe("A ring on the last observed point, in the highlight. 'last' is the default; 'none' draws the bare line.").meta({ default: 'last' }),
     endLabels: z.enum(['ends', 'none']).optional()
       .describe("'ends' prints the first and last authored label under the ends of the line, at the micro step in the muted ink. Default 'none'. The key is endLabels because labels is the shared per-label-kind switch. The labels take one text line of the height, about half of a 36 px card, so the line and a reference inside its range share the rest. Use 'none' on a short card, or when a reference must read apart from the line.").meta({ default: 'none' }),
-    valueLabel: z.enum(['last', 'none']).optional()
-      .describe("'last' prints the last observed value beside the end of the line, in the format. On a framed sparkline (title, subtitle or source) whose line band keeps 60 px, it also marks the high point with a dot and its value, muted, above it, unless the last point is the high. Default 'none': a card that hosts the bare mark prints the figure itself.").meta({ default: 'none' }),
+    valueLabel: z.enum(['last', 'last-and-high', 'none']).optional()
+      .describe("'last' prints the last observed value beside the end of the line, in the format. On a framed sparkline (title, subtitle or source) whose line band keeps 60 px, it also marks the high point with a dot and its value, muted, above it, unless the last point is the high; then it also marks the low under its point (unless the low is the last point) and the first value away from the line (unless the first point is the high or the low), and a reference prints its value in the column of the last value, level with the dashed line. 'last-and-high' keeps the last value and the high only. Default 'none': a card that hosts the bare mark prints the figure itself.").meta({ default: 'none' }),
     stroke: z.number().positive().max(8).optional()
       .describe('Stroke width of the line in px. Default uses the theme stroke.data token (2 px).').meta({ default: 2 }),
     reference: boundedNumber.optional()
-      .describe('A 1 px dashed line at this value in the muted ink, with no label. The scale always includes it.'),
+      .describe("A 1 px dashed line at this value in the muted ink. The scale always includes it. On a framed sparkline with valueLabel 'last' its value prints in the column of the last value, muted."),
     ringTone: z.enum(['good', 'warn', 'bad']).optional()
       .describe("Paints the end ring in this tone instead of the highlight. Refused with ring 'none'."),
   })
   .superRefine((options, ctx) => {
     if (ringToneRefusal(options).length) ctx.addIssue({ code: 'custom', path: ['ringTone'], message: RING_TONE_WITHOUT_RING_REFUSED, params: { refused: true } });
   })
-  .describe('A bare sparkline draws edge to edge, because it is a mark inside someone else\'s card; one that carries a title takes the canvas margin, starts its line on the text edge and, with an authored width and no height, grows its line band with the width (46 px plus a tenth of the width, 70 to 200 px). canvas.margin overrides either. Default size 176 by 36.') as unknown as z.ZodType<SparklineOptions>;
+  .describe('A bare sparkline draws edge to edge, because it is a mark inside someone else\'s card; one that carries a title, subtitle, source or note takes the canvas margin, starts its line on the text edge, is 320 px wide when it authors no width (wider for a long title) and, with no height, grows its line band with the width (46 px plus a tenth of the width, 70 to 200 px) on an authored width and on any card from 320 px, the dashboard tile included. canvas.margin overrides either. Default size of a bare sparkline 176 by 36.') as unknown as z.ZodType<SparklineOptions>;
