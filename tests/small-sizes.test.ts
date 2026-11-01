@@ -158,6 +158,23 @@ it('staggers long matrix column names on two tiers before any name turns', () =>
   expect(narrow.scene.filter(node => node.t === 'text' && node.part === 'category')).toHaveLength(5);
 });
 
+// A name pushed aside by its neighbours left its tick at the name's end, so it read as a divider between the lower names.
+it('keeps every staggered column name centred over its tick', () => {
+  const names = ['Western Valley and Riverside', 'Depreciation on fixed assets', 'Central Plains (Riverside)', 'Northern Hills and Lake District',
+    'Expenses for purchased goods', 'Income from equity-accounted firms', 'General and administrative costs', 'Other comprehensive income items'];
+  const data = { categories: names.map((label, ci) => ({ id: `c${ci}`, label })),
+    series: ['Transaction fees, card payments', 'Upkeep and maintenance', 'Professional services, fixed price', 'Other services, domestic', 'Enterprise software licences', 'Subscription revenue, monthly plans', 'Subscription revenue, annual plans', 'Training and certification'].map((label, ri) => ({ id: `s${ri}`, label, direction: 'higherIsBetter', values: names.map((_, ci) => ({ pct: 10 + ((ci * 7 + ri * 13) % 70) })), sizes: names.map((_, ci) => 1 + ((ci + ri) % 3)), bases: names.map((_, ci) => ((ci * 3 + ri) % 5 === 0 ? 30 : 200)) })) };
+  const result = layoutResolvedRequest(resolveChartRequest({ type: 'heatmap', data,
+    options: { title: 'Matrix of results', unit: '%', variant: 'bubble', scale: 'discrete', breaks: [0, 30, 50, 80], minBase: 50, bubble: { levels: ['Low', 'Medium', 'High'], sizeLabel: 'Importance', colorLabel: 'Exceeded, % of respondents' }, target: 'slide', size: { width: 1184, height: 552 } } } as never));
+  if (result.refused) throw new Error(result.warnings[0]!.message);
+  const ticks = result.scene.filter(node => node.t === 'line' && node.id.startsWith('tierTick:'));
+  expect(ticks.length).toBeGreaterThan(0);
+  for (const tick of ticks) {
+    const label = result.labels.find(l => l.id.includes(tick.id.slice('tierTick:'.length)))!;
+    expect(Math.abs(label.rect.x + label.rect.w / 2 - (tick as { x1: number }).x1)).toBeLessThan(label.rect.w * 0.1);
+  }
+});
+
 // A host needs the refusal's minimum to size its card without a separate measurement.
 it('keeps canDraw minimum on a fixed-size refusal', () => {
   expect(canDraw(shortCombo)).toMatchObject({ ok: false, code: 'size-below-floor', minimum: { width: 480, height: 240 } });
