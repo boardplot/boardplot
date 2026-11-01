@@ -165,6 +165,8 @@ const THEME_FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze
     "A fixed bar row: bar thickness and row pitch in px, such as 12 and 24. Absent, bar rows share whatever height the canvas gives them. Set, every bar and likert row is pitch px tall, or as tall as its label if that is taller, and a canvas taller than the chart never stretches the rows: the chart lays out at its natural height, draws at the top and leaves the rest of the canvas empty, as a content-fit chart sits at the top of its box. A host that wants the air elsewhere lays the chart out at its natural height (fit: 'content') and places it. An authored options.bandFraction still sets the bar's share of the row.",
   'space.barRow.thickness': 'Bar (or bar group) thickness in px. A thickness above the pitch draws the bar at the full row.',
   'space.barRow.pitch': 'Distance in px from one row to the next.',
+  'space.footerFollows':
+    "On a canvas with a set height that is taller than the drawn chart, the notes, the source line and a key under the plot stand right under the content, and the spare height stays below them. Absent or true does this. false puts them at the canvas bottom, with the empty band between the content and them. A chart that fills its canvas is not changed.",
 
   // ── legend, interaction, motion ────────────────────────────────────────────
   legend: 'Legend behavior switches.',
