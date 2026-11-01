@@ -18,6 +18,8 @@ import { distinguishSeries } from '../../seriesIdentity';
  */
 
 import { cutWithTitle, fitText, lineBox } from '../../label/fitText';
+import { asColumnHeads, columnHeadFont, fitHead, headRequest, HEAD_PREFIX } from '../bullet/columnHead';
+import { COLUMN_GAP, COLUMN_MIN_WIDTH, columnCellRequest, columnHeadText, columnWidth, differenceFormatter } from '../diffColumn';
 import { stepDownFont } from '../../label/rowFit';
 import type { AnchorResolution } from '../../annotate';
 import { percentLevels, runAnnotatePass } from '../../annotatePass';
@@ -44,7 +46,7 @@ import { accessibleTitle,
 } from '../../normalize/shared';
 import { applyAxisBounds, linearScale, niceDomain } from '../../scale';
 import { authoredNotes, frameTextOptions, normalizeLegendOption, solveFrame, type FrameInput, type LegendItemInput, plotHeightAfter, authoredFootnoteCount } from '../../frame';
-import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
+import { DEFAULT_TARGET, TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { defaultMeasurer, type FontSpec, type TextMeasurer } from '../../text';
 import {
   labelsOffKeepsNames,
@@ -73,7 +75,7 @@ import type {
   SceneNode,
 } from '../../types/scene';
 import { valueLineExtent } from '../../valueLineDomain';
-import { autoDecimals } from '../../formatPrecision';
+import { autoDecimals, valueSetDecimals } from '../../formatPrecision';
 import {
   foldShareRefusal,
   planSlopeFold,
@@ -371,6 +373,31 @@ export function layoutSlope(
   const endLineH = labelFont.size * (labelFont.lineHeight ?? 1.2);
   const minPitch = Math.max(END_MIN_PITCH, endLineH);
 
+  // ---- change column: one derived number per line, right of the second rail's labels ----
+  // Off below COLUMN_MIN_WIDTH: a column over a narrow plot costs the lines more than it tells.
+  const changeMode = options.change ?? 'none';
+  const changeTexts = new Map<Id, string>();
+  if (changeMode !== 'none' && size.width >= COLUMN_MIN_WIDTH) {
+    const lang = options.locale?.language;
+    const pcts = plottedSeries.flatMap((s) => (changes[s.id]!.pct === null ? [] : [changes[s.id]!.pct!]));
+    const absText = differenceFormatter({ format: options.format, locale: lang, decimals: formats.spec.decimals, values: plottedSeries.flatMap((s) => [s.a.v!, s.b.v!]) });
+    const pctDecimals = Math.min(1, valueSetDecimals(pcts));
+    for (const s of plottedSeries) {
+      const ch = changes[s.id]!;
+      if (changeMode === 'absolute') changeTexts.set(s.id, absText(s.b.v!, s.a.v!));
+      else if (ch.pct !== null) changeTexts.set(s.id, formatAutomaticNumber(ch.pct, { locale: lang, signed: true, decimals: pctDecimals }));
+    }
+  }
+  // A difference of two percent levels is in percentage points; a relative change is in percent.
+  const changeHead = changeTexts.size === 0 ? undefined
+    : columnHeadText(chartString(options, 'changeHead'), changeMode === 'relative' || options.unit?.startsWith('%') === true || percentLevels(plottedSeries.map((s) => ({ vals: [s.a, s.b], format: s.format, unit: s.unit })), options.format, options.unit),
+      changeMode === 'relative' ? '%' : undefined);
+  const headFont = columnHeadFont(theme, options.target ?? DEFAULT_TARGET, textScaleOf(options));
+  const changeFont = (id: Id): FontSpec => (highlights.has(id) ? hlFont : labelFont);
+  // The column and the gap before it come out of the width the rails and their labels share.
+  const colW = changeHead === undefined ? 0 : columnWidth(measure, [...changeTexts].map(([id, text]) => ({ text, font: changeFont(id) })), { text: changeHead, font: headFont });
+  const colReserve = colW > 0 ? colW + COLUMN_GAP : 0;
+
   // ---- paints (consulting grey + one accent; de-emphasis via light tint) ----
   // A line whose colorRole is 'highlight' is an authored focus too.
   const anyHighlight = highlights.size > 0 || seriesNorm.some((s) => !s.fill && s.colorRole === 'highlight');
@@ -527,14 +554,14 @@ export function layoutSlope(
   const compactable = endContent !== null && options.labels !== false && !Array.isArray(options.labels?.series)
     && plottedSeries.length > 1 && endContent.includes('series') && endContent.length > 1;
   const gapCompact = compactable
-    && frameResult.plot.w - sideDemand('left') - sideDemand('right') - 2 * RAIL_GAP < COMPACT_GAP;
+    && frameResult.plot.w - colReserve - sideDemand('left') - sideDemand('right') - 2 * RAIL_GAP < COMPACT_GAP;
   // Capped demands can fit even though their names do not. Keep the wider
   // name column until both full columns print without a cut.
   const cutCompact = compactable && !gapCompact
     && (fullLeftReqs.some((req) => req.title !== undefined) || fullRightReqs.some((req) => req.title !== undefined));
   const compactLeftReqs = gapCompact || cutCompact ? plottedSeries.map((s) => mkEndReq(s, s.a, c0, 'left', true)) : [];
   const rightCap = gapCompact || cutCompact
-    ? Math.max(sideCap, frameResult.plot.w - sideMax(compactLeftReqs) - 2 * RAIL_GAP - COMPACT_MIN_GAP)
+    ? Math.max(sideCap, frameResult.plot.w - colReserve - sideMax(compactLeftReqs) - 2 * RAIL_GAP - COMPACT_MIN_GAP)
     : sideCap;
   const compactRightReqs = gapCompact || cutCompact ? plottedSeries.map((s) => mkEndReq(s, s.b, c1, 'right', true, rightCap)) : [];
 
@@ -669,7 +696,7 @@ export function layoutSlope(
   };
   const railGaps = { left: railGapOf(leftReqs, 'left'), right: railGapOf(rightReqs, 'right') };
   let railL = frameResult.plot.x + (leftMax > 0 ? leftMax + railGaps.left : 0);
-  let railR = frameResult.plot.x + frameResult.plot.w - (rightMax > 0 ? rightMax + railGaps.right : 0);
+  let railR = frameResult.plot.x + frameResult.plot.w - colReserve - (rightMax > 0 ? rightMax + railGaps.right : 0);
   // The gap between the rails is at most
   // MAX_GAP_RATIO times the plot height, so a wide canvas keeps the slopes'
   // angle; the block of labels and rails is centred in the free width.
@@ -774,6 +801,8 @@ export function layoutSlope(
 
   // ---- end labels: overflow-drop by priority, then spread1D per side ----
   const labelRequests: LabelRequest[] = [];
+  // Where each line's second-rail label sits: the change column prints on its baseline.
+  const rowCenters = new Map<Id, number>();
   const planSide = (reqs: EndReq[], side: 'left' | 'right', unnamed?: ReadonlySet<Id>): EndReq[] => {
     if (!endContent) return [];
     const railX = side === 'left' ? railXs[0] : railXs[1];
@@ -796,6 +825,7 @@ export function layoutSlope(
       h: r.h,
     });
     kept.forEach((r, i) => {
+      if (side === 'right') rowCenters.set(r.s.id, centers[i]!);
       labelRequests.push({
         id: `series:${r.s.id}:${cat.id}`,
         kind: 'series',
@@ -843,6 +873,21 @@ export function layoutSlope(
   const leftNamed = new Set(compact || !endContent?.includes('series') ? [] : leftKept.map((r) => r.s.id));
   planSide(rightReqs, 'right', compact || !endContent?.includes('series') ? undefined
     : new Set(plottedSeries.filter((s) => !leftNamed.has(s.id)).map((s) => s.id)));
+
+  // ---- change column: right-aligned past the second rail's longest label, a head at the category line ----
+  if (changeHead !== undefined) {
+    const columnRight = railXs[1] + railGaps.right + rightMax + COLUMN_GAP + colW;
+    for (const s of plottedSeries) {
+      const text = changeTexts.get(s.id);
+      if (text === undefined) continue;
+      labelRequests.push(columnCellRequest({
+        id: `change:${s.id}`, owner: { seriesId: s.id }, text, font: changeFont(s.id), measure,
+        right: columnRight, cy: rowCenters.get(s.id) ?? y(s.b.v!),
+      }));
+    }
+    const head = fitHead(changeHead, headFont, colW, measure, { target: options.target ?? DEFAULT_TARGET, textScale: textScaleOf(options) });
+    labelRequests.push(headRequest('change', 0, head, columnRight, plot.y - catH - 6, catH, false));
+  }
 
   // ---- category labels above the rails (bold-ish) ----
   let catLabelsShown = false;
@@ -954,6 +999,7 @@ export function layoutSlope(
     labelsToNodes(theme, allLabels, (l) =>
       l.kind === 'category'
         ? catFont
+        : l.id.startsWith(HEAD_PREFIX) ? headFont
         : l.kind === 'annotation' || l.kind === 'valueLine'
           ? { ...labelFont, weight: emphasisWeight(theme) }
           : highlights.has(l.owner.seriesId ?? '')
@@ -963,6 +1009,7 @@ export function layoutSlope(
     // Every leader keeps the thin neutral leader paint; a leader in the
     // highlight colour reads as a hook in its line.
   );
+  asColumnHeads(nodes);
 
   const axes: AxisGeometry[] = [
     {

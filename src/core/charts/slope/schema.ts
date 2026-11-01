@@ -77,6 +77,7 @@ export const slopeOptionsSchema = baseOptionsSchema
       .describe(
         "Share of the endpoint total below which series fold into one 'Other' line, measured at both ends: 0.05 is five percent. A value at or above 1 is refused. Highlighted series keep their own name.",
       ),
+    change: z.enum(['none', 'absolute', 'relative']).optional().describe("A column of each line's change between the two periods, right of the second rail's labels under a head such as 'Change, pp': 'absolute' prints second minus first (pp for percent values), 'relative' prints the percent change. The highlighted line prints bold. Default 'none'. The column stays off below 576 px canvas width."),
     variant: z.enum(['lines', 'diverging']).optional().describe("'diverging': one panel per series, values as the positive share up from zero and negative as the negative share down, on one scale; two categories, at most 12 series. Default 'lines'."),
     diverging: z.strictObject({
       labels: z.strictObject({

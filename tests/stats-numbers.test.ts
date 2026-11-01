@@ -195,7 +195,7 @@ describe('likert', () => {
     const geometry = layoutLikert(multi, { values: 'counts', sortBy: 'net', summary: 'net' });
     const derived = geometry.derived;
     const head = geometry.labels.find((l) => l.id === 'likert:netHead')!;
-    expect(head.text).toBe('Net, pp');
+    expect(head.text).toBe('Net, pp · n = 100'); // every row sums to 100, so the shared n stands in the head
     for (const itemId of derived.order) {
       const label = geometry.labels.find((l) => l.id === `grandTotal:${itemId}`);
       expect(label!.rect.x + label!.rect.w).toBeCloseTo(head.rect.x + head.rect.w, 6);

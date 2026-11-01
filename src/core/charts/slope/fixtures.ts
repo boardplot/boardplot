@@ -52,6 +52,7 @@ export const fixtures: Fixture<SlopeChartData, SlopeOptions>[] = [
       // The height is left to the content.
       size: { width: 900 },
       highlight: 'nexumcloud',
+      change: 'absolute',
     },
   },
   {
