@@ -5,3 +5,4 @@
 ### Fixed
 
 - Gantt weekend shading now draws below the elapsed band, so weekends do not cut pale gaps into the past. The Weekend key uses the visible Gantt wash.
+- A Gantt bar that crosses a weekend band keeps the 3:1 contrast floor against the stronger weekend shading, also without `rowTint`.

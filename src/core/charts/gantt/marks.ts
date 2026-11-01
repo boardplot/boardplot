@@ -102,13 +102,13 @@ export function ganttPaints(env: GanttEnv, rows: NormRow[]): GanttPaints {
 }
 
 /**
- * The page-like surfaces a bar may lie on: the alternate-row tint and the
- * elapsed band. A bar's fill separates from them and from the page by itself
+ * The page-like surfaces a bar may lie on: the Gantt wash (alternate rows and
+ * weekend bands, one paint) and the elapsed band. A bar's fill separates from them and from the page by itself
  * (surfaceFloorPaint), so no status bar needs an outline.
  */
 export function barSurfaces(env: GanttEnv): Paint[] {
   return [
-    ...(env.options.rowTint ? [ganttRowPaint()] : []),
+    ...(env.options.rowTint || env.options.weekends ? [ganttRowPaint()] : []),
     ...(env.options.elapsed !== false ? [{ token: 'focus', tint: env.surface.elapsedTint } as Paint] : []),
   ];
 }
@@ -121,7 +121,7 @@ function separatedFill(ctx: MarkCtx, authored: Paint, rowId: Id) {
   // A fill outlined on a tinted row is outlined on every row, so the outline
   // never reads as a second kind of bar (fixture dense-14-rows).
   const tinted = ganttRowPaint();
-  const alternateBackings = ctx.env.options.rowTint ? [tinted] : [];
+  const alternateBackings = ctx.env.options.rowTint || ctx.env.options.weekends ? [tinted] : [];
   const css = ctx.paints.css(fill);
   const backing = [ctx.paints.rowBackingPaint(rowId), ...alternateBackings].map((paint) => ctx.paints.css(paint))
     .reduce((nearest, candidate) => (contrastRatio(css, candidate) < contrastRatio(css, nearest) ? candidate : nearest));

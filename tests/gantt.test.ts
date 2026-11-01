@@ -50,6 +50,20 @@ it('gantt paints visible row and weekend shading below the elapsed band', () => 
   }
 });
 
+// A detail bar must keep the 3:1 floor against the weekend wash, which is drawn without rowTint too.
+it('gantt holds a bar to the 3:1 floor against the weekend wash', () => {
+  const request = resolveChartRequest({ type: 'gantt', data: { rows: [
+    { id: 'ws', label: 'Workstream', items: [{ id: 'w1', kind: 'bar', start: '2026-04-06', end: '2026-04-30', label: 'Phase' }] },
+    { id: 'd1', label: 'Detail', indent: 1, items: [{ id: 'a', kind: 'bar', start: '2026-04-08', end: '2026-04-20', label: 'Task' }] },
+  ] }, options: { weekends: true, elapsed: false, theme: 'standard-dark', size: { width: 720 } } });
+  const geometry = layoutResolvedRequest(request);
+  if (geometry.refused) throw new Error('gantt refused');
+  const wash = geometry.scene.find(node => node.t === 'rect' && node.part === 'weekend');
+  const bar = geometry.scene.find(node => node.t === 'rect' && node.id === 'mark:d1:a');
+  if (wash?.t !== 'rect' || bar?.t !== 'rect') throw new Error('missing weekend wash or bar');
+  expect(contrastRatio(resolvePaint(bar.fill!, request.theme), resolvePaint(wash.fill!, request.theme))).toBeGreaterThanOrEqual(3);
+});
+
 // A hidden arrow must be named once in warnings, while other missing labels stay disclosed.
 it('gantt names each hidden arrow in one warning', () => {
   const fixture = getFixtures('gantt').find(f => f.id === 'two-year-span')!;
