@@ -32,6 +32,7 @@ const EN = {
   // the note names the shaded rows; the compact cascade names its combined row.
   "combinedShadedLead": "Shaded rows, {v1}",
   "combinedRowLabel": "Top {v1} combined",
+  "residualKey": "Rest rows",
   "sliverKnown": " ({v1} in the parts drawn)",
   "sliverNote": "Too short to compare on the shared{v1} scale, which runs to {v2}",
 } as const;
@@ -67,6 +68,7 @@ const DE: { [K in keyof typeof EN]: string } = {
   // the note names the shaded rows; the compact cascade names its combined row.
   "combinedShadedLead": "Schattierte Zeilen, {v1}",
   "combinedRowLabel": "Top {v1} zusammen",
+  "residualKey": "Übrige Zeilen",
   "sliverKnown": " ({v1} in den gezeichneten Teilen)",
   "sliverNote": "Zu kurz zum Vergleich auf der gemeinsamen Skala{v1} bis {v2}",
 };

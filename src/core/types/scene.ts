@@ -118,6 +118,8 @@ export type ThemePaintSource =
    * is painted in.
    */
   | { kind: 'quiet-land'; apartFrom: Paint[] }
+  /** The Total bar beside a key that names colours: the Total colour, deepened away from the page until it stands a swatch step from every `apartFrom` paint (totalApartColor). */
+  | { kind: 'total-apart'; apartFrom: Paint[] }
   /** A plain waterfall segment colour, tinted in the active theme where it reads too close to the total (segmentApartPaints). */
   | { kind: 'segment-apart'; plain: Paint[]; others: Paint[]; index: number }
   /**
