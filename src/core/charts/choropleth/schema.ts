@@ -194,6 +194,6 @@ export const choroplethOptionsSchema = z
         params: { refused: true },
       });
     }
-  }).describe("Map framing, color scale and region-label policies. The titled colour key and the Small members block sit together in the row above the map, and the map rises under that row where no region lies; legend 'bottom' puts them under the map. legend 'right' is refused (a side column takes the map's width), and so is 'none' (the key names what the colours measure).") as unknown as z.ZodType<ChoroplethOptions>;
+  }).describe("Map framing, color scale and region-label policies. The titled colour key and the Small members block sit together in the row above the map, and the map rises under that row where no region lies. On a canvas of a set height whose plot is at least 1.6 times wider than tall, where a column beside the map makes the map clearly larger and no value table is drawn, they stand in a column right of the map instead; legend 'top' keeps the row. legend 'bottom' puts them under the map. legend 'right' is refused (a side column takes the map's width), and so is 'none' (the key names what the colours measure).") as unknown as z.ZodType<ChoroplethOptions>;
 
 export const choroplethDataSchema = baseChoroplethDataSchema.superRefine(addGeoIdIssues);

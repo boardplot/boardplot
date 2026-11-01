@@ -133,6 +133,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | eu-inflation-values | example | EU inflation with each region value printed after its code |
 | eu-inflation-colorblind | example | EU inflation around 2% in the colorblind-safe good/bad pair |
 | us-margin-versus-target | example | State margins above the target are favorable |
+| us-margin-wide-slot | example | State margins on a wide slot: the key and the unlabelled states stand beside the map |
 | dach-all-region-labels | example | All three DACH markets carry their region labels |
 | german-states-bremen-on-map | torture | Bremen keeps its label on the map through labelRegions, under an authored key title |
 | german-states-table-below | example | The value table stands under the map |

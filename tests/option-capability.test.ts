@@ -417,7 +417,7 @@ describe('published option behaviour census', () => {
     ["bar column combo", "referenceStyle", "This fixture has no reference mark that responds to this style."],
     ["bar combo", "referenceTick", "This fixture has no reference tick that responds to this width."],
     ["bartable box grid heatmap kpi line slope sparkline status dimswitch table variance waffle", "labelDensity", "This fixture keeps the same label set at minimal density."],
-    ["bartable cohort column combo dot gantt histogram kpi pvm sparkline status dimswitch table sankey treemap variance waffle waterfall", "legend", "The requested key position changes no SVG on this fixture."],
+    ["bartable cohort column combo dot gantt histogram kpi pvm sparkline status dimswitch table tilemap sankey treemap variance waffle waterfall", "legend", "The requested key position changes no SVG on this fixture."],
     ["bartable mekko slope", "highlight", "The selected id changes no mark in this representative fixture."],
     ["bartable box bullet choropleth cohort gantt grid histogram kpi likert pvm pyramid scatter sparkline status dimswitch table tilemap sankey treemap waffle", "annotations", "This note or edited annotation changes no SVG and gives no new warning naming annotations."],
     ["box", "showObservations", "The representative fixture has no observation marks to remove."],
