@@ -1437,7 +1437,13 @@ function fitOnce<D, O extends ChartOptions, M extends object, DV extends object>
       const plotShare = autoPlotShare(definition, options, width);
       // The share every layout keeps; a chosen larger share (PLOT_SHARE) is a goal, not a floor.
       const floorShare = autoPlotShare(definition, { ...options, [PLOT_SHARE]: undefined }, width);
-      const plotPx = declared.aspect === '16:9' ? autoPlotPx(target, width) + typePlotPx(definition.type, options, width) : PLOT_FLOOR_PX[target];
+      // A bridge asked for an 'auto' break that finds none is a whole-axis bridge, so it keeps that plot allowance.
+      const autoBreak = (options as { valueAxis?: { break?: unknown } } | undefined)?.valueAxis?.break === 'auto';
+      const drawnProbe = autoBreak ? at(width, height) : undefined;
+      const allowanceOptions = drawnProbe && !drawnProbe.refused && !drawnProbe.axes.some((axis) => axis.break)
+        && !drawnProbe.scene.some((node) => node.t === 'line' && (node.part === 'barBreak' || node.part === 'axisBreak'))
+        ? { ...options, valueAxis: { ...(options as { valueAxis?: object }).valueAxis, break: false } } : options;
+      const plotPx = declared.aspect === '16:9' ? autoPlotPx(target, width) + typePlotPx(definition.type, allowanceOptions, width) : PLOT_FLOOR_PX[target];
       // Header and footer room a spacing rule freed counts as frame here, so the
       // plot takes it and the canvas does not get shorter because of it (frame.ts recordFreedChrome).
       const freed = (r: LayoutResult<M, DV>) => r.refused ? 0 : freedChromeOf(r.frame);
