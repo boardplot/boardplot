@@ -1487,8 +1487,9 @@ export interface KpiOptions extends BaseOptionsFor<'kpi'> {
 /**
  * The standalone sparkline: 176 by 36 by default, no axes, no
  * smoothing, no fill. A bare one draws edge to edge, because it is a mark
- * inside someone else's card; one that carries a title takes the canvas
- * margin, and `canvas.margin` overrides either.
+ * inside someone else's card; one that carries a title, subtitle, source or
+ * note is 320 px wide by default and takes the canvas margin, and
+ * `canvas.margin` overrides either.
  */
 export interface SparklineOptions extends BaseOptionsFor<'sparkline'> {
   /** A ring on the last observed point, in the highlight. Default 'last'. */
