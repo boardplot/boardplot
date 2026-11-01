@@ -1761,8 +1761,8 @@ function brighterPole(theme: Theme, base?: string): string {
 
 const SERIES_TEXT_COLORS = new WeakMap<Theme, WeakMap<ThemePaintSource, string>>();
 /**
- * Ground-text contrast walks run once per theme and recipe object: the cells of one heat band share one ground and
- * one ink recipe. Scene paints are caller data and may be edited in place, so a hit must still print as its recipe.
+ * Ground-text and quiet-land walks run once per theme and recipe object: the cells of one heat band share one ground and
+ * one ink recipe, and the regions of one map share one land. Scene paints are caller data and may be edited in place, so a hit must still print as its recipe.
  */
 const WALKED_COLORS = new WeakMap<Theme, WeakMap<ThemePaintSource, { recipe: string; color: string }>>();
 
@@ -1777,7 +1777,7 @@ export function sameRecipe(a: unknown, b: unknown): boolean {
 
 /** Resolve a provenance-carrying theme paint for the baked serializer. */
 function themePaintSourceColor(theme: Theme, source: ThemePaintSource): string {
-  if (source.kind !== 'ground-text') return sourceColor(theme, source);
+  if (source.kind !== 'ground-text' && source.kind !== 'quiet-land') return sourceColor(theme, source);
   let cache = WALKED_COLORS.get(theme);
   if (!cache) WALKED_COLORS.set(theme, cache = new WeakMap());
   const recipe = JSON.stringify(source);
@@ -1883,6 +1883,7 @@ function sourceColor(theme: Theme, source: ThemePaintSource): string {
     const amount = source.count > 1 ? weakest * (1 - source.index / (source.count - 1)) : 0;
     return tint(paintTokenColor(theme, 'markInk'), amount, theme.color.background);
   }
+  if (source.kind === 'quiet-land') return quietLandColor(theme, source.apartFrom.map((paint) => paintColor(theme, paint)));
   if (source.kind === 'mix') {
     const from = paintColor(theme, source.from);
     if (!('theme' in source.to) || source.to.theme?.kind !== 'brighter-pole') {
@@ -1987,6 +1988,34 @@ export function visibleTintAmount(
     if (contrastRatio(tint(base, Math.max(0, a), background), background) >= floor) return Math.max(0, a);
   }
   return 0;
+}
+
+/** How far, in OKLab x100, the land of a map region without data sits from the page. */
+export const QUIET_LAND_STEP = 6;
+/** The land keeps this distance from every scale paint, so it never reads as the lowest class. */
+const QUIET_LAND_APART = 6;
+/** The land never washes closer to the page than this, so its shape stays on the page. */
+const QUIET_LAND_FLOOR = 2.5;
+
+/**
+ * The quiet land of regions the data does not name (choropleth and tilemap):
+ * the light neutral washed toward the page until it sits QUIET_LAND_STEP from
+ * the page, then further toward the page while it reads closer than
+ * QUIET_LAND_APART to a scale paint, never closer to the page than QUIET_LAND_FLOOR.
+ * Only scale paints at least QUIET_LAND_STEP from the page count: a paler one
+ * (the white middle of a diverging ramp) is not helped by a paler land.
+ */
+export function quietLandColor(theme: Theme, apartFrom: readonly string[]): string {
+  const page = theme.color.background;
+  const base = paintTokenColor(theme, 'neutralLight');
+  const fromPage = (color: string) => palettePerceptualDistance(color, page);
+  const land = (w: number) => mixColors(base, page, w);
+  let weight = 0;
+  while (weight < 1 && fromPage(land(weight)) < QUIET_LAND_STEP) weight = Number((weight + 0.01).toFixed(2));
+  const deeper = apartFrom.filter((paint) => fromPage(paint) >= QUIET_LAND_STEP);
+  while (weight > 0.01 && fromPage(land(weight - 0.01)) >= QUIET_LAND_FLOOR
+    && deeper.some((paint) => palettePerceptualDistance(land(weight), paint) < QUIET_LAND_APART)) weight = Number((weight - 0.01).toFixed(2));
+  return land(weight);
 }
 
 /** The widest wash a funnel stage takes toward its brighter pole (shadeStage). */

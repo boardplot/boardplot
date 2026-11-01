@@ -208,7 +208,7 @@ Maps use a continuous ramp unless `classes` or `steps` is set. `classes` breaks 
 
 A choropleth writes each region's code on its shape. A region too small for its code gets the code beside the shape on a short leader. `valueTable` adds a table of every region with its swatch, code and value; the top regions are bold. `'auto'` (default) shows the table for at most 20 regions: beside the map when there is room, else below it when the frame can grow, else not at all. `'side'` and `'below'` set the place, and `false` turns the table off. With the table on, the map prints codes only.
 
-A listed region with `value: null` has a hatch and the key says “Value missing”. An unlisted region has plain background and the key says “Not in data”. This distinction is automatic. A status glyph reserves space before labels are placed. Tile glyphs stay inside one tile. A glyph that cannot fit is omitted with a warning. Labels that move to the tile note also produce a warning.
+A listed region with `value: null` has a hatch and the key says “Value missing”. An unlisted region draws as pale land without an outline, and the key says “Not in data”. On a choropleth it gets no automatic code; `labels: 'all'` or `labelRegions` still names it. This distinction is automatic. A status glyph reserves space before labels are placed. Tile glyphs stay inside one tile. A glyph that cannot fit is omitted with a warning. Labels that move to the tile note also produce a warning.
 
 ### Fraction values in chart data
 

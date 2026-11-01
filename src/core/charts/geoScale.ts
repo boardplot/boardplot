@@ -470,6 +470,16 @@ function geoScaleLegend(
   return legend;
 }
 
+/**
+ * The land of the regions or tiles the data never names, shared by choropleth
+ * and tilemap and by their key swatch: a quiet-land recipe kept apart from
+ * every scale paint of the key, decided again in each theme the scene is painted in.
+ */
+export function quietLandPaint(legend: readonly LegendItemInput[]): Paint {
+  const apartFrom = legend.flatMap((item) => /^(class-|range-|midpoint$)/.test(item.id) && item.paint ? [item.paint] : []);
+  return { token: 'neutralLight', theme: { kind: 'quiet-land', apartFrom } };
+}
+
 /** A region name, tile code or value prints in the label type. */
 export function geoLabelFont(theme: Theme): FontSpec {
   return { family: theme.type.family, ...theme.type.label };
