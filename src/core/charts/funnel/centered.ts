@@ -324,10 +324,10 @@ export function layoutCenteredFunnel(
   // columns keep 10 px instead of 16, the funnel narrows to 64 px.
   const compactForm = options.mode === 'compact';
   const colPad = compactForm ? 10 : 16;
-  // the heads also take one word per line when the stage
+  // The heads split at spaces and after a hyphen. They also take one word per line when the stage
   // labels do not all fit inside their bands with one-line heads (see allInside).
   let splitHeads = compactForm;
-  const headLines = (text: string) => splitHeads ? text.split(' ') : [text];
+  const headLines = (text: string) => splitHeads ? text.split(/ |(?<=-)/) : [text];
   const headSize = (text: string) => {
     const lines = headLines(text);
     return { width: Math.max(...lines.map((line) => measure(line, headerFont).width)), height: lines.length * measure(lines[0]!, headerFont).height };
@@ -344,8 +344,8 @@ export function layoutCenteredFunnel(
   let cvrBlockWidth = showTotalCvr
     ? Math.max(cvrHeaderSize.width, maxOf(cvrSizes.map((item) => item.width))) + colPad
     : 0;
-  // The conversion from the previous stage is a named column, "Step CVR",
-  // in the style of "Total CVR", not an unnamed third line in each stage.
+  // The conversion from the previous stage is a named column, "Step conversion",
+  // in the style of "Total conversion", not an unnamed third line in each stage.
   const showStepCvr = labelsOpt !== false && labelOn('point') && stages.length > 1;
   const stepHeaderText = chartString(options, spanForm ? 'stepCvrShort' : 'stepCvr');
   let stepHeaderSize = headSize(stepHeaderText);

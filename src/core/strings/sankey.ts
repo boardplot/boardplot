@@ -8,7 +8,7 @@ const EN = {
   // one flow in the description: source, target and value.
   "flowReading": "{v1} to {v2} {v3}",
   // the note line that lists the nodes an Other node holds.
-  "otherMembers": "{v1} includes {v2}",
+  "otherMembers": "{v1}: {v2}",
   // the lead of the note that lists node names too small to print.
   "sankeyHiddenLead": "Smaller nodes",
 } as const;
@@ -20,7 +20,7 @@ const DE: { [K in keyof typeof EN]: string } = {
   // one flow in the description: source, target and value.
   "flowReading": "{v1} zu {v2} {v3}",
   // the note line that lists the nodes an Other node holds.
-  "otherMembers": "{v1} umfasst {v2}",
+  "otherMembers": "{v1}: {v2}",
   // the lead of the note that lists node names too small to print.
   "sankeyHiddenLead": "Kleinere Knoten",
 };

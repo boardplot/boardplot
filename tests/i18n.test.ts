@@ -11,6 +11,7 @@ import { getChartDefinition } from '../src/core/registry';
 import { requireGeometry } from '../src/core/sizing';
 import { dateTickKeep, formatDate } from '../src/core/dateFormat';
 import { resolveChartRequest } from '../src/core/request';
+import { chartString as layoutString } from '../src/core/strings/createChartComponent';
 
 const pieFixture = () => getFixtures('pie').find((fixture) => fixture.id === 'streaming-genre-share')!;
 
@@ -74,6 +75,13 @@ describe('built-in wording block', () => {
     expect(texts(layout('pie', fixture))).toContain('Source: Brevinth label analytics, FY25');
     expect(texts(layout('pie', fixture, { strings: { source: 'Quelle' } })))
       .toContain('Quelle: Brevinth label analytics, FY25');
+  });
+});
+
+describe('default reader wording', () => {
+  // The hover hint is chosen by the React entry only, so no golden SVG draws it; this keeps touch readers from being told to hover.
+  it('words the React hover hint for touch and pointer', () => {
+    expect(layoutString({}, 'hoverMoreListed')).toContain('tap or hover');
   });
 });
 

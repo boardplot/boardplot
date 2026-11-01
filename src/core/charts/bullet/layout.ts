@@ -645,8 +645,9 @@ export function layoutBullet(
   const labelsKey = legendItemsForBands(rows, bandPaint);
   // An authored target word heads its column and keys the tick as written; the built-in word has its own head.
   const builtIn = { locale: options.locale };
-  const targetHead = targetWord(options) !== targetWord(builtIn) && options.strings?.targetColumn === undefined
-    ? targetWord(options) : chartString(options, 'targetColumn');
+  const authoredHead = targetWord(options);
+  const targetHead = authoredHead !== targetWord(builtIn) && options.strings?.targetColumn === undefined
+    ? authoredHead.charAt(0).toUpperCase() + authoredHead.slice(1) : chartString(options, 'targetColumn');
   const bandLegendItems = [
     ...(rowWanted
       ? [

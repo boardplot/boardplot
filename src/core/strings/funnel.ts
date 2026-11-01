@@ -6,8 +6,8 @@ const EN = {
   "stagesCount": "{v1} stage{v2}",
   "funnelDesc": "Funnel chart with {v1} stage{v2}. {v3}.",
   "funnelUndefined": "{v1}: not defined, the previous stage is zero.",
-  "totalCvr": "Total CVR",
-  "stepCvr": "Step CVR",
+  "totalCvr": "Total conversion",
+  "stepCvr": "Step conversion",
   // A spanning head over the two short column heads.
   "cvrSpanHeader": "Conversion rate",
   "stepCvrShort": "Step",
@@ -32,8 +32,8 @@ const DE: { [K in keyof typeof EN]: string } = {
   "stagesCount": "{v1} {v1|Stufe|Stufen}",
   "funnelDesc": "Trichterdiagramm mit {v1} {v1|Stufe|Stufen}. {v3}.",
   "funnelUndefined": "{v1}: nicht definiert, vorherige Stufe ist null.",
-  "totalCvr": "Gesamt-CVR",
-  "stepCvr": "Stufen-CVR",
+  "totalCvr": "Gesamt-Konversion",
+  "stepCvr": "Stufen-Konversion",
   // A spanning head over the two short column heads.
   "cvrSpanHeader": "Konversionsrate",
   "stepCvrShort": "Stufe",

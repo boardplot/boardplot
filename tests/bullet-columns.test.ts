@@ -152,4 +152,10 @@ describe('bullet target and gap columns', () => {
     expect(label(wide, 'point:coverage')?.lines).toEqual(['78%']);
     expect(label(wide, 'point:cost')?.lines).toEqual(['$32']);
   });
+
+  // An authored target word heads its column as written, so "plan" printed in lower case over capitalised heads.
+  it('capitalises an authored target word in the column head', () => {
+    const wide = draw({ size: { width: 1200, height: 620 }, strings: { target: 'plan' } });
+    expect(heads(wide).map((node) => node.lines[0])).toEqual(['Actual', 'Plan', 'Gap to plan']);
+  });
 });
