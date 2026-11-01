@@ -66,19 +66,17 @@ export const fixtures: Fixture<LikertData, LikertOptions>[] = [
       sortBy: 'net',
       // A share too narrow for its segment is listed under the chart, so every value prints.
       labelDensity: 'full',
-      notes: { show: ['note', 'disclosure'] },
+      // 'method' prints the split-neutral note: the centre line is not the agree/disagree boundary here.
+      notes: { show: ['note', 'method', 'disclosure'] },
       title: 'Engagement survey — agreement by statement',
       subtitle: {
         measure: 'Share of responses',
         period: 'FY25 pulse',
-        // The convention is on the exhibit, not only in the a11y text: the
-        // centre line is NOT the agree/disagree boundary under a split neutral.
-        scenarios: ['Neutral split across the centre line'],
       },
       legend: 'bottom',
       source: 'Employee pulse survey, n = 900 per statement',
-      // The subtitle states the split and the source the base, so neither prints twice.
-      requiredNotes: { neutral: false, base: false },
+      // The source states the base, so it does not print twice.
+      requiredNotes: { base: false },
     },
   },
   {
@@ -143,7 +141,6 @@ export const fixtures: Fixture<LikertData, LikertOptions>[] = [
       subtitle: {
         measure: 'Share of responses',
         period: 'Q3',
-        scenarios: ['Neutral excluded — bars do not sum to the base'],
       },
       legend: 'bottom',
       source: 'Post-interaction survey',

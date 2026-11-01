@@ -166,6 +166,9 @@ const TEXT_ANATOMY: RowAnatomy = { padX: 0, gap: 2 * CHIP_PAD_X + CHIP_GAP };
  * deep descent (1.3 em ascent plus descent) draws its glyphs into the pill.
  */
 const VALUE_ROW_GAP = 4;
+/** In a slot of fixed height: the figure size as a share of the canvas height, and the delta size as a share of the figure. */
+const SLOT_FIGURE_SHARE = 0.25;
+const SLOT_DELTA_SHARE = 0.3;
 
 interface ComparisonVisual {
   id: Id;
@@ -535,10 +538,16 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
 
   const showComparisonChips = comparisonVisuals.length > 0 && kindOn('point');
   const showAttainmentChip = derived.attainment !== undefined && kindOn('point');
-  const caretSize = deltaFont.size * 0.35;
-  const caretW = 2 * caretSize * Math.sin(0.15 * Math.PI); // triangle base width
-  const caretH = caretSize * Math.cos(0.15 * Math.PI); // tip-to-base height
-  const caretPad = caretDir !== undefined ? caretW + CARET_GAP : 0;
+  // The caret scales with the delta font; a fixed slot that grows the delta
+  // sizes it again (fillSlot below).
+  const naturalDeltaSize = deltaFont.size;
+  const caretOf = (font: FontSpec) => {
+    const size = font.size * 0.35;
+    const w = 2 * size * Math.sin(0.15 * Math.PI); // triangle base width
+    const gap = CARET_GAP * Math.max(1, font.size / naturalDeltaSize);
+    return { size, w, h: size * Math.cos(0.15 * Math.PI) /* tip-to-base height */, pad: caretDir !== undefined ? w + gap : 0 };
+  };
+  let { size: caretSize, w: caretW, h: caretH, pad: caretPad } = caretOf(deltaFont);
   const showDelta = deltaText !== undefined && kindOn('point');
   const compareCaretSize = compareFont.size * 0.35;
   const compareCaretW = 2 * compareCaretSize * Math.sin(0.15 * Math.PI);
@@ -575,7 +584,8 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
   const valueText = withUnit(fmt(value), unitBeside);
   // The hero follows the M title of its target, never under the target's hero minimum.
   const hero = kpiHeroSizesPx(target, theme.type.title.size, textScale);
-  const baseSize = (options as KpiOptions & { [KPI_VALUE_SIZE]?: number })?.[KPI_VALUE_SIZE] ?? hero.preferred;
+  const sharedFigure = (options as KpiOptions & { [KPI_VALUE_SIZE]?: number })?.[KPI_VALUE_SIZE];
+  let baseSize = sharedFigure ?? hero.preferred;
   const minimumValue = measure(valueText, { family: figure.family, size: hero.minimum, weight: figure.weight, lineHeight: 1.2 });
   const minimumValueH = minimumValue.height;
   // The delta steps down to the label floor and no further.
@@ -584,11 +594,11 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
   // floor stays one line: the second line only asks for room (natural height),
   // and a band too short for it keeps one line, which the solver hides with a
   // warning. A delta that needs three lines keeps one, too.
-  const deltaWidth = Math.max(4, plot.w - caretPad);
   const deltaSuffix = deltaBody === undefined ? '' : deltaText!.slice(deltaBody.length).trim();
-  const deltaWrapped = !showDelta || measure(deltaText!, deltaFont).width <= deltaWidth ? []
-    : measure(deltaBody!, deltaFont).width <= deltaWidth && measure(deltaSuffix, deltaFont).width <= deltaWidth ? [deltaBody!, deltaSuffix]
-      : wrapWhole(deltaText!, deltaFont, deltaWidth, measure);
+  const wrapDelta = (font: FontSpec, width: number) => !showDelta || measure(deltaText!, font).width <= width ? []
+    : measure(deltaBody!, font).width <= width && measure(deltaSuffix, font).width <= width ? [deltaBody!, deltaSuffix]
+      : wrapWhole(deltaText!, font, width, measure);
+  const deltaWrapped = wrapDelta(deltaFont, Math.max(4, plot.w - caretPad));
   const deltaOneLine = deltaText === undefined ? [] : [deltaText];
   let deltaLines = deltaWrapped.length === 2 ? deltaWrapped : deltaOneLine;
   const deltaBlock = (font: FontSpec, lines = deltaLines) => ({
@@ -600,15 +610,18 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
   // The authored caption under the value: the basis or the scope
   // the number is true of. It is the host's sentence, wrapped and never cut,
   // and the card reserves its box before anything else is fitted.
-  const noteFont: FontSpec = { family: theme.type.family, ...theme.type.footnote };
-  const noteLines = data.note === undefined ? [] : wrapWhole(data.note.trim(), noteFont, plot.w, measure);
-  const noteBlockH = noteLines.length === 0
-    ? 0
-    : NOTE_GAP + measure(noteLines[0]!, noteFont).height + (noteLines.length - 1) * lineBox(noteFont);
+  let noteFont: FontSpec = { family: theme.type.family, ...theme.type.footnote };
+  const noteBlock = (font: FontSpec) => {
+    const lines = data.note === undefined ? [] : wrapWhole(data.note.trim(), font, plot.w, measure);
+    return { lines, h: lines.length === 0 ? 0 : NOTE_GAP + measure(lines[0]!, font).height + (lines.length - 1) * lineBox(font) };
+  };
+  let { lines: noteLines, h: noteBlockH } = noteBlock(noteFont);
   // The steering form (steering.ts): a standalone regular card with named
   // comparisons or an attainment, no delta, no spark, and no authored
   // comparisons style. A grid panel (it carries the host text) keeps chips.
   const hostPanel = (options as { [KPI_HOST_TEXT]?: string[] })[KPI_HOST_TEXT] !== undefined;
+  const fixedSlot = theme.marks?.kpiSlotFill !== false && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === true && !hostPanel && sharedFigure === undefined
+    && !sparkDrawable && comparisonVisuals.length === 0 && data.attainment === undefined;
   let steer: SteeringPlan | undefined = options.comparisons === undefined && !hostPanel && !compact && !sparkDrawable
     && data.delta === undefined && kindOn('point') && (comparisonVisuals.length > 0 || derived.attainment !== undefined)
     ? planSteering({
@@ -687,6 +700,55 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
   // A card its host did not size takes the height of its content.
   const grow = rowDrivenHeight({ options, width: size.width, height: size.height, chromeH: 0, rowsH: naturalHeight });
   if (grow !== undefined) return layoutKpi(data, { ...options, size: { width: size.width, height: grow } });
+  // A standalone card in a slot of fixed height (a given height or a size
+  // preset) fills the slot: the figure grows to a quarter of the canvas
+  // height and the delta to 30% of the figure, never under their
+  // natural sizes, and the block of value, note and delta sits in the middle
+  // of the free height. The natural size above keeps the natural fonts. A
+  // grid panel keeps the shared figure size of its row, and the forms with a
+  // spark, compare chips or an attainment keep their card layout.
+  const fillSlot = fixedSlot && kindOn('total');
+  if (fillSlot) {
+    const naturalDelta = deltaFont;
+    const naturalDeltaLines = deltaLines;
+    const naturalNote = noteFont;
+    const slotDelta = (figureSize: number) => Math.round(figureSize * SLOT_DELTA_SHARE * 2) / 2;
+    const deltaLinesAt = (font: FontSpec) => {
+      const width = Math.max(4, plot.w - caretOf(font).pad);
+      const wrapped = wrapDelta(font, width);
+      return wrapped.length === 2 ? wrapped : measure(deltaText!, font).width <= width ? deltaOneLine : undefined;
+    };
+    // The largest figure that fits the width, and the largest delta that
+    // still fits the width on one or two lines.
+    const top = fitValueText(valueText, Math.max(baseSize, Math.round(size.height * SLOT_FIGURE_SHARE)), baseSize, figure, plot.w, Infinity, measure).valueFont.size;
+    let deltaCap = slotDelta(top);
+    while (showDelta && deltaCap > naturalDelta.size && deltaLinesAt({ ...naturalDelta, size: deltaCap }) === undefined) deltaCap -= 0.5;
+    // The note keeps half the size of the slot delta, so it still reads
+    // under the large figure. The figure steps down until the whole block
+    // fits the free height; a block that fits only at the natural sizes
+    // keeps them.
+    const plan = (figureSize: number) => {
+      const deltaSize = Math.min(deltaCap, slotDelta(figureSize));
+      const delta = showDelta && deltaSize > naturalDelta.size ? { ...naturalDelta, size: deltaSize } : naturalDelta;
+      const lines = delta === naturalDelta ? naturalDeltaLines : deltaLinesAt(delta)!;
+      const noteSize = Math.round(figureSize * SLOT_DELTA_SHARE) / 2;
+      const note = noteLines.length > 0 && noteSize > naturalNote.size ? { ...naturalNote, size: noteSize } : naturalNote;
+      const noted = note === naturalNote ? { lines: noteLines, h: noteBlockH } : noteBlock(note);
+      const valueH = measure(valueText, { family: figure.family, size: figureSize, weight: figure.weight, lineHeight: 1.2 }).height;
+      const blockH = valueH + noted.h + comparisonH + (showDelta ? deltaBlock(delta, lines).h : 0);
+      return { figureSize, delta, lines, note, noted, fits: blockH <= contentBottom - valueY };
+    };
+    let slot = plan(top);
+    while (!slot.fits && slot.figureSize > baseSize) slot = plan(Math.max(baseSize, slot.figureSize - 2));
+    if (slot.fits && slot.figureSize > baseSize) {
+      baseSize = slot.figureSize;
+      deltaFont = slot.delta;
+      ({ size: caretSize, w: caretW, h: caretH, pad: caretPad } = caretOf(deltaFont));
+      deltaLines = slot.lines;
+      noteFont = slot.note;
+      ({ lines: noteLines, h: noteBlockH } = slot.noted);
+    }
+  }
   const deltaBandH = contentBottom - valueY - minimumValueH - noteBlockH - comparisonH;
   const stepDelta = (font: FontSpec) => {
     while (showDelta && font.size > deltaFloor && deltaBlock(font).h > deltaBandH) font = { ...font, size: font.size - 0.5 };
@@ -701,7 +763,9 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
   const fitted = fitValueText(valueText, baseSize, hero.minimum, figure, plot.w, valueBottom - valueY, measure);
   valueFont = fitted.valueFont;
   const vsize = fitted.vsize;
-  const valueRect: Rect = { x: plot.x, y: valueY, w: vsize.width, h: vsize.height };
+  const blockH = vsize.height + noteBlockH + (showDelta ? valueGap + deltaRowH : 0);
+  const slotOffset = fillSlot ? Math.max(0, (contentBottom - valueY - blockH) / 2) : 0;
+  const valueRect: Rect = { x: plot.x, y: valueY + slotOffset, w: vsize.width, h: vsize.height };
   const noteRect: Rect | undefined = noteLines.length === 0 ? undefined : {
     x: plot.x,
     y: valueRect.y + valueRect.h + NOTE_GAP,

@@ -465,6 +465,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | attainment-bad-column-spark | kpi | torture | Attainment chip in the bad tone over a monthly column spark |
 | compact-spark-floor | kpi | torture | Compact card keeps its sparkline readable |
 | neutral-change | kpi | example | A change without a favorable direction |
+| slot-natural-sizes | kpi | example | A card in a fixed slot that keeps its natural sizes at the top |
 | value-bands | kpi | example | The band that holds the value colours the main value; the comparison keeps its own tone |
 
 ## combo
@@ -792,7 +793,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | ID | Chart | Kind | Use case |
 |---|---|---|---|
 | orders-nine-months | sparkline | example | Nine months of orders, the last point ringed and valued, both ends named |
-| bare-card-spark | sparkline | example | The bare 176 by 36 mark: no ring, no labels, a gap the line does not bridge |
+| bare-card-spark | sparkline | example | The bare 176 by 36 mark: no end ring, no labels, a null bridged by a dotted segment |
 | orders-heavy-stroke | sparkline | torture | A 2.5 px line instead of the default 1.5 px |
 | reference-above-data | sparkline | example | A target above every point: the scale reaches up to the reference, the ring in warn |
 | reference-inside-data | sparkline | example | A reference the line crosses twice, the ring in good |

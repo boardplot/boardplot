@@ -76,7 +76,8 @@ for (const polarity of ['higherIsBetter', 'lowerIsBetter'] as const) {
     kind: 'example',
     data: {
       pack: 'eu27',
-      regions: valuesFor('eu27', (index) => index === 8 ? null : (index % 9) * 3 - 12),
+      // Demand and cost get different integer gaps to plan, so the two maps do not repeat one pattern.
+      regions: valuesFor('eu27', (index) => index === 8 ? null : higher ? ((index * 7) % 13 - 6) * 2 : ((index * 4 + 5) % 11 - 5) * 2),
     },
     options: {
       title: higher ? 'Demand varies around plan' : 'Cost control varies around plan',

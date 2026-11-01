@@ -44,7 +44,7 @@ export const fixtures: Fixture<ChartData, MekkoOptions>[] = [
       variant: 'stacked100',
       ridge: 'acme',
       highlight: 'acme',
-      title: 'Acme leads in the two largest markets but trails everywhere in Asia',
+      title: 'Acme leads in the two largest markets but trails in APAC and LatAm',
       subtitle: {
         company: 'Acme Corp',
         measure: 'Market share by region',

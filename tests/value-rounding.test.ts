@@ -19,6 +19,7 @@ import { layoutKpi } from '../src/core/charts/kpi/layout';
 import { layoutLine } from '../src/core/charts/line/layout';
 import { layoutPareto } from '../src/core/charts/pareto/layout';
 import { layoutSparkline } from '../src/core/charts/sparkline/layout';
+import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { requireGeometry } from '../src/core/sizing';
 import type { Geometry } from '../src/core/types/scene';
 
@@ -248,5 +249,19 @@ describe('values that print side by side share one precision', () => {
     expect(text(creative, 'creative:value:frequency')).toBe('1.0×');
     expect(text(creative, 'creative:median:frequency')).toBe('1.5×');
     expect(text(creative, 'creative:value:cpa')).toMatch(/^0\.04 /);
+  });
+});
+
+describe('a KPI card in a fixed slot keeps every text it draws at natural size', () => {
+  const slot = (data: object, height: number): Laid => requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'kpi', data, options: { size: { width: 420, height } } })));
+  const shown = (geometry: Laid, id: string) => geometry.labels.some((label) => label.id === id && !label.hidden);
+
+  // Growing the delta past the card width, or a long note past the free height, hid labels that the natural sizes draw.
+  it('grows the figure, delta and note only as far as the card holds them', () => {
+    const wide = slot({ label: 'Units', value: 1, format: '1,000.00', delta: { vs: 9876543.21, mode: 'both' } }, 528);
+    expect(shown(wide, 'point:delta')).toBe(true);
+    const long = slot({ label: 'Units', value: 8, note: 'Excludes the Larkspur Tools division sold in June. '.repeat(10).trim(), delta: { vs: 6, scenario: 'PY' } }, 1000);
+    expect(shown(long, 'note:kpi')).toBe(true);
+    expect(shown(long, 'point:delta')).toBe(true);
   });
 });
