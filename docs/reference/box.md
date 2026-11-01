@@ -87,6 +87,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | torture-long-labels | torture | Torture: long names at a generous size read whole, never cut |
 | outliers-withheld-method-note | example | Outliers withheld from the ink and the axis, with the quartile and whisker rule stated |
 | salary-bands-pinned-median | example | The IC5 median label pinned above its box through labelPlacements |
+| twelve-teams-median-column | example | Twelve dense rows print their medians in one column beside n |
 
 ## Not for
 

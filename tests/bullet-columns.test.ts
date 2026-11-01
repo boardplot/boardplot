@@ -20,10 +20,10 @@ describe('bullet target and gap columns', () => {
   // A reader had to find each target above its tick and read "−7 vs target" at the row end.
   it('prints the target and the gap under headed columns, in English and German', () => {
     const wide = draw({ size: { width: 1200, height: 620 } });
-    expect(heads(wide).map((node) => node.lines[0])).toEqual(['Target', 'Gap to target']);
+    expect(heads(wide).map((node) => node.lines[0])).toEqual(['Actual', 'Target', 'Gap to target']);
     expect(label(wide, 'target-value:coverage')?.lines).toEqual(['85%']);
     const german = draw({ size: { width: 1200, height: 620 }, locale: { language: 'de' } });
-    expect(heads(german).map((node) => node.lines[0])).toEqual(['Ziel', 'Abweichung vom Ziel']);
+    expect(heads(german).map((node) => node.lines[0])).toEqual(['Ist', 'Ziel', 'Abweichung vom Ziel']);
   });
 
   // The gap must say which side of the target the value lies on, not only good or bad.
@@ -44,7 +44,7 @@ describe('bullet target and gap columns', () => {
 
   // The columns must give way where they would squeeze the plot, never refuse a size main draws.
   it('shows the columns down to the width they fit, and below it keeps the stacked cards of main', () => {
-    expect(heads(draw({ size: { width: 520 } }))).toHaveLength(2);
+    expect(heads(draw({ size: { width: 520 } }))).toHaveLength(3);
     const narrow = draw({ size: { width: 480 } });
     expect(heads(narrow)).toEqual([]);
     expect(label(narrow, 'delta:coverage')?.lines).toEqual(['−7pp vs target']);
@@ -58,7 +58,7 @@ describe('bullet target and gap columns', () => {
     expect(long.labels.filter((placed) => placed.hidden)).toEqual([]);
     const bottom = draw({ size: { width: 1200, height: 620 }, legend: { position: 'bottom' }, bandKey: 'labels' });
     const bottomHeads = heads(bottom);
-    expect(bottomHeads).toHaveLength(2);
+    expect(bottomHeads).toHaveLength(3);
     expect(bottomHeads.every((node) => node.y < bottom.plot.y)).toBe(true);
   });
 
@@ -75,14 +75,14 @@ describe('bullet target and gap columns', () => {
   it('takes the column and gap words from strings, and prints German words in a German chart', () => {
     const words = { targetColumn: 'Plan', gapColumn: 'Distance', gapBelow: 'short of {v1}', gapAbove: 'beyond {v1}' };
     const wide = draw({ size: { width: 1200, height: 620 }, strings: words });
-    expect(heads(wide).map((node) => node.lines[0])).toEqual(['Plan', 'Distance']);
+    expect(heads(wide).map((node) => node.lines[0])).toEqual(['Actual', 'Plan', 'Distance']);
     expect(label(wide, 'gap-position:coverage')?.lines).toEqual(['short of target']);
     expect(label(wide, 'gap-position:cost')?.lines).toEqual(['beyond target']);
     const percent = (extra: BulletOptions) => draw({ size: { width: 900 }, sharedScale: 'percentOfTarget', ...extra });
     const heads2 = (geometry: Geometry) => texts(geometry, 'label:header:').map((node) => node.lines[0]);
     expect(heads2(percent({ strings: { actualColumn: 'Now', shareColumn: 'Share of {v1}', deltaColumn: 'Off {v1}' } }))).toEqual(['Now', 'Share of target', 'Off target']);
     // An authored head equal to the built-in word still beats the authored comparison word.
-    expect(heads(draw({ size: { width: 1200, height: 620 }, strings: { target: 'plan', targetColumn: 'Target' } }))[0]?.lines[0]).toBe('Target');
+    expect(heads(draw({ size: { width: 1200, height: 620 }, strings: { target: 'plan', targetColumn: 'Target' } }))[1]?.lines[0]).toBe('Target');
     // Every column word has a German form, so no English word is left in a German chart.
     const german = [draw({ size: { width: 1200, height: 620 }, locale: { language: 'de' } }), percent({ locale: { language: 'de' } })];
     const printed = german.flatMap((geometry) => geometry.labels.filter((placed) => /^(header|gap-position|direction):/.test(placed.id)).flatMap((placed) => placed.lines)).join(' ');
@@ -92,14 +92,14 @@ describe('bullet target and gap columns', () => {
   // A head drawn straight into the scene never met the label solver: it could not be cut or hidden by the same rules.
   it('places the column heads as labels and cuts a head that is far wider than its column', () => {
     const wide = draw({ size: { width: 1200, height: 620 } });
-    expect(wide.labels.filter((placed) => placed.id.startsWith('header:')).map((placed) => [placed.id, !placed.hidden])).toEqual([['header:0:target', true], ['header:1:gap', true]]);
+    expect(wide.labels.filter((placed) => placed.id.startsWith('header:')).map((placed) => [placed.id, !placed.hidden])).toEqual([['header:0:actual', true], ['header:1:target', true], ['header:2:gap', true]]);
     const long = draw({ size: { width: 1200, height: 620 }, strings: { gapColumn: 'Distance from the plan value for the whole fiscal year' } });
-    const head = long.labels.find((placed) => placed.id === 'header:1:gap')!;
+    const head = long.labels.find((placed) => placed.id === 'header:2:gap')!;
     expect(head.hidden).toBeFalsy();
     expect(head.lines[0]).toMatch(/…$/);
-    expect(long.scene.find((node) => node.t === 'text' && node.id === 'label:header:1:gap')).toMatchObject({ title: 'Distance from the plan value for the whole fiscal year', part: 'tableHeader' });
+    expect(long.scene.find((node) => node.t === 'text' && node.id === 'label:header:2:gap')).toMatchObject({ title: 'Distance from the plan value for the whole fiscal year', part: 'tableHeader' });
     // Heads on the top edge of a chart without a top margin stay on the canvas, in both layouts.
-    expect(heads(draw({ size: { width: 1200, height: 620 }, margin: { top: 0 } }))).toHaveLength(2);
+    expect(heads(draw({ size: { width: 1200, height: 620 }, margin: { top: 0 } }))).toHaveLength(3);
     expect(draw({ size: { width: 900 }, sharedScale: 'percentOfTarget', margin: { top: 0 } }).labels.filter((placed) => placed.id.startsWith('header:') && !placed.hidden)).toHaveLength(3);
     const percent = draw({ size: { width: 900 }, sharedScale: 'percentOfTarget' });
     expect(percent.labels.filter((placed) => placed.id.startsWith('header:')).map((placed) => placed.lines[0])).toEqual(['Actual', '% of target', 'vs target']);
