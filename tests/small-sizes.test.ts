@@ -483,6 +483,15 @@ it('puts the value and label of a single waffle panel beside a grid that fills t
   expect(draw({ width: 1184 }).marks.panels[0]!.rect.w).toBeLessThan(rect.w);
 });
 
+// Prevents the side readout from taking away the old stacked form: heightFill 'none' must give back the exact stacked drawing on a pinned height.
+it("keeps the stacked single waffle panel on a pinned height with heightFill 'none'", () => {
+  const data = { categories: [{ id: 'all', label: 'Forest' }], series: [{ id: 'plus', label: 'Plus', values: [46.4] }] };
+  const draw = (options: object) => layoutResolvedRequest(resolveChartRequest({ type: 'waffle', data, options: { variant: 'cells', target: 'slide', subtitle: { measure: 'Share of land', period: 'FY26' }, size: { width: 1184, height: 528 }, ...options } } as never)) as unknown as Geometry<{ panels: { rect: { x: number; w: number } }[] }>;
+  const stacked = draw({ heightFill: 'none' });
+  expect(stacked.marks.panels[0]!.rect.w).toBeLessThan(draw({}).marks.panels[0]!.rect.w);
+  expect(stacked.labels.find(label => label.id === 'total:all')!.rect.x).toBeLessThan(stacked.marks.panels[0]!.rect.x + stacked.marks.panels[0]!.rect.w);
+});
+
 // Prevents waffle panels from cutting a long name in one cells row, and from leaving one square alone on a second row (7 + 1).
 it('wraps waffle panels into evenly filled rows when a name is wider than its panel', () => {
   const rowsOf = (variant: string, labels: string[], width: number): number[] => {

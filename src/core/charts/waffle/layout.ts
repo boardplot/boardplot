@@ -419,7 +419,7 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false, oneRo
   const pinnedH = !heightOmitted(options.size) && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height !== false;
   // One panel with one series on a pinned slot: the value and the panel label stand beside the filled cells
   // when that gives the grid a clearly larger cell than the value and label above it do.
-  const sideValueText = !lean && !square && n === 1 && series.length === 1 && !subtotal && pinnedH && options.headline !== 'none' && !missing(panels[0]!)
+  const sideValueText = !lean && !square && n === 1 && series.length === 1 && !subtotal && pinnedH && options.heightFill !== 'none' && options.headline !== 'none' && !missing(panels[0]!)
     ? headlineFormat(0)(panels[0]!.total) : undefined;
   const sideValueFont: FontSpec = { family: figure.family, size: heroBase, weight: figure.weight, lineHeight: 1.2 };
   // With no subtitle the frame names the panel; otherwise the label stands under the value.
