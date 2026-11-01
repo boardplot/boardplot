@@ -1226,3 +1226,21 @@ describe('bubble matrix key height', () => {
     expect(drawing(pinned.svg)).toBe(drawing(open.svg));
   });
 });
+
+// Prevents three diagrams from refusing or crowding on a wide, short full slide: the strategy house refused 28 px short,
+// the eight-step stack refused 35 px short, and the six-step cycle drew a disc so wide that four of its six arrowheads were lost.
+it('draws the house, the stack and the cycle on a full slide with the height they have', () => {
+  const slide = { target: 'slide', size: { width: 888, height: 396, unit: 'pt' } };
+  const draw = (spec: object) => render({ spec: { type: 'diagram', ...spec } }).body as any;
+  const house = getFixtures('diagram').find(f => f.id === 'strategy-house')!;
+  expect(draw({ data: house.data, options: { ...house.options, ...slide } }).ok).toBe(true);
+
+  const named = (labels: string[], shape: string, extra: object = {}) => labels.map((label, i) => ({ id: `n${i}`, kind: 'step', shape: { kind: shape }, label, order: i + 1, role: 'primary', ...extra }));
+  const long = ['Depreciation of fixed assets', 'Customer acquisition cost', 'Depreciation and amortisation', 'Pension provisions, domestic',
+    'North-West Region (Lowlands)', 'Mid-Atlantic Operations', 'Change in net working capital', 'Maintenance and repair works'];
+  expect(draw({ data: { nodes: named(long, 'chevron', { caption: 'Phase' }) }, options: { variant: 'linear-process', ...slide } }).ok).toBe(true);
+
+  const cycle = draw({ data: { nodes: named(['Field service', 'Licence income', 'Net revenue', 'Upper region', 'Eastern Europe', 'Marketing spend'], 'circle') }, options: { variant: 'circular-process', ...slide } });
+  expect(cycle.ok).toBe(true);
+  expect(cycle.warnings.filter((warning: any) => warning.code === 'diagram-arrowhead-unplaced')).toEqual([]);
+});
