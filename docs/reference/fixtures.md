@@ -1084,6 +1084,9 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | journey-attribution | diagram.architecture | example | Multi-touch attribution from customer journey to budget |
 | nested-service | diagram.architecture | example | A service nested three levels deep, with one protected runtime |
 | agent-approval | diagram.architecture | example | An agent reaches its tools through an approval gate |
+| pipeline-health | diagram.architecture | example | A data pipeline with its service levels beside it |
+| long-names | diagram.architecture | torture | Long names keep every word at every width |
+| twenty-node-platform | diagram.architecture | torture | Twenty nodes and thirty edges across four zones |
 
 ## tilemap
 
