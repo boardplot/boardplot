@@ -1249,6 +1249,18 @@ describe('type steps toward the reader floor before a size refusal', () => {
     expect(Math.min(...sizes)).toBeGreaterThanOrEqual(11);
   });
 
+  // Prevents measure() from refusing a canvas that render() and canDraw() draw after the type step, which hides the chart in a host that measures first.
+  it('measures a stepped canvas as drawn and a refused one as refused, like render and canDraw', () => {
+    for (const size of [{ width: 360, height: 405 }, { width: 360, height: 380 }, { width: 200, height: 405 }]) {
+      const spec = half({ size });
+      const refused = run(spec).refused === true;
+      expect(measure(spec as never).refused !== undefined).toBe(refused);
+      expect(canDraw(spec as never).ok).toBe(!refused);
+    }
+    const measured = measure(half({}) as never);
+    expect(measured.warnings.map(w => w.code)).toContain('type-stepped');
+  });
+
   it('keeps the refusal when the author sets the text size or the refusal', () => {
     expect(run(half({ textScale: 1 })).refused).toBe(true);
     expect(run(half({ textSize: 18 })).refused).toBe(true);
