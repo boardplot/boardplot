@@ -30,3 +30,24 @@ it('keeps a value or total at its seat when the average rule runs across it', ()
   const dot = layout('dot', 'dot-range-benchmark', { variant: 'lollipop' });
   expect(dot.labels.find((l) => l.id.startsWith('point:') && l.id.endsWith(':central'))!.leader).toBeUndefined();
 });
+
+// A value the step past a target line moved onto the next dot of its row: the step has to land clear, or the value stays on a halo.
+it('does not step a dot value past a target line onto another dot', () => {
+  const names = ['North', 'South', 'East'];
+  const values = [[30, 25, 36, 59], [53, 49, 80, 25], [45, 39, 20, 20]];
+  const geometry = layoutResolvedRequest(resolveChartRequest({
+    type: 'dot',
+    data: {
+      categories: ['Alder', 'Birch', 'Cedar', 'Dune'].map((label, i) => ({ id: `c${i}`, label })),
+      series: values.map((v, i) => ({ id: `s${i}`, label: names[i]!, values: v })),
+    },
+    annotations: [{ kind: 'valueLine', value: 47, label: 'Target' }],
+    options: { size: { width: 343, unit: 'px' } },
+  } as never));
+  if (geometry.refused) throw new Error('refused');
+  const dots = geometry.scene.filter((n) => n.t === 'circle' && n.part === 'dot') as Array<{ id: string; cx: number; cy: number; r: number }>;
+  const covered = geometry.labels.filter((l) => l.kind === 'point' && !l.hidden).flatMap((l) => dots
+    .filter((d) => l.rect.x < d.cx + d.r && d.cx - d.r < l.rect.x + l.rect.w && l.rect.y < d.cy + d.r && d.cy - d.r < l.rect.y + l.rect.h)
+    .map((d) => `${l.id} covers ${d.id}`));
+  expect(covered).toEqual([]);
+});

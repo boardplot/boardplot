@@ -1235,9 +1235,16 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     const lx = lineXs.find((lineX) => lineX > label.rect.x - LINE_CLEAR && lineX < label.rect.x + label.rect.w + LINE_CLEAR);
     if (lx === undefined) continue;
     const dot = anchorByDot.get(`${label.owner.categoryId}:${label.owner.seriesId}`);
-    if (dot && dot.x < lx && label.rect.x > dot.x) label.rect = { ...label.rect, x: lx + LINE_CLEAR };
-    else if (dot && dot.x > lx && label.rect.x < dot.x) label.rect = { ...label.rect, x: lx - LINE_CLEAR - label.rect.w };
-    else {
+    let step: Rect | undefined;
+    if (dot && dot.x < lx && label.rect.x > dot.x) step = { ...label.rect, x: lx + LINE_CLEAR };
+    else if (dot && dot.x > lx && label.rect.x < dot.x) step = { ...label.rect, x: lx - LINE_CLEAR - label.rect.w };
+    // The step must land clear of every other dot and label, and inside the canvas; else the value stays and reads on a halo.
+    if (step && step.x >= 0 && step.x + step.w <= size.width && !occupied.hitsWhich(step, solveCtx.labelPad).some((claim) => claim.part !== 'referenceLine'
+      && !(claim.kind === 'mark' && isOwnMark(claim.owner, label.owner, 'point', claim.part))
+      && !(claim.kind === 'label' && claim.owner.seriesId === label.owner.seriesId && claim.owner.categoryId === label.owner.categoryId))) {
+      label.rect = step;
+      occupied.claim(step, 'label', label.owner);
+    } else {
       label.halo = true;
       lineGaps.push(label.rect);
     }
