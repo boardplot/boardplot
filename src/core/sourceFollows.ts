@@ -186,7 +186,8 @@ const up = (rect: Rect, dy: number): Rect => ({ ...rect, y: r2(rect.y - dy) });
 export function sourceFollowsContent(geometry: Geometry<object, object>, options: ChartOptions | undefined): void {
   const { frame, size } = geometry;
   const plotBand = frame.plotRect;
-  if (!plotBand || geometry.story || panelTypeClass(options) !== undefined || !fixedHeightCanvas(options ?? {})) return;
+  // A map's regions fill its plot and its credit grows the canvas under the footer: reading its thousands of path points finds no lift.
+  if (!plotBand || geometry.story || geometry.type === 'choropleth' || panelTypeClass(options) !== undefined || !fixedHeightCanvas(options ?? {})) return;
   const plotBottom = plotBand.y + plotBand.h;
   // The bottom block: the key under the plot (a legend that starts at or below the plot band), the event key, the footer.
   const tops = [frame.footerRect?.y, frame.eventKeyRect?.y, geometry.legend && geometry.legend.rect.y >= plotBottom - 0.5 ? geometry.legend.rect.y : undefined]
