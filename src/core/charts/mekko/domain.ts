@@ -5,7 +5,7 @@
  */
 
 import { compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning } from '../band/stacks';
-import { mekkoAmount, poolMekkoCell, restDetailsWarning, restLabel, restSum, topNCut } from '../topN';
+import { mekkoAmount, mekkoStackingMode, poolMekkoCell, restDetailsWarning, restLabel, restSum, topNCut } from '../topN';
 import { cellFields, normalizeCategorySeries } from '../categorySeries';
 import { breakUnsupported, chartPalette, chartTheme } from '../chartEnv';
 import { defaultMeasurer } from '../../text';
@@ -79,12 +79,8 @@ function normalizeMekkoData(data: ChartData): { cats: Category[]; seriesNorm: No
   return { cats, seriesNorm: series };
 }
 
-/** The public variant names the internal stacking mode. */
-const VARIANT_MODE = { stacked100: 'percent', stacked: 'unit', bar: 'bar' } as const satisfies Record<string, MekkoDomain['mode']>;
-
 /** The mode, the width series and the plotted data series, each refusal said out loud. */
 function mekkoSeriesRoles(options: MekkoOptions, seriesNorm: NormSer[], warnings: LintWarning[]) {
-  let mode: MekkoDomain['mode'] = VARIANT_MODE[options.variant ?? 'stacked100'];
   let widthSer: NormSer | null = null;
   if (options.widthSeriesId) {
     widthSer = seriesNorm.find((s) => s.id === options.widthSeriesId) ?? null;
@@ -109,23 +105,23 @@ function mekkoSeriesRoles(options: MekkoOptions, seriesNorm: NormSer[], warnings
     throw new NormalizeError('empty-data', 'series', 'mekko requires at least one data-role series');
   }
   // One value per category cannot hold several series: draw them as stacked columns rather than drop all but the first.
-  if (mode === 'bar' && series.length > 1) {
+  if (options.variant === 'bar' && series.length > 1) {
     warnings.push({
       code: 'bar-mekko-extra-series',
       severity: 'warn',
       message: `bar-mekko draws one value per category — ${series.length} data series (${series.map((s) => s.id).join(', ')}) are drawn as stacked columns. Give one data series, or mark the others role 'reference', for a bar`,
     });
-    mode = 'unit';
   }
-  if (options.valueAxis?.percent && mode === 'unit') mode = 'percent';
-  if (mode === 'bar' && !widthSer) {
+  const mode = mekkoStackingMode(options, series.length);
+  if (options.variant === 'bar' && !widthSer) {
     warnings.push({
       code: 'bar-mekko-no-width-series',
       severity: 'info',
       message: 'bar-mekko without widthSeriesId — columns get equal widths',
     });
   }
-  return { mode, widthSer, series };
+  // The bar variant keeps equal widths without a width series, also once several series stack.
+  return { mode, widthSer, series, equalWidths: options.variant === 'bar' };
 }
 
 /**
@@ -137,6 +133,8 @@ interface ValueState {
   cats: Category[];
   series: NormSer[];
   widthSer: NormSer | null;
+  /** Columns are equally wide when no width series is set. */
+  equalWidths: boolean;
   nm: Set<Id>;
   na: Set<Id>;
 }
@@ -173,7 +171,7 @@ function valueFns(st: ValueState) {
       const v = st.widthSer.vals[ci]?.v;
       return v === null || v === undefined ? 0 : Math.max(0, v);
     }
-    if (st.mode === 'bar') return 1; // no width series: equal columns
+    if (st.equalWidths) return 1; // no width series: equal columns
     return Math.max(0, st.series.reduce((a, s) => a + (absAt(s, ci) ?? 0), 0));
   };
   return { invalidAt, basisAt, absAt, plottedAt, weightAt };

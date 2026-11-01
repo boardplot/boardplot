@@ -194,6 +194,31 @@ describe('line and mekko fail closed visibly', () => {
     expect(geometry.warnings.map((warning) => warning.code)).toContain('bar-mekko-extra-series');
   });
 
+  // Stacking several series in a bar mekko switched its widths to category totals, so a column whose parts add to zero drew at width 0.
+  it('keeps a stacked bar mekko at equal column widths', () => {
+    const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'mekko', data: {
+      categories: ['a', 'b'].map((id) => ({ id })),
+      series: [{ id: 'up', values: [10, 20] }, { id: 'down', values: [-10, 5] }],
+    }, options: { variant: 'bar', size: { width: 960, height: 540 } } } as never)));
+    const widths = geometry.derived as unknown as { widths: Record<string, number> };
+    expect(widths.widths.a).toBeGreaterThan(0);
+    expect(widths.widths.a).toBeCloseTo(widths.widths.b!);
+  });
+
+  // The interaction records read a stacked bar mekko as a single series, so segments were 100% of their column and the Others segment of the second series had no value.
+  it('reads every series of a stacked bar mekko, also in the Others column', () => {
+    const request = resolveChartRequest({ type: 'mekko', data: {
+      categories: ['a', 'b', 'c'].map((id) => ({ id })),
+      series: [{ id: 'labor', values: [30, 20, 10] }, { id: 'material', values: [10, 20, 30] }],
+    }, options: { variant: 'bar', topN: { n: 1, rest: true }, size: { width: 960, height: 540 } } } as never);
+    const geometry = requireGeometry(layoutResolvedRequest(request));
+    const records = interactionRecords({ request, geometry, scope: request.scope, claims: [] });
+    const at = (categoryId: string, seriesId: string) => records.find((r) => r.target.owner?.categoryId === categoryId && r.target.owner?.seriesId === seriesId)!;
+    expect(at('a', 'labor').share?.percent.raw).toBeCloseTo(75);
+    expect(at('others', 'material').value.raw).toBe(50);
+    expect(at('others', 'material').share?.percent.raw).toBeCloseTo(62.5);
+  });
+
   // Mekko Others must convert percent cells to amounts and keep the present width values when one width is missing.
   it('pools equivalent Mekko amounts, percents and fractions through their category bases', () => {
     const bases = [5000, 1000, 100];
