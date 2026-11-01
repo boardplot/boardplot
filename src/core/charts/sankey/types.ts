@@ -44,7 +44,7 @@ export interface SankeyData {
 }
 
 export interface SankeyOptions extends BaseOptionsFor<'sankey'> {
-  /** Which end's node colour a link takes: 'source' (default) or 'target'. */
+  /** Which end's node colour a link takes. Unset: neutral ribbons, coloured only by node fill, colorRole or highlight. 'source' or 'target': one palette step per node. */
   linkColor?: 'source' | 'target';
   /** 'flow': fewest crossings. 'data': the node order of `data.nodes`, then first seen. Default 'flow', or 'data' when stage-qualified ids repeat. */
   order?: 'flow' | 'data';

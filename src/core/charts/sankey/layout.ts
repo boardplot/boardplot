@@ -23,7 +23,7 @@ import { round2, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelCtx, PRIORITY, solveLabels, type LabelRequest } from '../../label/solver';
-import { accessibleTitle, resolveSize } from '../../normalize/shared';
+import { accessibleTitle, resolveHighlight, resolveSize } from '../../normalize/shared';
 import { chartSizing, resolveSizing } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { spread1DResult } from '../../collide';
@@ -80,14 +80,20 @@ export function layoutSankey(data: SankeyData, options: SankeyOptions = {}): Geo
   const realOrder = order.map((column) => column.filter((node) => node < nodes.length));
   const columnTotal = realOrder.map((column) => column.reduce((sum, node) => sum + nodes[node]!.value, 0));
 
-  // ---- paints: palette steps by id, colour-side nodes first in drawn order ----
+  // ---- paints ----
+  // Neutral by default. An explicit linkColor with no highlight keeps the palette: one step per
+  // colour-side node id, in drawn order. A highlight steps every other node back to neutral.
   const linkColor = options.linkColor ?? 'source';
+  const highlights = new Set(resolveHighlight(options.highlight));
+  const paletteLook = options.linkColor !== undefined && highlights.size === 0;
   const colouring = new Set(links.map((link) => (linkColor === 'source' ? link.source : link.target)));
   const stepOf = new Map<Id, number>();
-  for (const column of realOrder) {
-    for (const node of column) {
-      const own = nodes[node]!;
-      if (!own.other && colouring.has(node) && !stepOf.has(own.id)) stepOf.set(own.id, stepOf.size);
+  if (paletteLook) {
+    for (const column of realOrder) {
+      for (const node of column) {
+        const own = nodes[node]!;
+        if (!own.other && colouring.has(node) && !stepOf.has(own.id)) stepOf.set(own.id, stepOf.size);
+      }
     }
   }
   // A node that colours no link draws neutral, unless its id colours links in another stage.
@@ -95,10 +101,21 @@ export function layoutSankey(data: SankeyData, options: SankeyOptions = {}): Geo
     if (node.fill) return { css: node.fill };
     if (node.colorRole) return markRolePaint(node.colorRole, true);
     if (node.other) return { token: 'othersMark' };
+    if (highlights.has(node.id)) return { token: 'focus' };
     const step = stepOf.get(node.id);
     return step === undefined ? { token: 'neutralMark' } : seriesPaint(step, palette ? options.palette : undefined);
   };
   const paints = nodes.map(paintOf);
+  // Node marks are owned by stage-qualified keys, so the shared id check cannot match a highlight: check the node ids here.
+  for (const id of highlights) {
+    if (nodes.some((node) => !node.other && node.id === id)) continue;
+    warnings.push({
+      code: 'highlight-unknown-id', severity: 'warn',
+      message: `highlight '${id}' names no node of this chart and emphasises nothing`,
+      suggest: `highlight a node id: ${[...new Set(nodes.filter((node) => !node.other).map((node) => node.id))].slice(0, 20).join(', ')}`,
+      field: ['options', 'highlight'],
+    });
+  }
   const steps = stepOf.size;
   const paletteLength = theme.color.series.length;
   if (steps > paletteLength && nodes.every((node) => !node.fill && !node.colorRole)) {
@@ -224,7 +241,13 @@ export function layoutSankey(data: SankeyData, options: SankeyOptions = {}): Geo
   const box = (node: number): NodeBox => ({ y0: top + boxes[node]!.y0, y1: top + boxes[node]!.y1 });
   const scene: SceneNode[] = [...frame.nodes];
   const marks: SankeyMarks = { nodes: [], links: [] };
-  const linkPaint = (link: { source: number; target: number }) => paints[linkColor === 'source' ? link.source : link.target]!;
+  // An unset linkColor lets the first end the author coloured (fill, colorRole or highlight) colour the ribbon; else neutral.
+  const authored = (node: number) => !!(nodes[node]!.fill || nodes[node]!.colorRole || (!nodes[node]!.other && highlights.has(nodes[node]!.id)));
+  const linkPaint = (link: { source: number; target: number }): Paint => {
+    if (options.linkColor !== undefined) return paints[linkColor === 'source' ? link.source : link.target]!;
+    const end = authored(link.source) ? link.source : authored(link.target) ? link.target : undefined;
+    return end === undefined ? { token: 'neutralMark' } : paints[end]!;
+  };
   const nodeName = (node: GraphNode) => (node.stage !== undefined && graph.columns[node.column]?.label !== undefined ? `${node.label} (${graph.columns[node.column]!.label})` : node.label);
   // Thick ribbons first, so a thin one stays visible where they overlap.
   const drawOrder = links.map((_, i) => i).sort((a, b) => links[b]!.value - links[a]!.value || links[a]!.first - links[b]!.first);

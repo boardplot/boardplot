@@ -816,7 +816,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 
 | ID | Chart | Kind | Use case |
 |---|---|---|---|
-| channel-journeys | sankey | example | Channel to landing page to outcome: stage headers, two small channels folded into Others and listed in the note |
+| channel-journeys | sankey | example | Channel to landing page to outcome: stage headers, two small channels folded into Others and listed in the note, Purchase highlighted |
 | budget-departments | sankey | example | Budget to departments to cost types, links coloured by target |
 | segment-migration | sankey | example | Customers moving between segments month to month: stage-qualified nodes, one segment order in every month |
 | sales-stages | sankey | torture | Six stages with drop-outs that skip columns as long links |

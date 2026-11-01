@@ -38,7 +38,7 @@ export const sankeyDataSchema = z
 
 export const sankeyOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions('sankey')).safeExtend({
   linkColor: z.enum(['source', 'target']).optional().describe(
-    "Which end's node colour a link takes: 'source' (default) shows where flows come from, 'target' where they go. Nodes that colour no link draw in the neutral mark colour.",
+    "Which end's node colour a ribbon takes. Unset: every node and ribbon draws neutral, and a node with fill, colorRole or a highlight colours the ribbons it touches. 'source' shows where flows come from and 'target' where they go, each with one palette step per node; with a highlight, only the highlighted nodes keep a colour. Nodes that colour no link draw in the neutral mark colour.",
   ),
   order: z.enum(['flow', 'data']).optional().describe(
     "'flow' orders the nodes of each column for the fewest weighted ribbon crossings. 'data' keeps the order of data.nodes, then first seen in links. Default 'flow', and 'data' when stage-qualified ids repeat across stages, so segments keep one order every month.",

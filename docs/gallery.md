@@ -2764,6 +2764,7 @@ Flows from sources to targets in stages. [Reference](reference/sankey.md)
     "title": "Search brings the most visits that end in a purchase",
     "source": "Illustrative data",
     "unit": "k visits",
+    "highlight": "purchase",
     "notes": { "show": ["note", "disclosure"] },
     "size": { "width": 960, "height": 560 }
   }
