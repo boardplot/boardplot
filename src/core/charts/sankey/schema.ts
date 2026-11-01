@@ -55,4 +55,7 @@ export const sankeyOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptio
   nodeValue: z.enum(['value', 'share', 'value-share']).optional().describe(
     "What a node prints in bold after its name: 'value' (default), 'share' of its column's total, or 'value-share' as \"420 (38%)\". A percent format applies to the shares.",
   ),
+  linkValue: z.enum(['none', 'large']).optional().describe(
+    "Flow values on the ribbons: 'large' (default) prints the value of every ribbon at least one line high at its arriving end, right aligned to the next bar; thinner ribbons print nothing, and a value that would cover a node label is left out. 'none' prints node values only.",
+  ),
 }) as unknown as z.ZodType<SankeyOptions>;
