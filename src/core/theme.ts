@@ -1761,8 +1761,8 @@ function brighterPole(theme: Theme, base?: string): string {
 
 const SERIES_TEXT_COLORS = new WeakMap<Theme, WeakMap<ThemePaintSource, string>>();
 /**
- * Ground-text contrast walks run once per theme and recipe object: the cells of one heat band share one ground and
- * one ink recipe. Scene paints are caller data and may be edited in place, so a hit must still print as its recipe.
+ * Ground-text and quiet-land walks run once per theme and recipe object: the cells of one heat band share one ground and
+ * one ink recipe, and the regions of one map share one land. Scene paints are caller data and may be edited in place, so a hit must still print as its recipe.
  */
 const WALKED_COLORS = new WeakMap<Theme, WeakMap<ThemePaintSource, { recipe: string; color: string }>>();
 
@@ -1777,7 +1777,7 @@ export function sameRecipe(a: unknown, b: unknown): boolean {
 
 /** Resolve a provenance-carrying theme paint for the baked serializer. */
 function themePaintSourceColor(theme: Theme, source: ThemePaintSource): string {
-  if (source.kind !== 'ground-text') return sourceColor(theme, source);
+  if (source.kind !== 'ground-text' && source.kind !== 'quiet-land') return sourceColor(theme, source);
   let cache = WALKED_COLORS.get(theme);
   if (!cache) WALKED_COLORS.set(theme, cache = new WeakMap());
   const recipe = JSON.stringify(source);
