@@ -531,6 +531,8 @@ export function solveComboFrame(
         ...(growthNote === undefined ? [] : [growthNote]),
         // Two scales without tick columns: the note says each series reads on its own.
         ...(domain.secondaryActive && domain.ticksFromLabels === true ? [disclosureNote(chartString(options, 'comboOwnScale'))] : []),
+        // Moved shares matter only where the segments print them.
+        ...(contentOf(domain, 'segment', ['absolute'])?.includes('percent') ? domain.shareNotes : []),
       ],
       legend,
       ...(eventKey ? { eventKey } : {}),
@@ -601,7 +603,7 @@ export function composeLines(
   serFmt: (v: number) => string,
 ): string[] {
   const { abs, isPct, share } = value;
-  const explicit = value.format ? formatterFromExample(value.format, domain.options.locale?.language) : undefined;
+  const explicit = !value.format ? undefined : value.format === domain.options.format ? domain.fmt : formatterFromExample(value.format, domain.options.locale?.language);
   const parts: [LabelContent[number], string][] = [];
   for (const c of content) {
     if (c === 'absolute' && abs !== null) parts.push([c, explicit ? explicit(abs) : isPct ? domain.pctFmt(abs) : serFmt(abs)]);

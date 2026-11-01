@@ -20,7 +20,7 @@ import { formatAutomaticNumber } from '../../format';
 import { formatterFromExample } from '../../formatSpec';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { linearScale } from '../../scale';
-import { logScale, logSpecFormat, logTickTiers } from './logAxis';
+import { linearAxisSpec, logScale, logSpecFormat, logTickTiers } from './logAxis';
 import { wrapText, type FontSpec, type TextMeasurer } from '../../text';
 import { canvasMargin, markRolePaint, mutedMarkPaint, paintColor, panelTypeClass, seriesPaint as themeSeriesPaint } from '../../theme';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
@@ -379,11 +379,11 @@ export function scatterPlotArea(
     ? maxOf(yBandLines.flat().map((line) => measure(line, fonts.tick).width)) + ZONE_BAND_GAP
     : 0;
   // A log y axis is measured over its densest tick set, in its own tick text. A dot scatter measures the ticks it draws (domain.ticks), which can be finer than the default five.
-  const yFmt = env.log.y ? logSpecFormat(env.axisSpec.y) : fmt;
+  const yFmt = env.log.y ? logSpecFormat(env.axisSpec.y, [dyLo, dyHi]) : fmt;
   const axisTitles = options.axisTitles ?? {};
   const qualitative = showAxes && options.qualitativeAxes === true;
   const yAxisW = qualitative ? qualitativeColumn(env, fonts, frame.plot.w).width + QUALITATIVE_GAP : showAxes && !banded.y
-    ? measureValueAxisWidth([dyLo, dyHi], yFmt, theme, measure, 5, env.log.y ? undefined : env.axisSpec.y, env.log.y ? logTickTiers(dyLo, dyHi)[0] : domain.ticks?.y) : 0;
+    ? measureValueAxisWidth([dyLo, dyHi], yFmt, theme, measure, 5, env.log.y ? undefined : linearAxisSpec(env.axisSpec.y, [dyLo, dyHi]), env.log.y ? logTickTiers(dyLo, dyHi)[0] : domain.ticks?.y) : 0;
   // A banded axis prints no numbers, so it reserves no tick row or column (scatter.matrix).
   const xAxisH = showAxes && !banded.x ? tickH + 6 : 0;
   // A qualitative x title shares the row of its ends; the y title sits in the axis column.

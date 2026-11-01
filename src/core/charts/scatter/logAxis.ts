@@ -121,7 +121,36 @@ export function logDomain(min: number, max: number): [number, number] {
  * prints the decimals it needs, $0.4 beside $1 and $100, where one decimal
  * count for the set would print $1.0 and $100.0.
  */
-export function logSpecFormat(spec: NumberFormatSpec): (value: number) => string {
+/**
+ * An engine-scaled linear axis takes the scale of its largest tick: data up
+ * to 970M on an axis to 1,000,000,000 prints "1.0B", never "1,000M".
+ */
+export function linearAxisSpec(spec: NumberFormatSpec, domain: readonly number[]): NumberFormatSpec {
+  if (!spec.autoMagnitude) return spec;
+  const top = Math.max(0, ...domain.filter(Number.isFinite).map(Math.abs));
+  let magnitude = spec.magnitude;
+  while ((magnitude === 'm' || magnitude === 'bn') && top >= 1000 * MAGNITUDE_DIVISOR[magnitude] * (1 - 1e-9)) magnitude = magnitude === 'm' ? 'bn' : 't';
+  return magnitude === spec.magnitude ? spec : { ...spec, magnitude };
+}
+
+export function logSpecFormat(spec: NumberFormatSpec, domain?: readonly number[]): (value: number) => string {
+  // An engine scale prints each tick at its own scale (60M, 500M, 1.0B): a
+  // log axis spans decades, so one scale would print "0.06B". A whole tick
+  // under 10 keeps one decimal where a smaller scale prints on the same axis.
+  if (spec.autoMagnitude) {
+    const own = (value: number): NumberFormatSpec['magnitude'] => {
+      let magnitude: NumberFormatSpec['magnitude'] = 'none';
+      for (const step of ['k', 'm', 'bn', 't'] as const) if (Math.abs(value) >= MAGNITUDE_DIVISOR[step] * (1 - 1e-9)) magnitude = step;
+      return magnitude;
+    };
+    const lowest = domain && domain.length > 0 ? own(Math.min(...domain.map(Math.abs))) : undefined;
+    return (value) => {
+      const magnitude = own(value);
+      const scaled = value / MAGNITUDE_DIVISOR[magnitude];
+      const decimals = Math.max(neededDecimals(scaled, 12), lowest !== undefined && magnitude !== lowest && Math.abs(scaled) < 10 ? 1 : 0);
+      return formatWithSpec(value, { ...spec, automatic: false, autoMagnitude: undefined, stepDecimals: undefined, rollMagnitude: false, wholeFrom: undefined, magnitude, decimals });
+    };
+  }
   const divisor = MAGNITUDE_DIVISOR[spec.magnitude];
   return (value) => formatWithSpec(value, { ...spec, wholeFrom: undefined, decimals: neededDecimals(value / divisor, 12) });
 }

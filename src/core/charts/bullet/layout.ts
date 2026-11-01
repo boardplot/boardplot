@@ -8,7 +8,8 @@ import { bandFor } from '../../bandSelect';
  * Bullet chart — the bullet-graph form, horizontal KPI rows:
  * qualitative band rects (tint ladder of neutral, poor→good), a dark
  * measure bar (~40% of row height) from zero, a vertical target tick, the
- * value label (inside the bar end when it fits, else outside the last band),
+ * value label (right-aligned in one column right of the bands, under the
+ * head Actual where the target columns print),
  * and a semantic delta capsule right of each row ('+7 vs target', tone by
  * `direction` — 'lowerIsBetter' inverts for cost rows). Two x-scale modes
  * (`sharedScale`): rows normalized each to its own zero-based extent (the
@@ -27,7 +28,6 @@ import { runAnnotatePass } from '../../annotatePass';
 import { categoryTargetFields, spliceAnnotationNodes } from '../../annotateFields';
 import { applyValueAxisTitleInk, layoutValueAxis, planValueAxisTitle, valueAxisTitleRequest } from '../../axis';
 import { contrastRatio } from '../../color';
-import { TEXT_CONTRAST_FLOOR } from '../../themeRules';
 import { formatAutomaticNumber, formatAutomaticPercent, MINUS } from '../../format';
 import { formatterFromExample, parseFormatExample } from '../../formatSpec';
 import { cleanDiff, rectContains, rectsOverlap, rowLabelX, type Rect } from '../../geometry';
@@ -39,25 +39,21 @@ import {
   PRIORITY,
   solveLabels,
   type LabelRequest,
-  type SlotCandidate,
   type SolveCtx,
 } from '../../label/solver';
 import { accessibleTitle, MAGNITUDE_CEILING, NormalizeError, resolveHighlight, resolveSize, resolveSubtitle } from '../../normalize/shared';
 import { applyAxisBounds, bandScale, linearScale, niceDomain, type BandScale, type LinearScale } from '../../scale';
-import { readerFloorPx, tableHeadFloorPx, textScaleOf } from '../../typeFloors';
+import { readerFloorPx, textScaleOf } from '../../typeFloors';
 import { cardFrameTheme, cardSize } from '../sparkline/layout';
 import { frameTextOptions, normalizeLegendOption, solveFrame, type FrameInput, type LegendItemInput, plotHeightAfter, authoredFootnoteCount, authoredNotes } from '../../frame';
 import { defaultMeasurer, type FontSpec } from '../../text';
 import {
   contrastInkPaint,
-  focusColor,
-  markRolePaint,
   mixedPaint,
   paintColor,
   resolveSemanticPaletteTheme,
   resolveTheme,
   semanticPalettePaint,
-  signedFillPaint,
   emphasisWeight,
   secondaryType,
   strokeToken,
@@ -92,7 +88,7 @@ import { fittedLabel, gutterBudget, stepDownFont } from '../../label/rowFit';
 import { chartSizing, heightOmitted, rowSizing } from '../../sizing';
 import { DEFAULT_TARGET, TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { compactBulletRefusals } from './refusals';
-import { asColumnHeads, fitHead, headRequest } from './columnHead';
+import { asColumnHeads, columnHeadFont, fitHead, headRequest } from './columnHead';
 import { layoutTargetScale, targetBandLegendItems, targetWord, type TargetScaleRow } from './targetScale';
 import type { OccupiedIndex } from '../../label/occupied';
 import type { Margin } from '../../geometry';
@@ -144,6 +140,8 @@ interface NormBand {
 }
 
 const LABEL_GAP = 5;
+/** Air between the rightmost mark and the value column. */
+const VALUE_COL_GAP = 6;
 const CAT_BAND_GAP = 10;
 const CAPSULE_GAP = 8;
 /** Target and gap columns: plot to the first column, between the columns, and between two lines of one cell. */
@@ -169,10 +167,21 @@ function bandAmount(row: NormRow, index: number, count: number): number {
   return count === 1 ? 0.5 : semanticIndex / (count - 1);
 }
 
-function bandLadder(theme: Theme, count: number, palette: string | undefined, warnings: LintWarning[], light: boolean): Paint[] {
+function ladderEnds(theme: Theme, palette: string | undefined): { poor: Paint; good: Paint } {
   const measure = semanticPalettePaint(theme, palette, 'neutral');
   const good = semanticPalettePaint(theme, palette, 'neutralLight');
-  const poor = mixedPaint(measure, good, 0.75);
+  return { poor: mixedPaint(measure, good, 0.75), good };
+}
+
+/** A band with a tone, or an attainment wash: the tone's fill washed toward the page in the painting theme (bulletBandPaints). */
+function tonePaint(theme: Theme, palette: string | undefined, tone: NonNullable<NormBand['tone']>): Paint {
+  const { poor, good } = ladderEnds(theme, palette);
+  const [paint] = bulletBandPaints(theme, 1, poor, good, [], false, [tone]);
+  return { token: paint && 'token' in paint ? paint.token : 'neutral', theme: { kind: 'bullet-band', poor, good, count: 1, index: 0, tones: [tone] } };
+}
+
+function bandLadder(theme: Theme, count: number, palette: string | undefined, warnings: LintWarning[], light: boolean): Paint[] {
+  const { poor, good } = ladderEnds(theme, palette);
   return bulletBandPaints(theme, count, poor, good, warnings, light).map((paint, index) => ({
     token: 'token' in paint ? paint.token : 'neutral',
     theme: { kind: 'bullet-band', poor, good, count, index, ...(light ? { light: true as const } : {}) },
@@ -271,15 +280,15 @@ function rampItems(rows: NormRow[], options: BulletOptions, paint: (row: NormRow
  * An attainment band paints each row good or bad against its plan; the key
  * names both tones, and a lower-is-better plan says so.
  */
-function attainmentKey(options: BulletOptions): LegendItemInput[] {
+function attainmentKey(options: BulletOptions, theme: Theme): LegendItemInput[] {
   const band = (options.annotations ?? []).find((ann) => ann.kind === 'band' && ann.style === 'attainment');
   if (!band || band.kind !== 'band') return [];
   const lower = band.direction === 'lowerIsBetter';
   const target = targetWord(options);
   return [
     // The key draws the band's own fill.
-    { id: 'attainment:good', label: lower ? chartString(options, 'bulletBelowLower', { v1: target }) : chartString(options, 'aboveTarget', { v1: target }), paint: signedFillPaint('good') },
-    { id: 'attainment:bad', label: lower ? chartString(options, 'aboveTarget', { v1: target }) : chartString(options, 'belowTarget', { v1: target }), paint: signedFillPaint('bad') },
+    { id: 'attainment:good', label: lower ? chartString(options, 'bulletBelowLower', { v1: target }) : chartString(options, 'aboveTarget', { v1: target }), paint: tonePaint(theme, options.palette, 'good') },
+    { id: 'attainment:bad', label: lower ? chartString(options, 'aboveTarget', { v1: target }) : chartString(options, 'belowTarget', { v1: target }), paint: tonePaint(theme, options.palette, 'bad') },
   ];
 }
 
@@ -364,6 +373,8 @@ const BAND_TRIES = Symbol('bandTries');
 const REGULAR_NAMES = Symbol('regularNames');
 /** Set when the band names cannot print on their rows: the chart lays out again with the key. */
 const ROW_KEY_OFF = Symbol('rowKeyOff');
+/** Internal: the column heads take a line of their own, because the Actual head would meet the key. */
+const HEADS_OFF_KEY = Symbol('headsOffKey');
 
 export function layoutBullet(
   data: BulletData,
@@ -388,9 +399,6 @@ export function layoutBullet(
   const measure = options.measure ?? defaultMeasurer;
   // Business default (copied from waterfall): whole numbers get 0 decimals;
   // small non-integers keep one, so a 0.4 sliver never prints as "0".
-  const fmt = options.format
-    ? formatterFromExample(options.format, options.locale?.language)
-    : (v: number) => formatAutomaticNumber(v, { locale: options.locale?.language, decimals: autoDecimals(v) });
   const highlights = new Set(resolveHighlight(options.highlight));
   const labelOn = (kind: LabelKind): boolean => !compact && chartLabelOn(options, kind);
 
@@ -508,6 +516,9 @@ export function layoutBullet(
   }
 
   // ---- per-row formatting (cell format override > pct > chart format) ----
+  const fmt = options.format
+    ? formatterFromExample(options.format, options.locale?.language, undefined, rows.flatMap((row) => row.isPct ? [] : [row.value, row.target]))
+    : (v: number) => formatAutomaticNumber(v, { locale: options.locale?.language, decimals: autoDecimals(v) });
   const rowFmt = (row: NormRow) => (v: number): string => {
     if (row.meta?.format) return formatterFromExample(row.meta.format, options.locale?.language)(v);
     if (row.isPct) return formatAutomaticPercent(v, autoDecimals(v), false, options.locale?.language);
@@ -592,7 +603,7 @@ export function layoutBullet(
   }
   // ---- band names on the rows (bandKey 'row') ----
   // A few rows side by side, every band named: each name prints above its band, the band edges are
-  // ticked under it and the value sits past the bar end; the key at the bottom names the bar, the tick
+  // ticked under it and the value prints in the Actual column; the key at the bottom names the bar, the tick
   // and the ramp. Where any of it cannot show, the chart lays out again with the band key (ROW_KEY_OFF).
   const keyMode = options.bandKey ?? 'auto';
   const rowKeyOff = (options as { [ROW_KEY_OFF]?: true })[ROW_KEY_OFF] === true;
@@ -618,7 +629,7 @@ export function layoutBullet(
   }
   const { ladders, paintWarningRules } = buildBandLadders(rows, theme, options.palette, warnings, rowWanted);
   const bandPaint = (row: NormRow, index: number): Paint =>
-    row.bands[index]!.tone ? markRolePaint(row.bands[index]!.tone!, true)
+    row.bands[index]!.tone ? tonePaint(theme, options.palette, row.bands[index]!.tone!)
       : ladders.get(row.bands.length)![row.direction === 'lowerIsBetter' ? row.bands.length - 1 - index : index]!;
   const labelsKey = legendItemsForBands(rows, bandPaint);
   // An authored target word heads its column and keys the tick as written; the built-in word has its own head.
@@ -633,7 +644,7 @@ export function layoutBullet(
         ...(rampApplies(rows) ? rampItems(rows, options, bandPaint) : []),
       ]
       : rampKey(rows, options, bandPaint, labelsKey, warnings) ?? labelsKey),
-    ...attainmentKey(options),
+    ...attainmentKey(options, theme),
   ];
   let legendInput: FrameInput['legend'];
   if (bandLegendItems.length > 0 && options.legend !== 'none' && !compact) {
@@ -771,7 +782,7 @@ export function layoutBullet(
     && annotations.every((ann) => ann.kind !== 'cagr') && rows.some((row) => row.target !== null)
     && catLines.every((label) => label.title === undefined);
   const planColumns = () => {
-    const headerFont: FontSpec = { family: theme.type.family, ...theme.type.footnote, size: Math.max(theme.type.footnote.size, tableHeadFloorPx(target, textScaleOf(options)), readerFloorPx(target, 'label', textScaleOf(options))) };
+    const headerFont = columnHeadFont(theme, target, textScaleOf(options));
     const colTargets = rows.map((row) => (row.target === null ? null : rowFmt(row)(row.target)));
     const colGaps = rows.map((row) => (deltaVsTarget[row.id] === undefined ? null : deltaBody(row, deltaVsTarget[row.id]!)));
     const colPositions = rows.map((row) => {
@@ -805,11 +816,12 @@ export function layoutBullet(
     const legendLast = legendLabels.at(-1);
     const legendRight = Math.max(-Infinity, maxOf(legendLabels.map((node) => node.t === 'text' ? node.x + Math.max(...node.lines.map((line) => measure(line, node.font).width)) : -Infinity)));
     // Only a key above the rows can carry the heads.
-    const headsOnKey = legendLast?.t === 'text' && legendLast.y < plot0.y && legendRight + 2 * COLUMN_GAP <= plot0.x + plot0.w - colsW;
+    const headsOnKey = (options as { [HEADS_OFF_KEY]?: true })[HEADS_OFF_KEY] !== true
+      && legendLast?.t === 'text' && legendLast.y < plot0.y && legendRight + 2 * COLUMN_GAP <= plot0.x + plot0.w - colsW;
     const colTopAir = headsOnKey ? 0 : headerH + 4;
     const colAvailH = plotHeightAfter(frameResult, size.height, plot0.h - axisH - 2 * inset - colTopAir);
     const colPitch = Math.max(44, minimumRowH, Math.ceil(maxOf(rows.map((_, ri) => colBlockH(ri))) + 12));
-    return { headerFont, noteFont, colTargets, colGaps, colPositions, colDirections, colHeads, targetColW, gapColW, colsW, colLeftW, colPlotW, headerH, noteH, colBlockH, legendLast, headsOnKey, colTopAir, colAvailH, colPitch };
+    return { headerFont, noteFont, colTargets, colGaps, colPositions, colDirections, colHeads, targetColW, gapColW, colsW, colLeftW, colPlotW, headerH, noteH, colBlockH, legendLast, legendRight, headsOnKey, colTopAir, colAvailH, colPitch };
   };
   const colPlan = colsEligible ? planColumns() : undefined;
   const colBlockMax = colPlan ? maxOf(rows.map((_, ri) => colPlan.colBlockH(ri))) : 0;
@@ -928,7 +940,14 @@ export function layoutBullet(
   // that column instead (the overshoot test pins this): visible overshoot
   // outranks column alignment.
   // The compact mark prints no value, so it keeps no room for one.
-  const fP = compact || stacked ? 0 : Math.min(0.35, (maxPosW + LABEL_GAP + 8) / plot.w);
+  // Every value prints in one right-aligned column in that headroom, under the head Actual beside
+  // the target columns. A negative row keeps its room on the left as well: a bar that started at the
+  // plot edge, where the other rows have their zero, would read as a short positive bar.
+  const actualHead = cols && labelOn('point') && Math.max(maxPosW, maxNegW) > 0
+    ? fitHead(chartString(options, 'actualColumn'), cp.headerFont, Math.max(maxPosW, maxNegW), measure, { target, textScale: textScaleOf(options) })
+    : undefined;
+  const valueColW = Math.max(maxPosW, maxNegW, actualHead?.w ?? 0);
+  const fP = compact || stacked ? 0 : Math.min(0.35, (valueColW + LABEL_GAP + 8) / plot.w);
   const fN = lo < 0 && !compact && !stacked ? Math.min(0.35, (maxNegW + LABEL_GAP + 8) / plot.w) : 0;
   const extend = (extentLo: number, extentHi: number): [number, number] => {
     const span = extentHi - extentLo || 1;
@@ -963,6 +982,16 @@ export function layoutBullet(
     scaleAt = (ri) => rowScales[ri]!;
   }
   const zeroX = rows.map((_, ri) => scaleAt(ri)(0));
+  // The value column ends one value width past the rightmost band, bar or target of all rows, inside the
+  // plot. No value starts over the marks: one wider than the headroom runs past the column, where the
+  // columns beside it or the solver take it, as on any outside seat.
+  const valueColLeft = maxOf(extents.map((extent, ri) => scaleAt(ri)(extent.hi))) + VALUE_COL_GAP;
+  const valueColRight = Math.min(plot.x + plot.w, valueColLeft + valueColW);
+  const valueX = (width: number) => Math.max(valueColLeft, valueColRight - width);
+  // The heads share the key line only where the Actual head clears the key too.
+  if (actualHead && cp.headsOnKey && cp.legendRight + 2 * COLUMN_GAP > valueColRight - actualHead.w) {
+    return layoutBullet(data, { ...options, [HEADS_OFF_KEY]: true } as BulletOptions);
+  }
   const uniformZeroX = zeroX.every((value) => value === zeroX[0]);
   // Each name fits its own band with 2 px to spare on each side, or the key names the bands.
   if (rowMode && !rows.every((row, ri) => row.bands.every((bandSpec, bi) =>
@@ -1053,11 +1082,6 @@ export function layoutBullet(
     if (!highlights.has(row.id)) return { token: 'markInk' };
     return semanticPalettePaint(theme, options.palette, 'focus');
   };
-  const barCss = (row: NormRow): string => {
-    if (row.meta?.fill) return row.meta.fill;
-    if (highlights.has(row.id)) return focusColor(theme);
-    return paintColor(theme, { token: 'markInk' });
-  };
 
   const anchorByRow = new Map<Id, AnchorResolution>();
   const capsuleLabelIds = new Map<string, 'good' | 'bad' | 'warn' | 'neutral'>();
@@ -1071,32 +1095,13 @@ export function layoutBullet(
     const headY = rowMode ? band.position(0) - 2 - cp.headerH
       : cp.headsOnKey && cp.legendLast?.t === 'text' ? cp.legendLast.y + (legendFontH - cp.headerH) / 2 : plot0.y + inset;
     const gapRight = plot0.x + plot0.w;
-    ([[cp.colHeads[0], 'target', gapRight - cp.gapColW - COLUMN_GAP], [cp.colHeads[1], 'gap', gapRight]] as const).forEach(([head, key, right], order) => {
+    ([...(actualHead ? [[actualHead, 'actual', valueColRight]] as const : []), [cp.colHeads[0], 'target', gapRight - cp.gapColW - COLUMN_GAP], [cp.colHeads[1], 'gap', gapRight]] as const).forEach(([head, key, right], order) => {
       const request = headRequest(key, order, head, right, headY, cp.headerH, cp.headsOnKey && !rowMode);
       columnFonts.set(request.id, cp.headerFont);
       columnInks.set(request.id, { token: 'inkMuted' });
       labelRequests.push(request);
     });
   }
-
-  // One slot for the whole card: values sit inside their
-  // bars only when every row's value fits inside; otherwise all go outside,
-  // so the eye reads one column of numbers instead of two.
-  const uniformInside = rows.every((row, ri) => {
-    if (row.value === null || !labelOn('point')) return true;
-    const text = valueTextOf(row);
-    if (!text) return true;
-    const x = scaleAt(ri);
-    const vx = x(row.value);
-    const left = Math.min(zeroX[ri]!, vx);
-    const barW = Math.max(Math.abs(vx - zeroX[ri]!), 0.5);
-    const barH = Math.max(3, band.bandwidth * BAR_FRACTION);
-    const tsize = measure(text, valueFont);
-    const insideX = row.value >= 0 ? left + barW - 6 - tsize.width : left + 6;
-    const targetX = row.target !== null ? x(row.target) : null;
-    const tickOnInside = targetX !== null && targetX >= insideX - 2 && targetX <= insideX + tsize.width + 2;
-    return tsize.width + 12 <= barW && tsize.height <= barH + 4 && !tickOnInside;
-  });
 
   // Where an attainment band will wash each row, target to value over the
   // whole pitch (annotateTargets.ts), known before the labels are seated.
@@ -1206,15 +1211,12 @@ export function layoutBullet(
       occupied.claim(rect, 'mark', owner);
       anchorByRow.set(row.id, { x: vx, y: rowCenter, value: row.value, date: row.date, label: row.label, owner });
 
-      // value label: inside the bar (auto white ink) when it fits, else
-      // fully outside the last band — never straddling the bar end
+      // value label: right-aligned in the value column right of the bands, one seat on every row,
+      // so the values read down one column on their last digit
       if (labelOn('point')) {
         const text = valueTextOf(row);
         if (text) {
           const tsize = measure(text, valueFont);
-          const positive = row.value >= 0;
-          const targetX = row.target !== null ? x(row.target) : null;
-          const bandEndX = row.bands.length > 0 ? x(row.bands[row.bands.length - 1]!.to) : null;
           labelRequests.push({
             id: `point:${row.id}`,
             kind: 'point',
@@ -1225,11 +1227,9 @@ export function layoutBullet(
             priority:
               row.meta?.priority ??
               PRIORITY.endpoint + (highlights.has(row.id) ? PRIORITY.highlightBonus : 0),
-            candidates: stacked ? [{ slot: 'cardValue', rect: { x: plot.x + plot.w - Math.max(maxPosW, maxNegW), y: cardTop, w: tsize.width, h: tsize.height }, penalty: 0 }]
-              : [
-                ...(rowMode ? pastEnd(rect, positive, tsize, targetX, row, x) : []),
-                ...endCandidates(rect, positive, tsize, barCss(row), targetX, bandEndX, uniformInside && !rowMode).map(candidate => ({ ...candidate, penalty: candidate.penalty + (rowMode ? 1 : 0), insidePaint: row.meta?.fill ? { css: row.meta.fill } : { token: highlights.has(row.id) ? 'focus' as const : 'markInk' as const } })),
-              ],
+            candidates: [stacked
+              ? { slot: 'cardValue', rect: { x: plot.x + plot.w - tsize.width, y: cardTop, w: tsize.width, h: tsize.height }, penalty: 0 }
+              : { slot: 'valueColumn', rect: { x: valueX(tsize.width), y: rowCenter - tsize.height / 2, w: tsize.width, h: tsize.height }, penalty: 0 }],
           });
         }
       }
@@ -1443,8 +1443,6 @@ export function layoutBullet(
   }
   // semantic tone on delta capsules (deterministic post-solve ink override)
   for (const label of solved.placed) {
-    // A value on the bands keeps a halo in the page colour, so it reads in every theme it is repainted in.
-    if (label.slot === 'pastEnd') label.halo = true;
     const tone = capsuleLabelIds.get(label.id);
     if (tone) label.ink = { token: tone === 'neutral' ? 'ink' : tone };
     const ink = columnInks.get(label.id);
@@ -1517,6 +1515,11 @@ export function layoutBullet(
       }));
     }
     nodes.splice(frameResult.nodes.length, 0, ...ruleNodes);
+  }
+  // An attainment wash takes the band tones' wash, as its key does.
+  for (const node of annResult.nodes) {
+    if (node.t !== 'rect' || node.part !== 'attainment' || !('token' in node.fill)) continue;
+    if (node.fill.token === 'goodFill' || node.fill.token === 'badFill') node.fill = tonePaint(theme, options.palette, node.fill.token === 'goodFill' ? 'good' : 'bad');
   }
   spliceAnnotationNodes(nodes, annResult.nodes);
   // attainment paints after placement; outside values read against the actual wash.
@@ -1622,70 +1625,6 @@ export function layoutBullet(
     },
   };
 
-  // ---- candidate generator ----
-
-  /** Just past the bar end, on the band, where the target tick keeps clear of the number (no line crosses text). */
-  function pastEnd(rect: Rect, positive: boolean, tsize: { width: number; height: number }, targetX: number | null, row: NormRow, scale: LinearScale): SlotCandidate[] {
-    const x = positive ? rect.x + rect.w + LABEL_GAP : rect.x - LABEL_GAP - tsize.width;
-    const clearOfTick = targetX === null || targetX < x - REFERENCE_LABEL_CLEARANCE || targetX > x + tsize.width + REFERENCE_LABEL_CLEARANCE;
-    const inPlot = x >= plot.x && x + tsize.width <= plot.x + plot.w;
-    // The number reads in its own ink (muted where the theme mutes value labels) on every band it
-    // covers, or it takes today's seat. A repaint keeps the seat, so the label carries a halo (below).
-    const inkCss = paintColor(theme, { token: theme.labels?.ink === 'muted' ? 'inkMuted' : 'ink' });
-    const readable = row.bands.every((bandSpec, bi) => {
-      const from = scale(bi === 0 ? 0 : row.bands[bi - 1]!.to);
-      const covers = scale(bandSpec.to) > x && from < x + tsize.width;
-      return !covers || contrastRatio(inkCss, paintColor(theme, bandPaint(row, bi))) >= TEXT_CONTRAST_FLOOR;
-    });
-    return clearOfTick && inPlot && readable ? [{ slot: 'pastEnd', rect: { x, y: rect.y + rect.h / 2 - tsize.height / 2, w: tsize.width, h: tsize.height }, penalty: 0 }] : [];
-  }
-
-  /** Bar-family end cascade: inside the bar end (6px padding, auto
-   * white ink on the dark fill) when the text fits inside the bar, else
-   * fully OUTSIDE the last qualitative band (6px gap) — the label never
-   * straddles the bar end half-on-dark-bar half-on-light-band. The inside
-   * slot is also vetoed when the target tick would cut through the glyphs
-   * (value just past target is the COMMON bullet row, and normalized row
-   * scales made the collision routine); the outside slot instead steps past
-   * the tick when it sits within the label's reach. Mirrored for negatives
-   * (bands are positive-only, so the negative side only clears the bar). */
-  function endCandidates(
-    rect: Rect,
-    positive: boolean,
-    tsize: { width: number; height: number },
-    fillCss: string,
-    targetX: number | null,
-    bandEndX: number | null,
-    allowInside: boolean,
-  ): SlotCandidate[] {
-    const cy = rect.y + rect.h / 2;
-    const pad = 6;
-    const fits = tsize.width + 2 * pad <= rect.w && tsize.height <= rect.h + 4;
-    const insideX = positive ? rect.x + rect.w - pad - tsize.width : rect.x + pad;
-    const tickOnInside =
-      targetX !== null && targetX >= insideX - REFERENCE_LABEL_CLEARANCE && targetX <= insideX + tsize.width + REFERENCE_LABEL_CLEARANCE;
-    const inside: SlotCandidate = {
-      slot: 'insideEnd',
-      rect: {
-        x: insideX,
-        y: cy - tsize.height / 2,
-        w: tsize.width,
-        h: tsize.height,
-      },
-      penalty: 0,
-      insideFill: fillCss,
-    };
-    const ox = positive
-      ? Math.max(rect.x + rect.w, bandEndX ?? rect.x + rect.w, targetX ?? rect.x + rect.w) + pad
-      : Math.min(rect.x, targetX ?? rect.x) - pad - tsize.width;
-    const outside: SlotCandidate = {
-      slot: 'outsideEnd',
-      rect: { x: ox, y: cy - tsize.height / 2, w: tsize.width, h: tsize.height },
-      penalty: 1,
-    };
-    // The actual stays in its row and value column. Target labels yield to it.
-    return fits && !tickOnInside && allowInside ? [inside, outside] : [outside];
-  }
 }
 
 /**

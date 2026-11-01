@@ -108,7 +108,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | legend | string \| object | `'top'`, `'bottom'`, `'none'`, `'auto'` (or another value of its type) |  | Key position. Segment, case and scenario encodings keep their key because numeric bar labels do not name them. With these encodings, 'none' retains the key and reports waterfall-legend-required. A plain bridge keys its sign colours only when a lowerIsBetter step inverts them. |
 | axisTitles | object |  |  | Authored primary value-axis title above the vertical plot, using column title styling. Waterfall draws no value ticks. Horizontal mode accepts this key but does not print it. |
 | axisTitles.primary | string |  |  | 'Measure, unit' title of the value axis, e.g. 'Margin, %'. |
-| variant | string | `'vertical'`, `'horizontal'` | `'vertical'` | Vertical columns by default, or a horizontal bridge. |
+| variant | string | `'vertical'`, `'horizontal'` | `'vertical'` | Vertical columns by default, or a horizontal bridge. A horizontal bridge draws no annotations: it suppresses them and warns horizontal-annotations-unsupported, so use vertical for annotations. |
 | build | string | `'up'`, `'down'` | `'up'` | Build label in the accessible description; defaults to up. Item types and signed values determine accumulation in both modes. |
 | signColor | boolean |  |  | Paint each plain step good or bad by sign × item direction, as column's signColor; zero is neutral. Default true unless the theme sets marks.bridge or a palette is named; false paints steps neutral. |
 

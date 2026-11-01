@@ -49,7 +49,7 @@ import { accessibleTitle,
 import { rangeMidUndrawn, resolveCellRange, type RangeMark } from '../../rangeRules';
 import { applyAxisBounds, bandScale, linearScale, niceDomain, type BandScale } from '../../scale';
 import { authoredNotes, frameTextOptions, normalizeLegendOption, solveFrame, type LegendItemInput, plotHeightAfter, authoredFootnoteCount } from '../../frame';
-import { HARD_MINIMUM, rowSizing } from '../../sizing';
+import { HARD_MINIMUM, rowSizing, SIZE_TOLERANCE } from '../../sizing';
 import { rowDrivenHeight } from '../../rowCanvas';
 import { defaultMeasurer, wrapText, type FontSpec, type TextMeasurer } from '../../text';
 import {
@@ -84,7 +84,7 @@ import { displayFor, resolveBarDomain, textFor, toDateOnValues } from './domain'
 import { labelOn as barLabelOn } from '../labelOn';
 import { planBarLabels } from './labels';
 import { layoutBarMarks } from './marks';
-import { barHalves, cagrInset, CAGR_INSET_ROOM, CAGR_ROOM, CAGR_TRIES, CAT_BAND_GAP, CAT_MAX_LINES, CUT_NOTES, DEFER_ADJACENT, fixedBarRow, LABEL_GAP, NO_NAME_COLUMN, RIGHT_ROOM, type BarArea, type BarDomain, type BarMarkGeometry } from './model';
+import { barHalves, cagrInset, CAGR_INSET_ROOM, CAGR_ROOM, CAGR_TRIES, CAT_BAND_GAP, CAT_MAX_LINES, BarTooTall, CUT_NOTES, DEFER_ADJACENT, fixedBarRow, LABEL_GAP, NO_NAME_COLUMN, RIGHT_ROOM, STOP_IF_TOO_TALL, type BarArea, type BarDomain, type BarMarkGeometry } from './model';
 import { barPaints } from './paints';
 import { barPlotArea, solveBarFrame } from './plot';
 import { composedTextRole } from '../../textRole';
@@ -395,6 +395,7 @@ function annotateBar(
     xScale: area.x,
     ...categoryTargetFields(cats.map((c) => c.id), plot, (i) => band.position(i) + band.bandwidth / 2, 'y'),
     valueAxis: 'horizontal',
+    calloutRowPitch: band.step,
     partialCategories: partialIds(cats),
     ...(!annotationPass && cagrInset(domain) ? { barInset: { gapWord: chartString(domain.options, 'gapLead') } } : {}),
   };
@@ -413,6 +414,14 @@ function halvesOfOneBlock(halves: { neg: string; pos: string } | undefined) {
   if (halves === undefined) return undefined;
   return (a: OwnerRef, b: OwnerRef) => a.categoryId === b.categoryId
     && ((a.seriesId === halves.neg && b.seriesId === halves.pos) || (a.seriesId === halves.pos && b.seriesId === halves.neg));
+}
+
+/** The sizing of a standard bar; the natural heights only set its natural height, not its minimum. */
+function standardBarSizing(domain: BarDomain, area: BarArea, naturalLabels: { h: number }[]) {
+  const { options, size } = domain;
+  const hardMinimum = (options as { [HARD_MINIMUM]?: boolean })[HARD_MINIMUM] === true;
+  return barSizing(size, area, area.band.step, area.catLines, naturalLabels, area.fixedRowsH, area.segmentStep, !hardMinimum, textScaleOf(options), area.segmentMinStep,
+    domain.incompleteRows.size > 0 && options.mode === 'compact' && hardMinimum);
 }
 
 /** Phase 5: label nodes, the adjacency lint, the receipts, the sizing and the accessible text. */
@@ -493,9 +502,7 @@ function assembleBarGeometry(
   return {
     type: 'bar',
     size,
-    sizing: barSizing(size, area, band.step, area.catLines,
-      naturalCategoryHeights(cats, tickFont, area.capW, measure), area.fixedRowsH, area.segmentStep, !(options as { [HARD_MINIMUM]?: boolean })[HARD_MINIMUM], textScaleOf(options), area.segmentMinStep,
-      domain.incompleteRows.size > 0 && options.mode === 'compact' && (options as { [HARD_MINIMUM]?: boolean })[HARD_MINIMUM] === true),
+    sizing: standardBarSizing(domain, area, naturalCategoryHeights(cats, tickFont, area.capW, measure)),
     plot: area.plot,
     scene: withSegmentSeams(joinHatchPeers(nodes), theme, halvesOfOneBlock(barHalves(options))),
     labels: allLabels,
@@ -569,6 +576,9 @@ function layoutStandardBar(
   if (area.cutNotes.length > 0 && (options as { [CUT_NOTES]?: string[] })[CUT_NOTES] === undefined) {
     return layoutStandardBar(data, { ...options, [CUT_NOTES]: area.cutNotes } as BarOptions, annotationPass);
   }
+  // A caller that keeps the bar only when its rows fit (STOP_IF_TOO_TALL) learns it now, before the marks and labels cost anything.
+  if ((options as { [STOP_IF_TOO_TALL]?: boolean })[STOP_IF_TOO_TALL] === true
+    && standardBarSizing(domain, area, area.catLines).minHeight > domain.size.height + SIZE_TOLERANCE) throw new BarTooTall();
   const scene = layoutBarMarks(domain, paints, area);
   const local = layoutBarLocalAnnotations(domain, area, warnings);
   pushAll(scene.nodes, local.nodes);

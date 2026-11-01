@@ -441,7 +441,8 @@ export function pointValueText(env: ScatterEnv, domain: Pick<ScatterDomain, 'pts
   const value = p[field];
   if (value === null) return undefined;
   // A log y axis keeps each label at its own precision: 0.45 on a log scale reads apart from 0.5.
-  if (field === 'y' && (env.options.format || env.options.axisFormat?.y || env.log.y)) return env.axisFmt.y(value);
+  // An engine-scaled y axis prints its labels at the axis scale: "2.0M", not "2,000,000" beside 2.0M ticks.
+  if (field === 'y' && (env.options.format || env.options.axisFormat?.y || env.log.y || env.axisSpec.y.autoMagnitude)) return env.axisFmt.y(value);
   let byGroup = groupFormats.get(domain.pts);
   if (!byGroup) groupFormats.set(domain.pts, byGroup = new Map());
   const key = `${field}\u0000${p.group ?? ''}`;

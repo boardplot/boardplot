@@ -48,23 +48,44 @@ describe("bullet band names on the rows (bandKey 'row')", () => {
     expect(crowded.scene.some((node) => node.id === 'edgeTick:a:104000')).toBe(true);
   });
 
-  // The number belongs with its bar end; it must never sit under the target tick.
-  it('seats the value just past the bar end, and in today\'s seat where the target tick is near', () => {
-    expect(shown(slide(), 'point:coverage')[0]?.slot).toBe('pastEnd');
-    const near = draw({ size: { width: 1200, height: 620 } }, { rows: [
-      { ...(ladder.data as BulletData).rows[0]!, value: { pct: 83 } },
-      (ladder.data as BulletData).rows[1]!,
-    ] });
-    expect(shown(near, 'point:coverage')[0]?.slot).not.toBe('pastEnd');
+  // A value at its bar end on one row and past the band on the next could not be read down one column.
+  it('prints every value right-aligned in one column right of the bands', () => {
+    const geometry = slide();
+    const values = geometry.labels.filter((placed) => placed.id.startsWith('point:') && !placed.hidden);
+    expect(values.length).toBeGreaterThan(1);
+    expect(new Set(values.map((placed) => placed.slot))).toEqual(new Set(['valueColumn']));
+    expect(new Set(values.map((placed) => Math.round((placed.rect.x + placed.rect.w) * 100)))).toHaveProperty('size', 1);
+    const lastBand = bandRect(geometry, 'band:cost:3').rect;
+    expect(Math.min(...values.map((placed) => placed.rect.x))).toBeGreaterThan(lastBand.x + lastBand.w);
   });
 
-  // With a name on every band the shade only groups; the dark ramp crowded the bar and the text.
-  it('paints the lighter ramp only where every band is named on its row', () => {
-    const theme = resolveTheme(undefined);
-    const lightness = (geometry: Geometry) => [0, 1, 2, 3].map((index) => oklabLightness(paintColor(theme, bandRect(geometry, `band:coverage:${index}`).fill!))!);
+  // The dark ramp under a key made the bar sink into its worst band, and the chart changed weight with its row count.
+  it('paints the light ramp on every row; the full band fill keeps the wider steps under a key', () => {
+    const full = { preset: 'standard', overrides: { marks: { bulletBandFill: 'full' } } } as const;
+    const lightness = (geometry: Geometry, theme = resolveTheme(undefined)) => [0, 1, 2, 3].map((index) => oklabLightness(paintColor(theme, bandRect(geometry, `band:coverage:${index}`).fill!))!);
     const steps = (values: number[]) => values.slice(1).map((value, index) => value - values[index]!);
     for (const step of steps(lightness(slide()))) expect(step).toBeCloseTo(0.065, 2);
-    for (const step of steps(lightness(draw({ size: { width: 1200, height: 620 }, bandKey: 'labels' })))) expect(step).toBeGreaterThanOrEqual(0.12);
+    for (const step of steps(lightness(draw({ size: { width: 1200, height: 620 }, bandKey: 'labels' })))) expect(step).toBeCloseTo(0.065, 2);
+    const keyed = draw({ size: { width: 1200, height: 620 }, bandKey: 'labels', theme: full });
+    for (const step of steps(lightness(keyed, resolveTheme(full)))) expect(step).toBeGreaterThanOrEqual(0.12);
+  });
+
+  // Full red and green bands made an on-plan corridor read as an alarm; the wash is decided in the theme the scene is painted in.
+  it('washes toned bands and attainment toward the page, and a full-fill theme repaints them full', () => {
+    const light = resolveTheme(undefined);
+    const full = resolveTheme({ preset: 'boardroom', overrides: { marks: { bulletBandFill: 'full' } } });
+    const draw = (id: string) => {
+      const fixture = getFixtures('bullet').find((f) => f.id === id)!;
+      const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'bullet', data: fixture.data, options: fixture.options, annotations: fixture.annotations }));
+      if (geometry.refused) throw new Error('refused');
+      return geometry;
+    };
+    const spend = draw('two-sided-spend');
+    const [bad, good] = [bandRect(spend, 'band:spend:0').fill!, bandRect(spend, 'band:spend:1').fill!];
+    expect(oklabLightness(paintColor(light, bad))!).toBeGreaterThan(oklabLightness(paintColor(light, good))!);
+    expect([paintColor(full, bad), paintColor(full, good)]).toEqual([full.color.badFill ?? full.color.bad, full.color.goodFill ?? full.color.good]);
+    const washes = draw('attainment-shading').scene.flatMap((node) => node.t === 'rect' && node.part === 'attainment' ? [node.fill!] : []);
+    expect(washes.map((fill) => paintColor(full, fill)).sort()).toEqual([full.color.badFill ?? full.color.bad, full.color.goodFill ?? full.color.good].sort());
   });
 
   // The rows no longer show which mark is the actual and which the target.

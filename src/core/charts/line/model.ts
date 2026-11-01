@@ -108,6 +108,8 @@ export interface LineDomain {
   labelPv: (number | null)[][];
   shareTexts: Map<string, string>;
   roundingAdjustments?: import('../../shareRounding').RoundingAdjustment[];
+  /** The hidden method note on moved shares that print. */
+  shareNotes: string[];
   rowOf: Map<NormSer, number>;
   absOf: (s: NormSer, ci: number) => number | null;
   compositionInvalidAt: (ci: number) => boolean;

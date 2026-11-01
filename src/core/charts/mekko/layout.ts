@@ -339,7 +339,7 @@ function layoutMekkoPass(
   named = false,
 ): { geometry: Geometry<MekkoMarks, MekkoDerived>; namedAll: boolean } {
   const warnings: LintWarning[] = [];
-  const env = resolveMekkoEnv(options, warnings);
+  const env = resolveMekkoEnv(options, warnings, data);
   const domain = resolveMekkoDomain(data, env, warnings);
   if (named) {
     if (domain.mode !== 'percent' || domain.series.length < 2 || kindSetting(env, 'segment') !== true) return { geometry: undefined!, namedAll: false };

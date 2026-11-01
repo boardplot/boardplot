@@ -30,6 +30,15 @@ vi.mock('../src/core/charts/scatter/layout', async original => {
   } };
 });
 
+const barLayoutCalls = vi.hoisted(() => ({ count: 0 }));
+vi.mock('../src/core/charts/bar/layout', async original => {
+  const module = await original<typeof import('../src/core/charts/bar/layout')>();
+  return { ...module, layoutBar: (...args: Parameters<typeof module.layoutBar>) => {
+    barLayoutCalls.count++;
+    return module.layoutBar(...args);
+  } };
+});
+
 // Plot-height advice must not repeat the layout on every dashboard render or resize.
 it('renders a short scatter without extra layouts for plot-height advice', () => {
   const fixture = getFixtures('scatter').find(f => f.id === 'option-info-grid')!;
@@ -925,6 +934,167 @@ it('draws compact on the default slide canvas as it does on the same size writte
   expect(slide.reading.mode).toBe('compact');
   expect(slide.size).toEqual(draw({ target: 'slide', size: { width: 888, height: 396, unit: 'pt' } }).size);
   expect(draw({ target: 'slide', belowMinimum: 'refuse' }).errors[0].code).toBe('size-below-floor');
+});
+
+// A column of 20 long names at 320 px kept three names and listed the other 17 as redundant, so no fallback saw the loss.
+it('draws a column whose names cannot fit or rotate as bars, or lists the names it drops', () => {
+  const names = ['Automotive OEM', 'Automotive suppliers', 'Chemicals', 'Consumer goods', 'Energy utilities', 'Financial services', 'Food and beverage', 'Healthcare providers', 'Industrial machinery', 'Insurance',
+    'Logistics', 'Media', 'Oil and gas', 'Pharmaceuticals', 'Retail', 'Software', 'Telecommunications', 'Transport', 'Utilities', 'Wholesale'];
+  const data = { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [{ id: 's', label: 'Margin', values: names.map((_, i) => 8 + ((i * 7) % 23)) }] };
+  const spec = (size: { width: number; height?: number }) => ({ type: 'column', data, options: { title: 'Margin by sector', unit: '%', size } });
+  const hiddenNames = (geometry: Geometry) => geometry.labels.filter(label => label.kind === 'category' && label.hidden).map(label => label.hidden);
+  const stepped = layoutResolvedRequest(resolveChartRequest(spec({ width: 320 }))) as Geometry;
+  expect(stepped.type).toBe('bar');
+  expect(stepped.warnings.map(w => w.code)).toContain('column-stepped-to-bar');
+  expect(hiddenNames(stepped)).toEqual([]);
+  // The records read the drawn bars: one per name.
+  expect((render({ spec: spec({ width: 320 }) }).body as any).reading.values.total).toBe(20);
+  // A pinned height that the rows do not fit keeps the column, and its dropped names are a loss, not redundant.
+  const kept = layoutResolvedRequest(resolveChartRequest(spec({ width: 320, height: 443 }))) as Geometry;
+  expect(kept.type).toBe('column');
+  expect(hiddenNames(kept).length).toBeGreaterThan(0);
+  expect(new Set(hiddenNames(kept))).toEqual(new Set(['density']));
+  // A pinned height that holds every row draws the bars: the early out for short canvases skips only heights no row layout can hold.
+  const tall = layoutResolvedRequest(resolveChartRequest(spec({ width: 320, height: 700 }))) as Geometry;
+  expect(tall.type).toBe('bar');
+  expect(hiddenNames(tall)).toEqual([]);
+});
+
+// A width pinned below the floor refuses, and the size search laid out a bar for every probe at the floor width, which the refusal never drew.
+it('lays out no bar for the probes that price a refusal at a pinned width', () => {
+  const names = Array.from({ length: 20 }, (_, i) => `Sector number ${i + 1} of the survey`);
+  const data = { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [{ id: 's', label: 'Margin', values: names.map((_, i) => 8 + ((i * 7) % 23)) }] };
+  barLayoutCalls.count = 0;
+  const refused = layoutResolvedRequest(resolveChartRequest({ type: 'column', data, options: { title: 'Margin by sector', unit: '%', size: { width: 240 } } } as never)) as Geometry;
+  expect(refused.refused).toBe(true);
+  expect(barLayoutCalls.count).toBe(0);
+});
+
+// A pinned height between the row floor and the bar's real minimum laid out a bar before the column kept its place, which slowed those columns.
+it('does not lay out a bar for a pinned height the bar rows and frame cannot fit', () => {
+  const names = ['Automotive OEM', 'Automotive suppliers', 'Chemicals', 'Consumer goods', 'Energy utilities', 'Financial services', 'Food and beverage', 'Healthcare providers', 'Industrial machinery', 'Insurance',
+    'Logistics', 'Media', 'Oil and gas', 'Pharmaceuticals', 'Retail', 'Software', 'Telecommunications', 'Transport', 'Utilities', 'Wholesale'];
+  const data = { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [{ id: 's', label: 'Margin', values: names.map((_, i) => 8 + ((i * 7) % 23)) }] };
+  const draw = (height: number) => {
+    barLayoutCalls.count = 0;
+    const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'column', data, options: { title: 'Margin by sector', unit: '%', source: 'Invented', size: { width: 320, height } } })) as Geometry;
+    return { type: geometry.type, layouts: barLayoutCalls.count };
+  };
+  // 560 px is the rows alone at the row floor; the title and the source line need more.
+  expect(draw(600)).toEqual({ type: 'column', layouts: 0 });
+  const tall = draw(900);
+  expect(tall.type).toBe('bar');
+  expect(tall.layouts).toBeGreaterThan(0);
+});
+
+// A column that stepped to bars at 320 px took the bar's natural and comfortable sizes, so advice to widen drew a column at other sizes.
+it('measures a column that stepped to bars with the natural sizes of the chart drawn at its natural width', () => {
+  const names = Array.from({ length: 20 }, (_, i) => `Sector number ${i + 1} of the survey`);
+  const data = { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [{ id: 's', label: 'Margin', values: names.map((_, i) => 8 + ((i * 7) % 23)) }] };
+  const spec = (width: number) => ({ type: 'column', data, options: { title: 'Margin by sector', unit: '%', size: { width } } }) as never;
+  const narrow = measure(spec(320));
+  expect((narrow.geometry as Geometry).type).toBe('bar');
+  const wide = measure(spec(narrow.naturalWidth));
+  expect((wide.geometry as Geometry).type).toBe('column');
+  expect([narrow.naturalHeight, narrow.comfortableWidth, narrow.comfortableHeight, narrow.fit]).toEqual([wide.naturalHeight, wide.comfortableWidth, wide.comfortableHeight, wide.fit]);
+});
+
+// tickStep is read by column and refused by bar, so a column that stepped to bars dropped it with no word.
+it('keeps the column when a column-only value axis key is set', () => {
+  const names = Array.from({ length: 20 }, (_, i) => `Sector number ${i + 1} of the survey`);
+  const data = { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [{ id: 's', label: 'Margin', values: names.map((_, i) => 8 + ((i * 7) % 23)) }] };
+  const draw = (valueAxis: object) => layoutResolvedRequest(resolveChartRequest({ type: 'column', data, options: { title: 'Margin by sector', unit: '%', size: { width: 320 }, valueAxis } } as never)) as Geometry;
+  expect(draw({ show: true }).type).toBe('bar');
+  expect(draw({ tickStep: 5 }).type).toBe('column');
+});
+
+// A 100% share column, and a stacked column with a PY reference, stepped to bars that drew absolute values and no growth labels, with no warning.
+it('keeps the column when it draws shares of 100% or growth against a PY reference', () => {
+  const names = Array.from({ length: 20 }, (_, i) => `Sector number ${i + 1} of the survey`);
+  const categories = names.map((label, i) => ({ id: `c${i}`, label }));
+  const values = (k: number) => names.map((_, i) => 8 + ((i * k) % 23));
+  const draw = (series: object[], options: object) => layoutResolvedRequest(resolveChartRequest({ type: 'column', data: { categories, series }, options: { title: 'Margin by sector', size: { width: 320 }, ...options } } as never)) as Geometry;
+  const two = [{ id: 'a', label: 'Online', values: values(7) }, { id: 'b', label: 'Stores', values: values(5) }];
+  expect(draw(two, {}).type).toBe('bar');
+  expect(draw(two, { valueAxis: { percent: true } }).type).toBe('column');
+  const withPy = [...two, { id: 'py', label: 'PY', role: 'reference', scenario: 'PY', values: values(3).map((v) => v * 2) }];
+  expect(draw(withPy, { variant: 'stacked' }).type).toBe('column');
+});
+
+// A column with a total category stepped to bars, which draw the total as one more plain row, with no gap, divider or bold type.
+it('keeps the column when a category is a total', () => {
+  const names = Array.from({ length: 20 }, (_, i) => `Sector number ${i + 1} of the survey`);
+  const draw = (role?: 'total') => {
+    const categories = names.map((label, i) => (i === 19 && role ? { id: `c${i}`, label, role } : { id: `c${i}`, label }));
+    const data = { categories, series: [{ id: 's', label: 'Margin', values: names.map((_, i) => 8 + ((i * 7) % 23)) }] };
+    return layoutResolvedRequest(resolveChartRequest({ type: 'column', data, options: { title: 'Margin by sector', unit: '%', size: { width: 320 } } } as never)) as Geometry;
+  };
+  expect(draw().type).toBe('bar');
+  expect(draw('total').type).toBe('column');
+});
+
+// The step lost one more column setting in each review round, so a column steps to bars only when every setting and data key of the request is one a bar draws as a column does.
+it('keeps the column for every setting a bar draws differently, drops or has not been checked', () => {
+  const names = Array.from({ length: 20 }, (_, i) => `Sector number ${i + 1} of the survey`);
+  const categories = names.map((label, i) => ({ id: `c${i}`, label }));
+  const values = (k: number) => names.map((_, i) => 8 + ((i * k) % 23));
+  const single = [{ id: 's', label: 'Margin', values: values(7) }];
+  const stack = [{ id: 'a', label: 'Online', values: values(7) }, { id: 'b', label: 'Stores', values: values(5) }];
+  const draw = (series: object[], options: object = {}, cats: object[] = categories) => {
+    barLayoutCalls.count = 0;
+    const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'column', data: { categories: cats, series }, options: { title: 'Margin by sector', unit: '%', size: { width: 320 }, ...options } } as never)) as Geometry;
+    return { type: geometry.type, layouts: barLayoutCalls.count };
+  };
+  const at = (categoryId: string, seriesId = 's') => ({ categoryId, seriesId });
+  const kept: [string, object[], object][] = [
+    ['labels.segment content', stack, { variant: 'stacked', labels: { segment: ['absolute', 'percent'] } }],
+    ['labels.point content', single, { labels: { point: ['absolute', 'category'] } }],
+    ['labels.annotation off', single, { labels: { annotation: false }, annotations: [{ kind: 'note', at: at('c3'), text: 'A note' }] }],
+    ['labels.growth', stack, { variant: 'stacked', labels: { growth: true } }],
+    ['strings.range', single, { strings: { range: 'Spread' } }],
+    ['two cagr annotations', single, { annotations: [{ kind: 'cagr', from: 'c0', to: 'c9' }, { kind: 'cagr', from: 'c9', to: 'c19' }] }],
+    ['value line with a value and a span', single, { annotations: [{ kind: 'valueLine', value: 20, from: 'c3', to: 'c12' }] }],
+    ['indicator100 on a raw stack', stack, { variant: 'stacked', annotations: [{ kind: 'indicator100' }] }],
+    ['valueAxis.max', stack, { variant: 'stacked', valueAxis: { max: 50 } }],
+    ['netLine.connectors', stack, { variant: 'stacked', netLine: { connectors: true } }],
+    ['stacked100', stack, { variant: 'stacked100' }],
+    ['scaleGroup', single, { scaleGroup: { y: 'g1' } }],
+    ['story', single, { story: { steps: [{ id: 's1', title: 'One', highlight: 'c3' }] } }],
+    ['embed', single, { embed: { width: 320 } }],
+    ['cell range', [{ id: 's', label: 'Margin', values: values(7).map((v, i) => (i === 3 ? { number: v, range: { low: v - 3, high: v + 4 } } : v)) }], {}],
+    ['cell details', [{ id: 's', label: 'Margin', values: values(7).map((v, i) => (i === 3 ? { number: v, details: { orders: 12 } } : v)) }], { detailFields: [{ key: 'orders' }] }],
+  ];
+  for (const [name, series, options] of kept) expect(draw(series, options), name).toEqual({ type: 'column', layouts: 0 });
+  // What a bar draws as a column does still steps, so the list does not block the plain case.
+  for (const [name, series, options] of [
+    ['plain', single, {}],
+    ['one cagr', single, { annotations: [{ kind: 'cagr' }] }],
+    ['value line without a span', single, { annotations: [{ kind: 'valueLine', value: 20 }] }],
+    ['value axis minimum', single, { valueAxis: { min: 5 } }],
+    ['stack with labels', stack, { variant: 'stacked', labels: { restSeries: false }, strings: { net: 'Net' }, netLine: true }],
+  ] as [string, object[], object][]) expect(draw(series, options).type, name).toBe('bar');
+});
+
+// The reading of a column that stepped to bars said column, so an agent reading it took the wrong chart type.
+it('reports the drawn type in the reading of a column that stepped to bars', () => {
+  const names = ['Automotive OEM', 'Automotive suppliers', 'Chemicals', 'Consumer goods', 'Energy utilities', 'Financial services', 'Food and beverage', 'Healthcare providers', 'Industrial machinery', 'Insurance',
+    'Logistics', 'Media', 'Oil and gas', 'Pharmaceuticals', 'Retail', 'Software', 'Telecommunications', 'Transport', 'Utilities', 'Wholesale'];
+  const data = { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [{ id: 's', label: 'Margin', values: names.map((_, i) => 8 + ((i * 7) % 23)) }] };
+  const body = render({ spec: { type: 'column', data, options: { title: 'Margin by sector', unit: '%', size: { width: 320 } } }, return: ['reading'] }).body as any;
+  expect(body.reading.type).toBe('bar');
+});
+
+// Taking owed off a thinned grand total let a pin override the thinning and hide a total the engine draws.
+it('keeps the thinned grand total when a pin names another one', () => {
+  const categories = Array.from({ length: 24 }, (_, i) => ({ id: `c${i}`, label: `Cat ${i + 1}` }));
+  const data = { categories, series: [
+    { id: 'a', label: 'A', values: categories.map((_, i) => 1200000 + i * 51234) },
+    { id: 'b', label: 'B', values: categories.map((_, i) => 900000 + i * 31234) },
+  ] };
+  const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'column', data, options: { title: 'T', variant: 'stacked', size: { width: 560, height: 360 }, labelPlacements: { 'grandTotal:c0': 'aboveNeighbours' } } })) as Geometry;
+  const shown = (id: string) => geometry.labels.some(label => label.id === `grandTotal:${id}` && label.hidden === undefined);
+  expect(shown('c1')).toBe(true);
+  expect(shown('c0')).toBe(false);
 });
 
 // A roadmap milestone is a small circle with its name outside, so its secondary text had no seat inside the circle and went to an off-page note.

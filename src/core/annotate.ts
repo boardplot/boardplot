@@ -289,6 +289,13 @@ export interface AnnotatePassInput {
   /** Optional chart-specific maximum for automatic callout/note leaders, in text widths. */
   calloutLeaderWidths?: number;
   /**
+   * Bar rows: the row pitch, in px. A callout or note whose one-line seats
+   * are blocked first wraps beside its bar (up to three lines). No seat may
+   * lie more than one pitch from the anchor, so the text stays on its own
+   * row or the next one. With no such seat it goes to the notes list.
+   */
+  calloutRowPitch?: number;
+  /**
    * A callout's leader is claimed, and a seat whose leader crosses a label
    * set before it is passed over. Scatter solves its callouts before the
    * point names, on an open plot, so crowded callouts go to the note.
@@ -1516,6 +1523,27 @@ function calloutLabel(
     mk('belowFar', right + gap * 4, bottom + h + gap * 3, 6, true),
     mk('aboveFar', left - w - gap * 4, bottom + h + gap * 3, 7, true),
   ].sort((a, b) => a.penalty - b.penalty);
+  // Beside a row's bar the text wraps to the room left there, before any seat
+  // away from the row. The one-line seats stay first when they fit.
+  const reach = (kind === 'callout' || kind === 'note') && !glyph && head.arrow !== true && head.headline === undefined
+    ? input.calloutRowPitch : undefined;
+  if (reach !== undefined) {
+    // The row's own labels (a bar's value or total) stand beside the anchor, so the text starts past them.
+    const rowLabels = input.occupied.hitsWhich({ x: input.plot.x, y: sideY - 2, w: input.plot.w, h: 4 }).filter((claim) => claim.kind === 'label');
+    const from = Math.max(right + gap * 2, ...rowLabels.filter((claim) => claim.rect.x >= right - 1).map((claim) => claim.rect.x + claim.rect.w + gap));
+    const to = Math.min(left - gap * 2, ...rowLabels.filter((claim) => claim.rect.x + claim.rect.w <= left + 1).map((claim) => claim.rect.x - gap));
+    const wrapBeside = (slot: string, room: number, penalty: number) => {
+      if (room >= w || room < lineH * 4) return [];
+      const pieces = lines.map((line) => wrapText(line, font, room, 3, input.measure));
+      const wrapped = pieces.flatMap((piece) => piece.lines);
+      if (pieces.some((piece) => piece.truncated) || wrapped.length < 2 || wrapped.length > 3) return [];
+      const ww = Math.max(...wrapped.map((line) => input.measure(line, font).width));
+      const rect = { x: slot === 'rightWrap' ? from : to - ww, y: sideY - (lineH * wrapped.length) / 2, w: ww, h: lineH * wrapped.length };
+      return [{ slot, rect, penalty, lines: wrapped, leaderFrom: edgeToward(rect) }];
+    };
+    all = [...all, ...wrapBeside('rightWrap', input.plot.x + input.plot.w - from, 3.45), ...wrapBeside('leftWrap', to - input.plot.x, 3.46)]
+      .sort((a, b) => a.penalty - b.penalty);
+  }
   // A cell of a grid (a heatmap row): the note's seat is on the cell's own
   // row, beside the grid, first of all. Any other seat leaves the row, so it
   // leads back to the cell and never reads as the neighbour row's note.
@@ -1547,6 +1575,11 @@ function calloutLabel(
       ),
       leaderVertical: true,
     });
+  }
+  // On a row chart a seat farther than one row from the anchor reads as the text of another row.
+  if (reach !== undefined) {
+    const limit = Math.max(reach, gap * 3);
+    all = all.filter(({ rect }) => Math.max(rect.y - at.y, at.y - rect.y - rect.h, 0) <= limit);
   }
   // A note on a mark inside the plot (a scatter bubble) stays between the
   // plot's top and bottom, off the axis rows.

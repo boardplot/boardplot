@@ -458,6 +458,15 @@ export interface Theme {
      * them with color.goodFill and color.neutralMark as they are.
      */
     statusFill?: 'quiet' | 'full';
+    /**
+     * How a bullet paints its bands. Absent means 'light': every row's
+     * qualitative bands take the light ladder (0.06 lightness steps from the
+     * page), a toned band takes its tone's fill washed toward the page, and
+     * an attainment band washes the same way. 'full' paints toned bands and
+     * attainment washes in the tone's full fill, and the ladder steps 0.12
+     * apart on rows that do not print their band names.
+     */
+    bulletBandFill?: 'light' | 'full';
   };
   /** Label conventions; absent keeps the shipped placement. */
   labels?: {

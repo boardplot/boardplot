@@ -12,6 +12,7 @@ import { getFixtures } from '../src/fixtures';
 import { renderSvg } from '../src/core/svg/renderSvg';
 import { resolveTheme } from '../src/core/theme';
 import { SceneRenderer } from '../src/react/SceneRenderer';
+import { BarChart } from '../src/react/charts/bar';
 import { interactionRecords } from '../src/core/a11y/records';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { render } from '../src/cli/render';
@@ -278,6 +279,64 @@ describe('data gaps', () => {
     const g = lay('pie', { categories: [{ id: 'a' }, { id: 'b' }, { id: 'c' }], series: [{ id: 's', values: [1, 1, 1] }] }, { rounding: 'sum-consistent' });
     expect([texts(g).filter((t) => /(?:\(|· )(33|34)%/.test(t)).map((t) => /(?:\(|· )(\d+)%/.exec(t)![1]).sort(), (g.derived as { roundingAdjustments: unknown[] }).roundingAdjustments])
       .toEqual([['33', '33', '34'], [expect.objectContaining({ part: 'a', nearest: '33%', printed: '34%' })]]);
+  });
+
+  // A 100% stack moves printed shares by default and rescales parts that miss 100, and only reading.rounding told the reader.
+  it('lists a hidden method note when a 100% stack moves or rescales shares', () => {
+    const thirds = lay('column', { categories: [{ id: 'q' }], series: ['a', 'b', 'c'].map((id) => ({ id, values: [10] })) }, { variant: 'stacked100' });
+    expect(noteTexts(thirds, ['method']).join(' ')).toContain('moved by one step');
+    const shares = [59.6, 19.8, 10.7, 5.8, 4.3].map((value, i) => ({ id: `s${i}`, values: [value] }));
+    const rescaled = lay('column', { categories: [{ id: 'q', label: 'Sep' }], series: shares }, { variant: 'stacked100', sharesOfOneWhole: true });
+    expect(noteTexts(rescaled, ['method']).join(' ')).toContain('Sep: the authored parts do not add up to 100');
+    expect(noteTexts(lay('column', { categories: [{ id: 'q' }], series: ['a', 'b'].map((id) => ({ id, values: [50] })) }, { variant: 'stacked100' }), ['method'])).toEqual([]);
+  });
+
+  // A bar of direct percents prints them as authored, and the note said each share was divided by the stack total.
+  it('adds no rescaling note for a bar of direct percents', () => {
+    const direct = lay('bar', { categories: [{ id: 'q', label: 'Sep' }], series: [{ id: 'a', values: [{ pct: 55 }] }, { id: 'b', values: [{ pct: 30 }] }] }, { variant: 'stacked100', sharesOfOneWhole: true });
+    expect(noteTexts(direct, ['method'])).toEqual([]);
+  });
+
+  // A column of direct percents prints them as authored, and the note said each share was divided by the stack total.
+  it('adds no rescaling note for a column of direct percents', () => {
+    const direct = lay('column', { categories: [{ id: 'q', label: 'Sep' }], series: [{ id: 'a', values: [{ pct: 55 }] }, { id: 'b', values: [{ pct: 30 }] }] }, { variant: 'stacked100', sharesOfOneWhole: true });
+    expect(noteTexts(direct, ['method'])).toEqual([]);
+  });
+
+  // The area note named moved shares that sit at unlabelled categories or under labels: false, and the reader saw no moved share.
+  it('adds the area rounding note only when a moved share prints', () => {
+    const data = { categories: ['a', 'b', 'c'].map((id) => ({ id })), series: [[50, 1, 50], [25, 1, 25], [25, 1, 25]].map((values, i) => ({ id: `s${i}`, values })) };
+    expect(noteTexts(lay('line', data, { variant: 'stacked100-area' }), ['method'])).toEqual([]);
+    expect(noteTexts(lay('line', data, { variant: 'stacked100-area', valueLabels: 'all', labels: false }), ['method'])).toEqual([]);
+    expect(noteTexts(lay('line', data, { variant: 'stacked100-area', valueLabels: 'all' }), ['method']).join(' ')).toContain('moved by one step');
+  });
+
+  // The area note read the first and last of all categories, so it missed a moved share at the window's end and named one at an undrawn start.
+  it('follows the drawn window for the area rounding note', () => {
+    const area = (rows: number[][], window: object) => lay('line', { categories: ['A', 'B', 'C', 'D'].map((id) => ({ id })), series: rows.map((values, i) => ({ id: `s${i}`, values })) },
+      { variant: 'stacked100-area', window });
+    const movedAtC = [[50, 50, 10, 50], [25, 25, 10, 25], [25, 25, 10, 25]];
+    expect(noteTexts(area(movedAtC, { last: 2 }), ['method']).join(' ')).toContain('moved by one step');
+    const movedAtA = [[10, 50, 50, 50], [10, 25, 25, 25], [10, 25, 25, 25]];
+    expect(noteTexts(area(movedAtA, { last: 2 }), ['method'])).toEqual([]);
+  });
+
+  // The hidden note added the React button row, so a pinned card that drew before was refused and the dashboard image grew by a blank row.
+  it('keeps the size of a dashboard card when the share note is the only hidden note', () => {
+    const thirds = { categories: ['q1', 'q2', 'q3'].map((id) => ({ id })), series: ['a', 'b', 'c'].map((id) => ({ id, values: [10, 10, 10] })) };
+    const card = renderToStaticMarkup(createElement(BarChart as never, { data: thirds, variant: 'stacked100', title: 'Mix', source: 'Source: invented', target: 'dashboard', size: { width: 280, height: 196 } }));
+    expect(card).toContain('<svg');
+    const slivers = getFixtures('bar').find((f) => f.id === 'stacked100-slivers')!;
+    const image = render({ spec: { type: 'bar', data: slivers.data, options: { ...slivers.options, target: 'dashboard' } }, width: 360, return: ['svg'] }).body as { svg: string };
+    expect(image.svg).toContain('viewBox="0 0 360 269"');
+  });
+
+  // Printing method notes through notes.show also printed the hidden share note, and a bar or column that drew before was refused for the extra line.
+  it('keeps the draw of a 100% stack when notes.show lists method notes', () => {
+    const thirds = { categories: ['q1', 'q2', 'q3'].map((id) => ({ id })), series: ['a', 'b', 'c'].map((id) => ({ id, values: [10, 10, 10] })) };
+    const drawn = (type: string, show?: string[]) => render({ spec: { type, data: thirds, options: { variant: 'stacked100', title: 'Mix', source: 'Source: invented', ...(show ? { notes: { show } } : {}) } }, width: 480, height: 220, return: ['svg'] }).body as { ok: boolean };
+    for (const type of ['bar', 'column']) expect([type, drawn(type, ['method']).ok]).toEqual([type, drawn(type).ok]);
+    expect(drawn('bar', ['method']).ok).toBe(true);
   });
 
   it('omits a CAGR to a partial period and flags a diff that uses one', () => {

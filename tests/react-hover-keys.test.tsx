@@ -85,7 +85,7 @@ describe('keyboard access to chart records', () => {
   it('keeps a keyboard card at its record when the record scrolls out of the viewport', async () => {
     await render(<ColumnChart {...columnProps} hover />);
     act(() => keyStop().focus());
-    const top = () => parseFloat(document.querySelector<HTMLElement>('[data-bp-chart-card]')!.style.top);
+    const top = () => parseFloat(document.querySelector<HTMLElement>('[data-bp-chart-card]')!.style.translate.split(' ')[1]!);
     const opened = top();
     vi.mocked(SVGSVGElement.prototype.getBoundingClientRect).mockImplementation(() =>
       ({ x: 0, y: -2000, left: 0, top: -2000, right: 800, bottom: -1550, width: 800, height: 450, toJSON() {} }));
