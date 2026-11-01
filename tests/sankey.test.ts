@@ -135,3 +135,11 @@ it('prints the value of ribbons at least one line high at their arriving end', (
   expect(printed().length).toBe(2);
   expect(printed({ linkValue: 'none' })).toHaveLength(0);
 });
+
+// With nodeValue 'share' the node label prints a percentage, so a ribbon equal to its node's total must still print its count; otherwise the count appears nowhere.
+it('prints the count of a single-inflow ribbon when node labels print shares', () => {
+  const links = [{ source: 'a', target: 'b', value: 300 }, { source: 'a', target: 'c', value: 100 }];
+  const request = resolveChartRequest({ type: 'sankey', data: { links }, options: { title: 'Flows', other: false, nodeValue: 'share', size: { width: 640, height: 400 } } });
+  const flows = requireGeometry(layoutResolvedRequest(request)).scene.filter((node) => node.t === 'text' && node.id.startsWith('label:flow:'));
+  expect(flows.map((node) => node.t === 'text' && node.lines?.join(''))).toEqual(['300', '100']);
+});

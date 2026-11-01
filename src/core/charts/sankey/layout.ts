@@ -319,7 +319,7 @@ export function layoutSankey(data: SankeyData, options: SankeyOptions = {}): Geo
       });
     });
   });
-  // A ribbon at least one line high prints its value at its arriving end, right aligned to the next bar, unless the node label there prints the same number.
+  // A ribbon at least one line high prints its value at its arriving end, right aligned to the next bar, unless the node label there prints the same count.
   if ((options.linkValue ?? 'large') === 'large') {
     const flowH = measure('0', headerFont).height;
     links.forEach((link, i) => {
@@ -327,8 +327,8 @@ export function layoutSankey(data: SankeyData, options: SankeyOptions = {}): Geo
       const s = layered.chains[i]!.at(-1)!;
       const from = layered.nodes[layered.segments[s]!.source]!.column;
       const text = fmt(link.value);
-      // The only inflow of a node reads the node's own label, so printing it twice side by side adds nothing.
-      if (text === fmt(nodes[layered.segments[s]!.target]!.value)) return;
+      // The only inflow of a node reads the node's own label, so printing it twice side by side adds nothing. A label that prints a share only does not carry the count.
+      if (nodeValue !== 'share' && text === fmt(nodes[layered.segments[s]!.target]!.value)) return;
       const w = textW(text, headerFont);
       const x = columnX(from + 1) - LABEL_GAP - w;
       if (x < columnX(from) + barW + LABEL_GAP) return;
@@ -361,7 +361,7 @@ export function layoutSankey(data: SankeyData, options: SankeyOptions = {}): Geo
     const end = { x: sides.get(label.id) === 'left' ? label.rect.x + label.rect.w + 2 : label.rect.x - 2, y: label.rect.y + label.rect.h / 2 };
     label.leader = { d: `M${round2(from.x)} ${round2(from.y)}L${round2(end.x)} ${round2(end.y)}`, curved: false };
   }
-  const labelNodes = labelsToNodes(theme, solved.placed, (label) => (label.kind === 'axisTitle' ? headerFont : nameFont)).flatMap((node): SceneNode[] => {
+  const labelNodes = labelsToNodes(theme, solved.placed, (label) => (label.kind === 'axisTitle' || label.id.startsWith('flow:') ? headerFont : nameFont)).flatMap((node): SceneNode[] => {
     if (node.t !== 'text' || !node.id.startsWith('label:')) return [node];
     const id = node.id.slice('label:'.length);
     const label = solved.placed.find((l) => l.id === id)!;
