@@ -134,6 +134,7 @@ const DOCUMENTED_EXAMPLES = {
   'combo.overlay': 'events-key-only',
   'diagram.circular-process': 'operating-cycle',
   'diagram.customer-journey': 'onboarding-journey',
+  'diagram.architecture': 'protected-request',
   'diagram.hierarchy': 'org-structure',
   'diagram.issue-tree': 'profit-issue-tree',
   'diagram.linear-process': 'transformation-process',
