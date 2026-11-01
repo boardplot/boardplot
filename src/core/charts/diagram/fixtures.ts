@@ -923,4 +923,67 @@ fixtures.push({
   options: { variant: 'architecture', flow: 'lanes', title: 'Last-click credit hides the channels that start the journey', source: 'Illustrative', size: { width: 960 } },
 });
 
+fixtures.push({
+  id: 'nested-service', title: 'A service nested three levels deep, with one protected runtime', kind: 'example',
+  data: {
+    groups: [
+      { id: 'rules', title: 'Applies to every request', kind: 'policy' },
+      { id: 'public', title: 'Public edge' },
+      { id: 'region', title: 'Hosting region' },
+      { id: 'cluster', title: 'Service cluster', parentId: 'region' },
+      { id: 'runtime', title: 'Protected runtime', parentId: 'cluster', protected: true },
+      { id: 'data', title: 'Data stores', parentId: 'region' },
+    ],
+    nodes: [
+      { id: 'logged', kind: 'step', shape: { kind: 'rectangle' }, label: 'Every call is logged', groupId: 'rules' },
+      { id: 'expiry', kind: 'step', shape: { kind: 'rectangle' }, label: 'Payloads expire in 30 days', groupId: 'rules' },
+      { id: 'rotation', kind: 'step', shape: { kind: 'rectangle' }, label: 'Keys rotate each day', groupId: 'rules' },
+      { id: 'gateway', kind: 'step', shape: { kind: 'rectangle' }, label: 'API gateway', secondaryLabel: 'Rate limits', groupId: 'public', track: 'request' },
+      { id: 'router', kind: 'step', shape: { kind: 'rectangle' }, label: 'Request router', groupId: 'cluster', track: 'request' },
+      { id: 'workers', kind: 'step', shape: { kind: 'rectangle' }, label: 'Model workers', secondaryLabel: 'Three replicas', groupId: 'runtime', track: 'request', repeat: 3 },
+      { id: 'keys', kind: 'step', shape: { kind: 'rectangle' }, label: 'Key service', groupId: 'runtime', track: 'state', protected: true },
+      { id: 'sessions', kind: 'step', shape: { kind: 'store' }, label: 'Session store', groupId: 'data', track: 'request' },
+      { id: 'ledger', kind: 'step', shape: { kind: 'store' }, label: 'Audit ledger', groupId: 'data', track: 'state' },
+    ],
+    edges: [
+      { id: 'in', source: { nodeId: 'gateway' }, target: { nodeId: 'router' }, label: 'Requests' },
+      { id: 'run', source: { nodeId: 'router' }, target: { nodeId: 'workers' } },
+      { id: 'seal', source: { nodeId: 'keys' }, target: { nodeId: 'workers' }, label: 'Keys' },
+      { id: 'write', source: { nodeId: 'workers' }, target: { nodeId: 'sessions' } },
+      { id: 'audit', source: { groupId: 'runtime' }, target: { nodeId: 'ledger' }, label: 'Audit trail', dash: 'dashed' },
+    ],
+    callouts: [
+      { id: 'one', target: { nodeId: 'gateway' }, title: 'Entry', text: 'the only public address' },
+      { id: 'two', target: { edgeId: 'audit' }, title: 'Audit', text: 'the runtime writes each call' },
+    ],
+    key: [{ line: 'dashed', label: 'Audit flow' }],
+  },
+  options: { variant: 'architecture', title: 'Only the protected runtime reads the keys', source: 'Illustrative', size: { width: 960 } },
+});
+
+fixtures.push({
+  id: 'agent-approval', title: 'An agent reaches its tools through an approval gate', kind: 'example',
+  data: {
+    groups: [
+      { id: 'agent', title: 'Agent' },
+      { id: 'tools', title: 'Tools' },
+    ],
+    nodes: [
+      { id: 'planner', kind: 'step', shape: { kind: 'rectangle' }, label: 'Planner', groupId: 'agent', track: 'calls' },
+      { id: 'gate', kind: 'step', shape: { kind: 'rectangle' }, label: 'Approval gate', secondaryLabel: 'A person signs off', track: 'calls' },
+      { id: 'search', kind: 'step', shape: { kind: 'rectangle' }, label: 'Document search', groupId: 'tools', track: 'calls' },
+      { id: 'email', kind: 'step', shape: { kind: 'rectangle' }, label: 'Send email', groupId: 'tools', track: 'side' },
+    ],
+    edges: [
+      { id: 'ask', source: { nodeId: 'planner' }, target: { nodeId: 'gate' } },
+      { id: 'allow', source: { nodeId: 'gate' }, target: { nodeId: 'search' }, label: 'Allowed' },
+      { id: 'send', source: { nodeId: 'gate' }, target: { nodeId: 'email' } },
+      { id: 'denied', source: { nodeId: 'gate' }, target: { nodeId: 'planner' }, label: 'Denied', flow: 'return', dash: 'dashed' },
+      { id: 'retry', source: { nodeId: 'planner' }, target: { nodeId: 'planner' }, label: 'Retry' },
+    ],
+    key: [{ line: 'dashed', label: 'Refused call' }],
+  },
+  options: { variant: 'architecture', highlight: ['ask', 'allow'], title: 'Every tool call passes one approval gate', source: 'Illustrative', size: { width: 960 } },
+});
+
 registerFixtures('diagram', fixtures);

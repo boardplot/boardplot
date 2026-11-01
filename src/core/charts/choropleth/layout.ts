@@ -42,7 +42,7 @@ import type {
   ChoroplethMarks,
   ChoroplethOptions,
 } from './types';
-import { buildGeoScale, geoLabelFont, quietLandPaint, ingestGeoRegions, geoStatePattern, geoStateLabel, geoStateLegend, geoStateSummary, geoStateCounts, geoPolarityCaption, geoScaleHints } from '../geoScale';
+import { buildGeoScale, geoLabelFont, quietLandPaint, ingestGeoRegions, geoStatePattern, geoStateLabel, geoStateLegend, geoStateSummary, geoStateCounts, geoPolarityCaption, geoScaleHints, KEY_BESIDE_GAIN } from '../geoScale';
 import { autoDecimals } from '../../formatPrecision';
 import { compareText } from '../../text';
 import { geoOverlayDiameter, geoOverlayInFrame, geoOverlayLegend, renderGeoOverlays, reserveGeoOverlayGlyphs } from './overlays';
@@ -53,6 +53,7 @@ import { rowDrivenHeight } from '../../rowCanvas';
 import { textScaleOf } from '../../typeFloors';
 import type { GeoOverlay } from './overlayTypes';
 import { geoOptionRefusals } from './geoRefusals';
+import { PLOT_W_FLOOR_DEMOTED } from '../../lint/space';
 import { outsideLabelGuard } from './outsideLabels';
 import { pushAll } from '../../arrays';
 
@@ -102,6 +103,8 @@ type RegionLabelSolveResult = ReturnType<typeof solveLabels> & {
 };
 
 const MAP_PAD = 8;
+/** A plot this much wider than tall is a wide slot: the one where an unnamed key may stand beside the map. */
+const WIDE_SLOT = 1.6;
 // The mandatory inset-scale footnote consumes one dashboard frame line.
 const US_MAP_PAD_Y = 6;
 const LEADER_GUTTER = 92;
@@ -372,11 +375,10 @@ export function layoutChoropleth(
   let sideColumns = table ? Math.min(sideMaxColumns, Math.ceil(table.rowCount / SIDE_ROWS)) : 0;
   let sideWanted = table !== undefined && !named && tableMode !== 'below' && sideColumns >= 1 &&
     (tableMode === 'side' || sideMapW >= SIDE_MIN_MAP_W);
-  const keyInput = { options,
+  const keyBase = { options,
     target: options.target,
     textScale: textScaleOf(options),
     compact: compactCard,
-    position: named ? legendOptions.position : 'auto',
     title: keyTitle,
     scale,
     classes: options.classes,
@@ -390,6 +392,24 @@ export function layoutChoropleth(
     // One list title at every width, for small regions and dropped labels alike.
     smallTitle: chartString(options, 'hiddenMapLabels'),
   } as const;
+  // An unnamed key stands in a column beside the map, instead of a row above it, when the map
+  // comes out clearly larger that way: a wide slot of a set height, which the key row would eat. The
+  // choice counts the small regions only, so a later pass that lists more labels keeps it.
+  let position: 'right' | 'bottom' | 'top' | 'auto' = named ? legendOptions.position : 'auto';
+  const widthFloor = PLOT_W_FLOOR_DEMOTED * size.width;
+  if (!named && !table && pinnedHeight && plot0.w >= WIDE_SLOT * plot0.h) try {
+    const decide = { ...keyBase, smallIds: new Set([...baseSmallIds].filter((id) => valuesById.has(id))) };
+    const mapWidthFor = (w: number, h: number) => Math.min(w - 2 * MAP_PAD, (Math.min(h, sideCapH) - 2 * yPad) / packAspect);
+    const rowH = mapKeysSize({ ...decide, position, plot: plot0 }).h;
+    const columnW = mapKeysSize({ ...decide, position: 'right', plot: plot0 }).w;
+    // A column that leaves the map under the width floor of a side key stays a row.
+    if (plot0.w - columnW - MAP_GAP >= widthFloor
+      && mapWidthFor(plot0.w - columnW - MAP_GAP, plot0.h) > KEY_BESIDE_GAIN * mapWidthFor(plot0.w, plot0.h - rowH - MAP_GAP)) position = 'right';
+  } catch (error) {
+    // A key that does not fit the column keeps its row.
+    if (!(error instanceof NormalizeError) || error.code !== 'geo-key-overflow') throw error;
+  }
+  const keyInput = { ...keyBase, position } as const;
   let sideKeyH = 0;
   // A key whose labels do not fit the block keeps the row over the map.
   if (sideWanted) try {
@@ -845,6 +865,8 @@ export function layoutChoropleth(
     }
     passes.set(key, next);
     const fits = !next.labels.some((label) => label.hidden && label.slot === 'smallMember') &&
+      // A longer list must not widen a side key past the width floor.
+      (position !== 'right' || next.plot.w >= widthFloor) &&
       (next.sizing?.minHeight ?? 0) <= next.size.height && hidden(next) <= hidden(geometry);
     if (fits) return next;
   }
