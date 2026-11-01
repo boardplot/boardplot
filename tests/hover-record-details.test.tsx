@@ -17,7 +17,7 @@ import { requireGeometry } from '../src/core/sizing';
 import { renderSvg } from '../src/core/svg/renderSvg';
 import { LineChart } from '../src/react/charts/line';
 import { labelCardContent, sharedLabelCardContent, layoutLabelCardContent } from '../src/react/hover/labelCard';
-import { categorySiblings, hoverModel, hoverTargets } from '../src/react/hover/engine';
+import { categorySiblings, hoverModel, hoverTargets, hoverView } from '../src/react/hover/engine';
 import { highlightScene } from '../src/react/hover/highlight';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -291,4 +291,20 @@ it('lists cell details in the card through detailFields, then the undeclared key
     .filter(row => row.kind === 'field').map(row => row.text);
   expect(rows('q1')).toEqual(['Deals: 1,234', 'Win rate: 31.5%', 'owner: North team', 'date: No observation']);
   expect(rows('q2')).toEqual([]);
+});
+
+// A stacked column's card sat over the next column, so the reader lost the value the card was comparing against.
+it('seats a column card clear of the filled columns of the other categories', () => {
+  const { request, geometry } = build({ type: 'column', data: { categories: ['q1', 'q2', 'q3', 'q4'].map(id => ({ id, label: id.toUpperCase() })),
+    series: [{ id: 'a', label: 'A', values: [45, 48, 51, 55] }, { id: 'b', label: 'B', values: [30, 29, 27, 26] }, { id: 'c', label: 'C', values: [12, 14, 15, 17] }] },
+  options: { variant: 'stacked', size: { width: 760, height: 520 } } });
+  const model = hoverModel(request, geometry);
+  const hit = model.records.find(record => record.target.owner.categoryId === 'q3' && record.target.owner.seriesId === 'a')!;
+  // The viewport reaches 40 px past the chart on every side, as on a page with margins.
+  const viewport = { scale: 1, origin: { x: 0, y: 0 }, boundary: { x: -40, y: -40, w: 840, h: 600 } };
+  const view = hoverView(model, request, geometry, [hit.id], { card: true, highlight: false, keyboard: false }, { viewport });
+  const { rect } = view.card!;
+  const covered = view.cardInput!.occupied.filter(item => item.kind === 'mark' && item.filled !== false
+    && item.rect.x < rect.x + rect.w && rect.x < item.rect.x + item.rect.w && item.rect.y < rect.y + rect.h && rect.y < item.rect.y + item.rect.h);
+  expect(covered).toEqual([]);
 });

@@ -516,6 +516,15 @@ describe('pareto joined remainder record', () => {
     expect(column.value).toMatchObject({ raw: 1.4, derived: 'number' });
     expect(column.members).toEqual([{ categoryId: 'c' }, { categoryId: 'd' }]);
   });
+
+  // A rest bucket above the scale word printed 1,800.0 in the method note beside a 1.80k column.
+  it('prints the bucket in the column and the method note in one authored scale', () => {
+    const items = ['a', 'b', 'c', 'd', 'e'].map((id) => ({ id, value: 600 }));
+    const request = resolveChartRequest({ type: 'pareto', data: { items }, options: { format: '1.2k', topN: { n: 2 }, methodNote: true } } as never);
+    const geometry = requireGeometry(layoutResolvedRequest(request));
+    expect(geometry.labels.find((label) => label.id === 'grandTotal:rest')?.text).toBe('1.8k');
+    expect(geometry.frame.noteList?.map((note) => note.text).join(' ')).toContain('1.8k in total');
+  });
 });
 
 // The changelog promises totalScale: false brings back the column-capped axis; no golden draws it.

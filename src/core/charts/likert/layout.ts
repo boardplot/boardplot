@@ -1070,7 +1070,7 @@ export function layoutLikert(
   }
 
   function signedText(value: number): string {
-    return formatterFromExample(netExample, options?.locale?.language)(value);
+    return formatterFromExample(netExample, options?.locale?.language, undefined, Object.values(net))(value);
   }
 }
 

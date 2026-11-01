@@ -1,4 +1,5 @@
 import { currencyWholeNumbers } from '../format';
+import { drawnRequest } from '../drawnRequest';
 import type { InteractionValue } from './types';
 import { creativeRecords } from './creativeRecords';
 import { businessRecords } from './businessRecords';
@@ -23,7 +24,7 @@ export function interactionRecords(context: RecordContext): InteractionRecord[] 
 
 function recordsOf(context: RecordContext): InteractionRecord[] {
   // Records name things in the words the chart drew: the same locale fill as the registry.
-  const ctx: RecordContext = { ...context, request: { ...context.request, options: withLocaleStrings(context.request.options) } };
+  const ctx: RecordContext = { ...context, request: { ...drawnRequest(context.request, context.geometry), options: withLocaleStrings(context.request.options) } };
   const records = categoryVariantRecords(ctx) ?? categoryRecords(ctx) ?? businessRecords(ctx)
     ?? creativeRecords(ctx) ?? statisticsRecords(ctx) ?? structuralRecords(ctx, interactionRecords);
   if (!records) throw new Error(`No interaction record adapter for chart type '${ctx.request.type}'`);

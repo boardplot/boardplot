@@ -433,15 +433,16 @@ export interface DetailField {
 export interface BaseOptions {
   /**
    * Accessible presentation. `title` emits the SVG hover title (default false);
-   * accessible naming is always retained. `table` asks the React chart
-   * components for the record-derived accessible data table: 'hidden' keeps it
-   * available to assistive technology only, 'toggle' adds a disclosure control,
-   * and 'below' renders it visibly under the chart. BoardplotChart includes it in
+   * accessible naming is always retained. `description` replaces the generated
+   * accessible description with the author's text; omitted, the chart writes it.
+   * `table` asks the React chart components for the record-derived accessible
+   * data table: 'hidden' keeps it available to assistive technology only,
+   * 'toggle' adds a disclosure control, and 'below' renders it visibly under the chart. BoardplotChart includes it in
    * the server output; a per-type component adds it after mount. Omitted, no
    * table is drawn.
-   * The SVG is unchanged by either key.
+   * The SVG is unchanged by `table`.
    */
-  a11y?: { title?: boolean; table?: 'hidden' | 'toggle' | 'below' };
+  a11y?: { title?: boolean; description?: string; table?: 'hidden' | 'toggle' | 'below' };
   /** Explicit presentation mode; otherwise full at or above the chart's minimum width, compact below it. */
   mode?: 'full' | 'compact';
   /**

@@ -202,7 +202,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | consensus-surprise-threshold | example | Authored surprise corridor: no statistics at all |
 | anomaly-small-sample | torture | Torture: five periods refuse to produce an outlier verdict |
 | anomaly-torture | torture | Torture: 60 periods, MAD = 0, an all-negative series and a 40× tail |
-| accessible-title-opt-in | example | Optional SVG hover title |
+| accessible-title-opt-in | example | Optional SVG hover title and authored accessible description |
 | minimum-frame | example | Column at the standalone size floor |
 | compact-frame | example | Compact column with source and note marker |
 | hatched-stack-labels | example | Forecast stack with protected inside values |

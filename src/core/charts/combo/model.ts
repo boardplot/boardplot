@@ -77,6 +77,8 @@ export interface ComboDomain {
   shareTexts: Map<string, string>;
   /** rounding 'sum-consistent': the shares printed off their nearest rounding. */
   roundingAdjustments: import('../../shareRounding').RoundingAdjustment[];
+  /** The hidden method note on moved shares. */
+  shareNotes: string[];
   /** The options with the view window applied to the annotations. */
   options: ComboOptions;
   cats: Category[];

@@ -1,4 +1,5 @@
 import { ENGINE_REV } from '../core/engine';
+import { drawnRequest } from '../core/drawnRequest';
 import type { InteractionRecord } from '../core/a11y/types';
 import type { Theme, ThemeRef } from '../core/types/theme';
 import type { ResolvedChartRequest } from '../core/request';
@@ -99,7 +100,7 @@ export function assertPreparedRequest(header: PreparedHeader, request: ResolvedC
 export function prepareChartRender(request: ResolvedChartRequest, layout: LayoutResult): PreparedChart {
   if (request.options.debug) throw new Error('Prepared charts do not support debug output.');
   const requestKey = requestRenderKey(request);
-  if (layout.type !== request.type) throw new Error('Prepared chart layout type does not match the request.');
+  if (layout.type !== drawnRequest(request, layout).type) throw new Error('Prepared chart layout type does not match the request.');
   const result = layout.refused ? {
     refused: true, type: layout.type, title: layout.title, size: layout.size,
     sizing: layout.sizing, warnings: layout.warnings,

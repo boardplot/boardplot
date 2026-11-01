@@ -137,6 +137,8 @@ export interface BarDomain {
   shareTexts: Map<string, string>;
   /** rounding 'sum-consistent': the shares printed off their nearest rounding. */
   roundingAdjustments: import('../../shareRounding').RoundingAdjustment[];
+  /** The hidden method note on moved or rescaled shares. */
+  shareNotes: string[];
   theme: Theme;
   /** The authored palette when the theme knows it, else undefined. */
   palette: string | undefined;
@@ -302,3 +304,13 @@ export interface BarMarkGeometry {
   /** The net line's last edge and its row, where its label hangs. */
   netLineEnd: { x: number; ci: number } | undefined;
 }
+
+/**
+ * Internal option: the caller keeps the bar only if its rows fit the canvas it
+ * was given (column's step to bars). The layout then stops with BarTooTall as
+ * soon as the frame and the rows are sized and the rows cannot fit, before the
+ * marks and labels are built. Authored JSON cannot set it.
+ */
+export const STOP_IF_TOO_TALL = Symbol('stopIfTooTall');
+/** Thrown by a bar layout that set STOP_IF_TOO_TALL when its minimum height is above the canvas height. */
+export class BarTooTall extends Error {}

@@ -564,6 +564,19 @@ describe('box readability', () => {
     expect(lay({ groups: [{ id: 'a', observations: ONE_TO_TEN }] }).labels.some((label) => label.id.startsWith('stat:'))).toBe(false);
   });
 
+  // Prevents eleven-digit box labels and ticks ("2,778,700,000") where a bar prints 2.78B.
+  it('scales billions once for the chart, unless a format asks for the digits', () => {
+    const groups = [
+      { id: 'a', observations: [59.7e6, 451.6e6, 935.16e6, 1.529e9, 2.7787e9] },
+      { id: 'b', observations: [1.64e9, 2.7e9, 3.26e9, 3.86e9, 4.86e9] },
+    ];
+    const texts = (geometry: ReturnType<typeof lay>) => geometry.scene.flatMap((node) => (node.t === 'text' ? node.lines : []));
+    const scaled = texts(lay({ groups }, { boxValues: 'all', target: 'slide' }));
+    expect(scaled).toEqual(expect.arrayContaining(['2.78B', '4.86B', '2B']));
+    expect(scaled.some((text) => /\d,\d{3},\d{3}/.test(text))).toBe(false);
+    expect(texts(lay({ groups }, { boxValues: 'all', target: 'slide', format: '1,000' }))).toContain('2,778,700,000');
+  });
+
   it('a group too small for a box prints each observation', () => {
     const geometry = lay({ groups: [{ id: 'big', observations: ONE_TO_TEN }, { id: 'small', observations: [4, 9, 21] }] });
     expect(geometry.labels.filter((label) => label.id.startsWith('obs:small:') && !label.hidden).map((label) => label.text).sort()).toEqual(['21.0', '4.0', '9.0']);

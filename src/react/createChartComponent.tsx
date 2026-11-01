@@ -8,6 +8,7 @@ import { localeStrings } from '../core/strings/createChartComponent';
 import { memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactElement, type ReactNode } from 'react';
 import type { InteractionRecord } from '../core/a11y/types';
 import { BoardplotThemeContext } from './themeContext';
+import { drawnRequest } from '../core/drawnRequest';
 import type { ChartRequest, RequestOptions } from '../core/request';
 import type { Annotation } from '../core/types/annotations';
 import type { Id } from '../core/types/cell';
@@ -394,7 +395,7 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
     const draw = (shown: RenderGeometry) => {
       const view = !footer ? shown : shown === footer ? footless! : withoutSvgFooter(shown, asDrawn);
       return surface
-        ? <DrawnSurface geometry={view} request={request} prepared={attached} hover={hover} table={table} responsive={!fixedSize && (!scrolls || fitted)} styleNonce={styleNonce} extraCss={footer ? FOOTER_PRINT_CSS : ''} onSeriesClick={onSeriesClick} onRecordClick={onRecordClick} renderHoverContent={renderHoverContent} />
+        ? <DrawnSurface geometry={view} request={drawnRequest(request, view)} prepared={attached} hover={hover} table={table} responsive={!fixedSize && (!scrolls || fitted)} styleNonce={styleNonce} extraCss={footer ? FOOTER_PRINT_CSS : ''} onSeriesClick={onSeriesClick} onRecordClick={onRecordClick} renderHoverContent={renderHoverContent} />
         : <DrawnScene geometry={view} theme={theme} responsive={!fixedSize && (!scrolls || fitted)} onSeriesClick={onSeriesClick} />;
     };
     const drawn = geometry;
