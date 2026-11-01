@@ -9,7 +9,7 @@ import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { labelCtx, PRIORITY, seatLeader, solveLabels, type LabelRequest, type SolveCtx } from '../../label/solver';
 import { accessibleTitle, NormalizeError, resolveSize } from '../../normalize/shared';
-import { defaultMeasurer, wrapText, type FontSpec } from '../../text';
+import { defaultMeasurer, wrapNameText, wrapText, type FontSpec } from '../../text';
 import { emphasisWeight, headingWeight, resolveSurface, strokeToken, canvasMargin, paintColor, panelTypeClass } from '../../theme';
 import type {
   DiagramData,
@@ -203,13 +203,16 @@ function layoutDiagramPass(
   );
   const presetContext = { data, options, plot, sizes: nodeSizes, lineHeight, u,
     palette: diagramPalette, measure, font: labelFont, titleFont: axisFont, headFont };
+  // A canvas height the host gave (a size with a height) is a limit; an open height grows to the content instead.
+  const fixedHeight = (rawOptions as TargetSizeOptions)[TARGET_SIZE]?.fixed.height
+    ?? (typeof rawOptions.size === 'object' && rawOptions.size.height !== undefined);
   // The compact org chart and issue tree lay out and route themselves.
   const org = architectureEligible(options) ? layoutArchitecture(data, options, plot, { name: stepFont, text: labelFont, title: laneFont }, measure, u, diagramPalette, theme, badgeSizes)
     : orgChartEligible(data, options) ? layoutOrgChart(data, plot, labelFont, measure, u)
     : issueTreeEligible(data, options) ? layoutIssueTreeCompact(data, plot, labelFont, measure, u, headingWeight(theme))
     : journeyEligible(data, options) ? layoutJourneyCompact(data, options, plot, labelFont, axisFont, measure, u, diagramPalette, headingWeight(theme))
     : linearEligible(data, options) ? layoutLinearCompact(data, plot, stepFont, badgeFont, captionFont, measure, u, badgeText,
-      size.width >= 720 ? 2 * stepFont.size : 0)
+      size.width >= 720 ? 2 * stepFont.size : 0, fixedHeight)
     : roadmapEligible(data, options) ? layoutRoadmapCompact(data, options, plot, labelFont, laneFont, measure, u, diagramPalette, theme) : undefined;
   // Refuse-less: every layout draws on a card under 480 px when it reads
   // there: no card or group text cut, no group frame over another. Otherwise it keeps the
@@ -231,7 +234,7 @@ function layoutDiagramPass(
         const rect = preset.nodeRects.get(node.id);
         if (!rect) continue;
         const width = Math.max(1, rect.w - 4 * u);
-        const lines = wrapText(node.label, presetFont(node) ?? labelFont, width, 3, measure).lines.length;
+        const lines = wrapNameText(node.label, presetFont(node) ?? labelFont, width, 3, measure).lines.length;
         const secondary = node.secondaryLabel ? wrapText(node.secondaryLabel, labelFont, width, 2, measure).lines.length * lineHeight + u : 0;
         const icon = Math.max(preset.contentTopReserves.get(node.id) ?? 0, node.icon || node.shape.kind === 'icon' ? Math.max(4.5 * u, 28) : 0);
         const height = lines * lineHeight + secondary + icon + 3 * u + (badgeSizes.get(node.id)?.height ?? 0);
@@ -377,7 +380,7 @@ function layoutDiagramPass(
     const icon = node.icon ?? (node.shape.kind === 'icon' ? node.shape.name : undefined);
     const room = rect.h - pill.height / 2 - 2.5 * u - Math.max(0, pill.height / 2 + u - 1.25 * u)
       - (preset.contentTopReserves.get(id) ?? (icon ? Math.min(rect.h * 0.42, 28) : 0));
-    const lines = fitText(node.label, presetFont(node) ?? labelFont, Math.max(1, rect.w - 4 * u), 3, measure, { target: options.target, typeRole: 'label' }).lines.length;
+    const lines = fitText(node.label, presetFont(node) ?? labelFont, Math.max(1, rect.w - 4 * u), 3, measure, { target: options.target, typeRole: 'label', hyphenRetry: true }).lines.length;
     if (room + 0.5 < lines * lineHeight) badgeFlush.add(id);
     else preset.nodeRects.set(id, qRect({ ...rect, y: rect.y + pill.height / 2, h: rect.h - pill.height / 2 }));
   }
@@ -789,7 +792,7 @@ function addNodeLabels(
   const maxWidth = ring ? Math.max(Math.min(18 * u, plot.w / 4), ringWidth)
     : external ? Math.min(18 * u, plot.w / Math.max(2, options.variant === 'roadmap' ? 5 : 4))
     : resolved.contentRect.w;
-  const externalFit = { target: options.target, typeRole: 'label' as const,
+  const externalFit = { target: options.target, typeRole: 'label' as const, hyphenRetry: true,
     ...(external && !ring ? { wider: plot.w / (options.variant === 'roadmap' ? 5 : 4) } : {}) };
   const id = `node-label:${node.id}`;
   // A cycle step written "Name\nwhat it does" keeps its name above the detail.
@@ -849,7 +852,7 @@ function addNodeLabels(
       ...(block.title !== undefined ? { title: block.title } : {}),
       font,
       priority: PRIORITY.valueLine,
-      ...(ring === 'left' ? { align: 'end' as const } : ring === 'above' || ring === 'below' ? { align: 'middle' as const } : { align: 'start' as const }),
+      ...(ring === 'left' ? { align: 'end' as const } : ring === 'above' || ring === 'below' || !external && !start && !seat && block.lines.length > 1 ?{ align: 'middle' as const } : { align: 'start' as const }),
       candidates,
     };
   };

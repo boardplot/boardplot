@@ -19,7 +19,7 @@ import type { RenderTarget } from '../../types/options';
 import type { Id } from '../../types/cell';
 import type { GanttCell } from '../../types/data';
 import type { LintWarning, Paint } from '../../types/scene';
-import { GANTT_ROW_PITCH, MAX_COLS } from './domain';
+import { GANTT_ROW_PITCH, MAX_COLS, ganttItemPrintsName } from './domain';
 import { barSurfaces, cadenceRowPaint, milestonePaints } from './marks';
 import { badgeStrip, markerBand } from './events';
 import { LABEL_PAD, laneTop, MIN_ROW_H, NO_LANE, rowTextFloor, RULE_LABEL_GAP, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv, type GanttPaints, type MetadataColumns, type NormItem, type NormRow, type RowLabel, type RowNames } from './model';
@@ -85,8 +85,8 @@ function stackedLineWidth(env: GanttEnv, domain: GanttDomain, plotW: number): nu
     return nameW(row) + (cells.length ? gap.name + cells.reduce((sum, cell) => sum + cell.w, 0) + (cells.length - 1) * gap.cell : 0);
   })), stackedHeaders(env, domain.rows).reduce((sum, header) => sum + header.w, 0));
   if (lineW > plotW) return undefined;
-  const colCap = options.mode === 'compact' ? 30 : 90;
-  const columns = planMetadataColumns(domain.rows, options.colHeaders, 0, colCap, 0, 0, fonts.label, fonts.headerMajor, measure, options.target);
+  // Compact mode still counts the 30 px cap here: a plot that cuts a column stacks the cells on the name lines.
+  const columns = planMetadataColumns(domain.rows, options.colHeaders, 0, options.mode === 'compact' ? COMPACT_COLUMN_CAP : COLUMN_CAP, 0, 0, fonts.label, fonts.headerMajor, measure, options.target);
   const count = Math.min(MAX_COLS, Math.max(0, maxOf(domain.rows.map((row) => row.cols.length))));
   const tableTimeline = plotW - Math.max(0, maxOf(rows.map(nameW))) - 12
     - columns.colWs.reduce((sum, width) => sum + width, 0) - (columns.colWs.length ? 4 : 0);
@@ -203,6 +203,12 @@ function encodingKey(env: GanttEnv, domain: GanttDomain, paints: GanttPaints): L
       stroke: resolved.stroke.stroke, width: resolved.stroke.strokeWidth, key: 'diamond',
       separation: { fill: resolved.paint, backing: resolved.backing ?? { token: 'background' }, fallback: resolved.fallback } });
   }
+  // A diamond that carries its own name needs no key to say what it is. An authored legend position keeps the key.
+  const milestones = items.filter(it => it.kind === 'milestone');
+  const autoKey = env.options.legend === undefined || env.options.legend === 'auto';
+  if (autoKey && milestones.length > 0 && milestones.every(it => ganttItemPrintsName(it, env))) {
+    for (let i = keyed.length - 1; i >= 0; i--) if (keyed[i]!.id.startsWith('key:milestone')) keyed.splice(i, 1);
+  }
   const milestoneKeys = keyed.filter(item => item.id.startsWith('key:milestone'));
   if (milestoneKeys.length === 1) milestoneKeys[0]!.label = chartString(env.options, 'milestone');
   if (items.some((it) => it.kind === 'bracket' && !it.label)) {
@@ -212,7 +218,8 @@ function encodingKey(env: GanttEnv, domain: GanttDomain, paints: GanttPaints): L
   if (env.options.weekends && domain.granularity === 'weeks') {
     keyed.push({ id: 'key:weekend', label: chartString(env.options, 'weekend'), paint: { token: 'others', tint: Math.min(env.surface.rowTint, KEY_WASH_TINT) } });
   }
-  if (domain.todayDay !== null && env.options.elapsed !== false) {
+  // The today line prints its date, which says what the wash before it means.
+  if (domain.todayDay !== null && env.options.elapsed !== false && !(autoKey && env.labelOn('valueLine'))) {
     keyed.push({ id: 'key:elapsed', label: chartString(env.options, 'elapsedToday'), paint: { token: 'focus', tint: Math.min(env.surface.elapsedTint, KEY_WASH_TINT) } });
   }
   return keyed;
@@ -448,7 +455,30 @@ function stackedHeaderRequests(env: GanttEnv, headers: ReturnType<typeof stacked
   }).reverse();
 }
 
-const columnCap = (env: GanttEnv) => (env.options.mode === 'compact' ? 30 : 90);
+
+/** The widest a metadata cell draws before it is cut. */
+const COLUMN_CAP = 90;
+/** The cap of compact mode on a plot too narrow to give the timeline half its width. */
+const COMPACT_COLUMN_CAP = 30;
+
+/**
+ * Both modes keep the full cap while the timeline keeps at least half the
+ * plot beside the names and the columns: a tight height
+ * removes no column that only needs width, and a narrow plot gives the same
+ * drawing in either mode. On a narrower plot the columns go.
+ */
+function columnCap(env: GanttEnv, rows: readonly NormRow[], plotW: number): number {  const { fonts, measure } = env;
+  const colWs = planMetadataColumns(rows, env.options.colHeaders, 0, COLUMN_CAP, 0, 0, fonts.label, fonts.headerMajor, measure, env.options.target).colWs;
+  if (colWs.length === 0) return COLUMN_CAP;
+  const named = rows.filter(row => !row.shared);
+  const fontOf = (r: NormRow): FontSpec => (r.indent === 0 ? fonts.strong : fonts.label);
+  const narrowest = maxOf(named.map(row => nameBandW(completeRowName(row, fontOf(row), measure, fonts.label))));
+  const natural = maxOf(named.map(row => Math.min(row.indent, 6) * INDENT_PX
+    + Math.max(measure(row.label, fontOf(row)).width, row.sublabel ? measure(row.sublabel, fonts.label).width : 0)));
+  const names = Math.max(narrowest, Math.min(natural, plotW * 0.3));
+  const timeline = plotW - names - 12 - colWs.reduce((sum, width) => sum + width, 0) - 4;
+  return timeline >= STACKED_TIMELINE_SHARE * plotW ? COLUMN_CAP : COMPACT_COLUMN_CAP;
+}
 
 /** The name band holds the wider of the name and its sublabel, which is never wrapped or cut. */
 const nameBandW = (name: RowLabel) => name.indentPx + Math.max(name.w, name.sub?.w ?? 0);
@@ -458,7 +488,7 @@ function rowNames(env: GanttEnv, domain: GanttDomain, plotW: number, stacked: bo
   const { fonts, measure } = env;
   const { rows, milestones } = domain;
   const measuredColumns = planMetadataColumns(
-    rows, env.options.colHeaders, 0, columnCap(env), headerTop, headerH, fonts.label, fonts.headerMajor, measure, env.options.target,
+    rows, env.options.colHeaders, 0, columnCap(env, rows, plotW), headerTop, headerH, fonts.label, fonts.headerMajor, measure, env.options.target,
   ).colWs;
   const rowFontOf = (r: NormRow): FontSpec => (r.indent === 0 ? fonts.strong : fonts.label);
   const completeNames = rows.map(row => completeRowName(row, rowFontOf(row), measure, fonts.label));
@@ -493,9 +523,8 @@ export function ganttBody(
   const { fonts, measure } = env;
   const { rows, milestones, d0Day, d1Day } = domain;
   const plot0 = frame.plot;
-  const colCap = columnCap(env);
   const planColumns = (startX: number) => planMetadataColumns(
-    rows, env.options.colHeaders, startX, colCap, band.headerTop, band.headerH, fonts.label, fonts.headerMajor, measure, env.options.target,
+    rows, env.options.colHeaders, startX, columnCap(env, rows, plot0.w), band.headerTop, band.headerH, fonts.label, fonts.headerMajor, measure, env.options.target,
   );
   const laneLabelW = milestones.laneLabelW;
   const { rowLabels, minimumLabelBandW } = band.names ?? rowNames(env, domain, plot0.w, band.stacked, band.headerTop, band.headerH);

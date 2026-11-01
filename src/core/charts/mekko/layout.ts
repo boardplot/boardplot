@@ -394,7 +394,9 @@ function layoutMekkoPass(
     lightInk: env.theme.color.inkInverse,
     labelPad: 2,
   };
-  solveCtx.valueRows = [{ ids: domain.cats.map(category => `total:${category.id}`), alternate: true }];
+  // The totals of a percent mekko sit on one line above equal-height columns, so one that fails thins the whole row.
+  // Bar and unit column tops form a staircase: each total keeps its own seat and only one without a seat drops.
+  if (domain.mode === 'percent') solveCtx.valueRows = [{ ids: domain.cats.map(category => `total:${category.id}`), alternate: true }];
   const solved = solveLabels(requests, occupied, solveCtx);
   applyValueAxisTitleInk(solved.placed);
   pushAll(warnings, solved.warnings);
