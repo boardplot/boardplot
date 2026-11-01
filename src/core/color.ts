@@ -211,6 +211,31 @@ export function pickOnFillInk(
   return contrastRatio(fill, extreme) > contrastRatio(fill, ink) ? extreme : ink;
 }
 
+/** True when any fill of a matrix needs the dark on-fill ink to reach the contrast floor. Decided once per matrix. */
+export function matrixNeedsDarkInk(
+  grounds: readonly string[], primaryInk: string, secondaryInk: string,
+  inks: readonly [string, string] = [ON_FILL_INK, ON_FILL_LIGHT_INK],
+): boolean {
+  return grounds.some((ground) => pickOnFillInk(ground, primaryInk, secondaryInk, inks) === inks[0] && pickInk(ground, primaryInk, secondaryInk) !== inks[0]);
+}
+
+/**
+ * pickOnFillInk for one value of a matrix of fills. Where the ink for this fill is dark, and
+ * any fill of the matrix needs the dark on-fill ink (`rescued`, from matrixNeedsDarkInk), this value takes it too,
+ * so the dark values of one matrix share one ink. A light ink, and a fill that the dark on-fill ink reads worse on, stay as picked.
+ */
+export function pickMatrixInk(
+  fill: string, rescued: boolean, primaryInk: string, secondaryInk: string,
+  inks: readonly [string, string] = [ON_FILL_INK, ON_FILL_LIGHT_INK],
+): string {
+  const ink = pickOnFillInk(fill, primaryInk, secondaryInk, inks);
+  const dark = inks[0];
+  const rgb = parseColor(fill);
+  const inkRgb = parseColor(ink);
+  if (ink === dark || !rgb || !inkRgb || relativeLuminance(inkRgb) > relativeLuminance(rgb)) return ink;
+  return rescued && contrastRatio(fill, dark) >= contrastRatio(fill, ink) ? dark : ink;
+}
+
 /** Mix a color toward a background by `amount` (0..1) — used for de-emphasis. */
 export function tint(color: string, amount: number, background = '#ffffff'): string {
   return mixColors(color, background, 1 - amount);

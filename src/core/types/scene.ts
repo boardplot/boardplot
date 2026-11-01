@@ -272,6 +272,12 @@ export type ThemePaintSource =
       pattern?: HatchPattern | 'outline';
       /** Further grounds the text also lies on (a shading's mix over an area fill): the ink that reads best on the worst of them. */
       also?: Paint[];
+      /**
+       * Every fill of the matrix this value belongs to. The ink is chosen per matrix: when any of
+       * these fills needs the dark on-fill ink, every dark value of the matrix takes it, so the
+       * values print in one dark ink and white, not in the theme ink and a near-black beside it.
+       */
+      matrix?: Paint[];
     };
 
 export type Paint =
