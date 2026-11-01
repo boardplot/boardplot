@@ -157,6 +157,28 @@ describe('histogram binning arithmetic', () => {
     const large = layoutHistogram({ observations: observations.map((value) => value + 100000000001) }, { bins: { width: 1 } });
     expect(large.derived.binLabels.map((label) => label.replace(/\D/g, ''))).toEqual(['100000000001', '100000000002', '100000000003', '100000000004', '100000000005']);
   });
+
+  // Prevents fractional bins on whole numbers: bins: 20 over 1 to 13 drew width 0.6 with empty comb slots between the days.
+  it('moves the fractional width of a bin count onto a whole number and warns with the width', () => {
+    const days = [1, 2, 2, 3, 3, 3, 5, 8, 13];
+    const perDay = layoutHistogram({ observations: days }, { bins: 20 });
+    expect(perDay.derived.binning.edges).toEqual(Array.from({ length: 14 }, (_, i) => i + 0.5));
+    expect(perDay.derived.binning.perValue).toBe(true);
+    expect(perDay.warnings.find((w) => w.code === 'histogram-bin-width-whole')?.message).toContain('bins of 0.6');
+    // 200 to 2352 over 5 bins gives 430.4; the whole width 431 keeps five bins and no value falls between two edges.
+    const wide = layoutHistogram({ observations: [200, 300, 900, 1500, 2352] }, { bins: 5 });
+    expect(wide.derived.binning.width).toBe(431);
+    expect(wide.derived.counts).toEqual([2, 1, 0, 1, 1]);
+    // A count that already gives a whole width, and fractional data, keep the exact count.
+    expect(layoutHistogram({ observations: [0, 5, 7, 10] }, { bins: 5 }).derived.binning.edges).toEqual([0, 2, 4, 6, 8, 10]);
+    expect(layoutHistogram({ observations: [0, 0.5, 0.75, 1] }, { bins: 5 }).derived.binning.width).toBe(0.2);
+  });
+
+  // Prevents a refusal main does not make: above 2^52 the half-integer edges of width 1 collapse, so the next whole width draws.
+  it('skips width 1 when its centred whole-number edges are not representable', () => {
+    const big = [4503599627370496, 4503599627370497, 4503599627370504, 4503599627370505];
+    expect(layoutHistogram({ observations: big }, { bins: 8 }).derived.binning.width).toBe(2);
+  });
 });
 
 describe('histogram open last bin', () => {
@@ -399,7 +421,7 @@ describe('histogram disclosures', () => {
   });
 
   it('draws an authored bin count exactly, from the smallest to the largest observation ', () => {
-    const observations = ramp(100, 1, 3);
+    const observations = ramp(100, 1, 3.5);
     const geometry = layoutHistogram({ observations }, { ...SLIDE, bins: 7, methodNote: true });
     expect(geometry.warnings.some((entry) => entry.code === 'histogram-bin-count-adjusted')).toBe(false);
     expect(geometry.derived.counts).toHaveLength(7);
@@ -538,6 +560,8 @@ describe('histogram geometry and determinism', () => {
 describe('histogram: the two axes carry different quantities', () => {
   /** A EUR sample whose counts are large enough to be mistaken for money. */
   const money = ramp(200, 40, 1000);
+  // Not whole numbers, so an authored count keeps its exact fractional width.
+  const halfUnits = ramp(200, 40, 1000.5);
 
   it('never renders a count in the measure format', () => {
     const geometry = layoutHistogram({ observations: money }, { ...SLIDE, format: '€1.234', bins: 8 });
@@ -580,7 +604,7 @@ describe('histogram: the two axes carry different quantities', () => {
 
   it('states a bin width the bin edges can actually be rebuilt from', () => {
     // width 497.5: at the edge column's precision the note must not say "498".
-    const geometry = layoutHistogram({ observations: money }, { ...SLIDE, bins: 16, methodNote: true });
+    const geometry = layoutHistogram({ observations: halfUnits }, { ...SLIDE, bins: 16, methodNote: true });
     const { width, anchor, edges } = geometry.derived.binning;
     expect(width).toBe(497.5);
     const note = notes(geometry);
@@ -598,7 +622,7 @@ describe('histogram: the two axes carry different quantities', () => {
   });
 
   it('says so when the width cannot be printed exactly, instead of certifying it', () => {
-    const geometry = layoutHistogram({ observations: money }, { ...SLIDE, bins: 3, methodNote: true });
+    const geometry = layoutHistogram({ observations: halfUnits }, { ...SLIDE, bins: 3, methodNote: true });
     const note = notes(geometry);
     expect(geometry.derived.binning.width).toBe(2653.33333333);
     // One decimal past the edges, not six digits of float.

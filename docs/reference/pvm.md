@@ -72,6 +72,7 @@ One form; its chart ID is `pvm`.
 | interaction | string | `'in-price'`, `'separate'` | `'in-price'` | Where the price x volume interaction is booked: 'in-price' reads price at current volumes and absorbs it; 'separate' splits it into a Laspeyres price bar plus an explicit joint bar. |
 | volumeMix | string | `'split'`, `'combined'` | `'split'` | 'split' (default) draws Volume and Mix separately; the boundary between them depends on the counting unit, which methodNote: true states on the exhibit. 'combined' draws one 'Volume & mix' bar and the decomposition is then unit-invariant. |
 | methodNote | boolean |  |  | Default false. true adds the short convention ("volume and mix at prior prices") to the one footer line, which joins the coverage note ("Covers the 4 items in both periods") while items enter or leave the book; the coverage part prints regardless. Where Volume and Mix nearly cancel (their sum under a tenth of the larger) the convention and the counting unit print without it, since the split between them then carries the story. The long method notes are in derived, and join the notes list when notes is set. |
+| netChange | boolean |  | `true` | Default true. Prints the net change from the opening to the closing total, absolute and in percent, in its sign colour above the closing column. false leaves the closing column with its value only. |
 
 Plus the [shared options](options.md). This type does not accept `detailFields`, `labels`, `categoryLabels`, `valueAxis.show`, `valueAxis.min`, `valueAxis.max`, `valueAxis.tickStep`, `valueAxis.includeZero`, `valueAxis.percent`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.gridlines`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `topN`, `hatchStrength`, `colorblindSafe`, `rounding`.
 
@@ -108,6 +109,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | revenue-bridge-method-note | example | The revenue bridge with the method notes printed |
 | revenue-bridge-notes-listed | example | The revenue bridge on a slide with its method notes in the notes list |
 | named-periods-and-ranges | torture | PVM names each period and entry or exit range |
+| revenue-bridge-no-net-change | example | The revenue bridge without the net change over the closing column |
 
 ## Not for
 

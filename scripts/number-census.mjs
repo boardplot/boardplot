@@ -298,6 +298,8 @@ export function censusCase(type, fixture, width, localeName, measured) {
   for (const label of geometry.labels ?? []) {
     // Event labels name events and their dates; they print no value of the owner.
     if (label.hidden || NOT_VALUES.has(label.kind) || !label.owner || label.id.startsWith('event:')) continue;
+    // The pvm net change is the difference of two totals, not a value of its owner column: its claim (below) checks it.
+    if (label.claimId === 'pvm:delta') continue;
     const text = textById.get(label.nodeId ?? `label:${label.id}`) ?? label.text;
     if (!text) continue;
     addPrinted(label.owner, label.id, text, [`kind:${label.kind}:${label.owner.seriesId ?? ''}`]);
