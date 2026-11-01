@@ -222,6 +222,18 @@ describe('value integrity on the chart', () => {
     expect(texts('mekko', { ...data, series: [{ id: 'v', values: [1200.4, 14] }] }, { format: '1,234' })).toContain('1,200');
   });
 
+  // A few narrow bar-mekko columns made the value row go all, alternate, then none, so a slide with twelve columns printed no value at all.
+  it('a bar mekko keeps the value of every column that has a seat', () => {
+    const widths = [58.5, 20.57, 9.951, 6.47, 8.079, 47.97, 27.21, 10.79, 72.21, 10.48, 86.2, 21.05];
+    const margins = [12.7, 14.9, 9.72, 14.6, -2.2, 0.377, 14.3, 1.11, 0.879, 13.1, 9.46, 2.73];
+    const data = {
+      categories: widths.map((_, i) => ({ id: `c${i}`, label: `Segment ${i + 1}` })),
+      series: [{ id: 'w', role: 'reference', values: widths }, { id: 'm', values: margins.map((pct) => ({ pct })) }],
+    };
+    const printed = new Set(texts('mekko', data, { variant: 'bar', widthSeriesId: 'w', unit: '%', size: { width: 888, height: 396 } }));
+    expect(['13%', '15%', '14%', '9%', '3%'].filter((v) => printed.has(v)).length).toBeGreaterThanOrEqual(4);
+  });
+
   // A centered funnel and a bar Rest built from percent cells still printed bare numbers ("70", "30") after the main paths kept their '%'.
   it('a centered funnel and a bar Rest of percent cells keep their percent sign', () => {
     const data = { categories: [{ id: 'B' }, { id: 'A' }], series: [{ id: 'v', values: [{ pct: 30 }, { pct: 70 }] }] };

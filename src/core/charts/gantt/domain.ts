@@ -312,10 +312,20 @@ function requiredClusterRowHeight(groups: readonly (readonly { rowIndex: number;
   })));
 }
 
+/** The parts an item label prints: the selected content, or the name (and for a milestone its date) by default. */
+const itemLabelParts = (item: NormItem, env: GanttEnv) => {
+  const content = env.options.labels === false ? undefined : env.options.labels?.item;
+  return Array.isArray(content) ? content : item.kind === 'milestone' ? ['category', 'absolute'] : ['category'];
+};
+
+/** Whether the item label prints the item's authored name (labels.item may select only its date). */
+export const ganttItemPrintsName = (item: NormItem, env: GanttEnv): boolean =>
+  env.labelOn('item') && itemLabelParts(item, env).includes('category') && !!item.label?.trim();
+
 /** Category is the authored name; absolute/value is the resolved date or date range. */
 export function ganttItemLabel(item: NormItem, env: GanttEnv): { text: string; missing: string[] } {
-  const content = env.options.labels === false ? undefined : env.options.labels?.item;
-  const parts = Array.isArray(content) ? content : item.kind === 'milestone' ? ['category', 'absolute'] : ['category'];
+  const parts = itemLabelParts(item, env);
+  const selected = Array.isArray(env.options.labels === false ? undefined : env.options.labels?.item);
   const date = (day: number) => formatDate(dateFromDay(day), 'd MMM', env.lang);
   const missing: string[] = [];
   const texts = parts.map(part => {
@@ -323,7 +333,7 @@ export function ganttItemLabel(item: NormItem, env: GanttEnv): { text: string; m
       : part === 'absolute' || part === 'value' ? item.kind === 'milestone' || item.endDay - item.startDay === 1
         ? date(item.startDay) : `${date(item.startDay)} – ${date(item.endDay - 1)}`
       : undefined;
-    if (!text?.trim() && Array.isArray(content)) missing.push(part);
+    if (!text?.trim() && selected) missing.push(part);
     return text?.trim();
   });
   return { text: texts.filter(Boolean).join(' · '), missing };

@@ -390,6 +390,23 @@ export function wrapText(
 }
 
 /**
+ * A name wrapped at spaces. A name that this would cut is wrapped again with
+ * breaks after `_ - / .`, and that result wins when it needs no cut.
+ */
+export function wrapNameText(
+  text: string,
+  font: FontSpec,
+  maxWidth: number,
+  maxLines = 2,
+  measure: TextMeasurer = measureText,
+): { lines: string[]; truncated: boolean } {
+  const plain = wrapText(text, font, maxWidth, maxLines, measure);
+  if (!plain.truncated) return plain;
+  const marked = wrapText(text, font, maxWidth, maxLines, measure, true);
+  return marked.truncated ? plain : marked;
+}
+
+/**
  * The words `wrapText` breaks between. Keeps non-breaking spaces inside a
  * token (note entries and number groups), and a BOM, which JavaScript counts
  * as white space but draws as a zero-width no-break character.
