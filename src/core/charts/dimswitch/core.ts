@@ -4,7 +4,7 @@ import { CARD_MIN_WIDTH, chartSizing, heightOmitted, isWidthProbe, WIDTH_PROBE }
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { cardHeightFloor, classFloor, layoutKey, layoutTable, memoLayout, REGULAR_SPACING, type TableMarks } from '../table/layout';
 import { resolveTable } from '../table/resolve';
-import { compileDimSwitch, dimSwitchTableWarnings, dimswitchRowId, type DimSwitchForm } from './compile';
+import { compileDimSwitch, dimSwitchTableWarnings, dimswitchRowId, FOLDED, type DimSwitchForm } from './compile';
 import type { DimSwitchData, DimSwitchOptions, DimSwitchDerived } from './types';
 import { minOf } from '../../arrays';
 
@@ -213,7 +213,7 @@ function foldToFit(data: DimSwitchData, options: DimSwitchOptions, formsOf: (fol
   let last=first;
   for (const fold of folds) {
     const collapsed=fold.total ? [...(options.expansion?.collapsed ?? []),total] : options.expansion?.collapsed;
-    const step={...options,depth:fold.depth,...(collapsed ? {expansion:{...options.expansion,collapsed}} : {})};
+    const step={...options,[FOLDED]:true,depth:fold.depth,...(collapsed ? {expansion:{...options.expansion,collapsed}} : {})};
     const drawn=layoutDimSwitch(data,step,formsOf(`${fold.depth}:${fold.total}`));
     if (!drawn.refused && !missesHeight(drawn)) {
       const size=`${Math.round(first.size.width)} × ${Math.round(first.size.height)} px`;

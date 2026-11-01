@@ -17,6 +17,9 @@ import { emptyIdRecord } from '../../idRecords';
 
 const key = (...parts: string[]) => JSON.stringify(parts);
 
+/** Set by the fold to fit a fixed height: the table is drawn at this depth only, so its columns settle on the rows it draws. */
+export const FOLDED = Symbol('dimswitchFolded');
+
 /** The caller edits dimswitch widths, not the columns made by this compiler. */
 export function dimSwitchTableWarnings(warnings: readonly LintWarning[]): LintWarning[] {
   return warnings.map(warning => {
@@ -678,12 +681,6 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
       for (const bar of siblings) bar.row.cells![col]=withBar(bar.row.cells![col]!,bar.value/max);
     }
   }
-  // One decimal count per column of relative changes; whole only where every change rounds to 0 or to 5 % or more.
-  for (const [,inCol] of byCol(relativeChanges)) {
-    const entries=inCol.filter(entry=>entry.cell!==null && typeof entry.cell==='object' && typeof entry.cell.v==='number');
-    const format=formatAutomaticPercent(1.2,entries.some(entry=>entry.rounded>0 && entry.rounded<5) ? 1 : 0,true);
-    for (const entry of entries) (entry.cell as {format?:string}).format=format;
-  }
   const parents=new Set(rows.filter(r=>!r.inline && r.parentId).map(r=>r.parentId!));
   for (const id of Object.keys(levels)) if (!parents.has(id)) delete levels[id];
   const maxDepth=Math.max(1,maxOf(Object.values(levels)));
@@ -696,6 +693,25 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   }
   for (const id of options.expansion?.expanded ?? []) collapsed.delete(id);
   for (const id of options.expansion?.collapsed ?? []) collapsed.add(id);
+  // One decimal count per column of relative changes; whole only where every change rounds to 0 or to 5 % or more.
+  // A folded table is a fixed frame: its columns settle on the rows it draws, not on rows the fold hides.
+  const drawn=(options as {[FOLDED]?:boolean})[FOLDED] === true ? (() => {
+    const byId=new Map(rows.map(row=>[row.id,row])), rowOf=new Map<object,TableRow>();
+    for (const row of rows) for (const cell of Object.values(row.cells ?? {})) if (cell!==null && typeof cell==='object') rowOf.set(cell,row);
+    return (cell:object) => {
+      let row=rowOf.get(cell);
+      // A change line prints with its measure row, whether or not that row has hidden children.
+      if (row?.inline && row.parentId!==undefined) row=byId.get(row.parentId);
+      for (let id=row?.parentId; id!==undefined; id=byId.get(id)?.parentId) if (collapsed.has(id)) return false;
+      return true;
+    };
+  })() : () => true;
+  for (const [,inCol] of byCol(relativeChanges)) {
+    const entries=inCol.filter(entry=>entry.cell!==null && typeof entry.cell==='object' && typeof entry.cell.v==='number');
+    const shown=entries.filter(entry=>drawn(entry.cell as object));
+    const format=formatAutomaticPercent(1.2,(shown.length>0 ? shown : entries).some(entry=>entry.rounded>0 && entry.rounded<5) ? 1 : 0,true);
+    for (const entry of entries) (entry.cell as {format?:string}).format=format;
+  }
   const {variant:_v,depth:_d,splits:_sp,order:_o,show:_sh,thresholds:_t,minimumSample:_m,expansion:_e,widths,...tableOptions}=options;
   // A cohort density is a fixed one-line row and a dimswitch cell holds two lines: it is retired here and ignored (retired.ts).
   if ((tableOptions.density as string | undefined)?.startsWith('cohort')) delete tableOptions.density;

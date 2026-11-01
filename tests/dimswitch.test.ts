@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { withNumberMarks } from '../src/core/numberMarks';
 import '../src/core/charts';
-import { compileDimSwitch, dimswitchRowId } from '../src/core/charts/dimswitch/compile';
+import { compileDimSwitch, dimswitchRowId, FOLDED } from '../src/core/charts/dimswitch/compile';
 import { resolveDimSwitch, dimswitchCore } from '../src/core/charts/dimswitch/core';
 import { exampleData } from '../src/core/charts/dimswitch/example';
 import { dimswitchDataSchema } from '../src/core/charts/dimswitch/schema';
@@ -385,4 +385,15 @@ it('draws the deepest depth that fits a fixed height and warns with the folded d
   expect(folded(byMember)?.message).toContain('with the Total folded');
   const total = (byMember.derived as unknown as DimSwitchDerived).table.rows.find(r => r.id === dimswitchRowId('by-member', 'total'))!;
   expect(total.cells.range).toMatchObject({ displayed: expect.stringMatching(/\d/) });
+});
+
+// A fold hides the rows below its depth, yet their small changes kept one decimal on every change figure of the column ("+130.0%" beside "+4.4%").
+it('settles the decimals of a folded table on the rows it draws', () => {
+  // The total's prior halves in orders, revenue and spend, so every change the fold draws is far above 5 %; the members stay small.
+  const halved = (sums: DimSwitchSums | undefined) => sums && { ...sums, orders: sums.orders! / 2, rev: sums.rev! / 2, spend: sums.spend! / 2 };
+  const data = { ...exampleData, facts: exampleData.facts.map(fact => fact.memberId === 'total' && fact.periodId === 'prior' ? { ...fact, sums: halved(fact.sums)! } : fact) };
+  const formatOf = (folded: boolean) => (compileDimSwitch(data, { variant: 'by-measure', depth: 1, ...(folded ? { [FOLDED]: true } : {}) } as never).data.rows
+    .find(r => r.id === dimswitchRowId('by-measure', 'total', 'orders'))!.cells!.pp as { format: string }).format;
+  expect(formatOf(false)).toBe('+1.2%');
+  expect(formatOf(true)).not.toContain('.');
 });
