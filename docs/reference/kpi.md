@@ -109,6 +109,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | attainment-bad-column-spark | torture | Attainment chip in the bad tone over a monthly column spark |
 | compact-spark-floor | torture | Compact card keeps its sparkline readable |
 | neutral-change | example | A change without a favorable direction |
+| slot-natural-sizes | example | A card in a fixed slot that keeps its natural sizes at the top |
 | value-bands | example | The band that holds the value colours the main value; the comparison keeps its own tone |
 
 ## Not for

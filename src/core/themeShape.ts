@@ -142,7 +142,7 @@ export const THEME_SHAPE: ShapeNode = object({
     nodeStroke: optOneOf('axis', 'grid', 'leader', 'ink', 'inkMuted'), nodeStrokeWidth: optNum(0, 3),
     restOutline: flag, areaFromOrigin: flag, barLabels: optOneOf('auto', 'outside'), comboColumnTint: optNum(0, 1),
     comboLine: optOneOf('series', 'ink'), sparkEnd: optOneOf('dot', 'ring'), sparkEndLabel: flag,
-    sliceOutline: flag, othersOutline: flag, contrastEdge: flag, nodeFill: optOneOf('role', 'panel'), kpiCaret: flag,
+    sliceOutline: flag, othersOutline: flag, contrastEdge: flag, nodeFill: optOneOf('role', 'panel'), kpiCaret: flag, kpiSlotFill: flag,
     bridge: optOneOf('neutral', 'sign'), funnelFill: optOneOf('status', 'ramp'), statusFill: optOneOf('quiet', 'full'),
     bulletBandFill: optOneOf('light', 'full'),
   })),
