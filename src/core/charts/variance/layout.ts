@@ -437,7 +437,7 @@ export function layoutVariance(
   const capIsShortfall = (ci: number): boolean => {
     const ac = acArr[ci], ref = refArr[ci];
     return theme.surface?.shortfallCap !== 'solid' && ac !== null && ac !== undefined && ref !== null && ref !== undefined
-      && (ac >= 0 ? ref > ac : ref < ac);
+      && (ac > 0 ? ref > ac : ac < 0 ? ref < ac : ref !== 0);
   };
   /**
    * The integrated actual column's paint, in column's order (paints.ts): the
@@ -1092,7 +1092,7 @@ export function layoutVariance(
       const acEdgeY = above ? acTop : acBot;
       // The label anchors to the actual edge, including when the cap covers
       // that edge.
-      const insideCap = capRect !== null && ref !== null && (above ? ref < ac : ref > ac);
+      const insideCap = capRect !== null && ref !== null && !capIsShortfall(ci) && (above ? ref < ac : ref > ac);
       const insidePaint = insideCap
         ? capTone === 'neutral' ? mutedMarkPaint() : tonePaint(capTone, undefined, true)
         : actualPaint(mv.fill);
