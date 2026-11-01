@@ -96,6 +96,17 @@ function withSuffixFloor(widths: { minWidth: number; naturalWidth: number }, wid
   return short > 0 ? { ...widths, minWidth: Math.max(widths.minWidth, width + Math.ceil(short / GUTTER_MAX_SHARE)) } : widths;
 }
 
+/** One step of the value text ladder: decimals taken off the automatic precision, and the % sign left off. */
+interface ValueCut { decimals: number; sign: boolean }
+const NO_CUT: ValueCut = { decimals: 0, sign: false };
+
+/** The fewest decimals at which the values of a range still fall on at least ten distinct steps. */
+function readableDecimals(range: number): number {
+  let d = 0;
+  while (d < 6 && range * 10 ** d < 10) d++;
+  return d;
+}
+
 interface NormRow {
   id: Id;
   label: string;
@@ -333,9 +344,14 @@ export function layoutHeatmap(
   // "12.4"; no nonzero value rounds to 0.
   const rasterSpec = defaultFormatSpec(options.locale?.language);
   const decimals = rasterDecimals(allValues, rasterSpec);
+  // The value text shrinks in steps when a cell has no room for it (see fitValueCut):
+  // the step is read by shownFor, never by the hover text.
+  let cut = NO_CUT;
+  const dataValueSet = new Set(allValues);
+  const automaticFmt = (v: number, off = 0) => formatAutomaticNumber(v, { locale: options.locale?.language, decimals: defaultNumberDecimals(v, nonzeroDecimals(v, decimals - off), options.unit, options.target) });
   const fmt = options.format
     ? formatterFromExample(options.format, options.locale?.language, undefined, allValues)
-    : (v: number) => formatAutomaticNumber(v, { locale: options.locale?.language, decimals: defaultNumberDecimals(v, nonzeroDecimals(v, decimals), options.unit, options.target) });
+    : (v: number) => automaticFmt(v);
   const formats = seriesRasterFormatter(options.format, allValues, options.locale?.language, options.unit, options.target);
   const vMax = allValues.length > 0 ? maxOf(allValues) : 0;
   const vMin = allValues.length > 0 ? minOf(allValues) : 0;
@@ -345,6 +361,8 @@ export function layoutHeatmap(
   // full at the larger magnitude, or at the authored cap (table heat's cap,
   // in points on a matrix of percent cells).
   const pctMatrix = allValues.length > 0 && rows.every((r) => r.cells.every((c) => c.v === null || c.pct));
+  // A % sign may be left off a cell only where the unit line names the percent.
+  const percentNamedByUnit = options.unit?.includes('%') === true;
   const cap = scale === 'continuous' ? pctMatrix ? options.cap?.pct : options.cap?.abs : undefined;
   const valenceSpan = cap ?? Math.max(posMax, -negMin);
   const rowMeans: Record<Id, number | null> = emptyIdRecord();
@@ -484,7 +502,7 @@ export function layoutHeatmap(
   const keyHigh = cap === undefined ? vMax : Math.max(valence ? -cap : 0, Math.min(cap, vMax));
   const keyText = (v: number) => {
     const saturated = cap !== undefined && ((v === keyHigh && vMax > cap) || (v === keyLow && vMin < -cap));
-    const value = saturated && Number.isInteger(v) && !pctMatrix && !options.format && !keySeries?.format ? formatAutomaticNumber(v, { locale: options.locale?.language, decimals: 0 }) : displayFor(v, pctMatrix, null, keySeries);
+    const value = saturated && Number.isInteger(v) && !pctMatrix && !options.format && !keySeries?.format ? formatAutomaticNumber(v, { locale: options.locale?.language, decimals: 0 }) : shownFor(v, pctMatrix, null, keySeries);
     return `${cap !== undefined && v === keyHigh && vMax > cap ? '>=' : cap !== undefined && v === keyLow && vMin < -cap ? '<=' : ''}${value}`;
   };
 
@@ -641,7 +659,7 @@ export function layoutHeatmap(
     const value = row?.cells[ci]?.v ?? colMeans[cols[ci]?.id ?? ''] ?? 0;
     let body = 'text' in a ? a.text ?? '${value}' : '${value}';
     // A cell value that fits is already printed; the callout omits its duplicate too.
-    if (cellLabelsOn && row && (plot0.w - rowBandW - ROW_BAND_GAP) / cols.length > measure(displayFor(value, pctMatrix, null, row), labelFont).width + 6) {
+    if (cellLabelsOn && row && (plot0.w - rowBandW - ROW_BAND_GAP) / cols.length > measure(shownFor(value, pctMatrix, null, row), labelFont).width + 6) {
       body = body.replace(/:\s*\n\$\{value\}$/, '');
     }
     const glyphRoom = ('icon' in a && a.icon) || ('status' in a && a.status) ? 29 : 0;
@@ -929,6 +947,29 @@ export function layoutHeatmap(
   // A styled value matrix row is 22 px on a card under 480 px and
   // 26 px under 720 px (28 wider), never less than a value line or its name needs.
   const rowFloor = valueStyle && size.width < 720 ? (size.width < 480 ? VALUE_ROW_CARD : VALUE_ROW_NARROW) : valueStyle && size.width >= 960 ? VALUE_ROW_WIDE : 28;
+  // The value text steps down before any value is hidden. The matrix prints one text for
+  // every cell and the key: first without the % sign the unit line names, then with one
+  // decimal fewer, down to the precision that still tells the range's values apart. The first
+  // step at which every value fits at the label floor wins. A column that holds one value in
+  // every cell (a cohort's first period) may stay blank. When no step fits, the full text stays and
+  // the cells without room are hidden as before, so no matrix prints only part of its numbers
+  // because of the step. Only an engine-chosen text steps down.
+  if (cellLabelsOn && !bubble) {
+    const hasPct = percentNamedByUnit && rows.some((r) => r.cells.some((c) => c.pct && c.v !== null));
+    const stepsOfDecimals = !options.format && rows.some((r) => !r.format && !r.unit && r.cells.some((c) => c.v !== null && !c.meta?.format))
+      ? Math.max(0, decimals - Math.min(decimals, readableDecimals(vMax - vMin))) : 0;
+    const steps: ValueCut[] = [...(hasPct ? [{ decimals: 0, sign: true }] : [])];
+    for (let off = 1; off <= stepsOfDecimals; off++) steps.push({ decimals: off, sign: hasPct });
+    const floorFont = { ...labelFont, size: readerFloorPx(options.target ?? DEFAULT_TARGET, 'label', textScaleOf(options)) };
+    const constantCol = cols.map((_, ci) => {
+      const held = rows.flatMap((r) => r.cells[ci]!.v ?? []);
+      return held.length >= 2 && held.every((v) => v === held[0]);
+    });
+    const allFit = () => rows.every((r) => measureRowLabels(r.cells, (v, pct, meta) => textFor(v, pct, meta, r), floorFont, measure, cellW, Infinity, 4)
+      .every((value, ci) => value === null || value.fits || constantCol[ci]));
+    cut = NO_CUT;
+    if (steps.length > 0 && !allFit()) cut = steps.find((step) => { cut = step; return allFit(); }) ?? NO_CUT;
+  }
   // A value matrix whose columns hold no value even at the label floor reads from colour
   // alone, so its rows need no value line.
   const valueLineH = valueStyle && cellLabelsOn && !rows.some((r) => measureRowLabels(r.cells, (v, pct, meta) => textFor(v, pct, meta, r),
@@ -1620,7 +1661,7 @@ export function layoutHeatmap(
   /** One hidden value as the note and the reading name it: "Iberia Aug −3.1". */
   function hiddenItem(h: { r: NormRow; c: NormCol; v: number }): string {
     const cell = h.r.cells[cols.indexOf(h.c)]!;
-    return `${h.r.label} ${h.c.label} ${textFor(h.v, cell.pct, cell.meta, h.r) ?? displayFor(h.v, cell.pct, cell.meta, h.r)}`;
+    return `${h.r.label} ${h.c.label} ${textFor(h.v, cell.pct, cell.meta, h.r, false) ?? displayFor(h.v, cell.pct, cell.meta, h.r)}`;
   }
 
   /**
@@ -1719,7 +1760,7 @@ export function layoutHeatmap(
     const pale = (paint: Paint) => (('tint' in paint && (paint.tint ?? 0) >= 0.8) || ('token' in paint && paint.token === 'background')
       ? { stroke: { token: 'neutralMark' } as Paint } : {});
     const item = (id: string, label: string, paint: Paint): LegendItemInput => ({ id: `scale:${id}`, label, paint, ...pale(paint) });
-    const keyFormat = (value: number) => displayFor(value, pctMatrix, null, keySeries);
+    const keyFormat = (value: number) => shownFor(value, pctMatrix, null, keySeries);
     if (bins) {
       return bins.slice(1).map((hi, i) => item(String(i), numberRange(keyFormat(bins[i]!), keyFormat(hi)), binPaint(i, true, rows[0]?.direction)));
     }
@@ -1829,7 +1870,7 @@ export function layoutHeatmap(
     const colorLabel = options.bubble?.colorLabel;
     const ink: Paint = { token: 'inkMuted' };
     const textW = (t: string) => measure(t, keyFont).width;
-    const keyFormat = (value: number) => displayFor(value, pctMatrix, null, keySeries);
+    const keyFormat = (value: number) => shownFor(value, pctMatrix, null, keySeries);
     const direction = rows[0]?.direction;
     // '30–50%': a percent range names its unit once.
     const range = (lo: number, hi: number) => {
@@ -1933,7 +1974,7 @@ export function layoutHeatmap(
     const edges = bins ?? [0, 1, 2, 3, 4, 5].map((k) => vMin + ((vMax - vMin) * k) / 5);
     const span = edges.at(-1)! - edges[0]! || 1;
     const shown = bins ?? [vMin, vMax];
-    const edgeText = shown.map((v) => displayFor(v, pctMatrix, null, keySeries));
+    const edgeText = shown.map((v) => shownFor(v, pctMatrix, null, keySeries));
     const barW = Math.max(120, Math.min(200, cellW * 3));
     const colorW = Math.max(barW + measure(edgeText[0]!, keyFont).width / 2 + measure(edgeText.at(-1)!, keyFont).width / 2, colorLabel ? measure(colorLabel, titleFont).width : 0);
     const lowR = 6;
@@ -1984,20 +2025,38 @@ export function layoutHeatmap(
     return out;
   }
 
-  function textFor(v: number, pct: boolean, meta: CellMeta | null, series?: NormRow): string | null {
+  /** The text a cell prints: the full text, cut by the step that fits the matrix (`cut`). */
+  function textFor(v: number, pct: boolean, meta: CellMeta | null, series?: NormRow, shown = true): string | null {
     if (meta?.label === false) return null;
-    const base = displayFor(v, pct, meta, series);
+    const base = displayFor(v, pct, meta, series, shown ? cut : NO_CUT);
     return typeof meta?.label === 'string' ? meta.label.replace(/\$\{value\}/g, base) : base;
   }
 
-  function displayFor(v: number, pct: boolean, meta: CellMeta | null, series?: NormRow): string {
-    if (meta?.format) return (meta as CellMeta & AutomaticFormatSource)[AUTOMATIC_FORMAT]
-      ? formatNonzeroWithSpec(v, { ...exampleSpec(meta.format, options.locale?.language), automatic: true })
-      : formatterFromExample(meta.format, options.locale?.language)(v);
-    const format = series?.format || series?.unit ? formats.forSeries(series) : fmt;
-    const text = format(v);
+  /**
+   * A value as the key prints it: the same cut as the cells. A key stop that is no cell value
+   * keeps the decimals it needs ("+2.5" stays, it never reads "+3"); a stop that is a cell value
+   * prints what its cell prints.
+   */
+  function shownFor(v: number, pct: boolean, meta: CellMeta | null, series?: NormRow): string {
+    if (cut.decimals === 0 || dataValueSet.has(v)) return displayFor(v, pct, meta, series, cut);
+    for (let off = cut.decimals; off > 0; off--) {
+      if (Math.abs(Number(v.toFixed(Math.max(0, decimals - off))) - v) < 1e-9 * Math.max(1, Math.abs(v))) return displayFor(v, pct, meta, series, { ...cut, decimals: off });
+    }
+    return displayFor(v, pct, meta, series, { decimals: 0, sign: cut.sign });
+  }
+
+  /** The full text of a value (hover card, reading): never cut. */
+  function displayFor(v: number, pct: boolean, meta: CellMeta | null, series?: NormRow, step: ValueCut = NO_CUT): string {
+    // Only an engine-chosen text is cut: an authored format and a series format print as written.
+    if (meta?.format) {
+      if (!(meta as CellMeta & AutomaticFormatSource)[AUTOMATIC_FORMAT]) return formatterFromExample(meta.format, options.locale?.language)(v);
+      const spec = { ...exampleSpec(meta.format, options.locale?.language), automatic: true };
+      return formatNonzeroWithSpec(v, step.sign && percentNamedByUnit && specUnitKind(spec) === 'percent' ? { ...spec, suffix: spec.suffix.replace('%', '') } : spec);
+    }
+    const own = series?.format || series?.unit;
+    const text = own ? formats.forSeries(series)(v) : options.format ? fmt(v) : automaticFmt(v, step.decimals);
     const example = series?.format ?? options.format;
-    return pct && (!example || specUnitKind(parseFormatExample(example)) === 'number') ? `${text}%` : text;
+    return pct && (!example || specUnitKind(parseFormatExample(example)) === 'number') && !(step.sign && percentNamedByUnit) ? `${text}%` : text;
   }
 }
 

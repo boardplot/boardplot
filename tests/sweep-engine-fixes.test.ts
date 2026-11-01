@@ -550,4 +550,42 @@ describe('chart layout edge cases', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect(canDraw(request as any)).toMatchObject({ ok: true });
   });
+
+  // A fixed 28 px row floor refused a 12-row board on a full slide, where a row name needs about 24 px.
+  it('a 12-row status board draws on a full slide', () => {
+    const ids = Array.from({ length: 12 }, (_, i) => String(i + 1));
+    const request = {
+      type: 'status',
+      data: {
+        rows: ids.map((id) => ({ id: `r${id}`, label: `Workstream ${id}` })),
+        columns: ids.map((id) => ({ id: `c${id}`, label: `Week ${id}` })),
+        cells: ids.flatMap((r) => ids.map((c) => ({ row: `r${r}`, col: `c${c}`, state: (Number(r) + Number(c)) % 3 ? 'g' : 'r' }))),
+      },
+      options: { title: 'Delivery status', states: [{ id: 'g', label: 'On track', tone: 'good' }, { id: 'r', label: 'Off track', tone: 'bad' }], target: 'slide', size: { width: 888, height: 396, unit: 'pt' } },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(canDraw(request as any)).toMatchObject({ ok: true });
+  });
+
+  // The pyramid charged every row a full line box for names and values, so a 21-band pyramid
+  // was refused on a full slide. A pinned row now charges the ink of its text and steps its type once.
+  it('a 21-band pyramid draws every label on a full slide', () => {
+    const bands = Array.from({ length: 21 }, (_, i) => ({ id: `b${i}`, from: i * 5, to: i * 5 + 5, label: `${i * 5}-${i * 5 + 4}` }));
+    const request = {
+      type: 'pyramid',
+      data: {
+        bands,
+        groups: [
+          { id: 'a', label: 'Men', values: bands.map((_, i) => 1000 + i * 20) },
+          { id: 'b', label: 'Women', values: bands.map((_, i) => 1500 + i * 30) },
+        ],
+      },
+      options: { title: 'Structure by band', target: 'slide', size: { width: 888, height: 396, unit: 'pt' } },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(canDraw(request as any)).toMatchObject({ ok: true });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+    expect(geometry.labels.filter((l: { hidden?: unknown }) => l.hidden !== undefined)).toEqual([]);
+  });
 });
