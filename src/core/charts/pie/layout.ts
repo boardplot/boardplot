@@ -29,6 +29,7 @@ import { roundWholes, type RoundingAdjustment } from '../../shareRounding';
 import { seriesRasterFormatter, formatterFromExample, parseFormatExample, shareFormatExample } from '../../formatSpec';
 import { cleanFloat, round2, type Point, type Rect, type Size } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
+import { fitText } from '../../label/fitText';
 import { markOutlineOff, namesOnly, separationStroke, sliceOutlineOff } from '../../markVisibility';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { stepDownFont } from '../../label/rowFit';
@@ -80,7 +81,7 @@ import type {
 import { AUTO_LEGEND } from '../../legendPolicy';
 import { contentSizing } from '../../sizing';
 import { pieLabelContent, pieCenterLines } from './labels';
-import { labelAngle, placeRing, RING_GAP, type RingItem } from './ring';
+import { labelAngle, placeColumns, placeRing, RING_GAP, type RingItem } from './ring';
 import { composedTextRole } from '../../textRole';
 import { maxOf, pushAll } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
@@ -148,6 +149,9 @@ const CENTER_TEXT_MIN = 0.35;
 const COLUMN_GAP_RATIO = 0.036;
 const COLUMN_GAP_MIN = 8;
 const COLUMN_GAP_MAX = 36;
+/** A name line in a label column takes this share of the plot width, and up to the widest share when two lines do not hold the name. */
+const COLUMN_NAME_SHARE = 0.3;
+const COLUMN_NAME_WIDEST = 0.4;
 /** Smallest natural canvas height of a pie whose labels all sit in columns: the pie floor in sizing.ts. */
 const MIN_COLUMN_HEIGHT = 320;
 /** Separator between the value and the share on one outside label line. */
@@ -554,7 +558,13 @@ function layoutPiePass(
   const columns = insideContent === null && outsideContent !== null;
   const shownSlices = slices.filter((slice) => (slice.v ?? 0) > 0);
   const preShares = sharesFormatter(shownSlices.map((slice) => ((slice.v ?? 0) / total) * 100));
-  const preLines = (slice: Slice): string[] => outsideLines(outsideContent ?? [], slice.cat.label ?? slice.cat.id, sliceText({ v: slice.v ?? 0, format: slice.format }), preShares.format(((slice.v ?? 0) / total) * 100), ser.label ?? sid);
+  // A name wraps to a label column before the reserve is measured, so a long name does not take the room
+  // the circle needs: up to two lines in the narrowest column that holds them, between COLUMN_NAME_SHARE
+  // and COLUMN_NAME_WIDEST of the plot width. A name that still does not fit is cut.
+  const plotEstimate = Math.max(0, size.width - margin.left - margin.right);
+  const columnName = (name: string) => fitText(name, labelFont, COLUMN_NAME_SHARE * plotEstimate, 2, measure, { wider: COLUMN_NAME_WIDEST * plotEstimate });
+  const wrappedName = (name: string): string => columns ? columnName(name).lines.join('\n') : name;
+  const preLines = (slice: Slice): string[] => outsideLines(outsideContent ?? [], wrappedName(slice.cat.label ?? slice.cat.id), sliceText({ v: slice.v ?? 0, format: slice.format }), preShares.format(((slice.v ?? 0) / total) * 100), ser.label ?? sid);
   // Each label column's height and widest line, from the slices' angles
   // (they do not depend on the radius); index 0 is the right side.
   const column = (() => {
@@ -872,7 +882,7 @@ function layoutPiePass(
     const blockOf = (inside: boolean) => {
       const content = inside ? insideContent! : outsideContent;
       if (!content) return undefined;
-      const { parts, title } = composeParts(g, content, inside ? undefined : roomBeside(g));
+      const { parts, title } = composeParts(g, content, inside ? undefined : columns ? Math.min(roomBeside(g), columnName(g.cat.label ?? g.cat.id).w + 1) : roomBeside(g));
       const lines = typeof g.labelOverride === 'string' ? [applyOverride(g, parts.join(' '))] : parts;
       const w = Math.max(...lines.map((l) => measure(l, labelFont).width), 1);
       return { lines, title, w, h: lineH * Math.max(lines.length, 1) };
@@ -971,6 +981,16 @@ function layoutPiePass(
     };
     // The ring may shrink the pie for its labels, but not below the radius whose hole holds the total.
     let placed = seatAll(Math.max(PIE_MIN_RADIUS, 0.7 * r, centerR));
+    // Labels that all sit in columns by their reserve take two true columns beside the circle when the
+    // ring leaves a label without a seat. The ring keeps every pie it seats whole.
+    if (columns && (dropped.size > 0 || [...placed.seats.values()].some((s) => s.bad))) {
+      const outsideOnly = sliceLabels.filter((sl) => !sl.insideEligible);
+      const stacked = placeColumns(outsideOnly.map(itemOf), r, cx, baseFit, columnGap(plot.w), plot);
+      if (stacked.bad.size === 0) {
+        dropped.clear();
+        placed = { ring: stacked, seats: new Map(outsideOnly.map((sl, k) => [sl, { seat: stacked.seats[k]!, form: 0, bad: false }] as const)) };
+      }
+    }
     if (placed.ring.r < r) {
       r = placed.ring.r;
       ri = r * hole;

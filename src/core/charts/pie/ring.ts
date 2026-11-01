@@ -136,6 +136,13 @@ function seatRing(items: RingItem[], form: number[], r: number, ring: number, pl
     }
     if (!crowded) break;
   }
+  const bad = badSeats(items, seats, r, plot);
+  return { r, form: [...form], seats, bad };
+}
+
+/** The items whose seat leaves the plot, overlaps another label, or whose leader cuts a slice, a leader or a label. */
+function badSeats(items: RingItem[], seats: RingSeat[], r: number, plot: Rect): Set<number> {
+  const n = items.length;
   const bad = new Set<number>();
   const ends = seats.map((seat) => seat.to);
   for (let i = 0; i < n; i++) {
@@ -149,7 +156,7 @@ function seatRing(items: RingItem[], form: number[], r: number, ring: number, pl
     }
     for (let j = 0; j < n; j++) if (j !== i && segmentHitsRect(from, ends[i]!, seats[j]!.rect)) bad.add(i);
   }
-  return { r, form: [...form], seats, bad };
+  return bad;
 }
 
 const norm = (deg: number) => ((deg % 360) + 360) % 360;
@@ -207,4 +214,31 @@ export function placeRing(items: RingItem[], r0: number, plot: Rect, minRadius: 
     }
   }
   return best!;
+}
+
+/**
+ * Seat the labels in two columns beside the circle, one on each side, each
+ * label at the height of its slice's label anchor and pushed along the column
+ * until none overlaps. A leader runs straight from the slice's rim to the
+ * label's near edge. `edge` is the circle's outer extent, `gap` the room
+ * between it and a column; the left column is set flush right against it.
+ */
+export function placeColumns(items: RingItem[], r: number, cx: number, edge: number, gap: number, plot: Rect): RingResult {
+  const seats: RingSeat[] = new Array(items.length);
+  for (const right of [true, false]) {
+    const side = items.map((_, i) => i).filter((i) => (norm(items[i]!.mid) < 180) === right);
+    const desired = side.map((i) => polar(items[i]!.center(r), r + RING_GAP, items[i]!.mid).y);
+    const order = side.map((_, k) => k).sort((a, b) => desired[a]! - desired[b]! || a - b);
+    const heights = order.map((k) => items[side[k]!]!.forms[0]!.h);
+    const spread = spread1DResult(order.map((k, j) => ({ desired: desired[k]!, size: heights[j]! + LABEL_GAP })), [plot.y, plot.y + plot.h], 0);
+    order.forEach((k, j) => {
+      const i = side[k]!;
+      const item = items[i]!;
+      const { w, h } = item.forms[0]!;
+      const rect = { x: right ? cx + edge + gap : cx - edge - gap - w, y: spread.positions[j]! - h / 2, w, h };
+      const from = polar(item.center(r), r + 1, item.mid);
+      seats[i] = { rect, from, to: nearestOnRect(rect, from, LEADER_GUTTER), angle: item.mid };
+    });
+  }
+  return { r, form: items.map(() => 0), seats, bad: badSeats(items, seats, r, plot) };
 }
