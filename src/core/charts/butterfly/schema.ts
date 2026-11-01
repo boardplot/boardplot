@@ -50,5 +50,6 @@ export const butterflyOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOp
   b: idSchema.describe("Series id displayed in the right pane."),
   centerColumnWidth: z.number().positive().optional().describe("Width in pixels reserved between the panes for category labels; omission uses their measured width."),
   sortBy: z.enum(['sheet', 'a', 'b', 'sum', 'diff']).optional().describe("Row order: sheet by default, or descending a, b, sum a+b, or difference b-a."),
+  diffColumn: z.boolean().optional().describe("A right-aligned column of each row's difference, second series minus first, signed, under a bold delta head. Default true with sortBy 'diff', else false. A highlighted row prints bold. The panes give the column its width at one scale; it stays off below 576 px canvas width."),
   sharedScale: z.boolean().optional().describe("Use the same value scale on both sides by default. False gives independent scales and warns that lengths are not comparable."),
 }) as unknown as z.ZodType<ButterflyOptions>;

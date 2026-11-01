@@ -86,6 +86,7 @@ export const fixtures: Fixture<RangeChartData, DotOptions>[] = [
       unit: '% of units',
       source: 'Illustrative sell-through panel, FY2019 and FY2024',
       sort: { categories: 'desc' },
+      gapColumn: true,
     },
     annotations: [
       // median of the 2024 values (12.1, 18.3, 19.8, 21.7, 22.4, 27.9)

@@ -894,6 +894,12 @@ export interface ButterflyOptions extends BaseOptionsFor<'butterfly'> {
   b: Id;
   centerColumnWidth?: number;
   sortBy?: 'sheet' | 'a' | 'b' | 'sum' | 'diff';
+  /**
+   * A right-aligned column of each row's difference (b minus a), signed, under
+   * a bold delta head. Default true with sortBy 'diff', else false. A
+   * highlighted row prints bold; the column stays off below 576 px canvas width.
+   */
+  diffColumn?: boolean;
   sharedScale?: boolean; // default true
 }
 export interface WaterfallOptions extends BaseOptionsFor<'waterfall'> {
@@ -1404,6 +1410,12 @@ export interface DotOptions extends BaseOptionsFor<'dot'> {
    * declares `direction`, neutral otherwise.
    */
   arrow?: boolean;
+  /**
+   * Dumbbell only: the gap (second series minus first) per row, signed, in a
+   * column right of the plot under a head such as "Gap, pp". A highlighted row
+   * prints bold. Default false; the column stays off below 576 px canvas width.
+   */
+  gapColumn?: boolean;
   /** Default false. true adds the method note naming the mid-point tick inside a range, and draws the tick. */
   methodNote?: boolean;
   /**
@@ -1421,6 +1433,13 @@ export interface SlopeOptions extends BaseOptionsFor<'slope'> {
    * into 0.05. Highlighted series keep their own name whatever their share.
    */
   foldBelowShare?: number;
+  /**
+   * A column of each line's change, right of the second rail's labels, under a
+   * head such as "Change, pp". 'absolute' prints second minus first (points for
+   * percent values), 'relative' the percent change. The highlighted line prints
+   * bold. Default 'none'; the column stays off below 576 px canvas width.
+   */
+  change?: 'none' | 'absolute' | 'relative';
   /**
    * 'diverging' draws one panel per series: its values as the positive share
    * up from zero and its `negative` as the negative share down from zero, at

@@ -28,7 +28,9 @@ import { autoDecimals } from '../../formatPrecision';
 import { localeStrings } from '../../strings/dot';
 import { MARK_CONTRAST_FLOOR, palettePerceptualDistance } from '../../themeRules';
 import { hueSaturation } from '../../color';
-import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
+import { DEFAULT_TARGET, TARGET_SIZE, type TargetSizeOptions } from '../../target';
+import { asColumnHeads, columnHeadFont, fitHead, HEAD_PREFIX, headRequest } from '../bullet/columnHead';
+import { COLUMN_GAP, COLUMN_MIN_WIDTH, columnCellRequest, columnHeadText, columnWidth, differenceFormatter } from '../diffColumn';
 import { CONTENT_PLOT_HEIGHT, HARD_MINIMUM, type ContentPlotHeight } from '../../sizing';
 import { REFERENCE_LABEL_CLEARANCE } from '../../markVisibility';
 import { averageMarkerLine, averageMarkerScope } from '../band/stacks';
@@ -199,6 +201,15 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
       message: `options.arrow draws the change from the first to the second series of a dumbbell; variant '${variant}' has no pair, so it is ignored`,
       suggest: "set variant: 'dumbbell' with two series, or drop options.arrow",
       field: ['options', 'arrow'],
+    });
+  }
+  if (options.gapColumn && variant !== 'dumbbell') {
+    warnings.push({
+      code: 'gap-column-dumbbell-only',
+      severity: 'warn',
+      message: `options.gapColumn prints the gap between the two dots of a dumbbell; variant '${variant}' has no pair, so it is ignored`,
+      suggest: "set variant: 'dumbbell' with two series, or drop options.gapColumn",
+      field: ['options', 'gapColumn'],
     });
   }
   const highlights = new Set(resolveHighlight(options.highlight));
@@ -487,6 +498,18 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     [{ token: 'neutralMark' }, ...dataSeries.map((_, i) => themeSeriesPaint(i, paletteRamp ? options.palette : undefined))],
     theme).map(item => [item.id, item]));
 
+  // ---- gap column: second minus first per row, right of the plot, off on a card ----
+  const gapText = new Map<Id, string>();
+  if (options.gapColumn === true && gaps !== undefined && size.width >= COLUMN_MIN_WIDTH) {
+    const signedGap = differenceFormatter({ format: options.format, locale: options.locale?.language, decimals: valueSpec.spec.decimals, values: dataSeries.flatMap((s) => s.cells.map((cell) => cell.v)).filter((v): v is number => v !== null) });
+    for (const c of cats) if (gaps[c.id] !== undefined) gapText.set(c.id, signedGap(gaps[c.id]!));
+  }
+  const gapHead = gapText.size === 0 ? undefined : columnHeadText(chartString(options, 'gapHead'), percent);
+  const gapHeadFont = columnHeadFont(theme, options.target ?? DEFAULT_TARGET, textScaleOf(options));
+  const gapFont = (id: Id): FontSpec => (highlights.has(id) ? strongFont : labelFont);
+  const gapW = gapHead === undefined ? 0 : columnWidth(measure, [...gapText].map(([id, text]) => ({ text, font: gapFont(id) })), { text: gapHead, font: gapHeadFont });
+  const gapReserve = gapW > 0 ? gapW + COLUMN_GAP : 0;
+
   // ---- frame (title/subtitle/legend/source measured FIRST) ----
   const occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
   const margin = { ...canvasMargin(theme, size.width), ...options.margin };
@@ -570,7 +593,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   const valueBody: Rect = {
     x: plot0.x + catBandW + catGap,
     y: plot0.y + annPad,
-    w: Math.max(10, plot0.w - catBandW - catGap),
+    w: Math.max(10, plot0.w - catBandW - catGap - gapReserve),
     h: availH,
   };
 
@@ -731,6 +754,9 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   // ---- marks + label requests ----
   cats.forEach((cat, ci) => {
     const cy = band.position(ci) + band.bandwidth / 2 + headerH / 2;
+    if (gapText.has(cat.id)) {
+      labelRequests.push(columnCellRequest({ id: `gap:${cat.id}`, owner: { categoryId: cat.id }, text: gapText.get(cat.id)!, font: gapFont(cat.id), measure, right: plot0.x + plot0.w, cy }));
+    }
     const row: DotMarks['rows'][number] = { categoryId: cat.id, dots: [] };
     const rowSceneStart = nodes.length;
 
@@ -1163,6 +1189,12 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   }
 
   for (const seat of pointSeats) seat();
+  if (gapHead !== undefined) {
+    const head = fitHead(gapHead, gapHeadFont, gapW, measure, { target: options.target ?? DEFAULT_TARGET, textScale: textScaleOf(options) });
+    const first = band.position(0) + band.bandwidth / 2;
+    const headH = measure(head.lines[0]!, gapHeadFont).height;
+    labelRequests.push(headRequest('gap', 0, head, plot0.x + plot0.w, Math.min(valueBody.y - 2, first - labelFont.size * 0.6 - headH - 2), headH, false));
+  }
 
   // ---- solve labels ----
   const solveCtx: SolveCtx = labelCtx(theme, size, options, {
@@ -1191,7 +1223,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     nodes.splice(axisAt, 0, ...grid);
   }
   for (const label of solved.placed) {
-    if (label.kind !== 'point') continue;
+    if (label.kind !== 'point' || label.id.startsWith('gap:')) continue;
     // The bounds recede behind the own value; a value over a gridline reads on a halo.
     if (label.id.startsWith('rangeValue:') || mutedLabelIds.has(label.id)) label.ink = { token: 'inkMuted' };
     if (gridOn && axisShown) label.halo = true;
@@ -1223,7 +1255,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   // past the line, away from its dot; one that cannot reads on a halo. A
   // dumbbell value stays at its dot on the halo (above).
   for (const label of solved.placed) {
-    if (label.hidden || label.kind !== 'point') continue;
+    if (label.hidden || label.kind !== 'point' || label.id.startsWith('gap:')) continue;
     if (variant === 'dumbbell' && ownSideSeats.has(label.id)) {
       if (lineXs.some((lineX) => lineX > label.rect.x - LINE_CLEAR && lineX < label.rect.x + label.rect.w + LINE_CLEAR)) {
         label.halo = true;
@@ -1295,11 +1327,14 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     labelsToNodes(theme, allLabels, (l) =>
       l.kind === 'category'
         ? tickFont
+        : l.id.startsWith(HEAD_PREFIX) ? gapHeadFont
+        : l.id.startsWith('gap:') && gapText.has(l.owner.categoryId ?? '') ? gapFont(l.owner.categoryId!)
         : l.kind === 'annotation' || l.kind === 'valueLine' || boldLabelIds.has(l.id)
           ? strongFont
           : labelFont,
     ),
   );
+  asColumnHeads(nodes);
 
   const variantWord =
     variant === 'dumbbell' ? chartString(options, 'dumbbellName') : variant === 'lollipop' ? chartString(options, 'lollipopName') : chartString(options, 'clevelandName');

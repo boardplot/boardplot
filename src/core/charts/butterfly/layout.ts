@@ -12,10 +12,12 @@ import { structureCount } from '../../structureCounts';
 import { fitText, lineBox } from '../../label/fitText';
 import { fitColumn, fittedLabel, GUTTER_MAX_SHARE, stepDownFont } from '../../label/rowFit';
 import type { AnchorResolution } from '../../annotate';
-import { runAnnotatePass } from '../../annotatePass';
+import { percentLevels, runAnnotatePass } from '../../annotatePass';
+import { asColumnHeads, fitHead, HEAD_PREFIX, headRequest } from '../bullet/columnHead';
+import { COLUMN_GAP, COLUMN_MIN_WIDTH, columnCellRequest, columnHeadText, columnWidth, differenceFormatter } from '../diffColumn';
 import { marginBracketLayout } from '../../annotateLinks';
 import { memoFormatterFromExample, seriesRasterFormatter } from '../../formatSpec';
-import { clamp, deltaGap, type Rect } from '../../geometry';
+import { clamp, cleanDiff, deltaGap, type Rect } from '../../geometry';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelsToNodes } from '../../label/emit';
 import { isOthersFill, othersSeparation } from '../../markVisibility';
@@ -57,7 +59,7 @@ import {
   labelsOffKeepsNames,
 } from '../../theme';
 import type { AnchorRef } from '../../types/annotations';
-import { cellMeta, cellValue, type CellMeta, type Id, type Scenario } from '../../types/cell';
+import { cellMeta, cellValue, isPctCell, type CellMeta, type Id, type Scenario } from '../../types/cell';
 import { warnMissingValue } from '../../dataGaps';
 import type { ChartData, Series } from '../../types/data';
 import type { ButterflyOptions, LegendOptions, RenderTarget } from '../../types/options';
@@ -370,6 +372,21 @@ export function layoutButterfly(
     return v === false;
   };
 
+  // ---- difference column: b minus a per row, right of the second pane ----
+  // On by default when the rows are sorted by that difference: the order then shows its reason.
+  // Off for a pyramid, on a card, and across two units, where a difference means nothing.
+  const diffText = new Map<Id, string>();
+  if ((opts.diffColumn ?? sortBy === 'diff') && redesign && !conflict && size.width >= COLUMN_MIN_WIDTH) {
+    const raster = seriesRasterFormatter(opts.format, [...aCells, ...bCells].map(cellValue), opts.locale?.language, opts.unit, opts.target);
+    const signed = differenceFormatter({ format: opts.format, locale: opts.locale?.language, decimals: raster.spec.decimals, values: [...aCells, ...bCells].flatMap((cell) => cellValue(cell) ?? []) });
+    for (const r of rows) if (r.a !== null && r.b !== null) diffText.set(r.id, signed(cleanDiff(r.b, r.a)));
+  }
+  const diffHead = diffText.size === 0 ? undefined
+    : columnHeadText('Δ', opts.unit?.startsWith('%') === true || percentLevels([sA, sB].map((s, k) => ({ vals: (k === 0 ? aCells : bCells).map((cell) => ({ v: cellValue(cell), isPct: isPctCell(cell) })), format: s.format, unit: s.unit })), opts.format, opts.unit));
+  const diffFont = (id: Id): FontSpec => (highlights.has(id) ? strongFont : labelFont);
+  const diffW = diffHead === undefined ? 0 : columnWidth(measure, [...diffText].map(([id, text]) => ({ text, font: diffFont(id) })), { text: diffHead, font: strongFont });
+  const diffReserve = diffW > 0 ? diffW + COLUMN_GAP : 0;
+
   // ---- frame ----
   const occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
   const margin = { ...canvasMargin(theme, size.width), ...opts.margin };
@@ -394,7 +411,9 @@ export function layoutButterfly(
     },
     occupied,
   );
-  const plot = frameResult.plot;
+  // The panes give the column its width; the column stands at the frame's right edge.
+  const plot = diffReserve > 0 ? { ...frameResult.plot, w: frameResult.plot.w - diffReserve } : frameResult.plot;
+  const diffRight = frameResult.plot.x + frameResult.plot.w;
   fixedPlotChrome(frameResult);
 
   // ---- center column + panes ----
@@ -690,6 +709,9 @@ export function layoutButterfly(
     const cy = rowY + rowH / 2;
     const endpoint = i === 0 || i === rows.length - 1;
     const rowHl = highlights.has(r.id);
+    if (diffText.has(r.id)) {
+      labelRequests.push(columnCellRequest({ id: `diff:${r.id}`, owner: { categoryId: r.id }, text: diffText.get(r.id)!, font: diffFont(r.id), measure, right: diffRight, cy }));
+    }
 
     for (const side of ['a', 'b'] as const) {
       const series = side === 'a' ? sA : sB;
@@ -863,6 +885,11 @@ export function layoutButterfly(
     });
   }
 
+  if (diffHead !== undefined) {
+    const head = fitHead(diffHead, strongFont, diffW, measure, { target: opts.target ?? DEFAULT_TARGET, textScale: textScaleOf(opts) });
+    labelRequests.push(headRequest('diff', 0, head, diffRight, plot.y, measure(head.lines[0]!, strongFont).height, false));
+  }
+
   // ---- solve labels ----
   const solveCtx: SolveCtx = labelCtx(theme, size, opts, {
     measure,
@@ -920,7 +947,7 @@ export function layoutButterfly(
   for (const m of marks.left) outerEdge.left = Math.min(outerEdge.left, m.rect.x);
   for (const m of marks.right) outerEdge.right = Math.max(outerEdge.right, m.rect.x + m.rect.w);
   for (const l of solved.placed) {
-    if (l.hidden || l.kind !== 'point') continue;
+    if (l.hidden || l.kind !== 'point' || l.id.startsWith('diff:')) continue;
     if (l.owner.seriesId === sA.id) outerEdge.left = Math.min(outerEdge.left, l.rect.x);
     else outerEdge.right = Math.max(outerEdge.right, l.rect.x + l.rect.w);
   }
@@ -1002,8 +1029,9 @@ export function layoutButterfly(
     ? leftMinimum + rightMinimum : 2 * Math.max(leftMinimum, rightMinimum));
   pushAll(nodes, annResult.nodes);
   pushAll(nodes, labelsToNodes(theme, allLabels, (l) =>
-      l.kind === 'series'
+      l.kind === 'series' || l.id.startsWith(HEAD_PREFIX)
         ? strongFont
+        : l.id.startsWith('diff:') && diffText.has(l.owner.categoryId ?? '') ? diffFont(l.owner.categoryId!)
         : l.kind === 'category'
           ? l.owner.categoryId && highlights.has(l.owner.categoryId)
             ? nameBold
@@ -1012,6 +1040,7 @@ export function layoutButterfly(
             ? { ...labelFont, weight: emphasisWeight(theme) }
             : l.kind === 'point' ? valueFont : labelFont, nodes,
     ));
+  asColumnHeads(nodes);
 
   // Each line of a centre name is centred in the column, not only the block.
   for (const label of allLabels) {
