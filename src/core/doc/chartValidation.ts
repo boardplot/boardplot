@@ -152,7 +152,7 @@ function parseChartInput(doc: BoardplotDoc, chart: DocChart, envelope: DocumentE
       // A key a strict object refuses is the same finding as a key a plain one strips.
       envelope.errors.push(chartSchemaDiagnostic(doc, chart, 'options', unknown ? { ...i, message: unknown.suggest } : i, chart.options ?? {}, unknown ? 'unknown-option' : 'invalid-options',
         unknown?.message ?? schemaIssueMessage(i, chart.options ?? {}, i.path as (string | number)[], def.optionsSchema as z.ZodType),
-        unknown?.suggest ?? issueSuggestion(i, def.type, true, i.path as (string | number)[])));
+        unknown?.suggest ?? withEventAtHint(chart, i, issueSuggestion(i, def.type, true, i.path as (string | number)[]))));
     }
     return null;
   }
@@ -179,7 +179,7 @@ function parseChartInput(doc: BoardplotDoc, chart: DocChart, envelope: DocumentE
     if (!annResult.success) {
       for (const i of flattenIssues(annResult.error.issues)) {
         envelope.errors.push(chartSchemaDiagnostic(doc, chart, 'annotations', i, chart.annotations, 'invalid-annotation', i.message,
-          concreteSuggestion(i, def.type)));
+          withEventAtHint(chart, i, concreteSuggestion(i, def.type))));
       }
       return null;
     }
@@ -453,6 +453,23 @@ function issueSuggestion(
   return concreteSuggestion(issue, type, optionPath) ?? (viaOptions
     ? `Check which options '${type}' takes and send one of those.`
     : `Take the shape from the '${type}' example and replace the values.`);
+}
+
+/**
+ * An event `date` that is no date, on a chart with category ids, is most
+ * likely a category id. `at` anchors an event to a category, so the fix names
+ * it and gives the first category as the example. A time axis has no
+ * category ids to anchor to.
+ */
+function withEventAtHint<T extends string | undefined>(chart: DocChart, issue: z.core.$ZodIssue, suggest: T): T | string {
+  if (issue.code !== 'custom' || issue.path.at(-1) !== 'date' || !issue.message.startsWith('event date must be')) return suggest;
+  const xAxis = chart.options?.xAxis;
+  if (isRecord(xAxis) && xAxis.type === 'time') return suggest;
+  const categories = isRecord(chart.data) ? chart.data.categories : undefined;
+  const first = Array.isArray(categories) ? categories[0] : undefined;
+  const id = typeof first === 'string' ? first : isRecord(first) ? first.id : undefined;
+  if (typeof id !== 'string' || id === '') return suggest;
+  return `${suggest ?? ''} To mark a category, use 'at' with its id in place of 'date', for example "at": ${JSON.stringify(id)}.`.trim();
 }
 
 /** The suggestion when the issue itself names the change, else undefined. */
