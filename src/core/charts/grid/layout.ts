@@ -1048,11 +1048,12 @@ function layoutAuthoredGrid(
     });
   }
 
-  const legendItems = collectGridLegendItems(rawPanels, options, measure);
+  const collectedLegend = collectGridLegendItems(rawPanels, options, measure);
+  const legendItems = collectedLegend.items;
   let legendInput: FrameInput['legend'];
   if (options.legend && options.legend !== 'none' && options.legend !== 'auto') {
     const legendOptions: LegendOptions = normalizeLegendOption(options.legend);
-    legendInput = gridLegendInput(legendItems, legendOptions, options, warnings);
+    legendInput = gridLegendInput(collectedLegend, legendOptions, options, warnings);
   }
 
   const occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
@@ -1529,7 +1530,7 @@ function layoutAuthoredChild(
           panels.filter((candidate) => allow.has(candidate.id)),
           parentOptions,
           measure,
-        )
+        ).items
       : allLegendItems;
     return {
       panel,
