@@ -52,12 +52,15 @@ const ATLANTIC_SERIES = ['#075A8E', '#55BEF7', '#2AB1A9', '#838CDA', '#208668', 
 // violet identities. OKLCH lightness is lifted or respaced only where the dark
 // surface needs it; every rank clears 3:1 on the surface and the 12/6/4
 // normal/protan-deutan/tritan pairwise floors with non-zero margin.
-const ATLANTIC_DARK_SERIES = ['#087397', '#55BEFB', '#25AAA2', '#828BD9', '#1E9240', '#A054C4'];
+// Rank 1 is the brightest blue (8.5:1 on the navy page), so the lead series reads strongest.
+const ATLANTIC_DARK_SERIES = ['#55BEFB', '#087397', '#25AAA2', '#828BD9', '#1E9240', '#A054C4'];
 
 // Five neutral ranks are the maximum honest notation dark ramp that can
 // keep adjacent OKLab distance above 12 while every rank stays >=3:1 on the
 // near-black surface. Scenario notation remains the primary discriminator.
-const NOTATION_DARK_SERIES = ['#606060', '#858585', '#ACACAC', '#D5D5D5', '#FFFFFF'];
+// Rank 1 reads strongest on the page (20:1); the ranks then alternate between
+// far greys, so neighbours sit 25 OKLab or more apart.
+const NOTATION_DARK_SERIES = ['#FFFFFF', '#858585', '#D5D5D5', '#606060', '#ACACAC'];
 const DARK_WARN = '#F2C14E';
 // The light presets' warn is a dark amber chosen to read as text (4.5:1 on the
 // page); as a cell or a bar it reads as olive. Their large warn fills take this
@@ -439,7 +442,7 @@ export const notationTheme: Theme = {
     badFill: '#E2564A',
     neutral: '#818181',
     // The marks that paint in the neutral (a scatter's neutral group, a
-    // butterfly's first side) sit 12 OKLab from the first series #6D6D6D;
+    // butterfly's first side) sit 12 OKLab from the series grey #6D6D6D;
     // the neutral itself stays the band and ladder ground.
     neutralMark: '#939393',
     neutralLight: '#D9D9D9',
@@ -459,10 +462,13 @@ export const notationTheme: Theme = {
     grid: '#E6E6E6',
     leader: '#A0A0A0',
     background: '#FFFFFF',
-    // Five greys is the most that keep 3:1 as marks and 12 OKLab apart (0.54,
-    // 0.29, 0.66, 0.41, 0.15 lightness); the six pale greys before sat 5 apart.
-    series: ['#6D6D6D', '#2A2A2A', '#939393', '#4A4A4A', '#0C0C0C'],
+    // Five greys is the most that keep 3:1 as marks and 12 OKLab apart (0.15,
+    // 0.54, 0.29, 0.66, 0.41 lightness); the six pale greys before sat 5 apart.
+    // Rank 1 reads strongest on the page, and neighbours sit 25 OKLab or more apart.
+    series: ['#0C0C0C', '#6D6D6D', '#2A2A2A', '#939393', '#4A4A4A'],
     seriesOverflow: 'repeatLast',
+    // Strongest on the page first, so the top of a tall stack never prints as one black block.
+    stack: ['#2A2A2A', '#818181', '#DADADA'],
     status: {
       advanced: '#818181',
       open: '#D5D5D5',
@@ -524,6 +530,8 @@ export const notationDarkTheme: Theme = {
     leader: '#777777',
     background: '#080808',
     series: [...NOTATION_DARK_SERIES],
+    // Strongest first, as on standard-dark; the quietest step sits 2.3:1 on the page.
+    stack: ['#D5D5D5', '#858585', '#4A4A4A'],
     warn: DARK_WARN,
     warnFill: DARK_WARN,
     status: {
@@ -552,7 +560,7 @@ export const notationDarkTheme: Theme = {
 export const roadshowFamilyThemes: Readonly<
   Record<'boardroom' | 'capital' | 'studio' | 'glass', Theme>
 > = Object.freeze({
-  boardroom: { ...(boardroomFamilyJson as Theme), table: tableFamily({ secondary: '#305B86', ruleInk: '#C3D3E3', barFill: '#D6E3F0' }) },
+  boardroom: { ...(boardroomFamilyJson as Theme), table: tableFamily({ secondary: '#5B6878', ruleInk: '#C3D3E3', barFill: '#D6E3F0' }) },
   capital: { ...(capitalFamilyJson as Theme), table: tableFamily() },
   studio: { ...(studioFamilyJson as Theme), table: tableFamily() },
   glass: { ...(glassFamilyJson as Theme), table: tableFamily() },
