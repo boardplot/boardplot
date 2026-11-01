@@ -887,10 +887,11 @@ function layoutWaterfallWithPad(
     const open = items[0]!;
     const close = items[items.length - 1]!;
     if (!categoryRow || cases.length > 0 || options.labels === false || items.length < 2 || open.type === 'delta' || close.type === 'delta') return undefined;
-    if ((options as { closingChange?: boolean }).closingChange !== true) return undefined;
-    const delta = totals[close.id]! - totals[open.id]!;
+    // The host passes the change computed from its data: the accumulated closing level carries rounding residue.
+    const given = (options as { closingChange?: { delta: number; base: number } }).closingChange;
+    if (given === undefined) return undefined;
+    const { delta, base } = given;
     if (!Number.isFinite(delta) || delta === 0) return undefined;
-    const base = totals[open.id]!;
     const change = fmtSigned(delta);
     const percent = base > 0 ? `(${changePercentText((delta / base) * 100, 1, options.locale?.language)})` : '';
     return { text: percent ? `${change} ${percent}` : change, lines: percent ? [change, percent] : [change], tone: stepTone(delta) };

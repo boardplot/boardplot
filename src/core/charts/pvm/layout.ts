@@ -178,7 +178,7 @@ export function layoutPvm(
   const hostOptions: WaterfallOptions = withAuthoredFootnotes({
     ...(keepShownNotes(options, pass) as WaterfallOptions),
     ...(options.palette === undefined ? { bridgeDefault: 'sign' } : {}),
-    ...(netChange !== false ? { closingChange: true } : {}),
+    ...(netChange !== false ? { closingChange: { delta: derived.delta, base: derived.priorRevenue } } : {}),
     ...(options.valueAxis?.break === undefined && baseSwampsSteps(derived)
       ? { valueAxis: { ...options.valueAxis, break: 'auto' as const } }
       : {}),
