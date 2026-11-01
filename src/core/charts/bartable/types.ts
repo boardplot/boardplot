@@ -102,6 +102,8 @@ export interface BarTableGrowth {
 interface BarTableCascade {
   /** A computed share column (row over panel total) beside each panel; default true. */
   share?: boolean;
+  /** Row groups only; default true. false: the Total bar keeps the theme total colour, even where it equals a group colour. */
+  totalApart?: boolean;
   growth?: BarTableGrowth;
 }
 

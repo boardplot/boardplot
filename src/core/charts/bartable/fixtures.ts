@@ -195,6 +195,16 @@ fixtures.push({
     size: { width: 900 },
   },
 });
+// Coverage: totalApart false keeps the theme's own Total colour, as before the Total was kept off the group colours.
+const cascadeTwo = fixtures.find((fixture) => fixture.id === 'cascade-two-periods')!;
+fixtures.push({
+  ...cascadeTwo,
+  id: 'cascade-two-periods-theme-total',
+  kind: 'example',
+  title: 'Share cascade over two periods with the Total bar in the theme total colour, even where it equals a group colour',
+  tags: ['coverage'],
+  options: { ...cascadeTwo.options!, cascade: { ...cascadeTwo.options!.cascade, totalApart: false } },
+});
 fixtures.push({
   id: 'cascade-four-years',
   title: 'Share cascade over four years: product-category revenue share with the share change in pp',

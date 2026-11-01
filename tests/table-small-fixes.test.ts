@@ -1444,6 +1444,10 @@ it('keys the rest rows, keeps the Total off the group colours and names compact 
     for (const color of segments) expect(swatchApart(total, color), `${name} Total against ${color}`).toBe(true);
     const keyText = geometry.scene.filter((node): node is TextNode => node.t === 'text').map((node) => node.lines.join(' '));
     expect(keyText).toContain('Rest rows');
+    // totalApart false brings back the old look: the theme's own Total colour.
+    const plain = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'bartable', data: groups.data, options: { ...groups.options, cascade: { ...groups.options!.cascade, totalApart: false } }, theme: name } as never)));
+    const plainTotal = plain.scene.find((node): node is Extract<SceneNode, { t: 'rect' }> => node.t === 'rect' && node.part === 'totalBar')!;
+    expect(resolvePaint(plainTotal.fill!, theme)).toBe(paintColor(theme, { token: 'total' }));
   }
   const years = fixture('cascade-four-years');
   const compact = layout('bartable', years.data, { ...years.options, mode: 'compact', size: { width: 1060 } });
@@ -1467,4 +1471,17 @@ it('cuts a long period name of a compact cascade so the bars keep their width', 
     expect(Math.min(...tracks.map((node) => node.rect.w)), `track width at ${width}`).toBeGreaterThan(60);
     for (const id of ['y22', 'y23', 'y24', 'y25']) expect(compact.scene.some((node) => node.t === 'text' && node.id === `label:head:${id}`), `${id} at ${width}`).toBe(true);
   }
+});
+
+// A compact cascade on one shared scale reserves room for the longest period name, so sizing.minWidth must include that room: at the width it names, the shortest track still reaches the track floor.
+it('keeps the track floor at the minWidth of a compact cascade with long period names', () => {
+  const years = getFixtures('bartable').find((f) => f.id === 'cascade-four-years')!;
+  const names = ['Fiscal year 2022 actual', 'FY23', 'Fiscal year 2024 forecast figures', '2025'];
+  const growth = [1, 1.44, 2.08, 3];
+  const data = { ...years.data, panels: years.data.panels.map((panel: { label: string; values: { rev: number[] } }, i: number) => ({ ...panel, label: names[i], values: { rev: panel.values.rev.map((v) => Math.round(v * growth[i]!)) } })) };
+  const options = { ...years.options, mode: 'compact' };
+  const minWidth = Math.ceil(layoutResolvedRequest(resolveChartRequest({ type: 'bartable', data, options: { ...options, size: { width: 900 } } } as never)).sizing!.minWidth);
+  const compact = layout('bartable', data, { ...options, size: { width: minWidth } });
+  const tracks = compact.scene.filter((node): node is Extract<SceneNode, { t: 'rect' }> => node.t === 'rect' && node.id.startsWith('track:'));
+  expect(Math.min(...tracks.map((node) => node.rect.w))).toBeGreaterThanOrEqual(56);
 });

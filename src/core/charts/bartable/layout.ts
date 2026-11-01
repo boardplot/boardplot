@@ -524,7 +524,7 @@ function layoutBarTableOnce(
   };
   const ranged = panels.some((entry) => entry.ranges.some(Boolean));
   // Beside a key of group colours the Total bar decides again in each theme, so it never reads as one of them (or the rest rows' grey).
-  const totalFill: Paint = groups.length > 0
+  const totalFill: Paint = groups.length > 0 && options.cascade?.totalApart !== false
     ? { ...markRolePaint('total', true), theme: { kind: 'total-apart', apartFrom: [...groupPaints, ...(data.categories.some((row) => row.residual) ? [RESIDUAL_FILL] : [])] } }
     : markRolePaint('total', true);
   // One segment and no range: the head names the measure and no key is due.
@@ -685,7 +685,8 @@ function layoutBarTableOnce(
   const shareColW = showShare ? SHARE_GAP + Math.max(0, maxOf(shareWs)) : 0;
   // Interleaved cascade: each period is named at the end of its track in the first row, so the run leaves room for the longest name.
   // A name wider than a third of the plot is cut, so one long name cannot squeeze the tracks of every panel.
-  const periodNameW = interleaved && cascade ? Math.min(maxOf(panels.map((entry) => width(entry.head, headFont))), plot.w / 3) + END_GAP : 0;
+  const periodNameFull = interleaved && cascade ? maxOf(panels.map((entry) => width(entry.head, headFont))) : 0;
+  const periodNameW = interleaved && cascade ? Math.min(periodNameFull, plot.w / 3) + END_GAP : 0;
   const interleavedRun = (p: number) => Math.max(0, cascade ? plot.w - growthW - shareColW - periodNameW : plot.w - endReserves[p]!);
   const interleavedK = minOf(spans.map((span, p) => (span > 0 ? interleavedRun(p) / span : Infinity)));
   const commonShareRight = plot.x + plot.w - growthW;
@@ -1256,8 +1257,11 @@ function layoutBarTableOnce(
   const kMin = Math.max(0, maxOf(minTracks.map((min, p) => (spans[p]! > 0 ? min / spans[p]! : 0))));
   const compactPanelsW = maxOf(panels.map((_, p) => extras[p]! - PANEL_GAP + (sharedScale ? spans[p]! * kMin : minTracks[p]!)));
   // Interleaved: the widest bar keeps its floor beside the share and growth columns, or beside its end label.
+  // Under cascade the period name takes min(longest name, a third of the plot) beside the tracks: a plot of width w holds the tracks
+  // when w - min(name, w / 3) >= the rest, so w = min(rest + name, 1.5 * rest).
+  const cascadeRest = growthW + shareColW + END_GAP + (sharedScale ? kMin * maxOf(spans) : maxOf(minTracks));
   const interleavedPanelsW = cascade
-    ? growthW + shareColW + (sharedScale ? kMin * maxOf(spans) : maxOf(minTracks))
+    ? Math.min(cascadeRest + periodNameFull, 1.5 * cascadeRest)
     : maxOf(panels.map((_, p) => MIN_RUN + endReserves[p]!));
   const minWidth = size.width - plot.w + (interleaved
     ? Math.max(interleavedPanelsW, sideW + LABEL_GAP + MIN_COMPACT_LABEL)
