@@ -368,7 +368,7 @@ export function resolveMekkoDomain(data: ChartData, env: MekkoEnv, warnings: Lin
   const stacks = mekkoStacks(st, fns, warnings);
   // A column with a missing part has no known whole: its total, and its
   // shares, would describe the known parts only. Bar mode has one part.
-  const incomplete = new Set(st.mode === 'bar' ? [] : st.cats
+  const incomplete = new Set(st.cats
     .filter((_, ci) => isIncomplete(st.series.map((s) => s.vals[ci]!.v)))
     .map((c) => c.id));
   // A percent column of authored shares with no amount beside them (no

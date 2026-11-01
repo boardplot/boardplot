@@ -26,6 +26,53 @@ describe('the description states the drawn numbers', () => {
 });
 
 describe('drawn text stays on the canvas', () => {
+  const names = [
+    'Membership-supported equipment', 'Subscription-supported training',
+    'Equipment-maintenance contracts', 'Distribution-management services',
+    'Subscription-management services', 'Software-maintenance agreements',
+    'Equipment-rental arrangements', 'Warehouse-management services',
+  ];
+
+  // A highlighted rotated column name measured at regular weight was clipped at the left edge.
+  it('column: highlighted rotated names fit at their drawn weight in every variant', () => {
+    const data = {
+      categories: names.map((label, i) => ({ id: `c${i}`, label })),
+      series: [
+        { id: 'a', label: 'Online', values: [25, 20, 35, 30, 20, 25, 10, 20] },
+        { id: 'b', label: 'Stores', values: [20, 10, 15, 10, 5, 20, 10, 25] },
+      ],
+    };
+    for (const variant of ['grouped', 'stacked', 'stacked100']) {
+      const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'column', data,
+        options: { variant, highlight: 'c0', size: { width: 720, height: 700 } },
+      } as never)) as Geometry;
+      const label = geometry.scene.find(node => node.id === 'label:category:c0');
+      expect(label?.t).toBe('text');
+      if (label?.t !== 'text') continue;
+      expect(label.rotate).toBe(-45);
+      expect(label.lines).toEqual([names[0]]);
+      expect(label.font.weight).toBe(700);
+      expect(clippedTextWarnings(geometry, defaultMeasurer)).toEqual([]);
+    }
+  });
+
+  // A retried row plan read the bold widths back from the plan cache and lost the extra row height.
+  it('column: a retried row plan keeps the height of a highlighted rotated name', () => {
+    const fixture = getFixtures('column').find((f) => f.id === 'stacked-series-cagr')!;
+    const data = structuredClone(fixture.data) as { categories: { id: string; label?: string }[] };
+    data.categories.forEach((c, i) => { c.label = names[i % names.length]; });
+    const first = data.categories[0]!.id;
+    const baseline = (highlight?: string) => {
+      const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'column', data,
+        options: { ...fixture.options, ...(highlight ? { highlight } : {}), size: { width: 720, height: 700 } },
+        annotations: fixture.annotations,
+      } as never)) as Geometry;
+      const axis = geometry.scene.find(node => node.id === 'axis:baseline');
+      return axis?.t === 'line' ? axis.y1 : NaN;
+    };
+    expect(baseline()).toBeGreaterThan(baseline(first));
+  });
+
   // A bold extreme label was seated at its regular width and ran 5 px past the right edge.
   it('column: the bold extreme label fits at its drawn width', () => {
     const fixture = getFixtures('column').find((f) => f.id === 'anomaly-torture')!;
@@ -61,6 +108,28 @@ describe('currency signs print where the locale puts them', () => {
   });
 });
 
+describe('text read back from the SVG matches the drawn text', () => {
+  const textOf = (svg: string, id: string) => {
+    const node = new RegExp(`<text data-id="${id}"[^>]*>([\\s\\S]*?)</text>`).exec(svg)?.[1] ?? '';
+    return node.replace(/<[^>]*>/g, '');
+  };
+  // A wrapped title read back from the SVG joined its two lines as "reopenedat".
+  it('a wrapped line break keeps a space and does not move the lines', () => {
+    const svg = svgOf({ type: 'column', data: { categories: ['A', 'B'], series: [{ id: 's', label: 'Sales', values: [4, 5] }] },
+      options: { title: 'Total orders rose every single week after the store reopened at 15:00 UTC in late October, website first and then the app', size: { width: 760 } } });
+    expect(textOf(svg, 'frame:title:0')).toContain('reopened at 15:00');
+    expect(svg).toMatch(/<tspan x="24" dy="0"> <\/tspan><tspan x="24" dy="25">at 15:00/);
+  });
+
+  // A cut label kept its full text in a <title> inside <text>, so read-back text ran the full and the cut text together.
+  it('the hover title of a cut label sits on its group, not inside the text', () => {
+    const fixture = getFixtures('dot').find((f) => f.id === 'long-labels-lollipop')!;
+    const svg = svgOf({ type: 'dot', data: fixture.data, options: fixture.options, annotations: fixture.annotations });
+    expect(svg).not.toMatch(/<text\b[^>]*><title>/);
+    expect(svg).toMatch(/<g role="img" aria-label="[^"]+"><title>[^<]+<\/title>(<rect[^>]*\/>)?<text\b/);
+  });
+});
+
 describe('number census', () => {
   // The census scaled "$k" box statistics by 1,000 twice and flagged correct medians as wrong-scale.
   it('reads $k box statistics once', () => {
@@ -68,5 +137,17 @@ describe('number census', () => {
     fixture.options.unit = '$k';
     const { findings } = censusCase('box', fixture, 720, 'en') as { findings: { class: string }[] };
     expect(findings.filter((f) => f.class === 'wrong-scale')).toEqual([]);
+  });
+});
+
+describe('a key label leaves room for its own value', () => {
+  // The key label wrapped as if it had no value, so a long group name pushed its total past the edge and cut '1,664' to '1,'.
+  it('treemap key: label and group total fit a 320 px frame at textScale 1.5', () => {
+    const names = ['Training and certification', 'Enterprise software licences', 'Managed services and support', 'Subscription revenue, monthly plans'];
+    const groups = names.map((label, i) => ({ id: `g${i}`, label }));
+    const items = names.flatMap((_, i) => [0, 1].map((j) => ({ id: `i${i}${j}`, label: `Item ${i}${j}`, group: `g${i}`, value: 800 + i * 20 + j * 5 })));
+    const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'treemap', data: { groups, items }, options: { variant: 'rect', size: { width: 320, height: 600 }, cellValue: 'value-share', textScale: 1.5 } } as never)) as Geometry;
+    expect(geometry.scene.some((n) => n.t === 'text' && n.part === 'legendValue')).toBe(true);
+    expect(geometry.warnings.map((w) => w.code)).not.toContain('text-clipped');
   });
 });

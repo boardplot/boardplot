@@ -23,7 +23,7 @@ import { percentLevels, runAnnotatePass } from '../../annotatePass';
 import { categoryTargetFields, spliceAnnotationNodes } from '../../annotateFields';
 import { rectSeriesAdjacentWarnings } from '../../adjacentSeries';
 import { applyValueAxisTitleInk, layoutValueAxis, planValueAxisTitle, tickRowTitleEnd, valueAxisTitleRequest, valueAxisTitleText, valueAxisUnit } from '../../axis';
-import { formatShare, NOT_AVAILABLE } from '../../format';
+import { NOT_AVAILABLE } from '../../format';
 import { seriesRasterFormatter } from '../../formatSpec';
 import { rectContains, rectsOverlap, rowLabelX, unionRect, type Rect, type Size } from '../../geometry';
 import { bandValueLabelUniformity, keepValuesWithoutAxis } from '../band/labels';
@@ -395,6 +395,7 @@ function annotateBar(
     xScale: area.x,
     ...categoryTargetFields(cats.map((c) => c.id), plot, (i) => band.position(i) + band.bandwidth / 2, 'y'),
     valueAxis: 'horizontal',
+    calloutRowPitch: band.step,
     partialCategories: partialIds(cats),
     ...(!annotationPass && cagrInset(domain) ? { barInset: { gapWord: chartString(domain.options, 'gapLead') } } : {}),
   };
@@ -494,7 +495,7 @@ function assembleBarGeometry(
       !domain.stacks[ci]!.hasValue
         ? `${c.label} ${NOT_AVAILABLE}`
         : variant === 'stacked100'
-          ? `${c.label} ${totalFmt(totals[ci]!)} (${dataSeries.map((s, si) => `${s.label} ${formatShare(shares[ci]![si]!, options.locale?.language)}`).join(', ')})`
+          ? `${c.label} ${totalFmt(totals[ci]!)} (${dataSeries.map((s, si) => `${s.label} ${domain.pctFmt(shares[ci]![si]!)}`).join(', ')})`
           : `${c.label} ${oneValueText(ci) ?? totalFmt(totals[ci]!)}`,
     )
     .join(', ');

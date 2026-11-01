@@ -155,6 +155,39 @@ describe('composition warning taxonomy', () => {
 });
 
 describe('line and mekko fail closed visibly', () => {
+  // Missing Mekko columns must stay named as unavailable, and a negative total must not be described as zero.
+  it('names missing Mekko columns and reports the real negative total', () => {
+    const categories = ['North', 'Central', 'South'].map((label) => ({ id: label.toLowerCase(), label }));
+    for (const variant of ['bar', 'stacked', 'stacked100']) {
+      for (const widths of [undefined, [1, 2, 7], [1, 0, 7]]) {
+        const geometry = layoutComposition('mekko', {
+          categories,
+          series: [
+            { id: 'value', values: [12, null, 36] },
+            ...(widths ? [{ id: 'size', role: 'reference' as const, values: widths }] : []),
+          ],
+        }, { variant, ...(widths ? { widthSeriesId: 'size' } : {}) });
+        expect(noteTexts(geometry), `${variant}, widths ${widths}`).toContain('Not available: Central.');
+        expect(geometry.derived).not.toHaveProperty('columnTotals.central');
+        expect(geometry.a11y.desc).not.toContain('Central 0');
+        expect(geometry.labels.some((label) => label.id === 'category:central' && label.hidden === 'redundant')).toBe(false);
+        if (widths?.[1] === 2 || (variant === 'bar' && widths === undefined)) {
+          expect(geometry.labels.filter((label) => !label.hidden).map((label) => label.id)).toContain('category:central');
+        }
+      }
+    }
+    for (const shown of [false, true]) {
+      const geometry = layoutComposition('mekko', {
+        categories,
+        series: [{ id: 'income', values: [12, -42, 6] }, { id: 'cost', values: [24, 12, 6] }],
+      }, { variant: 'stacked', ...(shown ? { notes: { show: ['note', 'disclosure'] } } : {}) });
+      expect(noteTexts(geometry)).toContain('Not drawn (negative total): Central −30.');
+      const visible = geometry.scene.flatMap((node) => node.t === 'text' ? [node.lines.join(' ')] : []).join(' ');
+      expect(visible).toContain('Not drawn (negative total): Central −30');
+      expect(visible).not.toContain('total 0');
+    }
+  });
+
   // A bar mekko's heights are rates, so a folded Others column printed 12.5% and 18.9% as a false 31.4.
   it('folds bar mekko rates into their width-weighted mean', () => {
     const draw = (values: unknown[], widthSeriesId?: string) => {

@@ -1,0 +1,4 @@
+### Changed / may need action
+
+- A single letter after a space in a format example is now a unit, not a scale. Before, `12 m/s` read as millions, so the unit lost its `m` and 3.2, 7.5 and 12.1 printed `3.2/s`, `7.5/s` and `12/s`. And `50 B` and `300 K` scaled the same way with no warning. The letters `k`, `m`, `b`, `B`, `K` and the abbreviation `mm` now scale only when glued to the number (`1.2m`, `50B`), as `T` already did. A spaced letter prints as unit text and leaves the value unscaled. The words `mn`, `bn`, `tn`, `Tsd.`, `Mio.`, `Mrd.`, `Bio.`, `thousand`, `million` and `billion` still scale with or without a space. To bring back the old reading of a spaced letter, write the word (`1.2 Mio.`, `1.2 million`) or glue the letter (`1.2m`).
+- The warning `format-hides-values` now builds its fix from the format as written. Before, the fix for `12 m/s` was `1.123457m/s`, which dropped the space and changed the unit.

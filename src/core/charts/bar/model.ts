@@ -135,6 +135,8 @@ export interface BarDomain {
   options: BarOptions;
   /** rounding 'sum-consistent': the printed share per `categoryId\0seriesId`. */
   shareTexts: Map<string, string>;
+  /** A computed share as the chart prints it alone: at a percent options.format's decimals, else the share precision. */
+  pctFmt: (percent: number) => string;
   /** rounding 'sum-consistent': the shares printed off their nearest rounding. */
   roundingAdjustments: import('../../shareRounding').RoundingAdjustment[];
   /** The hidden method note on moved or rescaled shares. */
@@ -171,6 +173,8 @@ export interface BarDomain {
   statFmt: (v: number) => string;
   /** Categories whose whole stack carries one scenario. */
   uniformScenario: Map<Id, Scenario>;
+  /** The actual each PY, PL or FC series takes its colour from (scenarioPairs), by series id. */
+  scenarioPartner: Map<Id, NormSeries>;
   /** One series with a highlighted category, so the other bars step back. */
   restRecedes: boolean;
   totals: number[];

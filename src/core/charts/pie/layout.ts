@@ -23,10 +23,10 @@ import { runAnnotatePass } from '../../annotatePass';
 import { pieComparisonLayout, pieComparisonRoom } from './comparisons';
 import { warnSpreadOverflow } from '../../collide';
 import { resolvePaintWarnings } from '../../paintWarnings';
-import { formatAutomaticNumber, seriesValueFormatter, shareSetFormatter } from '../../format';
+import { seriesValueFormatter, shareSetFormatter } from '../../format';
 import { warnIncompleteComposition, warnShareRoundingDrift } from '../../dataGaps';
 import { roundWholes, type RoundingAdjustment } from '../../shareRounding';
-import { seriesRasterFormatter, formatterFromExample } from '../../formatSpec';
+import { seriesRasterFormatter, formatterFromExample, parseFormatExample, shareFormatExample } from '../../formatSpec';
 import { cleanFloat, round2, type Point, type Rect, type Size } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { markOutlineOff, namesOnly, separationStroke, sliceOutlineOff } from '../../markVisibility';
@@ -64,7 +64,7 @@ import {
   strokeToken,
 } from '../../theme';
 import type { AnchorRef, Annotation } from '../../types/annotations';
-import { cellMeta, cellValue, type Id } from '../../types/cell';
+import { cellMeta, cellValue, isPctCell, type Id } from '../../types/cell';
 import type { Category, ChartData } from '../../types/data';
 import { DEFAULT_OTHERS_SHADE } from '../../othersShade';
 import type { LabelContent, LabelKind, LegendOptions, PieOptions } from '../../types/options';
@@ -78,7 +78,6 @@ import type {
   SceneNode,
 } from '../../types/scene';
 import { contentSizing } from '../../sizing';
-import { autoDecimals } from '../../formatPrecision';
 import { pieLabelContent, pieCenterLines } from './labels';
 import { labelAngle, placeRing, RING_GAP, type RingItem } from './ring';
 import { composedTextRole } from '../../textRole';
@@ -314,9 +313,6 @@ function layoutPiePass(
   const paletteRamp = chartPalette(theme, options.palette, warnings);
   const size = resolveSize(options.size);
   const measure = options.measure ?? defaultMeasurer;
-  const chartFmt = options.format
-    ? formatterFromExample(options.format, options.locale?.language)
-    : (v: number) => formatAutomaticNumber(v, { locale: options.locale?.language, decimals: autoDecimals(v) });
   const highlights = new Set(resolveHighlight(options.highlight));
   const density = options.labelDensity ?? 'smart';
 
@@ -347,9 +343,30 @@ function layoutPiePass(
   const sid = ser.id;
   let cats: Category[] = data.categories.map((c, i) => normalizeCategory(c as never, i));
   const cells = normalizeSeriesValues(ser, cats, 0);
-  const formats = seriesRasterFormatter(options.format, cells.map(cellValue), options.locale?.language, options.unit, options.target);
+  // A percent options.format sets the precision of the computed shares. It prints the slice values too
+  // only when they are percents (a % unit, percent cells, or values adding to 100); counts or money would read as percent.
+  const shareExample = shareFormatExample(options);
+  const valuesArePercent = [options.unit, ser.unit].some((unit) => unit?.includes('%'))
+    || cells.every((cell) => cell === null || isPctCell(cell))
+    || Math.abs(cells.map(cellValue).reduce<number>((sum, v) => sum + Math.max(0, v ?? 0), 0) - 100) <= 0.05;
+  const valueExample = shareExample && !valuesArePercent ? undefined : options.format;
+  if (shareExample && !valuesArePercent) {
+    warnings.push({
+      code: 'percent-format-on-values',
+      severity: 'warn',
+      message: `options.format '${options.format}' is a percent format, so it sets how the computed shares print; the slice values are not percents and print in the automatic format`,
+      suggest: 'format the slice values with series[].format or a cell format, and keep the percent options.format for the shares',
+      field: ['options', 'format'],
+    });
+  }
+  const formats = seriesRasterFormatter(valueExample, cells.map(cellValue), options.locale?.language, options.unit, options.target);
   // The slices are one series: one precision for them all (seriesValueFormatter), not one per value.
-  const fmt = ser.format || ser.unit ? formats.forSeries(ser) : options.format ? chartFmt : seriesValueFormatter(cells.map(cellValue), options.locale?.language);
+  const fmt = ser.format || ser.unit ? formats.forSeries(ser) : valueExample
+    ? formatterFromExample(valueExample, options.locale?.language)
+    : seriesValueFormatter(cells.map(cellValue), options.locale?.language);
+  const sharesFormatter = (percents: Iterable<number>): { decimals: number; format: (percent: number) => string } =>
+    shareExample ? { decimals: parseFormatExample(shareExample).decimals, format: formatterFromExample(shareExample, options.locale?.language) }
+      : shareSetFormatter(percents, options.locale?.language);
   const sliceText = (slice: { v: number; format?: string }): string => slice.format ? formatterFromExample(slice.format, options.locale?.language)(slice.v) : fmt(slice.v);
   interface Slice {
     cat: Category;
@@ -538,7 +555,7 @@ function layoutPiePass(
   // widest such line and the leader gap, measured before the frame.
   const columns = insideContent === null && outsideContent !== null;
   const shownSlices = slices.filter((slice) => (slice.v ?? 0) > 0);
-  const preShares = shareSetFormatter(shownSlices.map((slice) => ((slice.v ?? 0) / total) * 100), options.locale?.language);
+  const preShares = sharesFormatter(shownSlices.map((slice) => ((slice.v ?? 0) / total) * 100));
   const preLines = (slice: Slice): string[] => outsideLines(outsideContent ?? [], slice.cat.label ?? slice.cat.id, sliceText({ v: slice.v ?? 0, format: slice.format }), preShares.format(((slice.v ?? 0) / total) * 100), ser.label ?? sid);
   // Each label column's height and widest line, from the slices' angles
   // (they do not depend on the radius); index 0 is the right side.
@@ -673,7 +690,7 @@ function layoutPiePass(
   // columns keep their width, so only the ring-label layout grows.
   const centreFirst = options[CENTRE_FIRST] === true;
   const centerLines = hole >= CENTER_TEXT_MIN && kindSetting('total') !== false && !negatives.length
-    ? pieCenterLines(fmt(total), options.unit ?? ser.unit, options.format) : undefined;
+    ? pieCenterLines(fmt(total), options.unit ?? ser.unit, valueExample) : undefined;
   const circleLimit = Math.min(plot.w / 2, plot.h / 2 - verticalPad, diameterCap / 2);
   const reserveFit = Math.min((plot.w - 2 * outsideMargin) / 2, plot.h / 2 - verticalPad, diameterCap / 2);
   const centerStep = centerLines && !columns ? stepDownFont(theme, labelFont, 'label', options.target, textScaleOf(options)) : undefined;
@@ -779,11 +796,11 @@ function layoutPiePass(
 
   // rounding 'sum-consistent': the drawn slices' shares print so they add up to 100%.
   const rounded = options.rounding === 'sum-consistent'
-    ? roundWholes([{ id: sid, name: ser.label ?? sid, parts: geoms.map((g) => ({ id: g.cat.id, name: g.cat.label ?? g.cat.id, share: g.share * 100 })) }], options.locale?.language)
+    ? roundWholes([{ id: sid, name: ser.label ?? sid, parts: geoms.map((g) => ({ id: g.cat.id, name: g.cat.label ?? g.cat.id, share: g.share * 100 })) }], options.locale?.language, shareExample ? parseFormatExample(shareExample) : undefined)
     : undefined;
   if (rounded) pushAll(warnings, rounded.warnings);
   // The slices' shares print at one precision, "8%" beside "92%".
-  const shareSet = shareSetFormatter(geoms.map((g) => g.share * 100), options.locale?.language);
+  const shareSet = sharesFormatter(geoms.map((g) => g.share * 100));
   const shareText = (g: SliceGeom): string => rounded?.texts.get(`${sid}\0${g.cat.id}`) ?? shareSet.format(g.share * 100);
 
   /** Compound parts: '35.6M' + '(37%)' when both value and percent print. */
@@ -1204,7 +1221,7 @@ function layoutPiePass(
     // Annotation labels draw bold (see labelsToNodes below), so the pass measures them bold.
     theme: emphasisLabelTheme(theme),
     measure,
-    format: options.format,
+    format: valueExample,
     locale: options.locale?.language,
     strings: options.strings,
     solveCtx,

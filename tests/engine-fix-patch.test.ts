@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import '../src/core/charts';
 import { render } from '../src/cli/render';
 import { getFixtures } from '../src/fixtures';
+import { beginSpecParse } from '../src/react/specValidation';
 
 type Op = { op: 'add' | 'replace' | 'test' | 'remove'; path: string; value?: unknown };
 
@@ -67,6 +68,100 @@ describe('engine fix patches', () => {
     // The fixed size gets past the label refusal.
     const again = render({ spec: fixed, format: 'svg' }).body as any;
     expect(again.ok).toBe(true);
+  });
+});
+
+describe('root key fixes', () => {
+  const chart = { type: 'column', data: { categories: [{ id: 'a', label: 'Alpha' }, { id: 'b', label: 'Beta' }], series: [{ id: 'rev', label: 'Revenue', values: [12, 19] }] } };
+
+  // A chart sent beside a root version got remove patches for its type and data, and a root title got a remove that dropped it unseen.
+  it('applies to a drawing chart that keeps its data, title and unit', () => {
+    for (const [spec, kept] of [
+      [{ version: 1, ...chart, options: { title: 'Revenue' } }, { title: 'Revenue' }],
+      [{ ...chart, title: 'Revenue', unit: 'EUR m' }, { title: 'Revenue', unit: 'EUR m' }],
+      [{ ...chart, options: { unit: 'EUR m' }, title: 'Revenue' }, { title: 'Revenue', unit: 'EUR m' }],
+    ] as const) {
+      const refused = render({ spec, format: 'svg' }).body as any;
+      expect(refused.ok).toBe(false);
+      const fixed = applyPatch(spec, refused.errors.flatMap((error: any) => error.fix));
+      expect(fixed).toMatchObject({ type: 'column', data: chart.data, options: kept });
+      expect(render({ spec: fixed, format: 'svg' }).body).toMatchObject({ ok: true });
+    }
+  });
+
+  // A bare chart with a stray key that is no option name got a move into options, and the fixed chart was refused with no fix.
+  it('draws a bare chart after a stray key that no option takes is removed', () => {
+    for (const extra of [{ $schema: 'https://boardplot.com/schema/v1/boardplot-doc.json' }, { foo: 1 }, { width: 600 }, { colors: ['#fff'] }, { format: { value: { decimals: 1 } } }, { description: 'd' }, { notes: ['n'] }, { locale: 'de' }, { 'a/b': 1 }, { title: 'Revenue', foo: 1 }]) {
+      const spec = { ...chart, ...extra };
+      const refused = render({ spec, format: 'svg' }).body as any;
+      expect(refused.ok).toBe(false);
+      const fixed = applyPatch(spec, refused.errors.flatMap((error: any) => error.fix));
+      expect(render({ spec: fixed, format: 'svg' }).body).toMatchObject({ ok: true });
+    }
+  });
+
+  // Diagram and creative options take no `unit`: the move fix left a chart that was refused again, with no fix. Their unit is removed, their title still moves.
+  it('moves a root key only into options that list it', () => {
+    for (const [type, id] of [['creative', 'creative-placeholder'], ['diagram', 'org-structure']] as const) {
+      const base = fixtureSpec(type, id);
+      for (const extra of [{ unit: 'EUR m' }, { title: 'Revenue', unit: 'EUR m', source: 'Finance' }]) {
+        const spec = { ...base, ...extra };
+        const refused = render({ spec, format: 'svg' }).body as any;
+        expect(refused.ok).toBe(false);
+        const fixed = applyPatch(spec, refused.errors.flatMap((error: any) => error.fix));
+        expect(fixed.options).not.toHaveProperty('unit');
+        expect(render({ spec: fixed, format: 'svg' }).body).toMatchObject({ ok: true });
+      }
+    }
+  });
+
+  // The options schema lists `unit` for combo and pyramid, but a moved unit is refused again at layout (series units that differ, a share basis), with no fix; the key moves only when the moved chart draws.
+  it('moves a root key only when the moved chart draws', () => {
+    for (const [type, id] of [['combo', 'counts-fraction-rate'], ['pyramid', 'workforce-tenure-gender']] as const) {
+      const { title: _title, source: _source, ...options } = fixtureSpec(type, id).options;
+      const spec = { ...fixtureSpec(type, id), options, source: 'Finance', unit: 'U' };
+      const refused = render({ spec, format: 'svg' }).body as any;
+      expect(refused.ok).toBe(false);
+      const fixed = applyPatch(spec, refused.errors.flatMap((error: any) => error.fix));
+      expect(fixed.options).toMatchObject({ source: 'Finance' });
+      expect(fixed.options).not.toHaveProperty('unit');
+      expect(render({ spec: fixed, format: 'svg' }).body).toMatchObject({ ok: true });
+    }
+  });
+
+  // The React parse cannot lay a chart out, so its move fix left a chart that was refused again (a share pyramid with a unit, a compact chart with a title); it removes the key.
+  it('removes a root key where the caller cannot lay the moved chart out', () => {
+    for (const [type, id, extra] of [['pyramid', 'workforce-tenure-gender', { unit: 'U' }], ['kpi', 'note-and-compact', { title: 'Revenue' }]] as const) {
+      const spec = { ...fixtureSpec(type, id), ...extra };
+      let errors: any[] = [];
+      try { beginSpecParse(spec).finish(); } catch (error: any) { errors = error.errors; }
+      expect(errors.length).toBeGreaterThan(0);
+      const fixed = applyPatch(spec, errors.flatMap((error: any) => error.fix));
+      expect(Object.keys(extra).every((key) => !(key in fixed))).toBe(true);
+      expect(render({ spec: fixed, format: 'svg' }).body).toMatchObject({ ok: true });
+    }
+  });
+
+  // The move check laid the chart out at the default size, so a title moved into a KPI card that the --width and --height arguments make too small was refused where removing it draws.
+  it('removes a root key when the moved chart is refused at the width and height of the call', () => {
+    const spec = { ...fixtureSpec('kpi', 'arr-card'), title: 'Annual recurring revenue by customer segment and region' };
+    const refused = render({ spec, width: '300', height: '220', format: 'svg' }).body as any;
+    expect(refused.ok).toBe(false);
+    const fixed = applyPatch(spec, refused.errors.flatMap((error: any) => error.fix));
+    expect(fixed).not.toHaveProperty('title');
+    expect(fixed.options).not.toHaveProperty('title');
+    expect(render({ spec: fixed, width: '300', height: '220', format: 'svg' }).body).toMatchObject({ ok: true });
+  });
+
+  // A stray root key beside charts got a move into a root options that an envelope does not have; the fixed document was refused.
+  it('draws an envelope after its stray root key is removed', () => {
+    for (const extra of [{ title: 'Revenue' }, { unit: 'EUR m' }, { foo: 1 }, { type: 'column' }]) {
+      const spec = { version: 1, charts: [{ name: 'a', ...chart }], ...extra };
+      const refused = render({ spec, format: 'svg' }).body as any;
+      expect(refused.ok).toBe(false);
+      const fixed = applyPatch(spec, refused.errors.flatMap((error: any) => error.fix));
+      expect(render({ spec: fixed, format: 'svg' }).body).toMatchObject({ ok: true });
+    }
   });
 });
 
