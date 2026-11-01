@@ -51,17 +51,33 @@ interface TableWidthView {
   allColumns?: readonly ResolvedColumn[];
   fit?: 'fill' | 'content';
   frameStart?: number;
+  /**
+   * The columns the table shows before the reader switches any group. A scrolling host sizes its label track
+   * from them, so a toggle never wraps a row label or moves the content below.
+   */
+  defaultColumns?: readonly ResolvedColumn[];
+  /** The label track the default columns need; the label never shrinks below it in a scrolling host. */
+  labelKeep?: number;
 }
 
 type WidthOptions = TableOptions & { [LABEL_WRAP_FLOOR]?: boolean; [SOFT_LABEL_CAP]?: boolean };
 
 /** One content width rule. Dense padding is a fallback only when normal padding cannot fit. */
 export function tableWidths(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions = {}, view: TableWidthView = {}) {
-  const regular = tableWidthsOnce(table, theme, measure, options, view);
+  const { defaultColumns, ...own } = view;
+  const shown = own.columns ?? visibleColumns(table);
+  if (own.scroll && defaultColumns !== undefined
+    && (defaultColumns.length !== shown.length || defaultColumns.some((col, index) => col.id !== shown[index]!.id))) {
+    const base = tableWidths(table, theme, measure, options, { ...own, columns: defaultColumns });
+    const track = base.tracks.find((entry) => entry.id === defaultColumns.find((col) => col.kind === 'rowLabel')?.id)?.width;
+    // The width the labels and their folded-row hints need, not the room a wide frame handed the label: only that keeps rows from wrapping.
+    if (track !== undefined && base.labelNeed !== undefined) own.labelKeep = Math.min(track, Math.max(base.labelNeed, base.labelBeforeFill ?? 0));
+  }
+  const regular = tableWidthsOnce(table, theme, measure, options, own);
   const count = (view.columns ?? visibleColumns(table)).length;
   const densePad = count >= 25 ? 3 : count >= DENSE_COLUMNS ? 5 : regular.cellPadX;
   if (options.cellPadX !== undefined || densePad >= regular.cellPadX || Math.max(regular.minimumW, regular.totalW) <= (view.available ?? Infinity)) return regular;
-  const dense = tableWidthsOnce(table, theme, measure, { ...options, cellPadX: densePad }, view);
+  const dense = tableWidthsOnce(table, theme, measure, { ...options, cellPadX: densePad }, own);
   const regularOverflow = regular.warnings.find(warning => warning.code === 'table-overflow');
   // The wider-size repair must also fit after normal padding returns.
   if (regularOverflow) dense.warnings = dense.warnings.map(warning => warning.code === 'table-overflow' ? regularOverflow : warning);
@@ -222,7 +238,7 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
       ? labelWrapFloor(labelColumn, faces) + labelLead : 0;
     if (labelFloor > 0) for (const target of [widths, minimumWidths]) target.set(labelColumn!.id, Math.max(target.get(labelColumn!.id)!, labelFloor));
     if (view.scroll && labelColumn?.width === undefined && labelColumn !== undefined) {
-      labelFloor = Math.max(labelFloor, intrinsicColumnWidth(labelColumn, widthRows, {
+      labelFloor = Math.max(labelFloor, view.labelKeep ?? 0, intrinsicColumnWidth(labelColumn, widthRows, {
         ...context, hint: undefined, twoLineLabels: options.rowLabelLines !== 1,
       }) + labelLead + (view.groupEnd?.has(labelColumn.id) ? 1 : 0));
     }
@@ -328,7 +344,7 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
     // The hint room in the label track is optional and goes first: the hint is then cut or
     // left out, and no other column shrinks for it.
     for (const col of cols.filter((c) => canShrink(c) && c.kind === 'rowLabel')) {
-      const take = Math.min(deficit, Math.max(0, widths.get(col.id)! - minimumWidths.get(col.id)!));
+      const take = Math.min(deficit, Math.max(0, widths.get(col.id)! - Math.max(minimumWidths.get(col.id)!, view.scroll ? view.labelKeep ?? 0 : 0)));
       if (take > 0) {
         widths.set(col.id, widths.get(col.id)! - take);
         deficit -= take;
@@ -580,7 +596,8 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
     const drawn = index === 0 && (view.frameStart ?? 0) > 0 ? { ...track, width: track.width + view.frameStart! } : track;
     return spacer === undefined ? [drawn] : [{ id: `bp-spacer:${track.id}`, natural: spacer, width: spacer }, drawn];
   });
-  return { tracks, gridTracks, spacerBefore, spacerTotal, labelNeed, labelsWrap, widths, minimumWidths, sizingMinimums, totalW, minimumW, fonts, regularFonts,
+  const labelBeforeFill = labelColumn === undefined ? undefined : beforeFill.get(labelColumn.id);
+  return { tracks, gridTracks, spacerBefore, spacerTotal, labelNeed, labelBeforeFill, labelsWrap, widths, minimumWidths, sizingMinimums, totalW, minimumW, fonts, regularFonts,
     context: chosen.context, wouldWrap: (dense ?? regular).wouldWrap, wrapMinimumWidth, warnings, cellPadX,
     rowIndent, cellFont, cellStep, columnHeaderText, indents, operatorSlot, childCount, hasChanges };
 }

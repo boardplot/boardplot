@@ -17,6 +17,9 @@ import { emptyIdRecord } from '../../idRecords';
 
 const key = (...parts: string[]) => JSON.stringify(parts);
 
+/** Set by the fold to fit a fixed height: the table is drawn at this depth only, so its columns settle on the rows it draws. */
+export const FOLDED = Symbol('dimswitchFolded');
+
 /** The caller edits dimswitch widths, not the columns made by this compiler. */
 export function dimSwitchTableWarnings(warnings: readonly LintWarning[]): LintWarning[] {
   return warnings.map(warning => {
@@ -634,23 +637,28 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
       for (const g of statementGroups) {const last=rows.slice(start).filter(r=>r.kind==='result' && groupOf(measures.get((JSON.parse(r.id) as string[]).pop()!)!)===g).pop(); if (last) last.final=true;}
     };
     const totalRow=dimswitchRowId(variant,totalId);
-    rows.push({id:totalRow,label:data.dimension.total.label,kind:'member',rung:0,totalPolicy:'source',relation:'displayOnly'});
+    // A member row carries its headline measure. So does a folded Total, which would print dashes otherwise;
+    // an open Total shows its measures right below, so its own row stays empty.
+    const headRow=(h:DimSwitchMeasure,member:string,id:string,parentRow:string|undefined,rung:number,label:string) => {
+      const summary=addMeasure(h,member,parentRow,rung,label,'member');
+      const oldId=summary.id; summary.id=id; delete summary.divider;
+      for (const r of rows.slice(rows.indexOf(summary)+1)) {if (r.parentId===oldId) {r.id=r.id.replace(oldId,id); r.parentId=id;}}
+      for (const r of records) {if (r.rowId===oldId) r.rowId=id;else if (r.rowId===`${oldId}:change`) r.rowId=`${id}:change`;else if (r.rowId===`${oldId}:effect`) r.rowId=`${id}:effect`;}
+      summary.unitAffix=[h.label,affix(h)].filter(Boolean).join(', ');
+      // The card form puts the headline and its unit under the member name, on the change line's label.
+      const changeRow=rows.find(r=>r.id===`${id}:change`);
+      if (form.card && changeRow && changeRow.label==='') {changeRow.label=summary.unitAffix; delete summary.unitAffix;}
+    };
+    const totalHead=options.expansion?.collapsed?.includes(totalRow) ? headline(totalId) : undefined;
+    if (totalHead) headRow(totalHead,totalId,totalRow,undefined,0,data.dimension.total.label);
+    else rows.push({id:totalRow,label:data.dimension.total.label,kind:'member',rung:0,totalPolicy:'source',relation:'displayOnly'});
     block(totalId,totalRow,0);
     // No section row here: the label column's head already names the dimension, and a heading prints only for an authored group.
     const walk=(parentMember:string|undefined,parentRow:string|undefined,rung:number) => {
       for (const member of ordered(parentMember)) {
         const h=headline(member.id), id=dimswitchRowId(variant,member.id);
-        let summary:TableRow;
-        if (h) {
-          summary=addMeasure(h,member.id,parentRow,rung,member.label,'member');
-          const oldId=summary.id; summary.id=id; delete summary.divider;
-          for (const r of rows.slice(rows.indexOf(summary)+1)) {if (r.parentId===oldId) {r.id=r.id.replace(oldId,id); r.parentId=id;}}
-          for (const r of records) {if (r.rowId===oldId) r.rowId=id;else if (r.rowId===`${oldId}:change`) r.rowId=`${id}:change`;else if (r.rowId===`${oldId}:effect`) r.rowId=`${id}:effect`;}
-          summary.unitAffix=[h.label,affix(h)].filter(Boolean).join(', ');
-          // The card form puts the headline and its unit under the member name, on the change line's label.
-          const changeRow=rows.find(r=>r.id===`${id}:change`);
-          if (form.card && changeRow && changeRow.label==='') {changeRow.label=summary.unitAffix; delete summary.unitAffix;}
-        } else {summary={id,label:member.label,parentId:parentRow,rung,kind:'member',totalPolicy:'source',relation:'displayOnly'};rows.push(summary);}
+        if (h) headRow(h,member.id,id,parentRow,rung,member.label);
+        else rows.push({id,label:member.label,parentId:parentRow,rung,kind:'member',totalPolicy:'source',relation:'displayOnly'});
         block(member.id,id,rung);
         levels[id]=rung+2;
         walk(member.id,id,rung+1);
@@ -673,12 +681,6 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
       for (const bar of siblings) bar.row.cells![col]=withBar(bar.row.cells![col]!,bar.value/max);
     }
   }
-  // One decimal count per column of relative changes; whole only where every change rounds to 0 or to 5 % or more.
-  for (const [,inCol] of byCol(relativeChanges)) {
-    const entries=inCol.filter(entry=>entry.cell!==null && typeof entry.cell==='object' && typeof entry.cell.v==='number');
-    const format=formatAutomaticPercent(1.2,entries.some(entry=>entry.rounded>0 && entry.rounded<5) ? 1 : 0,true);
-    for (const entry of entries) (entry.cell as {format?:string}).format=format;
-  }
   const parents=new Set(rows.filter(r=>!r.inline && r.parentId).map(r=>r.parentId!));
   for (const id of Object.keys(levels)) if (!parents.has(id)) delete levels[id];
   const maxDepth=Math.max(1,maxOf(Object.values(levels)));
@@ -691,6 +693,25 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   }
   for (const id of options.expansion?.expanded ?? []) collapsed.delete(id);
   for (const id of options.expansion?.collapsed ?? []) collapsed.add(id);
+  // One decimal count per column of relative changes; whole only where every change rounds to 0 or to 5 % or more.
+  // A folded table is a fixed frame: its columns settle on the rows it draws, not on rows the fold hides.
+  const drawn=(options as {[FOLDED]?:boolean})[FOLDED] === true ? (() => {
+    const byId=new Map(rows.map(row=>[row.id,row])), rowOf=new Map<object,TableRow>();
+    for (const row of rows) for (const cell of Object.values(row.cells ?? {})) if (cell!==null && typeof cell==='object') rowOf.set(cell,row);
+    return (cell:object) => {
+      let row=rowOf.get(cell);
+      // A change line prints with its measure row, whether or not that row has hidden children.
+      if (row?.inline && row.parentId!==undefined) row=byId.get(row.parentId);
+      for (let id=row?.parentId; id!==undefined; id=byId.get(id)?.parentId) if (collapsed.has(id)) return false;
+      return true;
+    };
+  })() : () => true;
+  for (const [,inCol] of byCol(relativeChanges)) {
+    const entries=inCol.filter(entry=>entry.cell!==null && typeof entry.cell==='object' && typeof entry.cell.v==='number');
+    const shown=entries.filter(entry=>drawn(entry.cell as object));
+    const format=formatAutomaticPercent(1.2,(shown.length>0 ? shown : entries).some(entry=>entry.rounded>0 && entry.rounded<5) ? 1 : 0,true);
+    for (const entry of entries) (entry.cell as {format?:string}).format=format;
+  }
   const {variant:_v,depth:_d,splits:_sp,order:_o,show:_sh,thresholds:_t,minimumSample:_m,expansion:_e,widths,...tableOptions}=options;
   // A cohort density is a fixed one-line row and a dimswitch cell holds two lines: it is retired here and ignored (retired.ts).
   if ((tableOptions.density as string | undefined)?.startsWith('cohort')) delete tableOptions.density;
