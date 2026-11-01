@@ -228,10 +228,12 @@ export function layoutButterfly(
   // One precision per pane ("6.0" beside "7.9"), through the shared
   // raster: engine scale from 1e6, the nonzero lift, the unit rule,
   // and a pane's own format or unit.
-  const paneFmt = (series: typeof sA, cells: typeof aCells) =>
-    seriesRasterFormatter(opts.format, cells.map(cellValue), opts.locale?.language, opts.unit, opts.target).forSeries(series);
-  const fmtA = paneFmt(sA, aCells);
-  const fmtB = paneFmt(sB, bCells);
+  const paneRaster = (cells: typeof aCells) =>
+    seriesRasterFormatter(opts.format, cells.map(cellValue), opts.locale?.language, opts.unit, opts.target);
+  const rasterA = paneRaster(aCells);
+  const rasterB = paneRaster(bCells);
+  const fmtA = rasterA.forSeries(sA);
+  const fmtB = rasterB.forSeries(sB);
 
   let rows: Row[] = categories.map((c, i) => ({
     id: c.id,
@@ -971,6 +973,8 @@ export function layoutButterfly(
         orient: 'x',
         gridlines: false,
         format: side === 'a' ? fmtA : fmtB,
+        // The ticks read at the precision of their spacing: 0.5 steps over whole values print 0.5, not 1.
+        formatSpec: (side === 'a' ? rasterA : rasterB).specForSeries(side === 'a' ? sA : sB),
         tickCount: 4,
         theme,
         measure,

@@ -3,6 +3,8 @@ import '../src/core/charts';
 import { layoutButterfly } from '../src/core/charts/butterfly/layout';
 import { layoutResolvedRequest, measure, resolveChartRequest } from '../src/core/request';
 import { getChart } from '../src/core/registry';
+import { measureText } from '../src/core/text';
+import { beginSpecParse } from '../src/react/specValidation';
 // @ts-expect-error The scorecard script has no declaration file.
 import { applyRepair } from '../scripts/layout-scorecard.mjs';
 
@@ -122,4 +124,35 @@ it('draws negatives toward the names, a not-applicable mark for blanks and an ax
   // Own scales draw a value axis under each pane; a shared scale draws none.
   expect(layoutButterfly(data, { ...options, sharedScale: false }).axes.filter((axis) => axis.axis === 'x')).toHaveLength(2);
   expect(g.axes.filter((axis) => axis.axis === 'x')).toHaveLength(0);
+});
+
+const drawOwnScales = (values: number[], options: object = {}) => layoutButterfly(
+  { categories: values.map((_, i) => ({ id: `c${i}`, label: `Item ${i + 1}` })), series: [{ id: 'a', values }, { id: 'b', values }] },
+  { a: 'a', b: 'b', sharedScale: false, size: { width: 720, height: 400 }, ...options });
+const axisTicks = (g: ReturnType<typeof layoutButterfly>) => g.scene.flatMap((n) =>
+  n.t === 'text' && n.id.startsWith('axis:x:tick:') ? [{ id: n.id, text: n.lines[0]!, x: n.x, w: measureText(n.lines[0]!, n.font).width }] : []);
+
+// A pane on its own scale printed its 0.5 ticks over whole values as 0, 1, 1, 2, 2.
+it('prints value-axis ticks at the precision of their spacing', () => {
+  const whole = axisTicks(drawOwnScales([1, 2])).filter((t) => t.id.endsWith(':a')).map((t) => t.text);
+  expect(new Set(whole).size).toBe(whole.length);
+  expect(whole).toContain('0.5');
+});
+
+// The end label of the left pane, which runs right to left, was anchored on the wrong side and cut at the canvas edge.
+it('keeps every value-axis tick label of both panes on the canvas', () => {
+  const big = axisTicks(drawOwnScales([1e7, 2e7], { format: '1,234', labels: { point: false } }));
+  expect(big.some((t) => t.text === '20,000,000')).toBe(true);
+  for (const t of big) {
+    expect(t.x).toBeGreaterThanOrEqual(0);
+    expect(t.x + t.w).toBeLessThanOrEqual(720 + 1e-6);
+  }
+});
+
+// The documented labels.tick switch for the value axes of own scales was refused as an unknown option.
+it('accepts labels: { tick: false } on a butterfly and then draws no value axes', () => {
+  const request = { type: 'butterfly', data: { categories: [{ id: 'x' }, { id: 'y' }], series: [{ id: 'a', values: [1, 2] }, { id: 'b', values: [1, 2] }] },
+    options: { a: 'a', b: 'b', sharedScale: false, labels: { tick: false } } } as never;
+  expect(() => beginSpecParse(request).finish()).not.toThrow();
+  expect(measure(request).geometry!.axes.filter((axis) => axis.axis === 'x')).toHaveLength(0);
 });
