@@ -1226,3 +1226,35 @@ describe('bubble matrix key height', () => {
     expect(drawing(pinned.svg)).toBe(drawing(open.svg));
   });
 });
+
+// Prevents three diagrams from refusing or crowding on a wide, short full slide: the strategy house refused 28 px short,
+// the eight-step stack refused 35 px short, and the six-step cycle drew a disc so wide that four of its six arrowheads were lost.
+it('draws the house, the stack and the cycle on a full slide with the height they have', () => {
+  const slide = { target: 'slide', size: { width: 888, height: 396, unit: 'pt' } };
+  const draw = (spec: object) => render({ spec: { type: 'diagram', ...spec } }).body as any;
+  const house = getFixtures('diagram').find(f => f.id === 'strategy-house')!;
+  expect(draw({ data: house.data, options: { ...house.options, ...slide } }).ok).toBe(true);
+
+  const named = (labels: string[], shape: string, extra: object = {}) => labels.map((label, i) => ({ id: `n${i}`, kind: 'step', shape: { kind: shape }, label, order: i + 1, role: 'primary', ...extra }));
+  const long = ['Depreciation of fixed assets', 'Customer acquisition cost', 'Depreciation and amortisation', 'Pension provisions, domestic',
+    'North-West Region (Lowlands)', 'Mid-Atlantic Operations', 'Change in net working capital', 'Maintenance and repair works'];
+  expect(draw({ data: { nodes: named(long, 'chevron', { caption: 'Phase' }) }, options: { variant: 'linear-process', ...slide } }).ok).toBe(true);
+
+  const cycle = draw({ data: { nodes: named(['Field service', 'Licence income', 'Net revenue', 'Upper region', 'Eastern Europe', 'Marketing spend'], 'circle') }, options: { variant: 'circular-process', ...slide } });
+  expect(cycle.ok).toBe(true);
+  expect(cycle.warnings.filter((warning: any) => warning.code === 'diagram-arrowhead-unplaced')).toEqual([]);
+});
+
+// Prevents the roof cut from hiding a required vision: a three-line vision on a 720 x 316 house that main draws was refused
+// ("label unplaced") because the cut left the roof shorter than the vision's three lines.
+it('keeps a three-line vision when the strategy house is a little short', () => {
+  const node = (id: string, kind: string, label: string, extra: object = {}) => ({ id, kind, shape: { kind: kind === 'vision' ? 'roof' : 'rectangle' }, label, role: 'primary', ...extra });
+  const data = {
+    groups: [{ id: 'g', title: 'Grow', role: 'primary', order: 1 }],
+    nodes: [node('v', 'vision', 'Trusted growth\npartner for\nevery customer'), node('o', 'objective', 'Grow', { groupId: 'g' }),
+      node('a', 'initiative', 'New segments', { groupId: 'g', order: 1 }), node('b', 'initiative', 'Pricing', { groupId: 'g', order: 2 }),
+      node('e', 'enabler', 'People', { order: 1 }), node('f', 'foundation', 'Customer trust')],
+  };
+  const body = render({ spec: { type: 'diagram', data, options: { variant: 'strategy-house', size: { width: 720, height: 316 } } } }).body as any;
+  expect(body.errors).toEqual([]);
+});
