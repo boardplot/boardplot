@@ -27,7 +27,7 @@ import { NOT_AVAILABLE } from '../../format';
 import { seriesRasterFormatter } from '../../formatSpec';
 import { rectContains, rectsOverlap, rowLabelX, unionRect, type Rect, type Size } from '../../geometry';
 import { bandValueLabelUniformity, keepValuesWithoutAxis } from '../band/labels';
-import { stackParts } from '../band/stacks';
+import { stackParts, withoutShareAnnotations } from '../band/stacks';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import {
@@ -199,7 +199,8 @@ export function layoutBar(
   options: BarOptions = {},
   annotationPass?: BarAnnotationPass,
 ): Geometry<BarMarks, BarDerived> {
-  options = withValueLabelDefaults(withLocaleStrings(options), 'bar', options.variant);
+  const dropped: LintWarning[] = [];
+  options = withoutShareAnnotations(withValueLabelDefaults(withLocaleStrings(options), 'bar', options.variant), options.variant === 'stacked100', dropped);
   const layout = (next: BarOptions) => layoutBarSized(data, next, annotationPass);
   const geo = withBandValueNotes(data, options, layout);
   const natural = geo.sizing?.naturalHeight;
@@ -208,6 +209,7 @@ export function layoutBar(
     const probe = withBandValueNotes(data, { ...options, size: { width: geo.size.width, height: natural } }, layout);
     if (probe.sizing && probe.sizing.minHeight > natural) geo.sizing = { ...geo.sizing!, naturalHeight: probe.sizing.minHeight };
   }
+  geo.warnings.push(...dropped);
   return geo;
 }
 

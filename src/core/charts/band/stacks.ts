@@ -345,3 +345,51 @@ export function mixedSignsWarning(
     suggest: advice.suggest,
   };
 }
+
+const seriesScoped = (annotation: { from?: unknown; to?: unknown }): boolean =>
+  [annotation.from, annotation.to].some((ref) => typeof ref === 'object' && ref !== null && 'seriesId' in ref);
+
+/**
+ * Drops the annotations that state a number a 100% axis does not show. Every
+ * column stands at 100%, so a difference arrow or a total growth bracket would
+ * read absolute totals over equal columns, and a numeric value line in data
+ * units would read as a percent. A growth bracket of one series keeps its own
+ * rate. A value line strictly inside the axis stays with a
+ * warning, because it can be a valid share target. Other annotations pass.
+ */
+export function withoutShareAnnotations<O extends { annotations?: Annotation[] }>(options: O, share: boolean, warnings: LintWarning[]): O {
+  if (!share || !options.annotations?.length) return options;
+  const kept = options.annotations.filter((annotation, index) => {
+    const owner = { annotationId: annotation.id ?? `${annotation.kind}-${index + 1}` };
+    if (annotation.kind === 'diff' || (annotation.kind === 'cagr' && !seriesScoped(annotation))) {
+      warnings.push({
+        code: 'annotation-unsupported-stacked100',
+        severity: 'warn',
+        owner,
+        message: `${annotation.kind} '${owner.annotationId}' dropped: a 100% axis shows shares, and this annotation states a change in the values`,
+        suggest: `Draw the ${annotation.kind === 'diff' ? 'difference' : 'growth'} on the absolute chart (variant: stacked), or state it in the title.`,
+      });
+      return false;
+    }
+    if (annotation.kind !== 'valueLine' || typeof annotation.value !== 'number') return true;
+    if (annotation.value <= 0 || annotation.value >= 100) {
+      warnings.push({
+        code: 'valueline-unsupported-stacked100',
+        severity: 'warn',
+        owner,
+        message: `valueLine '${owner.annotationId}' dropped: ${annotation.value} sits at or beyond the end of a 100% axis, so it reads as a data value, not a share`,
+        suggest: 'Draw a line in data units on the absolute chart (variant: stacked), or give a share between 0 and 100.',
+      });
+      return false;
+    }
+    warnings.push({
+      code: 'valueline-percent-stacked100',
+      severity: 'warn',
+      owner,
+      message: `valueLine '${owner.annotationId}' at ${annotation.value} is read as ${annotation.value}% of the stack, not as a data value`,
+      suggest: 'Keep it when the target is a share. For a value in data units, draw it on the absolute chart (variant: stacked).',
+    });
+    return true;
+  });
+  return kept.length === options.annotations.length ? options : { ...options, annotations: kept };
+}
