@@ -54,4 +54,17 @@ describe('row names on a pinned height', () => {
     expect(labels.every(label => label.title === undefined)).toBe(true);
     expect(labels.some(label => label.lines.length === 2)).toBe(true);
   });
+
+  // A 27-row ranking on a pinned print canvas drew at the hard minimum with 16 country names dropped and still counted as drawn.
+  it('dot: a pinned canvas prints every row name or refuses with the height it needs', () => {
+    const codes = Array.from({ length: 27 }, (_, index) => `C${String(index + 1).padStart(2, '0')}`);
+    const result = layoutResolvedRequest(resolveChartRequest({
+      type: 'dot',
+      data: { categories: codes.map(id => ({ id, label: id })), series: [{ id: 'debt', label: 'Gross debt', values: codes.map((_, index) => 150 - index * 4) }] },
+      annotations: [{ kind: 'valueLine', id: 'average', value: 80, label: 'Average' }],
+      options: { ...chrome, unit: '% of GDP', target: 'print', size: { width: 267, height: 180, unit: 'mm' } },
+    } as never));
+    if (result.refused) expect(result.warnings[0]?.code).toBe('size-below-floor');
+    else expect(result.labels.filter(label => label.kind === 'category' && label.hidden === 'collision')).toEqual([]);
+  });
 });
