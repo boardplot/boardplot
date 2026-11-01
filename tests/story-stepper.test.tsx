@@ -123,6 +123,23 @@ describe('story below the chart', () => {
     expect(live.story!.nav.nodes.length).toBe(4);
   });
 
+  // Problem: React's content fit started the notes at the panel without its button row, so they were drawn over Back and Next.
+  it('a content-fit React story starts its notes below the button row', async () => {
+    const footnotes = ['Values are workshop estimates from 15 use cases and are not measured savings.', 'Cost savings are shown as a share of the cost base of each function.'];
+    const { result } = await prepareChart({ type: 'scatter', data: fixture.data, options: { ...options, footnotes }, size: 'container', fit: 'content', fallbackSize: { width: 400, height: 400 } });
+    if (result.refused || !result.story) throw new Error('Expected a prepared story');
+    const panelBottom = result.story.panel.y + result.story.panel.h;
+    const noteNodes = result.frame!.footnoteNodeIds!.map(id => result.scene.find(node => node.id === id) as { y: number });
+    expect(noteNodes.length).toBeGreaterThan(0);
+    for (const node of noteNodes) expect(node.y).toBeGreaterThanOrEqual(panelBottom);
+  });
+
+  // Problem: a fixed 400 x 300 canvas squeezed the plot to a 45 px strip with a cut title once the row was dropped, so it must keep the size refusal.
+  it('a fixed canvas too small for its story is still refused', () => {
+    const geo = layout({ ...options, size: { width: 400, height: 300 } }) as unknown as { refused?: boolean };
+    expect(geo.refused).toBe(true);
+  });
+
   // Problem: a prepared React story that lost the marker would lay out without the room for its buttons, which then sit over the source line.
   it('a prepared React chart keeps the button row at every fit', async () => {
     for (const fit of ['fill', 'content'] as const) {

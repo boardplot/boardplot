@@ -222,9 +222,11 @@ export function applyStory(geo: Geometry<object, object>, data: unknown, options
   const fixed = typeof options.size === 'string' || options.size?.height !== undefined;
   // Only React draws the Back and Next row. Static output reserves the text panel alone, so the source line sits one gap below it.
   const navigation = options[STORY_NAVIGATION] === true;
+  // A fixed canvas first decides its text cuts and refusal with the row, as before: a plot squeezed to a strip is no chart. Then it lays out again without the row.
+  let holdRow = false;
   const laidOut = (width: number, limits?: { title: number; body: number }) => {
     const layout = panelLayout(spec, width, fonts, space, strings, measure, limits);
-    return navigation ? layout : { ...layout, height: layout.staticHeight };
+    return navigation || holdRow ? layout : { ...layout, height: layout.staticHeight };
   };
   let placed: { geo: Geometry<object, object>; rect: Rect; placement: StoryGeometry['placement']; layout: ReturnType<typeof panelLayout> } | undefined;
   // A side column must leave a chart that still meets its measured floor.
@@ -246,6 +248,7 @@ export function applyStory(geo: Geometry<object, object>, data: unknown, options
   }
   if (!placed) {
     let base = geo;
+    holdRow = fixed;
     let below = laidOut(base.plot.w);
     let reserve = below.height + gap;
     if (fixed) {
@@ -267,7 +270,14 @@ export function applyStory(geo: Geometry<object, object>, data: unknown, options
             ...(result.sizing ? { sizing: { ...result.sizing, naturalHeight: result.sizing.naturalHeight - reserve } } : {}),
           } as Geometry<object, object>;
           below = laidOut(base.plot.w, below.limits);
-          if (below.height + gap <= reserve + 0.01) break;
+          if (below.height + gap <= reserve + 0.01) {
+            if (!holdRow || navigation) break;
+            holdRow = false;
+            below = laidOut(base.plot.w, below.limits);
+            reserve = below.height + gap;
+            widthPass = 0;
+            continue;
+          }
           reserve = below.height + gap;
           if (++widthPass < 4) continue;
         }
