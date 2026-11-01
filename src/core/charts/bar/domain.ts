@@ -174,7 +174,7 @@ function orderBarCategories(
           const isPct = dropped.every(i => s.cells[i]!.v === null || s.cells[i]!.isPct);
           s.cells = [...keptOrder.map((i) => s.cells[i]!), { v: restSum(dropped.map((i) => s.cells[i]!.v)), ...(isPct ? { isPct: true } : {}), meta: null }];
         }
-        cats = [...keptOrder.map((i) => cats[i]!), { id: OTHERS_ID, label: restLabel(t, options.strings, dropped.length) }];
+        cats = [...keptOrder.map((i) => cats[i]!), { id: OTHERS_ID, label: restLabel(t, options.strings, dropped.map((i) => cats[i]!.label ?? cats[i]!.id)) }];
       } else {
         for (const s of normSeries) s.cells = keptOrder.map((i) => s.cells[i]!);
         cats = keptOrder.map((i) => cats[i]!);
