@@ -319,7 +319,7 @@ export function layoutSankey(data: SankeyData, options: SankeyOptions = {}): Geo
       });
     });
   });
-  // A ribbon at least one line high prints its value at its arriving end, right aligned to the next bar.
+  // A ribbon at least one line high prints its value at its arriving end, right aligned to the next bar, unless the node label there prints the same number.
   if ((options.linkValue ?? 'large') === 'large') {
     const flowH = measure('0', headerFont).height;
     links.forEach((link, i) => {
@@ -327,6 +327,8 @@ export function layoutSankey(data: SankeyData, options: SankeyOptions = {}): Geo
       const s = layered.chains[i]!.at(-1)!;
       const from = layered.nodes[layered.segments[s]!.source]!.column;
       const text = fmt(link.value);
+      // The only inflow of a node reads the node's own label, so printing it twice side by side adds nothing.
+      if (text === fmt(nodes[layered.segments[s]!.target]!.value)) return;
       const w = textW(text, headerFont);
       const x = columnX(from + 1) - LABEL_GAP - w;
       if (x < columnX(from) + barW + LABEL_GAP) return;

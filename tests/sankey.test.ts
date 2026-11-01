@@ -125,9 +125,9 @@ it('segment-migration fixture balances inflow and outflow at every middle node',
   for (const node of middle) expect([node.key, node.out]).toEqual([node.key, node.in]);
 });
 
-// A sankey page printed node totals only, so a reader could not read which ribbon is the biggest; thin ribbons stay unlabelled and linkValue 'none' brings the old look.
+// A sankey page printed node totals only, so a reader could not read which ribbon is the biggest; thin ribbons stay unlabelled, the only inflow of a node repeats the node label so it stays unlabelled, and linkValue 'none' brings the old look.
 it('prints the value of ribbons at least one line high at their arriving end', () => {
-  const links = [{ source: 'a', target: 'b', value: 300 }, { source: 'a', target: 'c', value: 2 }, { source: 'b', target: 'd', value: 300 }];
+  const links = [{ source: 'a', target: 'c', value: 300 }, { source: 'b', target: 'c', value: 100 }, { source: 'a', target: 'd', value: 2 }, { source: 'c', target: 'e', value: 400 }];
   const printed = (options: Record<string, unknown> = {}) => {
     const request = resolveChartRequest({ type: 'sankey', data: { links }, options: { title: 'Flows', other: false, size: { width: 640, height: 400 }, ...options } });
     return requireGeometry(layoutResolvedRequest(request)).scene.filter((node) => node.t === 'text' && node.id.startsWith('label:flow:'));
