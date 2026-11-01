@@ -7,7 +7,7 @@ import { logSpecFormat } from '../src/core/charts/scatter/logAxis';
 import { formatAutomaticNumber as formatAutomaticNumberSync, formatNumber } from '../src/core/format';
 import { shareSetDecimals } from '../src/core/formatPrecision';
 import { shareSetFormatter } from '../src/core/format';
-import { defaultFormatSpec, formatWithSpec, parseFormatExample, sameUnit, seriesRasterFormatter } from '../src/core/formatSpec';
+import { defaultFormatSpec, formatWithSpec, parseFormatExample, sameUnit, seriesRasterFormatter, unscaledFormatLint } from '../src/core/formatSpec';
 import { niceDomain } from '../src/core/scale';
 import type { SceneNode } from '../src/core/types/scene';
 import { createElement } from 'react';
@@ -307,6 +307,19 @@ describe('an example is read as its author wrote it', () => {
     expect(print('1,234 m2', 12)).toBe('12 m2');
     expect(print('1.2 km', 12.5)).toBe('12.5 km');
     expect(sameUnit('\u20ac Mio.', '\u20acm')).toBe(true);
+  });
+
+  // A spaced single letter is SI unit text ("12 m/s", "50 B"), but it scaled as millions and bytes lost their unit; the warning's fix also dropped the space.
+  it('keeps a spaced single letter a unit and keeps the space in the warning fix', () => {
+    const print = (example: string, value: number) => formatWithSpec(value, parseFormatExample(example));
+    expect(print('12 m/s', 7)).toBe('7 m/s');
+    expect(print('50 B', 512)).toBe('512 B');
+    expect(print('1.2m', 2400000)).toBe('2.4M');
+    expect(print('1.2 Mio.', 2400000)).toBe('2.4M');
+    const [warning] = unscaledFormatLint({ format: '12 m/s' }, { series: [{ values: [3.2, 3.4] }] });
+    expect(warning?.code).toBe('format-hides-values');
+    expect(warning?.message).toContain("'12 m/s'");
+    expect(warning?.suggest).toMatch(/'1\.1\d* m\/s'/);
   });
 
   it('keeps every decimal a chart-level example claims', () => {

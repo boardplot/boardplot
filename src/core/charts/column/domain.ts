@@ -9,7 +9,7 @@ import { cellFields, normalizeCategorySeries } from '../categorySeries';
 import { chartPalette } from '../chartEnv';
 import { breakStyleRefusal } from '../band/breakOrder';
 import { cagr, formatAuthoredPercent, formatAutomaticPercent, formatShare, shareSetFormatter } from '../../format';
-import { formatStatWithSpec, formatterFromExample, formatWithSpec, parseFormatExample, roundedNumber, seriesRasterFormatter, withChartMarks } from '../../formatSpec';
+import { formatStatWithSpec, formatterFromExample, formatWithSpec, parseFormatExample, roundedNumber, seriesRasterFormatter, shareFormatExample, withChartMarks } from '../../formatSpec';
 import { yearSpan, yearSpanFromLabels } from '../../periodYears';
 import { PRIORITY } from '../../label/solver';
 import {
@@ -55,13 +55,14 @@ function resolveColumnEnv(options: AnomalyColumnOptions, warnings: LintWarning[]
   const size = resolveSize(options.size);
   const theme = themeForWidth(resolveTheme(options.theme), panelTypeClass(options) ?? size.width);
   const paletteRamp = chartPalette(theme, options.palette, warnings);
+  const shareExample = shareFormatExample(options);
   return {
     options,
     theme,
     palette: paletteRamp ? options.palette : undefined,
     size,
     measure: options.measure ?? defaultMeasurer,
-    pctFmt: options.shareLabels?.format ? formatterFromExample(options.shareLabels.format, options.locale?.language) : (p: number) => formatShare(p, options.locale?.language),
+    pctFmt: shareExample ? formatterFromExample(shareExample, options.locale?.language) : (p: number) => formatShare(p, options.locale?.language),
     authoredPctFmt: (p: number) => formatAuthoredPercent(p, options.locale?.language),
     highlights: new Set(resolveHighlight(options.highlight)),
     density: options.labelDensity ?? 'smart',
@@ -1031,11 +1032,12 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
       ? []
       : [{ c, parts: dataSeries.flatMap((s) => { const share = basis.plottedOf(s, ci); return share === null ? [] : [{ s, share }]; }) }]) : [];
   // rounding 'sum-consistent' (the default): each complete stack's shares print so they add up to 100%,
-  // at the chart's one share precision (or shareLabels.format's).
+  // at the chart's one share precision (or the share format's: shareLabels.format, else a percent options.format).
   const shareTexts = new Map<string, string>();
   const roundingAdjustments: RoundingAdjustment[] = [];
+  const shareExample = shareFormatExample(options);
+  const spec = shareExample ? parseFormatExample(shareExample) : undefined;
   if (options.rounding !== 'nearest') {
-    const spec = options.shareLabels?.format ? parseFormatExample(options.shareLabels.format) : undefined;
     for (const { c, parts } of wholes) {
       const rounded = sumConsistentShares(parts.map((part) => part.share), options.locale?.language, spec && withChartMarks(spec, options.locale?.language), shareSet.decimals);
       if (rounded?.warning) warnings.push(roundingUnavailable(c.label ?? c.id, rounded.warning));
@@ -1046,7 +1048,7 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
       });
     }
   } else if (sharesOn) {
-    warnShareRoundingDrift(warnings, wholes.map(({ c, parts }) => ({ name: c.label ?? c.id, shares: parts.map((part) => part.share), decimals: shareSet.decimals })));
+    warnShareRoundingDrift(warnings, wholes.map(({ c, parts }) => ({ name: c.label ?? c.id, shares: parts.map((part) => part.share), decimals: spec?.decimals ?? shareSet.decimals })));
   }
   // sharesOfOneWhole: a stack whose authored parts miss 100 prints shares of its own total.
   // Direct percent cells print as authored, so a stack holding one is not rescaled.
@@ -1078,8 +1080,8 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
       ? { ...warning, severity: 'warn' as const, message: `${warning.message}; the chart is drawn without the break` } : warning));
   }
   return {
-    // The shares print at the chart's one precision ("9%" beside "50%"), unless shareLabels.format sets one.
-    ...env, ...(options.shareLabels?.format ? {} : { pctFmt: shareSet.format }), shareTexts, roundingAdjustments, shareNotes, options, cats, seriesNorm, dataSeries, refSeries, othersId, valueSpec, fmt, totalFmt: stackTotalFormatter(variant, valueSpec.spec, fmt), statFmt, variant,
+    // The shares print at the chart's one precision ("9%" beside "50%"), unless a share format sets one.
+    ...env, ...(shareFormatExample(options) ? {} : { pctFmt: shareSet.format }), shareTexts, roundingAdjustments, shareNotes, options, cats, seriesNorm, dataSeries, refSeries, othersId, valueSpec, fmt, totalFmt: stackTotalFormatter(variant, valueSpec.spec, fmt), statFmt, variant,
     refStyle: options.referenceStyle ?? 'tick', signColor, pyRef, pyGrowth,
     uniformScenario, pctLevels, ...lines, ...ribbons, computedTotal, va, ...basis, anomaly, ...span, ...(stepTicks && stepAcross ? { stepTicks } : {}), meanValue, averageMark, meanSpan, ...corridor,
     activeBreak,

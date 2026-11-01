@@ -281,6 +281,28 @@ describe('data gaps', () => {
       .toEqual([['33', '33', '34'], [expect.objectContaining({ part: 'a', nearest: '33%', printed: '34%' })]]);
   });
 
+  // The drift lint summed whole percents while the labels printed the authored decimals, so it named a sum no reader sees.
+  it('checks share drift at the decimals of a percent options.format', () => {
+    const thirds = { categories: [{ id: 'y' }], series: [{ id: 'a', values: [3334] }, { id: 'b', values: [3333] }, { id: 'c', values: [3333] }] };
+    for (const type of ['bar', 'column']) {
+      const options = { variant: 'stacked100', rounding: 'nearest', format: '1.00%' };
+      expect(texts(lay(type, thirds, options)).join(' ')).toContain('33.34%');
+      expect(codes(lay(type, thirds, options))).not.toContain('share-rounding-drift');
+      expect(codes(lay(type, thirds, { variant: 'stacked100', rounding: 'nearest', format: '1%' }))).toContain('share-rounding-drift');
+    }
+  });
+
+  // A percent options.format printed the pie's counts as percent and left the computed shares at whole percents, on bar and column too.
+  it('prints computed shares at the decimals of a percent options.format', () => {
+    const counts = { categories: [{ id: 'a' }, { id: 'b' }, { id: 'c' }], series: [{ id: 's', values: [238.7, 150, 231.3], unit: 'EUR m' }] };
+    const pie = lay('pie', counts, { format: '1.0%' });
+    expect(texts(pie).join(' ')).toContain('38.5%');
+    expect(texts(pie).join(' ')).not.toMatch(/238\.7%/);
+    expect(codes(pie)).toContain('percent-format-on-values');
+    const stack = { categories: [{ id: 'y' }], series: [{ id: 'a', values: [60.4] }, { id: 'b', values: [39.6] }] };
+    for (const type of ['bar', 'column']) expect(texts(lay(type, stack, { variant: 'stacked100', format: '0.0%' }))).toEqual(expect.arrayContaining(['60.4%', '39.6%']));
+  });
+
   // A 100% stack moves printed shares by default and rescales parts that miss 100, and only reading.rounding told the reader.
   it('lists a hidden method note when a 100% stack moves or rescales shares', () => {
     const thirds = lay('column', { categories: [{ id: 'q' }], series: ['a', 'b', 'c'].map((id) => ({ id, values: [10] })) }, { variant: 'stacked100' });
