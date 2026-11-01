@@ -985,7 +985,7 @@ function layoutPiePass(
     // ring leaves a label without a seat. The ring keeps every pie it seats whole.
     if (columns && (dropped.size > 0 || [...placed.seats.values()].some((s) => s.bad))) {
       const outsideOnly = sliceLabels.filter((sl) => !sl.insideEligible);
-      const stacked = placeColumns(outsideOnly.map(itemOf), r, cx, baseFit, columnGap(plot.w), plot);
+      const stacked = placeColumns(outsideOnly.map(itemOf), r, cx, baseFit, columnGap(plot.w), plot, lineH);
       if (stacked.bad.size === 0) {
         dropped.clear();
         placed = { ring: stacked, seats: new Map(outsideOnly.map((sl, k) => [sl, { seat: stacked.seats[k]!, form: 0, bad: false }] as const)) };

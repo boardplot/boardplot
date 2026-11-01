@@ -220,10 +220,12 @@ export function placeRing(items: RingItem[], r0: number, plot: Rect, minRadius: 
  * Seat the labels in two columns beside the circle, one on each side, each
  * label at the height of its slice's label anchor and pushed along the column
  * until none overlaps. A leader runs straight from the slice's rim to the
- * label's near edge. `edge` is the circle's outer extent, `gap` the room
- * between it and a column; the left column is set flush right against it.
+ * label's near edge, at the middle of the text line nearest the slice, so a
+ * pushed label's leader never ends in the gap before its neighbour. `edge` is
+ * the circle's outer extent, `gap` the room between it and a column, `lineH`
+ * the height of one text line; the left column is set flush right against it.
  */
-export function placeColumns(items: RingItem[], r: number, cx: number, edge: number, gap: number, plot: Rect): RingResult {
+export function placeColumns(items: RingItem[], r: number, cx: number, edge: number, gap: number, plot: Rect, lineH: number): RingResult {
   const seats: RingSeat[] = new Array(items.length);
   for (const right of [true, false]) {
     const side = items.map((_, i) => i).filter((i) => (norm(items[i]!.mid) < 180) === right);
@@ -237,7 +239,9 @@ export function placeColumns(items: RingItem[], r: number, cx: number, edge: num
       const { w, h } = item.forms[0]!;
       const rect = { x: right ? cx + edge + gap : cx - edge - gap - w, y: spread.positions[j]! - h / 2, w, h };
       const from = polar(item.center(r), r + 1, item.mid);
-      seats[i] = { rect, from, to: nearestOnRect(rect, from, LEADER_GUTTER), angle: item.mid };
+      const reach = Math.min(lineH, h) / 2;
+      const to = { x: right ? rect.x - LEADER_GUTTER : rect.x + w + LEADER_GUTTER, y: Math.min(Math.max(from.y, rect.y + reach), rect.y + h - reach) };
+      seats[i] = { rect, from, to, angle: item.mid };
     });
   }
   return { r, form: items.map(() => 0), seats, bad: badSeats(items, seats, r, plot) };
