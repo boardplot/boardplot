@@ -1,7 +1,7 @@
-import { apcaContrast, contrastRatio, tint } from './color';
+import { apcaContrast, contrastRatio, mixColors, tint } from './color';
 import { NormalizeError } from './normalize/shared';
 import { markRolePaint, mixedPaint, paintColor, seriesPaint } from './theme';
-import { MARK_CONTRAST_FLOOR, oklabLightness, PALETTE_NORMAL_FLOOR, palettePerceptualDistance } from './themeRules';
+import { MARK_CONTRAST_FLOOR, oklabLightness, PALETTE_NORMAL_FLOOR, palettePerceptualDistance, swatchApart } from './themeRules';
 import type { Paint, ThemePaintSource, LintWarning } from './types/scene';
 import type { Theme } from './types/theme';
 
@@ -404,6 +404,24 @@ function segmentApartPaints(theme: Theme, plain: readonly Paint[], others: reado
 }
 
 /**
+ * The Total bar of a table whose key names colours. Where the Total colour
+ * reads as one of them (a theme whose first series colour is the Total
+ * colour), it deepens toward black on a light page and white on a dark one,
+ * until it stands a swatch step from every colour in the key.
+ */
+function totalApartColor(theme: Theme, apartFrom: readonly Paint[]): string {
+  const total = paintColor(theme, { token: 'total' });
+  const others = apartFrom.map((paint) => paintColor(theme, paint));
+  const page = theme.color.background;
+  const extreme = contrastRatio('#000000', page) >= contrastRatio('#ffffff', page) ? '#000000' : '#ffffff';
+  for (let step = 0; step <= 20; step++) {
+    const color = step === 0 ? total : mixColors(extreme, total, step / 20);
+    if (others.every((other) => swatchApart(color, other))) return color;
+  }
+  return total;
+}
+
+/**
  * The story lines of a highlighted bump chart (line.bump). The first takes the
  * focus, the second the mark ink (or the first series colour a palette step
  * from the focus). A third and later one takes the first series colour that
@@ -500,11 +518,12 @@ function statusToneSearch(theme: Theme, source: Extract<ThemePaintSource, { kind
   return base;
 }
 
-export function adaptivePaintColor(theme: Theme, source: Extract<ThemePaintSource, {kind: 'line-band' | 'line-context' | 'line-apart' | 'line-forecast' | 'fan-step' | 'bullet-band' | 'segment-apart' | 'bump-story' | 'status-tone'}>): string {
+export function adaptivePaintColor(theme: Theme, source: Extract<ThemePaintSource, {kind: 'line-band' | 'line-context' | 'line-apart' | 'line-forecast' | 'fan-step' | 'bullet-band' | 'segment-apart' | 'total-apart' | 'bump-story' | 'status-tone'}>): string {
   switch (source.kind) {
     case 'status-tone': return statusToneColor(theme, source);
     case 'bump-story': return paintColor(theme, bumpStoryPaints(theme, source.count)[source.index]!);
     case 'segment-apart': return paintColor(theme, segmentApartPaints(theme, source.plain, source.others)[source.index]!);
+    case 'total-apart': return totalApartColor(theme, source.apartFrom);
     case 'line-apart': return paintColor(theme, lineApartPaint(theme, source.share, source.top, source.apartFrom, source.darker));
     case 'line-band': return paintColor(theme, lineBandPaint(theme, source.base, source.seriesId));
     case 'line-context': return paintColor(theme, lineContextPaint(theme, source.rank, source.rungCount, source.seriesId));

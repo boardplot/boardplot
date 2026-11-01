@@ -82,6 +82,7 @@ const BAR_H = 14;
 const HEAD_GAP = 6;
 const TOTAL_GAP = 6;
 const RANGE_KEY = '__range';
+const RESIDUAL_KEY = '__residual';
 const RANGE_FILL: Paint = { token: 'neutralLight' };
 // The outline keeps the extension apart from a light segment: the grey ramps
 // of the notation themes end in a light grey as well.
@@ -522,6 +523,10 @@ function layoutBarTableOnce(
     return g >= 0 ? groupPaints[g]! : paints[s]!;
   };
   const ranged = panels.some((entry) => entry.ranges.some(Boolean));
+  // Beside a key of group colours the Total bar decides again in each theme, so it never reads as one of them (or the rest rows' grey).
+  const totalFill: Paint = groups.length > 0
+    ? { ...markRolePaint('total', true), theme: { kind: 'total-apart', apartFrom: [...groupPaints, ...(data.categories.some((row) => row.residual) ? [RESIDUAL_FILL] : [])] } }
+    : markRolePaint('total', true);
   // One segment and no range: the head names the measure and no key is due.
   // Two or more segments, or a range extension: nothing else names the
   // colours, so the key stays when the spec hides it.
@@ -536,6 +541,10 @@ function layoutBarTableOnce(
     ]
     : series.map((s, i) => ({ id: s.id, label: s.label ?? s.id, paint: paints[i]!, key: 'box' }));
   // The key swatch draws the range bars' hairline outline (legend-mark parity).
+  // A grey rest row is no segment or group: the key names it when it names the colours.
+  if ((series.length > 1 || ranged || groups.length > 0) && data.categories.some((row) => row.residual)) {
+    legendItems.push({ id: RESIDUAL_KEY, label: chartString(options, 'residualKey'), paint: RESIDUAL_FILL, key: 'box' });
+  }
   if (ranged) legendItems.push({ id: RANGE_KEY, label: options.strings?.range ?? 'Range, low to high', paint: RANGE_FILL, stroke: RANGE_STROKE, width: strokeToken(theme, 'hair'), key: 'box' });
   if (legendOptions?.order) {
     const rank = new Map(legendOptions.order.map((id, i) => [id, i]));
@@ -674,7 +683,9 @@ function layoutBarTableOnce(
   // Interleaved: every panel starts at the left edge. Under cascade the tracks keep clear of one share
   // column and the growth column; else each bar keeps room for its end label.
   const shareColW = showShare ? SHARE_GAP + Math.max(0, maxOf(shareWs)) : 0;
-  const interleavedRun = (p: number) => Math.max(0, cascade ? plot.w - growthW - shareColW : plot.w - endReserves[p]!);
+  // Interleaved cascade: each period is named at the end of its track in the first row, so the run leaves room for the longest name.
+  const periodNameW = interleaved && cascade ? maxOf(panels.map((entry) => width(entry.head, headFont))) + END_GAP : 0;
+  const interleavedRun = (p: number) => Math.max(0, cascade ? plot.w - growthW - shareColW - periodNameW : plot.w - endReserves[p]!);
   const interleavedK = minOf(spans.map((span, p) => (span > 0 ? interleavedRun(p) / span : Infinity)));
   const commonShareRight = plot.x + plot.w - growthW;
   // The key of the interleaved form names each panel beside a bar glyph; the heads on the right keep their room.
@@ -686,7 +697,7 @@ function layoutBarTableOnce(
     const head = entry.fieldHead ? fieldText(entry.head) : entry.head;
     if (interleaved) {
       const scale = sharedScale ? (Number.isFinite(interleavedK) ? interleavedK : 0) : spans[p]! > 0 ? interleavedRun(p) / spans[p]! : 0;
-      const headFit = fitText(head, face, keyTextW, 2, measure, { target: options.target, typeRole: 'axis' });
+      const headFit = cascade ? fitText(head, face, Math.max(1, periodNameW - END_GAP), 1, measure, { target: options.target, typeRole: 'axis' }) : fitText(head, face, keyTextW, 2, measure, { target: options.target, typeRole: 'axis' });
       return { ...entry, head, face, origin: plot.x, scale, trackW: spans[p]! * scale, shareRight: commonShareRight, headFit };
     }
     const w = compact ? compactW + PANEL_GAP : sharedScale ? extras[p]! + spans[p]! * sharedK : cascade ? (restW * weights[p]!) / weightSum : PANEL_GAP + endReserves[p]! + ownRuns[p]!;
@@ -779,7 +790,7 @@ function layoutBarTableOnce(
   // ---- rows ----
   const heads: FittedText[] = [...numberTracks, ...(interleaved ? [] : panelTracks), ...(growthTrack ? [growthTrack] : [])].map((track) => track.headFit);
   // Interleaved: the panel key stacks one line (or two) per panel.
-  const keyH = interleaved ? panelTracks.reduce((sum, track) => sum + track.headFit.h + 2, 0) - 2 : 0;
+  const keyH = interleaved && !cascade ? panelTracks.reduce((sum, track) => sum + track.headFit.h + 2, 0) - 2 : 0;
   const headH = Math.max(lineBox(headFont), keyH, maxOf(heads.map((head) => head.h)), (growthTrack?.headFit.h ?? 0) + growthLift);
   // Rows take their natural pitch; a canvas the author sized shorter
   // tightens them down to the bar and the label plus a little air.
@@ -918,22 +929,18 @@ function layoutBarTableOnce(
   });
   panelTracks.forEach((track, p) => {
     if (interleaved) {
-      // The key: a bar glyph and the panel head, one entry per panel, in the order the bars stand.
-      const top = tableTop + headH - keyH + panelTracks.slice(0, p).reduce((sum, other) => sum + other.headFit.h + 2, 0);
-      const mid = top + lineBox(headFont) / 2;
-      const glyph = (id: string, y: number, h: number, fill: Paint) =>
-        scene.push({ t: 'rect', id, rect: { x: plot.x, y, w: KEY_W, h }, fill, owner: {}, part: 'panelKey' });
+      // Under cascade the bars are one colour, so each period is named at its bar: right of its track in the first row.
+      // Else the key: a bar glyph and the panel head, one entry per panel, in the order the bars stand.
+      const top = cascade ? place(p, 0).barTop : tableTop + headH - keyH + panelTracks.slice(0, p).reduce((sum, other) => sum + other.headFit.h + 2, 0);
       if (cascade) {
-        // Equal bars: the glyph stacks one bar per panel and darkens this panel's.
-        const n = panels.length;
-        const h = Math.max(2, Math.floor((10 - (n - 1)) / n));
-        panels.forEach((_entry, q) => glyph(`panel-key:${track.panel.id}:${q}`, mid - (n * h + n - 1) / 2 + q * (h + 1), h, q === p ? { token: 'inkMuted' } : TRACK_FILL));
+        label(`head:${track.panel.id}`, 'axisTitle', { colId: track.panel.id }, track.head, track.face,
+          rowText1(track.head, track.face, top, { left: track.origin + track.trackW + END_GAP }), track.headFit);
       } else {
         const h = Math.max(3, Math.round(panelBarH(p) * 0.7));
-        glyph(`panel-key:${track.panel.id}`, mid - h / 2, h, { token: 'inkMuted' });
+        scene.push({ t: 'rect', id: `panel-key:${track.panel.id}`, rect: { x: plot.x, y: top + lineBox(headFont) / 2 - h / 2, w: KEY_W, h }, fill: { token: 'inkMuted' }, owner: {}, part: 'panelKey' });
+        label(`head:${track.panel.id}`, 'axisTitle', { colId: track.panel.id }, track.head, track.face,
+          { x: plot.x + KEY_W + KEY_GAP, y: top, w: track.headFit.w, h: track.headFit.h }, track.headFit);
       }
-      label(`head:${track.panel.id}`, 'axisTitle', { colId: track.panel.id }, track.head, track.face,
-        { x: plot.x + KEY_W + KEY_GAP, y: top, w: track.headFit.w, h: track.headFit.h }, track.headFit);
       if (isNumberAlone(track.head)) requests[requests.length - 1]!.role = 'axis';
       if (p > 0 || !showShare) return;
       const id = `head:share:${track.panel.id}`;
@@ -1173,7 +1180,7 @@ function layoutBarTableOnce(
       if (cascade) {
         // A full dark bar per panel, the total inside it.
         const bar: Rect = { x: track.origin, y: totalTop + (rowH - totalBarH) / 2, w: track.trackW, h: totalBarH };
-        const fill = markRolePaint('total', true);
+        const fill = totalFill;
         const owner: OwnerRef = { colId: track.panel.id };
         scene.push({ t: 'rect', id: `total-bar:${track.panel.id}`, rect: bar, fill, owner, part: 'totalBar', display: { value: track.totalText } });
         barValue(`total:${track.panel.id}`, owner, track.totalText, totalFont, bar, fill, totalTop, track.origin, track.origin + track.trackW, true);

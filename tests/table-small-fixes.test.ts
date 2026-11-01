@@ -14,6 +14,8 @@ import { tableDataSchema } from '../src/core/charts/table/schema';
 import { authoredTrackWidth, intrinsicColumnWidth, tableFonts, ENCODING_WIDTH } from '../src/core/charts/table/tracks';
 import { levelLadder } from '../src/core/charts/table/ladder';
 import { defaultMeasurer, twoLineWidth } from '../src/core/text';
+import { resolvePaint } from '../src/core/svg/paint';
+import { swatchApart } from '../src/core/themeRules';
 import { cellGrounds, paintColor, registerTheme, resolveTheme, themes } from '../src/core/theme';
 import { contrastRatio, hueSaturation, mixColors } from '../src/core/color';
 import { onTableGround, toneTextPaint } from '../src/core/charts/table/chips';
@@ -1426,4 +1428,29 @@ it('prints no heat key for a diverging lane that is not stepped', () => {
   expect(keyText({ cap: { abs: 500 } })).toEqual([]);
   expect(keyText({ steps: 3 })).toHaveLength(1);
   expect(keyText({ bins: [100, 300] })).toHaveLength(1);
+});
+
+// A cascade bar table draws one bar colour per row group: its key must name the grey rest rows, its Total bar must not repeat a group colour, and a compact table must name each period at its bars.
+it('keys the rest rows, keeps the Total off the group colours and names compact periods at the bars', () => {
+  const fixture = (id: string) => getFixtures('bartable').find((f) => f.id === id)!;
+  const groups = fixture('cascade-two-periods');
+  for (const name of ['standard', 'standard-dark']) {
+    const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'bartable', data: groups.data, options: groups.options, theme: name } as never)));
+    const theme = resolveTheme(name);
+    const rects = geometry.scene.filter((node): node is Extract<SceneNode, { t: 'rect' }> => node.t === 'rect');
+    const total = resolvePaint(rects.find((node) => node.part === 'totalBar')!.fill!, theme);
+    const segments = rects.filter((node) => node.part === 'segment').map((node) => resolvePaint(node.fill!, theme));
+    expect(segments.length).toBeGreaterThan(0);
+    for (const color of segments) expect(swatchApart(total, color), `${name} Total against ${color}`).toBe(true);
+    const keyText = geometry.scene.filter((node): node is TextNode => node.t === 'text').map((node) => node.lines.join(' '));
+    expect(keyText).toContain('Rest rows');
+  }
+  const years = fixture('cascade-four-years');
+  const compact = layout('bartable', years.data, { ...years.options, mode: 'compact', size: { width: 1060 } });
+  expect(compact.scene.some((node) => node.part === 'panelKey')).toBe(false);
+  const name = compact.scene.find((node): node is TextNode => node.t === 'text' && node.id === 'label:head:y22')!;
+  const track = compact.scene.find((node): node is Extract<SceneNode, { t: 'rect' }> => node.id === 'track:y22:app')!;
+  // The name stands on the first row's 2022 bar line, past the end of its track.
+  expect(name.x).toBeGreaterThanOrEqual(track.rect.x + track.rect.w);
+  expect(Math.abs(name.y - (track.rect.y + track.rect.h / 2))).toBeLessThan(track.rect.h);
 });
