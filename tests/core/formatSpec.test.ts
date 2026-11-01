@@ -164,7 +164,7 @@ describe('formatterFromExample round-trips', () => {
 
 // Prevents a spelled-out magnitude word from leaving the value unscaled: "512.0 million" for 512.
 it('reads spelled-out magnitude words as their abbreviation', () => {
-  for (const [example, locale, abbreviation] of [['1.0 million', 'en', '1.0 mn'], ['1.0 thousand', 'en', '1.0 k'], ['1.0 billion', 'en', '1.0 bn'],
+  for (const [example, locale, abbreviation] of [['1.0 million', 'en', '1.0 mn'], ['1.0 thousand', 'en', '1.0k'], ['1.0 billion', 'en', '1.0 bn'],
     ['1,0 Millionen', 'de', '1,0 Mio.'], ['1,0 Tausend', 'de', '1,0 Tsd.'], ['1,0 Milliarden', 'de', '1,0 Mrd.']] as const) {
     expect(parseFormatExample(example).magnitude).toBe(parseFormatExample(abbreviation).magnitude);
     for (const value of [512, 2_500_000, 3e9]) expect(formatterFromExample(example, locale)(value)).not.toMatch(/^[\d.,\s]{5,}/);

@@ -20,13 +20,14 @@ export interface SeriesColorSample {
  * Neighbouring rungs of an ordered ramp differ by order, not by hue:
  * they are held to a visible step (3 OKLab, about 1.5 JND, as the ramp sweep),
  * not to the categorical palette floors. A theme's stack ramp is one too; a
- * theme without one paints its stack from the categorical series colours.
+ * theme without one paints its stack from the categorical series colours. The
+ * neutral ramp of the plain series beside a highlight is one as well.
  */
 const ORDERED_STEP_FLOOR = 3;
 
 const orderedRung = (sample: SeriesColorSample, theme: Theme): boolean => {
   const kind = sample.paint !== undefined && 'theme' in sample.paint ? sample.paint.theme?.kind : undefined;
-  return kind === 'ordered-ramp' || (kind === 'stack-ramp' && (theme.color.stack?.length ?? 0) >= 2);
+  return kind === 'ordered-ramp' || kind === 'neutral-ramp' || (kind === 'stack-ramp' && (theme.color.stack?.length ?? 0) >= 2);
 };
 
 /** A likert step is a wash kept `apart` from its side's extreme; the extreme is its base. */
