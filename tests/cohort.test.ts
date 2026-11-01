@@ -924,3 +924,16 @@ it('titles cohort records with the printed row and period names', async () => {
     for (const record of records) for (const part of record.label.split(' / ')) expect(ids.has(part)).toBe(false);
   }
 });
+
+// A rate such as "72%" missed a half-slide cell and every rate vanished; the unit line already names the percent.
+it('a narrow cohort heatmap prints its rates without the % sign instead of hiding them', () => {
+  const cohorts = Array.from({ length: 6 }, (_, i) => ({ id: `k${i}`, label: `K${i}`, active: Array.from({ length: 12 - i }, (_, t) => Math.round(1000 * 0.95 ** (t * 1.7))) }));
+  const printed = (width: number, unit?: string) => layout({ periodLabel: 'Month', cohorts } as CohortData, { unit, size: { width, height: 300 } } as CohortOptions)
+    .labels.filter((label) => label.kind === 'point' && !label.hidden).map((label) => label.text).filter((text) => text !== '–');
+  expect(printed(640, '% of cohort base').every((text) => text.endsWith('%'))).toBe(true);
+  const narrow = printed(432, '% of cohort base');
+  expect(narrow).toHaveLength(57);
+  expect(narrow.some((text) => text.includes('%'))).toBe(false);
+  // Without a unit line naming the percent, the sign stays.
+  expect(printed(432).every((text) => text.endsWith('%'))).toBe(true);
+});
