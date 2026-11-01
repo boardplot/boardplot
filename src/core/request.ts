@@ -10,7 +10,7 @@ import { NormalizeError, canonicalLanguage } from './normalize/shared';
 import { withNumberMarks } from './numberMarks';
 import { chartRefusals, isRefused } from './schema/refusals';
 import { REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, resolveTheme } from './theme';
-import { DEFAULT_TARGET, resolveTargetSize } from './target';
+import { DEFAULT_TARGET, floorTextScale, resolveTargetSize } from './target';
 import { textScaleOf, textSizeOf } from './typeFloors';
 import { defaultMeasurer, type TextMeasurer } from './text';
 import { drawnHeight } from './drawnHeight';
@@ -281,10 +281,35 @@ function prepared(def: { prepare?: (data: any, options?: any) => any }, data: un
 
 /** The same registered layout used by components, measurement and artifacts. */
 export function layoutResolvedRequest(request: ResolvedChartRequest): LayoutResult {
-  const result = layoutOnce(request);
-  const plainRequest = withoutAskedNotes(request, result);
+  const first = layoutOnce(request);
+  const [asked, result] = steppedType(request, first) ?? [request, first];
+  const plainRequest = withoutAskedNotes(asked, result);
   const plain = plainRequest && layoutOnce(plainRequest);
   return withClipWarnings(plain && !plain.refused ? askedNotesOff(plain, result) : result, request.fontMetrics);
+}
+
+/**
+ * A slide or print canvas a little too small for the class sizes draws once with the text stepped down to
+ * its reader floor before it is refused. An authored textScale, textSize or belowMinimum 'refuse' keeps
+ * the refusal. A stepped layout that is refused too gives the size the stepped text needs.
+ */
+function steppedType(request: ResolvedChartRequest, first: LayoutResult): [ResolvedChartRequest, LayoutResult] | undefined {
+  const options = request.options as RequestOptions;
+  const scale = floorTextScale(request.target);
+  if (!first.refused || first.warnings[0]?.code !== 'size-below-floor' || scale === undefined
+    || options.textScale !== undefined || options.textSize !== undefined || options.belowMinimum === 'refuse') return undefined;
+  const steppedRequest: ResolvedChartRequest = {
+    ...request, options: { ...request.options, textScale: scale },
+    theme: resolveTargetTheme(request.options.theme, request.target, scale),
+  };
+  const result = layoutOnce(steppedRequest);
+  if (result.refused) return [steppedRequest, result];
+  const full = first.warnings[0].expected?.minimum as Size | undefined;
+  return [steppedRequest, { ...result, warnings: [...result.warnings, {
+    code: 'type-stepped', severity: 'info',
+    message: `the canvas is too small for the ${request.target} type sizes, so the text is drawn at ${Math.round(scale * 100)} % of them, down to its reader floor`,
+    suggest: full === undefined ? 'Give the chart more room to draw the full type sizes.' : `Render it at ${full.width} × ${full.height}px or larger to draw the full type sizes.`,
+  }] }];
 }
 
 /** The drawn result names every text the canvas cuts (textClip.ts); a refusal draws nothing. */

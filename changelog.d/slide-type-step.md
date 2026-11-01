@@ -1,0 +1,3 @@
+### Fixed
+
+- A slide or print chart on a canvas a few percent too small for the class type sizes now draws instead of being refused. Before the `size-below-floor` refusal, the engine lays the chart out once more with the label at its reader floor (12 pt on a slide, 9 pt in print) and every other text scaled by the same factor down to its own floor. No text goes under its floor. The drawn chart carries the info lint `type-stepped`, which names the size that draws the full type sizes. A chart with an authored `textScale`, `textSize` or `belowMinimum: 'refuse'` is refused as before, and a canvas too small for the stepped text is refused with the size that text needs.

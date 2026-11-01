@@ -1226,3 +1226,38 @@ describe('bubble matrix key height', () => {
     expect(drawing(pinned.svg)).toBe(drawing(open.svg));
   });
 });
+
+// Prevents a slide or print canvas a few percent under the class-size floor from being refused where the same chart
+// draws with a slightly smaller type that stays at the reader floor.
+describe('type steps toward the reader floor before a size refusal', () => {
+  const half = (options: object) => ({
+    type: 'bar',
+    data: { categories: ['FY21', 'FY22', 'FY23', 'FY24'], series: [{ id: 'cloud', label: 'Cloud', values: [100, 130, 160, 200] }, { id: 'license', label: 'License', values: [124, 118, 109, 97] }] },
+    options: { variant: 'grouped', title: 'Cloud doubles in three years while license declines', subtitle: { measure: 'Revenue', period: 'FY21–FY24' }, unit: '$m', source: 'Invented accounts', target: 'slide', size: { width: 360, height: 405 }, ...options },
+    annotations: [
+      { kind: 'cagr', from: { categoryId: 'FY21', seriesId: 'cloud' }, to: { categoryId: 'FY24', seriesId: 'cloud' } },
+      { kind: 'diff', mode: 'absolute', from: { categoryId: 'FY24', seriesId: 'license' }, to: { categoryId: 'FY24', seriesId: 'cloud' } },
+    ],
+  });
+  const run = (spec: object) => layoutResolvedRequest(resolveChartRequest(spec as never));
+
+  it('draws a slide slot 5 px under the floor, names the step and keeps every text at its floor', () => {
+    const result = run(half({})) as Geometry;
+    expect(result.refused).toBeUndefined();
+    expect(result.warnings.find(w => w.code === 'type-stepped')).toMatchObject({ severity: 'info', suggest: expect.stringContaining('360 × 410px') });
+    const sizes = result.scene.flatMap(n => n.t === 'text' ? [n.font.size] : []);
+    expect(Math.min(...sizes)).toBeGreaterThanOrEqual(11);
+  });
+
+  it('keeps the refusal when the author sets the text size or the refusal', () => {
+    expect(run(half({ textScale: 1 })).refused).toBe(true);
+    expect(run(half({ textSize: 18 })).refused).toBe(true);
+    expect(run(half({ belowMinimum: 'refuse' })).refused).toBe(true);
+  });
+
+  it('refuses with the stepped need when the stepped text does not fit either', () => {
+    const result = run(half({ size: { width: 200, height: 405 } }));
+    expect(result.refused).toBe(true);
+    expect(result.warnings[0]!.code).toBe('size-below-floor');
+  });
+});
