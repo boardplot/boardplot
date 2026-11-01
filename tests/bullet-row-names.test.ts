@@ -48,14 +48,15 @@ describe("bullet band names on the rows (bandKey 'row')", () => {
     expect(crowded.scene.some((node) => node.id === 'edgeTick:a:104000')).toBe(true);
   });
 
-  // The number belongs with its bar end; it must never sit under the target tick.
-  it('seats the value just past the bar end, and in today\'s seat where the target tick is near', () => {
-    expect(shown(slide(), 'point:coverage')[0]?.slot).toBe('pastEnd');
-    const near = draw({ size: { width: 1200, height: 620 } }, { rows: [
-      { ...(ladder.data as BulletData).rows[0]!, value: { pct: 83 } },
-      (ladder.data as BulletData).rows[1]!,
-    ] });
-    expect(shown(near, 'point:coverage')[0]?.slot).not.toBe('pastEnd');
+  // A value at its bar end on one row and past the band on the next could not be read down one column.
+  it('prints every value right-aligned in one column right of the bands', () => {
+    const geometry = slide();
+    const values = geometry.labels.filter((placed) => placed.id.startsWith('point:') && !placed.hidden);
+    expect(values.length).toBeGreaterThan(1);
+    expect(new Set(values.map((placed) => placed.slot))).toEqual(new Set(['valueColumn']));
+    expect(new Set(values.map((placed) => Math.round((placed.rect.x + placed.rect.w) * 100)))).toHaveProperty('size', 1);
+    const lastBand = bandRect(geometry, 'band:cost:3').rect;
+    expect(Math.min(...values.map((placed) => placed.rect.x))).toBeGreaterThan(lastBand.x + lastBand.w);
   });
 
   // The dark ramp under a key made the bar sink into its worst band, and the chart changed weight with its row count.
