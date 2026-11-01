@@ -18,6 +18,7 @@ import { structureCount } from '../../structureCounts';
  */
 
 import { accumulateStack } from '../band/stacks';
+import { digitSeat, digitSeatEdge } from '../band/labels';
 import { deriveCascade } from './cascade';
 import { fixedBarRow } from '../bar/model';
 import { warnIncompleteComposition } from '../../dataGaps';
@@ -65,7 +66,7 @@ import type {
   BarTableOptions,
   BarTablePanelDerived,
 } from './types';
-import { disclosureNote } from '../../notes';
+import { disclosureNote, quietMethodNote } from '../../notes';
 import { shareRoundingNotes } from '../../shareRounding';
 import { footerType } from '../../footer';
 import { textScaleOf } from '../../typeFloors';
@@ -79,6 +80,11 @@ const MIN_RUN = 40;
 const PREFERRED_RUN = 48;
 const ROW_PITCH = 28;
 const BAR_H = 14;
+// A panel prints its parts inside the bars up to this many decimals; a part keeps this padding each side.
+const PART_DECIMALS = 1;
+const PART_PAD = 3;
+// The digits keep 2 px of air over and under them inside a bar shorter than the line box.
+const PART_AIR = 4;
 const HEAD_GAP = 6;
 const TOTAL_GAP = 6;
 const RANGE_KEY = '__range';
@@ -321,6 +327,9 @@ function layoutBarTableOnce(
   if (options.cascade !== undefined && options.variant !== 'cascade') {
     throw new NormalizeError('bartable-cascade', 'options.cascade', "cascade sets the share cascade, and this table draws variant 'panels'", "set variant 'cascade', or drop cascade");
   }
+  if (options.segmentValues !== undefined && options.variant === 'cascade') {
+    throw new NormalizeError('bartable-cascade', 'options.segmentValues', "segmentValues sets the part values of variant 'panels', and a cascade bar is one part that prints its own value", "set variant 'panels', or drop segmentValues");
+  }
   const cascadeOptions = options.variant === 'cascade' ? options.cascade ?? {} : undefined;
   if (cascadeOptions) checkCascade(split.data, cascadeOptions.growth);
   const warnings: LintWarning[] = [];
@@ -496,9 +505,20 @@ function layoutBarTableOnce(
   // Measured in the size the footer draws (footerType), so a wrapped note breaks where it prints.
   const noteFont: FontSpec = { family: theme.type.family, ...footerType(theme.type.footnote, options.target, textScaleOf(options)) };
   const noteW = Math.max(1, size.width - (margin.left ?? 0) - (margin.right ?? 0));
+  // A panel prints its parts inside the bars when its format has at most one decimal: more digits
+  // do not fit a part, so such a panel keeps its end labels alone. A row with a range prints no parts,
+  // and one segment is the whole bar, which the end label prints already.
+  const partsPrinted = panels.map((entry) => !cascade && series.length > 1 && options.segmentValues !== false && entry.spec.decimals <= PART_DECIMALS);
+  // Rounded parts may miss the rounded row sum by one step.
+  const partsMissTotal = panels.some((entry, p) => partsPrinted[p] && entry.rowSums.some((sum, r) => {
+    if (sum === null || entry.ranges[r]) return false;
+    const rounded = series.reduce((acc, s) => acc + roundedNumber(Math.max(0, entry.panel.values[s.id]?.[r] ?? 0), entry.spec), 0);
+    return Math.abs(rounded - roundedNumber(sum, entry.spec)) > 1e-9 * Math.max(1, Math.abs(sum));
+  }));
   const derivedNotes = [
     // Under cascade the bracket prints the combined share.
     ...(cascade ? [] : shareNotes),
+    ...(partsMissTotal ? [quietMethodNote(chartString(options, 'partsMissTotal'))] : []),
     ...(blanks.length > 0 ? [disclosureNote(twoLineNote(chartString(options, single ? 'bartableMissingHeading' : 'bartableBlankHeading', { v1: glyph }), blanks, showTotal ? chartString(options, 'bartableBlankTotal') : '', noteFont, noteW, measure, options))] : []),
     ...((options as { [SLIVER_NOTE]?: string[] })[SLIVER_NOTE] ?? []),
     ...shareRoundingNotes(options, cascade?.adjustments ?? []),
@@ -1082,6 +1102,24 @@ function layoutBarTableOnce(
           part: 'segment', display: { value: text },
         });
         occupied.claim(rect, 'mark', owner, 'segment');
+        if (!partsPrinted[p] || range) return;
+        // The part's value inside it, in the ink that reads on its fill, where the text and its padding fit.
+        const partFont = cellFont;
+        const box = measure(text, partFont);
+        if (box.width + 2 * PART_PAD > rect.w) return;
+        const seat = box.height + 2 <= rect.h
+          ? { x: rect.x + (rect.w - box.width) / 2, y: rect.y + (rect.h - box.height) / 2, w: box.width, h: box.height }
+          : digitSeat(rect, text, box, measure.capHeight?.(partFont), partFont.size, Math.max(PART_AIR, digitSeatEdge(theme, undefined)));
+        if (!seat) return;
+        const partId = `part:${track.panel.id}:${row.id}:${seriesId}`;
+        const fill = rowPaint(r, s);
+        fonts.set(partId, partFont);
+        contrastInk.add(partId);
+        requests.push({
+          id: partId, kind: 'segment', owner, text, font: partFont, typeRole: 'label', lines: [text], pad: 0, noLeader: true,
+          priority: PRIORITY.interior,
+          candidates: [{ slot: `${partId}:inside`, rect: seat, penalty: 0, pad: 0, insideFill: paintColor(theme, fill), insidePaint: fill }],
+        });
       });
       const endText = track.endTexts[r]!;
       const owner: OwnerRef = { categoryId: row.id, colId: track.panel.id };
@@ -1301,7 +1339,7 @@ function layoutBarTableOnce(
       desc: chartString(options, 'bartableDescStart', { v1: rows.length, v2: columns.length ? chartString(options, 'tableColumnsClause', { v1: numberTracks.map((track) => track.name).join(', ') }) : '' }) +
         `${panels.length === 1 ? chartString(options, 'barPanelOne') : chartString(options, 'barPanels', { v1: panels.length })}, ${panels.map((entry) => entry.head).join('; ')}, ${sharedScale ? chartString(options, 'sharedScale') : chartString(options, 'ownScale')}. ` +
         `${cascade ? chartString(options, 'cascadeDesc', { v1: showShare ? chartString(options, 'shareColumnClause') : '', v2: bracketRows ? chartString(options, 'combinedShareBracket', { v1: bracketLabel }) : '', v3: growth ? chartString(options, 'lastColumnClause', { v1: growth.head }) : '' }) : ''}` +
-        chartString(options, 'segmentsSentence', { v1: segmentNames, v2: cascade ? chartString(options, 'cascadeValueLabels') : chartString(options, 'barEndTotalRange') }) +
+        chartString(options, 'segmentsSentence', { v1: segmentNames, v2: cascade ? chartString(options, 'cascadeValueLabels') : chartString(options, 'barEndTotalRange') + (solved.placed.some((placed) => placed.id.startsWith('part:')) ? chartString(options, 'barPartValues') : '') }) +
         `${ranged ? chartString(options, 'rangeBarDesc') : ''}` +
         `${showTotal ? chartString(options, 'tableTotalRow', { v1: totalLabel }) : ''}`,
     },

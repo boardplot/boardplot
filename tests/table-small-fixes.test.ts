@@ -1485,3 +1485,25 @@ it('keeps the track floor at the minWidth of a compact cascade with long period 
   const tracks = compact.scene.filter((node): node is Extract<SceneNode, { t: 'rect' }> => node.t === 'rect' && node.id.startsWith('track:'));
   expect(Math.min(...tracks.map((node) => node.rect.w))).toBeGreaterThanOrEqual(56);
 });
+
+// A bar table printed only each bar's sum, so a title about one segment could not be checked on the page.
+it('prints bar table part values inside the segments that hold them, and only there', () => {
+  const data = {
+    categories: [{ id: 'a', label: 'Alpha' }, { id: 'b', label: 'Beta' }],
+    series: [{ id: 'x', label: 'X' }, { id: 'y', label: 'Y' }, { id: 'z', label: 'Z' }],
+    panels: [
+      { id: 'abs', label: 'Value', unit: '$m', weight: 2, values: { x: [113.3, 20], y: [67.2, 1], z: [40.1, 70] } },
+      { id: 'pct', label: 'Share', unit: '%', aggregate: 'none', format: '1.00', values: { x: [10.12, 20.5], y: [30.25, 40.5], z: [10.5, 20.5] } },
+    ],
+  };
+  const parts = (options: object) => layout('bartable', data, options).labels.filter((l) => l.id.startsWith('part:')).map((l) => `${l.id.slice(5)}=${l.text}`);
+  const on = parts({ total: false });
+  // The 1-wide part of Beta has no room; the two-decimal panel prints end labels only.
+  expect(on).toContain('abs:a:x=113');
+  expect(on).not.toContain('abs:b:y=1');
+  expect(on.some((id) => id.startsWith('pct:'))).toBe(false);
+  expect(parts({ total: false, segmentValues: false })).toEqual([]);
+  // 113 + 67 + 40 prints 220 beside 221: the notes list says rounded parts can miss the total.
+  const notes = (layout('bartable', data, { total: false }).frame?.noteList ?? []).map((n) => n.text).join(' | ');
+  expect(notes).toContain('parts of a row can miss its printed total');
+});

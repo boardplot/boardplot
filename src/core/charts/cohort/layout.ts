@@ -129,7 +129,7 @@ export function layoutCohort(
   // visible base every comparison down a column is unanchored.
   const baseSuffix = new Map<Id, string>();
   for (const row of derived.cohorts) {
-    baseSuffix.set(row.id, `(n = ${formatAutomaticNumber(row.base, { locale: options.locale?.language, decimals: 0 })})`);
+    baseSuffix.set(row.id, `(n\u00a0=\u00a0${formatAutomaticNumber(row.base, { locale: options.locale?.language, decimals: 0 })})`);
   }
   const cohortLabel = (index: number): string => {
     const authored = data.cohorts[index]!.label ?? data.cohorts[index]!.id;

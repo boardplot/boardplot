@@ -116,6 +116,12 @@ export interface BarTableOptions extends BaseOptionsFor<'bartable'> {
    */
   combinedShare?: { rows: Id[]; label?: string };
   /**
+   * Print each part's value inside its segment, where the text and 3 px of padding on each side fit.
+   * Default true. A panel whose format has more than one decimal, and a row with a range, print end labels only.
+   * Refused under variant 'cascade'.
+   */
+  segmentValues?: boolean;
+  /**
    * 'panels' (default): one stacked-bar panel per measure. 'cascade': each panel
    * splits its total, a row's bar starts where the row above ended, on a light
    * track over the whole total.

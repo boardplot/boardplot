@@ -74,6 +74,8 @@ export const fixtures: Fixture<BarTableData, BarTableOptions>[] = [
       total: false,
       // The default without cascade, written out.
       sharedScale: false,
+      // The default: each part prints its value inside its segment where it fits.
+      segmentValues: true,
       title: 'Renewals carry more than half of the bookings in every region',
       subtitle: { measure: 'Bookings', period: 'FY 2026' },
       source: 'Illustrative data',
