@@ -1085,7 +1085,7 @@ function layoutRowIntervals(
     const stepEst = theme.space.barRow?.pitch ?? availH / cats.length;
     const fittedCats = rowLabelBand(
       cats.map((cat) => ({ id: cat.id, label: cat.label ?? cat.id, footnote: cat.footnote })), tickFont, catCap, stepEst >= Math.max(30, 2 * lineH + (targetSizing ? 4 : 0)) ? 2 : 1, lineH, measure,
-      { target: options.target, textScale: textScaleOf(options), typeRole: 'axis', wider: gutterBudget(24, plot0.w), shrink: stepDownFont(theme, tickFont, 'axis', options.target, textScaleOf(options)), footnoteRefs: { count: authoredFootnoteCount(options), warnings: rowWarnings } },
+      { target: options.target, textScale: textScaleOf(options), typeRole: 'axis', wider: gutterBudget(24, plot0.w), tightLines: Math.floor((stepEst - (targetSizing ? 4 : 0)) / lineH), shrink: stepDownFont(theme, tickFont, 'axis', options.target, textScaleOf(options)), footnoteRefs: { count: authoredFootnoteCount(options), warnings: rowWarnings } },
     );
     // A tornado driver's name prints bold over its range (tornadoHead): its seat and the band take the bold width.
     const catLines = fittedCats.labels.map((label, ci) => tornadoHead(cats[ci]!, label)

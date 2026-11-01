@@ -3,7 +3,7 @@ import * as labelSolver from '../src/core/label/solver';
 import { layoutColumn } from '../src/core/charts/column/layout';
 import '../src/core/geo/packs';
 import { getFixtures } from '../src/fixtures';
-import { layoutResolvedRequest, renderSvg, resolveChartRequest } from '../src/index';
+import { canDraw, layoutResolvedRequest, renderSvg, resolveChartRequest } from '../src/index';
 import { contrastRatio } from '../src/core/color';
 import { resolveTheme } from '../src/core/theme';
 import { measureText } from '../src/core/text';
@@ -513,5 +513,41 @@ describe('chart layout edge cases', () => {
     expect(long.frame.titleLines).toBe(1);
     expect(long.warnings.some((w: { code: string }) => w.code === 'frame-title-truncated')).toBe(false);
     expect(lay('Orders').size.width).toBe(176);
+  });
+
+  // A bar row name stopped at three lines and was cut with an ellipsis although its row held a fourth line.
+  it('a bar name that would be cut at three lines takes a fourth when the row holds it', () => {
+    const request = {
+      type: 'bar',
+      data: { categories: [
+        { id: 'a', label: 'Customers who cancelled within the first ninety days after a price change and who named the new billing cycle as the main reason' },
+        { id: 'b', label: 'Renewals' },
+        { id: 'c', label: 'New sign-ups' },
+      ], series: [{ id: 's', label: 'Share', values: [32, 51, 44] }] },
+      options: { title: 'Cancellation reasons', size: { width: 360, height: 300, unit: 'pt' } },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+    const name = geometry.labels.find((l: { id: string }) => l.id === 'category:a');
+    expect(name.title).toBeUndefined();
+    expect(name.lines).toHaveLength(4);
+  });
+
+  // The fourth line counted a row as the canvas over the row count, but a gap after a row takes steps of its own,
+  // so the chart minimum passed the pinned height and the size was refused where the chart drew before.
+  it('a fourth name line does not push a chart with gapAfter rows over its pinned height', () => {
+    const long = 'Customers who cancelled within the first ninety days after a price change and who named the new billing cycle as the main reason';
+    const request = {
+      type: 'bar',
+      data: { categories: [
+        { id: 'a', label: long, gapAfter: true },
+        { id: 'b', label: 'Renewals', gapAfter: true },
+        { id: 'c', label: 'New sign-ups', gapAfter: true },
+        { id: 'd', label: 'Upgrades' },
+      ], series: [{ id: 's', label: 'Share', values: [32, 51, 44, 27] }] },
+      options: { title: 'Cancellation reasons', size: { width: 360, height: 260, unit: 'pt' } },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(canDraw(request as any)).toMatchObject({ ok: true });
   });
 });

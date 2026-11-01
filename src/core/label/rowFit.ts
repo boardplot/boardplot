@@ -75,7 +75,7 @@ interface ColumnEntry extends FitOptions {
  */
 export function fitColumn(entries: readonly ColumnEntry[], measure: TextMeasurer): FittedText[] {
   const fitAll = (stepped: boolean) => entries.map((entry) =>
-    fitText(entry.text, stepped ? shrinkFont(entry.font, entry) ?? entry.font : entry.font, entry.maxWidth, entry.maxLines, measure, { wider: entry.wider, target: entry.target, typeRole: entry.typeRole, breakAfter: entry.breakAfter }));
+    fitText(entry.text, stepped ? shrinkFont(entry.font, entry) ?? entry.font : entry.font, entry.maxWidth, entry.maxLines, measure, { wider: entry.wider, target: entry.target, typeRole: entry.typeRole, breakAfter: entry.breakAfter, tightLines: entry.tightLines }));
   const cuts = (labels: FittedText[]) => labels.filter((label) => label.title !== undefined).length;
   const plain = fitAll(false);
   if (cuts(plain) === 0) return plain;
@@ -96,15 +96,15 @@ export function fitColumn(entries: readonly ColumnEntry[], measure: TextMeasurer
 /** Fit a column of row labels in one font through the policy; the column is as wide as its widest label. */
 export function fitBand(
   /** `reserve` is width this row owes something drawn after its text. */
-  rows: readonly { label: string; reserve?: number; maxLines?: number; wider?: number }[],
+  rows: readonly { label: string; reserve?: number; maxLines?: number; wider?: number; tightLines?: number }[],
   font: FontSpec,
   maxWidth: number,
   maxLines: number,
   measure: TextMeasurer,
   options: FitOptions = {},
 ): FittedBand {
-  const labels = fitColumn(rows.map((row) => ({ text: row.label, font, maxWidth: maxWidth - (row.reserve ?? 0), maxLines: row.maxLines ?? maxLines, ...options, ...(row.wider === undefined ? {} : { wider: row.wider }) })), measure)
-    .map((fitted, index) => withoutLoneWord(rows[index]!.label, fitted, rows[index]!.maxLines ?? maxLines, measure));
+  const labels = fitColumn(rows.map((row) => ({ text: row.label, font, maxWidth: maxWidth - (row.reserve ?? 0), maxLines: row.maxLines ?? maxLines, ...options, ...(row.wider === undefined ? {} : { wider: row.wider }), ...(row.tightLines === undefined ? {} : { tightLines: row.tightLines }) })), measure)
+    .map((fitted, index) => withoutLoneWord(rows[index]!.label, fitted, Math.max(rows[index]!.maxLines ?? maxLines, fitted.lines.length), measure));
   return { labels, width: rows.length ? maxOf(labels.map((label, index) => label.w + (rows[index]!.reserve ?? 0))) : 0 };
 }
 
