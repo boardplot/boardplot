@@ -474,11 +474,8 @@ function layoutPiePass(
   // other slice back into a grey ramp.
   const greyRest = slices.some((s) => highlights.has(s.cat.id));
   const greyCount = slices.filter((s) => !highlights.has(s.cat.id) && (s.v ?? 0) > 0).length;
-  const colorMode =
-    options.colors ??
-    (slices.length <= 4 && options.palette === undefined && options.topN === undefined
-      ? 'categorical'
-      : 'sequential');
+  // One ramp at every slice count: hues would claim a difference the slices do not have.
+  const colorMode = options.colors ?? 'sequential';
   // The ramp base is series 1, or the palette's first rank.
   const rampBase: Paint = themeSeriesPaint(0, paletteRamp ? options.palette : undefined);
   const paintWarningRules: PaintWarningRule[] = colorMode === 'sequential' && !greyRest

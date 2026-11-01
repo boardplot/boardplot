@@ -376,7 +376,7 @@ function mapKeysOnce(input: MapKeysInput) {
   for (const [index, item] of noValueKeys.entries()) {
     const ry = keyY + noDataY + index * rowH;
     const rect = { x: keyX, y: ry + (rowH - SWATCH) / 2, w: SWATCH, h: SWATCH };
-    nodes.push({ t: 'rect', id: `legend-swatch:${item.id}`, rect, fill: item.paint, ...(item.hollow ? { pattern: 'hollow' as const } : item.pattern ? { pattern: item.pattern } : {}), ...(item.id === 'not-in-data' ? { stroke: { token: 'inkMuted' as const }, strokeWidth: strokeToken(theme, 'hair') } : {}), owner: {}, part: 'swatch' });
+    nodes.push({ t: 'rect', id: `legend-swatch:${item.id}`, rect, fill: item.paint, ...(item.hollow ? { pattern: 'hollow' as const } : item.pattern ? { pattern: item.pattern } : {}), owner: {}, part: 'swatch' });
     occupied.claim(rect, 'legend', {}, 'swatch');
     addText(`legend-label:${item.id}`, [item.label], keyX + SWATCH + SWATCH_GAP, ry + (rowH - lineOf(font)) / 2, font, 'caption');
     items.push({ id: item.id, swatchNodeId: `legend-swatch:${item.id}`, labelId: `label:legend-label:${item.id}` });

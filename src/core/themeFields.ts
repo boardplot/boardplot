@@ -68,7 +68,8 @@ const THEME_FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze
   'color.seriesOverflow':
     "What a series index beyond the ramp does: 'repeatLast' reuses the last entry, 'cycle' restarts the ramp. Default 'repeatLast'.",
   'color.casePair': 'Tornado low/high fills. Absent resolves to neutralLight/series 1.',
-  'color.stack': 'Fills of the plain series of a stacked or 100% column or bar, strongest on the page first and the quietest last (2 or more). More series than steps share the ramp evenly between its ends; authored fills, colour roles, palettes and highlights win. Absent keeps the series order.',
+  'color.stack': 'Fills of the plain series of a stacked or 100% column or bar, strongest on the page first and the quietest last (2 or more). More series than steps share the ramp evenly between its ends; authored fills, colour roles, palettes and highlights win. Absent keeps the series order. Treemap groups take it when color.treemap is absent.',
+  'color.treemap': 'Fills of treemap groups by rank, the first drawn group the strongest (2 or more). More groups than steps share the ramp evenly between its ends; a group fill or colorRole and options.palette win. Absent takes color.stack; a theme without either steps the first series colour toward the page. Set it to the color.series list for one hue per group.',
   'color.palettes':
     'Named alternative categorical ramps so one report keeps disjoint color vocabularies per dimension. Charts opt in through options.palette.',
   'color.status':
@@ -258,7 +259,7 @@ const THEME_FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze
   'table.inks.operator': 'Statement operator ink. Default table.inks.secondary.',
   'table.inks.driver': 'Driver label, figure and change ink. A good, warn or bad figure of a driver that options.driverTones allows (grouped by default: a driver under a line) keeps its tone, and a neutral figure and the label keep this ink. Default table.inks.secondary.',
   'table.inks.toggle': 'Fold toggle ink: the +/- mark, and the box under mark boxed. Default table.inks.secondary.',
-  'table.inks.secondary': 'The one table ink that steps back behind a value: change lines, unit affixes, group notes, cell notes and hints, state glyphs, zero figures, muted columns and the fold toggle. On the SVG and in the grid. Boardroom #305B86, standard-dark #9EC3E2; absent, color.inkMuted.',
+  'table.inks.secondary': 'The one table ink that steps back behind a value: change lines, unit affixes, group notes, cell notes and hints, state glyphs, zero figures, muted columns and the fold toggle. On the SVG and in the grid. Boardroom #5B6878, standard-dark #9EC3E2; absent, color.inkMuted.',
   'table.ruleInk': 'The quiet table rule, on the SVG and in the grid: row rules, the column-group rule and the column dividers. Boardroom #C3D3E3, standard-dark #344B60; absent, 25% of color.ink mixed into the background.',
   'table.weights.emphasis': 'Weight of totals, subtotals, results and parent rows, on labels and figures (100 to 1000). Default 600 in every shipped preset; absent in a custom theme, the type.emphasis weight.',
   'table.weights.subtotal': 'Subtotal label weight. Default table.weights.emphasis.',

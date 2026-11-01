@@ -1079,7 +1079,9 @@ export interface LineOptions extends Omit<BaseOptionsFor<'line'>, 'annotations'>
    * the theme's ordered ramp in data order, the first the lightest (still 3:1
    * on the page) and the last the full ink, for series whose order is the
    * encoding, such as cohorts. Unset means `'none'`, except on a drawn fan,
-   * whose centre is the subject and takes the ink. `'first'` is for the plain
+   * whose centre is the subject and takes the ink, and on `stacked-area` and
+   * `stacked100-area` without a highlight, palette or series fill, whose bands
+   * take `'ordered'` (`'none'` keeps the theme hues). `'first'` is for the plain
    * `line` variant only; highlight, palette, series fill, colorRole and
    * series-level scenario keep their own colours; cell-level FC and PL keep
    * their dashes.
@@ -1214,7 +1216,7 @@ export interface PieOptions extends BaseOptionsFor<'pie'> {
   labels?: BaseOptions['labels'];
   rotate?: 0 | 90 | 180 | 270;
   explode?: Record<Id, number>;
-  /** Nominal slices use series hues; ordered shares use a perceptual tint ladder. */
+  /** Default 'sequential': one perceptual tint ladder at every slice count. 'categorical': each slice takes its own series hue. */
   colors?: 'categorical' | 'sequential';
   /** Sequential ramp beside an Others slice. 'quietest': named slices stay further from the background than Others. 'apart': they only differ from it. Unset takes the chart default (DEFAULT_OTHERS_SHADE). */
   othersShade?: OthersShade;

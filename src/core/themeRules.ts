@@ -200,6 +200,9 @@ function validateColorFields(
   c.stack?.forEach((color, i) => {
     if (!parseColor(color)) push('unparseable-color', 'error', `color.stack[${i}] = '${color}' is not parseable. ${COLOR_FIX}`);
   });
+  c.treemap?.forEach((color, i) => {
+    if (!parseColor(color)) push('unparseable-color', 'error', `color.treemap[${i}] = '${color}' is not parseable. ${COLOR_FIX}`);
+  });
   c.casePair?.forEach((color, i) => {
     if (!parseColor(color)) push('unparseable-color', 'error', `color.casePair[${i}] = '${color}' is not parseable. ${COLOR_FIX}`);
   });
