@@ -292,7 +292,7 @@ export function layoutChoropleth(
   // line); the inset scale note changes how areas compare and stays.
   const methodNote = options.methodNote === true;
   const policyFootnote =
-    methodNote && labelPolicy.mode === 'auto' &&
+    methodNote && labelPolicy.mode === 'auto' && pack.id === 'world' &&
       labelPolicy.eligibleIds.size < pack.regions.length
       ? chartString(options, 'mapLabelPolicy', { v1: labelPolicy.topN })
       : undefined;

@@ -61,4 +61,16 @@ describe('regions the data never names', () => {
     const lowest = light.scene.find((node) => node.id === 'region:DE')!;
     expect(palettePerceptualDistance(paintColor(dark, land.fill as never), paintColor(dark, lowest.fill as never))).toBeGreaterThanOrEqual(6);
   });
+
+  // An EU map of five countries must not claim "top 27 by value": only the world pack ranks its labels.
+  it('leave the method note without a ranking claim on a pack that labels what the data lists', async () => {
+    await import('../src/core/charts');
+    await import('../src/core/geo/packs');
+    const { layoutResolvedRequest, resolveChartRequest } = await import('../src/core/request');
+    const regions = [['DE', 10], ['FR', 20], ['AT', 30], ['IT', 40], ['ES', 50]].map(([id, value]) => ({ id, value }));
+    const layout = layoutResolvedRequest(resolveChartRequest({
+      type: 'choropleth', data: { pack: 'eu27', regions }, options: { title: 'Sales by market', methodNote: true },
+    } as never));
+    expect(JSON.stringify(layout)).not.toContain('by value');
+  });
 });
