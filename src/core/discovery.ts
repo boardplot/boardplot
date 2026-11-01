@@ -78,6 +78,7 @@ const ANNOTATION_OPTIONAL: Partial<Record<AnnotationKind, Record<string, Optiona
     },
     attainment: { meaning: 'boolean | { seriesId, direction }. Shades each category between its actual and the line.', types: ['bar', 'bullet', 'column', 'line'] },
   },
+  bracket: { label: 'string. Name printed before the sum, "Commercial +81". Without it the bracket prints the sum alone.' },
   indicator100: { side: 'left | right, default left. Side of the plot the 100% mark sits on.' },
   event: {
     date: { meaning: "ISO date yyyy-mm-dd, in place of at: the event sits at the last category whose date is on or before it, and the block header and the key print it as d MMM. Every category needs an ISO date; a date outside the categories warns event-out-of-range.", types: LANE_TYPES },
@@ -117,6 +118,10 @@ function describeAnnotation(kind: AnnotationKind, type: string) {
       break;
     case 'delta':
       anchors = [{ field: 'at', type: 'AnchorRef', required: true }, { field: 'vs', type: 'AnchorRef | number', required: true }];
+      break;
+    case 'bracket':
+      anchors = ['from', 'to'].map(field => ({ field, type: 'categoryId', required: true }));
+      notes = ['from and to are step ids, inclusive. The engine adds the steps up and prints the signed sum; every step in the span must be a delta, so a span that holds a total is refused with bracket-span-total. A step the bridge cannot add (an open start) refuses it with bracket-span-no-value. Brackets stand in one row above the steps. Vertical bridges only.'];
       break;
     case 'abs':
     case 'note':

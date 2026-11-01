@@ -249,7 +249,7 @@ Every chart type accepts these options unless its own page names them as not acc
 | interactive | boolean |  |  | Emit data-bp-* semantics for dependency-free web interactivity; static output is unchanged by default. |
 | debug | boolean |  |  | Reserved layout debug flag; registered charts refuse it. |
 | annotations | array |  |  | Data-bound annotations in authored order; explicit ids must be unique and each chart advertises its supported kinds. |
-| annotations[].kind (annotations[] branch 1) | string | `'diff'`, `'cagr'`, `'delta'`, `'abs'`, `'note'`, `'callout'`, `'valueLine'`, `'indicator100'`, `'event'` |  | Annotation operation; its anchors and additional fields are checked by the chart annotation pass. |
+| annotations[].kind (annotations[] branch 1) | string | `'diff'`, `'cagr'`, `'delta'`, `'bracket'`, `'abs'`, `'note'`, `'callout'`, `'valueLine'`, `'indicator100'`, `'event'` |  | Annotation operation; its anchors and additional fields are checked by the chart annotation pass. |
 | annotations[].id (annotations[] branch 1) | string |  |  | Stable annotation identity; omission generates an id from kind and authored order. |
 | annotations[].text (annotations[] branch 1) | string |  |  | Authored annotation text; refused on valueLine, which prints label, and on indicator100. ${value} prints the computed number in it: a cagr's rate with its suffix, a diff's change, a delta's difference, the anchored value of an abs, note or callout; a note or callout on a mark that prints the same number leaves it to the mark and reports annotation-value-on-mark. Without ${value}, text on a cagr, diff, delta or abs replaces the number, warns annotation-authored-override and the claim record marks the override. |
 | annotations[].format (annotations[] branch 1) | string |  |  | Number format: annotation > anchored series > chart. Diff uses to, then from. CAGR and relative/reversed diff need a percent example; value differences use pp for percent levels. Refused on event and indicator100. |
@@ -301,7 +301,7 @@ The keys of `labels` each type reads. A type refuses a key it does not read as `
 | `restSeries` | [bar](bar.md), [column](column.md), [line](line.md) |
 | `segment` | [bar](bar.md), [column](column.md), [combo](combo.md), [funnel](funnel.md), [likert](likert.md), [mekko](mekko.md) |
 | `series` | [butterfly](butterfly.md), [cohort](cohort.md), [heatmap](heatmap.md), [line](line.md), [pyramid](pyramid.md), [slope](slope.md), [status](status.md) |
-| `tick` | [bar](bar.md), [column](column.md), [combo](combo.md) |
+| `tick` | [bar](bar.md), [butterfly](butterfly.md), [column](column.md), [combo](combo.md) |
 | `total` | [funnel](funnel.md), [kpi](kpi.md), [mekko](mekko.md), [pie](pie.md), [variance](variance.md) |
 | `value` | [scatter](scatter.md) |
 | `valueLine` | [bar](bar.md), [column](column.md), [gantt](gantt.md) |

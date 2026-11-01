@@ -178,6 +178,13 @@ export interface DiagramCallout {
   text?: string;
 }
 
+/** Architecture: a detail panel after a rule, with numbers or short rows. */
+export interface DiagramInset {
+  title: string;
+  kpis?: Array<{ value: string; label: string }>;
+  rows?: Array<{ label: string; value: string }>;
+}
+
 /** One key entry: what the fill of the nodes in `role` (and `paletteKey`) means. */
 /**
  * One key entry: what a node fill means (role), or what a line style means
@@ -198,6 +205,8 @@ export interface DiagramData {
   channels?: DiagramChannel[];
   /** Architecture: numbered discs, each explained in a key row. */
   callouts?: DiagramCallout[];
+  /** Architecture: a detail panel after a rule. */
+  inset?: DiagramInset;
 }
 
 type DiagramCommonOptionKeys =

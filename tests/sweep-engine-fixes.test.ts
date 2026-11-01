@@ -4,6 +4,7 @@ import { layoutColumn } from '../src/core/charts/column/layout';
 import '../src/core/geo/packs';
 import { getFixtures } from '../src/fixtures';
 import { canDraw, layoutResolvedRequest, renderSvg, resolveChartRequest } from '../src/index';
+import { render } from '../src/cli/render';
 import { contrastRatio } from '../src/core/color';
 import { resolveTheme } from '../src/core/theme';
 import { measureText } from '../src/core/text';
@@ -621,5 +622,39 @@ describe('chart layout edge cases', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
     expect(geometry.labels.filter((l: { hidden?: unknown }) => l.hidden !== undefined)).toEqual([]);
+  });
+  // labelDensity 'full' on a status board dropped every cell name without a word at phone width, so the
+  // reader got a board that ignored the request. The names now step down the type scale first, and
+  // names that still do not fit warn and appear in the omissions.
+  it('a status board with labelDensity full steps its names down, then names the ones it cannot draw', () => {
+    const board = (id: string, width: number) => {
+      const fixture = getFixtures('status').find((f) => f.id === id)!;
+      const spec = { type: 'status', data: structuredClone(fixture.data), options: { ...structuredClone(fixture.options ?? {}), labelDensity: 'full', target: 'dashboard', size: { width } } };
+      const body = render({ spec, return: ['reading'] }).body as { warnings: { code: string; severity: string }[]; reading: { omissions: { labelId: string }[] } };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const geometry = layoutResolvedRequest(resolveChartRequest(spec as any) as any) as any;
+      return { body, geometry };
+    };
+    const narrow = board('programme-rollout-rag', 358);
+    expect(narrow.body.reading.omissions.map((o) => o.labelId).sort()).toEqual(['stateName:amber', 'stateName:green', 'stateName:red']);
+    expect(narrow.body.warnings.some((w) => w.code === 'label-hidden' && w.severity === 'warn')).toBe(true);
+    // A width where the full-size names do not fit but the one smaller type step does.
+    const stepped = board('programme-rollout-rag', 500);
+    expect(stepped.body.reading.omissions).toEqual([]);
+    expect(stepped.geometry.labels.filter((l: { id: string; hidden?: unknown }) => l.id.startsWith('state:') && !l.hidden).length).toBeGreaterThan(0);
+    // A board of hundreds of cells reports one entry per state, not one per cell: a request per cell cost five times the layout time.
+    const wide = board('central-bank-decisions', 1000);
+    expect(wide.body.reading.omissions.map((o) => o.labelId).filter((id) => id.startsWith('stateName:')).sort()).toEqual(['stateName:cut', 'stateName:hike', 'stateName:hold']);
+  });
+
+  // A zero actual against a negative reference kept a solid cap that read as filled from zero to the reference, though the actual fills none of it.
+  it('an integrated variance zero actual draws an outline cap against a reference on either side', () => {
+    const request = { type: 'variance', data: { categories: [{ id: 'up', label: 'Up' }, { id: 'down', label: 'Down' }], series: [
+      { id: 'act', label: 'Actual', values: [0, 0] }, { id: 'ref', label: 'Plan', role: 'reference', values: [100, -100] }] },
+      options: { variant: 'integrated', variance: { of: 'act', vs: 'ref' } } };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+    const caps = geometry.scene.filter((node: { part?: string }) => node.part === 'cap').map((node: { id: string; pattern?: string }) => [node.id, node.pattern]);
+    expect(caps).toEqual([['mark:cap:up', 'hollow'], ['mark:cap:down', 'hollow']]);
   });
 });

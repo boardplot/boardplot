@@ -46,6 +46,9 @@ const LOOP_REACH = 2.25;
 const DISC_UNITS = 3.5;
 /** A route pays this for each zone frame it need not cross. */
 const ZONE_COST = 160;
+/** From this plot width the inset sits beside the exhibit, and takes at most this share. */
+const INSET_BESIDE_WIDTH = 800;
+const INSET_MAX_SHARE = 0.3;
 /** One pass learns the tracks, one fits them, one moves a label without a seat to the outer corridors, one fits that. */
 const ROUTE_PASSES = 4;
 
@@ -53,6 +56,7 @@ interface Env {
   data: NormalizedDiagram;
   options: DiagramOptions & { variant: 'architecture' };
   plot: Rect;
+  ownReturnLabels?: boolean;
   name: FontSpec;
   text: FontSpec;
   title: FontSpec;
@@ -90,7 +94,6 @@ interface Geometry {
   ys: Line[];
   gaps: Gap[];
   width: number;
-  narrowLaneGrid: boolean;
 }
 
 type Side = 'top' | 'right' | 'bottom' | 'left';
@@ -99,20 +102,117 @@ export function architectureEligible(options: DiagramOptions): options is Diagra
   return options.variant === 'architecture';
 }
 
+type ArchitectureFonts = { name: FontSpec; text: FontSpec; title: FontSpec };
+type Plan = { geometry: Geometry; routed: Routed; arrangement: Arrangement };
+
+/**
+ * One render's chosen plans. A size search probes many heights, and height does
+ * not change the plan, so each width is planned once.
+ */
+export const ARCHITECTURE_PLANS = Symbol('architecturePlans');
+export type ArchitecturePlans = Map<string, Plan>;
+
 export function layoutArchitecture(
   data: NormalizedDiagram,
   options: DiagramOptions & { variant: 'architecture' },
   plot: Rect,
-  fonts: { name: FontSpec; text: FontSpec; title: FontSpec },
+  fonts: ArchitectureFonts,
   measure: TextMeasurer,
   u: number,
   palette: DiagramPalette,
   theme: Theme,
   badges: ReadonlyMap<string, Size>,
+  plans?: ArchitecturePlans,
 ): OrgChartLayout {
-  const env: Env = { data, options, plot, ...fonts, measure, u, badges, order: rankNodes(data), neighbours: neighboursOf(data) };
-  let last: { geometry: Geometry; routed: Routed; arrangement: Arrangement } | undefined;
-  for (const arrangement of arrangements(env)) {
+  if (!data.inset) return planArchitecture(data, options, plot, fonts, measure, u, palette, theme, badges, plans);
+  const beside = plot.w >= INSET_BESIDE_WIDTH;
+  const gap = 6 * u;
+  const width = beside ? insetWidth(data.inset, plot.w, fonts, measure, u) : plot.w;
+  const layout = planArchitecture(data, options, beside ? { ...plot, w: plot.w - width - gap } : plot, fonts, measure, u, palette, theme, badges, plans);
+  const bottom = Math.max(...[...layout.preset.nodeRects.values(), ...layout.preset.groups.map((group) => group.bounds), ...layout.preset.lanes.map((lane) => lane.bounds), ...layout.extent!]
+    .map((rect) => rect.y + rect.h));
+  const box = { x: plot.x + plot.w - width, y: beside ? plot.y : bottom + gap, w: width };
+  const panel = insetPanel(data.inset, box, !beside, fonts, measure, u);
+  const end = box.y + panel.height;
+  const stroke = { token: 'axis' } as const;
+  const hair = strokeToken(theme, 'hair');
+  const rule = beside ? { x1: box.x - gap / 2, y1: plot.y, x2: box.x - gap / 2, y2: Math.max(bottom, end) } : { x1: plot.x, y1: bottom + gap / 2, x2: plot.x + plot.w, y2: bottom + gap / 2 };
+  layout.preset.decorationScene.push({ t: 'line', id: diagramSceneId('inset', 'rule'), ...rule, stroke, width: hair, owner: {}, part: 'diagramLane' } as SceneNode);
+  layout.channelLabels = [...(layout.channelLabels ?? []), ...panel.labels];
+  layout.extent!.push(...panel.labels.map((label) => label.rect));
+  if (end > plot.y + plot.h + 1 && !layout.warnings!.some((warning) => warning.code === 'diagram-size-too-small')) {
+    layout.warnings!.push({ code: 'diagram-size-too-small', severity: 'error', message: `architecture needs ${Math.ceil(end - plot.y - plot.h)} px more height` });
+  }
+  return layout;
+}
+
+/** The panel's width beside the exhibit: what its text asks for, within limits. */
+function insetWidth(inset: NonNullable<NormalizedDiagram['inset']>, plotW: number, fonts: ArchitectureFonts, measure: TextMeasurer, u: number): number {
+  const need = Math.max(measure(inset.title, fonts.title).width,
+    ...(inset.rows ?? []).map((row) => measure(row.label, fonts.text).width + measure(row.value, fonts.name).width + 3 * u),
+    ...(inset.kpis ?? []).flatMap((kpi) => [measure(kpi.value, kpiFont(fonts)).width, measure(kpi.label, fonts.text).width]));
+  return q(Math.max(36 * u, Math.min(Math.ceil(need), INSET_MAX_SHARE * plotW)));
+}
+
+const kpiFont = (fonts: ArchitectureFonts): FontSpec => ({ ...fonts.title, size: Math.round(fonts.title.size * 1.75) });
+
+/** The panel's text seats. Numbers sit in a row under the exhibit, and in a column beside it. */
+function insetPanel(inset: NonNullable<NormalizedDiagram['inset']>, box: { x: number; y: number; w: number }, wide: boolean, fonts: ArchitectureFonts, measure: TextMeasurer, u: number) {
+  const labels: NonNullable<OrgChartLayout['channelLabels']> = [];
+  const seat = (id: string, text: string, font: FontSpec, x: number, y: number, width: number, right = false) => {
+    const wrapped = wrapText(text, font, width, 4, measure);
+    const w = Math.ceil(Math.max(...wrapped.lines.map((line) => measure(line, font).width))) + 1;
+    const h = wrapped.lines.length * font.size * (font.lineHeight ?? 1.2);
+    labels.push({ id: `inset-label:${id}`, text, rect: qRect({ x: right ? x + width - w : x, y, w, h }), owner: {}, font });
+    return h;
+  };
+  let y = box.y + seat('title', inset.title, fonts.title, box.x, box.y, box.w) + 2 * u;
+  const kpis = inset.kpis ?? [];
+  const across = wide ? kpis.length : 1;
+  const cell = (box.w - (across - 1) * 3 * u) / Math.max(1, across);
+  for (let at = 0; at < kpis.length; at += across) {
+    let tallest = 0;
+    kpis.slice(at, at + across).forEach((kpi, index) => {
+      const x = box.x + index * (cell + 3 * u);
+      const top = seat(`kpi:${at + index}:value`, kpi.value, kpiFont(fonts), x, y, cell);
+      tallest = Math.max(tallest, top + u + seat(`kpi:${at + index}:label`, kpi.label, fonts.text, x, y + top + u, cell));
+    });
+    y += tallest + 2 * u;
+  }
+  (inset.rows ?? []).forEach((row, index) => {
+    const value = Math.min(Math.ceil(measure(row.value, fonts.name).width) + 1, Math.floor(box.w / 2));
+    const name = seat(`row:${index}:label`, row.label, fonts.text, box.x, y, box.w - value - 2 * u);
+    const worth = seat(`row:${index}:value`, row.value, fonts.name, box.x + box.w - value, y, value, true);
+    y += Math.max(name, worth) + u;
+  });
+  return { labels, height: y - box.y - u };
+}
+
+function planArchitecture(
+  data: NormalizedDiagram,
+  options: DiagramOptions & { variant: 'architecture' },
+  plot: Rect,
+  fonts: ArchitectureFonts,
+  measure: TextMeasurer,
+  u: number,
+  palette: DiagramPalette,
+  theme: Theme,
+  badges: ReadonlyMap<string, Size>,
+  plans?: ArchitecturePlans,
+): OrgChartLayout {
+  // Height never shapes a plan: labels may run past the plot, and emit reports a shortfall.
+  const env: Env = { data, options, plot: { ...plot, h: Infinity }, ...fonts, measure, u, badges, order: rankNodes(data), neighbours: neighboursOf(data) };
+  const key = [plot.x, plot.y, plot.w, u, fonts.name.size, fonts.text.size, fonts.title.size].join();
+  const planned = plans?.get(key);
+  if (planned) return emit(planned.arrangement, planned.geometry, planned.routed, { ...env, plot }, palette, theme);
+  const finish = (plan: Plan) => {
+    plans?.set(key, plan);
+    return emit(plan.arrangement, plan.geometry, plan.routed, { ...env, plot }, palette, theme);
+  };
+  let last: Plan | undefined;
+  // A return label sits closer to its own line than to any other, unless no layout allows that.
+  for (const ownReturnLabels of env.data.edges.some((edge) => edge.flow === 'return' && edge.label) ? [true, false] : [false]) for (const arrangement of arrangements(env)) {
+    env.ownReturnLabels = ownReturnLabels;
     const gaps = new Map<string, number>();
     const wants = new Map<string, number>();
     const outward = new Set<string>();
@@ -142,14 +242,14 @@ export function layoutArchitecture(
       }
       if (!grew) break;
     }
-    if (clean) return emit(clean.arrangement, clean.geometry, clean.routed, env, palette, theme);
+    if (clean) return finish(clean);
   }
   if (!last) {
     const fallback = fallbackArrangement(env);
     const geometry = place(fallback, new Map(), { ...env, plot: { ...plot, w: Math.max(plot.w, 40 * u) } }, true)!;
     last = { geometry, routed: routeEdges(geometry, env, new Set()), arrangement: fallback };
   }
-  return emit(last.arrangement, last.geometry, last.routed, env, palette, theme);
+  return finish(last);
 }
 
 /** Longest path over the forward edges, with each return edge read backward. */
@@ -531,7 +631,7 @@ function place(arrangement: Arrangement, gaps: ReadonlyMap<string, number>, env:
   const innerGap = 2 * GAP_HALF;
   const unitGap = 2 * GAP_HALF;
   const gap = (key: string, base: number) => Math.max(base, gaps.get(key) ?? 0);
-  const geometry: Geometry = { rects: new Map(), textBoxes: new Map(), icons: new Map(), badges: new Map(), zones: [], loops: [], locks: new Map(), lanes: [], labelClaims: [], xs: [], ys: [], gaps: [], width: plot.w, narrowLaneGrid };
+  const geometry: Geometry = { rects: new Map(), textBoxes: new Map(), icons: new Map(), badges: new Map(), zones: [], loops: [], locks: new Map(), lanes: [], labelClaims: [], xs: [], ys: [], gaps: [], width: plot.w };
   const outerL = gap('oL', 0);
   const outerR = gap('oR', 0);
   const laneLabel = lanesFlow && !arrangement.labelAbove ? laneLabelWidth(env) : 0;
@@ -1418,8 +1518,8 @@ function placeLabels(
         })];
       }),
     ]).map(qRect);
-    // In a narrow lane grid, a return label must be closer to its own line.
-    const seat = seats.find((box) => labelClear(box, polylines, blockers, env.plot) && (!geometry.narrowLaneGrid || edge.flow !== 'return'
+    const clear = (box: Rect) => labelClear(box, polylines, blockers, env.plot);
+    const seat = seats.find((box) => clear(box) && (!env.ownReturnLabels || edge.flow !== 'return'
       || polylines.every((line, i) => i === index || rectLineDistance(box, points) <= rectLineDistance(box, line))));
     if (seat) {
       out.set(edge.id, seat);
