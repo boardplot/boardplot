@@ -211,7 +211,7 @@ function reorderCategories(
   const bases = dropIdx.map(basisAt);
   const othersVals = seriesNorm.map((s) => s === st.widthSer
     ? { v: restSum(dropIdx.map((i) => s.vals[i]!.v)), isPct: false }
-    : poolMekkoCell(dropIdx.map((i, k) => ({ ...s.vals[i]!, basis: bases[k]!, weight: weightAt(i) })), st.mode, st.widthSer !== null));
+    : poolMekkoCell(dropIdx.map((i, k) => ({ ...s.vals[i]!, basis: bases[k]!, weight: weightAt(i) })), options.variant === 'bar' ? 'bar' : st.mode, st.widthSer !== null));
   const total100 = st.mode === 'percent' && dropIdx.some((i) => st.cats[i]!.total100 !== undefined)
     ? bases.reduce((sum, basis) => sum + basis, 0) : undefined;
   applyOrder(keptIdx);

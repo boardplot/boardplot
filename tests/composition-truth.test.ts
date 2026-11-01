@@ -252,6 +252,24 @@ describe('line and mekko fail closed visibly', () => {
     expect(at('others', 'material').share?.percent.raw).toBeCloseTo(62.5);
   });
 
+  // A several-series bar mekko with a width series folded Others by summing per-unit values, so Others read 62 where the width-weighted mean is 32.29.
+  it('folds a several-series bar mekko with a width series as a width-weighted mean', () => {
+    const request = resolveChartRequest({ type: 'mekko', data: {
+      categories: ['a', 'b', 'c'].map((id) => ({ id })),
+      series: [
+        { id: 'units', role: 'reference', values: [240, 120, 90] },
+        { id: 'labor', values: [34, 40, 22] },
+        { id: 'material', values: [30, 34, 22] },
+      ],
+    }, options: { variant: 'bar', widthSeriesId: 'units', topN: { n: 1, rest: true }, size: { width: 960, height: 540 } } } as never);
+    const geometry = requireGeometry(layoutResolvedRequest(request));
+    const records = interactionRecords({ request, geometry, scope: request.scope, claims: [] });
+    const others = (seriesId: string) => records.find((r) => r.target.owner?.categoryId === 'others' && r.target.owner?.seriesId === seriesId)!;
+    expect(others('labor').value.raw).toBeCloseTo((40 * 120 + 22 * 90) / 210);
+    expect(others('material').value.raw).toBeCloseTo((34 * 120 + 22 * 90) / 210);
+    expect(geometry.derived).toMatchObject({ columnTotals: { others: expect.closeTo((40 * 120 + 22 * 90) / 210 + (34 * 120 + 22 * 90) / 210, 6) } });
+  });
+
   // Mekko Others must convert percent cells to amounts and keep the present width values when one width is missing.
   it('pools equivalent Mekko amounts, percents and fractions through their category bases', () => {
     const bases = [5000, 1000, 100];

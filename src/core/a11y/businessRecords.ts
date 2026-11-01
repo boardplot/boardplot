@@ -330,7 +330,7 @@ function mekko(ctx: RecordContext): InteractionRecord[] {
   const pooledCells = new Map(activeSeries.map(series => [series.id, poolMekkoCell(pooledCategories.map((category, i) => {
     const raw = source.cell(category.id, series.id).raw;
     return { v: typeof raw === 'number' ? raw : null, isPct: source.isPercent(category.id, series.id), basis: bases[i]!, weight: pooledWeights[i]! };
-  }), mode, widthSeries)]));
+  }), options.variant === 'bar' ? 'bar' : mode, widthSeries)]));
   const pooled = new Map([...pooledCells].map(([id, cell]) => [id, cell.v]));
   const pooledBasis = mode === 'percent' && pooledCategories.some(category => category.total100 !== undefined)
     ? bases.reduce((sum, basis) => sum + basis, 0) : undefined;
