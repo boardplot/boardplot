@@ -1,6 +1,6 @@
 ### Changed / may need action
 
-- The funnel column heads read `Step conversion` and `Total conversion` in English, and `Stufenkonversion` and `Gesamtkonversion` in German. The old heads were `Step CVR`, `Total CVR`, `Stufen-CVR` and `Gesamt-CVR`. No option sets the old heads back. The two-head form `Conversion rate` over `Step` and `Total` is unchanged.
+- The funnel column heads read `Step conversion` and `Total conversion` in English, and `Stufen-Konversion` and `Gesamt-Konversion` in German. The old heads were `Step CVR`, `Total CVR`, `Stufen-CVR` and `Gesamt-CVR`. No option sets the old heads back. The two-head form `Conversion rate` over `Step` and `Total` is unchanged.
 
 ### Fixed
 

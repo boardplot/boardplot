@@ -32,8 +32,8 @@ const DE: { [K in keyof typeof EN]: string } = {
   "stagesCount": "{v1} {v1|Stufe|Stufen}",
   "funnelDesc": "Trichterdiagramm mit {v1} {v1|Stufe|Stufen}. {v3}.",
   "funnelUndefined": "{v1}: nicht definiert, vorherige Stufe ist null.",
-  "totalCvr": "Gesamtkonversion",
-  "stepCvr": "Stufenkonversion",
+  "totalCvr": "Gesamt-Konversion",
+  "stepCvr": "Stufen-Konversion",
   // A spanning head over the two short column heads.
   "cvrSpanHeader": "Konversionsrate",
   "stepCvrShort": "Stufe",
