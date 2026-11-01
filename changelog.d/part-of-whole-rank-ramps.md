@@ -8,3 +8,7 @@
 ### Added
 
 - Theme field `color.treemap`: the treemap group fills by rank, 2 or more colours. The fixture `growth-rect-group-hues` shows it.
+
+### Fixed
+
+- On a dark page the pie ramp (and the treemap fallback ramp) starts from the first series colour lifted toward white until it reaches 7:1 on the page, and its palest step keeps 3:1 on the page. Before, the ramp washed the series colour toward the dark page down to 1.4:1, so the last slices or groups and their key swatches almost disappeared (on `glass` the smallest of six slices was `#1F3050` on `#0F1626`). Light pages keep the ramp they had.
