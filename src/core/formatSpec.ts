@@ -1368,6 +1368,8 @@ export function seriesRasterFormatter(
   percentSpec: NumberFormatSpec;
   /** `values` gives the series' numbers where it is not a normalized series (`vals` or `cells`). */
   forSeries: (series: { format?: string; unit?: string; values?: readonly unknown[] }, cellFormat?: string) => (value: number) => string;
+  /** The spec behind `forSeries` for a series without a cell format. */
+  specForSeries: (series: { format?: string; unit?: string; values?: readonly unknown[] }) => NumberFormatSpec;
   /** True when the value prints as zero at its formatter's precision before the nonzero lift. */
   roundsToZeroAt: (value: number, series?: { format?: string; unit?: string }, cellFormat?: string) => boolean;
 } {
@@ -1442,6 +1444,18 @@ export function seriesRasterFormatter(
     }
     return made;
   };
+  const plainSpec = (series: { unit?: string }): NumberFormatSpec => {
+    const wholeFrom = !defaultExample && unitMagnitude(series.unit) ? 100 : undefined;
+    const currencyWhole = currencyWholeNumbers(series.unit, target);
+    // A series unit that names a scale gets no engine scale on top.
+    const unscaled = autoMagnitude && unitMagnitude(series.unit) !== undefined;
+    const base = example || series.unit === undefined || (wholeFrom === spec.wholeFrom && currencyWhole === Boolean(spec.currencyWhole) && !unscaled) ? spec
+      : { ...(unscaled ? { ...spec, magnitude: 'none' as const, autoMagnitude: undefined, rollMagnitude: undefined } : spec), wholeFrom, currencyWhole };
+    return ownPrecision(series, base);
+  };
+  /** The spec forSeries prints a series with, for a value axis whose ticks must read at the precision of their spacing. */
+  const specForSeries = (series: { format?: string; unit?: string; values?: readonly unknown[] }): NumberFormatSpec =>
+    series.format ? exampleSpec(series.format, locale, series.unit ?? unit, normalizedSeriesNumbers(series)) : plainSpec(series);
   const seriesFormatters = new WeakMap<object, (value: number) => string>();
   const forSeries = (series: { format?: string; unit?: string }, cellFormat?: string): ((value: number) => string) => {
     // The unit the value is in states the scale an example holds (exampleSpec).
@@ -1454,13 +1468,7 @@ export function seriesRasterFormatter(
       seriesFormatters.set(series, formatter);
       return formatter;
     }
-    const wholeFrom = !defaultExample && unitMagnitude(series.unit) ? 100 : undefined;
-    const currencyWhole = currencyWholeNumbers(series.unit, target);
-    // A series unit that names a scale gets no engine scale on top.
-    const unscaled = autoMagnitude && unitMagnitude(series.unit) !== undefined;
-    const base = example || series.unit === undefined || (wholeFrom === spec.wholeFrom && currencyWhole === Boolean(spec.currencyWhole) && !unscaled) ? spec
-      : { ...(unscaled ? { ...spec, magnitude: 'none' as const, autoMagnitude: undefined, rollMagnitude: undefined } : spec), wholeFrom, currencyWhole };
-    const own = ownPrecision(series, base);
+    const own = plainSpec(series);
     formatter = own === spec ? fmt : (value: number) => face(value, own);
     seriesFormatters.set(series, formatter);
     return formatter;
@@ -1478,7 +1486,7 @@ export function seriesRasterFormatter(
     }
     return roundsToZero(value / MAGNITUDE_DIVISOR[spec.magnitude], ownPrecision(series, spec).decimals);
   };
-  return { spec, fmt, fmtSigned, fmtPercent, percentSpec: example ? spec : percentSpec, forSeries, roundsToZeroAt };
+  return { spec, fmt, fmtSigned, fmtPercent, percentSpec: example ? spec : percentSpec, forSeries, specForSeries, roundsToZeroAt };
 }
 
 /**
