@@ -10,7 +10,7 @@ import { chartString } from '../../strings/slope';
 
 import { chartTheme } from '../chartEnv';
 import { fitText } from '../../label/fitText';
-import { formatAuthoredPercent, formatAutomaticNumber, numberRange, seriesValueFormatter } from '../../format';
+import { formatAuthoredPercent, formatAutomaticNumber, lowBaseKeyLabel, numberRange, seriesValueFormatter } from '../../format';
 import { differenceExample, formatterFromExample, signedFormatterFromExample } from '../../formatSpec';
 import { autoDecimals } from '../../formatPrecision';
 import { cleanDiff, cleanFloat, type Rect } from '../../geometry';
@@ -282,7 +282,14 @@ export function layoutDivergingSlope(
   const sw = 10;
   const posW = measure(posName, labelFont).width;
   const negW = measure(negName, labelFont).width;
-  const swatchesW = sw + 4 + posW + 12 + sw + 4 + negW;
+  // A hatched low-base panel is keyed beside the two areas, as the heatmap keys a low-base cell.
+  // The area key does not wrap, so a low-base key that does not fit beside the areas takes a row of its own.
+  const lowKey = low.length > 0 ? lowBaseKeyLabel(minBase, language) : undefined;
+  const lowTextW = lowKey === undefined ? 0 : measure(lowKey, labelFont).width;
+  const areasOnlyW = sw + 4 + posW + 12 + sw + 4 + negW;
+  const lowOwnRow = lowKey !== undefined && areasOnlyW + 12 + sw + 4 + lowTextW > plot0.w + 1e-6;
+  const lowW = lowKey === undefined || lowOwnRow ? 0 : 12 + sw + 4 + lowTextW;
+  const swatchesW = areasOnlyW + lowW;
   const periodW = (run: number): number => w1 + 6 + DOT_R * 2 + run + DOT_R * 2 + 6 + w2;
   // A narrow card keeps the three items on one row: the period key comes as
   // close as the swatches stand to each other, and its run shortens to KEY_RUN_MIN, before
@@ -308,18 +315,30 @@ export function layoutDivergingSlope(
   // The net row's wrapped lines sit at the text pitch, not the key-row pitch,
   // with room for the label padding between them.
   const netPitch = Math.max(lineH, textH + 3);
-  const keyH = keyRowH * ((keyWraps ? 2 : 1) + (showNet && !netInline ? 1 : 0)) + (netInline ? 0 : (netLines.length - 1) * netPitch);
+  const lowRowAt = 1;
+  const periodRow = keyWraps ? (lowOwnRow ? 2 : 1) : 0;
+  // The net definition sits on the row after the last key row, whether the low-base key or the period key took it.
+  const lastKeyRow = (lowOwnRow ? 1 : 0) + (keyWraps ? 1 : 0);
+  const keyH = keyRowH * (1 + lastKeyRow + (showNet && !netInline ? 1 : 0)) + (netInline ? 0 : (netLines.length - 1) * netPitch);
   const keyCy = plot0.y + textH / 2;
   {
     let x = plot0.x;
-    for (const [name, fill, w] of [[posName, posFill, posW], [negName, negFill, negW]] as const) {
-      nodes.push({ t: 'rect', id: `legend:area:${name}`, rect: { x, y: keyCy - sw / 2, w: sw, h: sw }, fill, owner: {}, part: 'legendKey' });
-      fixed(`series:${name}`, 'series', {}, [name], labelFont, [{ x: x + sw + 4, y: keyCy - textH / 2, w, h: textH }], PRIORITY.reference, false);
+    const items: { id: string; name: string; fill: Paint; w: number; hatched?: true }[] = [
+      { id: `legend:area:${posName}`, name: posName, fill: posFill, w: posW },
+      { id: `legend:area:${negName}`, name: negName, fill: negFill, w: negW },
+    ];
+    if (lowKey !== undefined) items.push({ id: 'legend:lowBase', name: lowKey, fill: { token: 'neutralMark' }, w: lowTextW, hatched: true });
+    for (const { id, name, fill, w, hatched } of items) {
+      const own = hatched && lowOwnRow;
+      if (own) x = plot0.x;
+      const cy = own ? keyCy + lowRowAt * keyRowH : keyCy;
+      nodes.push({ t: 'rect', id, rect: { x, y: cy - sw / 2, w: sw, h: sw }, fill, ...(hatched ? { pattern: 'hatch45' as const, hatchGround: { token: 'background' } as Paint, stroke: { token: 'grid' } as Paint } : {}), owner: {}, part: 'legendKey' });
+      fixed(`series:${name}`, 'series', {}, [name], labelFont, [{ x: x + sw + 4, y: cy - textH / 2, w, h: textH }], PRIORITY.reference, false);
       x += sw + 4 + w + 12;
     }
   }
   const keyX = keyWraps ? plot0.x : plot0.x + areasW;
-  const periodCy = keyWraps ? keyCy + keyRowH : keyCy;
+  const periodCy = keyCy + periodRow * keyRowH;
   const k0 = keyX + w1 + 6 + DOT_R;
   const k1 = k0 + DOT_R + keyRun + DOT_R;
   fixed('legend:period:0', 'category', { categoryId: c0.id }, [p1], labelFont, [{ x: keyX, y: periodCy - textH / 2, w: w1, h: textH }], PRIORITY.reference, false);
@@ -333,7 +352,7 @@ export function layoutDivergingSlope(
   if (showNet) {
     const netX = netInline ? plot0.x + periodEnd + KEY_GAP : plot0.x;
     netLines.forEach((text, li) => {
-      const cy = netInline ? periodCy : periodCy + keyRowH + li * netPitch;
+      const cy = netInline ? periodCy : keyCy + (lastKeyRow + 1) * keyRowH + li * netPitch;
       const first = li === 0 && text.startsWith(netName);
       const w = first ? netNameW + measure(text.slice(netName.length), labelFont).width : measure(text, labelFont).width;
       const runs = first ? [{ text: netName, weight: headFont.weight }, { text: text.slice(netName.length) }] : undefined;

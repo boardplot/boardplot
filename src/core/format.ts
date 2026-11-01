@@ -252,6 +252,11 @@ export function formatAutomaticNumber(value: number, opts: NumberFormatOptions =
   return formattedNumber(value, opts, opts.automatic ?? true);
 }
 
+/** The key text for a hatched low-base mark: "n < 30". Heatmap and slope diverging share it. */
+export function lowBaseKeyLabel(minBase: number, locale?: string): string {
+  return `n < ${formatAutomaticNumber(minBase, { locale })}`;
+}
+
 /** Exact source digits outside the fixed-decimal formatter's limit. */
 export function formatExactNumber(value: number, locale?: string): string {
   if (!Number.isFinite(value)) return formatNumber(value, { locale });
