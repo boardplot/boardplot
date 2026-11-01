@@ -77,6 +77,7 @@ import type {
   PlacedLabel,
   SceneNode,
 } from '../../types/scene';
+import { AUTO_LEGEND } from '../../legendPolicy';
 import { contentSizing } from '../../sizing';
 import { pieLabelContent, pieCenterLines } from './labels';
 import { labelAngle, placeRing, RING_GAP, type RingItem } from './ring';
@@ -617,6 +618,10 @@ function layoutPiePass(
   const arcRoom = compared ? pieComparisonRoom(measure('0', { family: theme.type.family, ...theme.type.label, weight: emphasisWeight(theme) }).height) : 0;
   const automatic = !options[FIXED_PASS] && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false
     && panelTypeClass(options) === undefined;
+  // labels: false frees the room the labels take. The pie keeps the height of the same pie with labels
+  // and no automatic key, and its key fits inside that height.
+  const labelled = automatic && options.labels === false
+    ? layoutPie(data, { ...options, labels: undefined, ...(AUTO_LEGEND in options ? { legend: undefined } : {}) }) : undefined;
   // A diameter taller than every possible outside-label stack gives the same final natural height.
   const maxLines = outsideContent?.reduce((sum, part) => sum + (part === 'category' ? 2 : 1), 0) ?? 0;
   const maxStack = displayedCount * Math.max(1, maxLines) * lineH + 3 * Math.max(0, displayedCount - 1) + 4;
@@ -624,6 +629,7 @@ function layoutPiePass(
     {
       size,
       ...(automatic && legendInput?.options.position !== 'right' ? { autoHeight: (plot: Rect) => {
+        if (labelled) return labelled.size.height;
         if (columns) {
           const diameter = diameterFor(plot.w);
           const pads = circlePads(diameter / 2);
@@ -1271,7 +1277,7 @@ function layoutPiePass(
   const geometry: Geometry<PieMarks, PieDerived> = {
     type: 'pie',
     size,
-    sizing: naturalPieSizing(size, plot, columns
+    sizing: naturalPieSizing(size, plot, labelled?.sizing ? labelled.sizing.naturalHeight - size.height + plot.h : columns
       ? Math.max(diameterFor(plot.w) + 2 * arcRoom + 48, columnStack + 8)
       : Math.max(diameterFor(plot.w) + 48, outsideStackH), contentSizing('pie', size, plot, [
       { x: cx - baseFit, y: cy - baseFit, w: 2 * baseFit, h: 2 * baseFit },

@@ -438,6 +438,19 @@ it('draws a compact pie only when the radius and the explode fit, and names a si
   expect(draw('full-explode-envelope', repair).refused).toBeUndefined();
 });
 
+// Prevents a pie with labels off from leaving its colours unnamed and from growing taller than the labelled pie.
+it('keeps the height of a pie with labels off and names its slices in a key', () => {
+  const fixture = getFixtures('pie').find(f => f.id === 'doughnut-device-revenue')!;
+  const draw = (extra: object) => layoutResolvedRequest(resolveChartRequest({
+    type: 'pie', data: fixture.data, options: { ...fixture.options, ...extra } } as never)) as unknown as Geometry;
+  const labelled = draw({});
+  const off = draw({ labels: false });
+  expect(off.size.height).toBe(labelled.size.height);
+  expect(off.legend?.items.map(item => item.id)).toEqual(['mobile', 'pc', 'tablet']);
+  expect(off.labels.filter(label => !label.hidden)).toEqual([]);
+  expect(draw({ labels: false, legend: 'none' }).legend).toBeUndefined();
+});
+
 // Prevents a narrow diagram card from drawing one sibling group's frame inside another's (false nesting),
 // from refusing a width-only request at its probe height, and from dropping or cutting an edge label without a note.
 it('judges a narrow diagram card by its card and group text at its content height', () => {
