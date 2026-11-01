@@ -323,6 +323,7 @@ function categoryLabel(ctx: LabelCtx, ci: number, visibleCol: boolean, edges: { 
   const { area } = ctx;
   const { catPlan, dateNumericTicks } = area;
   const c = ctx.domain.cats[ci]!;
+  if (!visibleCol && ctx.domain.incomplete.has(c.id)) return;
   const named = catPlan.infos[ci]!;
   // The column's width rides one line under its name, both centred.
   const width = area.widthTexts?.[ci];
@@ -425,7 +426,7 @@ export function planMekkoLabels(
     (domain.mode !== 'percent' && env.options.unit && !unitPrinted({ subtitle: resolveSubtitle(env.options.subtitle), unit: env.options.unit, unitShown: env.options.unitShown }) ? env.options.unit : undefined);
   let unitNamed = false;
   domain.cats.forEach((c, ci) => {
-    const visibleCol = colW(area, ci) >= 0.5 && domain.anyByCat[ci]!;
+    const visibleCol = colW(area, ci) >= 0.5 && (domain.anyByCat[ci]! || domain.incomplete.has(c.id));
     const edges = { top: y(Math.max(domain.posTop[ci]!, 0)), bot: Math.max(y0, y(Math.min(0, domain.negBot[ci]!))) };
     const printsTotal = visibleCol && !domain.invalidAt(ci) && !domain.incomplete.has(c.id) && !domain.wholeUnknown.has(c.id);
     if (area.showTotals) totalLabel(ctx, ci, visibleCol, edges, printsTotal && !unitNamed ? totalsUnit : undefined);
