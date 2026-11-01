@@ -2424,11 +2424,13 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
     const ringH = (it: LegendItemInput) => (it.key === 'sizes' ? Math.max(it.ringRow ?? 0, Math.ceil(2 * Math.max(0.5, ...(it.radii ?? [])))) : 0);
     // Key text wraps beside the widest key as it is drawn, a size key's ring included.
     const maxKeyW = maxOf(items.map(it => keyWidth(it, Math.max(lineH, ringH(it)))));
-    const wrappedKeys = new Map(items.map(it => [it, wrapFootnote(it.label, font, Math.max(1, labelBudget - maxKeyW - SWATCH_GAP), measure)]));
-    // A blank name wraps to no lines; its key still keeps one line of height and zero text width.
-    const keyTextH = (it: LegendItemInput) => Math.max(1, wrappedKeys.get(it)!.length) * lineH;
     // A group's value (its total) sits after the label, bold, in every position.
     const valueFont: FontSpec = { ...font, weight: emphasisWeight(theme) };
+    // The label wraps in the room its own value leaves, so label and value fit the budget together.
+    const wrappedKeys = new Map(items.map(it => [it, wrapFootnote(it.label, font,
+      Math.max(1, labelBudget - maxKeyW - SWATCH_GAP - (it.value ? SWATCH_GAP + measure(it.value, valueFont).width : 0)), measure)]));
+    // A blank name wraps to no lines; its key still keeps one line of height and zero text width.
+    const keyTextH = (it: LegendItemInput) => Math.max(1, wrappedKeys.get(it)!.length) * lineH;
     const textWOf = (it: LegendItemInput) => Math.max(0, ...wrappedKeys.get(it)!.map(line => measure(line, font).width));
     const itemTextW = (it: LegendItemInput) => textWOf(it) + (it.value ? SWATCH_GAP + measure(it.value, valueFont).width : 0);
     const valueNode = (it: LegendItemInput, lbId: Id, x: number, y: number): SceneNode => ({
