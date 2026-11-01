@@ -1541,3 +1541,19 @@ it('prints bar table part values inside the segments that hold them, and only th
   const notes = (layout('bartable', data, { total: false }).frame?.noteList ?? []).map((n) => n.text).join(' | ');
   expect(notes).toContain('parts of a row can miss its printed total');
 });
+
+// A pinned canvas taller than the chart left a 360 px empty band above the source line; the source follows the content, and the theme patch brings the old place back.
+it('puts the source line under the content of a pinned canvas, and back at the bottom with space.footerFollows false', () => {
+  const fixture = getFixtures('bullet').find((f) => f.id === 'neutral-change')!;
+  const canvas = { target: 'slide', size: { width: 432, height: 396, unit: 'pt' } };
+  const sourceY = (theme?: object) => {
+    const geometry = layout('bullet', fixture.data, { ...fixture.options, ...canvas, ...(theme ? { theme } : {}) });
+    const source = geometry.scene.find((node) => node.id === geometry.frame.sourceNodeId) as TextNode;
+    return { y: source.y, height: geometry.size.height, footerTop: geometry.frame.footerRect!.y };
+  };
+  const old = sourceY({ overrides: { space: { footerFollows: false } } });
+  const now = sourceY();
+  expect(now.height).toBe(old.height);
+  expect(now.y).toBeLessThan(old.y - 100);
+  expect(now.footerTop).toBeLessThan(old.footerTop - 100);
+});
