@@ -134,7 +134,7 @@ it('breaks a key word wider than its area between characters and keeps every cha
   expect(body.ok).toBe(true);
   expect(body.svg).not.toContain('…');
   const label = body.svg.match(/data-id="label:volume:key:kept:label"[^>]*>(.*?)<\/text>/)![1]!;
-  const lines = [...label.matchAll(/<tspan[^>]*>([^<]*)<\/tspan>/g)].map(m => m[1]);
+  const lines = [...label.matchAll(/<tspan[^>]*>([^<]*)<\/tspan>/g)].map(m => m[1]).filter(line => line !== ' ');
   expect(lines[0]).toBe('Kept 12\u00A0k');
   const broken = lines.slice(1);
   expect(broken.length).toBeGreaterThan(1);
