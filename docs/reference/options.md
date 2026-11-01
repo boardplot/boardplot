@@ -55,10 +55,10 @@ Every chart type accepts these options unless its own page names them as not acc
 | theme | string \| object |  |  | Theme preset or preset with overrides; request context may supply it, otherwise resolution uses boardroom. |
 | theme.preset | string |  |  | Registered base theme whose tokens are overridden. |
 | theme.overrides | object |  |  | Partial theme token tree merged with the named preset. |
-| locale | object |  |  | Language and number marks. decimal and thousands set the marks of every number, as in a spreadsheet (default 1,234.5); a format example gives only the shape. language changes words only, never the marks. |
-| locale.language | string |  |  | BCP 47 language tag. Changes words only, such as notes and month names. It never changes the decimal or grouping marks; they come only from locale.decimal and locale.thousands. E.g. "de"; "de_DE" is read as "de-DE"; "en-US" puts the month first (Sep 4). |
-| locale.decimal | string | `'.'`, `','` |  | Decimal mark of every number the chart prints. Default '.'. The language does not change it. |
-| locale.thousands | string | `','`, `'.'`, `'’'`, `' '` |  | Grouping mark of every number the chart prints. Default ',', or '.' with decimal ','. The language does not change it. A value equal to the decimal mark uses that fallback. |
+| locale | object |  |  | Language and number marks. decimal and thousands set the marks of every number, as in a spreadsheet (default 1,234.5, or 1.234,5 for German); a format example gives only the shape. language sets the default marks and the words. |
+| locale.language | string |  |  | BCP 47 language tag. Changes words, such as notes and month names, and the default number marks: German (de, de-DE, de-AT) prints 1.234,5 and Swiss German (de-CH, de-LI) prints 1 234.5 with an apostrophe as the grouping mark; locale.decimal and locale.thousands win per key. E.g. "de"; "de_DE" is read as "de-DE"; "en-US" puts the month first (Sep 4). |
+| locale.decimal | string | `'.'`, `','` |  | Decimal mark of every number the chart prints. Default by language: ',' for German, '.' otherwise. |
+| locale.thousands | string | `','`, `'.'`, `'’'`, `' '` |  | Grouping mark of every number the chart prints. Default by language: '.' for German, otherwise ',' ('.' with decimal ','). A value equal to the decimal mark uses that fallback. |
 | locale.minusGlyph | string | `'−'`, `'-'` |  | Minus glyph for locale-derived table formats; default Unicode minus. |
 | locale.weekStartsOn | number | `0`, `1` |  | First weekday for week-granularity date ticks; default Monday. Line date ticks read this field, other layouts ignore it and report it. |
 | strings | object |  |  | Wording of built-in labels. These are the labels the renderer composes itself: author chart text stays unchanged and an explicit option still wins per label; host-level wording comes from the theme provider. |

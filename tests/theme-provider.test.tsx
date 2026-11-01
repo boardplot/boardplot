@@ -162,7 +162,7 @@ describe('BoardplotTheme', () => {
       const before = resolve.mock.calls.length;
       const scopes = Array.from(view.container.querySelectorAll('figure')).map(node => node.getAttribute('data-bp-table-theme'));
       expect(scopes[0]).not.toBe(scopes[1]);
-      expect(resolve.mock.calls[0]![1]).toMatchObject({ density: 'compact', locale: { language: 'de-x-marks-pc' } });
+      expect(resolve.mock.calls[0]![1]).toMatchObject({ density: 'compact', locale: { language: 'de-x-marks-cp' } });
       expect(resolve.mock.calls[1]![1]).toMatchObject({ density: 'relaxed' });
       render('standard-dark');
       expect(resolve).toHaveBeenCalledTimes(before);

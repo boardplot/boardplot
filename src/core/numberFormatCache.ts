@@ -30,7 +30,7 @@ export function numberFormat(locale: string, options: Intl.NumberFormatOptions):
   let formatter = formatters.get(key);
   if (!formatter) {
     const { language, marks } = splitNumberMarks(locale);
-    // A marked tag writes numbers by English rules; the language changes words only.
+    // A marked tag writes numbers by English rules, then takes the chart's marks, which the language chose by default.
     const intl = new Intl.NumberFormat(marks ? 'en-US' : language, options);
     // A space groups with a no-break space, as formatWithSpec does.
     const group = marks?.thousands === ' ' ? '\u00a0' : marks?.thousands;

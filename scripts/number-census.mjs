@@ -28,6 +28,7 @@ import { basename, resolve } from 'node:path';
 import { listCharts, measure, resolveChartRequest } from '../src/index.ts';
 import { getFixtures } from '../src/fixtures/index.ts';
 import '../src/core/geo/packs/all.ts';
+import { chartNumberMarks } from '../src/core/numberMarks.ts';
 import { claimsForChart } from '../src/core/claims/index.ts';
 import { interactionRecords } from '../src/core/a11y/records.ts';
 import { interactionValueText } from '../src/core/a11y/valueText.ts';
@@ -49,12 +50,8 @@ const SCALE = { thousand: 1e3, million: 1e6, billion: 1e9, Tausend: 1e3, Million
 const CURRENCY_CODES = new Set(Intl.supportedValuesOf('currency'));
 const SUPER = { '⁻': '-', '⁺': '', '⁰': 0, '¹': 1, '²': 2, '³': 3, '⁴': 4, '⁵': 5, '⁶': 6, '⁷': 7, '⁸': 8, '⁹': 9 };
 
-/** The number marks of a request: German language alone keeps English marks (LocaleSpec). */
-function marks(locale) {
-  const decimal = locale?.decimal ?? '.';
-  const thousands = locale?.thousands ?? (decimal === ',' ? '.' : ',');
-  return { decimal, thousands: thousands === decimal ? (decimal === ',' ? '.' : ',') : thousands };
-}
+/** The number marks of a request: the authored marks, else the language's (LocaleSpec). */
+const marks = chartNumberMarks;
 
 const ENGLISH = { decimal: '.', thousands: ',' };
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

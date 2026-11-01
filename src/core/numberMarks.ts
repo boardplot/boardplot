@@ -1,9 +1,11 @@
 /**
  * One pair of number marks per chart, as in a spreadsheet: `options.locale.decimal`
  * and `options.locale.thousands` set the decimal and grouping mark of every
- * number the chart prints. Default '.' and ','; `decimal: ','` alone groups
- * with '.'. The language changes words only: numbers follow English rules,
- * then take the two marks. A format example gives only the shape (decimals,
+ * number the chart prints. Without them the language gives the default: German
+ * (de, de-DE, de-AT) prints ',' and '.', Swiss and Liechtenstein German
+ * (de-CH, de-LI) print '.' and the apostrophe, every other language '.' and ','.
+ * `decimal: ','` alone groups with '.'. Numbers follow English rules, then take
+ * the two marks. A format example gives only the shape (decimals,
  * grouping on or off, prefix, suffix, scale, sign); its own marks never win.
  *
  * The pair travels in the chart's language tag as a BCP 47 private-use
@@ -25,11 +27,21 @@ const PRIVATE = '-x-marks-';
 const CODE = { '.': 'p', ',': 'c', ' ': 's', "'": 'a' } as const;
 const MARK: Record<string, NumberMarks['thousands']> = { p: '.', c: ',', s: ' ', a: "'" };
 
-/** The chart's pair: the explicit marks, else '.' and ','. */
-export function chartNumberMarks(locale: Pick<LocaleSpec, 'decimal' | 'thousands'> | undefined): NumberMarks {
+/** The marks the language prints without an authored mark. Only German differs from English. */
+function languageMarks(tag: string | undefined): NumberMarks {
+  const [language, ...rest] = splitNumberMarks(tag ?? 'en').language.toLowerCase().split(/[-_]/);
+  if (language !== 'de') return { decimal: '.', thousands: ',' };
+  const region = rest.slice(0, rest.includes('x') ? rest.indexOf('x') : rest.length);
+  return region.some((part) => part === 'ch' || part === 'li') ? { decimal: '.', thousands: "'" } : { decimal: ',', thousands: '.' };
+}
+
+/** The chart's pair: the explicit marks, else the language's marks (German '.' and ',' swapped). An explicit key wins over the language. */
+export function chartNumberMarks(locale: Pick<LocaleSpec, 'decimal' | 'thousands' | 'language'> | undefined): NumberMarks {
+  const base = languageMarks(locale?.language);
   const requested = locale?.thousands === '’' ? "'" : locale?.thousands;
-  const decimal = locale?.decimal ?? '.';
-  const thousands = requested !== undefined && requested !== decimal ? requested : decimal === ',' ? '.' : ',';
+  const decimal = locale?.decimal ?? base.decimal;
+  const fallback = decimal === base.decimal ? base.thousands : decimal === ',' ? '.' : ',';
+  const thousands = requested !== undefined && requested !== decimal ? requested : fallback;
   return { decimal, thousands };
 }
 

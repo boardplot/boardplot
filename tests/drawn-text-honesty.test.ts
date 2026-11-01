@@ -104,7 +104,7 @@ describe('currency signs print where the locale puts them', () => {
   }, options: { title: 'Revenue', variant: 'stacked100', locale: { language } } });
   it('English puts $ before the figure, German after it', () => {
     expect(mekko('en')).toContain('$10,000');
-    expect(mekko('de')).toMatch(/>10,000\s\$</);
+    expect(mekko('de')).toMatch(/>10\.000\s\$</);
   });
 });
 
