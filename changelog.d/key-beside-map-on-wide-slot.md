@@ -1,0 +1,3 @@
+### Changed / may need action
+
+- A choropleth or tile map on a wide slot no longer spends a row of its height on the colour key. A choropleth whose plot is at least 1.6 times wider than tall puts the key and the "Not labelled on the map" list in a column right of the map when that makes the map at least 10% larger and leaves it at least 62% of the canvas width. A tile map on a canvas with a set height puts its key right of the tiles when the tiles come out at least 10% larger, so a US tile map at 888 x 396 pt grows from 47 to 51 px tiles and the Europe tile map fits where it was refused for height. A choropleth with a value table keeps its row. To bring back the old look, set `options.legend` to `'top'`.

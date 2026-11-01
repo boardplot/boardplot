@@ -1308,3 +1308,19 @@ it('keeps a three-line vision when the strategy house is a little short', () => 
   const body = render({ spec: { type: 'diagram', data, options: { variant: 'strategy-house', size: { width: 720, height: 316 } } } }).body as any;
   expect(body.errors).toEqual([]);
 });
+
+// Prevents a short org chart from floating in the middle of a tall plot: under a host-set height the level gaps grow
+// into the spare height, and a plot with no spare height keeps the natural gaps.
+it('spreads an org chart over the height the host sets', () => {
+  const spec = getFixtures('diagram').find(f => f.id === 'org-structure')! as any;
+  const span = (height: number, heightFill?: string) => {
+    const result = layoutDiagram(spec.data, { ...spec.options, size: { width: 888, height }, ...(heightFill ? { heightFill } : {}) } as never, false);
+    const rects = result.marks.nodes.map(mark => mark.contentRect);
+    return Math.max(...rects.map(r => r.y + r.h)) - Math.min(...rects.map(r => r.y));
+  };
+  const natural = span(150);
+  expect(span(396)).toBeGreaterThan(1.3 * natural);
+  expect(span(396)).toBeLessThan(2.6 * natural);
+  // heightFill 'none' is the old look: the natural gaps at any canvas height.
+  expect(span(396, 'none')).toBe(natural);
+});

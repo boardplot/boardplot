@@ -33,6 +33,6 @@ export const tilemapOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOpti
       message: REGION_VALUES_WITHOUT_CODES_REFUSED,
     });
   }
-}).describe("Tile-map framing and region color scale. The colour key sits in the row above the tiles, or under them with legend 'bottom'; legend 'right' is refused (a side column takes the grid's width), and so is 'none' (the key names what the colours measure).") as unknown as z.ZodType<TilemapOptions>;
+}).describe("Tile-map framing and region color scale. The colour key sits in the row above the tiles, or under them with legend 'bottom'. On a canvas with a set height where the tiles are bound by that height, an unnamed key stands in a column right of the tiles when that makes them clearly larger; legend 'top' keeps the row. legend 'right' is refused (a side column takes the grid's width), and so is 'none' (the key names what the colours measure).") as unknown as z.ZodType<TilemapOptions>;
 
 export const tilemapDataSchema = baseTilemapDataSchema.superRefine(addGeoIdIssues);
