@@ -519,10 +519,15 @@ function layoutTilemapPass(
   const unlistedCount = marks.regions.filter((mark) => mark.state === 'not-in-data').length;
   // The width-filled lattice is a preference. A pinned, shorter lattice is
   // already readable when every country code and the frame fit unchanged.
-  const smallerLattice = fixedHeight && options.belowMinimum !== 'refuse'
-    && size.height + SIZE_TOLERANCE < naturalHeight()
+  const tooShort = fixedHeight && size.height + SIZE_TOLERANCE < naturalHeight();
+  const smallerLattice = tooShort && options.belowMinimum !== 'refuse'
     && (frameResult.frame.minHeight ?? 0) <= size.height + SIZE_TOLERANCE
     && solved.placed.every(label => !label.hidden);
+  // A key column the layout chose must not refuse a canvas that draws with the key row: a column
+  // taller than the canvas, or larger tiles that keep glyphs over the codes, leave no smaller lattice.
+  if (keyChosen && tooShort && !smallerLattice) {
+    return { options: { ...options, legend: 'top' }, listed, run, omitted, heights, fixedHeight, stopped, valuesNoted };
+  }
   if (smallerLattice) warnings.push({
     code: 'plot-under-floor', severity: 'warn',
     message: `the fixed height uses smaller square tiles; the chart needs ${naturalHeight()} px for the width-filled lattice`,
