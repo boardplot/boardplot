@@ -26,7 +26,7 @@ const ORDERED_STEP_FLOOR = 3;
 
 const orderedRung = (sample: SeriesColorSample, theme: Theme): boolean => {
   const kind = sample.paint !== undefined && 'theme' in sample.paint ? sample.paint.theme?.kind : undefined;
-  return kind === 'ordered-ramp' || (kind === 'stack-ramp' && (theme.color.stack?.length ?? 0) >= 2);
+  return kind === 'ordered-ramp' || kind === 'group-ramp' || (kind === 'stack-ramp' && (theme.color.stack?.length ?? 0) >= 2);
 };
 
 /** A likert step is a wash kept `apart` from its side's extreme; the extreme is its base. */

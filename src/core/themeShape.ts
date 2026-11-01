@@ -99,6 +99,7 @@ export const THEME_SHAPE: ShapeNode = object({
     series: { kind: 'array', item: color, min: 1 },
     casePair: opt({ kind: 'tuple', items: [color, color] }),
     stack: opt({ kind: 'array', item: color, min: 2 }),
+    treemap: opt({ kind: 'array', item: color, min: 2 }),
     seriesOverflow: optOneOf('repeatLast', 'cycle'),
     palettes: opt({ kind: 'record', value: { kind: 'array', item: color, min: 2 } }),
     // External themes may carry more status keys than the documented ones.

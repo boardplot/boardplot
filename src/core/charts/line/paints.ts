@@ -404,6 +404,11 @@ export function linePaints(env: LineEnv, domain: LineDomain, warnings: LintWarni
   const themedArea = (s: NormSer): boolean =>
     areaTint !== undefined && isArea && !isStacked && drawnSeries.length === 1 && !palette &&
     !s.fill && !s.colorRole && !scenarioStyleOf(s)?.ink && s.scenario !== 'PY' && s.scenario !== 'PL';
+  // Series whose order is the encoding read one ramp, weakest first. Stacked bands are
+  // parts of one total, so unset emphasis gives them the ordered ramp too; a highlight,
+  // palette or series fill keeps its own colours, and emphasis 'none' the theme hues.
+  const emphasis = options.emphasis ??
+    (isStacked && !grey && !fade && options.palette === undefined && dataSeries.every((s) => !s.fill) ? 'ordered' : undefined);
   // A series with its own paint keeps it; the ramp series skip a step that
   // paints the same colour, so no two series of one chart look alike.
   // An area series reserves the paint its area draws: the focus when it is
@@ -413,14 +418,13 @@ export function linePaints(env: LineEnv, domain: LineDomain, warnings: LintWarni
     if (s.fill) return { css: s.fill };
     if (isArea && grey && highlights.has(s.id)) return { token: 'focus' };
     return s.colorRole ? markRolePaint(s.colorRole, isArea) : ink ? { token: ink } : undefined;
-  }), palette, !grey && !heroMode && !isBump && options.emphasis !== 'ordered' && dataSeries.length > 1 ? { labels: dataSeries.map((s) => s.label), warnings } : undefined);
-  // Series whose order is the encoding read one ramp, weakest first.
+  }), palette, !grey && !heroMode && !isBump && emphasis !== 'ordered' && dataSeries.length > 1 ? { labels: dataSeries.map((s) => s.label), warnings } : undefined);
   // A Rest series (colorRole 'others') beside the ordered ramp is the quietest part (othersShade).
-  const quietRest = options.emphasis === 'ordered' && (options.othersShade ?? DEFAULT_OTHERS_SHADE) === 'quietest' &&
+  const quietRest = emphasis === 'ordered' && (options.othersShade ?? DEFAULT_OTHERS_SHADE) === 'quietest' &&
     dataSeries.some((s) => s.colorRole === 'others' && !s.fill);
   if (quietRest) pushAll(warnings, othersShadeUnavailableWarnings(theme, { token: 'markInk' }));
   const ordered = (s: NormSer): boolean =>
-    options.emphasis === 'ordered' && !s.colorRole && !(grey && highlights.has(s.id));
+    emphasis === 'ordered' && !s.colorRole && !(grey && highlights.has(s.id));
   const series = (s: NormSer, dataIdx: number): Paint => {
     let paint: Paint;
     const scenarioInk = scenarioStyleOf(s)?.ink;

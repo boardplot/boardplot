@@ -186,6 +186,12 @@ export type ThemePaintSource =
    * stack ramp; a theme without `color.stack` paints series rank `slot`.
    */
   | { kind: 'stack-ramp'; index: number; count: number; slot: number }
+  /**
+   * Rank `index` of `count` treemap groups: `color.treemap`, else
+   * `color.stack`, else the first series colour stepped toward the page
+   * (the pie ramp), decided in the theme the scene is painted in.
+   */
+  | { kind: 'group-ramp'; index: number; count: number }
   /** A plain series of a stack beside authored colours: its ramp step, chosen in the active theme apart from them (rampSlots, stacked). */
   | { kind: 'stack-apart'; own: (Paint | null)[]; index: number; palette?: string }
   | { kind: 'ordered-ramp'; index: number; count: number; /** A Rest series is drawn: the weakest rung stays further from the page than the Others colour. */ withOthers?: true }

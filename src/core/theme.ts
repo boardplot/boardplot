@@ -1866,6 +1866,7 @@ function sourceColor(theme: Theme, source: ThemePaintSource): string {
     return hatchFadeColor(paintColor(theme, source.stripe), paintColor(theme, source.ground), source.strength, source.cue);
   }
   if (source.kind === 'stack-ramp') return stackRampColor(theme, source);
+  if (source.kind === 'group-ramp') return groupRampColor(theme, source);
   if (source.kind === 'stack-apart') return stackApartColor(theme, source);
   if (source.kind === 'ordered-ramp') {
     let weakest = visibleTintAmount(theme, { kind: 'visible-tint', base: { token: 'markInk' }, amount: 0.9, floor: MARK_CONTRAST_FLOOR });
@@ -2147,8 +2148,28 @@ function stackApartColor(theme: Theme, source: { own: (Paint | null)[]; index: n
 function stackRampColor(theme: Theme, source: { index: number; count: number; slot: number }): string {
   const ramp = theme.color.stack;
   if (!ramp || ramp.length < 2) return seriesColor(theme, source.slot);
-  if (source.count <= ramp.length) return ramp[source.index]!;
-  const at = (source.index / (source.count - 1)) * (ramp.length - 1);
+  return rampStep(ramp, source.index, source.count);
+}
+
+/**
+ * A treemap group by rank on one colour family: `color.treemap`, else
+ * `color.stack`, else the first series colour stepped toward the page.
+ */
+export function groupRampPaint(index: number, count: number): Paint {
+  return { token: 'series-1', theme: { kind: 'group-ramp', index, count } };
+}
+
+function groupRampColor(theme: Theme, source: { index: number; count: number }): string {
+  const ramp = [theme.color.treemap, theme.color.stack].find((steps) => steps !== undefined && steps.length >= 2);
+  if (ramp) return rampStep(ramp, source.index, source.count);
+  const base = seriesColor(theme, 0);
+  const amount = pieRamp(base, theme.color.background, source.count, undefined, false, theme.marks?.contrastEdge !== true).tints[source.index] ?? 0.82;
+  return amount ? tint(base, amount, theme.color.background) : base;
+}
+
+function rampStep(ramp: readonly string[], index: number, count: number): string {
+  if (count <= ramp.length) return ramp[index]!;
+  const at = (index / (count - 1)) * (ramp.length - 1);
   const low = Math.min(ramp.length - 2, Math.floor(at));
   const share = at - low;
   return share < 1e-9 ? ramp[low]! : mixColors(ramp[low + 1]!, ramp[low]!, share);
