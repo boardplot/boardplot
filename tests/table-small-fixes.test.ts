@@ -14,6 +14,8 @@ import { tableDataSchema } from '../src/core/charts/table/schema';
 import { authoredTrackWidth, intrinsicColumnWidth, tableFonts, ENCODING_WIDTH } from '../src/core/charts/table/tracks';
 import { levelLadder } from '../src/core/charts/table/ladder';
 import { defaultMeasurer, twoLineWidth } from '../src/core/text';
+import { resolvePaint } from '../src/core/svg/paint';
+import { swatchApart } from '../src/core/themeRules';
 import { cellGrounds, paintColor, registerTheme, resolveTheme, themes } from '../src/core/theme';
 import { contrastRatio, hueSaturation, mixColors } from '../src/core/color';
 import { onTableGround, toneTextPaint } from '../src/core/charts/table/chips';
@@ -1460,4 +1462,82 @@ it('prints no heat key for a diverging lane that is not stepped', () => {
   expect(keyText({ cap: { abs: 500 } })).toEqual([]);
   expect(keyText({ steps: 3 })).toHaveLength(1);
   expect(keyText({ bins: [100, 300] })).toHaveLength(1);
+});
+
+// A cascade bar table draws one bar colour per row group: its key must name the grey rest rows, its Total bar must not repeat a group colour, and a compact table must name each period at its bars.
+it('keys the rest rows, keeps the Total off the group colours and names compact periods at the bars', () => {
+  const fixture = (id: string) => getFixtures('bartable').find((f) => f.id === id)!;
+  const groups = fixture('cascade-two-periods');
+  for (const name of ['standard', 'standard-dark']) {
+    const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'bartable', data: groups.data, options: groups.options, theme: name } as never)));
+    const theme = resolveTheme(name);
+    const rects = geometry.scene.filter((node): node is Extract<SceneNode, { t: 'rect' }> => node.t === 'rect');
+    const total = resolvePaint(rects.find((node) => node.part === 'totalBar')!.fill!, theme);
+    const segments = rects.filter((node) => node.part === 'segment').map((node) => resolvePaint(node.fill!, theme));
+    expect(segments.length).toBeGreaterThan(0);
+    for (const color of segments) expect(swatchApart(total, color), `${name} Total against ${color}`).toBe(true);
+    const keyText = geometry.scene.filter((node): node is TextNode => node.t === 'text').map((node) => node.lines.join(' '));
+    expect(keyText).toContain('Rest rows');
+    // totalApart false brings back the old look: the theme's own Total colour.
+    const plain = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'bartable', data: groups.data, options: { ...groups.options, cascade: { ...groups.options!.cascade, totalApart: false } }, theme: name } as never)));
+    const plainTotal = plain.scene.find((node): node is Extract<SceneNode, { t: 'rect' }> => node.t === 'rect' && node.part === 'totalBar')!;
+    expect(resolvePaint(plainTotal.fill!, theme)).toBe(paintColor(theme, { token: 'total' }));
+  }
+  const years = fixture('cascade-four-years');
+  const compact = layout('bartable', years.data, { ...years.options, mode: 'compact', size: { width: 1060 } });
+  expect(compact.scene.some((node) => node.part === 'panelKey')).toBe(false);
+  const name = compact.scene.find((node): node is TextNode => node.t === 'text' && node.id === 'label:head:y22')!;
+  const track = compact.scene.find((node): node is Extract<SceneNode, { t: 'rect' }> => node.id === 'track:y22:app')!;
+  // The name stands on the first row's 2022 bar line, past the end of its track.
+  expect(name.x).toBeGreaterThanOrEqual(track.rect.x + track.rect.w);
+  expect(Math.abs(name.y - (track.rect.y + track.rect.h / 2))).toBeLessThan(track.rect.h);
+});
+
+// A compact cascade names each period beside its bars. A very long period name must be cut, so it does not squeeze the bars of every period to nothing.
+it('cuts a long period name of a compact cascade so the bars keep their width', () => {
+  const years = getFixtures('bartable').find((f) => f.id === 'cascade-four-years')!;
+  const names = ['Fiscal year 2022 actual', 'FY23', 'Fiscal year 2024 forecast figures', '2025'];
+  const data = { ...years.data, panels: years.data.panels.map((panel: { label: string }, i: number) => ({ ...panel, label: names[i] })) };
+  for (const width of [280, 320]) {
+    const compact = layout('bartable', data, { ...years.options, mode: 'compact', size: { width } });
+    const tracks = compact.scene.filter((node): node is Extract<SceneNode, { t: 'rect' }> => node.t === 'rect' && node.id.startsWith('track:'));
+    expect(tracks.length).toBeGreaterThan(0);
+    expect(Math.min(...tracks.map((node) => node.rect.w)), `track width at ${width}`).toBeGreaterThan(60);
+    for (const id of ['y22', 'y23', 'y24', 'y25']) expect(compact.scene.some((node) => node.t === 'text' && node.id === `label:head:${id}`), `${id} at ${width}`).toBe(true);
+  }
+});
+
+// A compact cascade on one shared scale reserves room for the longest period name, so sizing.minWidth must include that room: at the width it names, the shortest track still reaches the track floor.
+it('keeps the track floor at the minWidth of a compact cascade with long period names', () => {
+  const years = getFixtures('bartable').find((f) => f.id === 'cascade-four-years')!;
+  const names = ['Fiscal year 2022 actual', 'FY23', 'Fiscal year 2024 forecast figures', '2025'];
+  const growth = [1, 1.44, 2.08, 3];
+  const data = { ...years.data, panels: years.data.panels.map((panel: { label: string; values: { rev: number[] } }, i: number) => ({ ...panel, label: names[i], values: { rev: panel.values.rev.map((v) => Math.round(v * growth[i]!)) } })) };
+  const options = { ...years.options, mode: 'compact' };
+  const minWidth = Math.ceil(layoutResolvedRequest(resolveChartRequest({ type: 'bartable', data, options: { ...options, size: { width: 900 } } } as never)).sizing!.minWidth);
+  const compact = layout('bartable', data, { ...options, size: { width: minWidth } });
+  const tracks = compact.scene.filter((node): node is Extract<SceneNode, { t: 'rect' }> => node.t === 'rect' && node.id.startsWith('track:'));
+  expect(Math.min(...tracks.map((node) => node.rect.w))).toBeGreaterThanOrEqual(56);
+});
+
+// A bar table printed only each bar's sum, so a title about one segment could not be checked on the page.
+it('prints bar table part values inside the segments that hold them, and only there', () => {
+  const data = {
+    categories: [{ id: 'a', label: 'Alpha' }, { id: 'b', label: 'Beta' }],
+    series: [{ id: 'x', label: 'X' }, { id: 'y', label: 'Y' }, { id: 'z', label: 'Z' }],
+    panels: [
+      { id: 'abs', label: 'Value', unit: '$m', weight: 2, values: { x: [113.3, 20], y: [67.2, 1], z: [40.1, 70] } },
+      { id: 'pct', label: 'Share', unit: '%', aggregate: 'none', format: '1.00', values: { x: [10.12, 20.5], y: [30.25, 40.5], z: [10.5, 20.5] } },
+    ],
+  };
+  const parts = (options: object) => layout('bartable', data, options).labels.filter((l) => l.id.startsWith('part:')).map((l) => `${l.id.slice(5)}=${l.text}`);
+  const on = parts({ total: false });
+  // The 1-wide part of Beta has no room; the two-decimal panel prints end labels only.
+  expect(on).toContain('abs:a:x=113');
+  expect(on).not.toContain('abs:b:y=1');
+  expect(on.some((id) => id.startsWith('pct:'))).toBe(false);
+  expect(parts({ total: false, segmentValues: false })).toEqual([]);
+  // 113 + 67 + 40 prints 220 beside 221: the notes list says rounded parts can miss the total.
+  const notes = (layout('bartable', data, { total: false }).frame?.noteList ?? []).map((n) => n.text).join(' | ');
+  expect(notes).toContain('parts of a row can miss its printed total');
 });

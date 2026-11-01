@@ -9,6 +9,7 @@ import '../src/core/charts';
 import { render } from '../src/cli/render';
 import { getFixtures } from '../src/fixtures';
 import { beginSpecParse } from '../src/react/specValidation';
+import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 
 type Op = { op: 'add' | 'replace' | 'test' | 'remove'; path: string; value?: unknown };
 
@@ -275,8 +276,48 @@ describe('design advice fixes', () => {
   // A bridge that ends on a step: the appended total must draw as the closing bar.
   it('design-waterfall-closing-total', () => applyAdvice(fixtureSpec('waterfall', 'repeated-segment-key'), 'design-waterfall-closing-total'));
 
-  // Rotated step names at 360 px: the horizontal bridge must draw at the same width.
-  it('design-waterfall-horizontal', () => applyAdvice(fixtureSpec('waterfall', 'build-down'), 'design-waterfall-horizontal', 360));
+  // Rotated step names at 360 px under an authored vertical bridge: the horizontal bridge must draw at the same width.
+  it('design-waterfall-horizontal', () => {
+    const spec = fixtureSpec('waterfall', 'build-down');
+    spec.options.variant = 'vertical';
+    applyAdvice(spec, 'design-waterfall-horizontal', 360);
+  });
+
+  // A bridge whose names would rotate turns horizontal by itself; an authored vertical keeps its columns and its finding.
+  it('turns a crowded bridge horizontal under the default variant', () => {
+    const crowded = (spec: any) => (render({ spec, width: 360 }).body as any).warnings.map((warning: any) => warning.code).includes('category-labels-rotated');
+    const spec = fixtureSpec('waterfall', 'build-down');
+    delete spec.options.variant;
+    expect(crowded(spec)).toBe(false);
+    spec.options.variant = 'vertical';
+    expect(crowded(spec)).toBe(true);
+  });
+
+  // The automatic turn must not draw less than the vertical bridge drew. Each case below once lost something on the turn:
+  // pvm's net change label, an authored value axis title, and a value label that only the horizontal bridge hid.
+  describe('the automatic horizontal turn keeps what the vertical bridge draws', () => {
+    const laid = (type: string, id: string, size: object, patch: (spec: any) => void = () => {}) => {
+      const fixture = getFixtures(type).find((entry) => entry.id === id)!;
+      const spec = structuredClone({ data: fixture.data, options: { ...fixture.options, size } }) as any;
+      patch(spec);
+      return layoutResolvedRequest(resolveChartRequest({ type, data: spec.data, options: spec.options })) as any;
+    };
+    const printed = (geometry: any, prefix: string) => geometry.labels.filter((label: any) => !label.hidden && label.id.startsWith(prefix)).length;
+    it('keeps the pvm net change label', () => {
+      expect(printed(laid('pvm', 'segment-pvm-interaction-split', { width: 400, height: 540 }), 'net:')).toBe(1);
+    });
+    it('keeps an authored value axis title', () => {
+      const geometry = laid('waterfall', 'torture-long-labels', { width: 480 }, (spec) => { spec.options.axisTitles = { primary: 'Amount in million euro' }; });
+      expect(JSON.stringify(geometry.scene)).toContain('Amount in million euro');
+    });
+    it('does not hide a value label that the vertical bridge prints', () => {
+      const hiddenIn = (variant?: string) => laid('waterfall', 'torture-long-labels', { width: 480, height: 430 }, (spec) => {
+        spec.data.items[2].segments[0].value = { number: 11, priority: 1000 };
+        if (variant) spec.options.variant = variant;
+      }).labels.filter((label: any) => label.hidden).map((label: any) => label.id);
+      expect(hiddenIn()).toEqual(hiddenIn('vertical'));
+    });
+  });
 
   const markets = ['Austria', 'Belgium', 'Croatia', 'Denmark', 'Estonia', 'Finland'].map((label) => ({ id: label.toLowerCase(), label }));
   const codes = (spec: unknown) => (render({ spec }).body as any).warnings.map((warning: any) => warning.code);

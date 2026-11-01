@@ -941,30 +941,28 @@ export function layoutHeatmap(
   // every cell and the key: first without the % sign the unit line names, then with one
   // decimal fewer, down to the precision that still tells the range's values apart. The first
   // step at which every value fits at the label floor wins. A column that holds one value in
-  // every cell (a cohort's first period) may stay blank. When no step fits, the full text stays and
-  // the cells without room are hidden as before, so no matrix prints only part of its numbers
-  // because of the step. Only an engine-chosen text steps down.
+  // every cell (a cohort's first period) may stay blank. When no step fits, the full text stays
+  // and the matrix prints none of its numbers: a matrix never prints some cells and not others.
+  // Only an engine-chosen text steps down.
+  const floorFont = { ...labelFont, size: readerFloorPx(options.target ?? DEFAULT_TARGET, 'label', textScaleOf(options)) };
+  const constantCol = cols.map((_, ci) => {
+    const held = rows.flatMap((r) => r.cells[ci]!.v ?? []);
+    return held.length >= 2 && held.every((v) => v === held[0]);
+  });
+  const allFit = () => rows.every((r) => measureRowLabels(r.cells, (v, pct, meta) => textFor(v, pct, meta, r), floorFont, measure, cellW, Infinity, 4)
+    .every((value, ci) => value === null || value.fits || constantCol[ci]));
   if (cellLabelsOn && !bubble) {
     const hasPct = percentNamedByUnit && rows.some((r) => r.cells.some((c) => c.pct && c.v !== null));
     const stepsOfDecimals = !options.format && rows.some((r) => !r.format && !r.unit && r.cells.some((c) => c.v !== null && !c.meta?.format))
       ? Math.max(0, decimals - Math.min(decimals, readableDecimals(vMax - vMin))) : 0;
     const steps: ValueCut[] = [...(hasPct ? [{ decimals: 0, sign: true }] : [])];
     for (let off = 1; off <= stepsOfDecimals; off++) steps.push({ decimals: off, sign: hasPct });
-    const floorFont = { ...labelFont, size: readerFloorPx(options.target ?? DEFAULT_TARGET, 'label', textScaleOf(options)) };
-    const constantCol = cols.map((_, ci) => {
-      const held = rows.flatMap((r) => r.cells[ci]!.v ?? []);
-      return held.length >= 2 && held.every((v) => v === held[0]);
-    });
-    const allFit = () => rows.every((r) => measureRowLabels(r.cells, (v, pct, meta) => textFor(v, pct, meta, r), floorFont, measure, cellW, Infinity, 4)
-      .every((value, ci) => value === null || value.fits || constantCol[ci]));
     cut = NO_CUT;
     if (steps.length > 0 && !allFit()) cut = steps.find((step) => { cut = step; return allFit(); }) ?? NO_CUT;
   }
   // A value matrix whose columns hold no value even at the label floor reads from colour
   // alone, so its rows need no value line.
-  const valueLineH = valueStyle && cellLabelsOn && !rows.some((r) => measureRowLabels(r.cells, (v, pct, meta) => textFor(v, pct, meta, r),
-    { ...labelFont, size: readerFloorPx(options.target ?? DEFAULT_TARGET, 'label', textScaleOf(options)) }, measure, cellW, Infinity, 4).some((value) => value?.fits))
-    ? 0 : labelFont.size * 1.2 + 8;
+  const valueLineH = valueStyle && cellLabelsOn && !allFit() ? 0 : labelFont.size * 1.2 + 8;
   const harveyRow = harveyList ? HARVEY_LIST_ROW : size.width >= 720 ? HARVEY_ROW : HARVEY_ROW_CARD;
   const naturalCellH = bubbleStyle ? bubbleNaturalH : harveyStyle ? Math.max(harveyRow, maxOf(rowLines.map(label => label.h + 4))) : Math.max(bubble ? cellW : 0,
     Math.max(rowFloor, valueLineH, maxOf(rowLines.map(label => label.h + 4))));
@@ -1100,6 +1098,8 @@ export function layoutHeatmap(
     valueFont = { ...valueFont, size: Math.max(valueFloor, valueFont.size - 1) };
     fitted = rowValues(valueFont);
   }
+  // All or none: one cell without room takes the numbers off every cell (a blank constant column apart).
+  const printValues = fitted.every((values) => values.every((value, ci) => value === null || value.fits || constantCol[ci]));
   rows.forEach((r, ri) => {
     const values = fitted[ri]!;
     for (const value of values) if (value) valueCellW = Math.max(valueCellW, value.size.width + 4);
@@ -1201,7 +1201,7 @@ export function layoutHeatmap(
         return;
       }
       const value = values[ci];
-      if (value?.fits) {
+      if (value?.fits && printValues) {
         const { text, size: tsize } = value;
         const basePriority =
           cell.v !== null && (cell.v === extremeMax || cell.v === extremeMin)

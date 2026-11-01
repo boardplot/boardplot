@@ -105,8 +105,10 @@ Table rows with number columns and stacked bars. One panel when the rows compare
 | combinedShare | object |  |  | A note with the combined share of these rows in each summed panel: their sum over the panel's, at the low and the high end where rows carry ranges ('Core segments: 120 of 300 $bn at the low end, 40%; 210 of 500 at the high end, 42%'). A row id that names no row is refused. |
 | combinedShare.rows | array |  |  | Row ids whose combined share prints; at least two, each once. |
 | combinedShare.label | string |  |  | What the rows are called together in the note; default their labels joined with 'and'. |
+| segmentValues | boolean |  |  | Default true: variant 'panels' prints each part's value inside its segment, in the ink that reads on the fill, where the text and 3 px of padding on each side fit. A panel whose format has more than one decimal prints end labels only, and so does a row with a range. false prints end labels only everywhere. Rounded parts can miss the printed row sum by one step; the notes list says so. Refused with variant 'cascade'. |
 | variant | string | `'panels'`, `'cascade'` |  | 'panels' (default): one stacked-bar panel per measure. 'cascade': share cascade, each panel splits its total; a row starts where the row above ended, on a light track over the total. The Total row is a dark bar. combinedShare draws a bracket over its rows, which must follow one another. Needs one segment, no ends, no nulls. |
 | cascade | object |  |  | Settings of variant 'cascade'; refused with variant 'panels'. |
+| cascade.totalApart | boolean |  |  | Row groups only. true (default): the Total bar deepens away from the group colours and the rest grey where the theme total colour reads as one of them. false: the Total bar keeps the theme total colour (color.total) as it is. |
 | cascade.share | boolean |  |  | Computed share column beside each panel; default true. rounding defaults to 'sum-consistent' here, so each adds up to 100%. |
 | cascade.growth | object |  |  | Growth column after the last panel. |
 | cascade.growth.measure | string | `'cagr'`, `'share-change'` |  | 'cagr': each row's CAGR, first panel to last, in %. 'share-change': last share minus first, in pp. |
@@ -137,6 +139,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | one-series-missing-and-states | torture | One segment with a missing value, a not-applicable cell and a not-meaningful cell, in a bar panel and a number column: each prints its own glyph |
 | impact-two-panels-named-share | example | Two panels, one split: the impact in $bn and as a share of EBITDA, with the combined-share note naming the two rows the two largest sectors |
 | cascade-two-periods | example | Share cascade over two periods: rows coloured by a row group, two residual rows pinned last, share columns, a bracket and a CAGR column |
+| cascade-two-periods-theme-total | example | Share cascade over two periods with the Total bar in the theme total colour, even where it equals a group colour |
 | cascade-four-years | example | Share cascade over four years: product-category revenue share with the share change in pp |
 
 ## Not for

@@ -74,6 +74,8 @@ export const fixtures: Fixture<BarTableData, BarTableOptions>[] = [
       total: false,
       // The default without cascade, written out.
       sharedScale: false,
+      // The default: each part prints its value inside its segment where it fits.
+      segmentValues: true,
       title: 'Renewals carry more than half of the bookings in every region',
       subtitle: { measure: 'Bookings', period: 'FY 2026' },
       source: 'Illustrative data',
@@ -194,6 +196,16 @@ fixtures.push({
     source: 'Illustrative data',
     size: { width: 900 },
   },
+});
+// Coverage: totalApart false keeps the theme's own Total colour, as before the Total was kept off the group colours.
+const cascadeTwo = fixtures.find((fixture) => fixture.id === 'cascade-two-periods')!;
+fixtures.push({
+  ...cascadeTwo,
+  id: 'cascade-two-periods-theme-total',
+  kind: 'example',
+  title: 'Share cascade over two periods with the Total bar in the theme total colour, even where it equals a group colour',
+  tags: ['coverage'],
+  options: { ...cascadeTwo.options!, cascade: { ...cascadeTwo.options!.cascade, totalApart: false } },
 });
 fixtures.push({
   id: 'cascade-four-years',

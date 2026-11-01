@@ -102,6 +102,8 @@ export interface BarTableGrowth {
 interface BarTableCascade {
   /** A computed share column (row over panel total) beside each panel; default true. */
   share?: boolean;
+  /** Row groups only; default true. false: the Total bar keeps the theme total colour, even where it equals a group colour. */
+  totalApart?: boolean;
   growth?: BarTableGrowth;
 }
 
@@ -113,6 +115,12 @@ export interface BarTableOptions extends BaseOptionsFor<'bartable'> {
    * rows' sum over the panel's, at each range end where rows carry ranges.
    */
   combinedShare?: { rows: Id[]; label?: string };
+  /**
+   * Print each part's value inside its segment, where the text and 3 px of padding on each side fit.
+   * Default true. A panel whose format has more than one decimal, and a row with a range, print end labels only.
+   * Refused under variant 'cascade'.
+   */
+  segmentValues?: boolean;
   /**
    * 'panels' (default): one stacked-bar panel per measure. 'cascade': each panel
    * splits its total, a row's bar starts where the row above ended, on a light

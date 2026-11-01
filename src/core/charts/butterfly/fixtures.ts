@@ -172,7 +172,7 @@ export const fixtures: Fixture<ChartData, ButterflyOptions>[] = [
   },
   {
     id: 'negatives-own-scale',
-    title: 'Torture: negatives clamped to |value|, independent pane scales',
+    title: 'Torture: negatives run toward the names, independent pane scales with a value axis each',
     kind: 'torture',
     data: {
       categories: [
@@ -190,7 +190,7 @@ export const fixtures: Fixture<ChartData, ButterflyOptions>[] = [
       a: 'py',
       b: 'pl',
       sharedScale: false,
-      title: 'Signs live in the labels, not the bar direction',
+      title: 'Each pane keeps its own zero line and value axis',
     },
   },
 ];
@@ -331,6 +331,75 @@ fixtures.push({
   title: 'The five largest customers, a key above the panes and explicit label kinds',
   tags: ['coverage'],
   options: { ...customerSpend.options!, topN: { n: 5 }, legend: 'top', labels: { category: true, point: true } },
+});
+
+// Negative values on one shared scale: each pane has a zero line, positive bars run outward and
+// negative bars toward the names. `negatives: 'magnitude'` keeps the old lighter bar of |value|.
+const signedData: ChartData = {
+  categories: [
+    { id: 'licence', label: 'Licence income' },
+    { id: 'marketing', label: 'Marketing spend' },
+    { id: 'churn', label: 'Churn rate' },
+    { id: 'materials', label: 'Material costs' },
+    { id: 'orders', label: 'Order intake' },
+    { id: 'staff', label: 'Staff costs' },
+  ],
+  series: [
+    { id: 'partner', label: 'Partner channel', values: [-2252, -2196, -2398, 2282, 2262, 1932] },
+    { id: 'email', label: 'Email campaigns', values: [1725, 1576, -1471, -1357, -1379, 1206] },
+  ],
+};
+fixtures.push({
+  id: 'negatives-shared-scale',
+  title: 'Negative values run from each pane\'s zero line toward the names on one shared scale',
+  kind: 'torture',
+  tags: ['coverage'],
+  data: signedData,
+  options: { a: 'partner', b: 'email', title: 'Negative bars point toward the names', unit: 'EUR m' },
+}, {
+  id: 'negatives-magnitude',
+  title: 'The lighter bar of |value| for negative values, from negatives: magnitude',
+  kind: 'torture',
+  tags: ['coverage'],
+  data: signedData,
+  options: { a: 'partner', b: 'email', title: 'Negative bars keep their length and a lighter tint', unit: 'EUR m', negatives: 'magnitude' },
+}, {
+  id: 'blank-values',
+  title: 'A value the data lacks prints the not-applicable mark at the pane start',
+  kind: 'torture',
+  tags: ['coverage'],
+  data: {
+    categories: [
+      { id: 'logistics', label: 'Logistics' },
+      { id: 'coastal', label: 'Coastal region' },
+      { id: 'goods', label: 'Purchased goods' },
+      { id: 'equity', label: 'Equity income' },
+      { id: 'freight', label: 'Freight costs' },
+    ],
+    series: [
+      { id: 'domestic', label: 'Domestic services', values: [1.73, 1.58, null, 1.58, 1.34] },
+      { id: 'fixed', label: 'Fixed-price services', values: [2.62, null, null, 2.93, null] },
+    ],
+  },
+  options: { a: 'domestic', b: 'fixed', title: 'A blank value reads as not applicable, never as zero' },
+}, {
+  id: 'own-scales-mixed',
+  title: 'Panes of very different size on their own scales each draw a value axis',
+  kind: 'torture',
+  tags: ['coverage'],
+  data: {
+    categories: [
+      { id: 'north', label: 'North' },
+      { id: 'south', label: 'South' },
+      { id: 'east', label: 'East' },
+      { id: 'west', label: 'West' },
+    ],
+    series: [
+      { id: 'emails', label: 'Email campaigns', unit: 'sends', values: [163, 157, 181, 186] },
+      { id: 'public', label: 'Public sector', unit: 'EUR', values: [15060000, 14800000, 17670000, 16330000] },
+    ],
+  },
+  options: { a: 'emails', b: 'public', sharedScale: false, title: 'Each pane reads against its own axis' },
 });
 
 registerFixtures('butterfly', fixtures);

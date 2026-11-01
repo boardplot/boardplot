@@ -71,6 +71,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | centerColumnWidth | number |  |  | Width in pixels reserved between the panes for category labels; omission uses their measured width. |
 | sortBy | string | `'sheet'`, `'a'`, `'b'`, `'sum'`, `'diff'` | `'sheet'` | Row order: sheet by default, or descending a, b, sum a+b, or difference b-a. |
 | sharedScale | boolean |  | `true` | Use the same value scale on both sides by default. False gives independent scales and warns that lengths are not comparable. |
+| negatives | string | `'direction'`, `'magnitude'` | `'direction'` | A negative value: direction (default) runs its bar from the pane's zero line toward the category names, and positive bars run outward; magnitude draws the bar length of the absolute value outward in a lighter tint. |
 
 Plus the [shared options](options.md). This type does not accept `categoryLabels`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `colorblindSafe`, `rounding`.
 
@@ -102,7 +103,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | single-row | torture | Torture: one category only |
 | tiny-side | torture | Torture: one side all slivers under shared scale |
 | long-labels | torture | Torture: very long category labels ellipsize in the center column |
-| negatives-own-scale | torture | Torture: negatives clamped to \|value\|, independent pane scales |
+| negatives-own-scale | torture | Torture: negatives run toward the names, independent pane scales with a value axis each |
 | customer-spend-sort-sheet | torture | Customer spend ordered by authored account order |
 | customer-spend-sort-b | torture | Customer spend ordered by Product B |
 | customer-spend-sort-diff | example | Customer spend ordered by the B-minus-A difference |
@@ -111,6 +112,10 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | license-vs-services-neutral-mark | torture | License vs Services on a dark theme whose neutral is a band tint |
 | fixed-label-column | torture | A 160 px label column between the panes instead of the measured width |
 | customer-spend-top-five | torture | The five largest customers, a key above the panes and explicit label kinds |
+| negatives-shared-scale | torture | Negative values run from each pane's zero line toward the names on one shared scale |
+| negatives-magnitude | torture | The lighter bar of \|value\| for negative values, from negatives: magnitude |
+| blank-values | torture | A value the data lacks prints the not-applicable mark at the pane start |
+| own-scales-mixed | torture | Panes of very different size on their own scales each draw a value axis |
 
 ## Not for
 

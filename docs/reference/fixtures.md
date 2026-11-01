@@ -585,6 +585,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | one-series-missing-and-states | bartable.panels | torture | One segment with a missing value, a not-applicable cell and a not-meaningful cell, in a bar panel and a number column: each prints its own glyph |
 | impact-two-panels-named-share | bartable.panels | example | Two panels, one split: the impact in $bn and as a share of EBITDA, with the combined-share note naming the two rows the two largest sectors |
 | cascade-two-periods | bartable.cascade | example | Share cascade over two periods: rows coloured by a row group, two residual rows pinned last, share columns, a bracket and a CAGR column |
+| cascade-two-periods-theme-total | bartable.cascade | example | Share cascade over two periods with the Total bar in the theme total colour, even where it equals a group colour |
 | cascade-four-years | bartable.cascade | example | Share cascade over four years: product-category revenue share with the share change in pp |
 
 ## pvm
@@ -973,7 +974,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | single-row | butterfly | torture | Torture: one category only |
 | tiny-side | butterfly | torture | Torture: one side all slivers under shared scale |
 | long-labels | butterfly | torture | Torture: very long category labels ellipsize in the center column |
-| negatives-own-scale | butterfly | torture | Torture: negatives clamped to \|value\|, independent pane scales |
+| negatives-own-scale | butterfly | torture | Torture: negatives run toward the names, independent pane scales with a value axis each |
 | customer-spend-sort-sheet | butterfly | torture | Customer spend ordered by authored account order |
 | customer-spend-sort-b | butterfly | torture | Customer spend ordered by Product B |
 | customer-spend-sort-diff | butterfly | example | Customer spend ordered by the B-minus-A difference |
@@ -982,6 +983,10 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | license-vs-services-neutral-mark | butterfly | torture | License vs Services on a dark theme whose neutral is a band tint |
 | fixed-label-column | butterfly | torture | A 160 px label column between the panes instead of the measured width |
 | customer-spend-top-five | butterfly | torture | The five largest customers, a key above the panes and explicit label kinds |
+| negatives-shared-scale | butterfly | torture | Negative values run from each pane's zero line toward the names on one shared scale |
+| negatives-magnitude | butterfly | torture | The lighter bar of \|value\| for negative values, from negatives: magnitude |
+| blank-values | butterfly | torture | A value the data lacks prints the not-applicable mark at the pane start |
+| own-scales-mixed | butterfly | torture | Panes of very different size on their own scales each draw a value axis |
 
 ## likert
 
