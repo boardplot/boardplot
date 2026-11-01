@@ -3,7 +3,7 @@ import * as labelSolver from '../src/core/label/solver';
 import { layoutColumn } from '../src/core/charts/column/layout';
 import '../src/core/geo/packs';
 import { getFixtures } from '../src/fixtures';
-import { layoutResolvedRequest, renderSvg, resolveChartRequest } from '../src/index';
+import { canDraw, layoutResolvedRequest, renderSvg, resolveChartRequest } from '../src/index';
 import { contrastRatio } from '../src/core/color';
 import { resolveTheme } from '../src/core/theme';
 import { measureText } from '../src/core/text';
@@ -504,5 +504,23 @@ describe('chart layout edge cases', () => {
     const name = geometry.labels.find((l: { id: string }) => l.id === 'category:a');
     expect(name.title).toBeUndefined();
     expect(name.lines).toHaveLength(4);
+  });
+
+  // The fourth line counted a row as the canvas over the row count, but a gap after a row takes steps of its own,
+  // so the chart minimum passed the pinned height and the size was refused where the chart drew before.
+  it('a fourth name line does not push a chart with gapAfter rows over its pinned height', () => {
+    const long = 'Customers who cancelled within the first ninety days after a price change and who named the new billing cycle as the main reason';
+    const request = {
+      type: 'bar',
+      data: { categories: [
+        { id: 'a', label: long, gapAfter: true },
+        { id: 'b', label: 'Renewals', gapAfter: true },
+        { id: 'c', label: 'New sign-ups', gapAfter: true },
+        { id: 'd', label: 'Upgrades' },
+      ], series: [{ id: 's', label: 'Share', values: [32, 51, 44, 27] }] },
+      options: { title: 'Cancellation reasons', size: { width: 360, height: 260, unit: 'pt' } },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(canDraw(request as any)).toMatchObject({ ok: true });
   });
 });
