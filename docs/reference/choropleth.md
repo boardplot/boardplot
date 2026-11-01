@@ -61,7 +61,7 @@ One form; its chart ID is `choropleth`.
 | overlays[].glyph.kind (overlays[].glyph branch 3) | string | yes | Draw a semantic status glyph. One of `'status'`. |
 | overlays[].glyph.status (overlays[].glyph branch 3) | string | yes | Status judgment shown by the glyph. One of `'good'`, `'bad'`, `'warn'`, `'neutral'`. |
 | overlays[].glyph.kind (overlays[].glyph branch 4) | string | yes | Draw a named built-in icon. One of `'icon'`. |
-| overlays[].glyph.name (overlays[].glyph branch 4) | string | yes | Name from the built-in icon catalogue: alert calendar check conversation document flag gear lightbulb people star target workflow. |
+| overlays[].glyph.name (overlays[].glyph branch 4) | string | yes | Name from the built-in icon catalogue: alert calendar check conversation document flag gear lightbulb lock people star target workflow. |
 | overlays[].glyph.tone (overlays[].glyph branch 4) | string |  | Semantic glyph tone resolved through the theme. One of `'good'`, `'bad'`, `'warn'`, `'neutral'`, `'info'`. |
 | overlays[].glyph.kind (overlays[].glyph branch 5) | string | yes | Draw a geometric location marker. One of `'marker'`. |
 | overlays[].glyph.shape (overlays[].glyph branch 5) | string |  | Marker outline; defaults to circle. One of `'circle'`, `'square'`, `'diamond'`. |

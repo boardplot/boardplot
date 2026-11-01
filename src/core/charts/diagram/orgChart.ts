@@ -2,7 +2,7 @@ import type { Point, Rect } from '../../geometry';
 import type { FontSpec, TextMeasurer } from '../../text';
 import type { DiagramNode, DiagramOptions } from '../../types/diagram';
 import type { OwnerRef } from '../../types/cell';
-import type { LintWarning, Paint } from '../../types/scene';
+import type { LintWarning, Paint, SceneNode } from '../../types/scene';
 import type { NormalizedDiagram } from './model';
 import type { PresetLayout } from './presets';
 import { compareDiagramIds } from './ids';
@@ -58,7 +58,11 @@ export interface OrgChartLayout {
   /** The type of a node's secondary text, where it differs from the name. */
   secondaryFont?: FontSpec;
   /** Group frames in the layout's own paint. A dashed group has its title on the frame. */
-  groupPaint?: { fill: Paint; stroke: Paint; dashed: ReadonlySet<string> };
+  groupPaint?: { fill: Paint; stroke: Paint; dashed: ReadonlySet<string>; fills?: ReadonlyMap<string, Paint> };
+  /** Marks above the nodes and lines: inner frames, locks, boundary markers. */
+  overlay?: SceneNode[];
+  /** Numbered discs that no node's badge owns. */
+  discs?: Array<{ id: string; text: string; rect: Rect; owner: OwnerRef }>;
   /** Lints of the layout itself. */
   warnings?: LintWarning[];
   /** Labels with a seat of their own that no single edge owns. */

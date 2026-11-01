@@ -538,6 +538,8 @@ describe('published option behaviour census', () => {
       const series = data.series?.map(s => s.id) ?? [];
       for (const [key, field] of Object.entries(schema.properties ?? {})) {
         if ('not' in field) continue;
+        // Only the architecture variant reads highlight, and the agent-approval golden shows it.
+        if (type === 'diagram' && key === 'highlight') continue;
         const current = authored[key] ?? (definition.defaults as Options)[key] ?? field.default;
         let value = key in VALUES && JSON.stringify(VALUES[key]) !== JSON.stringify(current)
           ? VALUES[key] : sample(field, current);

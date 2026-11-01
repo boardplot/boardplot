@@ -162,6 +162,34 @@ describe('actionable input refusals', () => {
     }
   });
 
+  // Two zones that hold each other have no outer frame, and the parent walk would never end.
+  it('refuses a cycle in nested architecture zones', () => {
+    const data = { nodes: [{ id: 'a', kind: 'step', shape: { kind: 'rectangle' }, label: 'A', groupId: 'x' }],
+      groups: [{ id: 'x', title: 'X', parentId: 'y' }, { id: 'y', title: 'Y', parentId: 'x' }] };
+    expect(() => getChartDefinition('diagram')!.layout(data, { variant: 'architecture' }))
+      .toThrow(expect.objectContaining({ code: 'diagram-group-cycle' }));
+  });
+
+  // A mistyped highlight would mute the whole exhibit and emphasize nothing.
+  it('refuses a highlight id that names no node or edge', () => {
+    const data = { nodes: [{ id: 'a', kind: 'step', shape: { kind: 'rectangle' }, label: 'A' }] };
+    expect(() => getChartDefinition('diagram')!.layout(data, { variant: 'architecture', highlight: 'nope' }))
+      .toThrow(expect.objectContaining({ code: 'invalid-membership', message: expect.stringContaining("'nope'") }));
+  });
+
+  // A self-loop or a zone end that floats off its target claims a link the diagram does not have.
+  it('ends a self-loop on its node and a zone edge on the frame', () => {
+    const node = (id: string, groupId?: string) => ({ id, kind: 'step', shape: { kind: 'rectangle' }, label: id, groupId });
+    const edges = [{ id: 'loop', source: { nodeId: 'a' }, target: { nodeId: 'a' } }, { id: 'zone', source: { nodeId: 'a' }, target: { groupId: 'z' } }];
+    const { marks } = layoutDiagram({ nodes: [node('a'), node('b', 'z')], groups: [{ id: 'z', title: 'Zone' }], edges } as DiagramData, { variant: 'architecture', size: { width: 960, height: 500 } } as DiagramOptions);
+    const a = marks.nodes.find((item) => item.id === 'a')!.rect;
+    const frame = marks.groups[0]!.bounds;
+    const on = (point: { x: number; y: number }, rect: Rect) => point.x >= rect.x && point.x <= rect.x + rect.w && point.y >= rect.y && point.y <= rect.y + rect.h;
+    const points = (id: string) => (marks.edges.find((edge) => edge.id === id)!.route as DiagramPolylineRoute).points;
+    expect(on(points('loop')[0]!, a) && on(points('loop').at(-1)!, a)).toBe(true);
+    expect(points('zone').at(-1)!.x).toBe(frame.x);
+  });
+
   // The key must show what the nodes wear, and architecture draws structural nodes on the background.
   it('keys architecture nodes with the paints they wear', () => {
     const node = (id: string, role: string) => ({ id, kind: 'step', shape: { kind: 'rectangle' }, label: id, role });
