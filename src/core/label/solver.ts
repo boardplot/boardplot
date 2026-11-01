@@ -142,6 +142,13 @@ export interface SlotCandidate {
    * and gives no halo.
    */
   overRules?: boolean;
+  /**
+   * A value line (the annotation rule of an average, a target or a benchmark)
+   * does not block this seat, and a label across one gets a halo. A series'
+   * reference ticks still block it. For the seat a value keeps however the
+   * rule runs: the rule breaks around the glyphs when the scene is built.
+   */
+  overValueLines?: boolean;
   /** The seat lies on the key line, right of its entries: the legend's whole-row claim does not block it (the chart checked the entries). */
   overLegend?: boolean;
   leaderFrom?: { x: number; y: number };
@@ -583,6 +590,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
         const hard = anyHit(occupied, rect, padding, (o) => {
           if (o.kind === 'annotation' && selfAnn && o.owner.annotationId === selfAnn) return false;
           if (overRules && (o.part === 'referenceLine' || o.part === CROSSABLE_RULE_PART)) return false;
+          if (req.candidates[index]!.overValueLines && isValueLine(o)) return false;
           if (overLegend && o.kind === 'legend') return false;
           // A slot over columns lies wholly on one column or clear of them:
           // a label across a fill edge is half on the page and half on the
@@ -821,6 +829,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
       const label = finalize(base, req, cand, false, darkInk, lightInk);
       if (leader) label.leader = leader;
       if (cand.overRules && anyHit(occupied, cand.rect, req.pad ?? pad, (o) => o.part === 'referenceLine')) label.halo = true;
+      if (cand.overValueLines && anyHit(occupied, cand.rect, req.pad ?? pad, isValueLine)) label.halo = true;
       placed.push(label);
       occupied.claim(cand.rect, 'label', req.owner, TOTAL_KINDS.has(req.kind) ? TOTAL_PART : undefined);
       claimLeader(label);
@@ -1083,6 +1092,9 @@ function withLiftLeaders(req: LabelRequest, ownedPoint: boolean, runClear: (from
   });
   return changed ? { ...req, candidates, ...(req.leaderClear ? {} : { leaderClear: true }) } : req;
 }
+
+/** A claim of a value line: the annotation rule of an average, a target or a benchmark. */
+const isValueLine = (claim: OccupiedClaim): boolean => claim.kind === 'annotation' && claim.part === 'referenceLine';
 
 /** Penalty a seat with an added leader takes over the seats that read as their point's without one. */
 const LED_PENALTY = 100;

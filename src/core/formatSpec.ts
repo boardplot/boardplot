@@ -36,6 +36,7 @@ import {
   type SmallValues,
 } from './formatPrecision';
 import { maxOf, minOf } from './arrays';
+import { withUnit } from './unitJoin';
 
 /** A composing chart's generated example is still an automatic format. */
 export const AUTOMATIC_FORMAT = Symbol('automatic-format');
@@ -1094,6 +1095,7 @@ export function trendRateFormatter(example: string | undefined, locale?: string,
   // Points take the spacing the chart's % takes: "+0.40pp" beside "12.5%", "+0,40 pp" beside "12,5 %".
   const face = { ...spec, automatic: false, signed, negative: signed ? spec.negative : 'minus' as const,
     suffix: spec.suffix.includes('%') ? spec.suffix.replace(/%/g, 'pp') : unit?.includes('%') ? 'pp' : spec.suffix };
+  const missingUnit = spec.prefix || face.suffix || spec.magnitude !== 'none' ? undefined : unit;
   const precision = (scaled: number): number => scaled === 0 || scaled >= 100 ? 0 : scaled >= 1 ? 1 : 1 - Math.floor(Math.log10(scaled));
   return rate => {
     const abs = Math.abs(rate);
@@ -1117,9 +1119,9 @@ export function trendRateFormatter(example: string | undefined, locale?: string,
     const rateSpec = { ...face, magnitude, decimals: Math.min(MAX_FORMAT_DECIMALS, decimals), rollMagnitude: false as const };
     if (scientific) {
       const { digits } = scientificParts(Math.abs(rate));
-      return formatWithSpec(Math.sign(rate) * digits, { ...rateSpec, decimals: 1, suffix: `${scientificText(Math.abs(rate), () => '')}${face.suffix}` });
+      return withUnit(formatWithSpec(Math.sign(rate) * digits, { ...rateSpec, decimals: 1, suffix: `${scientificText(Math.abs(rate), () => '')}${face.suffix}` }), missingUnit, false, locale);
     }
-    return formatWithSpec(rate, rateSpec);
+    return withUnit(formatWithSpec(rate, rateSpec), missingUnit, false, locale);
   };
 }
 

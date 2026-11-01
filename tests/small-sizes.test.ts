@@ -360,6 +360,18 @@ it('draws readable tilemap codes in a fixed card before requiring full-width til
   expect(canDraw({ ...request, options: { ...request.options, belowMinimum: 'refuse' } }).ok).toBe(false);
 });
 
+// A narrow tile map printed codes alone and showed no value anywhere in the drawing, although every value fits its tile at the type floor.
+it('steps every tile of a narrow tile map down to the type floor so each value prints under its code', () => {
+  const f = getFixtures('tilemap').find(f => f.id === 'eu27-demand-versus-plan')!;
+  const geometry = measure({ type: 'tilemap', data: f.data, options: { ...f.options, size: { width: 400 } } }).geometry!;
+  const tiles = geometry.labels.filter(label => label.kind === 'category');
+  const valued = tiles.filter(label => label.lines?.length === 2);
+  expect(valued).toHaveLength(26);
+  expect(tiles.filter(label => label.hidden)).toEqual([]);
+  // 2 lines at the 11 px report floor and 1.2 line height, where the 12 px label size needs 28.8 px of a 30 px tile.
+  expect(new Set(valued.map(label => label.rect.h))).toEqual(new Set([26.4]));
+});
+
 // An authored dot-axis title must reach the drawing instead of refusing the whole chart.
 it('draws a dot value-axis title inside its fixed canvas', () => {
   const request = { type: 'dot', data: { categories: ['North', 'South'], series: [{ id: 'orders', values: [10, 20] }] },
@@ -465,6 +477,31 @@ it('draws a grid with a waffle panel on a phone card', () => {
   expect(shown.refused).toBeFalsy();
   expect(shown.size.width).toBe(280);
   expect(shown.labels.filter(label => label.hidden)).toEqual([]);
+});
+
+// A one-panel, one-series waffle on a pinned slide stacked label, value and grid and drew a 28 px cell on a 528 px canvas; the value and label now stand beside the grid so the cell grows, and an unpinned height keeps the stack.
+it('puts the value and label of a single waffle panel beside a grid that fills the pinned height', () => {
+  const data = { categories: [{ id: 'all', label: 'Forest' }], series: [{ id: 'plus', label: 'Plus', values: [46.4] }] };
+  const draw = (size: { width: number; height?: number }) => layoutResolvedRequest(resolveChartRequest({ type: 'waffle', data, options: { variant: 'cells', target: 'slide', subtitle: { measure: 'Share of land', period: 'FY26' }, size } } as never)) as unknown as Geometry<{ panels: { rect: { x: number; w: number } }[] }>;
+  const pinned = draw({ width: 1184, height: 528 });
+  const rect = pinned.marks.panels[0]!.rect;
+  const value = pinned.labels.find(label => label.id === 'total:all')!;
+  const name = pinned.labels.find(label => label.id === 'category:all')!;
+  expect(rect.w).toBeGreaterThan(350);
+  expect(value.hidden).toBeFalsy();
+  expect(name.hidden).toBeFalsy();
+  expect(value.rect.x).toBeGreaterThan(rect.x + rect.w);
+  expect(name.rect.x).toBe(value.rect.x);
+  expect(draw({ width: 1184 }).marks.panels[0]!.rect.w).toBeLessThan(rect.w);
+});
+
+// Prevents the side readout from taking away the old stacked form: heightFill 'none' must give back the exact stacked drawing on a pinned height.
+it("keeps the stacked single waffle panel on a pinned height with heightFill 'none'", () => {
+  const data = { categories: [{ id: 'all', label: 'Forest' }], series: [{ id: 'plus', label: 'Plus', values: [46.4] }] };
+  const draw = (options: object) => layoutResolvedRequest(resolveChartRequest({ type: 'waffle', data, options: { variant: 'cells', target: 'slide', subtitle: { measure: 'Share of land', period: 'FY26' }, size: { width: 1184, height: 528 }, ...options } } as never)) as unknown as Geometry<{ panels: { rect: { x: number; w: number } }[] }>;
+  const stacked = draw({ heightFill: 'none' });
+  expect(stacked.marks.panels[0]!.rect.w).toBeLessThan(draw({}).marks.panels[0]!.rect.w);
+  expect(stacked.labels.find(label => label.id === 'total:all')!.rect.x).toBeLessThan(stacked.marks.panels[0]!.rect.x + stacked.marks.panels[0]!.rect.w);
 });
 
 // Prevents waffle panels from cutting a long name in one cells row, and from leaving one square alone on a second row (7 + 1).
@@ -1277,6 +1314,53 @@ describe('bubble matrix key height', () => {
   });
 });
 
+// Prevents a slide or print canvas a few percent under the class-size floor from being refused where the same chart
+// draws with a slightly smaller type that stays at the reader floor.
+describe('type steps toward the reader floor before a size refusal', () => {
+  const half = (options: object) => ({
+    type: 'bar',
+    data: { categories: ['FY21', 'FY22', 'FY23', 'FY24'], series: [{ id: 'cloud', label: 'Cloud', values: [100, 130, 160, 200] }, { id: 'license', label: 'License', values: [124, 118, 109, 97] }] },
+    options: { variant: 'grouped', title: 'Cloud doubles in three years while license declines', subtitle: { measure: 'Revenue', period: 'FY21–FY24' }, unit: '$m', source: 'Invented accounts', target: 'slide', size: { width: 360, height: 405 }, ...options },
+    annotations: [
+      { kind: 'cagr', from: { categoryId: 'FY21', seriesId: 'cloud' }, to: { categoryId: 'FY24', seriesId: 'cloud' } },
+      { kind: 'diff', mode: 'absolute', from: { categoryId: 'FY24', seriesId: 'license' }, to: { categoryId: 'FY24', seriesId: 'cloud' } },
+    ],
+  });
+  const run = (spec: object) => layoutResolvedRequest(resolveChartRequest(spec as never));
+
+  it('draws a slide slot 5 px under the floor, names the step and keeps every text at its floor', () => {
+    const result = run(half({})) as Geometry;
+    expect(result.refused).toBeUndefined();
+    expect(result.warnings.find(w => w.code === 'type-stepped')).toMatchObject({ severity: 'info', suggest: expect.stringContaining('360 × 410px') });
+    const sizes = result.scene.flatMap(n => n.t === 'text' ? [n.font.size] : []);
+    expect(Math.min(...sizes)).toBeGreaterThanOrEqual(11);
+  });
+
+  // Prevents measure() from refusing a canvas that render() and canDraw() draw after the type step, which hides the chart in a host that measures first.
+  it('measures a stepped canvas as drawn and a refused one as refused, like render and canDraw', () => {
+    for (const size of [{ width: 360, height: 405 }, { width: 360, height: 380 }, { width: 200, height: 405 }]) {
+      const spec = half({ size });
+      const refused = run(spec).refused === true;
+      expect(measure(spec as never).refused !== undefined).toBe(refused);
+      expect(canDraw(spec as never).ok).toBe(!refused);
+    }
+    const measured = measure(half({}) as never);
+    expect(measured.warnings.map(w => w.code)).toContain('type-stepped');
+  });
+
+  it('keeps the refusal when the author sets the text size or the refusal', () => {
+    expect(run(half({ textScale: 1 })).refused).toBe(true);
+    expect(run(half({ textSize: 18 })).refused).toBe(true);
+    expect(run(half({ belowMinimum: 'refuse' })).refused).toBe(true);
+  });
+
+  it('refuses with the stepped need when the stepped text does not fit either', () => {
+    const result = run(half({ size: { width: 200, height: 405 } }));
+    expect(result.refused).toBe(true);
+    expect(result.warnings[0]!.code).toBe('size-below-floor');
+  });
+});
+
 // Prevents three diagrams from refusing or crowding on a wide, short full slide: the strategy house refused 28 px short,
 // the eight-step stack refused 35 px short, and the six-step cycle drew a disc so wide that four of its six arrowheads were lost.
 it('draws the house, the stack and the cycle on a full slide with the height they have', () => {
@@ -1307,4 +1391,20 @@ it('keeps a three-line vision when the strategy house is a little short', () => 
   };
   const body = render({ spec: { type: 'diagram', data, options: { variant: 'strategy-house', size: { width: 720, height: 316 } } } }).body as any;
   expect(body.errors).toEqual([]);
+});
+
+// Prevents a short org chart from floating in the middle of a tall plot: under a host-set height the level gaps grow
+// into the spare height, and a plot with no spare height keeps the natural gaps.
+it('spreads an org chart over the height the host sets', () => {
+  const spec = getFixtures('diagram').find(f => f.id === 'org-structure')! as any;
+  const span = (height: number, heightFill?: string) => {
+    const result = layoutDiagram(spec.data, { ...spec.options, size: { width: 888, height }, ...(heightFill ? { heightFill } : {}) } as never, false);
+    const rects = result.marks.nodes.map(mark => mark.contentRect);
+    return Math.max(...rects.map(r => r.y + r.h)) - Math.min(...rects.map(r => r.y));
+  };
+  const natural = span(150);
+  expect(span(396)).toBeGreaterThan(1.3 * natural);
+  expect(span(396)).toBeLessThan(2.6 * natural);
+  // heightFill 'none' is the old look: the natural gaps at any canvas height.
+  expect(span(396, 'none')).toBe(natural);
 });

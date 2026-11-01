@@ -230,12 +230,19 @@ type DiagramCommonOptionKeys =
 
 export type DiagramCommonOptions = Pick<BaseOptionsFor<'diagram'>, DiagramCommonOptionKeys>;
 
+/**
+ * Spare height of a canvas with a set height (a slide). 'rows' (default) grows
+ * the gaps between the levels of an org chart or a journey up to 2.6 times;
+ * 'none' keeps the natural gaps and centres the block.
+ */
+export type DiagramHeightFill = 'rows' | 'none';
+
 export type DiagramOptions = DiagramCommonOptions &
   (
-    | { variant: 'hierarchy' }
+    | { variant: 'hierarchy'; heightFill?: DiagramHeightFill }
     | { variant: 'issue-tree' }
     | { variant: 'linear-process' }
-    | { variant: 'customer-journey'; flow?: 'columns' | 'serpentine' }
+    | { variant: 'customer-journey'; flow?: 'columns' | 'serpentine'; heightFill?: DiagramHeightFill }
     | { variant: 'circular-process' }
     | { variant: 'strategy-house' }
     | { variant: 'roadmap' }
