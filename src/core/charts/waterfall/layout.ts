@@ -228,8 +228,9 @@ const SLIVER_LEADER_GAP = 10;
 /**
  * Without an authored variant the bridge draws vertical and turns it horizontal when its
  * names would rotate, shorten or drop, a horizontal bridge draws every name upright and
- * whole, and it adds no finding of its own. Cases and annotations stay vertical: a horizontal
- * bridge draws no annotations and stacks case bars in a row. An authored `vertical` never turns.
+ * whole, and it adds no finding and hides no label of its own. Cases, annotations, a value axis
+ * title and a host's net change stay vertical: a horizontal bridge draws none of them and stacks
+ * case bars in a row. An authored `vertical` never turns.
  */
 export function layoutWaterfall(
   data: WaterfallData,
@@ -237,11 +238,19 @@ export function layoutWaterfall(
 ): Geometry<WaterfallMarks, WaterfallDerived> {
   if (options.variant === 'horizontal') return layoutHorizontalWaterfall(data, options);
   const vertical = layoutVerticalWaterfall(data, options);
-  if (options.variant === 'vertical' || (data.cases?.length ?? 0) > 0 || (options.annotations?.length ?? 0) > 0) return vertical;
+  const dropsOnHorizontal = (data.cases?.length ?? 0) > 0 || (options.annotations?.length ?? 0) > 0
+    || options.axisTitles?.primary !== undefined || (options as { closingChange?: unknown }).closingChange !== undefined;
+  if (options.variant === 'vertical' || dropsOnHorizontal) return vertical;
   if (!vertical.warnings.some((warning) => CROWDED_NAMES.has(warning.code))) return vertical;
   const horizontal = layoutHorizontalWaterfall(data, options);
-  const known = new Set(vertical.warnings.map((warning) => warning.code));
-  const added = horizontal.warnings.some((warning) => warning.severity !== 'info' && !known.has(warning.code));
+  // A finding is the same one when code, severity and owner match; a code alone lets a new omission
+  // hide behind an old finding of that code. The label-hidden finding is added after layout, so the
+  // hidden labels themselves are compared.
+  const finding = (warning: { code: string; severity: string; owner?: unknown }) => `${warning.code}|${warning.severity}|${JSON.stringify(warning.owner ?? null)}`;
+  const known = new Set(vertical.warnings.map(finding));
+  const hidden = new Set(vertical.labels.filter((label) => label.hidden !== undefined).map((label) => label.id));
+  const added = horizontal.warnings.some((warning) => warning.severity !== 'info' && !known.has(finding(warning)))
+    || horizontal.labels.some((label) => label.hidden !== undefined && !hidden.has(label.id));
   if (added || horizontal.refused) return vertical;
   // Fits: the width is never repaired, the height only when the caller pinned it. A bridge that the size
   // refuses as a horizontal one would turn a drawn chart into a refusal.
