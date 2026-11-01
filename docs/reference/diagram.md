@@ -166,6 +166,7 @@ Deterministic node-edge diagrams with eight consulting presets, obstacle-aware r
 |---|---|---|---|---|
 | variant | string | `'hierarchy'`, `'issue-tree'`, `'linear-process'`, `'customer-journey'`, `'circular-process'`, `'strategy-house'`, `'roadmap'`, `'architecture'` |  | Required structural layout variant for the diagram. |
 | flow | string | `'columns'`, `'serpentine'`, `'lanes'` |  | Layout flow: columns or serpentine for customer-journey, columns or lanes for architecture. |
+| heightFill | string | `'rows'`, `'none'` | `'rows'` | Spare canvas height, read by hierarchy (org chart) and customer-journey. 'rows' (default): a canvas with a set height grows the gaps between the levels up to 2.6 times. 'none': natural gaps, the block centred. |
 | highlight | string \| array |  |  | Architecture only: the node and edge ids that carry the message. They take the accent, and everything else recedes. |
 
 Plus the [shared options](options.md). This type does not accept `belowMinimum`, `unit`, `unitShown`, `strings`, `format`, `detailFields`, `smallValues`, `labelDensity`, `labels`, `categoryLabels`, `labelPlacements`, `legend`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `scaleGroup`, `rowLabels`, `sort`, `topN`, `bandFraction`, `story`, `focus`, `hatchStrength`, `colorblindSafe`, `rounding`, `annotations`.
