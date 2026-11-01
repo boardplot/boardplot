@@ -466,6 +466,22 @@ it('draws a grid with a waffle panel on a phone card', () => {
   expect(shown.labels.filter(label => label.hidden)).toEqual([]);
 });
 
+// A one-panel, one-series waffle on a pinned slide stacked label, value and grid and drew a 28 px cell on a 528 px canvas; the value and label now stand beside the grid so the cell grows, and an unpinned height keeps the stack.
+it('puts the value and label of a single waffle panel beside a grid that fills the pinned height', () => {
+  const data = { categories: [{ id: 'all', label: 'Forest' }], series: [{ id: 'plus', label: 'Plus', values: [46.4] }] };
+  const draw = (size: { width: number; height?: number }) => layoutResolvedRequest(resolveChartRequest({ type: 'waffle', data, options: { variant: 'cells', target: 'slide', subtitle: { measure: 'Share of land', period: 'FY26' }, size } } as never)) as unknown as Geometry<{ panels: { rect: { x: number; w: number } }[] }>;
+  const pinned = draw({ width: 1184, height: 528 });
+  const rect = pinned.marks.panels[0]!.rect;
+  const value = pinned.labels.find(label => label.id === 'total:all')!;
+  const name = pinned.labels.find(label => label.id === 'category:all')!;
+  expect(rect.w).toBeGreaterThan(350);
+  expect(value.hidden).toBeFalsy();
+  expect(name.hidden).toBeFalsy();
+  expect(value.rect.x).toBeGreaterThan(rect.x + rect.w);
+  expect(name.rect.x).toBe(value.rect.x);
+  expect(draw({ width: 1184 }).marks.panels[0]!.rect.w).toBeLessThan(rect.w);
+});
+
 // Prevents pinned pies from drawing a radius under 36 px or an explode that leaves the frame.
 it('draws a compact pie only when the radius and the explode fit, and names a size that draws', () => {
   const pie = getChart('pie')!;

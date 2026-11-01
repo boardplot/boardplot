@@ -73,6 +73,10 @@ const HEADLINE_SHARE = 0.72;
 const SIDE_NATURAL_PITCH = 37;
 const SIDE_MIN_PITCH = 24;
 const READOUT_GAP = 3;
+/** One panel, one series, pinned height: the value and label stand beside the filled cells. Gap from the grid to the text, the widest label line (in label sizes) and the gain in cell pitch that earns the form. */
+const VALUE_SIDE_GAP = 26;
+const VALUE_SIDE_LABEL_EMS = 10;
+const VALUE_SIDE_GAIN = 1.1;
 
 interface Pass {
   geometry: Geometry<WaffleMarks, WaffleDerived>;
@@ -397,7 +401,32 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false): Pass
   // Square mode on a narrow card: a 10 px gap when the full gap leaves panels under the cell floor.
   const gutter = square && !arrows && n > 1 && (plot.w - (n - 1) * fullGutter) / n < grid.columns * MIN_PITCH ? COMPACT_GUTTER : fullGutter;
   const figure = figureRole(theme);
-  const labelTexts = panels.map((panel) => (measureInFrame ? '' : panel.label));
+  // Several panels print panel numbers (22/18 px on a report); one panel keeps the hero size.
+  const hero = n > 1
+    ? panelHeroSizesPx(target, theme.type.title.size, size.width, textScaleOf(options))
+    : kpiHeroSizesPx(target, theme.type.title.size, textScaleOf(options));
+  const heroBase = (options as WaffleOptions & { [KPI_VALUE_SIZE]?: number })[KPI_VALUE_SIZE] ?? hero.preferred;
+  // Only an authored height pins: trial heights of a width-only request do not.
+  const pinnedH = !heightOmitted(options.size) && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height !== false;
+  // One panel with one series on a pinned slot: the value and the panel label stand beside the filled cells
+  // when that gives the grid a clearly larger cell than the value and label above it do.
+  const sideValueText = !lean && !square && n === 1 && series.length === 1 && !subtotal && pinnedH && options.headline !== 'none' && !missing(panels[0]!)
+    ? headlineFormat(0)(panels[0]!.total) : undefined;
+  const sideValueFont: FontSpec = { family: figure.family, size: heroBase, weight: figure.weight, lineHeight: 1.2 };
+  // With no subtitle the frame names the panel; otherwise the label stands under the value.
+  const sideLabelText = measureInFrame ? '' : panels[0]!.label;
+  const sideValueW = sideValueText === undefined ? 0 : measure(sideValueText, sideValueFont).width;
+  const sideLabelWrap = wrapText(sideLabelText, labelFont, Math.max(sideValueW, VALUE_SIDE_LABEL_EMS * labelFont.size), 3, measure);
+  const sideLabelLines = sideLabelText === '' ? [] : sideLabelWrap.lines;
+  const sideTextW = Math.max(sideValueW, ...sideLabelLines.map((line) => measure(line, labelFont).width));
+  const sideValueH = measure('0', sideValueFont).height;
+  const sideLabelH = sideLabelLines.length === 0 ? 0 : measure('0', labelFont).height + (sideLabelLines.length - 1) * labelFont.size * (labelFont.lineHeight ?? 1.2);
+  const stackedTopH = (sideLabelLines.length === 0 ? 0 : measure('0', labelFont).height + space.gapTitleSubtitle) + sideValueH + space.gapSubtitlePlot;
+  const sidePanelW = plot.w - VALUE_SIDE_GAP - sideTextW;
+  const sideValuePitch = Math.min(sidePanelW / grid.columns, plot.h / grid.rows);
+  const valueSide = sideValueText !== undefined && sideValuePitch >= MIN_PITCH
+    && sideValuePitch > VALUE_SIDE_GAIN * Math.min(plot.w / grid.columns, (plot.h - stackedTopH) / grid.rows);
+  const labelTexts = panels.map((panel) => (measureInFrame || valueSide ? '' : panel.label));
   // The widest word of each label: a label wraps between words and never cuts one.
   const longestWord = labelTexts.map((text) => Math.max(0, ...text.split(/\s+/).filter(Boolean).map((word) => measure(word, labelFont).width)));
   const rowsFor = (maxColumns: number): number[][] => {
@@ -452,18 +481,11 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false): Pass
   const underH = space.gapSubtitlePlot + Math.ceil(entries.length / underColumns) * entryStep + subRowH;
   // Beside when the grid keeps SIDE_MIN_PITCH there; a pinned height also keeps it beside when the grid is larger so.
   const sidePitch = (plot.w - readoutSideW) / grid.columns;
-  // Only an authored height pins: trial heights of a width-only request do not.
-  const pinnedH = !heightOmitted(options.size) && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height !== false;
   const readoutSide = readout && sidePitch >= MIN_PITCH && (sidePitch >= SIDE_MIN_PITCH
     || (pinnedH && Math.min(plot.w / grid.columns, (plot.h - underH) / grid.rows) < Math.min(sidePitch, plot.h / grid.rows)));
   const keyColumns = readout && !readoutSide ? underColumns : 0;
   const keyRows = keyColumns > 0 ? Math.ceil(entries.length / keyColumns) : 0;
   const bottomReadoutH = keyColumns > 0 ? underH : 0;
-  // Several panels print panel numbers (22/18 px on a report); one panel keeps the hero size.
-  const hero = n > 1
-    ? panelHeroSizesPx(target, theme.type.title.size, size.width, textScaleOf(options))
-    : kpiHeroSizesPx(target, theme.type.title.size, textScaleOf(options));
-  const heroBase = (options as WaffleOptions & { [KPI_VALUE_SIZE]?: number })[KPI_VALUE_SIZE] ?? hero.preferred;
   const columnW = (plot.w - (columns - 1) * gutter) / columns;
   // The two-row form keeps its panels as small as the one row
   // would draw them. A panel is as wide as its widest label word and its headline need,
@@ -475,7 +497,7 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false): Pass
     const heroNeed = Math.max(0, maxOf(panels.map((panel, pi) => missing(panel) ? 0 : measure(headlineFormat(pi)(panel.total), heroFont).width))) / HEADLINE_SHARE;
     return Math.min(columnW, Math.max(SQUARE_MIN_SIDE, Math.ceil(wordNeed), Math.ceil(heroNeed)));
   };
-  const panelW = Math.max(1, readoutSide ? plot.w - readoutSideW
+  const panelW = Math.max(1, readoutSide ? plot.w - readoutSideW : valueSide ? sidePanelW
     : square && !lean && panelRows.length > 1 && series.length === 1 ? wrappedW() : columnW);
   const positions = panels.map((_, pi) => {
     const row = panelRows.findIndex((row) => row.includes(pi));
@@ -525,7 +547,7 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false): Pass
   while (showHeadline && headlineFont.size > hero.minimum && widest(headlineFont) > headlineRoom) {
     headlineFont = { ...headlineFont, size: Math.max(hero.minimum, headlineFont.size - 0.5) };
   }
-  const headlineH = showHeadline && headlineTexts.some((text) => text !== undefined) ? measure('0', headlineFont).height : 0;
+  const headlineH = !valueSide && showHeadline && headlineTexts.some((text) => text !== undefined) ? measure('0', headlineFont).height : 0;
   // Square mode prints the headline under the panel, left-aligned with the solid square (the share-squares look).
   const aboveH = square ? 0 : headlineH;
   const gapLabelHeadline = labelBlockH > 0 && aboveH > 0 ? space.gapTitleSubtitle : 0;
@@ -554,14 +576,14 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false): Pass
   const rowBottomH = rowRequiredBottomH.map((h) => h + valuesH);
   // Square mode sizes the panel as a 10 × 10 grid without gaps, so its floor and natural size match the cells mode.
   const pitch = Math.max(1, Math.min(panelW / grid.columns, ((plot.h - (panelRows.length - 1) * gutter - blocksH(rowBottomH)) / panelRows.length) / grid.rows));
-  const gap = square ? 0 : Math.min(readout ? READOUT_GAP : 4, Math.max(1, Math.round(pitch * 0.1)));
+  const gap = square ? 0 : Math.min(readout || valueSide ? READOUT_GAP : 4, Math.max(1, Math.round(pitch * 0.1)));
   const side = pitch - gap;
   const gridW = round2(grid.columns * pitch - gap);
   const gridH = round2(grid.rows * pitch - gap);
   const frameH = size.height - plot.h;
   // The readout under the grid lets the grid take the full width; beside it, the grid grows to SIDE_NATURAL_PITCH.
-  const naturalPitch = keyColumns > 0 ? panelW / grid.columns : Math.min(panelW / grid.columns, readoutSide ? SIDE_NATURAL_PITCH : NATURAL_PITCH);
-  const keyH = readoutSide ? Math.max(entries.length * entryStep, subLineH + 4 + lineH(keyFont)) : 0;
+  const naturalPitch = keyColumns > 0 ? panelW / grid.columns : Math.min(panelW / grid.columns, readoutSide || valueSide ? SIDE_NATURAL_PITCH : NATURAL_PITCH);
+  const keyH = readoutSide ? Math.max(entries.length * entryStep, subLineH + 4 + lineH(keyFont)) : valueSide ? sideValueH + sideLabelH : 0;
   const naturalHeight = Math.ceil(frameH + Math.max(blocksH(rowBottomH) + panelRows.length * naturalPitch * grid.rows + (panelRows.length - 1) * gutter, topBlockH + keyH) - 1e-6);
   const rowY = panelRows.map((_, ri) => plot.y + rowTopH.slice(0, ri).reduce((sum, top, rj) => sum + top + gridH + rowBottomH[rj]! + gutter, 0));
   const rowGridTop = (ri: number): number => rowY[ri]! + rowTopH[ri]!;
@@ -802,6 +824,39 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false): Pass
         requests.push({ id: 'subtotal:value', kind: 'total', owner: { segmentId: 'subtotal' }, text: subtotalText, lines: [subtotalText], font: subValueFont, typeRole: 'label', priority: PRIORITY.grandTotal, candidates: [{ slot: 'main', rect: { x: plot.x, y: topAt(baseline, subValueFont), w: subValueW, h: subValueFont.size }, penalty: 0 }] });
         requests.push({ id: 'subtotal:label', kind: 'annotation', owner: { segmentId: 'subtotal' }, text: subtotal.label, lines: [subtotal.label], font: keyFont, typeRole: 'label', priority: PRIORITY.grandTotal, candidates: [{ slot: 'main', rect: { x: plot.x + subValueW + 6, y: topAt(baseline, keyFont), w: subLabelW, h: keyFont.size }, penalty: 0 }] });
       }
+    }
+  }
+  // ---- one panel, one series: the value and the label beside the filled cells ----
+  if (valueSide) {
+    const rect = marks.panels[0]!.rect;
+    const topAt = (baseline: number, font: FontSpec): number => baseline - font.size * TEXT_ASCENT;
+    // The tick stands at the middle of the filled cells; the value's caps sit on it.
+    const filled = panels[0]!.filledCells;
+    let rowSum = 0;
+    for (let k = 0; k < filled; k++) rowSum += cellAt(k, grid.columns, grid.rows, fillFrom).row;
+    const cy = rect.y + (filled > 0 ? rowSum / filled : fillFrom === 'bottom' ? grid.rows - 1 : 0) * pitch + side / 2;
+    const cap = measure.capHeight?.(sideValueFont) ?? sideValueFont.size * 0.72;
+    const labelStep = labelFont.size * 1.5;
+    const blockTop = (base: number): number => base - cap;
+    const blockBottom = (base: number): number => base + (sideLabelLines.length > 0 ? labelStep + sideLabelH - measure('0', labelFont).height : 0);
+    // The block stays inside the grid's height.
+    let valueBase = cy + cap / 2;
+    valueBase += Math.max(0, rect.y - blockTop(valueBase));
+    valueBase -= Math.max(0, blockBottom(valueBase) - (rect.y + rect.h));
+    const x = rect.x + rect.w + VALUE_SIDE_GAP;
+    nodes.push({ t: 'line', id: `valueTick:${panels[0]!.categoryId}`, x1: round2(rect.x + rect.w + 4), y1: round2(cy), x2: round2(rect.x + rect.w + 18), y2: round2(cy), stroke: { token: 'leader' }, width: strokeToken(theme, 'hair'), owner: {}, part: 'leader' });
+    requests.push({
+      id: `total:${panels[0]!.categoryId}`, kind: 'total', owner: { categoryId: panels[0]!.categoryId },
+      text: sideValueText!, lines: [sideValueText!], font: sideValueFont, typeRole: 'kpiValue', priority: PRIORITY.grandTotal,
+      candidates: [{ slot: 'main', rect: { x, y: topAt(valueBase, sideValueFont), w: sideValueW, h: sideValueFont.size }, penalty: 0 }],
+    });
+    if (sideLabelLines.length > 0) {
+      requests.push({
+        id: `category:${panels[0]!.categoryId}`, kind: 'category', owner: { categoryId: panels[0]!.categoryId },
+        text: sideLabelText, lines: sideLabelLines, font: labelFont, typeRole: 'label', priority: PRIORITY.total,
+        ...(sideLabelWrap.truncated ? { title: panels[0]!.label } : {}),
+        candidates: [{ slot: 'main', rect: { x, y: topAt(valueBase + labelStep, labelFont), w: Math.max(...sideLabelLines.map((line) => measure(line, labelFont).width)), h: sideLabelH }, penalty: 0 }],
+      });
     }
   }
   // ---- text through the label solver ----
