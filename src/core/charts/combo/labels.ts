@@ -437,7 +437,7 @@ function categoryLabels(domain: ComboDomain, area: ComboArea, requests: LabelReq
 function linePointLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, geometry: ComboMarkGeometry, requests: LabelRequest[], strokes: readonly PolylineQueries[], fills: readonly Rect[]): void {
   const { labelFont, frame } = area;
   const labelH = env.measure('0', labelFont).height;
-  const mode = comboValueLabels(domain.options, domain.anatomy, domain.cats.length);
+  const mode = comboValueLabels(domain.options, domain.anatomy, domain.cats.length, domain.lineFloat !== undefined);
   const content = mode === 'all' || mode === 'extremes' ? contentOf(domain, 'point', ['absolute']) : null;
   // A point options.anomaly flagged prints its value in every mode, as a flagged column does.
   const flaggedContent = contentOf(domain, 'point', ['absolute']);
