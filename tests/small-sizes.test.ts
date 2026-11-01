@@ -480,6 +480,15 @@ it('wraps waffle panels into evenly filled rows when a name is wider than its pa
   expect(rowsOf('square', ['Retail stores', 'Gross margin', 'Intercontinental', 'Telecommunications', 'Licence income', 'Marketing spend', 'Online shop', 'Warehouse costs'], 760)).toEqual([4, 4]);
 });
 
+// Prevents a pinned waffle with two series from wrapping its panels into 3.6 px cells, or refusing a height where one row with cut names draws.
+it('keeps one readable row when two wrapped waffle rows do not fit the pinned height', () => {
+  const names = ['Telecommunications', 'Manufacturing', 'Subscriptions', 'Distribution', 'International'];
+  const data = { categories: names.map(label => ({ id: label, label })), series: [{ id: 'a', label: 'Alpha', values: names.map(() => 20) }, { id: 'b', label: 'Beta', values: names.map(() => 30) }] };
+  const shown = layoutResolvedRequest(resolveChartRequest({ type: 'waffle', data, options: { variant: 'cells', size: { width: 550, height: 300 } } } as never)) as unknown as Geometry & { refused?: boolean };
+  expect(shown.refused).toBeUndefined();
+  expect(shown.warnings.map(w => w.code)).not.toContain('waffle-cells-small');
+});
+
 // Prevents pinned pies from drawing a radius under 36 px or an explode that leaves the frame.
 it('draws a compact pie only when the radius and the explode fit, and names a size that draws', () => {
   const pie = getChart('pie')!;

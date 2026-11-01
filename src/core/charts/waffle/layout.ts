@@ -93,7 +93,16 @@ export function layoutWaffle(data: ChartData, options: WaffleOptions = {}): Geom
   const authoredHeight = !heightOmitted(options.size) && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height !== false;
   if (authoredHeight && !pass.fits) {
     const lean = layoutPass(data, options, true);
-    return lean.fits ? lean.geometry : leanFloor(data, options, pass.geometry);
+    if (lean.fits) return lean.geometry;
+    // Cell panels wrap only where the wrapped form fits; below its floor the one row draws, with cut names.
+    if ((options.variant ?? 'cells') === 'cells') {
+      for (const oneRowLean of [false, true]) {
+        const row = layoutPass(data, options, oneRowLean, true);
+        if (row.fits) return row.geometry;
+      }
+      return leanFloor(data, options, layoutPass(data, options, false, true).geometry);
+    }
+    return leanFloor(data, options, pass.geometry);
   }
   // An unpinned chart takes the height its content needs.
   const grow = rowDrivenHeight({ options, width: size.width, height: size.height, chromeH: 0, rowsH: pass.naturalHeight });
@@ -119,7 +128,7 @@ function leanFloor(data: ChartData, options: WaffleOptions, geometry: Geometry<W
  * too small for the readouts, so the key holds only the series names, the
  * panel label stays above its grid and no side key is used.
  */
-function layoutPass(data: ChartData, options: WaffleOptions, lean = false): Pass {
+function layoutPass(data: ChartData, options: WaffleOptions, lean = false, oneRow = false): Pass {
   const warnings: LintWarning[] = [];
   const size = resolveSize(options.size, options.target);
   const theme = themeForWidth(resolveTheme(options.theme), panelTypeClass(options) ?? size.width);
@@ -421,7 +430,7 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false): Pass
   // Both modes wrap to at most two rows, groups kept together, when a label word is wider than its room;
   // square mode also wraps when one row leaves a panel under the floor.
   // The floor is that of the two-row form, so it does not depend on the width asked for.
-  const minColumns = Math.min(n, Math.max(Math.ceil(n / 2), maxOf(groups.map((group) => group.panels.length))));
+  const minColumns = oneRow && !square ? n : Math.min(n, Math.max(Math.ceil(n / 2), maxOf(groups.map((group) => group.panels.length))));
   let panelRows = rowsFor(n);
   for (let c = n; c >= minColumns; c--) {
     panelRows = rowsFor(c);
@@ -514,8 +523,10 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false): Pass
   ]);
   const valueStep = Math.max(lineH(keyFont), maxOf(panelValueLines.flatMap((lines) => lines.map((text) => measure(text, keyFont).height + 4))));
   const preferredValuesH = series.length > 1 && n > 1 ? (series.length + (hasRest ? 1 : 0)) * valueStep + space.gapSubtitlePlot : 0;
-  const valuesFit = heightOmitted(options.size) || plot.h - labelBlockH - (labelBlockH > 0 ? space.gapSubtitlePlot : 0)
-    - (captionH > 0 ? captionGap + captionH : 0) - preferredValuesH >= grid.rows * MIN_PITCH;
+  // Wrapped panels repeat the label block, caption and value rows in every row, so the cell floor counts every row.
+  const rowCount = panelRows.length;
+  const valuesFit = heightOmitted(options.size) || plot.h - (rowCount - 1) * gutter - rowCount * (labelBlockH + (labelBlockH > 0 ? space.gapSubtitlePlot : 0)
+    + (captionH > 0 ? captionGap + captionH : 0) + preferredValuesH) >= rowCount * grid.rows * MIN_PITCH;
   // A pinned chart keeps the panel total when the segment readout has to give way.
   // A lean pass prints the panel total: the key then carries no values.
   const showHeadline = options.headline === 'value' || (options.headline !== 'none' && (lean || series.length === 1 || !valuesFit));
@@ -557,9 +568,9 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false): Pass
   const belowH = square && headlineH > 0 ? gapBelow + headlineH : 0;
   const requiredBottomH = belowH + (captionH > 0 ? captionGap + captionH : 0) + bottomReadoutH;
   // Pinned charts keep the readable grid before the optional value rows.
-  const valuesH = !heightOmitted(options.size) && plot.h - topBlockH - requiredBottomH - preferredValuesH < grid.rows * MIN_PITCH ? 0 : preferredValuesH;
   const rowRequiredBottomH = rowCaptionH.map((h) => requiredBottomH - (captionH > 0 ? captionGap + captionH : 0) + (h > 0 ? captionGap + h : 0));
   const blocksH = (bottom: readonly number[]): number => rowTopH.reduce((sum, top, ri) => sum + top + bottom[ri]!, 0);
+  const valuesH = !heightOmitted(options.size) && plot.h - (rowCount - 1) * gutter - blocksH(rowRequiredBottomH) - rowCount * preferredValuesH < rowCount * grid.rows * MIN_PITCH ? 0 : preferredValuesH;
   const rowBottomH = rowRequiredBottomH.map((h) => h + valuesH);
   // Square mode sizes the panel as a 10 × 10 grid without gaps, so its floor and natural size match the cells mode.
   const pitch = Math.max(1, Math.min(panelW / grid.columns, ((plot.h - (panelRows.length - 1) * gutter - blocksH(rowBottomH)) / panelRows.length) / grid.rows));
