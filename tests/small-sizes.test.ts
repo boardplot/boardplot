@@ -466,6 +466,19 @@ it('draws a grid with a waffle panel on a phone card', () => {
   expect(shown.labels.filter(label => label.hidden)).toEqual([]);
 });
 
+// Prevents waffle panels from cutting a long name in one cells row, and from leaving one square alone on a second row (7 + 1).
+it('wraps waffle panels into evenly filled rows when a name is wider than its panel', () => {
+  const rowsOf = (variant: string, labels: string[], width: number): number[] => {
+    const data = { categories: labels.map(label => ({ id: label, label })), series: [{ id: 's', label: 'S', values: labels.map((_, i) => 20 + i * 7) }] };
+    const shown = layoutResolvedRequest(resolveChartRequest({ type: 'waffle', data, options: { variant, size: { width } } } as never)) as unknown as Geometry & { marks: { panels: { rect: { y: number } }[] } };
+    expect(shown.labels.filter(label => label.truncated)).toEqual([]);
+    const ys = [...new Set(shown.marks.panels.map(panel => panel.rect.y))];
+    return ys.map(y => shown.marks.panels.filter(panel => panel.rect.y === y).length);
+  };
+  expect(rowsOf('cells', ['Infrastructure', 'Manufacturing', 'Subscriptions', 'Distribution', 'International'], 440)).toEqual([3, 2]);
+  expect(rowsOf('square', ['Retail stores', 'Gross margin', 'Intercontinental', 'Telecommunications', 'Licence income', 'Marketing spend', 'Online shop', 'Warehouse costs'], 760)).toEqual([4, 4]);
+});
+
 // Prevents pinned pies from drawing a radius under 36 px or an explode that leaves the frame.
 it('draws a compact pie only when the radius and the explode fit, and names a size that draws', () => {
   const pie = getChart('pie')!;
