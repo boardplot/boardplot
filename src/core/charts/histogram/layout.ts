@@ -716,7 +716,9 @@ export function layoutHistogram(
   // Edge labels that would run into the open bin's name give way to it.
   const openLeft = openLabel ? openLabel.candidates[0]!.rect.x - EDGE_GAP : Infinity;
   const lastLabel = labelValues.length - 1;
-  while (stride < lastLabel && edgeLabels.some((_, i) => i % stride === 0 && i + stride <= lastLabel && lefts[i + stride]! - lefts[i]! - widths[i]! < EDGE_GAP)) stride++;
+  // The maximum edge is always drawn and the inner label next to it gives way, so that pair does not widen the stride.
+  const lastPairEnd = !perValue && !open ? lastLabel - 1 : lastLabel;
+  while (stride < lastLabel && edgeLabels.some((_, i) => i % stride === 0 && i + stride <= lastPairEnd && lefts[i + stride]! - lefts[i]! - widths[i]! < EDGE_GAP)) stride++;
   const requests: LabelRequest[] = [];
   const ticks = labelValues.map((value, i) => {
     // A value sits under its bar centre; an edge sits on the seam between two bars.
