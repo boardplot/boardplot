@@ -487,6 +487,25 @@ fixtures.push({
 
 fixtures.push({ id: 'neutral-change', title: 'A change without a favorable direction', kind: 'example', data: { label: 'Requests', value: 120, delta: { vs: 100, direction: 'neutral' } }, options: { title: 'Request volume increased', size: { width: 420, height: 280 } } });
 
+/**
+ * A card in a slot of fixed height with `marks.kpiSlotFill: false`: the
+ * figure and delta keep their natural sizes at the top of the slot, the look
+ * before a fixed slot grew and centred them.
+ */
+fixtures.push({
+  id: 'slot-natural-sizes',
+  title: 'A card in a fixed slot that keeps its natural sizes at the top',
+  kind: 'example',
+  tags: ['feature:theme'],
+  data: { label: 'Gross margin', value: 38.4, format: '1.1%', note: 'Excludes the Harbor Freight division, sold in June', delta: { vs: 36.2, scenario: 'PY' } },
+  options: {
+    theme: { preset: 'standard', overrides: { marks: { kpiSlotFill: false } } },
+    title: 'Gross margin rose 2.2 points',
+    size: { width: 640, height: 360 },
+    source: 'Illustrative data',
+  },
+});
+
 fixtures.push({
   id: 'value-bands',
   title: 'The band that holds the value colours the main value; the comparison keeps its own tone',
