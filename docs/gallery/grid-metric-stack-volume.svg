@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 1047" width="1180" height="1047" direction="ltr" style="max-width:100%;height:auto;text-transform:none;letter-spacing:normal;word-spacing:normal;font-style:normal;font-variant:normal" preserveAspectRatio="xMidYMid meet" role="img" aria-label="More enquiries do not produce more completed outcomes" aria-describedby="bp-desc-66f0218460" data-bp-sizing="{&quot;aspect&quot;:&quot;content&quot;,&quot;minWidth&quot;:1180,&quot;minHeight&quot;:1047,&quot;fit&quot;:&quot;content&quot;,&quot;measuredMinWidth&quot;:1180,&quot;measuredMinHeight&quot;:1047,&quot;naturalWidth&quot;:1180,&quot;naturalHeight&quot;:1047,&quot;comfortableWidth&quot;:1475,&quot;comfortableHeight&quot;:1309}" data-bp-mode="full" font-family="'Helvetica Neue', Helvetica, Arial, Roboto, sans-serif">
-<desc id="bp-desc-66f0218460">Metric stack: 3 panels, 13 categories, 3 source measures. Top-down order: New enquiries; Completed; Conversion. Independent scales start at zero. New enquiries: +38%; 2.0 → 2.7. Completed: −24%; 233 → 178. Conversion: −5.3pp; 11.9% → 6.6%.</desc>
-<defs><pattern id="bp-hatch-12395E-FFFFFF-45-6-0p75-66f0218460" patternUnits="userSpaceOnUse" width="8.48" height="8.48"><rect width="8.48" height="8.48" fill="#FFFFFF"/><path d="M0 8.48L8.48 0M-4.24 4.24L4.24 -4.24M4.24 12.72L12.72 4.24" fill="none" stroke="#12395E" stroke-width="0.75"/></pattern><pattern id="bp-hatch-8395a4-FFFFFF-45-6-0p75-66f0218460" patternUnits="userSpaceOnUse" width="8.48" height="8.48"><rect width="8.48" height="8.48" fill="#FFFFFF"/><path d="M0 8.48L8.48 0M-4.24 4.24L4.24 -4.24M4.24 12.72L12.72 4.24" fill="none" stroke="#8395a4" stroke-width="0.75"/></pattern></defs>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 1047" width="1180" height="1047" direction="ltr" style="max-width:100%;height:auto;text-transform:none;letter-spacing:normal;word-spacing:normal;font-style:normal;font-variant:normal" preserveAspectRatio="xMidYMid meet" role="img" aria-label="More enquiries do not produce more completed outcomes" aria-describedby="bp-desc-1fc9c6d2be" data-bp-sizing="{&quot;aspect&quot;:&quot;content&quot;,&quot;minWidth&quot;:1180,&quot;minHeight&quot;:1047,&quot;fit&quot;:&quot;content&quot;,&quot;measuredMinWidth&quot;:1180,&quot;measuredMinHeight&quot;:1047,&quot;naturalWidth&quot;:1180,&quot;naturalHeight&quot;:1047,&quot;comfortableWidth&quot;:1475,&quot;comfortableHeight&quot;:1309}" data-bp-mode="full" font-family="'Helvetica Neue', Helvetica, Arial, Roboto, sans-serif">
+<desc id="bp-desc-1fc9c6d2be">Metric stack: 3 panels, 13 categories, 3 source measures. Top-down order: New enquiries; Completed; Conversion. Independent scales start at zero. New enquiries: +38%; 2.0 → 2.7. Completed: −24%; 233 → 178. Conversion: −5.3pp; 11.9% → 6.6%.</desc>
+<defs><pattern id="bp-hatch-12395E-FFFFFF-45-6-0p75-1fc9c6d2be" patternUnits="userSpaceOnUse" width="8.48" height="8.48"><rect width="8.48" height="8.48" fill="#FFFFFF"/><path d="M0 8.48L8.48 0M-4.24 4.24L4.24 -4.24M4.24 12.72L12.72 4.24" fill="none" stroke="#12395E" stroke-width="0.75"/></pattern><pattern id="bp-hatch-8395a4-FFFFFF-45-6-0p75-1fc9c6d2be" patternUnits="userSpaceOnUse" width="8.48" height="8.48"><rect width="8.48" height="8.48" fill="#FFFFFF"/><path d="M0 8.48L8.48 0M-4.24 4.24L4.24 -4.24M4.24 12.72L12.72 4.24" fill="none" stroke="#8395a4" stroke-width="0.75"/></pattern></defs>
 <rect x="0" y="0" width="1180" height="1047" fill="#FFFFFF"/>
 <text data-id="frame:title:0" data-part="title" data-bp-role="title" x="24" y="43.36" text-anchor="start" font-size="22" font-weight="700" fill="#0D2A43"><tspan x="24" dy="0">More enquiries do not produce more completed outcomes</tspan></text>
 <text data-id="frame:subtitle:1" data-part="subtitle" data-bp-role="subtitle" x="24" y="68.70" text-anchor="start" font-size="15" font-weight="400" fill="#0D2A43"><tspan font-weight="700">Enquiries, completed outcomes and conversion by creation cohort</tspan><tspan> · October 2025–October 2026</tspan></text>
@@ -21,7 +21,7 @@
 <rect data-id="intake:bar:2026-07:0" data-part="segment" x="823.37" y="243.91" width="55.73" height="162.19" fill="#12395E"/>
 <rect data-id="intake:bar:2026-08:0" data-part="segment" x="910.44" y="233.10" width="55.73" height="173" fill="#12395E"/>
 <rect data-id="intake:bar:2026-09:0" data-part="segment" x="997.52" y="241.21" width="55.73" height="164.89" fill="#12395E"/>
-<rect data-id="intake:bar:2026-10:0" data-part="segment" x="1084.60" y="372.58" width="55.73" height="33.52" fill="url(#bp-hatch-12395E-FFFFFF-45-6-0p75-66f0218460)"/>
+<rect data-id="intake:bar:2026-10:0" data-part="segment" x="1084.60" y="372.58" width="55.73" height="33.52" fill="url(#bp-hatch-12395E-FFFFFF-45-6-0p75-1fc9c6d2be)"/>
 <path data-id="intake:outline:2026-10" data-part="provisionalOutline" d="M1084.60 406.10V372.58H1140.33V406.10" fill="none" stroke="#4E6070" stroke-width="1.5" stroke-dasharray="4 3" stroke-linejoin="round"/>
 <line data-id="intake:baseline" data-part="baseline" x1="24" y1="406.10" x2="1156" y2="406.10" stroke="#0D2A43" stroke-width="1"/>
 <rect data-id="completed:key:retained" data-part="swatch" x="24" y="497.40" width="10" height="10" fill="#12395E"/>
@@ -44,39 +44,39 @@
 <rect data-id="completed:bar:2026-05:1" data-part="segment" x="649.21" y="591.70" width="55.73" height="27.55" fill="#b1beca"/>
 <rect data-id="completed:bar:2026-06:0" data-part="segment" x="736.29" y="626.38" width="55.73" height="50.83" fill="#12395E"/>
 <rect data-id="completed:bar:2026-06:1" data-part="segment" x="736.29" y="595.98" width="55.73" height="30.40" fill="#b1beca"/>
-<rect data-id="completed:bar:2026-07:0" data-part="segment" x="823.37" y="624.48" width="55.73" height="52.73" fill="url(#bp-hatch-12395E-FFFFFF-45-6-0p75-66f0218460)"/>
+<rect data-id="completed:bar:2026-07:0" data-part="segment" x="823.37" y="624.48" width="55.73" height="52.73" fill="url(#bp-hatch-12395E-FFFFFF-45-6-0p75-1fc9c6d2be)"/>
 <rect data-id="completed:segment-tag:2026-07" data-part="labelTag" x="836.48" y="628.48" width="29.50" height="18" rx="2" fill="#FFFFFF"/>
-<rect data-id="completed:bar:2026-07:1" data-part="segment" x="823.37" y="610.23" width="55.73" height="14.25" fill="url(#bp-hatch-8395a4-FFFFFF-45-6-0p75-66f0218460)"/>
+<rect data-id="completed:bar:2026-07:1" data-part="segment" x="823.37" y="610.23" width="55.73" height="14.25" fill="url(#bp-hatch-8395a4-FFFFFF-45-6-0p75-1fc9c6d2be)"/>
 <path data-id="completed:outline:2026-07" data-part="provisionalOutline" d="M823.37 677.20V610.23H879.10V677.20" fill="none" stroke="#4E6070" stroke-width="1.5" stroke-dasharray="4 3" stroke-linejoin="round"/>
-<rect data-id="completed:bar:2026-08:0" data-part="segment" x="910.44" y="614.50" width="55.73" height="62.70" fill="url(#bp-hatch-12395E-FFFFFF-45-6-0p75-66f0218460)"/>
+<rect data-id="completed:bar:2026-08:0" data-part="segment" x="910.44" y="614.50" width="55.73" height="62.70" fill="url(#bp-hatch-12395E-FFFFFF-45-6-0p75-1fc9c6d2be)"/>
 <rect data-id="completed:segment-tag:2026-08" data-part="labelTag" x="923.56" y="618.50" width="29.50" height="18" rx="2" fill="#FFFFFF"/>
-<rect data-id="completed:bar:2026-08:1" data-part="segment" x="910.44" y="602.63" width="55.73" height="11.88" fill="url(#bp-hatch-8395a4-FFFFFF-45-6-0p75-66f0218460)"/>
+<rect data-id="completed:bar:2026-08:1" data-part="segment" x="910.44" y="602.63" width="55.73" height="11.88" fill="url(#bp-hatch-8395a4-FFFFFF-45-6-0p75-1fc9c6d2be)"/>
 <path data-id="completed:outline:2026-08" data-part="provisionalOutline" d="M910.44 677.20V602.63H966.17V677.20" fill="none" stroke="#4E6070" stroke-width="1.5" stroke-dasharray="4 3" stroke-linejoin="round"/>
-<rect data-id="completed:bar:2026-09:0" data-part="segment" x="997.52" y="643" width="55.73" height="34.20" fill="url(#bp-hatch-12395E-FFFFFF-45-6-0p75-66f0218460)"/>
+<rect data-id="completed:bar:2026-09:0" data-part="segment" x="997.52" y="643" width="55.73" height="34.20" fill="url(#bp-hatch-12395E-FFFFFF-45-6-0p75-1fc9c6d2be)"/>
 <rect data-id="completed:segment-tag:2026-09" data-part="labelTag" x="1014.88" y="647" width="21" height="18" rx="2" fill="#FFFFFF"/>
-<rect data-id="completed:bar:2026-09:1" data-part="segment" x="997.52" y="637.30" width="55.73" height="5.70" fill="url(#bp-hatch-8395a4-FFFFFF-45-6-0p75-66f0218460)"/>
+<rect data-id="completed:bar:2026-09:1" data-part="segment" x="997.52" y="637.30" width="55.73" height="5.70" fill="url(#bp-hatch-8395a4-FFFFFF-45-6-0p75-1fc9c6d2be)"/>
 <path data-id="completed:outline:2026-09" data-part="provisionalOutline" d="M997.52 677.20V637.30H1053.25V677.20" fill="none" stroke="#4E6070" stroke-width="1.5" stroke-dasharray="4 3" stroke-linejoin="round"/>
 <line data-id="completed:baseline" data-part="baseline" x1="24" y1="677.20" x2="1156" y2="677.20" stroke="#0D2A43" stroke-width="1"/>
-<line data-id="conversion:line:1" data-part="line" x1="67.54" y1="798.20" x2="154.62" y2="807.44" stroke="#1D4ED8" stroke-width="2.5"/>
-<line data-id="conversion:line:2" data-part="line" x1="154.62" y1="807.44" x2="241.69" y2="817.82" stroke="#1D4ED8" stroke-width="2.5"/>
-<line data-id="conversion:line:3" data-part="line" x1="241.69" y1="817.82" x2="328.77" y2="813.56" stroke="#1D4ED8" stroke-width="2.5"/>
-<line data-id="conversion:line:4" data-part="line" x1="328.77" y1="813.56" x2="415.85" y2="830.71" stroke="#1D4ED8" stroke-width="2.5"/>
-<line data-id="conversion:line:5" data-part="line" x1="415.85" y1="830.71" x2="502.92" y2="832.18" stroke="#1D4ED8" stroke-width="2.5"/>
-<line data-id="conversion:line:6" data-part="line" x1="502.92" y1="832.18" x2="590" y2="850.32" stroke="#1D4ED8" stroke-width="2.5"/>
-<line data-id="conversion:line:7" data-part="line" x1="590" y1="850.32" x2="677.08" y2="850.53" stroke="#1D4ED8" stroke-width="2.5"/>
-<line data-id="conversion:line:8" data-part="line" x1="677.08" y1="850.53" x2="764.15" y2="850.28" stroke="#1D4ED8" stroke-width="2.5"/>
+<line data-id="conversion:line:1" data-part="line" x1="67.54" y1="798.20" x2="154.62" y2="807.44" stroke="#10529E" stroke-width="2.5"/>
+<line data-id="conversion:line:2" data-part="line" x1="154.62" y1="807.44" x2="241.69" y2="817.82" stroke="#10529E" stroke-width="2.5"/>
+<line data-id="conversion:line:3" data-part="line" x1="241.69" y1="817.82" x2="328.77" y2="813.56" stroke="#10529E" stroke-width="2.5"/>
+<line data-id="conversion:line:4" data-part="line" x1="328.77" y1="813.56" x2="415.85" y2="830.71" stroke="#10529E" stroke-width="2.5"/>
+<line data-id="conversion:line:5" data-part="line" x1="415.85" y1="830.71" x2="502.92" y2="832.18" stroke="#10529E" stroke-width="2.5"/>
+<line data-id="conversion:line:6" data-part="line" x1="502.92" y1="832.18" x2="590" y2="850.32" stroke="#10529E" stroke-width="2.5"/>
+<line data-id="conversion:line:7" data-part="line" x1="590" y1="850.32" x2="677.08" y2="850.53" stroke="#10529E" stroke-width="2.5"/>
+<line data-id="conversion:line:8" data-part="line" x1="677.08" y1="850.53" x2="764.15" y2="850.28" stroke="#10529E" stroke-width="2.5"/>
 <line data-id="conversion:line:9" data-part="provisionalLine" x1="764.15" y1="850.28" x2="851.23" y2="865.24" stroke="#4E6070" stroke-width="2.5" stroke-dasharray="4 3"/>
 <line data-id="conversion:line:10" data-part="provisionalLine" x1="851.23" y1="865.24" x2="938.31" y2="863.60" stroke="#4E6070" stroke-width="2.5" stroke-dasharray="4 3"/>
 <line data-id="conversion:line:11" data-part="provisionalLine" x1="938.31" y1="863.60" x2="1025.38" y2="880.75" stroke="#4E6070" stroke-width="2.5" stroke-dasharray="4 3"/>
-<circle data-id="conversion:point:2025-10" data-part="point" cx="67.54" cy="798.20" r="4.50" fill="#1D4ED8"/>
-<circle data-id="conversion:point:2025-11" data-part="point" cx="154.62" cy="807.44" r="4.50" fill="#1D4ED8"/>
-<circle data-id="conversion:point:2025-12" data-part="point" cx="241.69" cy="817.82" r="4.50" fill="#1D4ED8"/>
-<circle data-id="conversion:point:2026-01" data-part="point" cx="328.77" cy="813.56" r="4.50" fill="#1D4ED8"/>
-<circle data-id="conversion:point:2026-02" data-part="point" cx="415.85" cy="830.71" r="4.50" fill="#1D4ED8"/>
-<circle data-id="conversion:point:2026-03" data-part="point" cx="502.92" cy="832.18" r="4.50" fill="#1D4ED8"/>
-<circle data-id="conversion:point:2026-04" data-part="point" cx="590" cy="850.32" r="4.50" fill="#1D4ED8"/>
-<circle data-id="conversion:point:2026-05" data-part="point" cx="677.08" cy="850.53" r="4.50" fill="#1D4ED8"/>
-<circle data-id="conversion:point:2026-06" data-part="point" cx="764.15" cy="850.28" r="4.50" fill="#1D4ED8"/>
+<circle data-id="conversion:point:2025-10" data-part="point" cx="67.54" cy="798.20" r="4.50" fill="#10529E"/>
+<circle data-id="conversion:point:2025-11" data-part="point" cx="154.62" cy="807.44" r="4.50" fill="#10529E"/>
+<circle data-id="conversion:point:2025-12" data-part="point" cx="241.69" cy="817.82" r="4.50" fill="#10529E"/>
+<circle data-id="conversion:point:2026-01" data-part="point" cx="328.77" cy="813.56" r="4.50" fill="#10529E"/>
+<circle data-id="conversion:point:2026-02" data-part="point" cx="415.85" cy="830.71" r="4.50" fill="#10529E"/>
+<circle data-id="conversion:point:2026-03" data-part="point" cx="502.92" cy="832.18" r="4.50" fill="#10529E"/>
+<circle data-id="conversion:point:2026-04" data-part="point" cx="590" cy="850.32" r="4.50" fill="#10529E"/>
+<circle data-id="conversion:point:2026-05" data-part="point" cx="677.08" cy="850.53" r="4.50" fill="#10529E"/>
+<circle data-id="conversion:point:2026-06" data-part="point" cx="764.15" cy="850.28" r="4.50" fill="#10529E"/>
 <circle data-id="conversion:point:2026-07" data-part="provisionalPoint" cx="851.23" cy="865.24" r="4.50" fill="#FFFFFF" stroke="#4E6070" stroke-width="1.5"/>
 <circle data-id="conversion:point:2026-08" data-part="provisionalPoint" cx="938.31" cy="863.60" r="4.50" fill="#FFFFFF" stroke="#4E6070" stroke-width="1.5"/>
 <circle data-id="conversion:point:2026-09" data-part="provisionalPoint" cx="1025.38" cy="880.75" r="4.50" fill="#FFFFFF" stroke="#4E6070" stroke-width="1.5"/>
@@ -122,7 +122,7 @@
 <text data-id="label:conversion:after" data-part="point" data-bp-role="value" x="177" y="750.85" text-anchor="start" font-size="15" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="177" dy="0">6.6%</tspan></text>
 <text data-id="label:conversion:arrow" data-part="point" data-bp-role="value" x="157" y="750.85" text-anchor="start" font-size="15" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="157" dy="0">→</tspan></text>
 <text data-id="label:conversion:before" data-part="point" data-bp-role="value" x="109" y="750.85" text-anchor="start" font-size="15" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="109" dy="0">11.9%</tspan></text>
-<text data-id="label:conversion:headline" data-part="point" data-bp-role="value" x="24" y="750.87" text-anchor="start" font-size="22" font-weight="700" fill="#1D4ED8" style="font-variant-numeric: tabular-nums"><tspan x="24" dy="0">−5.3pp</tspan></text>
+<text data-id="label:conversion:headline" data-part="point" data-bp-role="value" x="24" y="750.87" text-anchor="start" font-size="22" font-weight="700" fill="#10529E" style="font-variant-numeric: tabular-nums"><tspan x="24" dy="0">−5.3pp</tspan></text>
 <text data-id="label:conversion:name" data-part="category" data-bp-role="category" x="24" y="717.60" text-anchor="start" font-size="15" font-weight="700" fill="#0D2A43"><tspan x="24" dy="0">Conversion</tspan></text>
 <text data-id="label:conversion:unit" data-part="category" data-bp-role="category" x="117" y="718.06" text-anchor="start" font-size="13" font-weight="400" fill="#4E6070"><tspan x="117" dy="0">% of enquiries</tspan></text>
 <text data-id="label:conversion:value:2025-10" data-part="point" data-bp-role="value" x="52.54" y="785.60" text-anchor="start" font-size="15" font-weight="700" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="52.54" dy="0">13.1</tspan></text>

@@ -152,7 +152,7 @@ export interface MekkoArea {
   widthTitle?: { text: string; y: number };
   /** Columns too narrow for their name in place; the note names them left to right. */
   unnamed: number[];
-  /** Unit and bar: where each name under the plot goes, when the row could not centre them all (plot.ts packNames). */
+  /** Where names go when the row could not centre them all (plot.ts packNames): unit and bar on a second tier under the plot; percent, a name too wide for its column on a second tier over the heads. */
   namePack?: { left: number[]; row: number[]; width: number[] };
   /** The column whose segment labels name their series (env.namesInPlace), or -1. */
   namedCol: number;

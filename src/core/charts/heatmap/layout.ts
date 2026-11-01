@@ -500,8 +500,10 @@ export function layoutHeatmap(
   // The bubble matrix prints its values bold in its largest circles only, so
   // the same cells carry values at every width.
   let valueLabelFont: FontSpec = bubbleStyle ? { ...labelFont, weight: emphasisWeight(theme) } : labelFont;
-  const topOnly = bubbleStyle && cellLabelsOn && levels !== undefined && levels.length >= 2
+  // A fact of the data: some cell holds the top size level, whatever the labels or format say.
+  const topLevelHeld = levels !== undefined && levels.length >= 2
     && rows.some((r) => r.cells.some((c) => c.v !== null && c.size === levels.length));
+  const topOnly = bubbleStyle && cellLabelsOn && topLevelHeld;
   const continuousKey = scale === 'continuous' && glyph === 'value' && !options.heatKey
     && vMax > vMin && !compactKey && panelTypeClass(options) === undefined && options.legend !== 'none'
     && !rows.some(r => r.direction === 'lowerIsBetter');
@@ -732,9 +734,11 @@ export function layoutHeatmap(
     }
     annotationBottomH = belowRows.reduce((sum, group) => sum + maxOf(group.map(a => noteSizes.get(a.id!)!.h)) + 8, 0) + caretRoom;
   }
-  // Levelled bubble rows keep a compact pitch based on row names, independently of value labels.
+  // A levelled bubble matrix with a top-level cell keeps a compact pitch from its row names;
+  // the pitch ignores value labels and number format. Without a top-level cell every value may
+  // print, so a row stays as tall as the column is wide.
   const bubbleLo = Math.max(28, labelFont.size * 1.2 + 8, maxOf(rowLines.map((label) => label.h + 4)));
-  const bubbleNaturalH = levels && levels.length >= 2
+  const bubbleNaturalH = topLevelHeld
     ? turned ? bubbleLo : Math.max(bubbleLo, Math.min(cellW, 1.5 * bubbleLo))
     : Math.max(cellW, bubbleLo);
 

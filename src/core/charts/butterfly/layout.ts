@@ -363,12 +363,20 @@ export function layoutButterfly(
   const scenA = normalizeScenario(sA.scenario, `series[${sA.id}].scenario`);
   const scenB = normalizeScenario(sB.scenario, `series[${sB.id}].scenario`);
 
+  const labelsOff = (kind: string): boolean => {
+    // labels: false hides values while row and pane names stay outside a grid.
+    if (opts.labels === false) return !((kind === 'category' || kind === 'series') && labelsOffKeepsNames(opts));
+    const v = opts.labels?.[kind as never];
+    return v === false;
+  };
+
   // ---- frame ----
   const occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
   const margin = { ...canvasMargin(theme, size.width), ...opts.margin };
-  const valuesOff = opts.labels === false || opts.labels?.point === false;
+  const valuesOff = labelsOff('point');
   const legendOpts: LegendOptions | undefined = normalizeLegendOption(
-    comparison?.rowDriven !== false && valuesOff && opts.legend === undefined ? 'top' : opts.legend,
+    comparison?.rowDriven !== false && valuesOff && labelsOff('series') && opts.legend === undefined
+      ? 'top' : opts.legend,
   );
   const legendItems: LegendItemInput[] = [
     { id: sA.id, label: aLabel, paint: paintA, pattern: patternOf(scenA) },
@@ -603,12 +611,6 @@ export function layoutButterfly(
     center: { x: centerX0, y: rowsTop, w: centerW, h: rowsBottom - rowsTop },
   };
   const labelRequests: LabelRequest[] = [];
-  const labelsOff = (kind: string): boolean => {
-    // labels: false takes the values off; the row and side names stay.
-    if (opts.labels === false) return !((kind === 'category' || kind === 'series') && labelsOffKeepsNames(opts));
-    const v = opts.labels?.[kind as never];
-    return v === false;
-  };
 
   // category-axis baselines: bars anchor on the center column's edges
   const baselineLeftId = 'axis:baseline:left';

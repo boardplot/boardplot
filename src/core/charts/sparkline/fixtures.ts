@@ -1,7 +1,7 @@
 /**
  * Sparkline fixtures: the shape at exhibit size with its end
  * labels, and the bare 176 by 36 mark a card or a table row hosts, with a
- * gap the line does not bridge.
+ * null bridged by a dotted segment.
  */
 
 import { registerFixtures } from '../../../fixtures/registry';
@@ -37,7 +37,7 @@ export const fixtures: Fixture<SparklineData, SparklineOptions>[] = [
   },
   {
     id: 'bare-card-spark',
-    title: 'The bare 176 by 36 mark: no ring, no labels, a gap the line does not bridge',
+    title: 'The bare 176 by 36 mark: no end ring, no labels, a null bridged by a dotted segment',
     kind: 'example',
     hostTitle: 'Weekly orders climb from 96 to 110 in eight weeks',
     data: {

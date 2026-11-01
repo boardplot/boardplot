@@ -128,6 +128,16 @@ it('keeps bubble matrix geometry stable across value label settings and formats'
   }
 });
 
+// A levelled bubble matrix with no top-level cell prints its values in every circle, so its rows must stay tall enough for them.
+it('prints every value of a levelled bubble matrix that holds no top-level cell', () => {
+  const fixture = getFixtures('heatmap').find(f => f.id === 'survey-journey-bubbles')!;
+  const data = structuredClone(fixture.data) as { series: { sizes: (number | null)[] }[] };
+  for (const s of data.series) s.sizes = s.sizes.map(v => v === 3 ? 2 : v);
+  const result = layoutResolvedRequest(resolveChartRequest({ type: 'heatmap', data, options: { ...fixture.options, size: { width: 960 } } }));
+  if (result.refused) throw new Error(result.warnings[0]!.message);
+  expect(result.scene.filter(node => node.t === 'text' && node.part === 'point')).toHaveLength(72);
+});
+
 // A host needs the refusal's minimum to size its card without a separate measurement.
 it('keeps canDraw minimum on a fixed-size refusal', () => {
   expect(canDraw(shortCombo)).toMatchObject({ ok: false, code: 'size-below-floor', minimum: { width: 480, height: 240 } });
@@ -471,6 +481,19 @@ it('draws a compact pie only when the radius and the explode fit, and names a si
   const repair = exploded.warnings[0]!.expected!.minimum as { width: number; height: number };
   expect(repair).toEqual({ width: 320, height: 283 });
   expect(draw('full-explode-envelope', repair).refused).toBeUndefined();
+});
+
+// Prevents a pie with labels off from leaving its colours unnamed and from growing taller than the labelled pie.
+it('keeps the height of a pie with labels off and names its slices in a key', () => {
+  const fixture = getFixtures('pie').find(f => f.id === 'doughnut-device-revenue')!;
+  const draw = (extra: object) => layoutResolvedRequest(resolveChartRequest({
+    type: 'pie', data: fixture.data, options: { ...fixture.options, ...extra } } as never)) as unknown as Geometry;
+  const labelled = draw({});
+  const off = draw({ labels: false });
+  expect(off.size.height).toBe(labelled.size.height);
+  expect(off.legend?.items.map(item => item.id)).toEqual(['mobile', 'pc', 'tablet']);
+  expect(off.labels.filter(label => !label.hidden)).toEqual([]);
+  expect(draw({ labels: false, legend: 'none' }).legend).toBeUndefined();
 });
 
 // Prevents a narrow diagram card from drawing one sibling group's frame inside another's (false nesting),

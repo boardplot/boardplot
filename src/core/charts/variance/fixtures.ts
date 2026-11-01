@@ -84,8 +84,6 @@ export const fixtures: Fixture<ChartData, VarianceOptions>[] = [
         period: 'H1 2026',
         scenarios: ['AC', 'PL'],
       },
-      // The pins are percent differences, so the unit is '%', as the subtitle says.
-      unit: '%',
       source: 'Group controlling, plan v2',
     },
   },
