@@ -104,3 +104,25 @@ describe('a key label leaves room for its own value', () => {
     expect(geometry.warnings.map((w) => w.code)).not.toContain('text-clipped');
   });
 });
+
+describe('mekko column names', () => {
+  // On a percent mekko, a column too narrow for its name lost the name, and its footnote mark then pushed the wide columns' names out of the row too.
+  it('percent: every column keeps its name, a narrow one on a second tier', () => {
+    const ids = ['home', 'kitchen', 'garden', 'light', 'storage', 'textiles'];
+    const names = ['Home goods', 'Kitchen and dining', 'Garden and outdoor', 'Lighting', 'Storage', 'Textiles'];
+    const spec = {
+      type: 'mekko',
+      data: {
+        categories: ids.map((id, i) => ({ id, label: names[i], ...(i >= 4 ? { footnote: i - 3 } : {}) })),
+        series: [
+          { id: 'a', label: 'Marlowe', values: [2.4, 0.5, 0.3, 0.2, 0.2, 0.1] },
+          { id: 'b', label: 'Other', values: [3.0, 1.1, 0.9, 0.5, 0.4, 0.2] },
+        ],
+      },
+      options: { variant: 'stacked100', footnotes: ['Storage and organisation', 'Home textiles'], target: 'slide' },
+    };
+    const geometry = layoutResolvedRequest(resolveChartRequest(spec as never)) as Geometry;
+    const drawn = (id: string) => geometry.scene.flatMap((n) => (n.t === 'text' && n.id === `label:category:${id}` ? [n.lines.join(' ')] : []))[0] ?? '';
+    expect(ids.map(drawn).map((text, i) => text.startsWith(names[i]!))).toEqual(ids.map(() => true));
+  });
+});
