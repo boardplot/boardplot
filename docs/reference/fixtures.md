@@ -1080,6 +1080,8 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | protected-request | diagram.architecture | example | A request stays protected on its way to private processing and back |
 | marketing-pipeline | diagram.architecture | example | Rejected records return to the source for repair |
 | journey-attribution | diagram.architecture | example | Multi-touch attribution from customer journey to budget |
+| nested-service | diagram.architecture | example | A service nested three levels deep, with one protected runtime |
+| agent-approval | diagram.architecture | example | An agent reaches its tools through an approval gate |
 
 ## tilemap
 

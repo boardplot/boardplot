@@ -62,11 +62,12 @@ Deterministic node-edge diagrams with eight consulting presets, obstacle-aware r
 | nodes[].shape.kind (nodes[].shape branch 5) | string | yes | Select the chevron node shape. One of `'chevron'`. |
 | nodes[].shape.tip (nodes[].shape branch 5) | number |  | Chevron tip depth as a fraction of width; defaults to 0.16 and is capped by shape height. |
 | nodes[].shape.kind (nodes[].shape branch 6) | string | yes | Select the text node shape. One of `'text'`. |
-| nodes[].shape.kind (nodes[].shape branch 7) | string | yes | Select the icon node shape. One of `'icon'`. |
-| nodes[].shape.name (nodes[].shape branch 7) | string | yes | Name from the built-in icon catalogue. |
-| nodes[].shape.kind (nodes[].shape branch 8) | string | yes | Select the roof node shape. One of `'roof'`. |
-| nodes[].shape.apex (nodes[].shape branch 8) | number |  | Horizontal roof apex as a fraction of width; defaults to 0.5. |
-| nodes[].shape.eaveInset (nodes[].shape branch 8) | number |  | Inset of each roof eave as a fraction of width; defaults to 0. |
+| nodes[].shape.kind (nodes[].shape branch 7) | string | yes | Select the store node shape. One of `'store'`. |
+| nodes[].shape.kind (nodes[].shape branch 8) | string | yes | Select the icon node shape. One of `'icon'`. |
+| nodes[].shape.name (nodes[].shape branch 8) | string | yes | Name from the built-in icon catalogue. |
+| nodes[].shape.kind (nodes[].shape branch 9) | string | yes | Select the roof node shape. One of `'roof'`. |
+| nodes[].shape.apex (nodes[].shape branch 9) | number |  | Horizontal roof apex as a fraction of width; defaults to 0.5. |
+| nodes[].shape.eaveInset (nodes[].shape branch 9) | number |  | Inset of each roof eave as a fraction of width; defaults to 0. |
 | nodes[].label | string | yes | Primary visible node label, at most 200 Unicode code points. |
 | nodes[].secondaryLabel | string |  | Secondary line inside the node, at most 400 Unicode code points. |
 | nodes[].caption | string |  | Supporting caption placed near the node, at most 400 Unicode code points. |
@@ -95,18 +96,22 @@ Deterministic node-edge diagrams with eight consulting presets, obstacle-aware r
 | nodes[].ports[].intent | string |  | Allowed edge direction: incoming, outgoing or both. One of `'in'`, `'out'`, `'bidi'`. |
 | nodes[].ports[].capacity | integer |  | Maximum number of edge endpoints assigned to this port. |
 | nodes[].groupId | string |  | Id of an existing group containing this node. |
-| nodes[].laneId | string |  | Id of an existing lane containing this node. |
+| nodes[].laneId | string |  | Id of an existing lane containing this node. Architecture with flow 'lanes' requires it except on policy-strip nodes, which must omit it. |
 | nodes[].order | integer |  | Ordering key: nodes sort by order, a node without one by its 0-based position in nodes, ties by id. Automatic step numbers follow this order. |
 | nodes[].track | string |  | Architecture only: named cross-axis track. Nodes in one track line up across zones or lanes. |
 | nodes[].span | string |  | Architecture only: a wide band across its lane, or a full-height rail in its zone. One of `'full'`. |
+| nodes[].repeat | integer |  | Architecture only: draws 2 to 5 stacked copies, for repeated workers. |
+| nodes[].protected | boolean |  | Architecture only: a lock and a double border. This is an authored claim. |
 | edges | array |  | Up to 160 uniquely identified links between distinct existing nodes. |
 | edges[].id | string | yes | Trimmed identifier of at most 80 Unicode code points; control characters and the auto: prefix are reserved. |
-| edges[].source | object | yes | Edge origin, with an optional named output port. |
-| edges[].source.nodeId | string | yes | Id of the existing node at this edge endpoint. |
-| edges[].source.portId | string |  | Named port on the endpoint node; omission allows automatic port selection. |
-| edges[].target | object | yes | Edge destination, with an optional named input port. |
-| edges[].target.nodeId | string | yes | Id of the existing node at this edge endpoint. |
-| edges[].target.portId | string |  | Named port on the endpoint node; omission allows automatic port selection. |
+| edges[].source | object | yes | Edge origin: a node with an optional named output port, or a zone in variant architecture. |
+| edges[].source.nodeId (edges[].source branch 1) | string | yes | Id of the existing node at this edge endpoint. |
+| edges[].source.portId (edges[].source branch 1) | string |  | Named port on the endpoint node; omission allows automatic port selection. |
+| edges[].source.groupId (edges[].source branch 2) | string | yes | Id of the existing zone whose frame this edge ends on. |
+| edges[].target | object | yes | Edge destination: a node with an optional named input port, or a zone in variant architecture. |
+| edges[].target.nodeId (edges[].target branch 1) | string | yes | Id of the existing node at this edge endpoint. |
+| edges[].target.portId (edges[].target branch 1) | string |  | Named port on the endpoint node; omission allows automatic port selection. |
+| edges[].target.groupId (edges[].target branch 2) | string | yes | Id of the existing zone whose frame this edge ends on. |
 | edges[].routing | string |  | Requested edge path style. curved draws only in circular-process; other variants draw it orthogonal with diagram-route-degraded. One of `'straight'`, `'elbow'`, `'orthogonal'`, `'curved'`. |
 | edges[].arrowStart | boolean |  | Whether to draw an arrowhead at the source endpoint. |
 | edges[].arrowEnd | boolean |  | Whether to draw an arrowhead at the target endpoint. |
@@ -126,6 +131,9 @@ Deterministic node-edge diagrams with eight consulting presets, obstacle-aware r
 | groups[].order | integer |  | Authored ordering key used by the selected diagram variant. |
 | groups[].role | string |  | Visual emphasis or semantic tone for this element. One of `'primary'`, `'accent'`, `'secondary'`, `'muted'`, `'good'`, `'bad'`, `'warn'`, `'category'`. |
 | groups[].paletteKey | string |  | Stable categorical color key; required only when role is category. |
+| groups[].kind | string |  | Architecture only: a policy group is a strip across the exhibit, and its nodes take no edges. Default zone. One of `'zone'`, `'policy'`. |
+| groups[].parentId | string |  | Architecture only: the zone this zone sits in, up to three levels. |
+| groups[].protected | boolean |  | Architecture only: a lock and a double frame. This is an authored claim. |
 | lanes | array |  | Up to 32 named partitions referenced by node.laneId. |
 | lanes[].id | string | yes | Trimmed identifier of at most 80 Unicode code points; control characters and the auto: prefix are reserved. |
 | lanes[].label | string |  | Optional visible label, at most 200 Unicode code points. |
@@ -143,6 +151,14 @@ Deterministic node-edge diagrams with eight consulting presets, obstacle-aware r
 | channels[].id | string | yes | Trimmed identifier of at most 80 Unicode code points; control characters and the auto: prefix are reserved. |
 | channels[].edgeIds | array | yes | Ids of the edges this label names; they must cross one common gutter. |
 | channels[].label | string | yes | The shared label, at most 80 Unicode code points. |
+| callouts | array |  | Architecture only: up to 16 numbered discs, numbered in this order. |
+| callouts[].id | string | yes | Trimmed identifier of at most 80 Unicode code points; control characters and the auto: prefix are reserved. |
+| callouts[].target | object | yes | The node, edge or zone that carries the number. Each target takes one callout. In flow 'lanes', a zone must contain a node. |
+| callouts[].target.nodeId (callouts[].target branch 1) | string | yes | Id of the node this callout marks. |
+| callouts[].target.edgeId (callouts[].target branch 2) | string | yes | Id of the edge this callout marks. |
+| callouts[].target.groupId (callouts[].target branch 3) | string | yes | Id of the zone this callout marks. |
+| callouts[].title | string |  | Short name in the key row, at most 80 Unicode code points. |
+| callouts[].text | string |  | Explanation in the key row, at most 200 Unicode code points. |
 
 ## Options
 
@@ -150,8 +166,9 @@ Deterministic node-edge diagrams with eight consulting presets, obstacle-aware r
 |---|---|---|---|---|
 | variant | string | `'hierarchy'`, `'issue-tree'`, `'linear-process'`, `'customer-journey'`, `'circular-process'`, `'strategy-house'`, `'roadmap'`, `'architecture'` |  | Required structural layout variant for the diagram. |
 | flow | string | `'columns'`, `'serpentine'`, `'lanes'` |  | Layout flow: columns or serpentine for customer-journey, columns or lanes for architecture. |
+| highlight | string \| array |  |  | Architecture only: the node and edge ids that carry the message. They take the accent, and everything else recedes. |
 
-Plus the [shared options](options.md). This type does not accept `belowMinimum`, `unit`, `unitShown`, `strings`, `format`, `detailFields`, `smallValues`, `labelDensity`, `labels`, `categoryLabels`, `labelPlacements`, `legend`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `scaleGroup`, `rowLabels`, `sort`, `topN`, `bandFraction`, `highlight`, `story`, `focus`, `hatchStrength`, `colorblindSafe`, `rounding`, `annotations`.
+Plus the [shared options](options.md). This type does not accept `belowMinimum`, `unit`, `unitShown`, `strings`, `format`, `detailFields`, `smallValues`, `labelDensity`, `labels`, `categoryLabels`, `labelPlacements`, `legend`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `scaleGroup`, `rowLabels`, `sort`, `topN`, `bandFraction`, `story`, `focus`, `hatchStrength`, `colorblindSafe`, `rounding`, `annotations`.
 
 ## Annotations
 
@@ -196,6 +213,8 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | protected-request | example | A request stays protected on its way to private processing and back |
 | marketing-pipeline | example | Rejected records return to the source for repair |
 | journey-attribution | example | Multi-touch attribution from customer journey to budget |
+| nested-service | example | A service nested three levels deep, with one protected runtime |
+| agent-approval | example | An agent reaches its tools through an approval gate |
 
 ## Not for
 
