@@ -30,7 +30,7 @@ import { atHardMinimum, HARD_COMPACT_PLOT, CARD_HEIGHT_MEMO, type CardHeightMemo
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { spread1DResult, warnSpreadOverflow } from '../../collide';
 import { defaultMeasurer, graphemes, wrapText, type FontSpec, type TextMeasurer } from '../../text';
-import { contrastInkPaint, emphasisWeight, strokeToken, canvasMargin, markRolePaint, paintColor, panelTypeClass, resolveTheme, seriesPaint, themeForWidth } from '../../theme';
+import { contrastInkPaint, emphasisWeight, groupRampPaint, strokeToken, canvasMargin, markRolePaint, paintColor, panelTypeClass, resolveTheme, seriesPaint, themeForWidth } from '../../theme';
 import type { Id } from '../../types/cell';
 import type { Geometry, LintWarning, Paint, SceneNode } from '../../types/scene';
 import { figureRole } from '../cardRoles';
@@ -183,10 +183,12 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
     return [{ id: g.id, label: g.label ?? g.id, total: own.reduce((sum, item) => sum + item.value, 0), items: own, paint: { css: '' } as Paint, gi }];
   }).map(({ gi: _gi, ...g }) => g);
   if (byValue) groups = groups.map((g, i) => ({ g, i })).sort((a, b) => b.g.total - a.g.total || a.i - b.i).map(({ g }) => g);
-  // Palette steps follow the drawn order: the largest group takes the first, strongest hue.
+  // Steps follow the drawn order: the largest group takes the first, strongest step. Groups are
+  // parts of one total, so they share one colour family by rank (group-ramp); a palette keeps its hues.
   groups.forEach((g, gi) => {
     const spec = groupSpecs.find((s) => s.id === g.id) as { colorRole?: string; fill?: string } | undefined;
-    g.paint = spec?.fill ? { css: spec.fill } : spec?.colorRole ? markRolePaint(spec.colorRole, true) : seriesPaint(gi, palette ? options.palette : undefined);
+    g.paint = spec?.fill ? { css: spec.fill } : spec?.colorRole ? markRolePaint(spec.colorRole, true)
+      : palette ? seriesPaint(gi, options.palette) : grouped ? groupRampPaint(gi, groups.length) : seriesPaint(gi);
   });
   const ordered = groups.flatMap((g) => g.items);
   const total = groups.reduce((sum, g) => sum + g.total, 0);

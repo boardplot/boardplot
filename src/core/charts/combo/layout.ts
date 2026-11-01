@@ -62,7 +62,7 @@ import type { Id } from '../../types/cell';
 import type { ChartData } from '../../types/data';
 import type { Geometry, LintWarning, PaintWarningRule, PlacedLabel, SceneNode } from '../../types/scene';
 import { applyComboAxisTitlePaint, comboAxisTitleSwatches } from './axisTitles';
-import { resolveComboDomain, resolveComboEnv, TOTALS_AXIS, LINE_BAND_CLEARANCE } from './domain';
+import { resolveComboDomain, resolveComboEnv, TOTALS_AXIS, FLOAT_BAND_CLEARANCE, LINE_BAND_CLEARANCE } from './domain';
 import { comboValueLabels, FIRST_END_BELOW_TOTALS, flagDroppedEndpointLabels, INSIDE_ENDPOINT_IDS, insideEndpointGutters, unusedEndpointGutters, type EndpointGutters } from './endpoints';
 import { applyGrowthInk, planComboLabels } from './labels';
 import { layoutComboMarks } from './marks';
@@ -293,9 +293,10 @@ function assembleComboGeometry(input: {
   pushAll(warnings, rectSeriesAdjacentWarnings(nodes, input.paints.css, 'vertical', env.highlights, env.theme, { rules: paintWarningRules, before: warnings.filter(warning => !['pie-ramp-crowded', 'likert-ramp-invisible', 'band-lightness-insufficient', 'series-adjacent-similar', 'highlight-reads-as-loss'].includes(warning.code)).length }));
   const catTickMaxLines = catPlan.maxLines;
   const clearance = (domain.options as ComboOptions & { [LINE_BAND_CLEARANCE]?: number })[LINE_BAND_CLEARANCE];
+  const floatClearance = (domain.options as ComboOptions & { [FLOAT_BAND_CLEARANCE]?: number })[FLOAT_BAND_CLEARANCE];
   return {
     type: 'combo',
-    ...(clearance === undefined ? {} : { [DENSITY_LAYOUT_OPTIONS]: { [LINE_BAND_CLEARANCE]: clearance } }),
+    ...(clearance === undefined ? {} : { [DENSITY_LAYOUT_OPTIONS]: { [LINE_BAND_CLEARANCE]: clearance, [FLOAT_BAND_CLEARANCE]: floatClearance } }),
     size: env.size,
     // Bands stretch to the frame, so the layout reports the width its
     // categories actually want and a host can shrink the canvas to it.
@@ -461,28 +462,32 @@ function layoutComboFramePass(
   // The scale pair clears a measured total-label row, rather than a fixed percentage.
   if ((options as { [LINE_BAND_CLEARANCE]?: number })[LINE_BAND_CLEARANCE] === undefined) {
     const scaleH = area.y(domain.dLo) - area.y(domain.dHi);
-    const mode = comboValueLabels(options, domain.anatomy, domain.cats.length);
+    const mode = comboValueLabels(options, domain.anatomy, domain.cats.length, domain.lineFloat !== undefined);
     const interiorValues = mode === 'all' || mode === 'extremes' || domain.anomaly !== undefined;
     // The anatomy seats a single column's values inside the column tops when
     // every one fits, and each line value above its point: the line then
     // clears the column tops by its marker and a gap, not by a label row.
     const insideTotals = domain.anatomy && domain.columns.length === 1 && !domain.anomaly
       && domain.cats.every((c) => env.measure(domain.fmt(domain.stackTotals[c.id] ?? 0), area.labelFont).width + 4 <= area.band.bandwidth);
-    const clearance = insideTotals ? MARKER_R + 8 : area.gtH + (interiorValues ? env.measure('0', area.labelFont).height + 14 : 8)
-      + (domain.anomaly ? ANOMALY_FLAG_GAP + ANOMALY_FLAG_H : 0);
+    const anomalyRoom = domain.anomaly ? ANOMALY_FLAG_GAP + ANOMALY_FLAG_H : 0;
+    const valueRow = env.measure('0', area.labelFont).height + 14;
+    const clearance = (insideTotals ? MARKER_R + 8 : area.gtH + (interiorValues ? valueRow : 8)) + anomalyRoom;
+    // A floated line prints its low under its point, so it keeps a value row over the column values.
+    const floatClearance = (insideTotals ? MARKER_R + 8 : area.gtH) + valueRow + anomalyRoom;
     if (scaleH > 0 && domain.secondaryActive && domain.columns.length > 0) {
       const measured = clearance / scaleH;
-      const next = domain.withLineBandClearance?.(measured);
+      const floatMeasured = floatClearance / scaleH;
+      const next = domain.withLineBandClearance?.(measured, floatMeasured);
       // Keep the first measured clearance on later note/gutter retries, even
       // when it picks the same scales and this pass can finish as it stands.
-      options = { ...options, [LINE_BAND_CLEARANCE]: measured } as ComboOptions;
+      options = { ...options, [LINE_BAND_CLEARANCE]: measured, [FLOAT_BAND_CLEARANCE]: floatMeasured } as ComboOptions;
       if (next) {
         domain = next.domain;
         domainWarnings = next.warnings;
         warnings.length = 0;
         pushAll(warnings, domainWarnings);
       }
-      domain.options = { ...domain.options, [LINE_BAND_CLEARANCE]: measured } as ComboOptions;
+      domain.options = { ...domain.options, [LINE_BAND_CLEARANCE]: measured, [FLOAT_BAND_CLEARANCE]: floatMeasured } as ComboOptions;
       if (next) {
         // The pair changed. Refit the frame with those scales; data, formats,
         // stacks, anomaly detection and paints do not need another pass.

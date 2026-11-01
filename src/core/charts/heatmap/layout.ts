@@ -499,19 +499,11 @@ export function layoutHeatmap(
   const lineH = tickFont.size * 1.2;
   // The bubble matrix prints its values bold in its largest circles only, so
   // the same cells carry values at every width.
-  const valueLabelFont: FontSpec = bubbleStyle ? { ...labelFont, weight: emphasisWeight(theme) } : labelFont;
-  const topOnly = bubbleStyle && cellLabelsOn && levels !== undefined && levels.length >= 2
+  let valueLabelFont: FontSpec = bubbleStyle ? { ...labelFont, weight: emphasisWeight(theme) } : labelFont;
+  // A fact of the data: some cell holds the top size level, whatever the labels or format say.
+  const topLevelHeld = levels !== undefined && levels.length >= 2
     && rows.some((r) => r.cells.some((c) => c.v !== null && c.size === levels.length));
-  /** The radius a value needs to stand inside its circle: its half width and a pixel, and the figures' height. */
-  const valueRadius = (text: string): number => {
-    const t = measure(text, valueLabelFont);
-    return Math.hypot(t.width / 2 + 1, 0.35 * t.height);
-  };
-  const topValueR = topOnly ? Math.max(0, maxOf(rows.flatMap((r) => r.cells.flatMap((c) => {
-    if (c.v === null || c.size !== levels!.length) return [];
-    const text = textFor(c.v, c.pct, c.meta, r);
-    return text ? [valueRadius(text)] : [];
-  })))) : 0;
+  const topOnly = bubbleStyle && cellLabelsOn && topLevelHeld;
   const continuousKey = scale === 'continuous' && glyph === 'value' && !options.heatKey
     && vMax > vMin && !compactKey && panelTypeClass(options) === undefined && options.legend !== 'none'
     && !rows.some(r => r.direction === 'lowerIsBetter');
@@ -563,7 +555,7 @@ export function layoutHeatmap(
   // The bubble keys (size and colour) stand in their own strip above the matrix.
   const bubbleKeys = bubble && allValues.length > 0 && panelTypeClass(options) === undefined && options.legend !== 'none';
   const derivedNotes = [
-    ...(topOnly ? [disclosureNote(chartString(options, 'heatmapTopValuesNote'))] : []),
+    ...(topOnly && valueNote === undefined ? [disclosureNote(chartString(options, 'heatmapTopValuesNote'))] : []),
     ...(valueNote ? [disclosureNote(valueNote)] : []),
     ...(bubble && missingCells ? [disclosureNote(statesPresent.length
       ? (missingLook === 'blank' ? `Blank cells: ${noDataNames}.` : chartString(options, 'hatchedCells', { v1: noDataNames }))
@@ -742,14 +734,13 @@ export function layoutHeatmap(
     }
     annotationBottomH = belowRows.reduce((sum, group) => sum + maxOf(group.map(a => noteSizes.get(a.id!)!.h)) + 8, 0) + caretRoom;
   }
-  // A styled bubble row with values in its largest circles stands as tall as
-  // its names and those values need; upright it may grow to 1.5 times that,
-  // up to the column pitch; turned it keeps the short pitch. Without levels
-  // every value may print, so a row stays as tall as the column is wide.
-  // On a card a cell under 40 px keeps the tight air round its circle, as the radius below does.
-  const valueCell = topOnly ? 2 * (topValueR - VALUE_OVERHANG + BUBBLE_AIR_TIGHT) : 0;
-  const bubbleLo = Math.max(28, labelFont.size * 1.2 + 8, maxOf(rowLines.map((label) => label.h + 4)), valueCell < 40 && size.width < 720 ? valueCell : 2 * (topValueR - VALUE_OVERHANG + BUBBLE_AIR));
-  const bubbleNaturalH = !topOnly ? Math.max(cellW, bubbleLo) : turned ? bubbleLo : Math.max(bubbleLo, Math.min(cellW, 1.5 * bubbleLo));
+  // A levelled bubble matrix with a top-level cell keeps a compact pitch from its row names;
+  // the pitch ignores value labels and number format. Without a top-level cell every value may
+  // print, so a row stays as tall as the column is wide.
+  const bubbleLo = Math.max(28, labelFont.size * 1.2 + 8, maxOf(rowLines.map((label) => label.h + 4)));
+  const bubbleNaturalH = topLevelHeld
+    ? turned ? bubbleLo : Math.max(bubbleLo, Math.min(cellW, 1.5 * bubbleLo))
+    : Math.max(cellW, bubbleLo);
 
   // ---- column headers: the shared category cascade ----
   // The heatmap's categories are its COLUMNS, so the reference mark belongs
@@ -1049,6 +1040,19 @@ export function layoutHeatmap(
   // the target's label floor, until every row fits.
   const rowValues = (font: FontSpec) => rows.map((r) => cellLabelsOn && !bubble ? measureRowLabels(r.cells, (v, pct, meta) => textFor(v, pct, meta, r), font, measure, cellW, cellH, 4) : []);
   const valueFloor = readerFloorPx(options.target ?? DEFAULT_TARGET, 'label', textScaleOf(options));
+  const bubbleValuesFit = () => !bubbleStyle || !cellLabelsOn || rows.every((r) => r.cells.every((cell) => {
+    if (cell.v === null || (topOnly && cell.size !== levels!.length)) return true;
+    const radius = radiusOf(cell.size);
+    const text = textFor(cell.v, cell.pct, cell.meta, r);
+    if (radius === 0 || !text) return true;
+    const value = measureBubbleValue(text, radius);
+    return value.inside || value.beside;
+  }));
+  // Requested bubble values share one font and fit decision across the matrix.
+  while (valueLabelFont.size > valueFloor && !bubbleValuesFit()) {
+    valueLabelFont = { ...valueLabelFont, size: Math.max(valueFloor, valueLabelFont.size - 1) };
+  }
+  const showBubbleValues = bubbleValuesFit();
   let valueFont = labelFont;
   let fitted = rowValues(valueFont);
   while (valueFont.size > valueFloor && !fitted.every((values) => values.every((value) => value === null || value.fits))) {
@@ -1566,6 +1570,16 @@ export function layoutHeatmap(
 
   // ---- helpers ----
 
+  function measureBubbleValue(text: string, radius: number) {
+    const size = measure(text, valueLabelFont);
+    // Styled circles fit the figures' height instead of the full line box.
+    const inside = bubbleStyle
+      ? Math.hypot(size.width / 2 + 1, 0.35 * size.height) <= radius + VALUE_OVERHANG
+      : Math.hypot(size.width / 2 + 1, size.height / 2 + 1) <= radius;
+    const beside = !inside && radius + 2 + size.width <= cellW / 2 && size.height <= cellH;
+    return { size, inside, beside };
+  }
+
   /**
    * The story value of a value matrix with one highlighted row: that row's
    * value farthest from zero, when its cell cannot print it and no authored
@@ -1756,13 +1770,9 @@ export function layoutHeatmap(
     if (topOnly && cell.size !== levels!.length) return;
     const text = textFor(cell.v, cell.pct, cell.meta, r);
     if (!text) return;
-    const tsize = measure(text, valueLabelFont);
-    // Inside when the text box, with a pixel of air, lies within the circle;
-    // the styled matrix measures the figures' height, not the line box.
-    const inside = bubbleStyle ? valueRadius(text) <= radius + VALUE_OVERHANG : Math.hypot(tsize.width / 2 + 1, tsize.height / 2 + 1) <= radius;
+    const { size: tsize, inside, beside } = measureBubbleValue(text, radius);
     const besideX = cx + radius + 2;
-    const beside = !inside && besideX + tsize.width <= rect.x + rect.w && tsize.height <= rect.h;
-    if (!inside && !beside) {
+    if (!showBubbleValues || (!inside && !beside)) {
       omittedValues++;
       hiddenCells.push({ r, c, v: cell.v });
       return;

@@ -61,6 +61,18 @@ export const fixtures: Fixture<TreemapData, TreemapOptions>[] = [
     options: { ...frame, variant: 'circle', total: '~$18 billion', size: { width: 960, height: 760 } },
   },
   {
+    id: 'growth-rect-group-hues',
+    title: 'The same groups with one hue each: color.treemap set to the series colours',
+    kind: 'example',
+    tags: ['feature:theme'],
+    data: areas,
+    options: {
+      ...frame,
+      size: { width: 960, height: 600 },
+      theme: { preset: 'boardroom', overrides: { color: { treemap: ['#12395E', '#5E99C5', '#B58629', '#72767C', '#6F69CC', '#587000', '#229B72', '#335B83'] } } },
+    },
+  },
+  {
     id: 'one-level-shares',
     title: 'One level, no groups: one hue, value and share of the total on every cell',
     kind: 'example',

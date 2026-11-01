@@ -465,6 +465,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | attainment-bad-column-spark | kpi | torture | Attainment chip in the bad tone over a monthly column spark |
 | compact-spark-floor | kpi | torture | Compact card keeps its sparkline readable |
 | neutral-change | kpi | example | A change without a favorable direction |
+| slot-natural-sizes | kpi | example | A card in a fixed slot that keeps its natural sizes at the top |
 | value-bands | kpi | example | The band that holds the value colours the main value; the comparison keeps its own tone |
 
 ## combo
@@ -485,6 +486,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | theme-dual-axis-anatomy | combo.dual-axis | example | A theme draws every acknowledged dual axis with its anatomy |
 | revenue-units-dual-axis-anatomy | combo.dual-axis | example | Dual-axis anatomy: shared gridlines, the line above the columns, both growth rates stated |
 | daily-columns-rate-reference | combo.dual-axis | torture | Daily columns, rate endpoints and a named reference on a flat dashboard |
+| dual-axis-line-floated | combo.dual-axis | example | A margin line floats over the revenue columns on its own scale |
 | option-step-after | combo.overlay | example | Output and available capacity |
 | option-step-before | combo.overlay | example | Output and available capacity |
 | combo-end-label-collision | combo.dual-axis | torture | Line end value and last column total placed as a pair |
@@ -792,7 +794,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | ID | Chart | Kind | Use case |
 |---|---|---|---|
 | orders-nine-months | sparkline | example | Nine months of orders, the last point ringed and valued, both ends named |
-| bare-card-spark | sparkline | example | The bare 176 by 36 mark: no ring, no labels, a gap the line does not bridge |
+| bare-card-spark | sparkline | example | The bare 176 by 36 mark: no end ring, no labels, a null bridged by a dotted segment |
 | orders-heavy-stroke | sparkline | torture | A 2.5 px line instead of the default 1.5 px |
 | reference-above-data | sparkline | example | A target above every point: the scale reaches up to the reference, the ring in warn |
 | reference-inside-data | sparkline | example | A reference the line crosses twice, the ring in good |
@@ -805,6 +807,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 |---|---|---|---|
 | growth-rect | treemap.rect | example | Squarified treemap: 19 items in 5 groups, exact areas, group key with totals, small names beside the region |
 | growth-circle | treemap.circle | example | Circular Voronoi treemap of the same data: convex cells, leaders to both sides and a total callout |
+| growth-rect-group-hues | treemap.rect | example | The same groups with one hue each: color.treemap set to the series colours |
 | one-level-shares | treemap.rect | example | One level, no groups: one hue, value and share of the total on every cell |
 | source-order-shares-circle | treemap.circle | example | Circle in source order with shares of the total and the key at the bottom |
 

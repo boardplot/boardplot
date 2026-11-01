@@ -31,7 +31,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | Path | Type | Required | Meaning |
 |---|---|---|---|
 | valueKind | string |  | Multiply numbers by 100 into pct cells; explicit pct cells stay in percent units. One of `'fraction'`. |
-| values | cell[] | yes | The series in order, at least two points. A null leaves a gap; the line does not bridge it. |
+| values | cell[] | yes | The series in order, at least two points. A null is bridged by a dotted segment with a ring on the missing point. |
 | labels | array |  | One name per value, in the same order. The end labels and the hover records read them; without them a point is named by its position. |
 
 ## Options
@@ -62,7 +62,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | ID | Kind | Use case |
 |---|---|---|
 | orders-nine-months | example | Nine months of orders, the last point ringed and valued, both ends named |
-| bare-card-spark | example | The bare 176 by 36 mark: no ring, no labels, a gap the line does not bridge |
+| bare-card-spark | example | The bare 176 by 36 mark: no end ring, no labels, a null bridged by a dotted segment |
 | orders-heavy-stroke | torture | A 2.5 px line instead of the default 1.5 px |
 | reference-above-data | example | A target above every point: the scale reaches up to the reference, the ring in warn |
 | reference-inside-data | example | A reference the line crosses twice, the ring in good |

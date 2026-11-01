@@ -108,6 +108,14 @@ export type ThemePaintSource =
   | { kind: 'fan-step'; base: Paint; bandCount: number; showBounds: boolean; index: number; seriesId: string; deEmphasized: boolean }
   /** `light`: the ramp of rows that print every band's name (bulletBandPaints). */
   | { kind: 'bullet-band'; poor: Paint; good: Paint; count: number; index: number; light?: true; /** The band tones by index: a toned band takes its tone's wash (bulletBandPaints). */ tones?: ('good' | 'warn' | 'bad' | 'neutral' | null)[] }
+  /**
+   * The land of a map region or tile the data does not name: the theme's light
+   * neutral washed toward the page until it sits a small step from the page
+   * (quietLandColor), and further toward the page where it would read close to
+   * one of the `apartFrom` scale paints, decided again in every theme the scene
+   * is painted in.
+   */
+  | { kind: 'quiet-land'; apartFrom: Paint[] }
   /** A plain waterfall segment colour, tinted in the active theme where it reads too close to the total (segmentApartPaints). */
   | { kind: 'segment-apart'; plain: Paint[]; others: Paint[]; index: number }
   /**
@@ -186,6 +194,17 @@ export type ThemePaintSource =
    * stack ramp; a theme without `color.stack` paints series rank `slot`.
    */
   | { kind: 'stack-ramp'; index: number; count: number; slot: number }
+  /**
+   * Rank `index` of `count` treemap groups: `color.treemap`, else
+   * `color.stack`, else the first series colour stepped toward the page
+   * (the pie ramp), decided in the theme the scene is painted in.
+   */
+  | { kind: 'group-ramp'; index: number; count: number }
+  /**
+   * Step `index` of `count` plain series that recede beside a highlight: the
+   * neutral mark (strongest) to the light neutral (quietest), in authored order.
+   */
+  | { kind: 'neutral-ramp'; index: number; count: number; /** A hatched step: neutral mark to muted mark, so each stripe keeps its step. */ hatched?: true }
   /** A plain series of a stack beside authored colours: its ramp step, chosen in the active theme apart from them (rampSlots, stacked). */
   | { kind: 'stack-apart'; own: (Paint | null)[]; index: number; palette?: string }
   | { kind: 'ordered-ramp'; index: number; count: number; /** A Rest series is drawn: the weakest rung stays further from the page than the Others colour. */ withOthers?: true }

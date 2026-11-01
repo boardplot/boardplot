@@ -44,8 +44,10 @@ export function rowLabelBand(
   const fit = (modes: readonly number[]) => fitBand(
     rows.map((row, index) => {
       if (modes[index] === 0) return { label: row.label, reserve: reserves[index] };
-      if (modes[index] === 2) return { label: nameOf(row), reserve: reserves[index] };
-      if (maxLines > 1) return { label: nameOf(row), reserve: reserves[index], maxLines: maxLines - 1 };
+      // The suffix takes a line of the rows' pitch, so the name has one line less to grow into.
+      const tight = options.tightLines === undefined ? {} : { tightLines: options.tightLines - 1 };
+      if (modes[index] === 2) return { label: nameOf(row), reserve: reserves[index], ...tight };
+      if (maxLines > 1) return { label: nameOf(row), reserve: reserves[index], maxLines: maxLines - 1, ...tight };
       const reserve = reserves[index]! + measure(` ${row.suffix}`, font).width;
       return { label: nameOf(row), reserve, ...(options.wider === undefined ? {} : { wider: options.wider - reserve }) };
     }),

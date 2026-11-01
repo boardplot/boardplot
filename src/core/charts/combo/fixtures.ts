@@ -490,6 +490,30 @@ export const fixtures: Fixture<ChartData, ComboOptions>[] = [
       annotations: [{ id: 'before', kind: 'valueLine', value: 5.5, axis: 'secondary', format: '0.0%', label: 'Before 5.5%' }],
     },
   },
+  // A margin whose low is a third of its high cannot run above the columns on
+  // a scale from zero: it floats over them on its own scale, its ends, low and
+  // high printed in place of the right ticks.
+  {
+    id: 'dual-axis-line-floated',
+    title: 'A margin line floats over the revenue columns on its own scale',
+    kind: 'example',
+    data: {
+      categories: Array.from({ length: 24 }, (_, i) => ({ id: `${2024 + Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`,
+        label: `${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][i % 12]} ${24 + Math.floor(i / 12)}` })),
+      series: [
+        { id: 'revenue', label: 'Revenue', values: [11.9, 12.6, 13.0, 14.4, 14.2, 15.3, 15.3, 14.0, 14.8, 15.9, 16.4, 15.6, 15.5, 15.0, 13.9, 12.9, 11.8, 12.5, 12.4, 11.7, 12.9, 14.3, 14.8, 16.1] },
+        { id: 'margin', label: 'Margin', kind: 'line', axis: 'secondary', unit: '%', values: [16.9, 11.8, 32.0, 29.9, 25.5, 23.4, 23.4, 10.8, 11.8, 33.6, 33.8, 22.0, 16.8, 30.1, 11.7, 26.2, 30.9, 26.7, 20.1, 30.9, 31.6, 33.0, 15.5, 12.0] },
+      ],
+    },
+    options: {
+      title: 'Margin swings while revenue holds',
+      subtitle: { company: 'Northwind Outdoor', measure: 'Revenue and margin', period: 'Monthly' },
+      unit: 'EUR m',
+      secondaryAxis: { acknowledge: true },
+      axisTitles: { primary: 'Revenue, EUR m', secondary: 'Margin, %' },
+      source: 'Invented example',
+    },
+  },
 ];
 
 fixtures.push(

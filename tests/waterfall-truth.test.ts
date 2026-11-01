@@ -17,7 +17,7 @@ import { z } from 'zod';
 import '../src/core/charts';
 import { getChartDefinition } from '../src/core/registry';
 import { unscaledFormatLint } from '../src/core/formatSpec';
-import { resolveChartRequest } from '../src/index';
+import { layoutResolvedRequest, resolveChartRequest } from '../src/index';
 import { getFixtures } from '../src/fixtures';
 import type { Geometry } from '../src/core/types/scene';
 
@@ -547,5 +547,16 @@ describe('waterfall variant option text', () => {
     const text = json.properties.variant.description;
     expect(text).toContain('horizontal-annotations-unsupported');
     expect(text).toContain('no annotations');
+  });
+});
+
+// An 'auto' break that finds no break cut the whole-axis plot allowance, so the chart drew 100 px shorter than with break false.
+describe('waterfall automatic break with none found', () => {
+  it('keeps the height of a whole-axis bridge', () => {
+    const fixture = getFixtures('waterfall').find((candidate) => candidate.id === 'build-down')!;
+    const heightWith = (valueAxis: object) => layoutResolvedRequest(resolveChartRequest({
+      type: 'waterfall', data: fixture.data, options: { ...fixture.options, size: { width: 720 }, valueAxis },
+    } as never)).size.height;
+    expect(heightWith({ break: 'auto' })).toBe(heightWith({ break: false }));
   });
 });

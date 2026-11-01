@@ -255,3 +255,32 @@ it('line stacked100-area names only signed categories in its mixed-signs note', 
   const mixed = (body.notes ?? []).filter((note) => /positive and negative/.test(note.text));
   expect(mixed.map((note) => note.text)).toEqual([expect.stringMatching(/^East\b/)]);
 });
+
+// A 100% axis drew a difference arrow and a total growth bracket over equal columns, and read a data-unit value line as a percent.
+it('stacked100 drops diff, total cagr and a value line at the axis end, and warns about one inside (column, bar)', () => {
+  const data = {
+    categories: [{ id: 'a', label: 'A', date: '2022-01-01' }, { id: 'b', label: 'B', date: '2023-01-01' }],
+    series: [{ id: 's0', label: 'Core', values: [20, 10] }, { id: 's1', label: 'Edge', values: [30, 40] }],
+  };
+  const annotations = [
+    { kind: 'diff', from: { categoryId: 'a', seriesId: 's1', edge: 'end' }, to: { categoryId: 'b', seriesId: 's1', edge: 'end' } },
+    { kind: 'cagr' },
+    { kind: 'valueLine', value: 100, label: 'Benchmark' },
+    { kind: 'valueLine', value: 80, label: 'Target' },
+    { kind: 'cagr', from: { categoryId: 'a', seriesId: 's0' }, to: { categoryId: 'b', seriesId: 's0' } },
+  ];
+  for (const type of ['column', 'bar']) {
+    const drawn = (variant: string) => getChart(type)!.layout(data, { variant, title: 'T', annotations } as never) as Geometry;
+    const share = drawn('stacked100');
+    expect(share.warnings.filter((w) => w.code.endsWith('-stacked100') && w.code !== 'reference-unsupported-stacked100').map((w) => [w.code, w.owner?.annotationId, Boolean(w.suggest)]), type).toEqual([
+      ['annotation-unsupported-stacked100', 'diff-1', true],
+      ['annotation-unsupported-stacked100', 'cagr-2', true],
+      ['valueline-unsupported-stacked100', 'valueLine-3', true],
+      ['valueline-percent-stacked100', 'valueLine-4', true],
+    ]);
+    expect(share.annotations.map((a) => a.kind).filter((kind) => kind !== 'indicator100').sort(), type).toEqual(['cagr', 'valueLine']);
+    // A retained annotation keeps its authored position's id, so a pin or note that names it still finds it.
+    expect(share.annotations.map((a) => a.id).filter((id) => !id.startsWith('indicator100')).sort(), type).toEqual(['cagr-5', 'valueLine-4']);
+    expect(drawn('stacked').annotations.map((a) => a.kind).sort(), type).toEqual(['cagr', 'cagr', 'diff', 'valueLine', 'valueLine']);
+  }
+});

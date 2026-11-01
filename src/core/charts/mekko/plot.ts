@@ -33,6 +33,8 @@ import {
   mutedMarkPaint,
   panelTypeClass,
   recedingSeriesId,
+  recedingRampIds,
+  neutralRampPaint,
   typeWidthClass,
 } from '../../theme';
 import type { Id } from '../../types/cell';
@@ -54,10 +56,14 @@ export function mekkoPaints(env: MekkoEnv, domain: MekkoDomain, warnings: LintWa
     s.fill ? { css: s.fill } : s.colorRole ? markRolePaint(s.colorRole, true) : highlights.has(s.id) ? { token: 'focus' } : undefined,
   ), palette, series.length > 1 ? { labels: series.map((s) => s.label), warnings } : undefined);
   const receding = recedingSeriesId(series, highlights);
-  const base = (s: NormSer, dataIdx: number): Paint => {
+  // Two or more plain series beside a highlight recede on the neutral ramp, strongest to quietest.
+  const rampIds = recedingRampIds(series, highlights);
+  const base = (s: NormSer, dataIdx: number, scenario = s.scenario): Paint => {
     if (s.fill) return { css: s.fill };
     if (s.colorRole) return markRolePaint(s.colorRole, true);
     if (s.id === receding) return mutedMarkPaint();
+    const step = rampIds.indexOf(s.id);
+    if (step >= 0) return neutralRampPaint(step, rampIds.length, scenario === 'FC');
     if (series.length === 1) return themeSeriesPaint(dataIdx, palette, s.scenario);
     return themeSeriesPaint(slots[dataIdx] ?? dataIdx, palette);
   };
@@ -68,7 +74,7 @@ export function mekkoPaints(env: MekkoEnv, domain: MekkoDomain, warnings: LintWa
     if (highlights.has(cat.id) || highlights.has(s.id)) return { token: 'focus' };
     if (mode === 'bar' && v < 0 && !s.fill && !s.colorRole) return signedFillPaint('bad');
     if (val.scenario) {
-      return series.length === 1 ? themeSeriesPaint(dataIdx, palette, val.scenario) : base(s, dataIdx);
+      return series.length === 1 ? themeSeriesPaint(dataIdx, palette, val.scenario) : base(s, dataIdx, val.scenario);
     }
     return base(s, dataIdx);
   };
@@ -246,6 +252,8 @@ export function mekkoPlotArea(env: MekkoEnv, domain: MekkoDomain, frame: FrameRe
   const rowPlan = (named: readonly boolean[], fonts: FontSpec[] = [tickFont, footnoteFont], widths?: readonly number[], step = catStep) => planCategoryRow({
     ...row,
     labels: row.labels.map((label, ci) => (named[ci] ? label : '')),
+    // A blanked name takes no mark seat: a mark alone would count as a name in the row's pitch.
+    suffixes: row.suffixes.map((suffix, ci) => (named[ci] ? suffix : '')),
     keep: [...named],
     centers: catCenters,
     step,
@@ -288,7 +296,27 @@ export function mekkoPlotArea(env: MekkoEnv, domain: MekkoDomain, frame: FrameRe
     const fits = cats.map((_, ci) => visible[ci]! &&
       fitText(row.labels[ci]!, tickFont, Math.max(1, headW(ci) - 6), 2, measure, { target: options.target, textScale: textScaleOf(options), typeRole: 'axis' }).title === undefined);
     catPlan = rowPlan(fits);
+    // The plan keeps the last column's blank name; a name that was blanked is unnamed.
+    catPlan = { ...catPlan, keep: catPlan.keep.map((kept, ci) => kept && fits[ci]!) };
     unnamed = cats.flatMap((_, ci) => (visible[ci] && !catPlan.keep[ci] ? [ci] : []));
+    if (catsOnTop && unnamed.length > 0) {
+      // Percent: a name that does not fit its column takes a second tier over the first, on one line, with a leader to its column.
+      const font = catPlan.font;
+      const texts = row.labels.map((label, ci) => `${label}${row.suffixes[ci]}`);
+      const tier = packNames(env, domain, { labels: texts, font, centers: catCenters, colLeft: xEdge.slice(0, -1), colRight: xEdge.slice(1), visible: cats.map((_, ci) => unnamed.includes(ci)), lo: plotX0, hi: plotX0 + plotW0 + gutter }, 1);
+      const seated = unnamed.filter((ci) => tier.row[ci]! >= 0);
+      if (seated.length > 0) {
+        const lineH = font.size * (font.lineHeight ?? 1.2);
+        namePack = { ...tier, row: cats.map((_, ci) => (seated.includes(ci) ? 1 : unnamed.includes(ci) ? -1 : 0)) };
+        catPlan = {
+          ...catPlan,
+          rowHeight: Math.max(catPlan.rowHeight, lineH),
+          keep: catPlan.keep.map((kept, ci) => kept || seated.includes(ci)),
+          infos: catPlan.infos.map((info, ci) => (seated.includes(ci) ? { lines: [texts[ci]!], w: tier.width[ci]!, h: lineH, truncated: false } : info)),
+        };
+        unnamed = unnamed.filter((ci) => !seated.includes(ci));
+      }
+    }
   }
   if (showCats) pushAll(warnings, catPlan.warnings);
   // A width series prints each column's width as a line under its name:
@@ -317,7 +345,7 @@ export function mekkoPlotArea(env: MekkoEnv, domain: MekkoDomain, frame: FrameRe
   const widthTitlePlan = planValueAxisTitle(widthTitleText, theme, measure, frame.plot.w, 2);
   const widthTitleH = widthTitlePlan ? widthTitlePlan.height + 4 : 0;
   // A second tier of names takes one more row of name and width.
-  const tierH = namePack?.row.includes(1) ? catPlan.rowHeight + widthLineH + 2 : 0;
+  const tierH = namePack?.row.includes(1) ? catPlan.rowHeight + widthLineH + (catsOnTop ? UPPER_TIER_GAP : 2) : 0;
   const categoryTickReserve = showCats ? catPlan.rowHeight + widthLineH + tierH + widthTitleH + (catsOnTop ? 4 : 8) : 0;
   // percent: name (≤2 lines) + bold total stacked above the 100% edge;
   // unit/bar: totals float above varying column tops (headroom already in domain)
@@ -427,6 +455,7 @@ function packNames(
   env: MekkoEnv,
   domain: MekkoDomain,
   row: { labels: readonly string[]; font: FontSpec; centers: readonly number[]; colLeft: readonly number[]; colRight: readonly number[]; visible: readonly boolean[]; lo: number; hi: number },
+  tiers: 1 | 2 = 2,
 ): NamePack {
   const widthSer = domain.widthSer;
   const width = domain.cats.map((_, ci) => {
@@ -468,6 +497,7 @@ function packNames(
     const k = a.findIndex((v, i) => Math.abs(v - b[i]!) > 0.01);
     return k >= 0 && a[k]! < b[k]!;
   };
+  if (tiers === 1) return place(() => 0).pack;
   // Left to right, a name takes the first tier with room.
   const lastRight = [Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY];
   let best = place((k) => {
@@ -518,6 +548,9 @@ function sharesGutter(env: MekkoEnv, domain: MekkoDomain, edges: readonly number
   })));
   return widest + 4 <= w || widest === 0 ? 0 : Math.ceil(widest + GUTTER_GAP + 4);
 }
+
+/** The air between a percent mekko's first tier of names and the second tier over it. */
+export const UPPER_TIER_GAP = 3;
 
 /** The air between the narrow last column and its shares in the gutter. */
 export const GUTTER_GAP = 5;
