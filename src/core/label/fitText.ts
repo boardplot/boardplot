@@ -50,6 +50,8 @@ export interface FitOptions extends TypographyMetadata {
   tightLines?: number;
   /** A name: its lines may also break after `_`, `-`, `/` or `.` (wrapText). */
   breakAfter?: boolean;
+  /** A name that the line limit would cut is wrapped again with breaks after `_ - / .`, and the second result wins when it needs no cut. */
+  hyphenRetry?: boolean;
 }
 
 export function lineBox(font: FontSpec): number {
@@ -104,15 +106,21 @@ export function fitText(
     for (const width of widths) {
       for (const candidate of texts) {
         const tried = attempt(candidate, candidateFont, width, lines, measure, options.typeRole, options.breakAfter);
-        if (tried.cut) continue;
-        if (width === maxWidth) return tried.fitted;
+        let breakFlag = options.breakAfter;
+        let ok = tried;
+        if (ok.cut && options.hyphenRetry && !options.breakAfter) {
+          ok = attempt(candidate, candidateFont, width, lines, measure, options.typeRole, true);
+          breakFlag = true;
+        }
+        if (ok.cut) continue;
+        if (width === maxWidth) return ok.fitted;
         // The wider budget is the most a name may take, not what it takes: it
         // keeps the narrowest width, in whole px, that still holds it in `lines`.
         let narrow = Math.ceil(maxWidth);
-        let fitted = tried.fitted;
+        let fitted = ok.fitted;
         for (let wide = width; wide - narrow >= 2;) {
           const mid = Math.floor((narrow + wide) / 2);
-          const fewer = attempt(candidate, candidateFont, mid, lines, measure, options.typeRole, options.breakAfter);
+          const fewer = attempt(candidate, candidateFont, mid, lines, measure, options.typeRole, breakFlag);
           if (fewer.cut) narrow = mid;
           else { wide = mid; fitted = fewer.fitted; }
         }
