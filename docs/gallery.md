@@ -1,6 +1,6 @@
 # Gallery
 
-Boardplot has 37 chart types, 83 variants and 576 example specs. This page shows one or two charts of each type except `creative` (early alpha), drawn by `boardplot render` from the spec under it with the default theme. Companies, products, sources and numbers are invented. Every spec is a fixture that ships with the package: `boardplot fixtures --type <type> --id <id>` returns it, and [fixtures.md](reference/fixtures.md) lists all of them.
+Boardplot has 37 chart types, 83 variants and 580 example specs. This page shows one or two charts of each type except `creative` (early alpha), drawn by `boardplot render` from the spec under it with the default theme. Companies, products, sources and numbers are invented. Every spec is a fixture that ships with the package: `boardplot fixtures --type <type> --id <id>` returns it, and [fixtures.md](reference/fixtures.md) lists all of them.
 
 - [Most common](#most-common): [column](#column), [bar](#bar), [line](#line), [dimswitch](#dimswitch), [table](#table), [waterfall](#waterfall)
 - [Variance, bridges and KPIs](#variance-bridges-and-kpis): [kpi](#kpi), [variance](#variance), [bullet](#bullet), [pvm](#pvm)
@@ -2764,6 +2764,7 @@ Flows from sources to targets in stages. [Reference](reference/sankey.md)
     "title": "Search brings the most visits that end in a purchase",
     "source": "Illustrative data",
     "unit": "k visits",
+    "highlight": "purchase",
     "notes": { "show": ["note", "disclosure"] },
     "size": { "width": 960, "height": 560 }
   }
@@ -2863,7 +2864,9 @@ Timeline with spans and events. [Reference](reference/gantt.md)
     "colHeaders": ["Owner"],
     "source": "Illustrative launch plan; each phase is anchored to the one before it",
     "today": "2026-05-06",
-    "weekends": true
+    "weekends": true,
+    "rowTint": true,
+    "theme": { "preset": "boardroom", "overrides": { "surface": { "ganttRowTint": 0.25 } } }
   }
 }
 ```
@@ -2979,7 +2982,7 @@ Facets and metric stacks on one category axis. [Reference](reference/grid.md)
 
 ### diagram
 
-Node and edge diagrams. [Reference](reference/diagram.md)
+Node and edge diagrams, including system architecture. [Reference](reference/diagram.md)
 
 ![diagram chart: Profit improvement breaks into revenue, cost, and capital levers](gallery/diagram-profit-issue-tree.svg)
 

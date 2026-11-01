@@ -351,6 +351,7 @@ describe('published option behaviour census', () => {
     'cohort.steps': { options: { variant: 'stepped', formatScope: 'classic' }, reason: 'Only absolute stepped classes read steps.' },
     'table.figures': { options: { encodings: { actual: 'heat' } }, reason: 'Figures can be hidden only on a heat lane.' },
     'dimswitch.figures': { options: { encodings: { range: 'heat' } }, reason: 'Figures can be hidden only on a heat lane.' },
+    'waffle.heightFill': { options: { target: 'slide', size: { width: 1184, height: 528 } }, reason: 'Only a pinned height has spare height to fill.' },
     'diagram.heightFill': { options: { size: { width: 900, height: 900 } }, reason: 'Only a set height has spare height to fill.' },
   };
   // notes also gets one footnote (except creative, which refuses footnotes).
@@ -556,6 +557,8 @@ describe('published option behaviour census', () => {
         if (key === 'a' || key === 'b') value = series.find(id => id !== current) ?? value;
         if (key === 'labelRegions') value = []; // An explicit empty set removes the authored region labels.
         if (key === 'today') value = '2026-05-20';
+        // The fixture highlights Purchase, a final node. An unset linkColor already colours the ribbons into it, as 'target' does; 'source' leaves them neutral.
+        if (type === 'sankey' && key === 'linkColor') value = 'source';
         if (type === 'dimswitch' && key === 'depth') value = 1;
         if (type === 'dimswitch' && key === 'order') value = { by: 'revenue', desc: true };
         if (type === 'dimswitch' && key === 'expansion') value = { depth: 1 };

@@ -225,7 +225,15 @@ export function layoutHistogram(
   // The binning rule is a method note on request.
   const methodNote = options.methodNote === true;
 
-  if (binning.requestedCount !== undefined && binning.requestedCount !== k) {
+  if (binning.exactWidth !== undefined) {
+    warnings.push({
+      code: 'histogram-bin-width-whole',
+      severity: 'warn',
+      message: `bins: ${binning.requestedCount} on whole numbers would give bins of ${round12(binning.exactWidth)}; the width is ${binning.width} instead, which gives ${k} bins`,
+      suggest: `pass bins: { width: ${round12(binning.exactWidth)} } for fractional bins, or another count`,
+    });
+  }
+  if (binning.requestedCount !== undefined && binning.requestedCount !== k && binning.exactWidth === undefined) {
     warnings.push({
       code: 'histogram-bin-count-adjusted',
       severity: 'warn',

@@ -575,7 +575,7 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
         message: `${truncated.length} placed label(s) omit text; the reading lists their full text in labelsTruncated`,
         suggest: 'give the labels more room or shorten their text' });
     }
-    pushAll(geo.warnings, unmatchedIdWarnings(geo, data, options?.highlight, pins, nested));
+    pushAll(geo.warnings, unmatchedIdWarnings(geo, data, def.type === 'sankey' ? undefined : options?.highlight, pins, nested));
     geo.presentation = presentationInfo(geo, target, panelTypeClass(options), textScale);
     pushAll(geo.warnings, removedNames);
     return geo;

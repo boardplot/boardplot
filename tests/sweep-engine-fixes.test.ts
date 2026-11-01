@@ -646,4 +646,15 @@ describe('chart layout edge cases', () => {
     const wide = board('central-bank-decisions', 1000);
     expect(wide.body.reading.omissions.map((o) => o.labelId).filter((id) => id.startsWith('stateName:')).sort()).toEqual(['stateName:cut', 'stateName:hike', 'stateName:hold']);
   });
+
+  // A zero actual against a negative reference kept a solid cap that read as filled from zero to the reference, though the actual fills none of it.
+  it('an integrated variance zero actual draws an outline cap against a reference on either side', () => {
+    const request = { type: 'variance', data: { categories: [{ id: 'up', label: 'Up' }, { id: 'down', label: 'Down' }], series: [
+      { id: 'act', label: 'Actual', values: [0, 0] }, { id: 'ref', label: 'Plan', role: 'reference', values: [100, -100] }] },
+      options: { variant: 'integrated', variance: { of: 'act', vs: 'ref' } } };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+    const caps = geometry.scene.filter((node: { part?: string }) => node.part === 'cap').map((node: { id: string; pattern?: string }) => [node.id, node.pattern]);
+    expect(caps).toEqual([['mark:cap:up', 'hollow'], ['mark:cap:down', 'hollow']]);
+  });
 });
