@@ -125,9 +125,10 @@ it('prints the trend rate in the reporting period', () => {
   expect(unitOf(['2026-01-01', '2026-01-02', '2026-01-04'])[1]).toBe('per day');
 });
 
-// Prevents trend keys from losing the value unit or calling year-labelled observations generic periods.
+// Prevents trend keys from losing the value unit or calling dated yearly observations generic periods,
+// and numeric labels such as "1000" from being read as years.
 it('prints trend rates with their value units and calendar periods', () => {
-  const categories = ['2021', '2022', '2023F'].map((label, i) => ({ id: `p${i}`, label }));
+  const categories = ['2021', '2022', '2023F'].map((label, i) => ({ id: `p${i}`, label, date: `${2021 + i}-01-01` }));
   const cases = [
     { options: { unit: '$m' }, series: {}, expected: '+$2.0m per year' },
     { options: {}, series: { unit: 'kg' }, expected: '+2.0 kg per year' },
@@ -142,10 +143,14 @@ it('prints trend rates with their value units and calendar periods', () => {
     expect(sceneText(out)).toContain(c.expected);
     expect(out.a11y.desc).toContain(c.expected);
   }
-  const skipped = layoutLine({ categories: ['FY2020', 'FY2022', 'FY2025F'].map(id => ({ id })), series: [{ id: 'a', values: [10, 14, 20] }] },
+  const skipped = layoutLine({ categories: [{ id: 'FY2020', date: '2020-01-01' }, { id: 'FY2022', date: '2022-01-01' }, { id: 'FY2025F', date: '2025-01-01' }], series: [{ id: 'a', values: [10, 14, 20] }] },
     lineOptionsSchema.parse({ trend: true, unit: '$m', size: { width: 960, height: 540 } }));
   expect(skipped.derived.trends![0]).toMatchObject({ slope: expect.closeTo(2, 12), unit: 'year' });
   expect(sceneText(skipped)).toContain('+$2.0m per year');
+  const numeric = layoutLine({ categories: ['1000', '2000', '3000', '4000'].map(id => ({ id })), series: [{ id: 'a', label: 'Fuel use', values: [10, 12, 14, 16] }] },
+    lineOptionsSchema.parse({ trend: true, unit: 'l', size: { width: 960, height: 540 } }));
+  expect(numeric.derived.trends![0]).toMatchObject({ slope: expect.closeTo(2, 12), unit: 'period' });
+  expect(sceneText(numeric)).toContain('per period');
   const scatter = layoutScatter({ points: [{ id: 'a', x: 1, y: 10 }, { id: 'b', x: 2, y: 12 }, { id: 'c', x: 3, y: 14 }] },
     { trend: true, unit: 'kg', size: { width: 960, height: 540 } });
   expect(sceneText(scatter)).toContain('2.0 kg');

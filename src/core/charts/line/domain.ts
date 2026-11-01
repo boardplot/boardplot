@@ -16,7 +16,7 @@ import { isIncomplete, warnIncompleteComposition, warnShareRoundingDrift } from 
 import { cleanFloat } from '../../geometry';
 import { roundWholes, shareRoundingNotes } from '../../shareRounding';
 import { parseISODate } from '../../isoDate';
-import { categoryYear, fitLineTrends, trendTimeline } from './trend';
+import { fitLineTrends, trendTimeline } from './trend';
 import { lineXModel, resolveLineXOptions, unmatchedPartial, type LineXModel } from './continuous';
 import {
   NormalizeError,
@@ -102,6 +102,9 @@ function normalizeLineData(data: LineChartData): { cats: Category[]; seriesNorm:
   return { cats, seriesNorm: series };
 }
 
+/** A year label: "2022", "2030F", "FY2024", "2025E". */
+const YEAR_LABEL = /^(?:FY\s?)?(\d{4})\s?[A-Z]{0,2}$/;
+
 /**
  * Time runs on a proportional axis. When every category carries an
  * ISO date, or every label is a year, and the longest gap is more than half
@@ -113,7 +116,8 @@ function categoryTimeline(cats: Category[]): { positions: number[]; span: number
   const dated = cats.every((c) => c.date !== undefined);
   const times = cats.map((c) => {
     if (dated) return parseISODate(c.date!)?.getTime() ?? null;
-    return categoryYear(c) ?? null;
+    const year = YEAR_LABEL.exec((c.label ?? c.id).trim());
+    return year ? Number(year[1]) : null;
   });
   if (times.length < 3 || times.some((t) => t === null)) return undefined;
   const gaps = times.slice(1).map((t, i) => t! - times[i]!);
