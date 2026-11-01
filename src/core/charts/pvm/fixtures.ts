@@ -193,4 +193,11 @@ fixtures.push({
   ] },
   options: { title: 'Entry and exit bars reconcile a $5.6m revenue change', unit: '$k', strings: { newItems: 'Entries', lostItems: 'Exits' }, size: { width: 1000 } },
 });
+fixtures.push({
+  ...revenueBridge,
+  id: 'revenue-bridge-no-net-change',
+  title: 'The revenue bridge without the net change over the closing column',
+  options: { ...revenueBridge.options, netChange: false },
+});
+
 registerFixtures('pvm', fixtures);
