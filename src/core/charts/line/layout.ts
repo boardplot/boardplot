@@ -350,7 +350,7 @@ function annotateLine(
         x: xOf(ci),
         y: y(cumTop[dataSeries.indexOf(top)]![ci]!),
         value,
-        ...(sharesOnly ? { pointValueText: domain.valueSpec.forSeries(top, top.vals[ci]?.format)(value), format: top.format } : {}),
+        ...(sharesOnly ? { pointValueText: domain.valueSpec.forSeries(top, top.vals[ci]?.format)(value), format: top.format } : { format: rebased ? undefined : top.format }),
         date: c.date, label: c.label ?? c.id,
         owner: { categoryId: c.id },
         lineAnchored: true,

@@ -161,6 +161,16 @@ it('keeps explicit stack totals honest on a 100% area with signed or authored sh
   expect(shares.annotations.map((a) => a.computedText)).toEqual(['100%', 'Sum 100%']);
 });
 
+// An explicit stack total must print in the series number format, as the string anchor and the segment anchor do.
+it('prints an explicit stack total and its delta in the series format', () => {
+  const categories = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+  const series = [{ id: 'x', values: [10.5, 20.25, 30.5], format: '$0.0' }, { id: 'y', values: [30, 40.5, 50], format: '$0.0' }];
+  const total = (id: string) => ({ categoryId: id, edge: 'total' }) as const;
+  const geometry = layoutLine({ categories, series }, { variant: 'stacked-area', valueLabels: 'none', seriesLabels: 'none',
+    annotations: [{ kind: 'abs', at: total('c') }, { kind: 'delta', at: total('c'), vs: total('a') }] });
+  expect(geometry.annotations.map((a) => a.computedText)).toEqual(['$80.5', '+$40.0']);
+});
+
 // A computed reference must use the observations on its axis, not differences on a level axis.
 it('measures variance value-line statistics on the drawn axis', () => {
   for (const percent of [false, true]) for (const variant of ['absolute', 'integrated'] as const) {
