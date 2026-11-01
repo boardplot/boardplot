@@ -11,21 +11,21 @@
 <text data-id="axis:y:tick:4" data-part="tick" data-bp-role="axis" x="31" y="207.29" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="31" dy="0">80%</tspan></text>
 <text data-id="axis:y:tick:5" data-part="tick" data-bp-role="axis" x="24" y="140.61" text-anchor="start" font-size="12" font-weight="400" fill="#4E6070" style="font-variant-numeric: tabular-nums"><tspan x="24" dy="0">100%</tspan></text>
 <line data-id="axis:baseline" data-part="baseline" x1="63.50" y1="470.70" x2="696" y2="470.70" stroke="#0D2A43" stroke-width="1"/>
-<rect data-id="mark:gamma:americas" data-part="segment" x="63.50" y="137.30" width="274.74" height="28.78" fill="#72767C"/>
-<rect data-id="mark:beta:americas" data-part="segment" x="63.50" y="166.08" width="274.74" height="62.36" fill="#B58629"/>
-<rect data-id="mark:alpha:americas" data-part="segment" x="63.50" y="228.45" width="274.74" height="95.94" fill="#5E99C5"/>
+<rect data-id="mark:gamma:americas" data-part="segment" x="63.50" y="137.30" width="274.74" height="28.78" fill="#cfd9e2"/>
+<rect data-id="mark:beta:americas" data-part="segment" x="63.50" y="166.08" width="274.74" height="62.36" fill="#adb7c1"/>
+<rect data-id="mark:alpha:americas" data-part="segment" x="63.50" y="228.45" width="274.74" height="95.94" fill="#8b95a0"/>
 <rect data-id="mark:acme:americas" data-part="segment" x="63.50" y="324.39" width="274.74" height="146.31" fill="#1D4ED8"/>
-<rect data-id="mark:gamma:emea" data-part="segment" x="338.24" y="137.30" width="191.73" height="30.93" fill="#72767C"/>
-<rect data-id="mark:beta:emea" data-part="segment" x="338.24" y="168.23" width="191.73" height="51.56" fill="#B58629"/>
-<rect data-id="mark:alpha:emea" data-part="segment" x="338.24" y="219.79" width="191.73" height="106.55" fill="#5E99C5"/>
+<rect data-id="mark:gamma:emea" data-part="segment" x="338.24" y="137.30" width="191.73" height="30.93" fill="#cfd9e2"/>
+<rect data-id="mark:beta:emea" data-part="segment" x="338.24" y="168.23" width="191.73" height="51.56" fill="#adb7c1"/>
+<rect data-id="mark:alpha:emea" data-part="segment" x="338.24" y="219.79" width="191.73" height="106.55" fill="#8b95a0"/>
 <rect data-id="mark:acme:emea" data-part="segment" x="338.24" y="326.34" width="191.73" height="144.36" fill="#1D4ED8"/>
-<rect data-id="mark:gamma:apac" data-part="segment" x="529.97" y="137.30" width="128.48" height="30.78" fill="#72767C"/>
-<rect data-id="mark:beta:apac" data-part="segment" x="529.97" y="168.08" width="128.48" height="61.55" fill="#B58629"/>
-<rect data-id="mark:alpha:apac" data-part="segment" x="529.97" y="229.63" width="128.48" height="148.75" fill="#5E99C5"/>
+<rect data-id="mark:gamma:apac" data-part="segment" x="529.97" y="137.30" width="128.48" height="30.78" fill="#cfd9e2"/>
+<rect data-id="mark:beta:apac" data-part="segment" x="529.97" y="168.08" width="128.48" height="61.55" fill="#adb7c1"/>
+<rect data-id="mark:alpha:apac" data-part="segment" x="529.97" y="229.63" width="128.48" height="148.75" fill="#8b95a0"/>
 <rect data-id="mark:acme:apac" data-part="segment" x="529.97" y="378.37" width="128.48" height="92.33" fill="#1D4ED8"/>
-<rect data-id="mark:gamma:latam" data-part="segment" x="658.45" y="137.30" width="37.55" height="52.64" fill="#72767C"/>
-<rect data-id="mark:beta:latam" data-part="segment" x="658.45" y="189.94" width="37.55" height="87.74" fill="#B58629"/>
-<rect data-id="mark:alpha:latam" data-part="segment" x="658.45" y="277.68" width="37.55" height="122.83" fill="#5E99C5"/>
+<rect data-id="mark:gamma:latam" data-part="segment" x="658.45" y="137.30" width="37.55" height="52.64" fill="#cfd9e2"/>
+<rect data-id="mark:beta:latam" data-part="segment" x="658.45" y="189.94" width="37.55" height="87.74" fill="#adb7c1"/>
+<rect data-id="mark:alpha:latam" data-part="segment" x="658.45" y="277.68" width="37.55" height="122.83" fill="#8b95a0"/>
 <rect data-id="mark:acme:latam" data-part="segment" x="658.45" y="400.51" width="37.55" height="70.19" fill="#1D4ED8"/>
 <line data-id="seam:mark:gamma:americas:0" data-part="segmentSeam" x1="338.24" y1="137.30" x2="338.24" y2="166.08" stroke="#FFFFFF" stroke-width="0.5"/>
 <line data-id="seam:mark:beta:americas:1" data-part="segmentSeam" x1="63.50" y1="166.08" x2="338.24" y2="166.08" stroke="#FFFFFF" stroke-width="0.5"/>
@@ -79,12 +79,12 @@
 <text data-id="label:segment:alpha:latam" data-part="segment" data-bp-role="value" x="663.97" y="343.76" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="663.97" dy="0">37%</tspan></text>
 <text data-id="label:segment:alpha:emea" data-part="segment" data-bp-role="value" x="420.86" y="277.73" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="420.86" dy="0">32%</tspan></text>
 <text data-id="label:segment:alpha:americas" data-part="segment" data-bp-role="caption" x="160.37" y="281.08" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="160.37" dy="0">AlphaCo 29%</tspan></text>
-<text data-id="label:segment:beta:latam" data-part="segment" data-bp-role="value" x="663.97" y="238.47" text-anchor="start" font-size="13" font-weight="400" fill="#050505" style="font-variant-numeric: tabular-nums"><tspan x="663.97" dy="0">26%</tspan></text>
-<text data-id="label:segment:beta:americas" data-part="segment" data-bp-role="caption" x="157.87" y="201.92" text-anchor="start" font-size="13" font-weight="400" fill="#050505"><tspan x="157.87" dy="0">BetaCorp 19%</tspan></text>
-<text data-id="label:segment:beta:apac" data-part="segment" data-bp-role="value" x="580.96" y="203.51" text-anchor="start" font-size="13" font-weight="400" fill="#050505" style="font-variant-numeric: tabular-nums"><tspan x="580.96" dy="0">18%</tspan></text>
-<text data-id="label:segment:gamma:latam" data-part="segment" data-bp-role="value" x="663.97" y="168.28" text-anchor="start" font-size="13" font-weight="400" fill="#FFFFFF" style="font-variant-numeric: tabular-nums"><tspan x="663.97" dy="0">16%</tspan></text>
-<text data-id="label:segment:beta:emea" data-part="segment" data-bp-role="value" x="420.86" y="198.67" text-anchor="start" font-size="13" font-weight="400" fill="#050505" style="font-variant-numeric: tabular-nums"><tspan x="420.86" dy="0">16%</tspan></text>
-<text data-id="label:segment:gamma:emea" data-part="segment" data-bp-role="value" x="424.36" y="157.43" text-anchor="start" font-size="13" font-weight="400" fill="#FFFFFF" style="font-variant-numeric: tabular-nums"><tspan x="424.36" dy="0">9%</tspan></text>
-<text data-id="label:segment:gamma:apac" data-part="segment" data-bp-role="value" x="584.46" y="157.35" text-anchor="start" font-size="13" font-weight="400" fill="#FFFFFF" style="font-variant-numeric: tabular-nums"><tspan x="584.46" dy="0">9%</tspan></text>
-<text data-id="label:segment:gamma:americas" data-part="segment" data-bp-role="caption" x="165.87" y="156.35" text-anchor="start" font-size="13" font-weight="400" fill="#FFFFFF"><tspan x="165.87" dy="0">Gamma 8%</tspan></text>
+<text data-id="label:segment:beta:latam" data-part="segment" data-bp-role="value" x="663.97" y="238.47" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="663.97" dy="0">26%</tspan></text>
+<text data-id="label:segment:beta:americas" data-part="segment" data-bp-role="caption" x="157.87" y="201.92" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="157.87" dy="0">BetaCorp 19%</tspan></text>
+<text data-id="label:segment:beta:apac" data-part="segment" data-bp-role="value" x="580.96" y="203.51" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="580.96" dy="0">18%</tspan></text>
+<text data-id="label:segment:gamma:latam" data-part="segment" data-bp-role="value" x="663.97" y="168.28" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="663.97" dy="0">16%</tspan></text>
+<text data-id="label:segment:beta:emea" data-part="segment" data-bp-role="value" x="420.86" y="198.67" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="420.86" dy="0">16%</tspan></text>
+<text data-id="label:segment:gamma:emea" data-part="segment" data-bp-role="value" x="424.36" y="157.43" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="424.36" dy="0">9%</tspan></text>
+<text data-id="label:segment:gamma:apac" data-part="segment" data-bp-role="value" x="584.46" y="157.35" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43" style="font-variant-numeric: tabular-nums"><tspan x="584.46" dy="0">9%</tspan></text>
+<text data-id="label:segment:gamma:americas" data-part="segment" data-bp-role="caption" x="165.87" y="156.35" text-anchor="start" font-size="13" font-weight="400" fill="#0D2A43"><tspan x="165.87" dy="0">Gamma 8%</tspan></text>
 </svg>

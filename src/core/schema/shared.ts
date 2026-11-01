@@ -339,7 +339,7 @@ export const dataValueKindSchema = valueKindSchema.describe('Default valueKind f
 const PERCENT_FORMAT_UNITS = 'A % example expects values in percent units: 3.53 prints 3.53%, a fraction 0.0353 prints 0.04%.';
 
 /** Every magnitude word parseFormatExample reads (formatSpec.ts MAGNITUDE_SUFFIXES). */
-export const MAGNITUDE_WORDS_DOC = "A magnitude after the number divides the raw value: k, thousand, Tsd., Tausend (10³); m, M, mn, mm, million(s), Mio., Million(en) (10⁶); b, B, bn, billion(s), Mrd., Milliarde(n), milliard(s) (10⁹); T glued to the number, tn, trillion(s), Bio., Billionen (10¹²). A value of 1000 or more in a scale rolls up and one that would print as 0 rolls down, in the example's spelling; a German or French chart prints its own words (Mrd., Bio.; Md, Bn).";
+export const MAGNITUDE_WORDS_DOC = "A magnitude after the number divides the raw value: k, thousand, Tsd., Tausend (10³); m, M, mn, mm, million(s), Mio., Million(en) (10⁶); b, B, bn, billion(s), Mrd., Milliarde(n), milliard(s) (10⁹); tn, trillion(s), Bio., Billionen (10¹²). The letters k, m, M, mm, b, B and T scale only glued to the number: '12 m/s' and '50 B' keep their unit. A value of 1000 or more in a scale rolls up and one that would print as 0 rolls down, in the example's spelling; a German or French chart prints its own words (Mrd., Bio.; Md, Bn).";
 
 /**
  * A scenario field: the codes normalizeScenario accepts lead every field's

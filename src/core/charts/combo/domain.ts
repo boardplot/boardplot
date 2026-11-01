@@ -459,9 +459,11 @@ function ladderSteps(lo: number, hi: number, mantissas: readonly number[]): numb
  * it crosses a column edge, it keeps LINE_CLEARANCE of the plot over the
  * column top. Among the pairs that do, the one whose columns fill most of
  * the plot wins, then the one whose line does, then fewer intervals. The
- * search keeps columns at least a third of the plot. The line keeps at least five
- * eighths. Undefined when a value is negative or no pair keeps the line
- * above; the synced default scales stay then.
+ * search keeps columns at least a third of the plot. Only when no such pair
+ * keeps the line above, it lets the columns shrink to a quarter and reports
+ * `squeezed`. The line keeps at least five eighths. Undefined when a value
+ * is negative or no pair keeps the line above; the synced default scales
+ * stay then.
  */
 function dualAxisScales(input: {
   columnTops: readonly number[];
@@ -471,42 +473,49 @@ function dualAxisScales(input: {
   secondaryHi: number;
   bandFraction: number;
   clearance?: number;
-}): { pticks: number[]; secondaryStep: number } | undefined {
+}): { pticks: number[]; secondaryStep: number; squeezed: boolean } | undefined {
   const { columnTops, primaryHi, lines, secondaryHi } = input;
   if (input.columnBottoms.some((v) => v < 0) || lines.some((row) => row.some((v) => v !== null && v < 0))) return undefined;
   if (!(primaryHi > 0) || !(secondaryHi > 0)) return undefined;
   const half = input.bandFraction / 2;
-  let best: { n: number; p: number; s: number; fill: number; lineFill: number } | undefined;
-  for (const n of [3, 4, 5, 6]) {
-    for (const p of ladderSteps(primaryHi / n, (primaryHi * 3) / n, PRIMARY_MANTISSAS)) {
-      for (const s of ladderSteps((secondaryHi * 1.01) / n, (secondaryHi * 1.6) / n, SECONDARY_MANTISSAS)) {
-        const colAt = (ci: number): number => (columnTops[ci] ?? 0) / (n * p);
-        const lineAt = (v: number): number => v / (n * s);
-        const clears = lines.every((row) => row.every((v, ci) => {
-          if (v === null) return true;
-          if (lineAt(v) - colAt(ci) < (input.clearance ?? LINE_CLEARANCE)) return false;
-          // Where the segment to a neighbour crosses this column's edge.
-          for (const next of [ci - 1, ci + 1]) {
-            const w = row[next];
-            if (w === undefined || w === null) continue;
-            const atEdge = lineAt(v) + (lineAt(w) - lineAt(v)) * half;
-            if (atEdge - colAt(ci) < (input.clearance ?? LINE_CLEARANCE)) return false;
+  type Pair = { n: number; p: number; s: number; fill: number; lineFill: number };
+  // `span` bounds the primary step: columns fill at least 1/span of the plot.
+  const search = (span: number): Pair | undefined => {
+    let best: Pair | undefined;
+    for (const n of [3, 4, 5, 6]) {
+      for (const p of ladderSteps(primaryHi / n, (primaryHi * span) / n, PRIMARY_MANTISSAS)) {
+        for (const s of ladderSteps((secondaryHi * 1.01) / n, (secondaryHi * 1.6) / n, SECONDARY_MANTISSAS)) {
+          const colAt = (ci: number): number => (columnTops[ci] ?? 0) / (n * p);
+          const lineAt = (v: number): number => v / (n * s);
+          const clears = lines.every((row) => row.every((v, ci) => {
+            if (v === null) return true;
+            if (lineAt(v) - colAt(ci) < (input.clearance ?? LINE_CLEARANCE)) return false;
+            // Where the segment to a neighbour crosses this column's edge.
+            for (const next of [ci - 1, ci + 1]) {
+              const w = row[next];
+              if (w === undefined || w === null) continue;
+              const atEdge = lineAt(v) + (lineAt(w) - lineAt(v)) * half;
+              if (atEdge - colAt(ci) < (input.clearance ?? LINE_CLEARANCE)) return false;
+            }
+            return true;
+          }));
+          if (!clears) continue;
+          const fill = maxOf(columnTops) / (n * p);
+          const lineFill = secondaryHi / (n * s);
+          if (!best || fill > best.fill + 1e-9 || (Math.abs(fill - best.fill) <= 1e-9 && (lineFill > best.lineFill + 1e-9
+            || (Math.abs(lineFill - best.lineFill) <= 1e-9 && n < best.n)))) {
+            best = { n, p, s, fill, lineFill };
           }
-          return true;
-        }));
-        if (!clears) continue;
-        const fill = maxOf(columnTops) / (n * p);
-        const lineFill = secondaryHi / (n * s);
-        if (!best || fill > best.fill + 1e-9 || (Math.abs(fill - best.fill) <= 1e-9 && (lineFill > best.lineFill + 1e-9
-          || (Math.abs(lineFill - best.lineFill) <= 1e-9 && n < best.n)))) {
-          best = { n, p, s, fill, lineFill };
         }
       }
     }
-  }
+    return best;
+  };
+  const roomy = search(3);
+  const best = roomy ?? search(4);
   if (!best) return undefined;
   const { n, p, s } = best;
-  return { pticks: Array.from({ length: n + 1 }, (_, i) => roundTick(i * p)), secondaryStep: s };
+  return { pticks: Array.from({ length: n + 1 }, (_, i) => roundTick(i * p)), secondaryStep: s, squeezed: roomy === undefined };
 }
 
 /**
@@ -825,6 +834,12 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
     shared ? { step: shared.secondaryStep, start: 0 } : aligned?.secondary);
   const fmtSecondary = secondarySpec.fmt;
   const beforeCorridor = warnings.slice();
+  const squeezeWarning = (): LintWarning => ({
+    code: 'dual-axis-columns-squeezed', severity: 'info',
+    message: 'the line runs over the columns on every pair of scales that keeps them a third of the plot high, so the columns shrink below a third of the plot to leave the line a clear band',
+    suggest: 'split the chart in two, or pin secondaryAxis.domain to choose the secondary scale yourself',
+  });
+  if (shared?.squeezed) warnings.push(squeezeWarning());
   const anomalyFor = (left: typeof primary, rightDomain: [number, number] | undefined, out: LintWarning[]): LineAnomaly | undefined => {
     const extent: [number, number] | undefined = anomalyRun?.onSecondary ? rightDomain : [left.dLo, left.dHi];
     return anomalyRun && extent && {
@@ -897,6 +912,7 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
     const right = rightAxis(effective, gate, { lo: sLoRaw, hi: sHiRaw }, left, secondarySpec,
       next ? { step: next.secondaryStep, start: 0 } : undefined);
     const nextWarnings = [...beforeCorridor];
+    if (next?.squeezed) nextWarnings.push(squeezeWarning());
     // Without a pair that keeps the line above, the line crosses the columns
     // and the labels no longer stand in for the ticks.
     const axes = next || !resolved.ticksFromLabels ? {} : {

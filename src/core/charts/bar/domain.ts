@@ -11,7 +11,7 @@ import { normalizeCategorySeries } from '../categorySeries';
 import { chartPalette } from '../chartEnv';
 import { valueLineHasTargetExtras } from '../../annotateFields';
 import { formatAutomaticPercent, formatShare } from '../../format';
-import { formatStatWithSpec, formatterFromExample, seriesRasterFormatter } from '../../formatSpec';
+import { formatStatWithSpec, formatterFromExample, parseFormatExample, seriesRasterFormatter, shareFormatExample, withChartMarks } from '../../formatSpec';
 import { PRIORITY } from '../../label/solver';
 import {
   NormalizeError,
@@ -36,6 +36,7 @@ import { accumulateStack, averageMarkerLine, averageOfUnaddedSums, averageOfWhol
 import { isIncomplete, warnShareRoundingDrift } from '../../dataGaps';
 import { roundingUnavailable, shareRoundingNotes, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
 import { NO_STACK_MEAN, stackAdds } from '../../stackAdds';
+import { scenarioPartners, seriesScenarioRole } from '../../scenarioPairs';
 import { OTHERS_ID, type BarDomain, type NormCat, type NormSeries } from './model';
 import { disclosuresShown } from '../../notes';
 import { cappedItems } from '../../frame';
@@ -91,7 +92,7 @@ export function textFor(domain: BarDomain, v: number, cell: BarTextCell, pctVal?
 export function displayFor(domain: BarDomain, v: number, cell: BarTextCell, pctVal?: number, s?: NormSeries, categoryId?: string): string {
   const { meta } = cell;
   return pctVal !== undefined
-    ? (s && categoryId !== undefined ? domain.shareTexts.get(`${categoryId}\0${s.id}`) : undefined) ?? formatShare(pctVal, domain.options.locale?.language)
+    ? (s && categoryId !== undefined ? domain.shareTexts.get(`${categoryId}\0${s.id}`) : undefined) ?? domain.pctFmt(pctVal)
     : meta?.format
       ? formatterFromExample(meta.format, domain.options.locale?.language)(v)
       // A percent cell, and a Rest built from percent cells, keep their '%', as on column.
@@ -498,10 +499,22 @@ export function resolveBarDomain(data: ChartData, options: BarOptions, warnings:
   // A series with its own paint keeps it; the ramp series skip a step that
   // paints the same colour, so no two series of one chart look alike.
   const roles = colorRolePaints(dataSeries);
-  const slots = rampSlots(theme, dataSeries.map((s): Paint | undefined =>
+  // A scenario series takes the colour of its actual (scenarioPairs). A series whose cells all
+  // carry one scenario counts as that scenario. Grouped bars pair in authored order, so sorting the
+  // segments never re-pairs a plan. A stack keeps its stack colours: only a plan pairs.
+  const stacked = variant !== 'grouped';
+  const ownPaint = (x: NormSeries): boolean => !!x.fill || !!x.colorRole || highlights.has(x.id);
+  const scenarioPartner = stacked
+    ? scenarioPartners(dataSeries, (x) => x.scenario, ownPaint, true)
+    : scenarioPartners(normSeries.filter((x) => x.role === 'data'), (x) => seriesScenarioRole(x.scenario, x.cells.filter((c) => c.v !== null).map((c) => c.meta?.scenario)), ownPaint, false);
+  // A paired scenario series of grouped bars takes no ramp step of its own. One with its own
+  // paint keeps it, so it stays in the deal and the plain series step past its colour.
+  const dealt = dataSeries.filter((s) => stacked || ownPaint(s) || !scenarioPartner.has(s.id));
+  const slots = rampSlots(theme, dealt.map((s): Paint | undefined =>
     s.fill ? { css: s.fill } : s.colorRole ? roles.get(s.id)! : highlights.has(s.id) ? { token: 'focus' } : undefined,
-  ), paletteRamp ? options.palette : undefined, { labels: dataSeries.map((s) => s.label), warnings });
-  dataSeries.forEach((s, i) => (s.slot = slots[i]!));
+  ), paletteRamp ? options.palette : undefined, { labels: dealt.map((s) => s.label), warnings });
+  dealt.forEach((s, i) => (s.slot = slots[i]!));
+  dataSeries.forEach((s) => { const partner = scenarioPartner.get(s.id); if (partner && !dealt.includes(s)) s.slot = partner.slot; });
   const basis = barBasis(variant, cats, dataSeries, warnings);
   // TWIN of column's `meanValue`. NOT coalesced to 0: with no plotted value
   // there is no mean, and a valueLine drawn at 0 would state a number the
@@ -547,18 +560,21 @@ export function resolveBarDomain(data: ChartData, options: BarOptions, warnings:
   // rounding 'sum-consistent' (the default): each complete bar's shares print so they add up to 100%.
   const shareTexts = new Map<string, string>();
   const roundingAdjustments: RoundingAdjustment[] = [];
+  const shareExample = shareFormatExample(options);
+  const shareSpec = shareExample ? withChartMarks(parseFormatExample(shareExample), options.locale?.language) : undefined;
+  const pctFmt = shareExample ? formatterFromExample(shareExample, options.locale?.language) : (percent: number) => formatShare(percent, options.locale?.language);
   if (options.rounding !== 'nearest') {
     for (const { c, parts } of wholes) {
-      const rounded = sumConsistentShares(parts.map((part) => part.share), options.locale?.language);
+      const rounded = sumConsistentShares(parts.map((part) => part.share), options.locale?.language, shareSpec);
       if (rounded?.warning) warnings.push(roundingUnavailable(c.label, rounded.warning));
       else if (rounded) parts.forEach((part, index) => {
         shareTexts.set(`${c.id}\0${part.s.id}`, rounded.texts[index]!);
         if (rounded.moved[index]) roundingAdjustments.push({ whole: c.label, part: part.s.label, share: Math.round(part.share * 1e4) / 1e4,
-          nearest: formatShare(part.share, options.locale?.language), printed: rounded.texts[index]! });
+          nearest: pctFmt(part.share), printed: rounded.texts[index]! });
       });
     }
   } else if (sharesOn) {
-    warnShareRoundingDrift(warnings, wholes.map(({ c, parts }) => ({ name: c.label, shares: parts.map((part) => part.share) })));
+    warnShareRoundingDrift(warnings, wholes.map(({ c, parts }) => ({ name: c.label, shares: parts.map((part) => part.share), decimals: shareSpec?.decimals })));
   }
   // sharesOfOneWhole: a bar whose authored parts miss 100 prints shares of its own total; direct percents print as authored.
   const rescaled = options.sharesOfOneWhole === true
@@ -566,7 +582,7 @@ export function resolveBarDomain(data: ChartData, options: BarOptions, warnings:
   const shareNotes = shareRoundingNotes(options, roundingAdjustments, cappedItems(rescaled, options));
   const domain = {
     options, theme, palette: paletteRamp ? options.palette : undefined, size,
-    measure: options.measure ?? defaultMeasurer, highlights, variant, shareTexts, roundingAdjustments, shareNotes,
+    measure: options.measure ?? defaultMeasurer, highlights, variant, shareTexts, pctFmt, roundingAdjustments, shareNotes,
     referenceStyle: options.referenceStyle ?? 'tick', connectorsOn,
     referenceTick: {
       width: options.referenceTick?.width ?? strokeToken(theme, 'rule'),
@@ -582,7 +598,7 @@ export function resolveBarDomain(data: ChartData, options: BarOptions, warnings:
     axisFmt: variant === 'stacked100' ? { format: (v: number) => formatAutomaticPercent(v, 0, false, options.locale?.language) }
       : percentCellsOnly(dataSeries.map((series) => ({ vals: series.cells.map((cell) => ({ ...cell, format: cell.meta?.format })), format: series.format })))
         ? { format: valueSpec.fmtPercent, formatSpec: valueSpec.percentSpec } : { format: valueSpec.fmt, formatSpec: valueSpec.spec },
-    cats, dataSeries, refSeries, valueSpec, fmt: valueSpec.fmt, totalFmt: stackTotalFormatter(variant, valueSpec.spec, valueSpec.fmt), statFmt, uniformScenario,
+    cats, dataSeries, refSeries, valueSpec, fmt: valueSpec.fmt, totalFmt: stackTotalFormatter(variant, valueSpec.spec, valueSpec.fmt), statFmt, uniformScenario, scenarioPartner,
     /**
      * A category highlight on one series makes the named bars the
      * subject. They take `highlight` and every other bar steps back to

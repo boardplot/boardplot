@@ -159,3 +159,22 @@ it('keeps a pinned secondary line domain above zero and widens it only for data 
   expect(draw([40, 41, 42]).derived.secondaryDomain).toEqual([30, 50]);
   expect(draw([25, 41, 42]).derived.secondaryDomain).toEqual([25, 50]);
 });
+
+// A dense daily combo whose line dips where its columns peak ran through the columns, because no scale pair kept the columns a third of the plot high with the line above them.
+it('squeezes the columns of a dual axis to keep the line above them, and says so', () => {
+  const categories = Array.from({ length: 45 }, (_, i) => ({ id: `d${i}` }));
+  const geometry = requireGeometry(layoutCombo({
+    categories,
+    series: [
+      { id: 'spend', label: 'Spend', kind: 'column', values: categories.map((_, i) => Math.round(1000 + 600 * Math.sin(i / 3))) },
+      { id: 'revenue', label: 'Revenue', kind: 'line', axis: 'secondary', values: categories.map((_, i) => Math.round(2000 + 800 * Math.cos(i / 3))) },
+    ],
+  }, { size: { width: 720, height: 385 }, title: 'Spend and revenue', secondaryAxis: { acknowledge: true } }));
+  const line = geometry.marks.lines.find((mark) => mark.seriesId === 'revenue')!;
+  for (const column of geometry.marks.columns) {
+    expect(line.points.find((point) => point.categoryId === column.categoryId)!.y, column.categoryId).toBeLessThan(column.rect.y);
+  }
+  const warning = geometry.warnings.find((w) => w.code === 'dual-axis-columns-squeezed');
+  expect(warning?.severity).toBe('info');
+  expect(warning?.suggest).toContain('secondaryAxis.domain');
+});

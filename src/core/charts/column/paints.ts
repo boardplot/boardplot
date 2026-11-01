@@ -7,7 +7,7 @@ import type { StringsSpec } from '../../types/options';
 
 import { DEFAULT_OTHERS_SHADE } from '../../othersShade';
 import { othersShadeUnavailableWarnings } from '../../paintWarnings';
-import { colorRolePaints, effectiveFill, markRolePaint, markRoleToken, mutedMarkPaint, orderedRampPaint, paintColor, rampSlots, stackApartPaint, stackRampPaint, recedingSeriesId, seriesPaint as themeSeriesPaint } from '../../theme';
+import { colorRolePaints, effectiveFill, markRolePaint, markRoleToken, mutedMarkPaint, neutralRampPaint, orderedRampPaint, paintColor, rampSlots, recedingRampIds, stackApartPaint, stackRampPaint, recedingSeriesId, seriesPaint as themeSeriesPaint } from '../../theme';
 import { signColorOverrides, signPaint } from '../band/sign';
 import { partialPattern } from '../../partialPeriod';
 import type { Category } from '../../types/data';
@@ -15,6 +15,7 @@ import type { Scenario } from '../../types/cell';
 import type { LintWarning, Paint } from '../../types/scene';
 import type { ColumnDomain, ColumnPaints, NormSer, NormVal } from './model';
 import { columnCorridorPaint } from './anomaly';
+import { scenarioPartners, scenarioSlotPaint, seriesScenarioRole } from '../../scenarioPairs';
 
 /**
  * The legend's view of the paints: the series swatches, and the scenario
@@ -62,30 +63,16 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
   // Colour follows the series, not its sorted place, so sorting
   // the segments never recolours one. Slots are dealt in authored order.
   const authored = domain.seriesNorm.filter((s) => dataSeries.includes(s));
-  // Notation rule: a scenario series is a view of an actual, so it takes that actual's colour and
-  // its scenario draws the difference (PY a wash, FC a hatch, PL an outline). The k-th PY, PL or
-  // FC series pairs with the k-th actual (no scenario or AC), in authored order, so series order
-  // never changes the look. A series whose cells all carry one scenario counts as that scenario.
-  const roleOf = (s: NormSer): Scenario | undefined => {
-    if (s.scenario) return s.scenario;
-    const own = s.vals.filter((val) => val.v !== null).map((val) => val.scenario);
-    return own.length > 0 && own.every((sc) => sc === own[0]) ? own[0] : undefined;
-  };
+  // A scenario series takes the colour of its actual (scenarioPairs). A series whose cells all
+  // carry one scenario counts as that scenario.
+  const roleOf = (s: NormSer): Scenario | undefined =>
+    seriesScenarioRole(s.scenario, s.vals.filter((val) => val.v !== null).map((val) => val.scenario));
   // A stack keeps its stack colours: there only a plan pairs, as it always did, and keeps its step.
   const stackLike = variant === 'stacked' || variant === 'stacked100';
   const ownPaint = (x: NormSer): boolean => !!x.fill || !!x.colorRole || highlights.has(x.id);
-  const roleIn = (x: NormSer): Scenario | undefined => (stackLike ? x.scenario : roleOf(x));
-  const pairOrder = stackLike ? dataSeries : authored;
-  const actuals = pairOrder.filter((x) => { const role = roleIn(x); return role === undefined || role === 'AC'; });
-  const scenarioPartner = new Map<string, NormSer>();
-  for (const sc of stackLike ? (['PL'] as const) : (['PY', 'PL', 'FC'] as const)) {
-    pairOrder.filter((x) => roleIn(x) === sc).forEach((x, k) => {
-      const actual = actuals[k];
-      // A prior year draws its actual's colour as a wash, which needs the theme's series colour:
-      // beside an actual in an authored colour or role it keeps a washed step of its own.
-      if (actual && (sc !== 'PY' || !ownPaint(actual))) scenarioPartner.set(x.id, actual);
-    });
-  }
+  const scenarioPartner = stackLike
+    ? scenarioPartners(dataSeries, (x) => x.scenario, ownPaint, true)
+    : scenarioPartners(authored, roleOf, ownPaint, false);
   const roles = colorRolePaints(authored);
   const ownPaints = authored.map((s): Paint | undefined =>
     s.fill ? { css: s.fill } : s.colorRole ? roles.get(s.id)! : highlights.has(s.id) ? { token: 'focus' } : undefined);
@@ -102,6 +89,9 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
   const slotOf = new Map(dealt.map((s, i) => [s.id, authoredSlots[i] ?? i]));
   const receding = recedingSeriesId(dataSeries, highlights);
   const slots = dataSeries.map((s, i) => slotOf.get(s.id) ?? i);
+  // Two or more plain series of a stack beside a highlight recede on the neutral ramp, strongest
+  // to quietest in authored order. A plan paired with its actual keeps the actual's step.
+  const rampIds = stackLike && !options.seriesRamp ? recedingRampIds(authored.filter((s) => !scenarioPartner.has(s.id)), highlights) : [];
   // The plain series of a stack take the theme's stack ramp, dark to light in authored order.
   // An authored fill or palette keeps its colour. A highlight, a colour role or a receding
   // series keeps every series in its usual colour.
@@ -120,6 +110,8 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
     // Series whose order is the encoding take the ordered ramp, in authored order.
     if (options.seriesRamp) return orderedRampPaint(authored.length - 1 - authored.indexOf(s), authored.length, quietRest);
     if (s.id === receding) return mutedMarkPaint();
+    const step = rampIds.indexOf(s.id);
+    if (step >= 0) return neutralRampPaint(step, rampIds.length, scenario === 'FC');
     const partner = scenarioPartner.get(s.id);
     if (partner) return seriesIdentityPaint(partner, dataSeries.indexOf(partner), scenario);
     const slot = slots[dataIdx] ?? dataIdx;
@@ -127,11 +119,7 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
     if (stackPlain.length > 1 && stackPlain.includes(s)) return stackRampPaint(stackPlain.indexOf(s), stackPlain.length, slot);
     if (stackOwn && authored.includes(s)) return stackApartPaint(stackOwn, authored.indexOf(s), slot, palette);
     if (stackLike) return themeSeriesPaint(slot, palette);
-    // A prior year draws its colour at the scenario wash, apart from the actual it shares it with.
-    if (scenario === 'PY') return themeSeriesPaint(slot, palette, 'PY', true, false, true);
-    // A forecast keeps its key colour where its hatch reads on the page; scenarioSeriesColor lifts
-    // only a colour whose hatch would fade into the page (an actual near a dark page's floor).
-    return scenario === 'FC' ? themeSeriesPaint(slot, palette, 'FC', true, false, true) : themeSeriesPaint(slot, palette);
+    return scenarioSlotPaint(slot, palette, scenario);
   };
   /**
    * The bar rule: a category highlight on one series makes the named
