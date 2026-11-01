@@ -68,7 +68,7 @@ function measureWithTables(input: MeasureInput): VerbResult {
   const width = length('width', input.width);
   const target = targetArgument(input.target);
   const rows = applyRows(input.spec, input);
-  const loaded = loadSpec(rows.spec);
+  const loaded = loadSpec(rows.spec, { width, target, measure: true });
   if ('errors' in loaded) return rejected(rewriteRowsDiagnostics(asSent(loaded.errors, loaded.bare), rows.pathMap));
   shareScaleGroups(loaded);
   const { doc, envelope, bare } = loaded;

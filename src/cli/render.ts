@@ -159,7 +159,7 @@ function renderWithTables(input: RenderInput): VerbResult {
     });
   }
   const rows = applyRows(input.spec, input);
-  const loaded = loadSpec(rows.spec);
+  const loaded = loadSpec(rows.spec, { width: options.width, height: options.height, target: options.target });
   if ('errors' in loaded) return rejected(rewriteRowsDiagnostics(asSent(loaded.errors, loaded.bare), rows.pathMap));
   if (fileExtension && loaded.doc.charts.length > 1) {
     throw new InputError('invalid-argument', `--out names a folder when the spec draws several charts; this spec draws ${loaded.doc.charts.length}, so --out ${basename(out!)} would become a folder`, {

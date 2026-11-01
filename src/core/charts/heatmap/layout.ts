@@ -63,7 +63,7 @@ import type {
 import { rowDrivenHeight } from '../../rowCanvas';
 import { rowLabelBand } from '../../label/rowLabels';
 import { fittedLabel, gutterBudget, GUTTER_MAX_SHARE, stepDownFont } from '../../label/rowFit';
-import { capPitch, HARD_MINIMUM, matrixWidths, rowSizing } from '../../sizing';
+import { capPitch, HARD_MINIMUM, heightOmitted, matrixWidths, rowSizing } from '../../sizing';
 import { arrowHeadPath, arrowShaftEnd, harveyWedgePath } from '../../svgPath';
 import { nonzeroDecimals } from '../../formatPrecision';
 import { categoryLabelsAndMarks } from '../../footnoteMark';
@@ -876,11 +876,23 @@ export function layoutHeatmap(
   const keyFont: FontSpec = { family: theme.type.family, ...theme.type.axis };
   const keyLineH = keyFont.size * 1.2;
   const keyTitled = options.bubble?.sizeLabel !== undefined || options.bubble?.colorLabel !== undefined;
-  const styledKey = bubbleKeys && bubbleStyle ? planStyledBubbleKey() : undefined;
+  const headerGap = harveyWide ? HARVEY_HEADER_GAP : 0;
+  let styledKey = bubbleKeys && bubbleStyle ? planStyledBubbleKey() : undefined;
+  // On a pinned height the largest key circle is the largest drawn bubble, which stands in a cell
+  // no taller than the rows share after the key. The key and the cell height depend on each other,
+  // so they are solved by repeating: each pass of two keeps a cell height at or above the final one,
+  // so the key circle is never smaller than the matrix bubble. A height from content keeps the strip
+  // of one column pitch, so a content-fit height round-trips.
+  if (styledKey && !heightOmitted(options.size)) {
+    const rowsRoom = plot0.h - headerGap - headerH - continuousKeyH - annotationTopH - annotationBottomH;
+    const cellAfter = (bound: number) => capPitch((Math.max(10, rowsRoom - planStyledBubbleKey(bound).height - KEY_GAP) - (rows.length - 1) * CELL_GAP) / rows.length, 1, 1.5 * cellW);
+    let bound = cellAfter(0);
+    for (let pass = 0; pass < 3; pass++) bound = cellAfter(cellAfter(bound));
+    styledKey = planStyledBubbleKey(bound);
+  }
   const keyH = styledKey ? styledKey.height + KEY_GAP : bubbleKeys
     ? (keyTitled ? keyLineH + 4 : 0) + Math.max(hasSizes ? cellW / 2 : 0, KEY_BAR_H) + 3 + keyLineH + KEY_GAP
     : 0;
-  const headerGap = harveyWide ? HARVEY_HEADER_GAP : 0;
   const headTop = plot0.y + headerGap + keyH + annotationTopH + (keyBottom ? 0 : continuousKeyH);
   const gridY = headTop + headerH;
   const gridH = plotHeightAfter(frameResult, size.height, plot0.h - headerGap - headerH - keyH - continuousKeyH - annotationTopH - annotationBottomH);
@@ -1798,7 +1810,7 @@ export function layoutHeatmap(
    * stack otherwise. The strip's height comes from the column pitch and the
    * natural row pitch, never from the canvas height.
    */
-  function planStyledBubbleKey(): { height: number; draw: () => SceneNode[] } {
+  function planStyledBubbleKey(cellBound = Infinity): { height: number; draw: () => SceneNode[] } {
     const sizeLabel = options.bubble?.sizeLabel;
     const colorLabel = options.bubble?.colorLabel;
     const ink: Paint = { token: 'inkMuted' };
@@ -1819,7 +1831,8 @@ export function layoutHeatmap(
       }))
       : continuousStops().map((v, i) => ({ id: `scale:bin:${i}`, label: keyText(v), paint: fillPaint(v, null, true, direction) }));
     if (anyLowBase) colours.push({ id: 'scale:lowBase', label: lowBaseKey, paint: semanticPalettePaint(theme, options.palette, 'neutralMark', 0.55), hatch: true });
-    const rEst = Math.max(1.5, Math.min(cellW, bubbleNaturalH) / 2 - (Math.min(cellW, bubbleNaturalH) < 40 ? BUBBLE_AIR_TIGHT : BUBBLE_AIR));
+    const side = Math.min(cellW, bubbleNaturalH, cellBound);
+    const rEst = Math.max(1.5, side / 2 - (side < 40 ? BUBBLE_AIR_TIGHT : BUBBLE_AIR));
     const largest = Math.max(0, maxOf(rows.flatMap((r) => r.cells.map((c) => c.size ?? 0))));
     const sizeEntries = !hasSizes ? [] : levels
       ? levels.map((label, i) => ({ label, level: i + 1, r: Math.max(1.5, (rEst * (i + 2)) / (levels.length + 1)) }))

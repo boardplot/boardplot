@@ -1176,3 +1176,30 @@ it('keeps a cycle step secondary text inside its node', () => {
     expect(label.rect.w).toBeLessThanOrEqual(node.contentRect.w);
   }
 });
+
+// Prevents a bubble matrix with few wide columns from reserving a size key as tall as a column is wide: at a 380 pt
+// height the key left the rows no room and the chart refused, though the bubbles it draws are small.
+describe('bubble matrix key height', () => {
+  const stages = ['Seed', 'Series A', 'Series B', 'Growth'];
+  const sizes = [[4, 12, 30, 0], [3, 9, 22, 48], [0, 8, 26, 0], [2, 14, 0, 0], [0, 0, 35, 70], [5, 10, 18, 0], [2, 6, 20, 41], [6, 16, 0, 0]];
+  const spec = (size: { width: number; height?: number; unit?: string }) => ({
+    type: 'heatmap',
+    data: {
+      categories: stages.map((label, i) => ({ id: `c${i}`, label })),
+      series: sizes.map((row, i) => ({ id: `s${i}`, label: `Company ${i + 1}`, values: row.map(v => (v > 0 ? v : null)), sizes: row })),
+    },
+    options: { variant: 'bubble', scale: 'discrete', breaks: [0, 50, 70, 100], bubble: { sizeLabel: 'Invested, EUR m', colorLabel: 'Invested, EUR m' }, title: 'Invested capital by stage', source: 'Invented ledger', target: 'slide', size },
+  });
+
+  it('draws at 380 pt of height', () => {
+    expect(canDraw(spec({ width: 960, height: 380, unit: 'pt' }) as never)).toMatchObject({ ok: true });
+  });
+
+  it('keeps a content-fit height: the pinned render at the height it returns is the same SVG', () => {
+    const open = render({ spec: spec({ width: 960 }), return: ['svg'] }).body as { svg: string; size: { width: number; height: number } };
+    const pinned = render({ spec: spec({ width: open.size.width, height: open.size.height }), return: ['svg'] }).body as { svg: string };
+    // The ids hash the request and the sizing attribute names the request's size; the drawing is the rest.
+    const drawing = (svg: string) => svg.replace(/-[0-9a-f]{10}\b/g, '').replace(/ data-bp-sizing="[^"]*"/, '');
+    expect(drawing(pinned.svg)).toBe(drawing(open.svg));
+  });
+});
