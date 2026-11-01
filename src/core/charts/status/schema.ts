@@ -92,7 +92,7 @@ const legendSchema = z.union([
 
 export const statusOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions('status'))
   .safeExtend({
-    labels: baseOptionsSchema.shape.labels.describe("False hides cell state and value labels. Row and stage names remain. series: false hides row names; category: false hides stage names. When the state key is drawn and colour or hatch tells the states apart, the key names them and the cells print no state names, unless labelDensity is 'full'; then names that fit no type step print, and the rest warn label-hidden. Otherwise state names print in every bound cell only when all of them fit; else the key names states."),
+    labels: baseOptionsSchema.shape.labels.describe("False hides cell state and value labels. Row and stage names remain. series: false hides row names; category: false hides stage names. When the state key is drawn and colour or hatch tells the states apart, the key names them and the cells print no state names, unless labelDensity is 'full'; then the names print at the largest type step where all of them fit, and if no step fits they stay off with a label-hidden warning and one reading.omissions entry per state. Otherwise state names print in every bound cell only when all of them fit; else the key names states."),
     states: z
       .array(stateSchema)
       .min(1, { message: 'status requires at least one declared state' })

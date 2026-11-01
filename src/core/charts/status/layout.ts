@@ -569,12 +569,6 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
           });
         }
       }
-      // An authored labelDensity 'full' that no type step makes fit is a lost request: a seatless request
-      // is hidden, so the warning and reading.omissions name every cell whose state name is not drawn.
-      if (state && namesRequested && !namedCells) {
-        labelRequests.push({ id: `stateName:${row.id}:${column.id}`, kind: 'point', typeRole: 'label', role: 'category', owner,
-          text: state.label, lines: [state.label], font: cellFont, priority: PRIORITY.interior, candidates: [] });
-      }
       marks.cells.push({
         row: row.id,
         col: column.id,
@@ -596,6 +590,15 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
         stroke: { token: 'axis' }, width: strokeToken(theme, 'rule'), owner: { categoryId: columns[index]!.id }, part: 'yearRule',
       });
     });
+  }
+
+  // An authored labelDensity 'full' that no type step makes fit is a lost request. Names are all or none, so
+  // one seatless request per state is hidden: the warning and reading.omissions name each state, not each cell.
+  if (namesRequested && !namedCells) {
+    for (const state of usedStates) {
+      labelRequests.push({ id: `stateName:${state.id}`, kind: 'segment', typeRole: 'label', role: 'category', owner: { pointId: `stateName:${state.id}` },
+        text: state.label, lines: [state.label], font: cellFont, priority: PRIORITY.interior, candidates: [] });
+    }
   }
 
   if (labelOn('series')) {

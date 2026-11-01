@@ -4,6 +4,7 @@ import { layoutColumn } from '../src/core/charts/column/layout';
 import '../src/core/geo/packs';
 import { getFixtures } from '../src/fixtures';
 import { canDraw, layoutResolvedRequest, renderSvg, resolveChartRequest } from '../src/index';
+import { render } from '../src/cli/render';
 import { contrastRatio } from '../src/core/color';
 import { resolveTheme } from '../src/core/theme';
 import { measureText } from '../src/core/text';
@@ -626,19 +627,23 @@ describe('chart layout edge cases', () => {
   // reader got a board that ignored the request. The names now step down the type scale first, and
   // names that still do not fit warn and appear in the omissions.
   it('a status board with labelDensity full steps its names down, then names the ones it cannot draw', () => {
-    const board = (width: number) => {
-      const fixture = getFixtures('status').find((f) => f.id === 'programme-rollout-rag')!;
-      const request = { type: 'status', data: structuredClone(fixture.data), options: { ...structuredClone(fixture.options ?? {}), labelDensity: 'full', target: 'dashboard', size: { width } } };
+    const board = (id: string, width: number) => {
+      const fixture = getFixtures('status').find((f) => f.id === id)!;
+      const spec = { type: 'status', data: structuredClone(fixture.data), options: { ...structuredClone(fixture.options ?? {}), labelDensity: 'full', target: 'dashboard', size: { width } } };
+      const body = render({ spec, return: ['reading'] }).body as { warnings: { code: string; severity: string }[]; reading: { omissions: { labelId: string }[] } };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+      const geometry = layoutResolvedRequest(resolveChartRequest(spec as any) as any) as any;
+      return { body, geometry };
     };
-    const names = (g: { labels: { id: string; hidden?: unknown }[] }) => g.labels.filter((l) => l.id.startsWith('stateName:') && l.hidden);
-    const narrow = board(358);
-    expect(names(narrow).length).toBeGreaterThan(0);
-    expect(narrow.warnings.some((w: { code: string; severity: string }) => w.code === 'label-hidden' && w.severity === 'warn')).toBe(true);
+    const narrow = board('programme-rollout-rag', 358);
+    expect(narrow.body.reading.omissions.map((o) => o.labelId).sort()).toEqual(['stateName:amber', 'stateName:green', 'stateName:red']);
+    expect(narrow.body.warnings.some((w) => w.code === 'label-hidden' && w.severity === 'warn')).toBe(true);
     // A width where the full-size names do not fit but the one smaller type step does.
-    const stepped = board(500);
-    expect(names(stepped)).toEqual([]);
-    expect(stepped.labels.filter((l: { id: string; hidden?: unknown }) => l.id.startsWith('state:') && !l.hidden).length).toBeGreaterThan(0);
+    const stepped = board('programme-rollout-rag', 500);
+    expect(stepped.body.reading.omissions).toEqual([]);
+    expect(stepped.geometry.labels.filter((l: { id: string; hidden?: unknown }) => l.id.startsWith('state:') && !l.hidden).length).toBeGreaterThan(0);
+    // A board of hundreds of cells reports one entry per state, not one per cell: a request per cell cost five times the layout time.
+    const wide = board('central-bank-decisions', 1000);
+    expect(wide.body.reading.omissions.map((o) => o.labelId).filter((id) => id.startsWith('stateName:')).sort()).toEqual(['stateName:cut', 'stateName:hike', 'stateName:hold']);
   });
 });
