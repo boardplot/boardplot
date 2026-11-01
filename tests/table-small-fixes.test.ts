@@ -1417,6 +1417,40 @@ it('reads arrows, sort and ratios of a sign -1 row from the printed figures', ()
   expect(arrows.map((node) => node.lines.join(''))).toEqual(['→', '↓', '↓']);
 });
 
+// A pinned canvas with spare height used to leave a short table and a short cohort grid floating above the source line.
+it('gives the spare height of a pinned canvas to table rows and cohort rows', () => {
+  const data = tableDataSchema.parse({
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'v', kind: 'value' }],
+    rows: ['Alpha', 'Beta', 'Gamma'].map((label, i) => ({ id: label, label, cells: { v: 10 + i } })),
+  });
+  const rowH = (options: object) => (layout('table', data, { size: { width: 720, height: 420 }, ...options }).marks as { rows: { h: number }[] }).rows.map((row) => row.h);
+  const natural = rowH({ heightFill: 'none' });
+  const filled = rowH({});
+  expect(Math.min(...filled)).toBeGreaterThan(Math.max(...natural));
+  // 16 px of air above and below the line is the most a row takes.
+  expect(Math.max(...filled)).toBeLessThanOrEqual(2 * 16 + 24);
+  const cohort = { periodLabel: 'Month', cohorts: [{ id: 'a', label: 'Jan', active: [100, 60, 40] }, { id: 'b', label: 'Feb', active: [100, 55] }] };
+  const stepped = { variant: 'stepped', formatScope: 'classic', steps: [40, 60] };
+  const grid = layout('cohort', cohort, { ...stepped, size: { width: 720, height: 420 } });
+  expect(grid.plot.h).toBeGreaterThan(layout('cohort', cohort, { ...stepped, size: { width: 720 } }).plot.h);
+  // The period columns of a stepped grid share the free width, as a pure grid's do.
+  expect(grid.plot.w).toBeGreaterThan(600);
+  // heightFill 'none' brings back the old cohort look: natural rows and stepped columns at their measured width, as an open height draws them.
+  const cell = (options: object) => (layout('cohort', cohort, { ...stepped, ...options }).marks as { cells: { rect: { w: number; h: number } }[] }).cells[0]!.rect;
+  const old = cell({ size: { width: 720 }, heightFill: 'none' });
+  expect(cell({ size: { width: 720, height: 420 }, heightFill: 'none' })).toEqual(old);
+  expect(cell({ size: { width: 720, height: 420 } }).w).toBeGreaterThan(old.w);
+  // A bartable takes the same switch: 'none' keeps the 28 px pitch and the 14 px bar on a pinned canvas.
+  const bars = bartableDataSchema.parse({
+    categories: ['Alpha', 'Beta', 'Gamma', 'Delta'].map((label) => ({ id: label, label })),
+    series: [{ id: 's', label: 'S' }],
+    panels: [{ id: 'p', label: 'P', values: { s: [10, 20, 30, 40] } }],
+  });
+  const barH = (options: object) => (layout('bartable', bars, { size: { width: 720, height: 420 }, ...options }).marks as { segments: { rect: { h: number } }[] }).segments[0]!.rect.h;
+  expect(barH({ heightFill: 'none' })).toBe(14);
+  expect(barH({})).toBeGreaterThan(14);
+});
+
 // A diverging heat lane with a cap and no bins tints continuously, yet its key named default point bands ("1 to under 4") that no cell takes.
 it('prints no heat key for a diverging lane that is not stepped', () => {
   const data: TableData = {
