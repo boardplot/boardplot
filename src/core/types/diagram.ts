@@ -10,6 +10,7 @@ export const DIAGRAM_VARIANTS = [
   'circular-process',
   'strategy-house',
   'roadmap',
+  'architecture',
 ] as const;
 
 export type DiagramVariant = (typeof DIAGRAM_VARIANTS)[number];
@@ -93,6 +94,10 @@ export interface DiagramNode {
   groupId?: string;
   laneId?: string;
   order?: number;
+  /** Architecture: a named cross-axis track. Nodes in one track line up across zones or lanes. */
+  track?: string;
+  /** Architecture: a wide band across a lane, or a full-height rail in a zone. */
+  span?: 'full';
 }
 
 export interface DiagramEndpoint {
@@ -113,6 +118,8 @@ export interface DiagramEdge {
   paletteKey?: string;
   label?: string;
   waypoints?: DiagramFractionPoint[];
+  /** Architecture: a return edge does not set the node order. Default forward. */
+  flow?: 'forward' | 'return';
 }
 
 export interface DiagramGroup {
@@ -133,6 +140,13 @@ export interface DiagramLane {
   paletteKey?: string;
 }
 
+/** Architecture: one shared label for edges that cross one gutter. */
+export interface DiagramChannel {
+  id: string;
+  edgeIds: string[];
+  label: string;
+}
+
 /** One key entry: what the fill of the nodes in `role` (and `paletteKey`) means. */
 /**
  * One key entry: what a node fill means (role), or what a line style means
@@ -149,6 +163,8 @@ export interface DiagramData {
   lanes?: DiagramLane[];
   /** Names what a node fill means; drawn as the diagram key. */
   key?: DiagramKeyEntry[];
+  /** Architecture: one shared label for edges in one gutter. */
+  channels?: DiagramChannel[];
 }
 
 type DiagramCommonOptionKeys =
@@ -190,6 +206,7 @@ export type DiagramOptions = DiagramCommonOptions &
     | { variant: 'circular-process' }
     | { variant: 'strategy-house' }
     | { variant: 'roadmap' }
+    | { variant: 'architecture'; flow?: 'columns' | 'lanes' }
   );
 
 export interface ResolvedDiagramPort {

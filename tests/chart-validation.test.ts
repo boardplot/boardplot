@@ -7,6 +7,9 @@
 
 import { describe, expect, it } from 'vitest';
 import { render } from '../src/cli/render';
+import { layoutDiagram } from '../src/core/charts/diagram/layout';
+import type { Rect } from '../src/core/geometry';
+import type { DiagramData, DiagramOptions, DiagramPolylineRoute } from '../src/core/types/diagram';
 import { canDraw, getChartDefinition, resolveChartRequest } from '../src/index';
 import { getFixtures } from '../src/fixtures';
 import { checkedColor } from '../src/core/svg/paint';
@@ -120,6 +123,51 @@ describe('actionable input refusals', () => {
     ] }, options: { unit: 'EUR', secondaryAxis: { acknowledge: true }, axisTitles: { secondary: 'Other units' } } });
     expect(secondary).toMatchObject({ code: 'unit-conflict', path: '/data/series/2/unit', suggest: expect.stringContaining('secondary series one unit') });
     expect(secondary?.suggest).not.toContain('options.unit');
+  });
+
+  // Two nodes in one architecture cell have no drawing, so the refusal must name both and the fix.
+  it('refuses two architecture nodes in one lane and track', () => {
+    const node = (id: string) => ({ id, kind: 'step', shape: { kind: 'rectangle' }, label: id, laneId: 'l', track: 't' });
+    expect(() => getChartDefinition('diagram')!.layout({ nodes: [node('a'), node('b')], lanes: [{ id: 'l', label: 'Layer', orientation: 'horizontal' }] }, { variant: 'architecture', flow: 'lanes' }))
+      .toThrow(expect.objectContaining({ code: 'diagram-track-conflict', message: expect.stringContaining("'a' and 'b'") }));
+  });
+
+  // Two channels with one id emit one scene id twice, which crashes the React renderer.
+  it('refuses two diagram channels with one id', () => {
+    const node = (id: string) => ({ id, kind: 'step', shape: { kind: 'rectangle' }, label: id });
+    const [error] = errors({ type: 'diagram', data: { nodes: [node('a'), node('b')], edges: [{ id: 'e', source: { nodeId: 'a' }, target: { nodeId: 'b' } }],
+      channels: [{ id: 'c', edgeIds: ['e'], label: 'One' }, { id: 'c', edgeIds: ['e'], label: 'Two' }] }, options: { variant: 'architecture' } });
+    expect(error).toMatchObject({ path: '/data/channels/1/id' });
+  });
+
+  // A lane label wider than the plot left no room for nodes, and layout threw a TypeError.
+  it('keeps room for nodes beside a long unbroken architecture lane label', () => {
+    const layout = layoutDiagram({ nodes: [{ id: 'a', kind: 'step', shape: { kind: 'rectangle' }, label: 'A', laneId: 'l' }], lanes: [{ id: 'l', label: 'W'.repeat(100), orientation: 'horizontal' }] } as DiagramData,
+      { variant: 'architecture', flow: 'lanes', size: { width: 600, height: 540 } } as DiagramOptions);
+    expect(layout.marks.nodes[0]!.rect.w).toBeGreaterThan(300);
+  });
+
+  // Many unlike edges between two nodes pushed their ends past the node sides, and the lines floated.
+  it('keeps every architecture edge end on its node', () => {
+    const node = (id: string) => ({ id, kind: 'step', shape: { kind: 'rectangle' }, label: id });
+    const roles = ['primary', 'secondary', 'muted', 'accent'];
+    const edges = roles.flatMap((role) => ['solid', 'dashed', 'dotted', 'solid'].map((dash, index) => ({ id: `${role}${index}`, source: { nodeId: 'a' }, target: { nodeId: 'b' }, role, dash, weight: index === 3 ? 'strong' : 'normal' })));
+    const { marks } = layoutDiagram({ nodes: [node('a'), node('b')], edges } as DiagramData, { variant: 'architecture', size: { width: 960, height: 1000 } } as DiagramOptions);
+    const [a, b] = marks.nodes.map((item) => item.rect) as [Rect, Rect];
+    const on = (point: { x: number; y: number }, rect: Rect) => point.x >= rect.x && point.x <= rect.x + rect.w && point.y >= rect.y && point.y <= rect.y + rect.h;
+    for (const edge of marks.edges) {
+      const { points } = edge.route as DiagramPolylineRoute;
+      expect(on(points[0]!, a)).toBe(true);
+      expect(on(points.at(-1)!, b)).toBe(true);
+    }
+  });
+
+  // The key must show what the nodes wear, and architecture draws structural nodes on the background.
+  it('keys architecture nodes with the paints they wear', () => {
+    const node = (id: string, role: string) => ({ id, kind: 'step', shape: { kind: 'rectangle' }, label: id, role });
+    const layout = layoutDiagram({ nodes: [node('a', 'primary'), node('b', 'secondary')], key: [{ role: 'primary', label: 'One' }, { role: 'secondary', label: 'Two' }] } as DiagramData, { variant: 'architecture' } as DiagramOptions);
+    const swatches = layout.scene.filter((item) => item.part === 'swatch');
+    expect(swatches.map((item) => (item as { pattern?: string }).pattern)).toEqual(['hollow', 'hollow']);
   });
 
   // A diagram kind refused by its variant must name the kinds that variant can place.

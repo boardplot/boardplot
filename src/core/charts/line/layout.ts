@@ -319,7 +319,7 @@ function annotateLine(
   labelRequests?: LabelRequest[],
   printedLabels?: readonly PlacedLabel[],
 ): AnnotatePassResult {
-  const { options, cats, dataSeries, drawnSeries, refSeries, pv, rowOf, isStacked, cumTop, rebased, absOf } = domain;
+  const { options, cats, dataSeries, drawnSeries, refSeries, pv, rowOf, isStacked, cumTop, rebased, absOf, compositionInvalidAt } = domain;
   const { plot, y, xOf, categoryOrder: catIndex } = area;
   const anchorSeries = [...drawnSeries, ...refSeries.filter((s) => scene.nodes.some((node) => node.part === 'referenceLine' && node.owner.seriesId === s.id))];
   const anchorError = (ref: AnchorRef): string => {
@@ -336,6 +336,26 @@ function annotateLine(
     const ci = catIndex.get(norm.categoryId);
     if (ci === undefined) return null;
     const c = cats[ci]!;
+    // An explicit total reads every band. String anchors keep reading the first series.
+    // A suppressed 100% category has no total. Directly authored shares have no amount to add, so their total is the plotted percent.
+    if (isStacked && typeof ref !== 'string' && norm.edge === 'total' && !norm.seriesId && drawnSeries.length > 1) {
+      if (compositionInvalidAt(ci)) return null;
+      const top = drawnSeries[drawnSeries.length - 1]!;
+      const amounts = drawnSeries.map(s => rebased ? pv[rowOf.get(s)!]![ci]! : absOf(s, ci));
+      const sharesOnly = drawnSeries.some((s, i) => amounts[i] === null && s.vals[ci]!.v !== null);
+      const values = sharesOnly ? drawnSeries.map(s => pv[rowOf.get(s)!]![ci]!) : amounts;
+      if (values.every(value => value === null)) return null;
+      const value = values.reduce<number>((total, value) => total + (value ?? 0), 0);
+      return {
+        x: xOf(ci),
+        y: y(cumTop[dataSeries.indexOf(top)]![ci]!),
+        value,
+        ...(sharesOnly ? { pointValueText: domain.valueSpec.forSeries(top, top.vals[ci]?.format)(value), format: top.format } : { format: rebased ? undefined : top.format }),
+        date: c.date, label: c.label ?? c.id,
+        owner: { categoryId: c.id },
+        lineAnchored: true,
+      };
+    }
     // default series for category-level anchors (cagr span, valueLine): first data series
     const s = norm.seriesId ? anchorSeries.find((x) => x.id === norm.seriesId) : drawnSeries[0];
     if (!s) return null;
