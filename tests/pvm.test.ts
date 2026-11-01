@@ -202,6 +202,16 @@ describe('pvm decomposition', () => {
     }
   });
 
+  // The page showed both totals but never their difference, so a reader had to subtract.
+  it('prints the net change over the closing column, and netChange false removes it', () => {
+    const geometry = laid(0);
+    const derived = geometry.derived as PvmDerived;
+    const net = geometry.labels.find((label) => label.id === 'net:current');
+    const percent = ((derived.delta / derived.priorRevenue) * 100).toFixed(1).replace('-', '\u2212');
+    expect(net?.text).toContain(`(${derived.delta > 0 ? '+' : ''}${percent}%)`);
+    expect(laid(0, { netChange: false }).labels.some((label) => label.id === 'net:current')).toBe(false);
+  });
+
   it('leaves the convention off by default without a warning ', () => {
     for (const extra of [{ methodNote: undefined }, { methodNote: false }]) {
       const geometry = laid(0, extra);

@@ -46,7 +46,7 @@ import { applyValueAxisTitleInk, axisTitleAllowed, planValueAxisTitle, valueAxis
 import { axisBreakInvalid } from '../../axisBreakInvalid';
 import { axisBreakHeightOrderWarning, breakReversesOrder, type BreakBar } from '../../axisBreakOrder';
 import { valueLineExtent } from '../../valueLineDomain';
-import { formatAutomaticNumber as plainNumber } from '../../format';
+import { changePercentText, formatAutomaticNumber as plainNumber } from '../../format';
 import { authoredDecimals } from '../../formatPrecision';
 import { authoredNotes, frameTextOptions, legendRequired, normalizeLegendOption, solveFrame, fixedPlotChrome, type LegendItemInput, plotHeightAfter } from '../../frame';
 import { defaultMeasurer, type FontSpec } from '../../text';
@@ -882,6 +882,19 @@ function layoutWaterfallWithPad(
   const bridges = cases.length > 0 ? caseItems.map(deriveBridge) : [deriveBridge(items)];
   const levels: WaterfallDerived['levels'] = bridges.reduce<WaterfallDerived['levels']>((all, bridge) => Object.assign(all, bridge.levels), emptyIdRecord());
   const totals: WaterfallDerived['totals'] = bridges.reduce<WaterfallDerived['totals']>((all, bridge) => Object.assign(all, bridge.totals), emptyIdRecord());
+  // A host (pvm) can ask for the closing total's change over the opening total, printed over the closing column.
+  const closingNet = (() => {
+    const open = items[0]!;
+    const close = items[items.length - 1]!;
+    if (!categoryRow || cases.length > 0 || options.labels === false || items.length < 2 || open.type === 'delta' || close.type === 'delta') return undefined;
+    if ((options as { closingChange?: boolean }).closingChange !== true) return undefined;
+    const delta = totals[close.id]! - totals[open.id]!;
+    if (!Number.isFinite(delta) || delta === 0) return undefined;
+    const base = totals[open.id]!;
+    const change = fmtSigned(delta);
+    const percent = base > 0 ? `(${changePercentText((delta / base) * 100, 1, options.locale?.language)})` : '';
+    return { text: percent ? `${change} ${percent}` : change, lines: percent ? [change, percent] : [change], tone: stepTone(delta) };
+  })();
   const totalBasis: WaterfallDerived['totalBasis'] = bridges.reduce<WaterfallDerived['totalBasis']>((all, bridge, k) =>
     Object.assign(all, Object.fromEntries(Object.entries(bridge.totalBasis).map(([id, basis]) => [id, basis.authored && cases.length > 0
       ? { authored: true as const, ref: `${data.items[caseItems[k]!.findIndex((it) => it.id === id)]!.id}.values.${k}` }
@@ -1826,6 +1839,37 @@ function layoutWaterfallWithPad(
     };
     labelRequests.push(valueRequest);
     if (caseIndex !== undefined) caseValues[i]!.push(valueRequest);
+    // The closing total's net change over the opening total: a second bold value above the total's own.
+    if (closingNet !== undefined && isTotal && caseIndex === undefined && i === items.length - 1) {
+      const netId = `net:${it.id}`;
+      const netText = closingNet.text;
+      const netSize = measure(netText, strongFont);
+      const netY = negative ? outsideY + tsize.height + 2 : outsideY - netSize.height - 2;
+      boldValueIds.add(netId);
+      labelRequests.push({
+        id: netId,
+        kind: 'total',
+        owner: stepOwner,
+        // A derived difference with its percent: a composed text, not one of the source values.
+        role: composedTextRole(netText),
+        text: netText,
+        lines: [netText],
+        font: strongFont,
+        // A step's own value outranks the difference of the totals, which a note can carry.
+        priority: PRIORITY.interior,
+        candidates: [
+          { slot: outsideSlot, rect: { x: bx + bw / 2 - netSize.width / 2, y: netY, w: netSize.width, h: netSize.height }, penalty: 0 },
+          // Wider than the room beside the last bar: it hangs inward from the bar's outer edge.
+          { slot: outsideSlot, rect: { x: bx + bw - netSize.width, y: netY, w: netSize.width, h: netSize.height }, penalty: 1 },
+          // Still too wide: the change and its percent stand on two lines over the bar.
+          ...(closingNet.lines.length === 2 ? [(() => {
+            const w = Math.max(...closingNet.lines.map((line) => measure(line, strongFont).width));
+            const h = netSize.height * 2;
+            return { slot: outsideSlot, rect: { x: bx + bw / 2 - w / 2, y: negative ? outsideY + tsize.height + 2 : outsideY - h - 2, w, h }, penalty: 2, lines: closingNet.lines };
+          })()] : []),
+        ],
+      });
+    }
 
     // ---- category label: once per step ----
     if (caseIndex !== undefined && caseIndex > 0) return;
@@ -1941,6 +1985,10 @@ function layoutWaterfallWithPad(
     for (const label of solved.placed) {
       const tone = label.id.startsWith('sum:') ? stepTones.get(label.id.slice('sum:'.length)) : undefined;
       if (tone && tone !== 'neutral' && label.slot !== 'insideEnd') label.ink = { token: tone };
+    }
+    if (closingNet !== undefined) {
+      const net = solved.placed.find((label) => label.id.startsWith('net:'));
+      if (net && closingNet.tone !== 'neutral') net.ink = { token: closingNet.tone };
     }
   }
 
