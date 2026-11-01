@@ -449,6 +449,23 @@ it('gantt drops owner and status columns on a 432 pt wide slide instead of squee
   expect(body.svg).not.toContain('>Owner<');
 });
 
+// On a 358 px phone a bar name wider than its bar spilled over it on a halo or floated away from it, and the week row printed no name at all.
+it('gantt seats phone bar names beside their bars and still names some weeks', () => {
+  const fixture = getFixtures('gantt').find(f => f.id === 'product-launch')!;
+  const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'gantt', data: fixture.data,
+    options: { ...fixture.options, size: { width: 358 } }, annotations: fixture.annotations }));
+  if (geometry.refused) throw new Error('gantt refused');
+  const bar = (id: string) => (geometry.marks.rows as GanttMarks['rows']).flatMap(row => row.itemNodes).find(mark => mark.id === id)!.rect;
+  const name = (id: string) => geometry.labels.find(label => label.owner.segmentId === id && !label.hidden)!;
+  const scope = name('prep-scope');
+  expect(scope.slot).toBe('outsideRight');
+  expect(scope.halo).toBeFalsy();
+  expect(rectsOverlap(scope.rect, bar('prep-scope'))).toBe(false);
+  const care = name('hypercare');
+  expect(care.rect.x < bar('hypercare').x + bar('hypercare').w && care.rect.x + care.rect.w > bar('hypercare').x).toBe(true);
+  expect(geometry.scene.filter(node => node.id.startsWith('header:minor:') && node.id.endsWith(':text')).length).toBeGreaterThan(0);
+});
+
 // A diamond that prints only its date has no name to explain it, so the "Milestone" key must stay (main draws it).
 it('gantt keeps the Milestone key when labels.item selects only the date', () => {
   const data = { rows: [{ id: 'review', label: 'Review', items: [{ id: 'gate', kind: 'milestone', label: 'Review gate', start: '2026-04-13' }] }] };
