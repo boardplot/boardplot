@@ -60,6 +60,23 @@ it('keeps accounting signs in labels, axes, tables, keys, annotations and access
   expect(renderSvg(requireGeometry(layoutResolvedRequest(tableRequest)), tableRequest.theme)).toBe(tableSvg);
 });
 
+// Prevents diverging slope net scores and changes from ignoring the chart format in labels and accessible descriptions.
+it('formats diverging slope net scores and changes with options.format', () => {
+  const data = { categories: ['Before', 'After'], series: [
+    { id: 'rise', label: 'Rise', values: [42, 55], negative: [22, 15] },
+    { id: 'fall', label: 'Fall', values: [36, 20], negative: [14, 30] },
+    { id: 'flat', label: 'Flat', values: [20, 30], negative: [20, 30] },
+  ] };
+  for (const [format, language, decimal] of [['1.0', 'en', '.'], ['+1.0', 'en', '.'], ['1,0', 'de', ',']] as const) {
+    const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'slope', data,
+      options: { variant: 'diverging', format, locale: { language, decimal }, size: { width: 960 } },
+    } as never)));
+    const net = geometry.labels.filter(label => !label.hidden && label.id.endsWith(':net')).map(label => label.text).sort();
+    expect(net).toEqual([`+40${decimal}0 (+20${decimal}0)`, `−10${decimal}0 (−32${decimal}0)`, `0${decimal}0 (0${decimal}0)`].sort());
+    expect(geometry.a11y.desc).toContain(`Rise +40${decimal}0`);
+  }
+});
+
 describe('number formatting', () => {
   it('prints distinct ticks above 100 and readable ticks near 0.001', () => {
     const ticks = [100, 100.5, 101];
