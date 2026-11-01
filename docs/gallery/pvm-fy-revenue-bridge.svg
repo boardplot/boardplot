@@ -36,4 +36,5 @@
 <text data-id="label:sum:new" data-part="segment" data-bp-role="value" x="434.15" y="120.06" text-anchor="start" font-size="12" font-weight="400" fill="#0C7B4C" style="font-variant-numeric: tabular-nums"><tspan x="434.15" dy="0">+7,000</tspan></text>
 <text data-id="label:sum:price" data-part="segment" data-bp-role="value" x="339.50" y="217.84" text-anchor="start" font-size="12" font-weight="400" fill="#0C7B4C" style="font-variant-numeric: tabular-nums"><tspan x="339.50" dy="0">+4,560</tspan></text>
 <text data-id="label:sum:volume" data-part="segment" data-bp-role="value" x="150.20" y="197.53" text-anchor="start" font-size="12" font-weight="400" fill="#0C7B4C" style="font-variant-numeric: tabular-nums"><tspan x="150.20" dy="0">+7,434</tspan></text>
+<text data-id="label:net:current" data-part="total" data-bp-role="value" x="594.69" y="160.75" text-anchor="start" font-size="13" font-weight="700" fill="#0C7B4C" style="font-variant-numeric: tabular-nums"><tspan x="594.69" dy="0">+8,780 (+15.3%)</tspan></text>
 </svg>
