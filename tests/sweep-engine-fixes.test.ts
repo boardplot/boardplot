@@ -500,6 +500,20 @@ describe('chart layout edge cases', () => {
     expect(key && !key.hidden).toBe(true);
   });
 
+  // A diverging slope hatched a small-base panel and said why only in a hidden note, so the hatch had no key.
+  it('a diverging slope keys its hatched low-base panel, and only when one is drawn', () => {
+    const lay = (n: number) => layoutResolvedRequest(resolveChartRequest({
+      type: 'slope',
+      data: { categories: [{ id: 'a', label: 'Wave 1' }, { id: 'b', label: 'Wave 2' }], series: [{ id: 'g', label: 'Group', values: [60, 55], negative: [15, 22], n: [n, n] }] },
+      options: { variant: 'diverging', diverging: { minBase: 30 } },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any) as any) as any;
+    const keyed = (g: { labels: { id: string; text?: string; hidden?: unknown }[] }) => g.labels.find((l) => l.id === 'series:n < 30');
+    expect(keyed(lay(18))?.hidden).toBeFalsy();
+    expect(keyed(lay(18))?.text).toBe('n < 30');
+    expect(keyed(lay(120))).toBeUndefined();
+  });
+
   // An unsized sparkline with a title kept its 176 px card on slide, so the title wrapped one word a line and was cut.
   it('an unsized sparkline on slide is as wide as its title and keeps 320 px for a short one', () => {
     const request = (title: string) => ({

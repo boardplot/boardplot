@@ -10,7 +10,7 @@ import { chartString } from '../../strings/slope';
 
 import { chartTheme } from '../chartEnv';
 import { fitText } from '../../label/fitText';
-import { formatAuthoredPercent, formatAutomaticNumber, numberRange, seriesValueFormatter } from '../../format';
+import { formatAuthoredPercent, formatAutomaticNumber, lowBaseKeyLabel, numberRange, seriesValueFormatter } from '../../format';
 import { differenceExample, formatterFromExample, signedFormatterFromExample } from '../../formatSpec';
 import { autoDecimals } from '../../formatPrecision';
 import { cleanDiff, cleanFloat, type Rect } from '../../geometry';
@@ -282,7 +282,10 @@ export function layoutDivergingSlope(
   const sw = 10;
   const posW = measure(posName, labelFont).width;
   const negW = measure(negName, labelFont).width;
-  const swatchesW = sw + 4 + posW + 12 + sw + 4 + negW;
+  // A hatched low-base panel is keyed beside the two areas, as the heatmap keys a low-base cell.
+  const lowKey = low.length > 0 ? lowBaseKeyLabel(minBase, language) : undefined;
+  const lowW = lowKey === undefined ? 0 : 12 + sw + 4 + measure(lowKey, labelFont).width;
+  const swatchesW = sw + 4 + posW + 12 + sw + 4 + negW + lowW;
   const periodW = (run: number): number => w1 + 6 + DOT_R * 2 + run + DOT_R * 2 + 6 + w2;
   // A narrow card keeps the three items on one row: the period key comes as
   // close as the swatches stand to each other, and its run shortens to KEY_RUN_MIN, before
@@ -312,8 +315,13 @@ export function layoutDivergingSlope(
   const keyCy = plot0.y + textH / 2;
   {
     let x = plot0.x;
-    for (const [name, fill, w] of [[posName, posFill, posW], [negName, negFill, negW]] as const) {
-      nodes.push({ t: 'rect', id: `legend:area:${name}`, rect: { x, y: keyCy - sw / 2, w: sw, h: sw }, fill, owner: {}, part: 'legendKey' });
+    const items: { id: string; name: string; fill: Paint; w: number; hatched?: true }[] = [
+      { id: `legend:area:${posName}`, name: posName, fill: posFill, w: posW },
+      { id: `legend:area:${negName}`, name: negName, fill: negFill, w: negW },
+    ];
+    if (lowKey !== undefined) items.push({ id: 'legend:lowBase', name: lowKey, fill: { token: 'neutralMark' }, w: lowW - 12 - sw - 4, hatched: true });
+    for (const { id, name, fill, w, hatched } of items) {
+      nodes.push({ t: 'rect', id, rect: { x, y: keyCy - sw / 2, w: sw, h: sw }, fill, ...(hatched ? { pattern: 'hatch45' as const, hatchGround: { token: 'background' } as Paint, stroke: { token: 'grid' } as Paint } : {}), owner: {}, part: 'legendKey' });
       fixed(`series:${name}`, 'series', {}, [name], labelFont, [{ x: x + sw + 4, y: keyCy - textH / 2, w, h: textH }], PRIORITY.reference, false);
       x += sw + 4 + w + 12;
     }
