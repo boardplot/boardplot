@@ -42,7 +42,9 @@ import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelCtx, PRIORITY, solveLabels, type LabelRequest, type SlotCandidate, type SolveCtx } from '../../label/solver';
 import { accessibleTitle, NormalizeError, resolveHighlight, resolveSize } from '../../normalize/shared';
-import { applyAxisBounds, bandScale, linearScale, niceDomain } from '../../scale';
+import { applyAxisBounds, bandScale, brokenLinearScale, crossesLinearBreak, invalidLinearBreakReason, linearScale, niceDomain, type LinearBreak } from '../../scale';
+import { axisBreakInvalid } from '../../axisBreakInvalid';
+import { breakStyleRefusal } from '../band/breakOrder';
 import { authoredNotes, frameTextOptions, solveFrame, plotHeightAfter, authoredFootnoteCount, fixedPlotChrome } from '../../frame';
 import { defaultMeasurer, type FontSpec } from '../../text';
 import { strokeToken, canvasMargin, focusColor, paintColor, resolveSemanticPaletteTheme, semanticPalettePaint } from '../../theme';
@@ -109,6 +111,33 @@ const BREAK_W = 8;
 
 /** The shortest value run a row of boxes reads on, as a horizontal bridge's bar run. */
 const MIN_VALUE_RUN = 80;
+
+/**
+ * The authored value-axis break, or undefined when it cannot be drawn (the chart then draws unbroken).
+ * The omitted span must hold no drawn value, and no box or whisker may run across it,
+ * because a cut through a box or whisker misstates the spread the chart shows.
+ */
+function boxAxisBreak(
+  requested: unknown,
+  domain: [number, number],
+  drawnValues: readonly number[],
+  rows: readonly BoxGroupDerived[],
+  axisShown: boolean,
+  warnings: LintWarning[],
+): LinearBreak | undefined {
+  if (!requested || typeof requested !== 'object') return undefined;
+  const asked = requested as LinearBreak;
+  const spans = rows.flatMap((row) =>
+    row.state === 'box' || row.state === 'median-only' ? [[row.whiskerLow!, row.q1!], [row.q1!, row.q3!], [row.q3!, row.whiskerHigh!]] : []);
+  const reason = breakStyleRefusal(asked)
+    ?? (axisShown ? undefined : 'a hidden value axis draws no break mark')
+    ?? invalidLinearBreakReason(domain, asked, drawnValues)
+    ?? (spans.some(([a, b]) => crossesLinearBreak(a!, b!, asked)) ? 'a box or whisker runs across the omitted span' : undefined);
+  if (reason === undefined) return { from: asked.from, to: asked.to };
+  const refused = axisBreakInvalid('box', reason);
+  warnings.push({ ...refused, severity: 'warn', message: `${refused.message}; the chart is drawn without the break` });
+  return undefined;
+}
 
 /**
  * `bracketRoom` is the width the second pass keeps between the plot and the n column for comparison brackets.
@@ -260,11 +289,11 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
       suggest: 'remove legend — the method note explains the box, whiskers, and dots',
     });
   }
-  if (options.valueAxis?.break) {
+  if (options.valueAxis?.break && typeof options.valueAxis.break !== 'object') {
     warnings.push({
       code: 'axis-break-unsupported',
       severity: 'warn',
-      message: 'box does not support valueAxis.break; a broken axis would misstate the spread it exists to show',
+      message: "box draws only a valueAxis.break with from and to; 'auto' was ignored",
     });
   }
   const ignored = (
@@ -363,11 +392,11 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   // the exhibit compares. Its value is parked at the plot edge behind a break
   // mark and printed under it, so the box and whisker scale keeps its width.
   // Only a beyond-whisker value is parked (never a box, whisker or small-n
-  // dot), only one distinct value, and only where no authored axis maximum,
-  // hidden axis or comparison bracket asks for the plain linear read.
+  // dot), only one distinct value, and only where no authored axis maximum or
+  // break, hidden axis or comparison bracket asks for the plain linear read.
   let parked: number | undefined;
   const beyondValues = drawnBeyond.flatMap((points) => points.map((point) => point.value));
-  if (options.valueAxis?.show !== false && options.valueAxis?.max === undefined && !options.annotations?.length && beyondValues.length > 0) {
+  if (options.valueAxis?.show !== false && options.valueAxis?.max === undefined && typeof options.valueAxis?.break !== 'object' && !options.annotations?.length && beyondValues.length > 0) {
     const top = maxOf(beyondValues);
     const neededOnScale = rows.some((row, index) =>
       ((row.state === 'box' || row.state === 'median-only') &&
@@ -578,7 +607,9 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   // the domain edge is still painted inside the plot rect.
   // A parked value keeps its strip inside the plot rect, right of the value scale.
   const scaleEnd = plot.x + plot.w - parkRoom;
-  const x = linearScale([dLo, dHi], [plot.x + POINT_R, scaleEnd - (parked === undefined ? POINT_R : 0)]);
+  const range: [number, number] = [plot.x + POINT_R, scaleEnd - (parked === undefined ? POINT_R : 0)];
+  const activeBreak = boxAxisBreak(options.valueAxis?.break, [dLo, dHi], drawnValues, rows, options.valueAxis?.show !== false, warnings);
+  const x = activeBreak ? brokenLinearScale([dLo, dHi], range, activeBreak) : linearScale([dLo, dHi], range);
   const parkX = scaleEnd + PARK_GAP;
   /** Painted x of a dot: the parked value sits in its strip, every other value on the scale. */
   const xp = (value: number): number => (parked !== undefined && value === parked ? parkX : x(value));

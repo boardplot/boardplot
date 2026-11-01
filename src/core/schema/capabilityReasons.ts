@@ -47,7 +47,7 @@ const VALUE_AXIS_REASONS: Readonly<Record<keyof typeof VALUE_AXIS_CAPABILITY, st
   reverse:
     'only line and scatter reverse the value axis; bars, columns and bridge steps grow from their baseline, and a reversed axis would read gains as losses. Drop reverse',
   break:
-    'only bar, column, histogram and waterfall draw a value-axis break; this type would accept it and draw an unbroken axis. Drop break, or draw the data as a column or bar chart',
+    'only bar, box, column, histogram and waterfall draw a value-axis break; this type would accept it and draw an unbroken axis. Drop break, or draw the data as a column or bar chart',
   log:
     'only scatter draws a log scale; this type draws its values on a linear axis. Drop log, or plot the data as a scatter',
 };
@@ -212,7 +212,7 @@ const ALTERNATIVES: Readonly<Record<string, Readonly<Record<string, string>>>> =
     '*': "this type grows its marks from a baseline, where a reversed axis reads gains as losses; type 'line' and type 'scatter' reverse",
     slope: "for ranks with 1 on top, draw type 'line' with options.variant 'bump' and options.bump.direction 'lowerIsBetter'; to flip a numeric scale, draw type 'line' with options.valueAxis.reverse",
   },
-  'valueAxis.break': { '*': "type 'column', 'bar', 'histogram' and 'waterfall' draw a break; draw the data as type 'column' or 'bar' to cut a tall value" },
+  'valueAxis.break': { '*': "type 'column', 'bar', 'box', 'histogram' and 'waterfall' draw a break; draw the data as type 'column' or 'bar' to cut a tall value" },
   'valueAxis.log': { '*': "type 'scatter' draws the one log scale" },
   'scaleGroup.x': { '*': 'options.scaleGroup.y shares the value scale; no chart type shares an x scale' },
   'window.decimate': { '*': 'keep options.window.last, or narrow the periods with options.viewDomain' },

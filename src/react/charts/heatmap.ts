@@ -3,7 +3,7 @@
 "use client";
 // Single-chart React entry for 'heatmap'.
 
-import { sharedKeys10, sharedKeys5, sharedKeys9 } from '../optionKeyTrees';
+import { sharedKeys9, sharedKeys4, sharedKeys8 } from '../optionKeyTrees';
 
 import { heatmapCore } from '../../core/charts/heatmap/core';
 import { registeredType } from '../chartEntry';
@@ -15,6 +15,6 @@ import type { HeatmapOptions } from '../../core/types/options';
 export type { ChartProps } from '../createChartComponent';
 
 // The option keys 'heatmap' takes, from its options schema: a prop outside them draws the unknown-option refusal.
-const checkOptionKeys = optionKeyCheck({"tree":{"target":0,"textScale":0,"textSize":0,"a11y":{"title":0,"description":0,"table":0},"mode":0,"belowMinimum":0,"size":{"width":0,"height":0,"unit":0},"embed":{"width":0},"margin":{"top":0,"right":0,"bottom":0,"left":0},"canvas":{"margin":{"top":0,"right":0,"bottom":0,"left":0}},"title":0,"subtitle":{"company":0,"measure":0,"period":0,"scenarios":0},"unit":0,"unitShown":0,"source":0,"footnotes":0,"notes":{"maxListed":0,"placement":0,"maxLines":0,"show":0,"pointer":0},"theme":{"preset":0,"overrides":0},"locale":{"language":0,"decimal":0,"thousands":0,"minusGlyph":0,"weekStartsOn":0},"strings":sharedKeys10,"format":0,"detailFields":{"[]":{"key":0,"label":0,"format":0,"unit":0}},"smallValues":0,"palette":0,"labelDensity":0,"labels":0,"labelPlacements":0,"legend":{"position":0,"order":0},"scaleGroup":{"y":0,"id":0},"sort":{"categories":0,"segments":0},"highlight":0,"story":{"steps":{"[]":{"id":0,"title":0,"body":0,"highlight":0}},"step":0},"focus":sharedKeys5,"hatchStrength":0,"colorblindSafe":0,"interactive":0,"annotations":sharedKeys9,"scale":0,"variant":0,"cap":{"pct":0,"abs":0},"breaks":0,"bubble":{"levels":0,"sizeLabel":0,"colorLabel":0,"track":0},"minBase":0,"missing":0},"labels":["category","series","point"]});
+const checkOptionKeys = optionKeyCheck({"tree":{"target":0,"textScale":0,"textSize":0,"a11y":{"title":0,"description":0,"table":0},"mode":0,"belowMinimum":0,"size":{"width":0,"height":0,"unit":0},"embed":{"width":0},"margin":{"top":0,"right":0,"bottom":0,"left":0},"canvas":{"margin":{"top":0,"right":0,"bottom":0,"left":0}},"title":0,"subtitle":{"company":0,"measure":0,"period":0,"scenarios":0},"unit":0,"unitShown":0,"source":0,"footnotes":0,"notes":{"maxListed":0,"placement":0,"maxLines":0,"show":0,"pointer":0},"theme":{"preset":0,"overrides":0},"locale":{"language":0,"decimal":0,"thousands":0,"minusGlyph":0,"weekStartsOn":0},"strings":sharedKeys9,"format":0,"detailFields":{"[]":{"key":0,"label":0,"format":0,"unit":0}},"smallValues":0,"palette":0,"labelDensity":0,"labels":0,"labelPlacements":0,"legend":{"position":0,"order":0},"scaleGroup":{"y":0,"id":0},"sort":{"categories":0,"segments":0},"highlight":0,"story":{"steps":{"[]":{"id":0,"title":0,"body":0,"highlight":0}},"step":0},"focus":sharedKeys4,"hatchStrength":0,"colorblindSafe":0,"interactive":0,"annotations":sharedKeys8,"scale":0,"variant":0,"cap":{"pct":0,"abs":0},"breaks":0,"bubble":{"levels":0,"sizeLabel":0,"colorLabel":0,"track":0},"minBase":0,"missing":0},"labels":["category","series","point"]});
 
 export const HeatmapChart = createChartComponent<HeatmapData, HeatmapOptions>(registeredType(heatmapCore), checkOptionKeys);

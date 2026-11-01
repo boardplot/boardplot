@@ -1032,6 +1032,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | outliers-withheld-method-note | box | example | Outliers withheld from the ink and the axis, with the quartile and whisker rule stated |
 | salary-bands-pinned-median | box | example | The IC5 median label pinned above its box through labelPlacements |
 | twelve-teams-median-column | box | example | Twelve dense rows print their medians in one column beside n |
+| outliers-axis-break | box | example | A value-axis break across the empty range keeps two far outliers visible |
 
 ## waffle
 

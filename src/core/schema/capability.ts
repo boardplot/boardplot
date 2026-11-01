@@ -183,7 +183,7 @@ export const VALUE_AXIS_CAPABILITY = {
   // only warn axis-break-unsupported. A bar variant that draws none
   // (football-field, tornado) still warns, because the type draws it elsewhere.
   break: {
-    implementedBy: ['bar', 'column', 'histogram', 'pvm', 'waterfall'],
+    implementedBy: ['bar', 'box', 'column', 'histogram', 'pvm', 'waterfall'],
   },
   // Line, column, combo, mekko and variance would accept
   // log, warn log-refused and draw linear. Scatter is the one log scale.
