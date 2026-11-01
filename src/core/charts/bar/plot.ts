@@ -311,7 +311,14 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
   const availH = plotHeightAfter(frame, size.height, plot0.h - annPad - axisH);
   const lineH = tickFont.size * 1.2;
   // A fixed bar row sizes the names to its pitch, not to the canvas.
+  const gapAfter = cats.map((cat) => {
+    const gap = cat.gapAfter === true ? 0.5 : typeof cat.gapAfter === 'number' ? Math.max(0, cat.gapAfter) : 0;
+    // A category break needs a gap wide enough to carry its glyph.
+    return cat.breakAfter ? Math.max(gap, 0.5) : gap;
+  });
   const stepEst = theme.space.barRow?.pitch ?? availH / cats.length;
+  // The step the sizing keeps per row: the authored gaps take steps of their own, so an extra name line must fit what is left to a row.
+  const rowStep = theme.space.barRow?.pitch ?? availH / bandSteps(cats.length, gapAfter);
   // As many name lines as the row step holds, up to CAT_MAX_LINES, so a long name wraps before it is cut.
   const catMaxLines = Math.max(1, Math.min(CAT_MAX_LINES, Math.floor((stepEst - 4) / lineH)));
   const capW = Math.max(24, plot0.w * 0.28);
@@ -326,7 +333,7 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
     return toDate !== undefined && cat.partial === true && !saysToDate(cat.label ?? cat.id, toDate) ? { ...cat, label: `${cat.label ?? cat.id} ${toDate}`, suffix: toDate } : cat;
   });
   const band0 = (rows: typeof cats, refs: { count: number; warnings: LintWarning[] }) => rowLabelBand(named(rows), tickFont, capW, catMaxLines, lineH, measure, {
-    wider: gutterBudget(24, plot0.w),
+    wider: gutterBudget(24, plot0.w), tightLines: Math.floor((rowStep - 4) / lineH),
     target: options.target, textScale: textScaleOf(options), typeRole: 'axis',
     shrink: stepDownFont(theme, tickFont, 'axis', options.target, textScaleOf(options)),
     footnoteRefs: refs,
@@ -352,11 +359,6 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
     ({ labels: catLines, width: catBandW } = band0(cats.map((cat, i) => (cut.includes(i) ? { ...cat, footnote: authored + cut.indexOf(i) + 1 } : cat)), { count: authored + cut.length, warnings: [] }));
     warnings.push(categoryCutLint(cut.map((i) => cats[i]!.label ?? cats[i]!.id), true, 'in the row-name column'));
   }
-  const gapAfter = cats.map((cat) => {
-    const gap = cat.gapAfter === true ? 0.5 : typeof cat.gapAfter === 'number' ? Math.max(0, cat.gapAfter) : 0;
-    // A category break needs a gap wide enough to carry its glyph.
-    return cat.breakAfter ? Math.max(gap, 0.5) : gap;
-  });
   // A horizontal segment has no seat for its value outside it (band/labels.ts),
   // so a bar that carries segment labels is at least their line box thick,
   // over the 14 px inside floor: a fixed row grows to it, and the natural row step
