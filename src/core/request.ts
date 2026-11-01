@@ -10,7 +10,7 @@ import { NormalizeError, canonicalLanguage } from './normalize/shared';
 import { withNumberMarks } from './numberMarks';
 import { chartRefusals, isRefused } from './schema/refusals';
 import { REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, resolveTheme } from './theme';
-import { DEFAULT_TARGET, resolveTargetSize } from './target';
+import { DEFAULT_TARGET, floorTextScale, resolveTargetSize } from './target';
 import { textScaleOf, textSizeOf } from './typeFloors';
 import { defaultMeasurer, type TextMeasurer } from './text';
 import { drawnHeight } from './drawnHeight';
@@ -281,10 +281,37 @@ function prepared(def: { prepare?: (data: any, options?: any) => any }, data: un
 
 /** The same registered layout used by components, measurement and artifacts. */
 export function layoutResolvedRequest(request: ResolvedChartRequest): LayoutResult {
-  const result = layoutOnce(request);
-  const plainRequest = withoutAskedNotes(request, result);
+  const first = layoutOnce(request);
+  const [asked, result] = steppedType(request, first) ?? [request, first];
+  const plainRequest = withoutAskedNotes(asked, result);
   const plain = plainRequest && layoutOnce(plainRequest);
   return withClipWarnings(plain && !plain.refused ? askedNotesOff(plain, result) : result, request.fontMetrics);
+}
+
+/**
+ * A slide or print canvas a little too small for the class sizes draws once with the text stepped down to
+ * its reader floor before it is refused. An authored textScale, textSize or belowMinimum 'refuse' keeps
+ * the refusal. A stepped layout that is refused too gives the size the stepped text needs.
+ */
+function steppedType(
+  request: ResolvedChartRequest, first: LayoutResult, layout: (stepped: ResolvedChartRequest) => LayoutResult = layoutOnce,
+): [ResolvedChartRequest, LayoutResult] | undefined {
+  const options = request.options as RequestOptions;
+  const scale = floorTextScale(request.target);
+  if (!first.refused || first.warnings[0]?.code !== 'size-below-floor' || scale === undefined
+    || options.textScale !== undefined || options.textSize !== undefined || options.belowMinimum === 'refuse') return undefined;
+  const steppedRequest: ResolvedChartRequest = {
+    ...request, options: { ...request.options, textScale: scale },
+    theme: resolveTargetTheme(request.options.theme, request.target, scale),
+  };
+  const result = layout(steppedRequest);
+  if (result.refused) return [steppedRequest, result];
+  const full = first.warnings[0].expected?.minimum as Size | undefined;
+  return [steppedRequest, { ...result, warnings: [...result.warnings, {
+    code: 'type-stepped', severity: 'info',
+    message: `the canvas is too small for the ${request.target} type sizes, so the text is drawn at ${Math.round(scale * 100)} % of them, down to its reader floor`,
+    suggest: full === undefined ? 'Give the chart more room to draw the full type sizes.' : `Render it at ${full.width} × ${full.height}px or larger to draw the full type sizes.`,
+  }] }];
 }
 
 /** The drawn result names every text the canvas cuts (textClip.ts); a refusal draws nothing. */
@@ -775,21 +802,23 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
 }
 
 export function measureResolvedRequest(request: ResolvedChartRequest): ChartMeasurement {
-  const layoutAt = preparedLayout(request, true);
-  let first: LayoutResult;
-  try { first = layoutAt(request.options); } catch (error) { layoutAt.finish(); throw error; }
-  const plainRequest = withoutAskedNotes(request, first);
-  if (plainRequest) {
-    const plainAt = preparedLayout(plainRequest, true);
-    try {
+  const runs: LayoutCall<any, any, any>[] = [];
+  const open = (opened: ResolvedChartRequest) => { const run = preparedLayout(opened, true); runs.push(run); return run; };
+  try {
+    let asked = request;
+    let layoutAt = open(request);
+    let first = layoutAt(request.options);
+    // The same step as layoutResolvedRequest, so measure agrees with render and canDraw; the sizing probes then use the stepped text.
+    const stepped = steppedType(request, first, steppedRequest => { layoutAt = open(steppedRequest); return layoutAt(steppedRequest.options); });
+    if (stepped) [asked, first] = stepped;
+    const plainRequest = withoutAskedNotes(asked, first);
+    if (plainRequest) {
+      const plainAt = open(plainRequest);
       const plain = plainAt(plainRequest.options);
-      if (!plain.refused) {
-        layoutAt.finish();
-        return measureWithLayout(plainRequest, askedNotesOff(plain, first), plainAt);
-      }
-    } finally { plainAt.finish(); }
-  }
-  try { return measureWithLayout(request, first, layoutAt); } finally { layoutAt.finish(); }
+      if (!plain.refused) return measureWithLayout(plainRequest, askedNotesOff(plain, first), plainAt);
+    }
+    return measureWithLayout(asked, first, layoutAt);
+  } finally { for (const run of runs) run.finish(); }
 }
 
 /**
