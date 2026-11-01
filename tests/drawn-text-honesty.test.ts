@@ -61,6 +61,28 @@ describe('currency signs print where the locale puts them', () => {
   });
 });
 
+describe('text read back from the SVG matches the drawn text', () => {
+  const textOf = (svg: string, id: string) => {
+    const node = new RegExp(`<text data-id="${id}"[^>]*>([\\s\\S]*?)</text>`).exec(svg)?.[1] ?? '';
+    return node.replace(/<[^>]*>/g, '');
+  };
+  // A wrapped title read back from the SVG joined its two lines as "reopenedat".
+  it('a wrapped line break keeps a space and does not move the lines', () => {
+    const svg = svgOf({ type: 'column', data: { categories: ['A', 'B'], series: [{ id: 's', label: 'Sales', values: [4, 5] }] },
+      options: { title: 'Total orders rose every single week after the store reopened at 15:00 UTC in late October, website first and then the app', size: { width: 760 } } });
+    expect(textOf(svg, 'frame:title:0')).toContain('reopened at 15:00');
+    expect(svg).toMatch(/<tspan x="24" dy="0"> <\/tspan><tspan x="24" dy="25">at 15:00/);
+  });
+
+  // A cut label kept its full text in a <title> inside <text>, so read-back text ran the full and the cut text together.
+  it('the hover title of a cut label sits on its group, not inside the text', () => {
+    const fixture = getFixtures('dot').find((f) => f.id === 'long-labels-lollipop')!;
+    const svg = svgOf({ type: 'dot', data: fixture.data, options: fixture.options, annotations: fixture.annotations });
+    expect(svg).not.toMatch(/<text\b[^>]*><title>/);
+    expect(svg).toMatch(/<g role="img" aria-label="[^"]+"><title>[^<]+<\/title>(<rect[^>]*\/>)?<text\b/);
+  });
+});
+
 describe('number census', () => {
   // The census scaled "$k" box statistics by 1,000 twice and flagged correct medians as wrong-scale.
   it('reads $k box statistics once', () => {
