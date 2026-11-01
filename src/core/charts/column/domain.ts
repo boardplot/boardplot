@@ -215,8 +215,9 @@ function orderColumnCategories(
       othersId = 'others';
       while (cats.some((c) => c.id === othersId)) othersId = `_${othersId}`;
       const othersVals = seriesNorm.map((s) => restSum(dropIdx.map((i) => s.vals[i]!.v)));
+      const foldedNames = dropIdx.map((i) => cats[i]!.label ?? cats[i]!.id);
       applyOrder(keptIdx);
-      cats = [...cats, { id: othersId, label: restLabel(topN, options.strings, dropIdx.length) }];
+      cats = [...cats, { id: othersId, label: restLabel(topN, options.strings, foldedNames) }];
       seriesNorm.forEach((s, k) => {
         s.vals = [...s.vals, { v: othersVals[k]!, isPct: false }];
       });

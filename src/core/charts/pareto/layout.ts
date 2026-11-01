@@ -300,8 +300,10 @@ export function layoutPareto(
     // concentration verdict, and a reader cannot see how many causes are
     // hidden inside one column. Nothing leaves the ink without a trace.
     // The footnote is not enough — `methodNote: false` would take it away.
-    const columnLabel = `${name} (${dropped.length})`;
-    if (topN.showRestCount === false && !hasAuthoredRest) {
+    // A tail of one cause keeps that cause's own name and no count.
+    const single = dropped.length === 1 && topN.restLabel === undefined;
+    const columnLabel = single ? dropped[0]!.label : `${name} (${dropped.length})`;
+    if (topN.showRestCount === false && !hasAuthoredRest && !single) {
       warnings.push({
         code: 'pareto-rest-count-forced',
         severity: 'info',
@@ -312,7 +314,7 @@ export function layoutPareto(
     // it, so one column holds everything outside the named causes. It keeps the
     // authored label and gets no member count, because its own members are unknown.
     const joined = authoredRest[0];
-    restBucket = { label: joined?.label ?? name, memberIds: dropped.map((d) => d.id), value };
+    restBucket = { label: joined?.label ?? (single ? columnLabel : name), memberIds: dropped.map((d) => d.id), value };
     plotted = [
       ...kept,
       joined

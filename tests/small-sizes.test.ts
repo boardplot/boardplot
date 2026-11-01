@@ -85,6 +85,15 @@ it('grows an automatic height inside the ladder until the furniture budget holds
   expect(measure({ type: 'mekko', data: fixture.data, options: { ...fixture.options, size: { width: 720 } } } as never).naturalHeight).toBe(body.size.height);
 });
 
+// Prevents the narrow last column of a percent mekko from losing every share: the plot gave up a gutter for them and drew nothing in it.
+it('prints the shares of a narrow last mekko column in the gutter at 375 px', () => {
+  const fixture = getFixtures('mekko').find(f => f.id === 'stacked100-market-map')!;
+  const { size: _size, ...options } = fixture.options as Record<string, unknown>;
+  const body = render({ spec: { type: 'mekko', data: fixture.data, options: { ...options, size: { width: 375 } } }, return: ['reading'] } as never).body as any;
+  expect(body.warnings.map((warning: any) => warning.code)).not.toContain('label-hidden');
+  expect(body.reading.omissions.filter((omission: any) => omission.labelId.endsWith(':latam'))).toEqual([]);
+});
+
 // Prevents measure from naming the height before the note growth: a card sized from it drew 465 px and sent labels to the note.
 it('measures the height the note growth draws', () => {
   const fixture = getFixtures('combo').find(f => f.id === 'ranked-campaigns-key-shown')!;

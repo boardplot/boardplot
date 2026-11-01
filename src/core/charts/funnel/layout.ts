@@ -304,7 +304,15 @@ export function layoutFunnel(
       options,
     );
   }
-  const noteReserve = callout?.reserve ?? 0;
+  // A CAGR bracket stands in its own column right of the stage totals, as on the
+  // centered funnel, so its label sits beside the arm and not on a row's value line.
+  // Only when the longest bar keeps its shortest readable length: a narrower
+  // frame draws as before, with the label hidden, and the minimum width stays.
+  const cagrColumn = (options.annotations ?? []).some((a) => a.kind === 'cagr')
+    ? measure('−100.0% p.a.', strongFont).width + (compactForm ? 24 : 48) : 0;
+  const cagrReserve = inner.w - bandW - totalReserve - (callout?.reserve ?? 0) - cagrColumn >= MIN_LONGEST_BAR
+    ? cagrColumn : 0;
+  const noteReserve = (callout?.reserve ?? 0) + cagrReserve;
 
   // The step conversion stands in the gap between its two rows, just
   // right of the baseline, so "44% advance" sits between the bars it links

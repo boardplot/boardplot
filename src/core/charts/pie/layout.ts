@@ -442,7 +442,7 @@ function layoutPiePass(
     } else {
       let othersId: Id = 'others';
       while (slices.some((s) => s.cat.id === othersId)) othersId = `_${othersId}`;
-      slices = [...kept, { cat: { id: othersId, label: restLabel(topN, options.strings, dropped.length) }, v: restSum(dropped.map((s) => s.v)), isOthers: true }];
+      slices = [...kept, { cat: { id: othersId, label: restLabel(topN, options.strings, dropped.map((s) => s.cat.label ?? s.cat.id)) }, v: restSum(dropped.map((s) => s.v)), isOthers: true }];
       const lostDetails = restDetailsWarning({ categories: data.categories, series: [ser] }, new Set(kept.map((s) => s.cat.id)));
       if (lostDetails) warnings.push(lostDetails);
     }

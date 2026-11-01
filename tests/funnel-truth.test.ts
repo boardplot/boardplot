@@ -311,6 +311,26 @@ describe('funnel truth contract', () => {
     expect(geometry).toEqual(layout(data, options));
   });
 
+  // Without its own column the CAGR label of a rows funnel landed on the middle row's value line, beside its total.
+  it('seats the CAGR label of a rows funnel right of every stage total', () => {
+    const { data, options } = fixture('annual-cohort-retention');
+    const geometry = layout(data, { ...options, variant: 'rows' });
+    const cagr = geometry.labels.find((label) => label.id === 'annotation:annual-loss')!;
+    expect(cagr.hidden).toBeUndefined();
+    for (const total of geometry.labels.filter((label) => label.kind === 'total')) {
+      expect(cagr.rect.x).toBeGreaterThanOrEqual(total.rect.x + total.rect.w);
+    }
+    expect(cagr.rect.x + cagr.rect.w).toBeLessThanOrEqual(geometry.size.width);
+  });
+
+  // A frame too narrow for the CAGR column must draw as before, not refuse: the column never raises the minimum width.
+  it('draws a rows funnel with a CAGR annotation at the narrowest supported width', () => {
+    const { data, options } = fixture('annual-cohort-retention');
+    const spec = { ...options, variant: 'rows' as const };
+    const geometry = layout(data, { ...spec, size: { width: 280, height: 562 } });
+    expect((geometry as unknown as { refused?: boolean }).refused).toBeFalsy();
+  });
+
   it('keeps fixture visibility claims honest and the automatic note source-owned', () => {
     for (const item of getFixtures(definition.type)) {
       expect(item.title.toLowerCase()).not.toContain('overlap-free');
