@@ -449,8 +449,6 @@ describe('published option behaviour census', () => {
     ["histogram", "binSnap", "Fixture order-value-distribution has no SVG or option-warning change with true."],
     ["bullet kpi status table", "format", "Authored series, column or row formats keep the drawn numbers unchanged."],
     ["kpi", "comparisons", "Fixture arr-card has no SVG or option-warning change with \"text\"."],
-    ["likert", "requiredNotes", "Fixture employee-engagement-5pt has no SVG or option-warning change with {\"neutral\":true,\"base\":false}."],
-    ["likert", "methodNote", "Fixture employee-engagement-5pt authors notes.show, which decides alone, so methodNote adds no note."],
     ["bar column combo line pie", "rounding", "These values print the same with sum-consistent rounding."],
     ["line", "endLabelPlacement", "Fixture actuals-forecast-operating-rate has no SVG or option-warning change with \"lineEnd\"."],
     ["line", "bump", "Fixture actuals-forecast-operating-rate has no SVG or option-warning change with {\"direction\":\"lowerIsBetter\"}."],

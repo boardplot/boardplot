@@ -2427,7 +2427,7 @@ Row by column matrix. [Reference](reference/heatmap.md)
     },
     "source": "Illustrative capability assessment, June 2026",
     "highlight": ["digital-channels", "data-analytics"],
-    "footnotes": ["Shaded rows: the digital and analytics capabilities the title names."]
+    "footnotes": ["Highlighted rows: the digital and analytics capabilities the title names."]
   }
 }
 ```
@@ -2586,7 +2586,7 @@ Stage funnel with conversion rates. [Reference](reference/funnel.md)
 
 Variable-width stacked columns. [Reference](reference/mekko.md)
 
-![mekko chart: Acme leads in the two largest markets but trails everywhere in Asia](gallery/mekko-stacked100-market-map.svg)
+![mekko chart: Acme leads in the two largest markets but trails in APAC and LatAm](gallery/mekko-stacked100-market-map.svg)
 
 <details><summary>Spec: fixture <code>stacked100-market-map</code></summary>
 
@@ -2617,7 +2617,7 @@ Variable-width stacked columns. [Reference](reference/mekko.md)
     "variant": "stacked100",
     "ridge": "acme",
     "highlight": "acme",
-    "title": "Acme leads in the two largest markets but trails everywhere in Asia",
+    "title": "Acme leads in the two largest markets but trails in APAC and LatAm",
     "subtitle": {
       "company": "Acme Corp",
       "measure": "Market share by region",
@@ -4531,16 +4531,12 @@ Diverging bars for survey scales. [Reference](reference/likert.md)
     "summary": "net",
     "sortBy": "net",
     "labelDensity": "full",
-    "notes": { "show": ["note", "disclosure"] },
+    "notes": { "show": ["note", "method", "disclosure"] },
     "title": "Engagement survey — agreement by statement",
-    "subtitle": {
-      "measure": "Share of responses",
-      "period": "FY25 pulse",
-      "scenarios": ["Neutral split across the centre line"]
-    },
+    "subtitle": { "measure": "Share of responses", "period": "FY25 pulse" },
     "legend": "bottom",
     "source": "Employee pulse survey, n = 900 per statement",
-    "requiredNotes": { "neutral": false, "base": false }
+    "requiredNotes": { "base": false }
   }
 }
 ```
