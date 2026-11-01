@@ -259,7 +259,7 @@ Store counts once in `data.measures`. Each panel names either a sum or a numerat
 
 Mark a running category `partial: true`. Declare unavailable outcome panels in `data.states.partial.panels`. Declare the maturing range and its affected panels in `data.states.maturing`. The grid draws one continuous band across those panels. Provisional bars use light fills and dashed outlines. Provisional lines use grey dashes and hollow points. Partial points never connect. Dashes denote projected or provisional data. One panel may set `emphasis: true`.
 
-The engine owns label space, one panel gap and one shared readout gutter. Use `stack.heights` for plot heights in layout pixels, or `rows` for proportional heights. Too-small authored gaps, gutters or heights are refused. A width-only size grows to the content height. Slide text can need more height than report text. The example fixtures are `metric-stack-volume` and `metric-stack-steps`. Existing grids keep their current layout.
+The engine owns label space, one panel gap and one shared readout gutter. Use `stack.heights` for plot heights in layout pixels, or `rows` for proportional heights. Too-small authored gaps, gutters or heights are refused. A width-only size grows to the content height. On a fixed height shorter than that, default plot heights shrink to their readout floor. Below the floor, the readout puts the unit beside the name and the headline and span on one line, and the panels sit closer together. Slide text can need more height than report text. The example fixtures are `metric-stack-volume` and `metric-stack-steps`. Existing grids keep their current layout.
 
 ## Getting a chart with the CLI
 

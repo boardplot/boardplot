@@ -1075,6 +1075,9 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | four-child-start-arrow | diagram.hierarchy | torture | A start arrow clears a neighbouring group frame |
 | stacked-leaf-captions | diagram.issue-tree | torture | Every stacked leaf keeps its caption |
 | long-border-badges | diagram.issue-tree | torture | Long badge phrases keep clear of node labels |
+| protected-request | diagram.architecture | example | A request stays protected on its way to private processing and back |
+| marketing-pipeline | diagram.architecture | example | Rejected records return to the source for repair |
+| journey-attribution | diagram.architecture | example | Multi-touch attribution from customer journey to budget |
 
 ## tilemap
 

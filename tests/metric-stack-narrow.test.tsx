@@ -155,3 +155,29 @@ it('keeps the stripes of a hatched stack a grey step apart in notation and notat
     expect(apart, `${theme}: ${stripes.join(' ')}`).toBeGreaterThanOrEqual(24);
   }
 });
+
+// A fixed 16:9 slide used to refuse a three-panel stack ("needs 1263 x 867") because default plot heights only grew.
+it('draws a three-panel stack on a fixed 1184 x 528 canvas and refuses below its stated floor', () => {
+  const months = Array.from({ length: 12 }, (_, i) => ({ id: `m${i}`, label: `M${i + 1}` }));
+  const slide = {
+    categories: months,
+    measures: [
+      { id: 'intake', label: 'Intake', values: months.map((_, i) => 2400 + ((i * 137) % 600)) },
+      { id: 'kept', label: 'Retained', values: months.map((_, i) => 300 + ((i * 211) % 420)) },
+      { id: 'lost', label: 'Lost', values: months.map((_, i) => 60 + ((i * 53) % 130)) },
+    ],
+    panels: [
+      { id: 'volume', type: 'column', title: 'New enquiries', unit: 'thousand per month', measure: { sum: ['intake'] }, divisor: 1000, decimals: 1, readout: 'change' },
+      { id: 'done', type: 'column', title: 'Completed', unit: 'outcomes', measure: { sum: ['kept', 'lost'] }, readout: 'change' },
+      { id: 'rate', type: 'line', title: 'Conversion', unit: '% of enquiries', measure: { numerator: ['kept', 'lost'], denominator: 'intake' }, readout: 'change', emphasis: true },
+    ],
+    windows: { base: { from: 'm0', to: 'm2', label: 'Q1' }, compare: { from: 'm9', to: 'm11', label: 'Q4' } },
+  };
+  const at = (height: number) => render({ spec: { type: 'grid', data: slide, options: { stack: {}, title: 'Slide stack', size: { width: 1184, height } } } }).body as { ok: boolean; errors?: { code: string; expected?: { minimum: { height: number } } }[] };
+  expect(at(528).ok).toBe(true);
+  const refused = at(380).errors![0]!;
+  expect(refused.code).toBe('size-below-floor');
+  const floor = refused.expected!.minimum.height;
+  expect(floor).toBeLessThan(528);
+  expect(at(floor).ok).toBe(true);
+});
