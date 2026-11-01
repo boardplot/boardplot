@@ -108,8 +108,9 @@ export interface NumberFormatSpec {
 
 /**
  * The magnitude words an example may carry after its number: the letters k,
- * m, b and T (upper case only: "12 t" is tonnes), the abbreviations mn, mm,
- * bn and tn, the German Tsd., Mio., Mrd. and Bio. (dot optional), and the
+ * m, b and T and the abbreviation mm (only glued to the number: "12 m/s" is
+ * metres per second and "50 B" bytes; T upper case only: "12 t" is tonnes),
+ * the abbreviations mn, bn and tn, the German Tsd., Mio., Mrd. and Bio. (dot optional), and the
  * spelled-out words thousand, million, billion and trillion, German Tausend,
  * Million(en), Milliarde(n) and Billionen, and French milliard(s). "billion"
  * (German "Billion" and French "billion": 10¹²) reads as 10⁹, the smaller
@@ -130,11 +131,15 @@ const MAGNITUDE_SUFFIXES: Array<{ re: RegExp; key: Scale; glued?: true }> = [
   { re: new RegExp(String.raw`^(?:thousands?|tausend)${WORD_END}`, 'iu'), key: 'k' },
   { re: new RegExp(String.raw`^(?:millions?|millionen)${WORD_END}`, 'iu'), key: 'm' },
   { re: new RegExp(String.raw`^(?:tn|bio\.?)${WORD_END}`, 'iu'), key: 't' },
-  // Glued only: SI spaces a unit, so "1.5 T" stays tesla and "$1.2T" is trillions.
+  { re: new RegExp(String.raw`^(?:bn|mrd\.?)${WORD_END}`, 'iu'), key: 'bn' },
+  { re: new RegExp(String.raw`^(?:tsd\.?)${WORD_END}`, 'iu'), key: 'k' },
+  { re: new RegExp(String.raw`^(?:mn|mio\.?)${WORD_END}`, 'iu'), key: 'm' },
+  // Glued only: SI spaces a unit, so "1.5 T" stays tesla, "12 m/s" metres per second and "50 B" bytes,
+  // while "$1.2T", "1.2m" and "50B" scale.
   { re: new RegExp(String.raw`^T${WORD_END}`, 'u'), key: 't', glued: true },
-  { re: new RegExp(String.raw`^(?:bn|b|mrd\.?)${WORD_END}`, 'iu'), key: 'bn' },
-  { re: new RegExp(String.raw`^(?:k|tsd\.?)${WORD_END}`, 'iu'), key: 'k' },
-  { re: new RegExp(String.raw`^(?:mm|mn|m|mio\.?)${WORD_END}`, 'iu'), key: 'm' },
+  { re: new RegExp(String.raw`^b${WORD_END}`, 'iu'), key: 'bn', glued: true },
+  { re: new RegExp(String.raw`^k${WORD_END}`, 'iu'), key: 'k', glued: true },
+  { re: new RegExp(String.raw`^(?:mm|m)${WORD_END}`, 'iu'), key: 'm', glued: true },
 ];
 
 /** The one-letter spelling of every magnitude word `sameUnit` and `MAGNITUDE_UNIT` accept. */
@@ -1235,7 +1240,8 @@ export function unscaledFormatLint(
   // series prints scaled by 100, not as given.
   // A nonzero value that prints as the zero does ("0.0" for 0.004) loses its
   // sign and size; the fix carries the decimals that show it.
-  const body = numericBody(format);
+  const found = numericBody(format);
+  const body = found && { index: found.index, text: found.text.trimEnd() }; // as parseFormatExample: a space after the number belongs to the unit
   const checked = options?.variant !== 'bump' && !spec.suffix.includes('%');
   const zero = formatWithSpec(0, spec);
   const zeroed = checked ? numbers.flat().filter((v) => v !== 0 && formatWithSpec(v, spec) === zero) : [];
