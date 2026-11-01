@@ -67,6 +67,26 @@ describe('right-edge series names', () => {
     }
   });
 
+  // The key must not raise the size floor: a canvas that draws without it keeps drawing, and
+  // valueAxis.percent (stacked100) keeps its edge names, so it gets no key.
+  it('keeps drawing a fixed grouped column canvas the key would refuse', () => {
+    const names = ['Enterprise licences', 'Cloud subscriptions', 'Professional services', 'Support and maintenance',
+      'Training and certification', 'Partner income', 'Hardware sales', 'Managed hosting'];
+    const data = {
+      categories: ['q1', 'q2', 'q3', 'q4'].map((id) => ({ id, label: id.toUpperCase() })),
+      series: names.map((label, i) => ({ id: `s${i}`, label, values: [10 + i, 12 + i, 14 + i, 15 + i] })),
+    };
+    const frame = { title: 'Revenue by line', subtitle: { measure: 'Revenue', period: '2025' }, unit: '$m', source: 'Illustrative data' };
+    const base = { ...frame, legend: 'none', seriesLabels: { at: 'left-edge' } } as const;
+    const layout = (o: object) => getChart('column')!.layout(data, o) as ReturnType<typeof layoutColumn>;
+    const grouped = layout({ ...base, variant: 'grouped', size: { width: 320, height: 226 } });
+    expect(grouped.refused).toBeFalsy();
+    expect(grouped.legend).toBeUndefined();
+    const percent = layout({ ...base, valueAxis: { percent: true }, size: { width: 320, height: 260 } });
+    expect(percent.refused).toBeFalsy();
+    expect(percent.legend).toBeUndefined();
+  });
+
   // 0.43 widened default columns after the names took their room, so at a 0 px
   // canvas margin three of the four names ran past the canvas and were hidden.
   it('draw at a zero canvas margin as they do at 8 px', () => {
