@@ -499,12 +499,13 @@ export function resolveBarDomain(data: ChartData, options: BarOptions, warnings:
   // paints the same colour, so no two series of one chart look alike.
   const roles = colorRolePaints(dataSeries);
   // A scenario series takes the colour of its actual (scenarioPairs). A series whose cells all
-  // carry one scenario counts as that scenario. A stack keeps its stack colours: only a plan pairs.
+  // carry one scenario counts as that scenario. Grouped bars pair in authored order, so sorting the
+  // segments never re-pairs a plan. A stack keeps its stack colours: only a plan pairs.
   const stacked = variant !== 'grouped';
   const ownPaint = (x: NormSeries): boolean => !!x.fill || !!x.colorRole || highlights.has(x.id);
   const scenarioPartner = stacked
     ? scenarioPartners(dataSeries, (x) => x.scenario, ownPaint, true)
-    : scenarioPartners(dataSeries, (x) => seriesScenarioRole(x.scenario, x.cells.filter((c) => c.v !== null).map((c) => c.meta?.scenario)), ownPaint, false);
+    : scenarioPartners(normSeries.filter((x) => x.role === 'data'), (x) => seriesScenarioRole(x.scenario, x.cells.filter((c) => c.v !== null).map((c) => c.meta?.scenario)), ownPaint, false);
   // A paired scenario series of grouped bars takes no ramp step of its own. One with its own
   // paint keeps it, so it stays in the deal and the plain series step past its colour.
   const dealt = dataSeries.filter((s) => stacked || ownPaint(s) || !scenarioPartner.has(s.id));
