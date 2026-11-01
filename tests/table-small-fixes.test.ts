@@ -1414,3 +1414,16 @@ it('reads arrows, sort and ratios of a sign -1 row from the printed figures', ()
   // The cost change prints -20 and the fee change -10, so both fall.
   expect(arrows.map((node) => node.lines.join(''))).toEqual(['→', '↓', '↓']);
 });
+
+// A diverging heat lane with a cap and no bins tints continuously, yet its key named default point bands ("1 to under 4") that no cell takes.
+it('prints no heat key for a diverging lane that is not stepped', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'd', kind: 'value', label: 'vs plan', format: '+1,234' }],
+    rows: [{ id: 'de', label: 'Germany', cells: { d: 410 } }, { id: 'uk', label: 'United Kingdom', cells: { d: -390 } }],
+  };
+  const keyText = (encoding: object) => layout('table', data, { encodings: { d: { type: 'heat', scale: 'diverging', ...encoding } } }).scene
+    .filter((node): node is TextNode => node.t === 'text').map((node) => node.lines.join(' ')).filter((text) => /either way/.test(text));
+  expect(keyText({ cap: { abs: 500 } })).toEqual([]);
+  expect(keyText({ steps: 3 })).toHaveLength(1);
+  expect(keyText({ bins: [100, 300] })).toHaveLength(1);
+});
