@@ -11,6 +11,8 @@ import { getChartDefinition } from '../src/core/registry';
 import { requireGeometry } from '../src/core/sizing';
 import { dateTickKeep, formatDate } from '../src/core/dateFormat';
 import { resolveChartRequest } from '../src/core/request';
+import { chartString as funnelString } from '../src/core/strings/funnel';
+import { chartString as layoutString } from '../src/core/strings/createChartComponent';
 
 const pieFixture = () => getFixtures('pie').find((fixture) => fixture.id === 'streaming-genre-share')!;
 
@@ -74,6 +76,23 @@ describe('built-in wording block', () => {
     expect(texts(layout('pie', fixture))).toContain('Source: Brevinth label analytics, FY25');
     expect(texts(layout('pie', fixture, { strings: { source: 'Quelle' } })))
       .toContain('Quelle: Brevinth label analytics, FY25');
+  });
+});
+
+describe('default reader wording', () => {
+  // The default notes read as plain sentences: no interval notation, no "Others includes", no capitals for emphasis, no "CVR" jargon.
+  it('words the pyramid method note, the sankey Other note, the funnel heads and the hover hint in plain words', () => {
+    const pyramid = getFixtures('pyramid').find((fixture) => fixture.id === 'dated-population-comparison')!;
+    const method = texts(layout('pyramid', pyramid, { methodNote: true, shareOfTotal: true }));
+    expect(method).not.toMatch(/\[from, to\)|equally wide|BOTH/);
+    expect(method).toContain('The youngest band is at the bottom.');
+    const sankey = getFixtures('sankey').find((fixture) => fixture.id === 'channel-journeys')!;
+    expect(texts(layout('sankey', sankey))).toContain('Others (Channel): Display 9, Affiliates 7');
+    for (const locale of [undefined, 'de']) {
+      const options = { locale: locale as 'de' | undefined };
+      expect(funnelString(options, 'stepCvr') + funnelString(options, 'totalCvr')).not.toContain('CVR');
+    }
+    expect(layoutString({}, 'hoverMoreListed')).toContain('tap or hover');
   });
 });
 

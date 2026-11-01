@@ -344,8 +344,8 @@ export function layoutCenteredFunnel(
   let cvrBlockWidth = showTotalCvr
     ? Math.max(cvrHeaderSize.width, maxOf(cvrSizes.map((item) => item.width))) + colPad
     : 0;
-  // The conversion from the previous stage is a named column, "Step CVR",
-  // in the style of "Total CVR", not an unnamed third line in each stage.
+  // The conversion from the previous stage is a named column, "Step conversion",
+  // in the style of "Total conversion", not an unnamed third line in each stage.
   const showStepCvr = labelsOpt !== false && labelOn('point') && stages.length > 1;
   const stepHeaderText = chartString(options, spanForm ? 'stepCvrShort' : 'stepCvr');
   let stepHeaderSize = headSize(stepHeaderText);

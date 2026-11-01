@@ -203,7 +203,7 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
       if (!sharedValueAxis) return stableOptions;
       return { ...stableOptions, valueAxis: { ...stableOptions.valueAxis as object, ...sharedValueAxis } };
     }, [stableOptions, sharedValueAxis]);
-    // A capped note ends "and 236 more". Only a chart with a hover card can say "hover shows each value":
+    // A capped note ends "and 236 more". Only a chart with a hover card can say "tap or hover shows each value":
     // SVG, PNG and PDF output have no hover, so the hint is chosen here and never by the layout.
     // A prepared chart keeps the layout it was prepared with: its request key covers the strings.
     const hoverCard = hoverFlags(hover);

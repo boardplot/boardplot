@@ -259,7 +259,7 @@ export interface StringsSpec {
   cellNote?: string;
   /**
    * Last item of a note line that lists only its first items (`notes.maxListed`); '{count}' becomes the
-   * number left out. Default 'and {count} more'. A React chart with hover on adds ' (hover shows each value)' when this is not set.
+   * number left out. Default 'and {count} more'. A React chart with hover on adds ' (tap or hover shows each value)' when this is not set.
    */
   moreListed?: string;
   /** Story panel buttons and counter ('{step}' and '{count}', two digits). Defaults '‹ Back', 'Next ›', '{step} – {count}'. */

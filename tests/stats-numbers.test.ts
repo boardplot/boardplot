@@ -302,7 +302,7 @@ describe('pyramid', () => {
   // Prevents a pyramid with methodNote: true from dropping the method note the author asked for.
   it('prints the band method note in the frame under methodNote: true', () => {
     const printed = (options: PyramidOptions) => chartNotes(layoutPyramid(doc(FIVE, A, B), { size: { width: 800, height: 520 }, ...options }))
-      .filter((note) => note.inFrame && note.text.includes('Bands read')).length;
+      .filter((note) => note.inFrame && note.text.includes('The youngest band is at the bottom')).length;
     expect(printed({ methodNote: true })).toBe(1);
     expect(printed({})).toBe(0);
   });
