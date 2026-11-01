@@ -192,6 +192,11 @@ export type ThemePaintSource =
    * (the pie ramp), decided in the theme the scene is painted in.
    */
   | { kind: 'group-ramp'; index: number; count: number }
+  /**
+   * Step `index` of `count` plain series that recede beside a highlight: the
+   * neutral mark (strongest) to the light neutral (quietest), in authored order.
+   */
+  | { kind: 'neutral-ramp'; index: number; count: number; /** A hatched step: neutral mark to muted mark, so each stripe keeps its step. */ hatched?: true }
   /** A plain series of a stack beside authored colours: its ramp step, chosen in the active theme apart from them (rampSlots, stacked). */
   | { kind: 'stack-apart'; own: (Paint | null)[]; index: number; palette?: string }
   | { kind: 'ordered-ramp'; index: number; count: number; /** A Rest series is drawn: the weakest rung stays further from the page than the Others colour. */ withOthers?: true }
