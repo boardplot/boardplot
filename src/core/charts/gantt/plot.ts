@@ -462,13 +462,12 @@ const COLUMN_CAP = 90;
 const COMPACT_COLUMN_CAP = 30;
 
 /**
- * Compact mode keeps the full cap while the timeline keeps at least half the
- * plot beside the names and columns: a tight height removes no column that
- * only needs width. On a narrower plot the columns go, as before.
+ * Both modes keep the full cap while the timeline keeps at least half the
+ * plot beside the names and the columns: a tight height
+ * removes no column that only needs width, and a narrow plot gives the same
+ * drawing in either mode. On a narrower plot the columns go.
  */
-function columnCap(env: GanttEnv, rows: readonly NormRow[], plotW: number): number {
-  if (env.options.mode !== 'compact') return COLUMN_CAP;
-  const { fonts, measure } = env;
+function columnCap(env: GanttEnv, rows: readonly NormRow[], plotW: number): number {  const { fonts, measure } = env;
   const colWs = planMetadataColumns(rows, env.options.colHeaders, 0, COLUMN_CAP, 0, 0, fonts.label, fonts.headerMajor, measure, env.options.target).colWs;
   if (colWs.length === 0) return COLUMN_CAP;
   const named = rows.filter(row => !row.shared);
