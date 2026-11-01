@@ -387,7 +387,11 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
   }
   let columnLabelH =
     Math.max(headerTiers, maxOf(columnText.map((text) => text.lines.length))) * axisLineH + (headerTiers - 1) * 2 * LABEL_PAD;
-  const minimumRowsH = rows.length * Math.max(28, maxOf(rowText.map(text => text.h + LABEL_PAD - CELL_GAP))) + (rows.length - 1) * CELL_GAP;
+  // A row needs its name's height and the label gap. A fixed 28 px floor refused a 12-row board on a full slide,
+  // where a row name needs about 24 px. Cell text that must be read sets its own floor below (namedCellHeights).
+  // A board that cuts a row name keeps the 28 px floor: the lower one is for names that stay whole.
+  const rowFloorH = Math.max(rowText.some(text => text.title !== undefined) ? 28 : 0, maxOf(rowText.map(text => text.h + LABEL_PAD - CELL_GAP)));
+  const minimumRowsH = rows.length * rowFloorH + (rows.length - 1) * CELL_GAP;
   if (fixedHeight && columnLabelH + COLUMN_GAP + minimumRowsH > framePlot.h) {
     // The two-line header form keeps accepted fixed frames drawable.
     columnText = rowLabelBand(columns, axisFont, Math.max(40, cellW - 2), 2, axisLineH, measure,
@@ -705,9 +709,9 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
     sizing: rowSizing('status', size, {
       chromeH: size.height - gridH,
       // A two-line row name sets the pitch: its height and the solver's gap, of which the cell gap gives one px.
-      minimumRowsH: rows.length * Math.max(28, maxOf(rowText.map((label) => label.h + LABEL_PAD - CELL_GAP)),
-        maxOf(!legend ? namedCellHeights : [])) + (rows.length - 1) * CELL_GAP,
-      naturalRowsH: rows.length * naturalCellH + (rows.length - 1) * CELL_GAP,
+      minimumRowsH: rows.length * Math.max(rowFloorH, maxOf(!legend ? namedCellHeights : [])) + (rows.length - 1) * CELL_GAP,
+      // The natural height keeps the 28 px row the floor used to set, so an unpinned board is as tall as before.
+      naturalRowsH: rows.length * Math.max(naturalCellH, 28) + (rows.length - 1) * CELL_GAP,
       ...matrixWidths(size.width - gridW, columns.length, CELL_GAP, columnText.map((label) => label.w / headerTiers)),
     }),
     plot,
