@@ -12,9 +12,9 @@ import { geoRegionIdIndex, resolveGeoRegionId } from '../../geo/resolveRegionId'
 import { getTilePack, type TileRegionRecord } from '../../geo/tiles';
 import type { GeoPackId } from '../../geo/types';
 import { getGeoPack } from '../../geo/packs/registry';
-import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
+import { DEFAULT_TARGET, TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { resolveSizing, sizeRefusal, plotFloorHeight, SIZE_TOLERANCE } from '../../sizing';
-import { readerFloorPx } from '../../typeFloors';
+import { readerFloorPx, textScaleOf } from '../../typeFloors';
 import { rowDrivenHeight, tallestContentHeight } from '../../rowCanvas';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
@@ -352,16 +352,23 @@ function layoutTilemapPass(
   const labelPlans: TileLabelPlan[] = [];
   const labelEnabled = options.labels !== false && options.labels?.category !== false;
 
+  // Where the values do not fit at the label size but all fit at the type floor,
+  // every tile steps down to the floor together, so one map has one text size.
+  const floorPx = readerFloorPx(options.target ?? DEFAULT_TARGET, 'label', textScaleOf(options));
+  const floorTheme: Theme = { ...theme, type: { ...theme.type, label: { ...theme.type.label, size: floorPx } } };
+  const labelTheme = options.regionValues !== false && floorPx < theme.type.label.size
+    && !valuesFit(pack.regions, valuesById, tileSize, theme, measure, fmt)
+    && valuesFit(pack.regions, valuesById, tileSize, floorTheme, measure, fmt) ? floorTheme : theme;
   // Unset regionValues prints every value where every value fits its tile
   // under the bold code; otherwise the tiles keep their codes alone.
   const printValues = options.regionValues
-    ?? (labelEnabled && valuesFit(pack.regions, valuesById, tileSize, theme, measure, fmt));
+    ?? (labelEnabled && valuesFit(pack.regions, valuesById, tileSize, labelTheme, measure, fmt));
   // Values the tiles leave out are named in a note: run again with it, so the frame holds its lines.
   if (!printValues && !valuesNoted && options.regionValues === undefined && labelEnabled && valueEntries.length) {
     return { options, listed, run, omitted, heights: new Map(), fixedHeight, stopped, valuesNoted: true };
   }
   // Codes print bold where every code fits bold, so one map has one weight.
-  const boldCodes = codesFitBold(pack.regions, tileSize, theme, measure);
+  const boldCodes = codesFitBold(pack.regions, tileSize, labelTheme, measure);
   for (const region of pack.regions) {
     const value = valuesById.get(region.id) ?? null;
     const unlisted = !valuesById.has(region.id);
@@ -403,7 +410,7 @@ function layoutTilemapPass(
     });
     if (labelEnabled) {
       labelPlans.push(
-        tileLabelPlan(region, rect, labelBackground, theme, measure, printValues && value !== null ? fmt(value) : undefined, boldCodes),
+        tileLabelPlan(region, rect, labelBackground, labelTheme, measure, printValues && value !== null ? fmt(value) : undefined, boldCodes),
       );
     }
   }

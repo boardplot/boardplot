@@ -360,6 +360,18 @@ it('draws readable tilemap codes in a fixed card before requiring full-width til
   expect(canDraw({ ...request, options: { ...request.options, belowMinimum: 'refuse' } }).ok).toBe(false);
 });
 
+// A narrow tile map printed codes alone and showed no value anywhere in the drawing, although every value fits its tile at the type floor.
+it('steps every tile of a narrow tile map down to the type floor so each value prints under its code', () => {
+  const f = getFixtures('tilemap').find(f => f.id === 'eu27-demand-versus-plan')!;
+  const geometry = measure({ type: 'tilemap', data: f.data, options: { ...f.options, size: { width: 400 } } }).geometry!;
+  const tiles = geometry.labels.filter(label => label.kind === 'category');
+  const valued = tiles.filter(label => label.lines?.length === 2);
+  expect(valued).toHaveLength(26);
+  expect(tiles.filter(label => label.hidden)).toEqual([]);
+  // 2 lines at the 11 px report floor and 1.2 line height, where the 12 px label size needs 28.8 px of a 30 px tile.
+  expect(new Set(valued.map(label => label.rect.h))).toEqual(new Set([26.4]));
+});
+
 // An authored dot-axis title must reach the drawing instead of refusing the whole chart.
 it('draws a dot value-axis title inside its fixed canvas', () => {
   const request = { type: 'dot', data: { categories: ['North', 'South'], series: [{ id: 'orders', values: [10, 20] }] },
