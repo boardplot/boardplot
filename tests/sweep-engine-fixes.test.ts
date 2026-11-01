@@ -343,6 +343,33 @@ describe('chart layout edge cases', () => {
     expect(callout.hidden === undefined && onName).toBe(false);
   });
 
+  // A callout on the first row of a narrow stacked bar was seated three rows down, with a long leader; it now sits within a row of its bar or goes to the notes.
+  it('a bar callout seats within one row of its bar or goes to the notes', () => {
+    const names = ['Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo', 'Foxtrot', 'Golf', 'Hotel', 'India'];
+    const categories = names.map((label) => ({ id: label, label }));
+    const request = { type: 'bar', data: { categories, series: [
+      { id: 'a', label: 'Filled', values: [310, 240, 190, 74, 38, 62, 45, 30, 12] },
+      { id: 'b', label: 'Open', values: [32, 14, 9, 6, 5, 6, 7, 4, 3] }] },
+      options: { variant: 'stacked', grandTotalLabels: true, size: { width: 480 } },
+      annotations: [{ kind: 'callout', at: 'Alpha', text: '8 of the 12 positions open for over 90 days' }] };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+    const byId = (id: string) => geometry.labels.find((l: { id: string }) => l.id === id);
+    const callout = byId('annotation:callout-1');
+    const [first, second] = [byId('category:Alpha'), byId('category:Bravo')];
+    const pitch = second.rect.y - first.rect.y;
+    const reach = callout.hidden === undefined ? Math.abs(callout.rect.y + callout.rect.h / 2 - (first.rect.y + first.rect.h / 2)) : 0;
+    expect(reach).toBeLessThanOrEqual(pitch);
+    // Beside a short bar with room to its right, the text wraps there and is drawn.
+    const short = structuredClone(request);
+    short.data.series[0]!.values = [20, 10, 20, 15, 38, 62, 45, 30, 100];
+    short.options.size.width = 400;
+    short.annotations[0]!.at = 'Bravo';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const wrapped = (layoutResolvedRequest(resolveChartRequest(short as any) as any) as any).labels.find((l: { id: string }) => l.id === 'annotation:callout-1');
+    expect(wrapped.hidden).toBeUndefined();
+  });
+
   // A tall canvas widened the rotated names until the row had no pitch left for a 45° line, so all but one name were dropped.
   it('a tall variance chart keeps its rotated category names at 400 px wide', () => {
     const names = ['Nordrhein-Westfalen (Rheinland)', 'Net revenue retention, enterprise', 'Sonstige betriebliche Aufwendungen', 'Zinsen und ähnliche Aufwendungen', 'Aufwendungen für bezogene Waren', 'Schleswig-Holstein und Hamburg', 'Pensionsrückstellungen, Inland', 'Research and development expenses', 'Sonstige betriebliche Erträge', 'Fremdleistungen Logistik Ausland', 'Instandhaltung und Reparaturen', 'Mecklenburg-Vorpommern'];
