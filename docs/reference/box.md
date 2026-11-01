@@ -47,6 +47,7 @@ One form; its chart ID is `box`.
 
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
+| valueAxis.break | false \| object | `false` (or another value of its type) |  | No break by default or with false. Set { from, to, style? } for a straight value-axis break; the omitted span collapses to a fixed 12px gap when valid. Automatic placement is supported only by waterfall and pvm. |
 | axisTitles | object |  |  | Title of the value axis when it is drawn: under the tick row, ending at the right end of the axis. Drawn only when authored. |
 | axisTitles.primary | string |  |  | 'Measure, unit' title of the value axis, e.g. 'Margin, %'. |
 | whiskers | string | `'tukey'`, `'minmax'`, `'p10p90'` | `'tukey'` | Whisker rule. 'tukey' (default): most extreme observations within 1.5xIQR of the quartiles. 'minmax': whiskers reach every observation. 'p10p90': whiskers at the 10th/90th type-7 percentile. |
@@ -55,7 +56,7 @@ One form; its chart ID is `box`.
 | methodNote | boolean |  | `false` | Default false. true adds the footnote stating the quartile definition and the Tukey whisker rule. A 'minmax' or 'p10p90' whisker rule changes what whiskers and dots mean, so its note prints regardless, as do the small-n dot note and the note on withheld observations. |
 | boxValues | string | `'median'`, `'all'` | `'median'` | Default 'median': each box prints its median. 'all' also prints Q1 and Q3 under the box edges and the whisker ends under the caps, so a quartile or percentile reads as a number. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `categoryLabels`, `legend`, `valueAxis.log`, `valueAxis.break`, `categoryAxis`, `topN`, `bandFraction`, `hatchStrength`, `colorblindSafe`, `rounding`.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `categoryLabels`, `legend`, `valueAxis.log`, `categoryAxis`, `topN`, `bandFraction`, `hatchStrength`, `colorblindSafe`, `rounding`.
 
 ## Annotations
 
@@ -88,6 +89,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | outliers-withheld-method-note | example | Outliers withheld from the ink and the axis, with the quartile and whisker rule stated |
 | salary-bands-pinned-median | example | The IC5 median label pinned above its box through labelPlacements |
 | twelve-teams-median-column | example | Twelve dense rows print their medians in one column beside n |
+| outliers-axis-break | example | A value-axis break across the empty range keeps two far outliers visible |
 
 ## Not for
 

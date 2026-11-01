@@ -911,4 +911,25 @@ fixtures.push({
   },
 });
 
+// One far outlier per row, with the empty range between the boxes and the outliers cut out of the axis.
+fixtures.push({
+  id: 'outliers-axis-break',
+  title: 'A value-axis break across the empty range keeps two far outliers visible',
+  kind: 'example',
+  tags: ['coverage'],
+  data: {
+    groups: [
+      { id: 'north', label: 'North depot', observations: [10, 12, 14, 15, 16, 18, 20, 22, 25, 400] },
+      { id: 'south', label: 'South depot', observations: [11, 13, 15, 16, 17, 19, 21, 23, 26, 390] },
+    ],
+  },
+  options: {
+    title: 'Both depots deliver in about 17 days, with one order each far beyond',
+    subtitle: { measure: 'Order turnaround', period: 'FY26' },
+    unit: 'days',
+    source: 'Illustrative fulfilment data',
+    valueAxis: { break: { from: 60, to: 380 } },
+  },
+});
+
 registerFixtures('box', fixtures);
