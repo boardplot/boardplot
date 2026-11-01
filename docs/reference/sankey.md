@@ -81,6 +81,7 @@ One form; its chart ID is `sankey`.
 | other.share | number |  |  | Fold nodes under this share of their column's total; default 0.02. |
 | other.label | string |  |  | Name of the folded node; default strings.others, else 'Others'. |
 | nodeValue | string | `'value'`, `'share'`, `'value-share'` |  | What a node prints in bold after its name: 'value' (default), 'share' of its column's total, or 'value-share' as "420 (38%)". A percent format applies to the shares. |
+| linkValue | string | `'none'`, `'large'` | `'large'` | Flow values on the ribbons: 'large' (default) prints the value of every ribbon at least one line high at its arriving end, right aligned to the next bar; thinner ribbons print nothing, and a value that would cover a node label is left out. 'none' prints node values only. |
 
 Plus the [shared options](options.md). This type does not accept `detailFields`, `labels`, `categoryLabels`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `topN`, `bandFraction`, `story`, `hatchStrength`, `colorblindSafe`, `rounding`.
 
@@ -99,6 +100,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | ID | Kind | Use case |
 |---|---|---|
 | channel-journeys | example | Channel to landing page to outcome: stage headers, two small channels folded into Others and listed in the note, Purchase highlighted |
+| channel-journeys-node-values | example | Channel journeys with linkValue none: node values only, no value on the ribbons |
 | budget-departments | example | Budget to departments to cost types, links coloured by target |
 | segment-migration | example | Customers moving between segments month to month: stage-qualified nodes, one segment order in every month |
 | sales-stages | torture | Six stages with drop-outs that skip columns as long links |

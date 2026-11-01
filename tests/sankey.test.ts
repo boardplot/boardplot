@@ -150,3 +150,22 @@ it('draws neutral by default, accents a highlighted node and its ribbons, and ke
   expect(new Set(fills({ linkColor: 'source' }).links).size).toBeGreaterThan(2);
   expect(new Set(fills({ linkColor: 'target', highlight: 'won' }).nodes).size).toBe(2);
 });
+
+// A sankey page printed node totals only, so a reader could not read which ribbon is the biggest; thin ribbons stay unlabelled, the only inflow of a node repeats the node label so it stays unlabelled, and linkValue 'none' brings the old look.
+it('prints the value of ribbons at least one line high at their arriving end', () => {
+  const links = [{ source: 'a', target: 'c', value: 300 }, { source: 'b', target: 'c', value: 100 }, { source: 'a', target: 'd', value: 2 }, { source: 'c', target: 'e', value: 400 }];
+  const printed = (options: Record<string, unknown> = {}) => {
+    const request = resolveChartRequest({ type: 'sankey', data: { links }, options: { title: 'Flows', other: false, size: { width: 640, height: 400 }, ...options } });
+    return requireGeometry(layoutResolvedRequest(request)).scene.filter((node) => node.t === 'text' && node.id.startsWith('label:flow:'));
+  };
+  expect(printed().length).toBe(2);
+  expect(printed({ linkValue: 'none' })).toHaveLength(0);
+});
+
+// With nodeValue 'share' the node label prints a percentage, so a ribbon equal to its node's total must still print its count; otherwise the count appears nowhere.
+it('prints the count of a single-inflow ribbon when node labels print shares', () => {
+  const links = [{ source: 'a', target: 'b', value: 300 }, { source: 'a', target: 'c', value: 100 }];
+  const request = resolveChartRequest({ type: 'sankey', data: { links }, options: { title: 'Flows', other: false, nodeValue: 'share', size: { width: 640, height: 400 } } });
+  const flows = requireGeometry(layoutResolvedRequest(request)).scene.filter((node) => node.t === 'text' && node.id.startsWith('label:flow:'));
+  expect(flows.map((node) => node.t === 'text' && node.lines?.join(''))).toEqual(['300', '100']);
+});

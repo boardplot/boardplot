@@ -15,6 +15,6 @@ export const sankeyCore: ChartCore<SankeyData, SankeyOptions, SankeyMarks, Sanke
   layout: (data, options) => layoutSankey(data, options),
   defaultStrings: sankeyDefaultStrings,
   // Every node must stay identifiable: the note of names that do not fit lists them all.
-  defaults: { notes: { maxListed: 'all' } },
+  defaults: { notes: { maxListed: 'all' }, linkValue: 'large' },
   annotationKinds: [],
 };

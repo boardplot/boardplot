@@ -101,6 +101,13 @@ export const fixtures: Fixture<SankeyData, SankeyOptions>[] = [
     options: { ...frame('Search brings the most visits that end in a purchase'), unit: 'k visits', highlight: 'purchase', notes: { show: ['note', 'disclosure'] }, size: { width: 960, height: 560 } },
   },
   {
+    id: 'channel-journeys-node-values',
+    title: 'Channel journeys with linkValue none: node values only, no value on the ribbons',
+    kind: 'example',
+    data: journeys,
+    options: { ...frame('Search brings the most visits that end in a purchase'), unit: 'k visits', linkValue: 'none', size: { width: 960, height: 560 } },
+  },
+  {
     id: 'budget-departments',
     title: 'Budget to departments to cost types, links coloured by target',
     kind: 'example',
