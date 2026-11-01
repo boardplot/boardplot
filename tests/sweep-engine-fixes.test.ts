@@ -500,7 +500,7 @@ describe('chart layout edge cases', () => {
   });
 
   // An unsized sparkline with a title kept its 176 px card on slide, so the title wrapped one word a line and was cut.
-  it('an unsized sparkline on slide is as wide as its title and keeps 176 px for a short one', () => {
+  it('an unsized sparkline on slide is as wide as its title and keeps 320 px for a short one', () => {
     const request = (title: string) => ({
       type: 'sparkline',
       data: { values: [11.2, 11.6, 11.1, 12, 12.4, 12.1, 12.9, 13.4, 13.1] },
@@ -512,7 +512,25 @@ describe('chart layout edge cases', () => {
     expect(long.size.width).toBeGreaterThan(176);
     expect(long.frame.titleLines).toBe(1);
     expect(long.warnings.some((w: { code: string }) => w.code === 'frame-title-truncated')).toBe(false);
-    expect(lay('Orders').size.width).toBe(176);
+    expect(lay('Orders').size.width).toBe(320);
+  });
+
+  // At 176 px a framed sparkline wrapped its title and source word by word and its two end names touched; on a
+  // 480 px dashboard card the line stayed in the 36 px tile band and read flat.
+  it('a framed sparkline defaults to 320 px and a framed card from 320 px draws the scaled line band', () => {
+    const request = (options: object) => ({
+      type: 'sparkline',
+      data: { values: [15.9, 14.5, 13.9, 13.4, 13.9, 14.2, 15.4, 16.1, 15.7, 15.4, 14.8, 15], labels: ['Jan 24', 'Feb 24', 'Mar 24', 'Apr 24', 'May 24', 'Jun 24', 'Jul 24', 'Aug 24', 'Sep 24', 'Oct 24', 'Nov 24', 'Dec 24'] },
+      options: { endLabels: 'ends', valueLabel: 'last', ...options },
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const lay = (options: object) => layoutResolvedRequest(resolveChartRequest(request(options) as any) as any) as any;
+    expect(lay({ source: 'Invented data' }).size.width).toBe(320);
+    expect(lay({}).size.width).toBe(176);
+    const card = lay({ title: 'Trend', target: 'dashboard', size: { width: 480 } });
+    const old = lay({ title: 'Trend', target: 'dashboard', size: { width: 480, height: 158 } });
+    expect(card.size.height).toBeGreaterThan(old.size.height + 40);
+    expect(old.size.height).toBe(158);
   });
 
   // A bar row name stopped at three lines and was cut with an ellipsis although its row held a fourth line.
