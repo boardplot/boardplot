@@ -63,6 +63,12 @@ export interface ScaleModel {
 }
 
 /**
+ * An unnamed colour key stands in a column beside the map or tiles, instead of a
+ * row above them, when the map comes out at least this much larger that way.
+ */
+export const KEY_BESIDE_GAIN = 1.1;
+
+/**
  * The notes a geo scale owes the author: an undeclared diverging polarity,
  * and signed values on the one-colour sequential ramp, where zero has no
  * colour of its own.
