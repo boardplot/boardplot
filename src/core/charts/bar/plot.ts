@@ -326,7 +326,7 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
     return toDate !== undefined && cat.partial === true && !saysToDate(cat.label ?? cat.id, toDate) ? { ...cat, label: `${cat.label ?? cat.id} ${toDate}`, suffix: toDate } : cat;
   });
   const band0 = (rows: typeof cats, refs: { count: number; warnings: LintWarning[] }) => rowLabelBand(named(rows), tickFont, capW, catMaxLines, lineH, measure, {
-    wider: gutterBudget(24, plot0.w),
+    wider: gutterBudget(24, plot0.w), tightLines: Math.floor((stepEst - 4) / lineH),
     target: options.target, textScale: textScaleOf(options), typeRole: 'axis',
     shrink: stepDownFont(theme, tickFont, 'axis', options.target, textScaleOf(options)),
     footnoteRefs: refs,
