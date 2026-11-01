@@ -102,3 +102,14 @@ it('refuses a category date the time axis cannot read', () => {
   expect(errors(line('2024-1-1'))[0]).toMatchObject({ code: 'invalid-data', path: '/data/categories/2/date' });
   expect(errors(line('2024-01-01'))).toEqual([]);
 });
+
+// A category id sent as an event date was refused with no pointer to `at`, the key that anchors an event to a category.
+it('points an event date that is a category id to at with the first category', () => {
+  const dated = errors(column({ kind: 'event', date: 'y21', label: 'Launch' }));
+  expect(dated[0]).toMatchObject({ code: 'invalid-annotation', path: '/annotations/0/date' });
+  expect(dated[0]?.suggest).toContain("use 'at' with its id");
+  expect(dated[0]?.suggest).toContain('"at": "y19"');
+  const viaOptions = errors({ ...column({ kind: 'event', date: 'y21', label: 'Launch' }), annotations: undefined, options: { annotations: [{ kind: 'event', date: 'y21', label: 'Launch' }] } });
+  expect(viaOptions[0]?.suggest).toContain('"at": "y19"');
+  expect(errors(column({ kind: 'event', at: 'y21', label: 'Launch' }))).toEqual([]);
+});

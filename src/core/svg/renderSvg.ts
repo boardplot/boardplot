@@ -764,7 +764,11 @@ function renderNodeInner(
         : node.lines
             .map(
               (line, i) =>
-                `<tspan x="${n2(tx0)}" dy="${i === 0 ? '0' : n2(lineH)}">${esc(line, `text line ${i}`)}</tspan>`,
+                // Between two lines a space of its own chunk (absolute x) keeps the words
+                // apart for copied or extracted text. A trailing space inside the line would
+                // be part of its anchored width and move a centred or right-aligned line.
+                // A line that ends in a hyphen joins the next one without a space.
+                `${i === 0 || /\S-$/.test(node.lines[i - 1]!) ? '' : `<tspan x="${n2(tx0)}" dy="0"> </tspan>`}<tspan x="${n2(tx0)}" dy="${i === 0 ? '0' : n2(lineH)}">${esc(line, `text line ${i}`)}</tspan>`,
             )
             .join('');
       // The root <svg> carries the theme family; a node repeats it only when it differs.
@@ -777,9 +781,6 @@ function renderNodeInner(
       // Arial/SF ascent as a fraction of font-size.
       const baselineY = node.y + font.size * TEXT_ASCENT;
       const rotateAttr = node.rotate ? ` transform="rotate(${n2(node.rotate)} ${n2(tx0)} ${n2(baselineY)})"` : '';
-      // A cut line keeps its full text in <title>, the first child so every
-      // renderer reads it as the element's accessible name.
-      const fullText = node.title ? `<title>${esc(node.title, 'node.title')}</title>` : '';
       // Figures only on numeric roles; names and prose keep the font default.
       const role = textRole(node);
       const figures = numericVariant(role, theme);
@@ -793,7 +794,13 @@ function renderNodeInner(
       const haloText = halo
         ? `<text aria-hidden="true"${node.opacity === undefined ? '' : ` opacity="${node.opacity}"`}${placed} fill="${halo}" stroke="${halo}" stroke-width="2.5" stroke-linejoin="round"${numeric}>${spans}</text>`
         : '';
-      const text = `<text data-id="${esc(node.id, 'node.id')}" data-part="${esc(node.part, 'node.part')}" data-bp-role="${role}"${rc}${placed} fill="${ink}"${numeric}>${fullText}${spans}</text>`;
+      const text = `<text data-id="${esc(node.id, 'node.id')}" data-part="${esc(node.part, 'node.part')}" data-bp-role="${role}"${rc}${placed} fill="${ink}"${numeric}>${spans}</text>`;
+      // A cut line keeps its full text as the hover title and accessible name of its group.
+      // Inside <text> the title would join the visible words in extracted text.
+      if (node.title) {
+        const full = esc(node.title, 'node.title');
+        return `<g${tf} role="img" aria-label="${full}"><title>${full}</title>${backing}${haloText}${text}</g>`;
+      }
       return tf ? `<g${tf}>${backing}${haloText}${text}</g>` : backing + haloText + text;
     }
   }
