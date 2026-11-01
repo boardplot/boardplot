@@ -28,8 +28,8 @@ import { runAnnotatePass } from '../../annotatePass';
 import { categoryTargetFields, spliceAnnotationNodes } from '../../annotateFields';
 import { applyValueAxisTitleInk, layoutValueAxis, planValueAxisTitle, valueAxisTitleRequest } from '../../axis';
 import { contrastRatio } from '../../color';
-import { formatAutomaticNumber, formatAutomaticPercent, MINUS } from '../../format';
-import { formatterFromExample, parseFormatExample } from '../../formatSpec';
+import { formatAutomaticNumber } from '../../format';
+import { defaultFormatSpec, exampleSpec, formatWithSpec, parseFormatExample, roundedNumber } from '../../formatSpec';
 import { cleanDiff, rectContains, rectsOverlap, rowLabelX, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
@@ -112,7 +112,7 @@ export interface BulletMarks {
 }
 
 export interface BulletDerived {
-  /** value − target per row (rows with both defined), rounded to 2 decimals. */
+  /** value − target per row (rows with both defined), before display rounding. */
   deltaVsTarget: Record<Id, number>;
   /**
    * The row's value in percent of its target (actual ÷ target, in every
@@ -516,14 +516,18 @@ export function layoutBullet(
   }
 
   // ---- per-row formatting (cell format override > pct > chart format) ----
-  const fmt = options.format
-    ? formatterFromExample(options.format, options.locale?.language, undefined, rows.flatMap((row) => row.isPct ? [] : [row.value, row.target]))
-    : (v: number) => formatAutomaticNumber(v, { locale: options.locale?.language, decimals: autoDecimals(v) });
-  const rowFmt = (row: NormRow) => (v: number): string => {
-    if (row.meta?.format) return formatterFromExample(row.meta.format, options.locale?.language)(v);
-    if (row.isPct) return formatAutomaticPercent(v, autoDecimals(v), false, options.locale?.language);
-    return fmt(v);
-  };
+  const chartSpec = options.format
+    ? exampleSpec(options.format, options.locale?.language, undefined, rows.flatMap((row) => row.isPct ? [] : [row.value, row.target]))
+    : undefined;
+  const rowSpecs = new Map(rows.map((row) => [row, row.meta?.format
+    ? exampleSpec(row.meta.format, options.locale?.language, undefined, [row.value, row.target])
+    : !row.isPct && chartSpec ? chartSpec
+      : { ...defaultFormatSpec(options.locale?.language),
+        decimals: Math.max(autoDecimals(row.value ?? 0), autoDecimals(row.target ?? 0)), suffix: row.isPct ? '%' : '' }]));
+  const rowFmt = (row: NormRow) => (v: number): string => formatWithSpec(v, rowSpecs.get(row)!);
+  // The printed gap subtracts the printed operands; derived data keeps the exact difference.
+  const shownDelta = (row: NormRow, d: number): number => row.value === null || row.target === null ? d
+    : cleanDiff(roundedNumber(row.value, rowSpecs.get(row)!), roundedNumber(row.target, rowSpecs.get(row)!));
   const valueTextOf = (row: NormRow): string | null => {
     if (row.value === null || row.meta?.label === false) return null;
     const base = rowFmt(row)(row.value);
@@ -533,16 +537,19 @@ export function layoutBullet(
   };
   /** Signed delta: '+7' / '−1.5pp', and with its comparison '+7 vs target'. */
   const deltaBody = (row: NormRow, d: number): string => {
-    const sign = d < 0 ? MINUS : '+';
-    const body = row.isPct
-      ? formatAutomaticNumber(Math.abs(d), { locale: options.locale?.language, decimals: autoDecimals(d), suffix: 'pp' })
-      : rowFmt(row)(Math.abs(d));
-    return `${sign}${body}`;
+    const spec = rowSpecs.get(row)!;
+    const shown = shownDelta(row, d);
+    const gapSpec = { ...spec, signed: true, ...(row.isPct ? { prefix: '', suffix: 'pp' } : {}) };
+    const fixedSpec = { ...gapSpec, automatic: false, nonzero: undefined };
+    // A nonzero gap that the fixed decimals round to zero (operands in scientific form) prints in the operands' own form.
+    return formatWithSpec(shown, shown !== 0 && roundedNumber(shown, fixedSpec) === 0 ? gapSpec : fixedSpec);
   };
-  const deltaText = (row: NormRow, d: number): string => `${deltaBody(row, d)} vs ${targetWord(options)}`;
+  const deltaText = (row: NormRow, d: number): string => `${deltaBody(row, d)} ${shownDelta(row, d) === 0
+    ? chartString(options, 'gapOn', { v1: targetWord(options) }) : `vs ${targetWord(options)}`}`;
   const deltaTone = (row: NormRow, d: number): 'good' | 'bad' | 'warn' | 'neutral' => {
     if (row.direction === 'neutral') return 'neutral';
     if (row.bands.some(band => band.tone)) return (row.value === null ? row.bands.at(-1)! : bandFor(row.value, row.bands)).tone ?? 'neutral';
+    d = shownDelta(row, d);
     return d === 0 ? 'good' : (d > 0) === (row.direction === 'higherIsBetter') ? 'good' : 'bad';
   };
 
@@ -786,7 +793,8 @@ export function layoutBullet(
     const colTargets = rows.map((row) => (row.target === null ? null : rowFmt(row)(row.target)));
     const colGaps = rows.map((row) => (deltaVsTarget[row.id] === undefined ? null : deltaBody(row, deltaVsTarget[row.id]!)));
     const colPositions = rows.map((row) => {
-      const d = deltaVsTarget[row.id];
+      const raw = deltaVsTarget[row.id];
+      const d = raw === undefined ? undefined : shownDelta(row, raw);
       return d === undefined ? null : chartString(options, d < 0 ? 'gapBelow' : d > 0 ? 'gapAbove' : 'gapOn', { v1: targetWord(options) });
     });
     // Toned bands judge a row by its band, not its direction, so such a row names no direction.
@@ -1014,7 +1022,8 @@ export function layoutBullet(
         plot,
         orient: 'x',
         gridlines: options.valueAxis.gridlines ?? false,
-        format: fmt,
+        format: (v) => chartSpec ? formatWithSpec(v, chartSpec)
+          : formatAutomaticNumber(v, { locale: options.locale?.language, decimals: autoDecimals(v) }),
         theme,
         measure,
         canvasWidth: size.width,
@@ -1160,7 +1169,9 @@ export function layoutBullet(
     // that would crowd a neighbour gives way, and the last edge's number outranks the ones between.
     if (edgeTicks && row.bands.length > 0) {
       const edges = [0, ...row.bands.map((bandSpec) => bandSpec.to)].map((value) => {
-        const text = rowFmt(row)(value);
+        const text = !row.meta?.format && (row.isPct || !chartSpec)
+          ? formatAutomaticNumber(value, { locale: options.locale?.language, decimals: autoDecimals(value), suffix: row.isPct ? '%' : '' })
+          : rowFmt(row)(value);
         return { value, text, x: x(value), w: measure(text, noteFont).width };
       });
       const clear = (a: { x: number; w: number }, b: { x: number; w: number }) => b.x - b.w / 2 >= a.x + a.w / 2 + 4;
