@@ -501,8 +501,12 @@ export function layoutButterfly(
     return { ...fitted, lines, w: fitted.w + measure(row.mark, fitted.font).width };
   });
   const paneW = (plot.w - centerW) / 2;
-  const centerX0 = plot.x + paneW;
-  const centerX1 = centerX0 + centerW;
+  // On one scale the panes differ in width where only one holds a bracket: the
+  // pane without it gives its spare room to the pane with it (see `splitPanes`).
+  let paneWA = paneW;
+  let paneWB = paneW;
+  let centerX0 = plot.x + paneW;
+  let centerX1 = centerX0 + centerW;
 
   // ---- scales (bar length in px per pane) ----
   const absA = rows.map((r) => Math.abs(r.a ?? 0));
@@ -544,13 +548,39 @@ export function layoutButterfly(
     let kInside = Infinity;
     if (insideCard) {
       for (let pass = 0; pass < 4; pass++) {
+        splitPanes(kInside);
         const next = Math.min(pxPerUnit('a'), pxPerUnit('b'));
         if (next === kInside) break;
         kInside = next;
       }
     }
+    splitPanes(kInside);
+    // Where the two panes carry unequal room, move the name column until both
+    // panes end at the same scale: pane A's width is the one that makes
+    // `rawPxPerUnit` of A equal B's (A grows with it, B shrinks).
+    function splitPanes(kIn: number): void {
+      paneWA = paneWB = paneW;
+      if (!sharedScale || room.left === room.right) return;
+      let lo = 40 + room.left;
+      let hi = 2 * paneW - 40 - room.right;
+      if (lo >= hi) return;
+      for (let i = 0; i < 24; i++) {
+        const mid = (lo + hi) / 2;
+        paneWA = mid;
+        paneWB = 2 * paneW - mid;
+        if (rawPxPerUnit('a', kIn) < rawPxPerUnit('b', kIn)) lo = mid; else hi = mid;
+      }
+      paneWA = (lo + hi) / 2;
+      paneWB = 2 * paneW - paneWA;
+    }
     function pxPerUnit(side: 'a' | 'b'): number {
+      const k = rawPxPerUnit(side, kInside);
+      const max = side === 'a' ? maxA : maxB;
+      return Number.isFinite(k) ? Math.max(k, max > 0 ? 20 / max : 0) : Infinity;
+    }
+    function rawPxPerUnit(side: 'a' | 'b', kIn: number): number {
       const bound = side === 'a' ? room.left : room.right;
+      const w = side === 'a' ? paneWA : paneWB;
       let k = Infinity;
       for (const r of rows) {
         const v = Math.abs((side === 'a' ? r.a : r.b) ?? 0);
@@ -559,16 +589,17 @@ export function layoutButterfly(
         // A value label takes at most half the pane, a delta after it up to 70%.
         // On a paneFit card a value that goes inside the bar end takes no tail.
         const textW = text ? measure(text, labelFont).width : 0;
-        const inside = insideCard && text !== '' && fitsInsideBar(v * kInside, textW);
-        const valueTail = inside ? 0 : Math.min(paneW * 0.5, text ? VALUE_GAP + textW : 0);
-        const tail = Math.min(paneW * 0.7, valueTail + deltaTail(r, side));
-        k = Math.min(k, (paneW - bound - Math.max(valueTail, tail)) / v);
+        const inside = insideCard && text !== '' && fitsInsideBar(v * kIn, textW);
+        const valueTail = inside ? 0 : Math.min(w * 0.5, text ? VALUE_GAP + textW : 0);
+        const tail = Math.min(w * 0.7, valueTail + deltaTail(r, side));
+        k = Math.min(k, (w - bound - Math.max(valueTail, tail)) / v);
       }
-      const max = side === 'a' ? maxA : maxB;
-      return Number.isFinite(k) ? Math.max(k, max > 0 ? 20 / max : 0) : Infinity;
+      return k;
     }
     const kA = pxPerUnit('a');
     const kB = pxPerUnit('b');
+    centerX0 = plot.x + paneWA;
+    centerX1 = centerX0 + centerW;
     const shared = Math.min(kA, kB);
     const k = Number.isFinite(shared) ? shared : 0;
     return sharedScale ? { a: (v) => v * k, b: (v) => v * k }
@@ -771,7 +802,7 @@ export function layoutButterfly(
     const series = side === 'a' ? sA : sB;
     const text = side === 'a' ? aLabel : bLabel;
     const tsize = measure(text, strongFont);
-    const paneCenter = side === 'a' ? plot.x + paneW / 2 : centerX1 + paneW / 2;
+    const paneCenter = side === 'a' ? plot.x + paneWA / 2 : centerX1 + paneWB / 2;
     const centered = clamp(
       paneCenter - tsize.width / 2,
       side === 'a' ? plot.x : centerX1,
@@ -935,11 +966,16 @@ export function layoutButterfly(
     const bracketRoom = { left: over.left ? reach.left + BRACKET_CLEAR : 0, right: over.right ? reach.right + BRACKET_CLEAR : 0 };
     return layoutButterfly(data, options, { ...comparison, bracketRoom });
   }
+  // A comparison that went to the note list keeps no room: the bars take it back.
+  const leftBracket = annResult.labels.some(label => !label.hidden && label.rect.x + label.rect.w <= centerX0);
+  const rightBracket = annResult.labels.some(label => !label.hidden && label.rect.x >= centerX1);
+  if ((room.left > 0 && !leftBracket) || (room.right > 0 && !rightBracket)) {
+    const bracketRoom = { left: leftBracket ? room.left : 0, right: rightBracket ? room.right : 0 };
+    return layoutButterfly(data, options, { ...comparison, bracketRoom });
+  }
 
   // ---- emit ----
   const allLabels: PlacedLabel[] = [...solved.placed, ...annResult.labels];
-  const leftBracket = annResult.labels.some(label => !label.hidden && label.rect.x + label.rect.w <= centerX0);
-  const rightBracket = annResult.labels.some(label => !label.hidden && label.rect.x >= centerX1);
   const leftMinimum = minimumPane('a', leftBracket ? room.left : 0);
   const rightMinimum = minimumPane('b', rightBracket ? room.right : 0);
   const minWidth = size.width - plot.w + centerW + (comparisonRun === 20
