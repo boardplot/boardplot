@@ -597,6 +597,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | revenue-bridge-method-note | pvm | example | The revenue bridge with the method notes printed |
 | revenue-bridge-notes-listed | pvm | example | The revenue bridge on a slide with its method notes in the notes list |
 | named-periods-and-ranges | pvm | torture | PVM names each period and entry or exit range |
+| revenue-bridge-no-net-change | pvm | example | The revenue bridge without the net change over the closing column |
 
 ## pie
 

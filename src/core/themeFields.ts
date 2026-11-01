@@ -235,6 +235,7 @@ const THEME_FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze
   surface: 'Surface anatomy for chips, row tints, and schedule washes.',
   'surface.chipTint': 'How far a chip background steps toward the surface (0.05 to 0.97).',
   'surface.rowTint': 'Opacity of the zebra row tint (0.85 to 0.98).',
+  'surface.ganttRowTint': 'How far Gantt row and weekend shading washes color.others toward color.background (0 to 1). Default 0.25. The Weekend key uses the same wash, capped at 0.8. Table zebra shading keeps surface.rowTint.',
   'surface.elapsedTint': 'Opacity of the elapsed-era wash in schedule charts (0.85 to 0.99).',
   'surface.anchorTint': 'Opacity of the structural wash on level-0 parent rows (0.85 to 0.99).',
   'surface.heatSteps': 'Band alphas of a stepped table heat lane, lightest first, over the background (0 to 1). Five bands need four entries: the band above the last one is the full ink with inverse text. Default 0.06 / 0.14 / 0.26 / 0.42.',

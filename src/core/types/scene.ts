@@ -96,6 +96,8 @@ export type ThemePaintSource =
   | { kind: 'line-forecast'; base: Paint; crossesBand: boolean }
   | { kind: 'line-band'; base: Paint; seriesId: string }
   | { kind: 'line-context'; rank: number; rungCount: number; seriesId: string }
+  /** Gantt row and weekend wash, using the active theme's surface.ganttRowTint. */
+  | { kind: 'gantt-row-tint'; key?: true }
   /**
    * A context stroke that crosses other context strokes: the ladder share
    * `share`, raised in the active theme until the stroke is a palette step
