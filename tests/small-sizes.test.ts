@@ -467,6 +467,31 @@ it('draws a grid with a waffle panel on a phone card', () => {
   expect(shown.labels.filter(label => label.hidden)).toEqual([]);
 });
 
+// A one-panel, one-series waffle on a pinned slide stacked label, value and grid and drew a 28 px cell on a 528 px canvas; the value and label now stand beside the grid so the cell grows, and an unpinned height keeps the stack.
+it('puts the value and label of a single waffle panel beside a grid that fills the pinned height', () => {
+  const data = { categories: [{ id: 'all', label: 'Forest' }], series: [{ id: 'plus', label: 'Plus', values: [46.4] }] };
+  const draw = (size: { width: number; height?: number }) => layoutResolvedRequest(resolveChartRequest({ type: 'waffle', data, options: { variant: 'cells', target: 'slide', subtitle: { measure: 'Share of land', period: 'FY26' }, size } } as never)) as unknown as Geometry<{ panels: { rect: { x: number; w: number } }[] }>;
+  const pinned = draw({ width: 1184, height: 528 });
+  const rect = pinned.marks.panels[0]!.rect;
+  const value = pinned.labels.find(label => label.id === 'total:all')!;
+  const name = pinned.labels.find(label => label.id === 'category:all')!;
+  expect(rect.w).toBeGreaterThan(350);
+  expect(value.hidden).toBeFalsy();
+  expect(name.hidden).toBeFalsy();
+  expect(value.rect.x).toBeGreaterThan(rect.x + rect.w);
+  expect(name.rect.x).toBe(value.rect.x);
+  expect(draw({ width: 1184 }).marks.panels[0]!.rect.w).toBeLessThan(rect.w);
+});
+
+// Prevents the side readout from taking away the old stacked form: heightFill 'none' must give back the exact stacked drawing on a pinned height.
+it("keeps the stacked single waffle panel on a pinned height with heightFill 'none'", () => {
+  const data = { categories: [{ id: 'all', label: 'Forest' }], series: [{ id: 'plus', label: 'Plus', values: [46.4] }] };
+  const draw = (options: object) => layoutResolvedRequest(resolveChartRequest({ type: 'waffle', data, options: { variant: 'cells', target: 'slide', subtitle: { measure: 'Share of land', period: 'FY26' }, size: { width: 1184, height: 528 }, ...options } } as never)) as unknown as Geometry<{ panels: { rect: { x: number; w: number } }[] }>;
+  const stacked = draw({ heightFill: 'none' });
+  expect(stacked.marks.panels[0]!.rect.w).toBeLessThan(draw({}).marks.panels[0]!.rect.w);
+  expect(stacked.labels.find(label => label.id === 'total:all')!.rect.x).toBeLessThan(stacked.marks.panels[0]!.rect.x + stacked.marks.panels[0]!.rect.w);
+});
+
 // Prevents waffle panels from cutting a long name in one cells row, and from leaving one square alone on a second row (7 + 1).
 it('wraps waffle panels into evenly filled rows when a name is wider than its panel', () => {
   const rowsOf = (variant: string, labels: string[], width: number): number[] => {
@@ -1307,4 +1332,20 @@ it('keeps a three-line vision when the strategy house is a little short', () => 
   };
   const body = render({ spec: { type: 'diagram', data, options: { variant: 'strategy-house', size: { width: 720, height: 316 } } } }).body as any;
   expect(body.errors).toEqual([]);
+});
+
+// Prevents a short org chart from floating in the middle of a tall plot: under a host-set height the level gaps grow
+// into the spare height, and a plot with no spare height keeps the natural gaps.
+it('spreads an org chart over the height the host sets', () => {
+  const spec = getFixtures('diagram').find(f => f.id === 'org-structure')! as any;
+  const span = (height: number, heightFill?: string) => {
+    const result = layoutDiagram(spec.data, { ...spec.options, size: { width: 888, height }, ...(heightFill ? { heightFill } : {}) } as never, false);
+    const rects = result.marks.nodes.map(mark => mark.contentRect);
+    return Math.max(...rects.map(r => r.y + r.h)) - Math.min(...rects.map(r => r.y));
+  };
+  const natural = span(150);
+  expect(span(396)).toBeGreaterThan(1.3 * natural);
+  expect(span(396)).toBeLessThan(2.6 * natural);
+  // heightFill 'none' is the old look: the natural gaps at any canvas height.
+  expect(span(396, 'none')).toBe(natural);
 });
