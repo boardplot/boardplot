@@ -497,7 +497,7 @@ fixtures.push({
   title: 'A card in a fixed slot that keeps its natural sizes at the top',
   kind: 'example',
   tags: ['feature:theme'],
-  data: { label: 'Gross margin', value: 38.4, format: '1.1%', note: 'Excludes the Harbor Freight division, sold in June', delta: { vs: 36.2, scenario: 'PY' } },
+  data: { label: 'Gross margin', value: 38.4, format: '1.1%', note: 'Excludes the Larkspur Tools division, sold in June', delta: { vs: 36.2, scenario: 'PY' } },
   options: {
     theme: { preset: 'standard', overrides: { marks: { kpiSlotFill: false } } },
     title: 'Gross margin rose 2.2 points',

@@ -709,21 +709,44 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
   // spark, compare chips or an attainment keep their card layout.
   const fillSlot = fixedSlot && kindOn('total');
   if (fillSlot) {
-    const wanted = Math.max(baseSize, Math.round(size.height * SLOT_FIGURE_SHARE));
-    baseSize = fitValueText(valueText, wanted, baseSize, figure, plot.w, Infinity, measure).valueFont.size;
-    const slotDelta = Math.round(baseSize * SLOT_DELTA_SHARE * 2) / 2;
-    if (showDelta && slotDelta > deltaFont.size) {
-      deltaFont = { ...deltaFont, size: slotDelta };
-      ({ size: caretSize, w: caretW, h: caretH, pad: caretPad } = caretOf(deltaFont));
-      const wrapped = wrapDelta(deltaFont, Math.max(4, plot.w - caretPad));
-      deltaLines = wrapped.length === 2 ? wrapped : deltaOneLine;
-    }
+    const naturalDelta = deltaFont;
+    const naturalDeltaLines = deltaLines;
+    const naturalNote = noteFont;
+    const slotDelta = (figureSize: number) => Math.round(figureSize * SLOT_DELTA_SHARE * 2) / 2;
+    const deltaLinesAt = (font: FontSpec) => {
+      const width = Math.max(4, plot.w - caretOf(font).pad);
+      const wrapped = wrapDelta(font, width);
+      return wrapped.length === 2 ? wrapped : measure(deltaText!, font).width <= width ? deltaOneLine : undefined;
+    };
+    // The largest figure that fits the width, and the largest delta that
+    // still fits the width on one or two lines.
+    const top = fitValueText(valueText, Math.max(baseSize, Math.round(size.height * SLOT_FIGURE_SHARE)), baseSize, figure, plot.w, Infinity, measure).valueFont.size;
+    let deltaCap = slotDelta(top);
+    while (showDelta && deltaCap > naturalDelta.size && deltaLinesAt({ ...naturalDelta, size: deltaCap }) === undefined) deltaCap -= 0.5;
     // The note keeps half the size of the slot delta, so it still reads
-    // under the large figure.
-    const slotNote = Math.round(baseSize * SLOT_DELTA_SHARE) / 2;
-    if (noteLines.length > 0 && slotNote > noteFont.size) {
-      noteFont = { ...noteFont, size: slotNote };
-      ({ lines: noteLines, h: noteBlockH } = noteBlock(noteFont));
+    // under the large figure. The figure steps down until the whole block
+    // fits the free height; a block that fits only at the natural sizes
+    // keeps them.
+    const plan = (figureSize: number) => {
+      const deltaSize = Math.min(deltaCap, slotDelta(figureSize));
+      const delta = showDelta && deltaSize > naturalDelta.size ? { ...naturalDelta, size: deltaSize } : naturalDelta;
+      const lines = delta === naturalDelta ? naturalDeltaLines : deltaLinesAt(delta)!;
+      const noteSize = Math.round(figureSize * SLOT_DELTA_SHARE) / 2;
+      const note = noteLines.length > 0 && noteSize > naturalNote.size ? { ...naturalNote, size: noteSize } : naturalNote;
+      const noted = note === naturalNote ? { lines: noteLines, h: noteBlockH } : noteBlock(note);
+      const valueH = measure(valueText, { family: figure.family, size: figureSize, weight: figure.weight, lineHeight: 1.2 }).height;
+      const blockH = valueH + noted.h + comparisonH + (showDelta ? deltaBlock(delta, lines).h : 0);
+      return { figureSize, delta, lines, note, noted, fits: blockH <= contentBottom - valueY };
+    };
+    let slot = plan(top);
+    while (!slot.fits && slot.figureSize > baseSize) slot = plan(Math.max(baseSize, slot.figureSize - 2));
+    if (slot.fits && slot.figureSize > baseSize) {
+      baseSize = slot.figureSize;
+      deltaFont = slot.delta;
+      ({ size: caretSize, w: caretW, h: caretH, pad: caretPad } = caretOf(deltaFont));
+      deltaLines = slot.lines;
+      noteFont = slot.note;
+      ({ lines: noteLines, h: noteBlockH } = slot.noted);
     }
   }
   const deltaBandH = contentBottom - valueY - minimumValueH - noteBlockH - comparisonH;
