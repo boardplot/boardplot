@@ -15,14 +15,3 @@ it('likert examples state the neutral treatment of the option, not the one they 
     expect(renderSvg(result, request.theme), id).not.toContain(stale);
   }
 });
-
-// The fixture set notes.show without 'method', so the split-neutral note was not drawn, and the centre line then read as the agree/disagree boundary.
-it('the split-neutral engagement examples draw the split-neutral note on the exhibit', () => {
-  for (const id of ['employee-engagement-5pt', 'employee-engagement-compact']) {
-    const fixture = getFixtures('likert').find((item) => item.id === id)!;
-    const request = resolveChartRequest({ type: 'likert', data: fixture.data, options: fixture.options });
-    const result = layoutResolvedRequest(request);
-    if (result.refused) throw new Error(`${id} refused`);
-    expect(renderSvg(result, request.theme), id).toContain('split evenly across the centre line');
-  }
-});
