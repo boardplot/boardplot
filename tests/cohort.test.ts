@@ -113,9 +113,38 @@ it('draws every cohort size whole when the row names are cut', () => {
   for (const width of [320, 400, 472]) {
     const shown = layout(fixture.data as CohortData, { ...fixture.options as CohortOptions, target: 'report', size: { width, height: 1000 } });
     const drawn = shown.labels.flatMap(label => label.hidden ? [] : [label.lines.join(' ')]);
-    const sizes = drawn.flatMap(text => text.match(/\(n = [\d,]+\)/g) ?? []);
-    expect(sizes, `${width} px`).toEqual(shown.derived.cohorts.map(row => `(n = ${row.base.toLocaleString('en-US')})`));
+    const sizes = drawn.flatMap(text => text.match(/\(n\u00a0=\u00a0[\d,]+\)/g) ?? []);
+    expect(sizes, `${width} px`).toEqual(shown.derived.cohorts.map(row => `(n\u00a0=\u00a0${row.base.toLocaleString('en-US')})`));
   }
+});
+
+// A narrow cohort row must keep its size on one line instead of splitting after "(n".
+it('wraps narrow cohort labels before the whole size suffix', () => {
+  const fixture = getFixtures('cohort').find(f => f.id === 'saas-logo-retention')!;
+  const data = fixture.data as CohortData;
+  const request = resolveChartRequest({ type: 'cohort', data, options: { ...fixture.options as CohortOptions, size: { width: 358, height: 580 } } });
+  const shown = layoutResolvedRequest(request) as unknown as Geometry<CohortMarks, CohortDerived>;
+  expect(shown.refused).toBeFalsy();
+  for (const [index, row] of shown.derived.cohorts.entries()) {
+    const label = shown.labels.find(label => label.id === `series:${row.id}`)!;
+    expect(label.hidden).toBeFalsy();
+    expect(label.lines.map(line => line.replaceAll('\u00a0', ' '))).toEqual([
+      data.cohorts[index]!.label,
+      `(n = ${formatNumber(row.base, { decimals: 0 })})`,
+    ]);
+  }
+});
+
+// A size wider than the label band must still break at its spaces instead of refusing the width.
+it('draws a cohort size wider than the label band instead of refusing the width', () => {
+  const fixture = getFixtures('cohort').find(f => f.id === 'saas-logo-retention')!;
+  const data = fixture.data as CohortData;
+  const wide = { ...data, cohorts: data.cohorts.map(cohort => ({ ...cohort, active: cohort.active.map(value => value === null ? null : value * 100000) })) } as CohortData;
+  const request = resolveChartRequest({ type: 'cohort', data: wide, options: { ...fixture.options as CohortOptions, size: { width: 358, height: 580 } } });
+  const shown = layoutResolvedRequest(request) as unknown as Geometry<CohortMarks, CohortDerived>;
+  expect(shown.refused).toBeFalsy();
+  const label = shown.labels.find(label => label.id === `series:${shown.derived.cohorts[0]!.id}`)!;
+  expect(label.lines).toEqual(['Jan 2025 (n =', '120,000,000)']);
 });
 
 // A cohort exhibit on a 280 px phone card refused (it needed 528 px); its compact form draws there and names each period it leaves out.
@@ -656,7 +685,7 @@ describe('cohort — exhibit contract', () => {
     for (const row of geometry.derived.cohorts) {
       const label = geometry.labels.find((l) => l.id === `series:${row.id}`)!;
       expect(label.hidden).toBeFalsy();
-      expect(label.lines.join(' ')).toContain(`(n = ${formatNumber(row.base, { decimals: 0 })})`);
+      expect(label.lines.join(' ')).toContain(`(n\u00a0=\u00a0${formatNumber(row.base, { decimals: 0 })})`);
     }
   });
 

@@ -8,7 +8,7 @@ import { adaptivePaintColor } from './colorRecipes';
  * and 'notation' (+ dark pairs) are the other presets.
  */
 
-import { apcaContrast, compositeColor, contrastRatio, mixColors, onFillInks, parseColor, pickMatrixInk, pickOnFillInk, tint } from './color';
+import { apcaContrast, compositeColor, contrastRatio, matrixNeedsDarkInk, mixColors, onFillInks, parseColor, pickMatrixInk, pickOnFillInk, tint } from './color';
 import type { Margin } from './geometry';
 import { markVisibilityFloor } from './markVisibility';
 import { READER_LABEL_MIN_PX, tableHeadFloorPx } from './typeFloors';
@@ -1420,6 +1420,11 @@ export function separatedWashPaint(token: PaintToken, amount: number | 'surface-
   return { token, theme: { kind: 'visible-tint', base: { token }, amount, floor: FILL_SEPARATION_FLOOR } };
 }
 
+/** Gantt row and weekend shading resolves its tint in the active theme. */
+export function ganttRowPaint(key?: true): Paint {
+  return { token: 'others', theme: { kind: 'gantt-row-tint', ...(key ? { key } : {}) } };
+}
+
 /**
  * The fill of a plan mark under a theme's 'solidMuted' plan look:
  * color.inkMuted at 35 % over the background, with no outline.
@@ -1469,11 +1474,12 @@ export function warnColor(theme: Theme): string {
 /** Surface anatomy with defaults (chip/badge wash, row/elapsed tints, chip radius). */
 export function resolveSurface(
   theme: Theme,
-): { chipTint: number; rowTint: number; elapsedTint: number; anchorTint: number; bandTint: number; gapTint: number; ribbonAlpha: number; ribbonSheetAlpha: number; chipRadius: number } {
+): { chipTint: number; rowTint: number; ganttRowTint: number; elapsedTint: number; anchorTint: number; bandTint: number; gapTint: number; ribbonAlpha: number; ribbonSheetAlpha: number; chipRadius: number } {
   const surface = theme.surface as SurfaceWithAnchorTint | undefined;
   return {
     chipTint: surface?.chipTint ?? 0.9,
     rowTint: surface?.rowTint ?? 0.94,
+    ganttRowTint: surface?.ganttRowTint ?? 0.25,
     elapsedTint: surface?.elapsedTint ?? 0.95,
     anchorTint: surface?.anchorTint ?? 0.97,
     bandTint: surface?.bandTint ?? 0.06,
@@ -1796,7 +1802,22 @@ function themePaintSourceColor(theme: Theme, source: ThemePaintSource): string {
   return color;
 }
 
+/** The matrix decision of the contrast-ink recipe, made once per matrix list and theme: every value of the matrix asks for it. */
+const matrixDecision = new WeakMap<Paint[], { theme: Theme; size: number; rescued: boolean }>();
+function matrixRescued(theme: Theme, matrix: Paint[]): boolean {
+  const known = matrixDecision.get(matrix);
+  if (known && known.theme === theme && known.size === matrix.length) return known.rescued;
+  const grounds = matrix.map((paint) => compositeColor(paintColor(theme, paint), theme.color.background));
+  const rescued = matrixNeedsDarkInk(grounds, theme.color.ink, theme.color.inkInverse, onFillInks(theme.color));
+  matrixDecision.set(matrix, { theme, size: matrix.length, rescued });
+  return rescued;
+}
+
 function sourceColor(theme: Theme, source: ThemePaintSource): string {
+  if (source.kind === 'gantt-row-tint') {
+    const amount = Math.min(resolveSurface(theme).ganttRowTint, source.key ? 0.8 : 1);
+    return tint(paintTokenColor(theme, 'others'), amount, theme.color.background);
+  }
   if (source.kind === 'series-text') {
     let cache = SERIES_TEXT_COLORS.get(theme);
     const known = cache?.get(source);
@@ -1919,8 +1940,7 @@ function sourceColor(theme: Theme, source: ThemePaintSource): string {
     const fill = compositeColor(paintColor(theme, source.fill), theme.color.background);
     const ground = source.pattern ? effectiveFill(fill, source.pattern, theme) : fill;
     if (source.matrix?.length && !source.also?.length) {
-      const grounds = source.matrix.map((paint) => compositeColor(paintColor(theme, paint), theme.color.background));
-      return pickMatrixInk(ground, grounds, theme.color.ink, theme.color.inkInverse, onFillInks(theme.color));
+      return pickMatrixInk(ground, matrixRescued(theme, source.matrix), theme.color.ink, theme.color.inkInverse, onFillInks(theme.color));
     }
     const ink = pickOnFillInk(ground, theme.color.ink, theme.color.inkInverse, onFillInks(theme.color));
     if (!source.also?.length) return ink;

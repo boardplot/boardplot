@@ -347,6 +347,20 @@ describe('pyramid', () => {
     expect(sumOf('f')).not.toBeCloseTo(100, 6);
     expect(sumOf('m') + sumOf('f')).toBeCloseTo(100, 9);
   });
+
+  // Prevents a pooled share across two snapshots, where a band whose own share fell reads as a rise.
+  it('shareOfTotal on two dated groups draws each snapshot as its own 100%', () => {
+    const dated = doc(FIVE, A, B) as { groups: { date?: string }[] };
+    dated.groups[0]!.date = '2021-12-31';
+    dated.groups[1]!.date = '2023-12-31';
+    const { derived, geo } = run(dated as never, { basis: 'shareOfTotal' });
+    expect(derived.basis).toBe('shareOfGroup');
+    for (const group of ['m', 'f']) {
+      expect(derived.order.reduce((s, bandId) => s + derived.shares![bandId]![group]!, 0)).toBeCloseTo(100, 9);
+    }
+    expect(sceneText(geo)).not.toContain('of all');
+    expect(run(dated as never, { basis: 'shareOfGroup' }).derived.basis).toBe('shareOfGroup');
+  });
 });
 
 describe('anomaly', () => {

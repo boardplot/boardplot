@@ -305,7 +305,9 @@ export function auditGeometry(item, request, geometry, skipped = []) {
     const sub = resolveSubtitle(options.subtitle);
     const units = [options.unit, geometry.derived.table?.unit,
       options.variant === 'relative' ? '%' : undefined,
-      geometry.derived.basis === 'shareOfTotal' ? '% of the grand total' : undefined].filter(Boolean);
+      geometry.derived.basis === 'shareOfTotal' ? '% of the grand total' : undefined,
+      geometry.derived.basis === 'shareOfGroup' ? '% of each snapshot' : undefined,
+      geometry.derived.basis === 'shareOfGroup' ? '% of each group' : undefined].filter(Boolean);
     for (const unit of units) if (sub && !normal(sub.measure).includes(unit)) {
       actual = actual.replace(`${subtitleNormal(sub.measure)} in ${unit}`, subtitleNormal(sub.measure));
       if (['x', '×', 'ratio'].includes(unit.toLowerCase())) actual = actual.replace(`${subtitleNormal(sub.measure)} ratio (×)`, subtitleNormal(sub.measure)).replace(`${subtitleNormal(sub.measure)} (×)`, subtitleNormal(sub.measure));

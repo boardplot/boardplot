@@ -157,6 +157,38 @@ describe('actionable input refusals', () => {
     expect(() => getChartDefinition('diagram')!.layout({ ...data, nodes: [architectureNode('a')], lanes: [] }, { variant: 'architecture' })).not.toThrow();
   });
 
+  // Every other variant has no panel to draw, so an inset there would vanish without a word.
+  it('refuses an inset outside the architecture variant', () => {
+    const data = { nodes: [architectureNode('a')], inset: { title: 'Levels', rows: [{ label: 'Loads', value: '3' }] } };
+    expect(() => getChartDefinition('diagram')!.layout(data, { variant: 'hierarchy' }))
+      .toThrow(expect.objectContaining({ code: 'invalid-membership', path: 'inset' }));
+  });
+
+  // The panel moves under the exhibit at narrow widths, and its text must not land on the nodes.
+  it('keeps the inset clear of the exhibit at both placements', () => {
+    const data = { nodes: [architectureNode('a')], inset: { title: 'Levels', kpis: [{ value: '99%', label: 'On time' }], rows: [{ label: 'Loads', value: '3' }] } };
+    for (const width of [960, 480]) {
+      const { marks, labels } = layoutDiagram(data, { variant: 'architecture', size: { width } } as DiagramOptions);
+      const node = marks.nodes[0]!.rect;
+      const inset = labels.filter((label) => label.id.startsWith('inset-label:'));
+      expect(inset.filter((label) => !label.hidden)).toHaveLength(5);
+      expect(inset.every((label) => label.rect.x >= node.x + node.w || label.rect.y >= node.y + node.h)).toBe(true);
+    }
+  });
+
+  // A row value wider than the panel left its label no room and ran into the exhibit.
+  it('keeps a row label beside a value wider than the inset', () => {
+    const data = { nodes: [architectureNode('a')], inset: { title: 'Levels', rows: [{ label: 'Loads', value: '１'.repeat(24) }] } };
+    const { labels } = layoutDiagram(data, { variant: 'architecture', size: { width: 960 } } as DiagramOptions);
+    const title = labels.find((label) => label.id === 'inset-label:title')!;
+    const name = labels.find((label) => label.id === 'inset-label:row:0:label')!;
+    const value = labels.find((label) => label.id === 'inset-label:row:0:value')!;
+    expect(title.rect.x).toBeGreaterThan(480);
+    expect(name.hidden).toBeUndefined();
+    expect(value.hidden).toBeUndefined();
+    expect(value.rect.x).toBeGreaterThanOrEqual(name.rect.x + name.rect.w);
+  });
+
   // A policy node assigned to a lane was placed outside its policy strip without a warning.
   it('refuses a policy node assigned to a lane', () => {
     const data = { nodes: [architectureNode('p', { groupId: 'policy', laneId: 'l' }), architectureNode('a', { laneId: 'l' })], lanes: [architectureLane],

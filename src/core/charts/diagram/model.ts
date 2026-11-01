@@ -19,6 +19,7 @@ export interface NormalizedDiagram {
   key: NonNullable<DiagramData['key']>;
   channels: NonNullable<DiagramData['channels']>;
   callouts: NonNullable<DiagramData['callouts']>;
+  inset?: DiagramData['inset'];
   /** The zone an edge end stands on. The edge names a node of that zone for ordering. */
   groupEnds: Map<string, { source?: string; target?: string }>;
 }
@@ -59,6 +60,7 @@ export function normalizeDiagramModel(
     key: rawData.key ?? [],
     channels: rawData.channels ?? [],
     callouts: rawData.callouts ?? [],
+    ...(rawData.inset ? { inset: rawData.inset } : {}),
     groupEnds,
   };
   validatePreset(data, rawOptions, rawData.nodes);
@@ -223,9 +225,9 @@ function validatePreset(data: NormalizedDiagram, options: DiagramOptions, author
   const architectureOnly = data.nodes.find((node) => node.track !== undefined || node.span !== undefined || node.repeat !== undefined || node.protected !== undefined || node.shape.kind === 'store')?.id
     ?? data.edges.find((edge) => edge.flow !== undefined)?.id
     ?? data.groups.find((group) => group.kind !== undefined || group.parentId !== undefined || group.protected !== undefined)?.id
-    ?? (data.channels.length > 0 ? 'channels' : data.callouts.length > 0 ? 'callouts' : undefined);
+    ?? (data.channels.length > 0 ? 'channels' : data.callouts.length > 0 ? 'callouts' : data.inset ? 'inset' : undefined);
   if (architectureOnly !== undefined) {
-    throw new NormalizeError('invalid-membership', architectureOnly, `track, span, repeat, protected, shape store, edge flow, group kind, parentId, channels and callouts are read only by variant 'architecture', not '${options.variant}'`, "remove them, or set options.variant to 'architecture'");
+    throw new NormalizeError('invalid-membership', architectureOnly, `track, span, repeat, protected, shape store, edge flow, group kind, parentId, channels, callouts and inset are read only by variant 'architecture', not '${options.variant}'`, "remove them, or set options.variant to 'architecture'");
   }
   const looped = data.edges.find((edge) => edge.source.nodeId === edge.target.nodeId);
   if (looped) throw new NormalizeError('invalid-membership', `edges[${looped.id}]`, `self-loops are read only by variant 'architecture', not '${options.variant}'`, 'remove the edge');
