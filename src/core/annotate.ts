@@ -783,6 +783,8 @@ const BRACKET_TICK = 5;
 function placeBracket(s: AnnotationScope, ann: Extract<Annotation, { kind: 'bracket' }>): void {
   const { input, id } = s;
   if (!input.resolveSpan) return warn(s, 'unsupported', `bracket '${id}': this chart has no steps to add up`);
+  // The shared anchor check lets an object anchor through; a bracket takes step ids only.
+  if (typeof ann.from !== 'string' || typeof ann.to !== 'string' || !ann.from || !ann.to) return warn(s, 'bad-anchor', `bracket '${id}': from and to are step ids (non-empty strings)`);
   const span = input.resolveSpan(ann.from, ann.to);
   if ('error' in span) return warn(s, span.code, `bracket '${id}': ${span.error}`);
   const sumText = s.run.fmtSigned(span.sum);

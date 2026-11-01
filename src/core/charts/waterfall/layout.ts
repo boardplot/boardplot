@@ -2017,12 +2017,14 @@ function layoutWaterfallWithPad(
       const steps = items.slice(i, j + 1);
       const total = steps.find((x) => x.type !== 'delta');
       if (total) return { code: 'bracket-span-total', error: `step '${total.id}' is a total, so the span has no one sum; bracket only delta steps` };
+      // The step values, not level differences: next to a large balance the rounded levels lose a small step.
+      const values = steps.map((x) => ({ id: x.id, value: compensatedSum(x.segments.map((seg) => seg.value)) }));
       return {
         left: band.position(i),
         right: band.position(j) + band.bandwidth,
         y: annPlot.y + bracketLabelH + 3,
-        sum: steps.reduce((all, x) => all + levels[x.id]!.end - levels[x.id]!.start, 0),
-        steps: steps.map((x) => ({ id: x.id, value: levels[x.id]!.end - levels[x.id]!.start })),
+        sum: compensatedSum(values.map((step) => step.value)),
+        steps: values,
       };
     },
   });
