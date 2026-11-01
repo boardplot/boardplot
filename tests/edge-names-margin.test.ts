@@ -22,6 +22,40 @@ const spec = (right: number) => ({
 });
 
 describe('right-edge series names', () => {
+  // Grouped columns must keep their series identifiable when authored edge names cannot draw.
+  it('keys grouped series when their authored edge names cannot draw', () => {
+    const data = {
+      categories: [{ id: 'q1', label: 'Q1' }, { id: 'q2', label: 'Q2' }],
+      series: [
+        { id: 'a', label: 'Alpha', values: [10, 12] },
+        { id: 'b', label: 'Beta', values: [8, 9] },
+      ],
+    };
+    for (const at of ['left-edge', 'right-edge'] as const) {
+      const options = { variant: 'grouped', legend: 'none', seriesLabels: { at } } as const;
+      const grouped = layoutColumn(data, options);
+      expect(grouped.legend?.items.map(item => item.id)).toEqual(['a', 'b']);
+      expect(grouped.scene.flatMap(node => node.t === 'text' && node.part === 'legendLabel' ? [node.lines.join(' ')] : []))
+        .toEqual(['Alpha', 'Beta']);
+      expect(grouped.legend!.rect.y + grouped.legend!.rect.h).toBeLessThanOrEqual(grouped.plot.y);
+      expect(grouped.warnings.map(warning => warning.code)).toContain('series-labels-ignored');
+      const single = { ...data, series: [data.series[0]!, { ...data.series[1]!, role: 'reference' as const }] };
+      expect(layoutColumn(single, options).legend).toBeUndefined();
+      expect(layoutColumn(data, { ...options, seriesLabels: undefined }).legend).toBeUndefined();
+      const panelOptions = { ...options, typeClass: 'M' as const };
+      expect(layoutColumn(data, panelOptions).legend).toBeUndefined();
+      const bottom = layoutColumn(data, { ...options, legend: 'bottom' });
+      expect(bottom.legend!.rect.y).toBeGreaterThanOrEqual(bottom.plot.y + bottom.plot.h);
+      for (const variant of ['stacked', 'stacked100'] as const) {
+        const stacked = layoutColumn(data, { ...options, variant });
+        expect(stacked.legend).toBeUndefined();
+        expect(stacked.labels.filter(label => label.id.startsWith('seriesEdge:') && !label.hidden)).toHaveLength(2);
+        expect(stacked.warnings.map(warning => warning.code)).not.toContain('series-labels-ignored');
+      }
+      expect(options.legend).toBe('none');
+    }
+  });
+
   // 0.43 widened default columns after the names took their room, so at a 0 px
   // canvas margin three of the four names ran past the canvas and were hidden.
   it('draw at a zero canvas margin as they do at 8 px', () => {
