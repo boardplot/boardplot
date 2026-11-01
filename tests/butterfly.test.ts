@@ -156,3 +156,24 @@ it('accepts labels: { tick: false } on a butterfly and then draws no value axes'
   expect(() => beginSpecParse(request).finish()).not.toThrow();
   expect(measure(request).geometry!.axes.filter((axis) => axis.axis === 'x')).toHaveLength(0);
 });
+
+// Sorting dated rows by value scrambled the periods, so a growth bracket from the first to the last period ran backwards.
+it('keeps dated rows in sheet order under a growth annotation and warns when sortBy is set', () => {
+  const data = {
+    categories: [
+      { id: 'y1', label: 'Y1', date: '2021-12-31' },
+      { id: 'y2', label: 'Y2', date: '2022-12-31' },
+      { id: 'y3', label: 'Y3', date: '2023-12-31' },
+    ],
+    series: [{ id: 'a', values: [100, 120, 144] }, { id: 'b', values: [130, 150, 180] }],
+  };
+  const growth = { kind: 'cagr' as const, from: { categoryId: 'y1', seriesId: 'a' }, to: { categoryId: 'y3', seriesId: 'a' } };
+  const rowIds = (g: ReturnType<typeof layoutButterfly>) => g.labels.filter((l) => l.kind === 'category' && !l.hidden).sort((x, y) => x.rect.y - y.rect.y).map((l) => l.text);
+  const sorted = layoutButterfly(data, { a: 'a', b: 'b', sortBy: 'diff', annotations: [growth] });
+  expect(rowIds(sorted)).toEqual(['Y1', 'Y2', 'Y3']);
+  expect(sorted.warnings.map((w) => w.code)).toContain('butterfly-sort-ignored');
+  // Without an annotation that spans periods the sort is what the author asked for.
+  const plain = layoutButterfly(data, { a: 'a', b: 'b', sortBy: 'diff' });
+  expect(rowIds(plain)).toEqual(['Y3', 'Y1', 'Y2']);
+  expect(plain.warnings.map((w) => w.code)).not.toContain('butterfly-sort-ignored');
+});

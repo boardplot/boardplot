@@ -260,12 +260,16 @@ function rampKey(rows: NormRow[], options: BulletOptions, paint: (row: NormRow, 
   return rampItems(rows, options, paint);
 }
 
-/** One key entry for each band, worst first, in the shades of a higher-is-better row. */
-function rampItems(rows: NormRow[], options: BulletOptions, paint: (row: NormRow, index: number) => Paint): LegendItemInput[] {
+/**
+ * One key entry for each band, worst first, in the shades of a higher-is-better row.
+ * `authoredOnly` leaves out the built-in words: the key then names a band only with the author's word.
+ */
+function rampItems(rows: NormRow[], options: BulletOptions, paint: (row: NormRow, index: number) => Paint, authoredOnly = false): LegendItemInput[] {
   const banded = rows.filter((row) => row.bands.length > 0);
   const n = banded[0]!.bands.length;
   const authored = options.strings?.bandKey;
-  const words = authored?.length === n ? authored : RAMP_WORD_KEYS[n - 2]!.map(key => chartString(options, key));
+  const words = authored?.length === n ? authored
+    : authoredOnly ? [] : RAMP_WORD_KEYS[n - 2]!.map(key => chartString(options, key));
   // The key reads like a higher-is-better row: shade i is band i, worst first.
   const reference = banded.find((row) => row.direction === 'higherIsBetter') ?? banded[0]!;
   return words.map((label, index) => ({
@@ -648,7 +652,8 @@ export function layoutBullet(
       ? [
         { id: 'key:actual', label: chartString(options, 'actualColumn'), paint: { token: 'markInk' } as Paint, key: 'box' as const },
         { id: 'key:target', label: targetHead, paint: { token: 'ink' } as Paint, key: 'tick' as const, width: strokeToken(theme, 'data') },
-        ...(rampApplies(rows) ? rampItems(rows, options, bandPaint) : []),
+        // The rows print the author's band names, so the key adds no other names for the bands.
+        ...(rampApplies(rows) ? rampItems(rows, options, bandPaint, true) : []),
       ]
       : rampKey(rows, options, bandPaint, labelsKey, warnings) ?? labelsKey),
     ...attainmentKey(options, theme),

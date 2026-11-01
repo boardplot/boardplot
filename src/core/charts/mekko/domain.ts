@@ -209,13 +209,14 @@ function reorderCategories(
   let othersId = 'others';
   while (st.cats.some((c) => c.id === othersId)) othersId = `_${othersId}`;
   const bases = dropIdx.map(basisAt);
+  const foldedNames = dropIdx.map((i) => st.cats[i]!.label ?? st.cats[i]!.id);
   const othersVals = seriesNorm.map((s) => s === st.widthSer
     ? { v: restSum(dropIdx.map((i) => s.vals[i]!.v)), isPct: false }
     : poolMekkoCell(dropIdx.map((i, k) => ({ ...s.vals[i]!, basis: bases[k]!, weight: weightAt(i) })), options.variant === 'bar' ? 'bar' : st.mode, st.widthSer !== null));
   const total100 = st.mode === 'percent' && dropIdx.some((i) => st.cats[i]!.total100 !== undefined)
     ? bases.reduce((sum, basis) => sum + basis, 0) : undefined;
   applyOrder(keptIdx);
-  st.cats = [...st.cats, { id: othersId, label: restLabel(topN, options.strings, dropIdx.length), ...(total100 === undefined ? {} : { total100 }) }];
+  st.cats = [...st.cats, { id: othersId, label: restLabel(topN, options.strings, foldedNames), ...(total100 === undefined ? {} : { total100 }) }];
   seriesNorm.forEach((s, k) => {
     s.vals = [...s.vals, othersVals[k]!];
   });
