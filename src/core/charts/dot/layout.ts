@@ -32,6 +32,7 @@ import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { CONTENT_PLOT_HEIGHT, HARD_MINIMUM, type ContentPlotHeight } from '../../sizing';
 import { REFERENCE_LABEL_CLEARANCE } from '../../markVisibility';
 import { averageMarkerLine, averageMarkerScope } from '../band/stacks';
+import { overValueLines } from '../band/labels';
 import { rowLabelX, type Rect } from '../../geometry';
 import { clamp, cleanDiff, round2, unionRect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
@@ -1558,9 +1559,10 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
       seatsPastBlockers(from, 'x', lo, hi, obstacles, 3).map((rect) => ({ slot, rect, penalty: 4 }));
     const rightPast = past('rightPast', right.rect.x, Math.min(valueBody.x + valueBody.w, right.rect.x + reach), right.rect);
     const leftPast = past('leftPast', Math.max(valueBody.x, left.rect.x + tsize.width - reach), left.rect.x + tsize.width, left.rect);
-    return primary === 'left'
+    // A value line across a seat does not move the value: the pass below steps it past the line or sets it on a halo.
+    return overValueLines(primary === 'left'
       ? [left, right, above, below, ...leftPast, ...rightPast, rowLane]
-      : [right, left, above, below, ...rightPast, ...leftPast, rowLane];
+      : [right, left, above, below, ...rightPast, ...leftPast, rowLane]);
   }
 
   function buildLegend(): { options: LegendOptions; items: LegendItemInput[] } | undefined {
