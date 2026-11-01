@@ -105,10 +105,10 @@ const pyramidOptionsObject = baseOptionsSchema.safeExtend(refusedBaseOptions('py
     .optional()
     .describe('Refused: bands are a contiguous ordered axis; a rest bucket leaves a hole in it.'),
   basis: z
-    .enum(['count', 'shareOfTotal'])
+    .enum(['count', 'shareOfTotal', 'shareOfGroup'])
     .optional()
     .describe(
-      "Default 'count'. 'shareOfTotal' divides by the grand total across BOTH groups and all bands — never per group, which would hide the group-size imbalance a pyramid is read for.",
+      "Default 'count'. 'shareOfTotal' divides by the grand total across BOTH groups and all bands — never per group, which would hide the group-size imbalance a pyramid is read for. 'shareOfGroup' divides each side by its own total, so each side sums to 100%; 'shareOfTotal' on two groups that both carry a date draws 'shareOfGroup', because two snapshots have no common whole.",
     ),
   methodNote: z
     .boolean()

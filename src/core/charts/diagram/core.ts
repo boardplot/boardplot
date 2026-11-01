@@ -22,6 +22,7 @@ export function normalizeDiagramData(data: DiagramData): DiagramData {
     ...(data.key ? { key: [...data.key] } : {}),
     ...(data.channels ? { channels: [...data.channels] } : {}),
     ...(data.callouts ? { callouts: [...data.callouts] } : {}),
+    ...(data.inset ? { inset: structuredClone(data.inset) } : {}),
   };
 }
 
