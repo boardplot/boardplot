@@ -286,7 +286,23 @@ export function layoutButterfly(
     }
   }
 
-  if (sortBy !== 'sheet') {
+  // A growth rate or a difference across two periods reads from the first to the last period.
+  // A sort by value scrambles dated rows and the bracket then runs backwards, so the sheet order stays.
+  const refCategory = (ref: AnchorRef): unknown => (typeof ref === 'object' && 'categoryId' in ref ? ref.categoryId : ref);
+  const spansPeriods = (opts.annotations ?? []).some((ann) =>
+    ann.kind === 'cagr' || (ann.kind === 'diff' && refCategory(ann.from) !== refCategory(ann.to)));
+  const keepDateOrder = sortBy !== 'sheet' && spansPeriods && categories.every((c) => c.date !== undefined);
+  if (keepDateOrder) {
+    warnings.push({
+      code: 'butterfly-sort-ignored',
+      severity: 'warn',
+      message: `sortBy '${sortBy}' was ignored — the rows are dated and a growth or difference annotation spans periods, so a sort by value would run it backwards`,
+      suggest: 'remove options.sortBy, or remove the annotation that spans periods',
+      fix: [{ op: 'replace', path: '/options/sortBy', value: 'sheet' }],
+    });
+  }
+
+  if (sortBy !== 'sheet' && !keepDateOrder) {
     // desc by chosen key; rest row pinned last; stable ties by sheet order
     rows = [...rows].sort((x, y) => {
       if (x.rest !== y.rest) return x.rest ? 1 : -1;
