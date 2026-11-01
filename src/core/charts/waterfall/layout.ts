@@ -50,7 +50,7 @@ import { changePercentText, formatAutomaticNumber as plainNumber } from '../../f
 import { authoredDecimals } from '../../formatPrecision';
 import { authoredNotes, frameTextOptions, legendRequired, normalizeLegendOption, solveFrame, fixedPlotChrome, type LegendItemInput, plotHeightAfter } from '../../frame';
 import { defaultMeasurer, type FontSpec } from '../../text';
-import { categoryLineAlign, categoryRowTop, hangingLabelReserve, planCategoryRow, rotatedClaimRect, rotatedLeftOverhang } from '../../label/categoryRow';
+import { CROWDED_NAMES, categoryLineAlign, categoryRowTop, hangingLabelReserve, planCategoryRow, rotatedClaimRect, rotatedLeftOverhang } from '../../label/categoryRow';
 import {
   canvasMargin,
   effectiveFill,
@@ -86,7 +86,7 @@ import { composedTextRole } from '../../textRole';
 import { scenarioLegendKeys } from '../../label/legendFidelity';
 import { textScaleOf } from '../../typeFloors';
 import { disclosureNote } from '../../notes';
-import { bandSizing, NATURAL_BAND_STEP } from '../../sizing';
+import { bandSizing, NATURAL_BAND_STEP, SIZE_TOLERANCE } from '../../sizing';
 import { floorValueLabel, printedValueLabel, valueLabelPlotFloor } from './bandFloor';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
@@ -225,11 +225,46 @@ const SLIVER_SEAT_GAP = 4;
 /** An off-level value's distance from the column: past the leader gutter, so the hairline shows. */
 const SLIVER_LEADER_GAP = 10;
 
+/**
+ * Without an authored variant the bridge draws vertical and turns it horizontal when its
+ * names would rotate, shorten or drop, a horizontal bridge draws every name upright and
+ * whole, and it adds no finding and hides no label of its own. Cases, annotations, a value axis
+ * title and a host's net change stay vertical: a horizontal bridge draws none of them and stacks
+ * case bars in a row. An authored `vertical` never turns.
+ */
 export function layoutWaterfall(
   data: WaterfallData,
   options: WaterfallOptions = {},
 ): Geometry<WaterfallMarks, WaterfallDerived> {
   if (options.variant === 'horizontal') return layoutHorizontalWaterfall(data, options);
+  const vertical = layoutVerticalWaterfall(data, options);
+  const dropsOnHorizontal = (data.cases?.length ?? 0) > 0 || (options.annotations?.length ?? 0) > 0
+    || options.axisTitles?.primary !== undefined || (options as { closingChange?: unknown }).closingChange !== undefined;
+  if (options.variant === 'vertical' || dropsOnHorizontal) return vertical;
+  if (!vertical.warnings.some((warning) => CROWDED_NAMES.has(warning.code))) return vertical;
+  const horizontal = layoutHorizontalWaterfall(data, options);
+  // A finding is the same one when code, severity and owner match; a code alone lets a new omission
+  // hide behind an old finding of that code. The label-hidden finding is added after layout, so the
+  // hidden labels themselves are compared.
+  const finding = (warning: { code: string; severity: string; owner?: unknown }) => `${warning.code}|${warning.severity}|${JSON.stringify(warning.owner ?? null)}`;
+  const known = new Set(vertical.warnings.map(finding));
+  const hidden = new Set(vertical.labels.filter((label) => label.hidden !== undefined).map((label) => label.id));
+  const added = horizontal.warnings.some((warning) => warning.severity !== 'info' && !known.has(finding(warning)))
+    || horizontal.labels.some((label) => label.hidden !== undefined && !hidden.has(label.id));
+  if (added || horizontal.refused) return vertical;
+  // Fits: the width is never repaired, the height only when the caller pinned it. A bridge that the size
+  // refuses as a horizontal one would turn a drawn chart into a refusal.
+  const need = horizontal.sizing;
+  const pinned = (options.size as { height?: number } | undefined)?.height !== undefined;
+  const fits = need === undefined || (horizontal.size.width + SIZE_TOLERANCE >= need.minWidth
+    && (!pinned || horizontal.size.height + SIZE_TOLERANCE >= need.minHeight));
+  return fits ? horizontal : vertical;
+}
+
+function layoutVerticalWaterfall(
+  data: WaterfallData,
+  options: WaterfallOptions,
+): Geometry<WaterfallMarks, WaterfallDerived> {
   // The annotate pass reports how much vertical headroom was missing to give
   // every CAGR drop leg its minimum length (without it the end leg turns into
   // a stub on closing-heavy bridges). One deterministic

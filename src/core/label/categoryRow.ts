@@ -40,6 +40,9 @@ import { disclosureNote } from '../notes';
 import { spread1DResult } from '../collide';
 import { maxOf, minOf } from '../arrays';
 
+/** Findings of a name row that cannot print its names whole: the cue to turn a bridge horizontal. */
+export const CROWDED_NAMES: ReadonlySet<string> = new Set(['category-labels-rotated', 'category-labels-truncated', 'category-stride']);
+
 /** Internal adapter override: ranked categories are not a line-family timeline. */
 export const CATEGORY_ROW_FROM_END = Symbol('categoryRowFromEnd');
 /** Internal adapter override: a row that must rotate turns its names -90° (CategoryRowInput.rotate90). */
