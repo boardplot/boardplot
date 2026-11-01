@@ -319,6 +319,25 @@ export function layoutSankey(data: SankeyData, options: SankeyOptions = {}): Geo
       });
     });
   });
+  // A ribbon at least one line high prints its value at its arriving end, right aligned to the next bar.
+  if ((options.linkValue ?? 'large') === 'large') {
+    const flowH = measure('0', headerFont).height;
+    links.forEach((link, i) => {
+      if (link.value * scale < flowH) return;
+      const s = layered.chains[i]!.at(-1)!;
+      const from = layered.nodes[layered.segments[s]!.source]!.column;
+      const text = fmt(link.value);
+      const w = textW(text, headerFont);
+      const x = columnX(from + 1) - LABEL_GAP - w;
+      if (x < columnX(from) + barW + LABEL_GAP) return;
+      const rect = { x, y: top + bands[s]!.ty + (link.value * scale - flowH) / 2, w, h: flowH };
+      requests.push({
+        id: `flow:${link.key}`, kind: 'tick', owner: { segmentId: link.key }, text, lines: [text], font: headerFont,
+        priority: PRIORITY.interior / 2 + link.value * scale / 100, align: 'end', quietWhenCrowded: true,
+        candidates: [{ slot: 'inside', rect, penalty: 0, pad: 0, needsBacking: true }],
+      });
+    });
+  }
   headers.forEach((header) => {
     if (!header) return;
     const w = Math.max(...header.lines.map((line) => textW(line, headerFont)));
@@ -348,6 +367,7 @@ export function layoutSankey(data: SankeyData, options: SankeyOptions = {}): Geo
       const x = label.align === 'end' ? label.rect.x + label.rect.w : label.align === 'middle' ? label.rect.x + label.rect.w / 2 : label.rect.x;
       return [{ ...node, x, align: label.align ?? 'start', ink: { token: 'inkMuted' }, part: 'stageHeader', role: 'category' }];
     }
+    if (id.startsWith('flow:')) return [{ ...node, halo: true, x: label.rect.x + label.rect.w, align: 'end', ink: { token: 'inkMuted' }, role: 'value' }];
     const left = sides.get(id) === 'left';
     const x = left ? label.rect.x + label.rect.w : label.rect.x;
     const align = left ? 'end' : 'start';
