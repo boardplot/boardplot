@@ -892,9 +892,9 @@ function fitOrRepair<D, O extends ChartOptions, M extends object, DV extends obj
     && options.mode !== 'full'
     && panelTypeClass(options) === undefined && constraints.fixed.width && constraints.fixed.height;
   // The hard minimum is accepted only while every drawn series stays named and, for a chart
-  // whose rows are named by their category (namesMustPrint), while no category name is lost.
+  // whose rows are named by their category (hardMinimumKeepsNames), while no category name is lost.
   const namesKept = (fitted: Geometry<M, DV>) => namesDrawnSeries(data, fitted)
-    && (definition.namesMustPrint !== true || lostCategoryNames(fitted).length === 0);
+    && (definition.hardMinimumKeepsNames !== true || lostCategoryNames(fitted).length === 0);
   const warnHardMinimum = (fitted: Geometry<M, DV>): Geometry<M, DV> => {
     const target = options?.target ?? DEFAULT_TARGET;
     const height = Math.max(requiredSize(received, first.sizing!).height, plotFloorHeight(fitted, target));

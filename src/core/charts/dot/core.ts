@@ -18,7 +18,7 @@ export const dotCore: ChartCore<ChartData, DotOptions, DotMarks, DotDerived> = {
   aliases: ['cleveland', 'dumbbell', 'lollipop'],
   aliasDefaults: { dumbbell: { variant: 'dumbbell' }, lollipop: { variant: 'lollipop' } },
   layout: (data, options) => layoutDot(prepareFractionData(data), options),
-  namesMustPrint: true,
+  hardMinimumKeepsNames: true,
   categoryLabels: calendarCategories,
   defaults: { variant: 'dot' },
   annotationKinds: ['valueLine', 'callout', 'note', 'delta', 'abs', 'diff', 'cagr'],

@@ -117,13 +117,18 @@ export interface ChartCore<
    */
   categoryLabels?(categories: readonly (string | Category)[], language?: string): Category[] | undefined;
   /**
-   * Band charts and the dot chart: full mode prints every category name. A finished full chart that hides
+   * Band charts: full mode prints every category name. A finished full chart that hides
    * one falls back to compact when compact prints them all, else it refuses and names the blockers.
-   * A pinned canvas also keeps a hard-minimum drawing only while it hides no name.
    * The check runs on the finished chart, not on the size probes: a probe at a short first height
    * hides names the grown chart prints.
    */
   namesMustPrint?: boolean;
+  /**
+   * A pinned canvas keeps a drawing at the type's hard minimum only while it hides no category name;
+   * otherwise the type-size step and then the size refusal apply. Unlike namesMustPrint, it leaves
+   * the full-mode check and the grid probes alone.
+   */
+  hardMinimumKeepsNames?: boolean;
   /**
    * The layout under legend 'none' when the chart
    * keeps a key no drawn label replaces. It gets the 'none' layout and the
