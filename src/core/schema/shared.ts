@@ -642,6 +642,7 @@ const ANNOTATION_FIELDS: Record<string, readonly string[]> = {
   diff: ['from', 'to', 'mode', 'placement', 'caption'],
   cagr: ['from', 'to', 'suffix', 'period', 'shape'],
   delta: ['at', 'vs', 'placement', 'caption'],
+  bracket: ['from', 'to', 'label'],
   abs: ['at'],
   note: ['at', 'icon', 'status'],
   callout: ['at', 'preferSide', 'headline', 'arrow', 'icon', 'status'],
@@ -653,7 +654,7 @@ const ANNOTATION_FIELDS: Record<string, readonly string[]> = {
 /** Every kind takes these, or refuses them with a message of its own (text, glyphs, the callout head). */
 const SHARED_ANNOTATION_FIELDS = ['kind', 'id', 'text', 'format', 'priority', 'icon', 'status', 'headline', 'arrow'];
 /** The anchor fields of each kind; all are required but a cagr's, which default to the ends, and an event's, which may take a date (addEventIssues). */
-const ANCHOR_FIELDS: Record<string, readonly string[]> = { diff: ['from', 'to'], cagr: ['from', 'to'], delta: ['at', 'vs'], abs: ['at'], note: ['at'], callout: ['at'], event: ['at'] };
+const ANCHOR_FIELDS: Record<string, readonly string[]> = { diff: ['from', 'to'], bracket: ['from', 'to'], cagr: ['from', 'to'], delta: ['at', 'vs'], abs: ['at'], note: ['at'], callout: ['at'], event: ['at'] };
 const ANCHOR_SHAPE = "a category id such as 'c1', { categoryId, seriesId? }, { pointId } on scatter, or { valueLineId }";
 /** The keys an object anchor takes (AnchorRef in types/annotations.ts). */
 const ANCHOR_KEYS = ['categoryId', 'seriesId', 'segmentId', 'edge', 'pointId', 'valueLineId'];
@@ -719,7 +720,7 @@ function addAnnotationFieldIssues(annotation: Record<string, unknown>, ctx: z.Re
 
 const existingAnnotationSchema = (timeX = false) => z
   .object({
-    kind: z.enum(['diff', 'cagr', 'delta', 'abs', 'note', 'callout', 'valueLine', 'indicator100', 'event']).describe('Annotation operation; its anchors and additional fields are checked by the chart annotation pass.'),
+    kind: z.enum(['diff', 'cagr', 'delta', 'bracket', 'abs', 'note', 'callout', 'valueLine', 'indicator100', 'event']).describe('Annotation operation; its anchors and additional fields are checked by the chart annotation pass.'),
     id: z.string().optional().describe('Stable annotation identity; omission generates an id from kind and authored order.'),
     text: z.string().optional().describe("Authored annotation text; refused on valueLine, which prints label, and on indicator100. ${value} prints the computed number in it: a cagr's rate with its suffix, a diff's change, a delta's difference, the anchored value of an abs, note or callout; a note or callout on a mark that prints the same number leaves it to the mark and reports annotation-value-on-mark. Without ${value}, text on a cagr, diff, delta or abs replaces the number, warns annotation-authored-override and the claim record marks the override."),
     format: z.string().optional().describe("Number format: annotation > anchored series > chart. Diff uses to, then from. CAGR and relative/reversed diff need a percent example; value differences use pp for percent levels. Refused on event and indicator100."),
