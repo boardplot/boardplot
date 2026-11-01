@@ -138,6 +138,26 @@ it('prints every value of a levelled bubble matrix that holds no top-level cell'
   expect(result.scene.filter(node => node.t === 'text' && node.part === 'point')).toHaveLength(72);
 });
 
+// Long column names on a Harvey or value matrix used to turn 45 degrees and get cut as soon as one name was wider than its column. They now stagger on two tiers first.
+it('staggers long matrix column names on two tiers before any name turns', () => {
+  const names = ['Other operating expenses and charges', 'Selling and distribution overheads', 'Interest and similar expenses paid', 'Northern Hills and Lake District',
+    'Income from equity-accounted firms', 'Harbour Coast and Port Region', 'Customer acquisition cost', 'Maintenance and repair services'];
+  const data = { categories: names.map((label, ci) => ({ id: `c${ci}`, label })),
+    series: ['Other revenue from abroad', 'Managed services and support', 'Training and certification', 'Upkeep and maintenance', 'Subscription revenue, annual plans'].map((label, ri) => ({ id: `s${ri}`, label, values: names.map((_, ci) => (ci + ri) % 5) })) };
+  const result = layoutResolvedRequest(resolveChartRequest({ type: 'heatmap', data,
+    options: { title: 'Matrix of results', variant: 'harvey', scale: 'discrete', target: 'slide', size: { width: 1184, height: 528 } } }));
+  if (result.refused) throw new Error(result.warnings[0]!.message);
+  const headers = result.scene.filter(node => node.t === 'text' && node.part === 'category');
+  expect(headers).toHaveLength(8);
+  expect(headers.every(node => node.t === 'text' && !node.rotate && !node.lines.some(line => line.endsWith('…')))).toBe(true);
+  expect(result.scene.some(node => node.id.startsWith('tierTick:'))).toBe(true);
+  // A two-line name in the upper tier at the plot's top stays drawn: tiers sit further apart than the label solver's padding.
+  const fixture = getFixtures('heatmap').find(f => f.id === 'capability-matrix')!;
+  const narrow = layoutResolvedRequest(resolveChartRequest({ type: 'heatmap', data: fixture.data, options: { ...fixture.options, size: { width: 400 } } } as never));
+  if (narrow.refused) throw new Error(narrow.warnings[0]!.message);
+  expect(narrow.scene.filter(node => node.t === 'text' && node.part === 'category')).toHaveLength(5);
+});
+
 // A host needs the refusal's minimum to size its card without a separate measurement.
 it('keeps canDraw minimum on a fixed-size refusal', () => {
   expect(canDraw(shortCombo)).toMatchObject({ ok: false, code: 'size-below-floor', minimum: { width: 480, height: 240 } });

@@ -161,7 +161,7 @@ const BUBBLE_AIR_TIGHT = 1;
 /** How far a value's figures may reach past the edge of its circle. */
 const VALUE_OVERHANG = 1.5;
 /** Air between the two tiers of a staggered header, and between two names of one tier. */
-const TIER_GAP = 2;
+const TIER_GAP = 3;
 const TIER_NAME_GAP = 8;
 /** Air between a tier tick and a lower-tier name beside it (a line never touches text). */
 const TICK_CLEAR = 4;
@@ -857,7 +857,9 @@ export function layoutHeatmap(
   if (turnable && !flatHeader(headerPlan) && !keepUpright) {
     return layoutHeatmap(data, { ...options, [TURNED]: true }, bracketGutter, valueNote, forceRows, compactKey);
   }
-  if (turned && !flatHeader(headerPlan) && cols.length >= 2) tiered();
+  // Names that would rotate stagger on two tiers first, and rotation stays the last resort. A
+  // name row that stands flat on three lines keeps those lines, and a month row keeps its own thinning.
+  if ((turned || (!monthColumns && headerPlan.step !== 'stride' && headerPlan.rotation !== 0)) && !flatHeader(headerPlan) && cols.length >= 2) tiered();
   // The Harvey list names its one column as a heading at the plot edge, on one line.
   if (harveyList) {
     const lineHt = tickFont.size * (tickFont.lineHeight ?? 1.2);
