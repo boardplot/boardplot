@@ -119,7 +119,7 @@ const nodeSchema = z
       'foundation',
       'milestone',
       'callout',
-    ]).describe("Semantic node kind. Each variant reads: hierarchy 'entity'; issue-tree 'issue' or 'driver'; linear-process and circular-process 'step'; customer-journey 'painPoint'; roadmap 'milestone'. Another kind is refused with invalid-diagram-kind. strategy-house does not check the kind."),
+    ]).describe("Semantic node kind. Each variant reads: hierarchy 'entity'; issue-tree 'issue' or 'driver'; linear-process and circular-process 'step'; customer-journey 'painPoint'; roadmap 'milestone'. Another kind is refused with invalid-diagram-kind. strategy-house and architecture do not check the kind."),
     shape: shapeSchema.describe('Node outline or icon-only shape.'),
     label: textSchema(200).describe('Primary visible node label, at most 200 Unicode code points.'),
     secondaryLabel: textSchema(400, true).describe('Secondary line inside the node, at most 400 Unicode code points.'),
@@ -134,6 +134,8 @@ const nodeSchema = z
     groupId: boundedIdSchema.optional().describe('Id of an existing group containing this node.'),
     laneId: boundedIdSchema.optional().describe('Id of an existing lane containing this node.'),
     order: z.number().int().safe().optional().describe('Ordering key: nodes sort by order, a node without one by its 0-based position in nodes, ties by id. Automatic step numbers follow this order.'),
+    track: boundedIdSchema.optional().describe('Architecture only: named cross-axis track. Nodes in one track line up across zones or lanes.'),
+    span: z.enum(['full']).optional().describe('Architecture only: a wide band across its lane, or a full-height rail in its zone.'),
   })
   .superRefine((node, ctx) => {
     addDuplicateIdIssues(ctx, node.ports ?? [], ['ports'], {
@@ -169,6 +171,7 @@ const edgeSchema = z
     ...roleFields,
     label: textSchema(200, true).describe('Optional visible label, at most 200 Unicode code points.'),
     waypoints: z.array(pointSchema).max(12).optional().describe('Up to 12 authored route waypoints in normalized plot coordinates.'),
+    flow: z.enum(['forward', 'return']).optional().describe('Architecture only: a return edge does not set the node order and may close a loop. Default forward.'),
   })
   .superRefine((edge, ctx) => validateRole(edge.role, edge.paletteKey, ctx, [])).describe('One directed connection with optional routing and styling.');
 
@@ -206,6 +209,12 @@ function validateRole(
   }
 }
 
+const channelSchema = z.strictObject({
+  id: boundedIdSchema,
+  edgeIds: z.array(boundedIdSchema).min(1).max(16).describe('Ids of the edges this label names; they must cross one common gutter.'),
+  label: textSchema(80).describe('The shared label, at most 80 Unicode code points.'),
+}).describe('Architecture only: one shared label for edges in one gutter.');
+
 const keyEntrySchema = z.union([
   z.strictObject({
     role: roleSchema.describe('The node role whose fill this entry names.'),
@@ -227,6 +236,7 @@ export const diagramDataSchema = z
     groups: z.array(groupSchema).max(32).optional().describe('Up to 32 named visual groups referenced by node.groupId.'),
     lanes: z.array(laneSchema).max(32).optional().describe('Up to 32 named partitions referenced by node.laneId.'),
     key: z.array(keyEntrySchema).min(1).max(8).optional().describe('Up to 8 entries naming what a node fill or an edge line style means, drawn as the diagram key above the plot; a good, bad or warn node fill needs one, and so does a dashed or dotted edge.'),
+    channels: z.array(channelSchema).max(16).optional().describe('Architecture only: up to 16 shared labels, each for edges that cross one gutter.'),
   })
   .superRefine((data, ctx) => {
     addDuplicateIdIssues(ctx, data.nodes, ['nodes'], {
@@ -244,6 +254,10 @@ export const diagramDataSchema = z
     addDuplicateIdIssues(ctx, data.lanes ?? [], ['lanes'], {
       name: 'diagram lane',
       keys: 'membership, partitions and scene identities',
+    });
+    addDuplicateIdIssues(ctx, data.channels ?? [], ['channels'], {
+      name: 'diagram channel',
+      keys: 'labels and scene identities',
     });
     const nodes = new Map(data.nodes.map((node) => [node.id, node]));
     const groups = new Set((data.groups ?? []).map((group) => group.id));
@@ -324,13 +338,17 @@ const diagramPresetOptions = z.discriminatedUnion('variant', [
   z.strictObject({ variant: z.literal('circular-process').describe('Select the circular-process diagram layout.') }),
   z.strictObject({ variant: z.literal('strategy-house').describe('Select the strategy-house diagram layout.') }),
   z.strictObject({ variant: z.literal('roadmap').describe('Select the roadmap diagram layout.') }),
+  z.strictObject({
+    variant: z.literal('architecture').describe('Select the architecture diagram layout: zones or lanes with routed flows, for system architecture and data flow exhibits.'),
+    flow: z.enum(['columns', 'lanes']).optional().describe('Architecture flow: zones side by side, or labelled lanes from data.lanes. Default columns.'),
+  }),
 ]);
 
 /**
  * The published object keeps every refused shared option visible to the
  * registry-derived capability census. The refinement delegates the
  * preset-specific surface to the strict discriminated union above, so `flow`
- * cannot become accepted-but-inert on the other six presets.
+ * cannot become accepted-but-inert on the other presets.
  */
 export const diagramOptionsSchema = commonDiagramOptions
   .safeExtend(refusedBaseOptions('diagram'))
@@ -343,8 +361,9 @@ export const diagramOptionsSchema = commonDiagramOptions
       'circular-process',
       'strategy-house',
       'roadmap',
+      'architecture',
     ]).describe('Required structural layout variant for the diagram.'),
-    flow: z.enum(['columns', 'serpentine']).optional().describe('Customer-journey flow; accepted only with variant customer-journey.'),
+    flow: z.enum(['columns', 'serpentine', 'lanes']).optional().describe('Layout flow: columns or serpentine for customer-journey, columns or lanes for architecture.'),
   })
   .strict()
   .superRefine((options, ctx) => {
@@ -358,9 +377,9 @@ export const diagramOptionsSchema = commonDiagramOptions
         code: 'custom',
         path: issue.path,
         message:
-          options.variant === 'customer-journey'
+          options.variant === 'customer-journey' || options.variant === 'architecture'
             ? issue.message
-            : `'flow' is only read by diagram variant 'customer-journey'`,
+            : `'flow' is only read by diagram variants 'customer-journey' and 'architecture'`,
       });
     }
   }).describe('Shared frame metadata and one diagram layout variant.') as unknown as z.ZodType<DiagramOptions>;

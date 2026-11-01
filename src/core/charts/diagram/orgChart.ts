@@ -1,7 +1,8 @@
 import type { Point, Rect } from '../../geometry';
 import type { FontSpec, TextMeasurer } from '../../text';
 import type { DiagramNode, DiagramOptions } from '../../types/diagram';
-import type { Paint } from '../../types/scene';
+import type { OwnerRef } from '../../types/cell';
+import type { LintWarning, Paint } from '../../types/scene';
 import type { NormalizedDiagram } from './model';
 import type { PresetLayout } from './presets';
 import { compareDiagramIds } from './ids';
@@ -52,9 +53,25 @@ export interface OrgChartLayout {
   laneFills?: Map<string, Paint>;
   /** Drawn shapes that reach past their node box (a chevron's point): they count toward the content height. */
   extent?: Rect[];
+  /** The plain edge paint, where the layout names one. */
+  edgePaint?: Paint;
+  /** The type of a node's secondary text, where it differs from the name. */
+  secondaryFont?: FontSpec;
+  /** Group frames in the layout's own paint. A dashed group has its title on the frame. */
+  groupPaint?: { fill: Paint; stroke: Paint; dashed: ReadonlySet<string> };
+  /** Lints of the layout itself. */
+  warnings?: LintWarning[];
+  /** Labels with a seat of their own that no single edge owns. */
+  channelLabels?: Array<{ id: string; text: string; rect: Rect; owner: OwnerRef }>;
 }
 
-export interface FixedRoute { points: Point[]; sourceSide?: 'bottom' | 'right'; targetSide: 'top' | 'left' }
+export interface FixedRoute {
+  points: Point[];
+  sourceSide?: 'top' | 'bottom' | 'left' | 'right';
+  targetSide: 'top' | 'bottom' | 'left' | 'right';
+  /** The seat of the edge label, chosen with the route. */
+  labelBox?: Rect;
+}
 
 /** A 1 px stroke on a half-pixel coordinate draws crisp. */
 export const snap = (value: number): number => Math.round(value - 0.5) + 0.5;
