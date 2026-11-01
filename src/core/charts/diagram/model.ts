@@ -14,6 +14,7 @@ export interface NormalizedDiagram {
   groups: NonNullable<DiagramData['groups']>;
   lanes: NonNullable<DiagramData['lanes']>;
   key: NonNullable<DiagramData['key']>;
+  channels: NonNullable<DiagramData['channels']>;
 }
 
 const stableOrder = <T extends { id: string; order?: number }>(items: readonly T[]): T[] =>
@@ -38,12 +39,81 @@ export function normalizeDiagramModel(
     groups: stableOrder(rawData.groups ?? []),
     lanes: stableOrder(rawData.lanes ?? []),
     key: rawData.key ?? [],
+    channels: rawData.channels ?? [],
   };
   validatePreset(data, rawOptions, rawData.nodes);
   return { data, options: rawOptions };
 }
 
+/** Each field the architecture layout owns, with what to write instead. */
+const ARCHITECTURE_NODE_REFUSALS = [
+  ['position', 'the engine owns geometry: use track and order'],
+  ['size', 'the engine sizes nodes from their text: shorten the text'],
+  ['minSize', 'the engine sizes nodes from their text: shorten the text'],
+  ['caption', 'use secondaryLabel'],
+  ['ports', 'the engine picks the ports: remove them'],
+] as const;
+
+function validateArchitecture(data: NormalizedDiagram, options: DiagramOptions & { variant: 'architecture' }): void {
+  if (options.flow === 'lanes') {
+    if (data.lanes.length === 0) throw new NormalizeError('invalid-membership', 'lanes', "flow 'lanes' requires data.lanes", 'add data.lanes, or remove options.flow');
+    const vertical = data.lanes.find((lane) => lane.orientation !== 'horizontal');
+    if (vertical) throw new NormalizeError('invalid-membership', `lanes[${vertical.id}].orientation`, "flow 'lanes' stacks horizontal lanes", `set lane '${vertical.id}' to orientation 'horizontal'`);
+    const outside = data.nodes.find((node) => !node.laneId);
+    if (outside) throw new NormalizeError('invalid-membership', `nodes[${outside.id}].laneId`, `flow 'lanes' requires every node to name its lane, and '${outside.id}' names none`, `set nodes[${outside.id}].laneId`);
+  } else if (data.lanes.length > 0 || data.nodes.some((node) => node.laneId)) {
+    throw new NormalizeError('invalid-membership', 'lanes', "flow 'columns' reads groups, not lanes", "set options.flow to 'lanes', or remove the lanes");
+  }
+  for (const node of data.nodes) {
+    for (const [field, fix] of ARCHITECTURE_NODE_REFUSALS) {
+      if (node[field] !== undefined) throw new NormalizeError('invalid-membership', `nodes[${node.id}].${field}`, `variant 'architecture' does not read ${field}`, fix);
+    }
+    if (!['rectangle', 'roundedRect'].includes(node.shape.kind)) {
+      throw new NormalizeError('invalid-membership', `nodes[${node.id}].shape`, `variant 'architecture' does not draw shape '${node.shape.kind}'`, "use shape 'rectangle' or 'roundedRect'");
+    }
+  }
+  for (const edge of data.edges) {
+    if (edge.waypoints) throw new NormalizeError('invalid-membership', `edges[${edge.id}].waypoints`, "variant 'architecture' does not read waypoints", 'the engine routes every edge: use track to line up its nodes');
+    if (edge.routing) throw new NormalizeError('invalid-membership', `edges[${edge.id}].routing`, "variant 'architecture' does not read routing", 'the engine routes every edge: remove routing');
+    if (edge.source.portId || edge.target.portId) throw new NormalizeError('invalid-membership', `edges[${edge.id}]`, "variant 'architecture' does not read portId", 'the engine picks the ports: remove portId');
+  }
+  const forward = data.edges.filter((edge) => edge.flow !== 'return');
+  const waiting = new Map(data.nodes.map((node) => [node.id, 0]));
+  for (const edge of forward) waiting.set(edge.target.nodeId, waiting.get(edge.target.nodeId)! + 1);
+  const ready = data.nodes.filter((node) => waiting.get(node.id) === 0).map((node) => node.id);
+  for (const id of ready) {
+    for (const edge of forward) {
+      if (edge.source.nodeId !== id) continue;
+      waiting.set(edge.target.nodeId, waiting.get(edge.target.nodeId)! - 1);
+      if (waiting.get(edge.target.nodeId) === 0) ready.push(edge.target.nodeId);
+    }
+  }
+  const looped = forward.filter((edge) => waiting.get(edge.source.nodeId)! > 0 && waiting.get(edge.target.nodeId)! > 0);
+  if (looped.length > 0) {
+    throw new NormalizeError('diagram-cycle', 'edges', `the forward edges ${looped.map((edge) => `'${edge.id}'`).join(', ')} form a cycle`,
+      `set flow: 'return' on the edge that closes the loop, for example '${looped[looped.length - 1]!.id}'`);
+  }
+  const edgeIds = new Set(data.edges.map((edge) => edge.id));
+  const channelled = new Set<string>();
+  for (const channel of data.channels) {
+    for (const id of channel.edgeIds) {
+      if (!edgeIds.has(id)) throw new NormalizeError('diagram-channel-mismatch', `channels[${channel.id}].edgeIds`, `channel '${channel.id}' names the unknown edge '${id}'`, 'name an edge of data.edges');
+      if (channelled.has(id)) throw new NormalizeError('diagram-channel-mismatch', `channels[${channel.id}].edgeIds`, `edge '${id}' is in two channels`, 'keep each edge in one channel');
+      channelled.add(id);
+    }
+  }
+}
+
 function validatePreset(data: NormalizedDiagram, options: DiagramOptions, authoredNodes: DiagramNode[]): void {
+  if (options.variant === 'architecture') {
+    validateArchitecture(data, options);
+    return;
+  }
+  const architectureOnly = data.nodes.find((node) => node.track !== undefined || node.span !== undefined)?.id ?? data.edges.find((edge) => edge.flow !== undefined)?.id
+    ?? (data.channels.length > 0 ? 'channels' : undefined);
+  if (architectureOnly !== undefined) {
+    throw new NormalizeError('invalid-membership', architectureOnly, `track, span, edge flow and channels are read only by variant 'architecture', not '${options.variant}'`, "remove them, or set options.variant to 'architecture'");
+  }
   const membership = data.nodes.filter((node) => node.groupId || node.laneId);
   const requireKinds = () => {
     const error = diagramKindError(authoredNodes, options);

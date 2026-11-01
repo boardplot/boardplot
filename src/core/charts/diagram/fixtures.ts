@@ -532,7 +532,7 @@ fixtures.push({
       : node.id === 'next-step' ? { ...node, badge: { text: '3', role: 'warn' as const } } : node)),
     key: [{ role: 'bad', label: 'Critical' }, { role: 'warn', label: 'At risk' }],
   },
-  options: { ...journey.options, variant: 'customer-journey', subtitle: 'Pain points customers report in each phase, by severity; joining is at risk' },
+  options: { ...journey.options, variant: 'customer-journey', subtitle: 'Pain points customers report in each phase, by severity; joining is at risk' } as DiagramOptions,
 });
 
 // a journey whose phase lanes, pain points and badges wear every
@@ -830,6 +830,97 @@ fixtures.push({
     ]
   },
   "options": {"variant": "issue-tree", "title": "Orders fell on four drivers", "source": "Invented data", "size": {"width": 960, "height": 540}}
+});
+
+const box = (id: string, label: string, more: Partial<DiagramData['nodes'][number]> = {}): DiagramData['nodes'][number] =>
+  ({ id, kind: 'step', shape: { kind: 'rectangle' }, label, ...more });
+const link = (id: string, source: string, target: string, more: Partial<NonNullable<DiagramData['edges']>[number]> = {}): NonNullable<DiagramData['edges']>[number] =>
+  ({ id, source: { nodeId: source }, target: { nodeId: target }, ...more });
+
+fixtures.push({
+  id: 'protected-request', title: 'A request stays protected on its way to private processing and back', kind: 'example',
+  data: {
+    groups: [{ id: 'client', title: 'Client environment' }, { id: 'processing', title: 'Processing environment' }],
+    nodes: [
+      box('application', 'Application', { groupId: 'client' }),
+      box('request', 'Protected request', { groupId: 'client', track: 'request' }),
+      box('response', 'Protected response', { groupId: 'client', track: 'response' }),
+      box('checks', 'Live checks', { groupId: 'processing', track: 'request' }),
+      box('private', 'Private processing', { groupId: 'processing', track: 'response', role: 'accent', secondaryLabel: 'Isolated execution with no retained payloads', badge: { text: 'Preview', role: 'secondary' } }),
+    ],
+    edges: [
+      link('prepare', 'application', 'request', { label: 'Prepare' }),
+      link('send', 'request', 'checks', { label: 'Request' }),
+      link('process', 'checks', 'private', { label: 'Process' }),
+      link('answer', 'private', 'response', { label: 'Response' }),
+      link('deliver', 'response', 'application', { label: 'Deliver', flow: 'return' }),
+    ],
+    channels: [{ id: 'transit', edgeIds: ['send', 'answer'], label: 'Encrypted in transit' }],
+  },
+  options: { variant: 'architecture', title: 'A request stays protected from the application to private processing and back', source: 'Illustrative', size: { width: 960 } },
+});
+
+fixtures.push({
+  id: 'marketing-pipeline', title: 'Rejected records return to the source for repair', kind: 'example',
+  data: {
+    groups: [{ id: 'sources', title: 'Sources' }, { id: 'ingest', title: 'Ingestion' }, { id: 'warehouse', title: 'Warehouse' }, { id: 'use', title: 'Use' }],
+    nodes: [
+      box('crm', 'CRM', { groupId: 'sources', secondaryLabel: 'Contacts' }),
+      box('ads', 'Ad platforms', { groupId: 'sources', secondaryLabel: 'Spend and clicks' }),
+      box('web', 'Web events', { groupId: 'sources', secondaryLabel: 'Sessions' }),
+      box('collector', 'Collector', { groupId: 'ingest' }),
+      box('validator', 'Validator', { groupId: 'ingest', secondaryLabel: 'Schema and consent' }),
+      box('staging', 'Staging', { groupId: 'warehouse' }),
+      box('marts', 'Marts', { groupId: 'warehouse', role: 'accent' }),
+      box('dashboards', 'Dashboards', { groupId: 'use' }),
+      box('models', 'Attribution models', { groupId: 'use' }),
+    ],
+    edges: [
+      link('crm-in', 'crm', 'collector'), link('ads-in', 'ads', 'collector'), link('web-in', 'web', 'collector'),
+      link('check', 'collector', 'validator'), link('load', 'validator', 'staging'), link('shape', 'staging', 'marts'),
+      link('report', 'marts', 'dashboards'), link('fit', 'marts', 'models'),
+      link('rejected', 'validator', 'crm', { flow: 'return', dash: 'dashed', label: 'Rejected records', role: 'bad' }),
+    ],
+    key: [{ line: 'dashed', label: 'Return for repair' }],
+  },
+  options: { variant: 'architecture', title: 'Rejected records return to the source for repair', source: 'Illustrative', size: { width: 960 } },
+});
+
+fixtures.push({
+  id: 'journey-attribution', title: 'Multi-touch attribution from customer journey to budget', kind: 'example',
+  data: {
+    lanes: [
+      { id: 'touchpoint', label: 'Touchpoint', orientation: 'horizontal' },
+      { id: 'consent', label: 'Consent and events', orientation: 'horizontal' },
+      { id: 'journey', label: 'Journey data', orientation: 'horizontal' },
+      { id: 'attribution', label: 'Attribution', orientation: 'horizontal' },
+      { id: 'budget', label: 'Budget', orientation: 'horizontal' },
+    ],
+    groups: [{ id: 'personal', title: 'Personal data' }],
+    nodes: [
+      box('social', 'Paid social', { laneId: 'touchpoint', track: 'a', secondaryLabel: 'Day 1' }),
+      box('search', 'Paid search', { laneId: 'touchpoint', track: 'b', secondaryLabel: 'Day 6' }),
+      box('email', 'Email', { laneId: 'touchpoint', track: 'c', secondaryLabel: 'Day 9' }),
+      box('direct', 'Direct', { laneId: 'touchpoint', track: 'd', secondaryLabel: 'Day 12' }),
+      box('consent', 'Consent check', { laneId: 'consent', track: 'a', secondaryLabel: 'Consented only' }),
+      box('events', 'Event collection', { laneId: 'consent', track: 'c', secondaryLabel: 'Impressions, clicks and orders' }),
+      box('identity', 'Identity stitching', { laneId: 'journey', groupId: 'personal', track: 'b', secondaryLabel: 'Links devices' }),
+      box('paths', 'Ordered paths', { laneId: 'journey', groupId: 'personal', track: 'd', secondaryLabel: 'One row per journey' }),
+      box('markov', 'Markov chain', { laneId: 'attribution', track: 'b', secondaryLabel: 'Removal effect', role: 'accent' }),
+      box('decay', 'Time decay', { laneId: 'attribution', track: 'c', secondaryLabel: 'Recency weight', role: 'secondary' }),
+      box('lastclick', 'Last click', { laneId: 'attribution', track: 'd', secondaryLabel: 'Baseline', role: 'secondary' }),
+      box('credit', 'Credit by channel', { laneId: 'budget', track: 'b', secondaryLabel: 'Share of conversions by model' }),
+      box('shift', 'Budget shift', { laneId: 'budget', track: 'd', secondaryLabel: 'Spend moves earlier' }),
+    ],
+    edges: [
+      link('t1', 'social', 'consent'), link('t2', 'search', 'consent'), link('t3', 'email', 'consent'), link('t4', 'direct', 'consent'),
+      link('c1', 'consent', 'events'), link('c2', 'events', 'identity'), link('j1', 'identity', 'paths'),
+      link('a1', 'paths', 'markov'), link('a2', 'paths', 'decay'), link('a3', 'paths', 'lastclick'),
+      link('b1', 'markov', 'credit'), link('b2', 'decay', 'credit'), link('b3', 'lastclick', 'credit'), link('b4', 'credit', 'shift'),
+      link('loop', 'shift', 'social', { flow: 'return', label: 'The budget shift changes the next media plan' }),
+    ],
+  },
+  options: { variant: 'architecture', flow: 'lanes', title: 'Last-click credit hides the channels that start the journey', source: 'Illustrative', size: { width: 960 } },
 });
 
 registerFixtures('diagram', fixtures);

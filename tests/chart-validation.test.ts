@@ -122,6 +122,13 @@ describe('actionable input refusals', () => {
     expect(secondary?.suggest).not.toContain('options.unit');
   });
 
+  // Two nodes in one architecture cell have no drawing, so the refusal must name both and the fix.
+  it('refuses two architecture nodes in one lane and track', () => {
+    const node = (id: string) => ({ id, kind: 'step', shape: { kind: 'rectangle' }, label: id, laneId: 'l', track: 't' });
+    expect(() => getChartDefinition('diagram')!.layout({ nodes: [node('a'), node('b')], lanes: [{ id: 'l', label: 'Layer', orientation: 'horizontal' }] }, { variant: 'architecture', flow: 'lanes' }))
+      .toThrow(expect.objectContaining({ code: 'diagram-track-conflict', message: expect.stringContaining("'a' and 'b'") }));
+  });
+
   // A diagram kind refused by its variant must name the kinds that variant can place.
   it('lists the node kinds accepted by the diagram variant', () => {
     const [error] = errors({ type: 'diagram', data: { nodes: [{ id: 'n', kind: 'step', shape: { kind: 'rectangle' }, label: 'A', laneId: 'l' }], lanes: [{ id: 'l', label: 'Phase', orientation: 'vertical' }] }, options: { variant: 'customer-journey' } });

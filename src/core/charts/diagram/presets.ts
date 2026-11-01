@@ -100,6 +100,9 @@ function dispatchPreset(theme: Theme, context: PresetContext): PresetLayout {
       return layoutStrategyHouse(context);
     case 'roadmap':
       return layoutRoadmap(theme, context);
+    case 'architecture':
+      // Laid out and routed by architecture.ts, before any preset runs.
+      return emptyResult(context.data);
   }
 }
 
