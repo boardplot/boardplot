@@ -10,7 +10,7 @@ import { wrapText, type FontSpec, type TextMeasurer } from '../../text';
 import type { LegendGeometry, SceneNode, TextRole } from '../../types/scene';
 import type { Theme } from '../../types/theme';
 import { emphasisWeight, strokeToken } from '../../theme';
-import { decimalsOf, geoStatePattern, geoStateLabel, type ScaleModel } from '../geoScale';
+import { geoStatePattern, geoStateLabel, type ScaleModel } from '../geoScale';
 import { compareText } from '../../text';
 import type { ChoroplethOptions } from './types';
 import { composedTextRole } from '../../textRole';
@@ -150,7 +150,8 @@ function mapKeysOnce(input: MapKeysInput) {
   // ---- key block: what its labels ask for ----
   const { min, max, midpoint } = scale;
   const noData = scale.legend.find((item) => item.id === 'no-data');
-  const noValueKeys = scale.legend.filter((item) => item.id === 'no-data' || item.id === 'not-in-data' || item.id.startsWith('state:'));
+  // A value on an even-count midpoint break is grey; its entry stands beside the other swatches.
+  const noValueKeys = scale.legend.filter((item) => item.id === 'midpoint' || item.id === 'no-data' || item.id === 'not-in-data' || item.id.startsWith('state:'));
   const hasRamp = min !== null && max !== null;
   const classes = hasRamp && (max !== min || scale.explicitSteps) ? (scale.edges ? scale.edges.length - 1 : input.classes) : undefined;
   const named = (value: number) => `${fmt(value)}${input.midpointLabel && value === midpoint ? ` ${input.midpointLabel}` : ''}`;
@@ -173,7 +174,7 @@ function mapKeysOnce(input: MapKeysInput) {
     && !(classes && input.midpointLabel === undefined && tickEdges.includes(midpoint));
   // A classed key prints the midpoint as its ticks do ('15%' beside '14%') when that is exact.
   const midText = !midIn ? ''
-    : classes && decimalsOf(midpoint!) <= Math.max(0, ...tickEdges.map(decimalsOf))
+    : classes && scale.edgeExact(midpoint!)
       ? `${edgeText(midpoint!)}${input.midpointLabel ? ` ${input.midpointLabel}` : ''}`
       : named(midpoint!);
   const rowW = (label: string) => SWATCH + SWATCH_GAP + width(label);

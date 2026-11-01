@@ -28,4 +28,11 @@ describe('diverging classes and the midpoint', () => {
     expect(even.paint(3)).not.toEqual(entry.paint);
     expect(even.legend.map((item) => item.label)).toContain('Over 0% to under 5%');
   });
+
+  it('mirrored breaks near a large midpoint keep every class a width', () => {
+    const big = Array.from({ length: 11 }, (_, i) => 1e15 - 10 + 2 * i);
+    const edges = buildGeoScale(big, { scale: { kind: 'diverging', midpoint: 1e15 }, classes: 5, format: '1' },
+      String, false, resolveTheme(), { token: 'neutral' }).edges!;
+    expect(edges.every((edge, i) => i === 0 || edge > edges[i - 1]!)).toBe(true);
+  });
 });

@@ -56,6 +56,8 @@ export interface ScaleModel {
   explicitSteps?: boolean;
   /** Prints a class edge on the key: round breaks drop the decimals they do not need. */
   edgeFmt: (value: number) => string;
+  /** True when edgeFmt prints `value` without rounding it, in the format's own magnitude unit. */
+  edgeExact: (value: number) => boolean;
   /** The key prints the equal-interval edges with more decimals than the format; its ends need them too. */
   liftedDecimals?: boolean;
 }
@@ -218,6 +220,8 @@ function symmetricClassBreaks(values: readonly number[], classes: number, midpoi
         const offsets = Array.from({ length: perSide }, (_, j) => round(half + j * step));
         if (!onGrid(half) || offsets[perSide - 1]! >= span) continue;
         const breaks = [...offsets.map((offset) => round(midpoint - offset)).reverse(), ...offsets.map((offset) => round(midpoint + offset))];
+        // Rounding near a large midpoint can merge breaks; every class must keep a width.
+        if (!breaks.every((edge, i) => edge > (i === 0 ? midpoint - span : breaks[i - 1]!)) || !(breaks[breaks.length - 1]! < midpoint + span)) continue;
         const counts = new Array<number>(classes).fill(0);
         for (const value of values) counts[breaks.filter((edge) => value >= edge).length]! += 1;
         const ties = values.filter((value) => breaks.includes(value)).length;
@@ -384,14 +388,18 @@ export function buildGeoScale(
   }, options, keyFmt, classPaint, continuousPaint);
   // A round break prints round: '20' under a '1.1' format, not '20.0'.
   const roundBreaks = symmetric ?? nice;
-  const edgeFmt = roundBreaks && options.format !== undefined
+  const { edgeFmt, edgeExact } = roundBreaks && options.format !== undefined
     ? (() => {
         const spec = exampleSpec(options.format, options.locale?.language, undefined, values);
-        const decimals = Math.min(spec.decimals, Math.max(0, maxOf(roundBreaks.map((edge) => decimalsOf(edge / MAGNITUDE_DIVISOR[spec.magnitude])))));
-        return (value: number) => formatWithSpec(value, { ...spec, decimals });
+        const unit = MAGNITUDE_DIVISOR[spec.magnitude];
+        const decimals = Math.min(spec.decimals, Math.max(0, maxOf(roundBreaks.map((edge) => decimalsOf(edge / unit)))));
+        return {
+          edgeFmt: (value: number) => formatWithSpec(value, { ...spec, decimals }),
+          edgeExact: (value: number) => decimalsOf(value / unit) <= decimals,
+        };
       })()
-    : keyFmt;
-  return { min, max, midpoint: declaredMidpoint, polarity, paint, legend, edgeFmt, ...(keyDecimals !== undefined ? { liftedDecimals: true } : {}), ...(edges ? { edges } : {}), ...(options.steps ? { explicitSteps: true } : {}) };
+    : { edgeFmt: keyFmt, edgeExact: () => true };
+  return { min, max, midpoint: declaredMidpoint, polarity, paint, legend, edgeFmt, edgeExact, ...(keyDecimals !== undefined ? { liftedDecimals: true } : {}), ...(edges ? { edges } : {}), ...(options.steps ? { explicitSteps: true } : {}) };
 }
 
 function geoScaleLegend(
