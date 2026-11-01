@@ -1049,7 +1049,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | workforce-tenure-gender | pyramid | example | Women outnumber men below four years of tenure and are outnumbered above ten |
 | torture-pyramid-degenerate | pyramid | torture | 22 bands, one empty in both groups, a 10:1 group imbalance and an open top band |
 | dated-population-comparison | pyramid | example | Growth within the same age band across two observation dates |
-| dated-share-difference | pyramid | example | An absolute difference between shares is measured in percentage points |
+| dated-share-difference | pyramid | example | Each snapshot is its own 100%, and a difference between shares is measured in percentage points |
 
 ## diagram
 
