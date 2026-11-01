@@ -15,6 +15,7 @@ import { layoutDiagram } from '../src/core/charts/diagram/layout';
 import type { DiagramData } from '../src/core/types/diagram';
 import type { SlopeChartData } from '../src/core/types/data';
 import type { Geometry } from '../src/core/types/scene';
+import { cutLabels } from '../src/core/label/omissions';
 import { render } from '../src/cli/render';
 import { measure as cliMeasure } from '../src/cli/measure';
 import { callTool } from '../src/mcp/server';
@@ -480,6 +481,28 @@ it('puts the value and label of a single waffle panel beside a grid that fills t
   expect(value.rect.x).toBeGreaterThan(rect.x + rect.w);
   expect(name.rect.x).toBe(value.rect.x);
   expect(draw({ width: 1184 }).marks.panels[0]!.rect.w).toBeLessThan(rect.w);
+});
+
+// Prevents waffle panels from cutting a long name in one cells row, and from leaving one square alone on a second row (7 + 1).
+it('wraps waffle panels into evenly filled rows when a name is wider than its panel', () => {
+  const rowsOf = (variant: string, labels: string[], width: number): number[] => {
+    const data = { categories: labels.map(label => ({ id: label, label })), series: [{ id: 's', label: 'S', values: labels.map((_, i) => 20 + i * 7) }] };
+    const shown = layoutResolvedRequest(resolveChartRequest({ type: 'waffle', data, options: { variant, size: { width } } } as never)) as unknown as Geometry & { marks: { panels: { rect: { y: number } }[] } };
+    expect(cutLabels(shown)).toEqual([]);
+    const ys = [...new Set(shown.marks.panels.map(panel => panel.rect.y))];
+    return ys.map(y => shown.marks.panels.filter(panel => panel.rect.y === y).length);
+  };
+  expect(rowsOf('cells', ['Infrastructure', 'Manufacturing', 'Subscriptions', 'Distribution', 'International'], 440)).toEqual([3, 2]);
+  expect(rowsOf('square', ['Retail stores', 'Gross margin', 'Intercontinental', 'Telecommunications', 'Licence income', 'Marketing spend', 'Online shop', 'Warehouse costs'], 760)).toEqual([4, 4]);
+});
+
+// Prevents a pinned waffle with two series from wrapping its panels into 3.6 px cells, or refusing a height where one row with cut names draws.
+it('keeps one readable row when two wrapped waffle rows do not fit the pinned height', () => {
+  const names = ['Telecommunications', 'Manufacturing', 'Subscriptions', 'Distribution', 'International'];
+  const data = { categories: names.map(label => ({ id: label, label })), series: [{ id: 'a', label: 'Alpha', values: names.map(() => 20) }, { id: 'b', label: 'Beta', values: names.map(() => 30) }] };
+  const shown = layoutResolvedRequest(resolveChartRequest({ type: 'waffle', data, options: { variant: 'cells', size: { width: 550, height: 300 } } } as never)) as unknown as Geometry & { refused?: boolean };
+  expect(shown.refused).toBeUndefined();
+  expect(shown.warnings.map(w => w.code)).not.toContain('waffle-cells-small');
 });
 
 // Prevents pinned pies from drawing a radius under 36 px or an explode that leaves the frame.
