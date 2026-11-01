@@ -7,6 +7,13 @@ import { DEFAULT_TARGET, scaleTextAtFloor, targetFloorsPx, targetTypeSizesPx } f
 // Layout-only state. No function or hidden property travels in geometry.
 export const INTERACTIVE_LAYOUT = Symbol();
 /**
+ * Set by React's layout of a chart with `options.story`: the story panel
+ * keeps the room for the Back and Next row that React draws. Static output
+ * (SVG, PNG, PDF, the CLI and the export of a live chart) draws no buttons
+ * and does not set it.
+ */
+export const STORY_NAVIGATION = Symbol('storyNavigation');
+/**
  * The author notes compact mode left off the canvas (compact.ts). They reach
  * React's notes panel (`a11y.compactNotes`), so a React layout counts them in
  * the "+N notes" button it reserves a row for.
