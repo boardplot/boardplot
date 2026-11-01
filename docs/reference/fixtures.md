@@ -526,6 +526,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | dpy-absolute-regions | variance.absolute | example | ΔPY absolute variance columns with forced signs |
 | dpl-relative-pins | variance.relative | example | ΔPL% relative variance pins, ≤1 decimal, forced signs |
 | integrated-fc-caps | variance.integrated | example | Integrated variance: AC columns with ΔFC caps |
+| integrated-solid-shortfall | variance.integrated | example | Integrated variance with a solid shortfall cap (surface.shortfallCap) |
 | ref-nonpositive-suppression | variance.relative | torture | Torture: REF zero and negative suppress Δ% with warnings |
 | all-positive-deltas | variance.absolute | torture | Total SaaS and services revenue growth by region versus prior year |
 | all-negative-deltas | variance.absolute | torture | Torture: all-negative ΔPL, labels mirrored below, category labels in one row under the bars |

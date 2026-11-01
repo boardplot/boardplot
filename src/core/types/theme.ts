@@ -591,6 +591,8 @@ export interface Theme {
     sparkWash?: boolean;
     /** Where an area spark's scale and wash start; see themeFields. */
     sparkAreaBase?: 'zero' | 'min';
+    /** How an integrated variance chart draws a cap past the actual; see themeFields. */
+    shortfallCap?: 'outline' | 'solid';
     /** CSS box-shadow of the React notes popover; see themeFields. */
     panelShadow?: string;
   };
