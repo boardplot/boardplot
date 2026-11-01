@@ -693,6 +693,11 @@ export function layoutHistogram(
   const step = axis && k > 1 ? axis.ticks[1]!.pos - axis.ticks[0]!.pos : column.plot.w / k;
   const first = axis ? axis.ticks[0]!.pos - step / 2 : column.plot.x;
   const widths = edgeLabels.map((text) => measure(text, font).width);
+  const lefts = widths.map((w, i) => {
+    const x = first + (perValue ? i + 0.5 : i) * step;
+    // End edges align to the plot boundary; inner edges and values centre on their position.
+    return !perValue && i === 0 ? x : !perValue && i === k ? x - w : Math.max(0, Math.min(size.width - w, x - w / 2));
+  });
   let stride = 1;
   // Edge numbers keep a word space and more between them.
   const EDGE_GAP = 16;
@@ -711,18 +716,19 @@ export function layoutHistogram(
   // Edge labels that would run into the open bin's name give way to it.
   const openLeft = openLabel ? openLabel.candidates[0]!.rect.x - EDGE_GAP : Infinity;
   const lastLabel = labelValues.length - 1;
-  while (stride < lastLabel && edgeLabels.some((_, i) => i % stride === 0 && i + stride <= lastLabel && (widths[i]! + widths[i + stride]!) / 2 + EDGE_GAP > stride * step)) stride++;
+  while (stride < lastLabel && edgeLabels.some((_, i) => i % stride === 0 && i + stride <= lastLabel && lefts[i + stride]! - lefts[i]! - widths[i]! < EDGE_GAP)) stride++;
   const requests: LabelRequest[] = [];
   const ticks = labelValues.map((value, i) => {
     // A value sits under its bar centre; an edge sits on the seam between two bars.
     const x = first + (perValue ? i + 0.5 : i) * step;
     const id = `${perValue ? 'value' : 'edge'}:${i}`;
     const w = widths[i]!, h = font.size * (font.lineHeight ?? 1.2);
-    // The first edge number starts at the plot edge and the last ends there; inner numbers and values centre on their position.
-    const left = !perValue && i === 0 ? x : !perValue && i === k ? x - w : Math.max(0, Math.min(size.width - w, x - w / 2));
+    const left = lefts[i]!;
     // The open bin's lower edge is named in the open bin's own label.
     const openEdge = open && !perValue && i === closedCount;
-    const labelled = labelsOn && i % stride === 0 && !openEdge && left + w <= openLeft;
+    // The maximum edge keeps its label when the stride does not land on it.
+    const crowdedByLast = !perValue && !open && i > 0 && i < k && left + w + EDGE_GAP > lefts[k]!;
+    const labelled = labelsOn && (i % stride === 0 || !perValue && i === k) && !crowdedByLast && !openEdge && left + w <= openLeft;
     if (labelled) {
       requests.push({ id, kind: 'category', owner: { categoryId: binId(Math.min(i, k - 1)) }, text: edgeLabels[i]!, lines: [edgeLabels[i]!], font, typeRole: 'axis', priority: PRIORITY.reference, candidates: [{ slot: 'main', rect: { x: left, y, w, h }, penalty: 0 }] });
     }

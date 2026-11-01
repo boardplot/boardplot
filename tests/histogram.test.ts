@@ -659,6 +659,22 @@ function svg(geometry: Geometry<HistogramMarks, HistogramDerived>): string {
 
 
 describe('histogram boundaries and frequency', () => {
+  // Aligned edge labels must leave room for their neighbours and keep the maximum visible.
+  it('keeps the outer bin edges visible without crowding their neighbours', () => {
+    const data = { observations: ramp(81, 2500, 100000) };
+    for (const [width, bins] of [[1200, 20], [1400, 20], [1200, 21], [1400, 21]] as const) {
+      const geometry = layoutHistogram(data, { bins, size: { width, height: 675 } });
+      const labels = geometry.labels.filter((label) => label.kind === 'category' && !label.hidden)
+        .sort((a, b) => a.rect.x - b.rect.x);
+      expect(labels[0]!.id).toBe('edge:0');
+      expect(labels.at(-1)!.id).toBe(`edge:${geometry.derived.counts.length}`);
+      expect(geometry.labels.filter((label) => label.kind === 'category' && label.hidden)).toHaveLength(0);
+      for (let i = 1; i < labels.length; i++) {
+        const previous = labels[i - 1]!.rect;
+        expect(labels[i]!.rect.x - previous.x - previous.w).toBeGreaterThanOrEqual(16);
+      }
+    }
+  });
   it('places labelled boundaries at one stride, with a tick at every boundary', () => {
     const f = fixtures.find((f) => f.id === 'order-value-distribution')!;
     for (const bins of [1, 10]) {
