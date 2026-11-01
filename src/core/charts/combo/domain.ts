@@ -526,9 +526,8 @@ const FLOAT_LINE_LOW = 0.6;
 /**
  * The fallback of the line band when no zero-based pair keeps the line above
  * the columns: a line whose low is far under its high cannot clear them on a
- * scale from zero. The primary ticks keep their step and stop at the first
- * tick that covers the columns, and that tick sits at FLOAT_COLUMN_SHARE of
- * the plot. The line
+ * scale from zero. The primary ticks stop at the first tick that covers the
+ * columns, and that tick sits at FLOAT_COLUMN_SHARE of the plot. The line
  * takes the band from FLOAT_LINE_LOW (higher when the measured label
  * clearance over the tallest column needs it) to the top on its own scale
  * from its low to its high, which does not start at zero, so the line values print in
@@ -536,7 +535,6 @@ const FLOAT_LINE_LOW = 0.6;
  * no line value is drawn.
  */
 function floatedLineScales(
-  primary: { pticks: number[] },
   columnTop: number,
   lines: readonly NormSer[],
   valueLine: ValueLineExtent | null,
@@ -549,9 +547,19 @@ function floatedLineScales(
   if (values.length === 0) return undefined;
   const lo = Math.min(...values);
   const hi = Math.max(...values);
-  const step = primary.pticks.length > 1 ? primary.pticks[1]! - primary.pticks[0]! : 0;
-  if (!(step > 0) || primary.pticks[0] !== 0) return undefined;
-  const pticks = Array.from({ length: Math.max(1, Math.ceil(columnTop / step - 1e-9)) + 1 }, (_, i) => roundTick(i * step));
+  if (!(columnTop > 0)) return undefined;
+  // The column band is a little over half the plot, so it takes two to four
+  // intervals: the step whose top tick covers the columns with least to spare, then the finer one.
+  let best: { step: number; top: number; n: number } | undefined;
+  for (const step of ladderSteps(columnTop / 4, columnTop, PRIMARY_MANTISSAS)) {
+    const n = Math.ceil(columnTop / step - 1e-9);
+    if (n < 2 || n > 4) continue;
+    const top = roundTick(n * step);
+    if (!best || top < best.top - 1e-9 || (Math.abs(top - best.top) <= 1e-9 && step < best.step)) best = { step, top, n };
+  }
+  if (!best) return undefined;
+  const { step, n } = best;
+  const pticks = Array.from({ length: n + 1 }, (_, i) => roundTick(i * step));
   const topTick = pticks[pticks.length - 1]!;
   const dHi = topTick / FLOAT_COLUMN_SHARE;
   // The low keeps the measured label clearance over the tallest column, so a
@@ -912,9 +920,9 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
     : undefined;
   const shared = lineBandScaleInput ? dualAxisScales(lineBandScaleInput) : undefined;
   if (shared) primary = { dLo: 0, dHi: shared.pticks[shared.pticks.length - 1]!, pticks: shared.pticks };
-  const floatOver = (left: typeof primary, clearance: number) => floatedLineScales(left, maxOf(posTop), lines, secondaryLine, clearance);
+  const floatOver = (clearance: number) => floatedLineScales(maxOf(posTop), lines, secondaryLine, clearance);
   const floated = lineBandScaleInput && !shared
-    ? floatOver(defaultPrimary, (options as { [FLOAT_BAND_CLEARANCE]?: number })[FLOAT_BAND_CLEARANCE] ?? lineBandScaleInput.clearance ?? LINE_CLEARANCE) : undefined;
+    ? floatOver((options as { [FLOAT_BAND_CLEARANCE]?: number })[FLOAT_BAND_CLEARANCE] ?? lineBandScaleInput.clearance ?? LINE_CLEARANCE) : undefined;
   if (floated) primary = floated.primary;
   warnFlatLines(data, options, dataSeries, primary, secondaryActive, warnings);
   // A negative value on either scale: the zeros share a gridline.
@@ -1008,7 +1016,7 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
   if (lineBandScaleInput) resolved.withLineBandClearance = (clearance, floatClearance = clearance) => {
     const next = dualAxisScales({ ...lineBandScaleInput, clearance });
     // Without a pair that keeps the line above, the line floats over the columns.
-    const nextFloat = next ? undefined : floatOver(defaultPrimary, floatClearance);
+    const nextFloat = next ? undefined : floatOver(floatClearance);
     if (shared?.secondaryStep === next?.secondaryStep && shared?.pticks.length === next?.pticks.length
       && !shared?.pticks.some((tick, i) => tick !== next!.pticks[i])
       && floated?.range[0] === nextFloat?.range[0]) return undefined;
