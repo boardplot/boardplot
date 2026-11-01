@@ -93,6 +93,41 @@ it('measures the height the note growth draws', () => {
   expect(measure(spec as never).naturalHeight).toBe(body.size.height);
 });
 
+// Bubble matrices must keep their circles and rows unchanged when value labels or decimals change.
+it('keeps bubble matrix geometry stable across value label settings and formats', () => {
+  const data = {
+    categories: Array.from({ length: 12 }, (_, ci) => ({ id: `c${ci}`, label: `Step ${ci + 1}` })),
+    series: Array.from({ length: 6 }, (_, ri) => ({
+      id: `s${ri}`, label: `Group ${ri + 1}`,
+      values: Array.from({ length: 12 }, (_, ci) => ({ pct: 9 + (13 * ci + 17 * ri) % 62 })),
+      sizes: Array.from({ length: 12 }, (_, ci) => 1 + (ci + ri) % 3),
+    })),
+  };
+  const options = { variant: 'bubble', scale: 'discrete', breaks: [0, 30, 50, 100],
+    bubble: { levels: ['Low', 'Medium', 'High'] }, title: 'Results by group and step' };
+  const layout = (extra: Record<string, unknown>, size: { width: number; height?: number }) => {
+    const result = layoutResolvedRequest(resolveChartRequest({ type: 'heatmap', data, options: { ...options, ...extra, size } }));
+    if (result.refused) throw new Error(result.warnings[0]!.message);
+    return result;
+  };
+  const geometry = (result: Geometry) => ({
+    size: result.size,
+    cells: result.scene.flatMap(node => node.t === 'rect' && node.part === 'cell' ? [node.rect] : []),
+    circles: result.scene.flatMap(node => node.t === 'circle' && node.part === 'bubble' ? [{ id: node.id, cx: node.cx, cy: node.cy, r: node.r }] : []),
+  });
+  for (const size of [{ width: 960 }, { width: 960, height: 350 }]) {
+    const reference = geometry(layout({}, size));
+    expect(reference.circles).toHaveLength(72);
+    for (const extra of [{}, { labels: false }, { labels: { point: false } }, { format: '1.0' }]) {
+      const result = layout(extra, size);
+      expect(geometry(result)).toEqual(reference);
+      const values = result.scene.filter(node => node.t === 'text' && node.part === 'point');
+      expect(values).toHaveLength('labels' in extra ? 0 : 24);
+      if (values.length) expect(new Set(values.map(node => node.t === 'text' && node.font.size)).size).toBe(1);
+    }
+  }
+});
+
 // A host needs the refusal's minimum to size its card without a separate measurement.
 it('keeps canDraw minimum on a fixed-size refusal', () => {
   expect(canDraw(shortCombo)).toMatchObject({ ok: false, code: 'size-below-floor', minimum: { width: 480, height: 240 } });
