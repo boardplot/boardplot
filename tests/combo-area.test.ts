@@ -197,6 +197,22 @@ it('floats a dual-axis line over the columns on its own scale when no zero-based
   expect(geometry.labels.some((label) => label.id === 'point:margin:m3' && !label.hidden)).toBe(true);
 });
 
+// A primary line of 1000 over columns of 10 fell outside the plot, because the float sized the left scale from the columns alone.
+it('keeps the whole primary scale when a primary line stands above the columns', () => {
+  const categories = Array.from({ length: 6 }, (_, i) => ({ id: `m${i}` }));
+  const geometry = requireGeometry(layoutCombo({
+    categories,
+    series: [
+      { id: 'units', label: 'Units', kind: 'column', values: categories.map(() => 10) },
+      { id: 'target', label: 'Target', kind: 'line', values: categories.map(() => 1000) },
+      { id: 'margin', label: 'Margin', kind: 'line', axis: 'secondary', unit: '%', values: [0, 30, 0, 30, 0, 30] },
+    ],
+  }, { size: { width: 720, height: 385 }, title: 'Units and target', secondaryAxis: { acknowledge: true } }));
+  expect(geometry.warnings.some((w) => w.code === 'dual-axis-line-floated')).toBe(false);
+  const target = geometry.marks.lines.find((mark) => mark.seriesId === 'target')!;
+  for (const point of target.points) expect(point.y, point.categoryId).toBeGreaterThanOrEqual(geometry.plot.y);
+});
+
 // A line of 13 to 30 drawn on a scale of 10,000 lay on the baseline with no warning.
 it('warns when a line lies flat on the scale it shares with larger columns', () => {
   const categories = Array.from({ length: 12 }, (_, i) => ({ id: `m${i}` }));

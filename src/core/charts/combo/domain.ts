@@ -603,7 +603,7 @@ function warnFlatLines(data: ChartData, options: ComboOptions, dataSeries: reado
       field: ['data', 'series', index],
       fix: [
         { op: 'add', path: `/data/series/${index}/axis`, value: 'secondary' },
-        options.secondaryAxis === undefined
+        options.secondaryAxis === undefined || 'ruler' in options.secondaryAxis
           ? { op: 'add', path: '/options/secondaryAxis', value: { acknowledge: true } }
           : { op: 'add', path: '/options/secondaryAxis/acknowledge', value: true },
       ],
@@ -920,7 +920,8 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
     : undefined;
   const shared = lineBandScaleInput ? dualAxisScales(lineBandScaleInput) : undefined;
   if (shared) primary = { dLo: 0, dHi: shared.pticks[shared.pticks.length - 1]!, pticks: shared.pticks };
-  const floatOver = (clearance: number) => floatedLineScales(maxOf(posTop), lines, secondaryLine, clearance);
+  // Only columns may share the lower band: a primary line or value line above them needs the whole scale.
+  const floatOver = (clearance: number) => hi <= maxOf(posTop) ? floatedLineScales(maxOf(posTop), lines, secondaryLine, clearance) : undefined;
   const floated = lineBandScaleInput && !shared
     ? floatOver((options as { [FLOAT_BAND_CLEARANCE]?: number })[FLOAT_BAND_CLEARANCE] ?? lineBandScaleInput.clearance ?? LINE_CLEARANCE) : undefined;
   if (floated) primary = floated.primary;
