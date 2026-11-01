@@ -182,6 +182,7 @@ export const bartableOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOpt
     'The Total row is a dark bar. combinedShare draws a bracket over its rows, which must follow one another. Needs one segment, no ends, no nulls.',
   ),
   cascade: z.strictObject({
+      totalApart: z.boolean().optional().describe("Row groups only. true (default): the Total bar deepens away from the group colours and the rest grey where the theme total colour reads as one of them. false: the Total bar keeps the theme total colour (color.total) as it is."),
       share: z.boolean().optional().describe('Computed share column beside each panel; default true. rounding defaults to \'sum-consistent\' here, so each adds up to 100%.'),
       growth: z.strictObject({
         measure: z.enum(['cagr', 'share-change']).describe("'cagr': each row's CAGR, first panel to last, in %. 'share-change': last share minus first, in pp."),

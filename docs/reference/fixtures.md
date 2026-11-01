@@ -584,6 +584,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | one-series-missing-and-states | bartable.panels | torture | One segment with a missing value, a not-applicable cell and a not-meaningful cell, in a bar panel and a number column: each prints its own glyph |
 | impact-two-panels-named-share | bartable.panels | example | Two panels, one split: the impact in $bn and as a share of EBITDA, with the combined-share note naming the two rows the two largest sectors |
 | cascade-two-periods | bartable.cascade | example | Share cascade over two periods: rows coloured by a row group, two residual rows pinned last, share columns, a bracket and a CAGR column |
+| cascade-two-periods-theme-total | bartable.cascade | example | Share cascade over two periods with the Total bar in the theme total colour, even where it equals a group colour |
 | cascade-four-years | bartable.cascade | example | Share cascade over four years: product-category revenue share with the share change in pp |
 
 ## pvm
