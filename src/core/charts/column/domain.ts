@@ -11,6 +11,7 @@ import { breakStyleRefusal } from '../band/breakOrder';
 import { cagr, formatAuthoredPercent, formatAutomaticPercent, formatShare, shareSetFormatter } from '../../format';
 import { formatStatWithSpec, formatterFromExample, formatWithSpec, parseFormatExample, roundedNumber, seriesRasterFormatter, shareFormatExample, withChartMarks } from '../../formatSpec';
 import { yearSpan, yearSpanFromLabels } from '../../periodYears';
+import { cleanSum } from '../../geometry';
 import { PRIORITY } from '../../label/solver';
 import {
   NormalizeError,
@@ -570,7 +571,7 @@ function columnBasis(
   // decimals first printed 0.014 → 0.02 as "+100%" and took 0.004 for zero.
   const stackTotals: Record<Id, number> = emptyIdRecord();
   cats.forEach((c, ci) => {
-    stackTotals[c.id] = dataSeries.reduce((a, s) => a + (absOf(s, ci) ?? 0), 0);
+    stackTotals[c.id] = cleanSum(dataSeries.map((s) => absOf(s, ci) ?? 0));
   });
   let percents: Record<Id, Record<Id, number>> | undefined;
   if (variant === 'stacked100') {

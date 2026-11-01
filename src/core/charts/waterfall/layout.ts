@@ -15,7 +15,7 @@ import type { PaintWarningRule } from '../../types/scene';
 import type { AnchorResolution } from '../../annotate';
 import { runAnnotatePass } from '../../annotatePass';
 import { formatterFromExample, seriesRasterFormatter, signedFormatterFromExample } from '../../formatSpec';
-import { boxGap, rectsOverlap, type Rect } from '../../geometry';
+import { boxGap, cleanFloat, rectsOverlap, type Rect } from '../../geometry';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelsToNodes } from '../../label/emit';
 import {
@@ -2366,6 +2366,7 @@ function sumRoundoff(values: readonly number[]): number {
 /**
  * Neumaier's compensated sum: the sum of `values` without the rounding a plain
  * running sum collects (999999999999990 plus forty 0.025 steps is 999999999999991).
+ * A sum of terms that cancel is 0, not the float residue of its terms: 10.1 + 3.3 − 13.4 closes at 0.
  */
 function compensatedSum(values: readonly number[]): number {
   let sum = 0;
@@ -2375,5 +2376,5 @@ function compensatedSum(values: readonly number[]): number {
     carry += Math.abs(sum) >= Math.abs(value) ? (sum - next) + value : (value - next) + sum;
     sum = next;
   }
-  return sum + carry;
+  return cleanFloat(sum + carry, values.reduce((scale, value) => scale + Math.abs(value), 0));
 }
