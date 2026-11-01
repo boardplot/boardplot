@@ -14,7 +14,7 @@ import type { Id } from '../../types/cell';
 import type { LintWarning, Paint } from '../../types/scene';
 import type { FontSpec, TextMeasurer } from '../../text';
 import { SWATCH_RESERVE } from '../../label/emit';
-import { compactValueTextSize, fitsInside, segmentLabelCandidates, segmentTooShort, warnSliverLabels } from '../band/labels';
+import { compactValueTextSize, acrossValueLines, fitsInside, overValueLines, segmentLabelCandidates, segmentTooShort, warnSliverLabels } from '../band/labels';
 import { totalLabelCandidates } from '../band/totals';
 import { rankValueLabels } from '../band/valueDensity';
 import { REFERENCE_MARKER_R } from '../band/ticks';
@@ -81,6 +81,8 @@ function endCandidates(
       h: tsize.height,
     },
     penalty: 1,
+    // A value line past the bar's end does not cost the value its label.
+    overValueLines: true,
   };
   // A theme's `marks.barLabels: 'outside'`: past the end or not at
   // all. A label with no room there is dropped and reported as any hidden
@@ -265,7 +267,7 @@ export function planBarLabels(domain: BarDomain, paints: BarPaints, area: BarAre
         ...(restHidden ? restValueHiding(`${s.label} ${text} (${noteName(cat)})`) : {}),
         // Inside the segment only: past the bar end a value reads as the row's
         // total, and on a 100 % bar it repeats one segment's share unnamed.
-        candidates: segmentLabelCandidates('horizontal', rect, tsize, paints.css(paint, pattern), { insidePaint: paint, insidePattern: pattern }),
+        candidates: acrossValueLines(segmentLabelCandidates('horizontal', rect, tsize, paints.css(paint, pattern), { insidePaint: paint, insidePattern: pattern })),
       });
     }
     // A stack with a missing part prints the sum of its drawn parts, as on column; a 100% bar has no known whole.
@@ -279,7 +281,7 @@ export function planBarLabels(domain: BarDomain, paints: BarPaints, area: BarAre
       const column = (options as { [TOTAL_COLUMN]?: number })[TOTAL_COLUMN];
       const candidates = [
         ...(column === undefined || words ? [] : [{ slot: 'column', rect: { x: column - tsize.width, y: rowCenter - tsize.height / 2, w: tsize.width, h: tsize.height }, penalty: 0 }]),
-        ...totalLabelCandidates('horizontal', { x: area.x(domain.rowEnds[ci]!.pos), y: rowCenter }, tsize)
+        ...overValueLines(totalLabelCandidates('horizontal', { x: area.x(domain.rowEnds[ci]!.pos), y: rowCenter }, tsize))
           .map((candidate) => column === undefined || words ? candidate : { ...candidate, penalty: candidate.penalty + 1 }),
       ];
       const end = [...scene.bars[ci]!].reverse().find(bar => bar.v > 0);

@@ -202,6 +202,24 @@ describe('pvm decomposition', () => {
     }
   });
 
+  // The page showed both totals but never their difference, so a reader had to subtract.
+  it('prints the net change over the closing column, and netChange false removes it', () => {
+    const geometry = laid(0);
+    const derived = geometry.derived as PvmDerived;
+    const net = geometry.labels.find((label) => label.id === 'net:current');
+    const percent = ((derived.delta / derived.priorRevenue) * 100).toFixed(1).replace('-', '\u2212');
+    expect(net?.text).toContain(`(${derived.delta > 0 ? '+' : ''}${percent}%)`);
+    expect(laid(0, { netChange: false }).labels.some((label) => label.id === 'net:current')).toBe(false);
+  });
+
+  // Equal revenue with changed quantities left float residue in the accumulated closing level, and the net change printed a loss of 1 on an unchanged revenue.
+  it('prints no net change when the revenue is unchanged', () => {
+    const items = [{ id: 'a', label: 'Widget', prior: { qty: 3, revenue: 100 }, current: { qty: 7, revenue: 100 } }];
+    const geometry = layoutPvm({ items } as PvmData, { ...getChartDefinition('pvm')!.defaults, size: { width: 888, height: 396 } } as PvmOptions);
+    expect((geometry.derived as PvmDerived).delta).toBe(0);
+    expect(geometry.labels.some((label) => label.id.startsWith('net:'))).toBe(false);
+  });
+
   it('leaves the convention off by default without a warning ', () => {
     for (const extra of [{ methodNote: undefined }, { methodNote: false }]) {
       const geometry = laid(0, extra);

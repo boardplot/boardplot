@@ -545,6 +545,8 @@ export interface Theme {
   surface?: {
     chipTint?: number;
     rowTint?: number;
+    /** Gantt row and weekend wash toward the page, from 0 to 1. Default 0.25. */
+    ganttRowTint?: number;
     elapsedTint?: number;
     chipRadius?: number;
     /** Structural wash for level-0 parent rows (anchor wash) — quieter than rowTint. */
