@@ -195,6 +195,12 @@ export type ThemePaintSource =
    */
   | { kind: 'stack-ramp'; index: number; count: number; slot: number }
   /**
+   * Rank `index` of `count` treemap groups: `color.treemap`, else
+   * `color.stack`, else the first series colour stepped toward the page
+   * (the pie ramp), decided in the theme the scene is painted in.
+   */
+  | { kind: 'group-ramp'; index: number; count: number }
+  /**
    * Step `index` of `count` plain series that recede beside a highlight: the
    * neutral mark (strongest) to the light neutral (quietest), in authored order.
    */

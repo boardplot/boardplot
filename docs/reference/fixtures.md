@@ -807,6 +807,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 |---|---|---|---|
 | growth-rect | treemap.rect | example | Squarified treemap: 19 items in 5 groups, exact areas, group key with totals, small names beside the region |
 | growth-circle | treemap.circle | example | Circular Voronoi treemap of the same data: convex cells, leaders to both sides and a total callout |
+| growth-rect-group-hues | treemap.rect | example | The same groups with one hue each: color.treemap set to the series colours |
 | one-level-shares | treemap.rect | example | One level, no groups: one hue, value and share of the total on every cell |
 | source-order-shares-circle | treemap.circle | example | Circle in source order with shares of the total and the key at the bottom |
 

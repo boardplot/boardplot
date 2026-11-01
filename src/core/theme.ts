@@ -1810,10 +1810,12 @@ function sourceColor(theme: Theme, source: ThemePaintSource): string {
   }
   if (source.kind === 'colorblind') return colorblindColor(theme, source.role);
   if (source.kind === 'pie-ramp' || source.kind === 'visible-tint') {
-    const base = paintColor(theme, source.base);
-    const amount = source.kind === 'pie-ramp'
-      ? pieRamp(base, theme.color.background, source.count, source.withOthers ? paintTokenColor(theme, 'othersMark') : undefined, source.othersShade !== 'apart', theme.marks?.contrastEdge !== true).tints[source.index] ?? 0.82
-      : visibleTintAmount(theme, source);
+    const ramp = source.kind === 'pie-ramp'
+      ? pieRamp(paintColor(theme, source.base), theme.color.background, source.count, source.withOthers ? paintTokenColor(theme, 'othersMark') : undefined, source.othersShade !== 'apart', theme.marks?.contrastEdge !== true)
+      : undefined;
+    // A pie ramp washes from its own top colour, lifted on a dark page.
+    const base = ramp ? ramp.base : paintColor(theme, source.base);
+    const amount = source.kind === 'pie-ramp' ? ramp!.tints[source.index] ?? 0.82 : visibleTintAmount(theme, source);
     const washed = amount ? tint(base, amount, theme.color.background) : base;
     if (source.kind === 'visible-tint' && source.darkApartFrom && darkPage(theme)) return washApart(theme, base, amount, source.darkApartFrom);
     if (source.kind === 'visible-tint' && source.darkMatchLight && darkPage(theme)) return washLikeLight(theme, base, amount);
@@ -1866,6 +1868,7 @@ function sourceColor(theme: Theme, source: ThemePaintSource): string {
     return hatchFadeColor(paintColor(theme, source.stripe), paintColor(theme, source.ground), source.strength, source.cue);
   }
   if (source.kind === 'stack-ramp') return stackRampColor(theme, source);
+  if (source.kind === 'group-ramp') return groupRampColor(theme, source);
   if (source.kind === 'stack-apart') return stackApartColor(theme, source);
   if (source.kind === 'neutral-ramp') return neutralRampColor(theme, source);
   if (source.kind === 'ordered-ramp') {
@@ -2239,8 +2242,28 @@ function stackApartColor(theme: Theme, source: { own: (Paint | null)[]; index: n
 function stackRampColor(theme: Theme, source: { index: number; count: number; slot: number }): string {
   const ramp = theme.color.stack;
   if (!ramp || ramp.length < 2) return seriesColor(theme, source.slot);
-  if (source.count <= ramp.length) return ramp[source.index]!;
-  const at = (source.index / (source.count - 1)) * (ramp.length - 1);
+  return rampStep(ramp, source.index, source.count);
+}
+
+/**
+ * A treemap group by rank on one colour family: `color.treemap`, else
+ * `color.stack`, else the first series colour stepped toward the page.
+ */
+export function groupRampPaint(index: number, count: number): Paint {
+  return { token: 'series-1', theme: { kind: 'group-ramp', index, count } };
+}
+
+function groupRampColor(theme: Theme, source: { index: number; count: number }): string {
+  const steps = [theme.color.treemap, theme.color.stack].find((own) => own !== undefined && own.length >= 2);
+  if (steps) return rampStep(steps, source.index, source.count);
+  const ramp = pieRamp(seriesColor(theme, 0), theme.color.background, source.count, undefined, false, theme.marks?.contrastEdge !== true);
+  const amount = ramp.tints[source.index] ?? 0.82;
+  return amount ? tint(ramp.base, amount, theme.color.background) : ramp.base;
+}
+
+function rampStep(ramp: readonly string[], index: number, count: number): string {
+  if (count <= ramp.length) return ramp[index]!;
+  const at = (index / (count - 1)) * (ramp.length - 1);
   const low = Math.min(ramp.length - 2, Math.floor(at));
   const share = at - low;
   return share < 1e-9 ? ramp[low]! : mixColors(ramp[low + 1]!, ramp[low]!, share);

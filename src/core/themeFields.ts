@@ -68,7 +68,8 @@ const THEME_FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze
   'color.seriesOverflow':
     "What a series index beyond the ramp does: 'repeatLast' reuses the last entry, 'cycle' restarts the ramp. Default 'repeatLast'.",
   'color.casePair': 'Tornado low/high fills. Absent resolves to neutralLight/series 1.',
-  'color.stack': 'Fills of the plain series of a stacked or 100% column or bar, strongest on the page first and the quietest last (2 or more). More series than steps share the ramp evenly between its ends; authored fills, colour roles, palettes and highlights win. Absent keeps the series order.',
+  'color.stack': 'Fills of the plain series of a stacked or 100% column or bar, strongest on the page first and the quietest last (2 or more). More series than steps share the ramp evenly between its ends; authored fills, colour roles, palettes and highlights win. Absent keeps the series order. Treemap groups take it when color.treemap is absent.',
+  'color.treemap': 'Fills of treemap groups by rank, the first drawn group the strongest (2 or more). More groups than steps share the ramp evenly between its ends; a group fill or colorRole and options.palette win. Absent takes color.stack; a theme without either steps the first series colour toward the page. Set it to the color.series list for one hue per group.',
   'color.palettes':
     'Named alternative categorical ramps so one report keeps disjoint color vocabularies per dimension. Charts opt in through options.palette.',
   'color.status':
