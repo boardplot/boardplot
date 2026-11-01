@@ -125,6 +125,32 @@ it('prints the trend rate in the reporting period', () => {
   expect(unitOf(['2026-01-01', '2026-01-02', '2026-01-04'])[1]).toBe('per day');
 });
 
+// Prevents trend keys from losing the value unit or calling year-labelled observations generic periods.
+it('prints trend rates with their value units and calendar periods', () => {
+  const categories = ['2021', '2022', '2023F'].map((label, i) => ({ id: `p${i}`, label }));
+  const cases = [
+    { options: { unit: '$m' }, series: {}, expected: '+$2.0m per year' },
+    { options: {}, series: { unit: 'kg' }, expected: '+2.0 kg per year' },
+    { options: { unit: '$m', format: '1.0' }, series: {}, expected: '+$2.0m per year' },
+    { options: { unit: '$', format: '$1.0' }, series: {}, expected: '+$2.0 per year' },
+    { options: { unit: '%', format: '1.0%' }, series: {}, expected: '+2.0pp per year' },
+    { options: { unit: '€m', locale: { language: 'de' } }, series: {}, expected: '+2,0m\u00a0€ pro Jahr' },
+  ];
+  for (const variant of ['line', 'area'] as const) for (const c of cases) {
+    const out = layoutLine({ categories, series: [{ id: 'a', label: 'Output', values: [10, 12, 14], ...c.series }] },
+      lineOptionsSchema.parse({ trend: true, variant, size: { width: 960, height: 540 }, ...c.options }));
+    expect(sceneText(out)).toContain(c.expected);
+    expect(out.a11y.desc).toContain(c.expected);
+  }
+  const skipped = layoutLine({ categories: ['FY2020', 'FY2022', 'FY2025F'].map(id => ({ id })), series: [{ id: 'a', values: [10, 14, 20] }] },
+    lineOptionsSchema.parse({ trend: true, unit: '$m', size: { width: 960, height: 540 } }));
+  expect(skipped.derived.trends![0]).toMatchObject({ slope: expect.closeTo(2, 12), unit: 'year' });
+  expect(sceneText(skipped)).toContain('+$2.0m per year');
+  const scatter = layoutScatter({ points: [{ id: 'a', x: 1, y: 10 }, { id: 'b', x: 2, y: 12 }, { id: 'c', x: 3, y: 14 }] },
+    { trend: true, unit: 'kg', size: { width: 960, height: 540 } });
+  expect(sceneText(scatter)).toContain('2.0 kg');
+});
+
 describe('likert', () => {
   const FIVE = [
     { id: 'sd', label: 'Strongly disagree' }, { id: 'd', label: 'Disagree' },

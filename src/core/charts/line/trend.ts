@@ -1,6 +1,6 @@
 import { formatAutomaticNumber } from '../../format';
 import { trendRateFormatter } from '../../formatSpec';
-import { parseISODate } from '../../isoDate';
+import { parseISODate, utcDate } from '../../isoDate';
 import { dayUnit } from '../../calendarLabels';
 import { trendTimeUnit } from '../../timeAxis';
 import { olsFit, olsMoments, clipTrendToDomain, type OlsFit, type OlsMoments } from '../../ols';
@@ -29,9 +29,22 @@ export interface LineTrend extends OlsMoments, OlsFit {
 
 const DAY = 86_400_000;
 
+/** A year label, including fiscal years and forecast suffixes. */
+export function categoryYear(category: Category): number | undefined {
+  const year = /^(?:FY\s?)?(\d{4})\s?[A-Z]{0,2}$/.exec((category.label ?? category.id).trim());
+  return year ? Number(year[1]) : undefined;
+}
+
+/** An explicit date wins; a year label uses the start of that year for spacing. */
+function categoryDate(category: Category): Date | null | undefined {
+  if (category.date) return parseISODate(category.date);
+  const year = categoryYear(category);
+  return year === undefined ? undefined : utcDate(year, 0);
+}
+
 /** Valid, strictly increasing dates, else undefined. */
 function datesOf(cats: Category[]): Date[] | undefined {
-  const dates = cats.map(c => c.date ? parseISODate(c.date) : undefined);
+  const dates = cats.map(categoryDate);
   if (dates.length < 2 || dates.some((d, i) => !d || (i > 0 && d.getTime() <= dates[i - 1]!.getTime()))) return undefined;
   return dates as Date[];
 }
@@ -53,7 +66,7 @@ function trendUnit(cats: Category[]): CalendarTrendUnit | 'period' {
 
 /** x in `unit` from the first category; a skipped calendar period keeps its step (January to March is 2 months). */
 function trendXs(cats: Category[], unit: CalendarTrendUnit): number[] {
-  const dates = cats.map(c => parseISODate(c.date!)!);
+  const dates = cats.map(c => categoryDate(c)!);
   const months = (d: Date) => d.getUTCFullYear() * 12 + d.getUTCMonth();
   const per = { month: 1, quarter: 3, year: 12 } as const;
   return dates.map(d => unit === 'day' || unit === 'week'
