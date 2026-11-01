@@ -14,7 +14,7 @@ import type { BaseOptions, RenderTarget } from './types/options';
 import { withSmallValues } from './formatPrecision';
 import type { Geometry, LayoutResult, LintWarning, RefusedLayout } from './types/scene';
 import type { ChartSizing } from './types/sizing';
-import { chartSizing, declaredSizing, fitsSize, compactFallbackApplies, FORCE_COMPACT, LAYOUT_CALL, FULL_LAYOUT_PROBE, type LayoutCall, plotRepairHeight, WIDTH_PROBE, FIXED_SIZE_PROBE, ACCEPTANCE_PROBE, CARD_HEIGHT_MEMO, type CardHeightMemo, type FitLayout, isWidthProbe, compactReplacesRefusal, sizeRefusal, withoutForcedCompact, hiddenForSpace, narrowShareApplies, PLOT_SHARE, PLOT_FLOOR_SHARE, withLayoutMemo, SIZE_TOLERANCE } from './sizing';
+import { chartSizing, declaredSizing, fitsSize, compactFallbackApplies, FORCE_COMPACT, LAYOUT_CALL, FULL_LAYOUT_PROBE, type LayoutCall, plotRepairHeight, WIDTH_PROBE, FIXED_SIZE_PROBE, ACCEPTANCE_PROBE, CARD_HEIGHT_MEMO, type CardHeightMemo, type FitLayout, isWidthProbe, compactReplacesRefusal, sizeRefusal, withoutForcedCompact, hiddenForSpace, narrowShareApplies, PLOT_SHARE, PLOT_FLOOR_SHARE, withLayoutMemo, SIZE_TOLERANCE, lostCategoryNames } from './sizing';
 import { NormalizeError, resolveCanvasOptions, resolveSize } from './normalize/shared';
 import { checkItemBudget } from './itemBudget';
 import { DENSITY_VALUES, UNVERIFIED_DENSITY_REFUSALS, authoredNotes, dataOrder, densityNoteInList, hiddenNoteLine, withDensityNotes, withCutLabelNotes, finishCutLabelNotes, footnoteSwitch, markNotedLabels, owedHiddenLabels, withHiddenLabelNote, withNoteInA11y } from './frame';
@@ -123,6 +123,12 @@ export interface ChartCore<
    * hides names the grown chart prints.
    */
   namesMustPrint?: boolean;
+  /**
+   * A pinned canvas keeps a drawing at the type's hard minimum only while it hides no category name;
+   * otherwise the type-size step and then the size refusal apply. Unlike namesMustPrint, it leaves
+   * the full-mode check and the grid probes alone.
+   */
+  hardMinimumKeepsNames?: boolean;
   /**
    * The layout under legend 'none' when the chart
    * keeps a key no drawn label replaces. It gets the 'none' layout and the
@@ -590,7 +596,6 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     };
     return layout;
   };
-  const lostCategoryNames = (geo: LayoutResult<M, DV>) => geo.refused ? [] : geo.labels.filter(label => label.kind === 'category' && !!label.hidden && label.hidden !== 'redundant' && label.hidden !== 'density');
   // A name longer than a narrow card needs width, not a refusal without a fix: three wider cards
   // (x1.15 each) at the same height. The first that prints every name is the size the refusal names.
   const widerForNames = (full: LayoutResult<M, DV>, options: O | undefined, layoutOnce: (options?: O) => LayoutResult<M, DV>) => {
@@ -619,13 +624,12 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     const full = layoutOnce(options);
     // A band chart's full mode prints every category name (namesMustPrint). When the
     // finished chart hides one, compact replaces it only if compact prints them all; else it refuses.
-    const lostNames = (geo: typeof full) => geo.refused ? [] : geo.labels.filter((label) => label.kind === 'category' && !!label.hidden && label.hidden !== 'redundant' && label.hidden !== 'density');
-    if (def.namesMustPrint === true && !full.refused && full.mode !== 'compact' && lostNames(full).length > 0) {
+    if (def.namesMustPrint === true && !full.refused && full.mode !== 'compact' && lostCategoryNames(full).length > 0) {
       const compact = compactFallbackApplies(def, options, data) ? layoutOnce({ ...options, [FORCE_COMPACT]: true } as unknown as typeof options) : full;
-      if (compact !== full && !isRefused(compact) && lostNames(compact).length === 0) return compact;
+      if (compact !== full && !isRefused(compact) && lostCategoryNames(compact).length === 0) return compact;
       const wider = widerForNames(full, options, layoutOnce);
       if (wider) return wider;
-      return hiddenLabelCollision(def.title, full as Geometry<object, object>, new Map(lostNames(full).map((label) => [label.id, label.text]))) as unknown as typeof full;
+      return hiddenLabelCollision(def.title, full as Geometry<object, object>, new Map(lostCategoryNames(full).map((label) => [label.id, label.text]))) as unknown as typeof full;
     }
     if (!full.refused || full.warnings[0]?.code !== 'size-below-floor') return full;
     // A pinned card counts hidden values before compacting the plot. This

@@ -170,6 +170,11 @@ function namesDrawnSeries(data: unknown, result: unknown): boolean {
   return drawn.length < 2 || drawn.every((entry) => named.has(entry.id));
 }
 
+/** The category names a finished chart hides for lack of room (a name hidden as redundant or by density is not lost). */
+export function lostCategoryNames<M extends object, DV extends object>(result: LayoutResult<M, DV>): PlacedLabel[] {
+  return result.refused ? [] : result.labels.filter((label) => label.kind === 'category' && !!label.hidden && label.hidden !== 'redundant' && label.hidden !== 'density');
+}
+
 /** Whether this layout runs at the type's hard minimum (the last fixed-slot step before a refusal). */
 export function atHardMinimum(options: unknown): boolean {
   return (options as { [HARD_MINIMUM]?: boolean } | undefined)?.[HARD_MINIMUM] === true;
@@ -888,6 +893,10 @@ function fitOrRepair<D, O extends ChartOptions, M extends object, DV extends obj
   const fixedFallback = options && (compact || definition.type === 'treemap' || definition.type === 'sankey') && options.belowMinimum !== 'refuse'
     && options.mode !== 'full'
     && panelTypeClass(options) === undefined && constraints.fixed.width && constraints.fixed.height;
+  // The hard minimum is accepted only while every drawn series stays named and, for a chart
+  // whose rows are named by their category (hardMinimumKeepsNames), while no category name is lost.
+  const namesKept = (fitted: Geometry<M, DV>) => namesDrawnSeries(data, fitted)
+    && (definition.hardMinimumKeepsNames !== true || lostCategoryNames(fitted).length === 0);
   const warnHardMinimum = (fitted: Geometry<M, DV>): Geometry<M, DV> => {
     const target = options?.target ?? DEFAULT_TARGET;
     const height = Math.max(requiredSize(received, first.sizing!).height, plotFloorHeight(fitted, target));
@@ -904,7 +913,7 @@ function fitOrRepair<D, O extends ChartOptions, M extends object, DV extends obj
   // and subtitle steps. The comfortable plot and row air give way first.
   if (fixedFallback) {
     const fitted = fitAt(definition, data, { ...options, [HARD_MINIMUM]: true });
-    if (!fitted.refused && namesDrawnSeries(data, fitted)) return warnHardMinimum(fitted);
+    if (!fitted.refused && namesKept(fitted)) return warnHardMinimum(fitted);
   }
   // The source line stays under `footnotes: false` (footer rule), so the retry does too.
   const sourceStep = Boolean(!staticFrame.pinned && compact && options?.source
@@ -933,8 +942,7 @@ function fitOrRepair<D, O extends ChartOptions, M extends object, DV extends obj
       if (!hard && line === undefined) continue;
       const fitted = fitAt(definition, data, hard ? { ...moved, [HARD_MINIMUM]: true } : moved);
       if (fitted.refused) continue;
-      // The hard minimum is accepted only while every drawn series stays named.
-      if (hard && !namesDrawnSeries(data, fitted)) continue;
+      if (hard && !namesKept(fitted)) continue;
       if (line !== undefined) fitted.warnings.push({
         code: 'subtitle-moved-to-notes', severity: 'warn',
         message: `the fixed height has no room for the subtitle, so it moved into the notes list: ${line}`,

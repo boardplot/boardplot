@@ -54,4 +54,47 @@ describe('row names on a pinned height', () => {
     expect(labels.every(label => label.title === undefined)).toBe(true);
     expect(labels.some(label => label.lines.length === 2)).toBe(true);
   });
+
+  // A 27-row ranking on a pinned print canvas drew at the hard minimum with 16 country names dropped and still counted as drawn.
+  it('dot: a pinned canvas prints every row name or refuses with the height it needs', () => {
+    const codes = Array.from({ length: 27 }, (_, index) => `C${String(index + 1).padStart(2, '0')}`);
+    const result = layoutResolvedRequest(resolveChartRequest({
+      type: 'dot',
+      data: { categories: codes.map(id => ({ id, label: id })), series: [{ id: 'debt', label: 'Gross debt', values: codes.map((_, index) => 150 - index * 4) }] },
+      annotations: [{ kind: 'valueLine', id: 'average', value: 80, label: 'Average' }],
+      options: { ...chrome, unit: '% of GDP', target: 'print', size: { width: 267, height: 180, unit: 'mm' } },
+    } as never));
+    if (result.refused) expect(result.warnings[0]?.code).toBe('size-below-floor');
+    else expect(result.labels.filter(label => label.kind === 'category' && label.hidden === 'collision')).toEqual([]);
+  });
+
+  // The hard-minimum name check had also reached variance: a 280 x 250 chart that main draws (May's value in a note) turned into a refusal.
+  it('variance: a small pinned canvas still draws with a month name hidden', () => {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const result = layoutResolvedRequest(resolveChartRequest({
+      type: 'variance',
+      data: {
+        categories: months.map((label, index) => ({ id: 'm' + String(index + 1).padStart(2, '0'), label })),
+        series: [
+          { id: 'sales', label: 'Sales', values: [104, 98, 112, 107, 96, 118, 121, 89, 114, 109, 125, 131] },
+          { id: 'py', label: 'Prior year', role: 'reference', scenario: 'PY', values: [101, 103, 105, 102, 99, 111, 116, 95, 108, 112, 119, 124] },
+        ],
+      },
+      options: { variant: 'absolute', variance: { of: 'sales', vs: 'py' }, labelDensity: 'smart', title: 'Sales beat the prior year in eight months; Feb, May, Aug and Oct fell short', subtitle: { measure: 'Sales vs PY', period: 'FY25 by month', scenarios: ['AC', 'PY'] }, unit: '$m', target: 'report', size: { width: 280, height: 250 } },
+    } as never));
+    expect(result.refused).toBeFalsy();
+  });
+
+  // Adding the dot's name check to the grid probes turned the size refusal of a pinned grid of dot panels into a false label-collision refusal.
+  it('grid of dot panels: a pinned canvas that is too short refuses with the size it needs', () => {
+    const codes = Array.from({ length: 27 }, (_, index) => 'C' + String(index + 1).padStart(2, '0'));
+    const data = { categories: codes.map(id => ({ id, label: id })), series: [{ id: 'debt', label: 'Gross debt', values: codes.map((_, index) => 150 - index * 4) }] };
+    const result = layoutResolvedRequest(resolveChartRequest({
+      type: 'grid',
+      data: { panels: [0, 1].map(column => ({ id: 'p' + column, type: 'dot', title: 'Panel ' + column, row: 0, column, data, options: { variant: 'dot' } })) },
+      options: { title: 'Panels', source: 'Invented', columns: 2, sharedAxis: 'none', legend: 'none', size: { width: 900, height: 500 } },
+    } as never));
+    expect(result.refused).toBe(true);
+    expect(result.warnings[0]?.code).toBe('size-below-floor');
+  });
 });
