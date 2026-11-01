@@ -5,7 +5,7 @@
  */
 
 import { compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning } from '../band/stacks';
-import { mekkoAmount, poolMekkoCell, restDetailsWarning, restLabel, restSum, topNCut } from '../topN';
+import { mekkoAmount, mekkoStackingMode, poolMekkoCell, restDetailsWarning, restLabel, restSum, topNCut } from '../topN';
 import { cellFields, normalizeCategorySeries } from '../categorySeries';
 import { breakUnsupported, chartPalette, chartTheme } from '../chartEnv';
 import { defaultMeasurer } from '../../text';
@@ -79,13 +79,8 @@ function normalizeMekkoData(data: ChartData): { cats: Category[]; seriesNorm: No
   return { cats, seriesNorm: series };
 }
 
-/** The public variant names the internal stacking mode. */
-const VARIANT_MODE = { stacked100: 'percent', stacked: 'unit', bar: 'bar' } as const satisfies Record<string, MekkoDomain['mode']>;
-
 /** The mode, the width series and the plotted data series, each refusal said out loud. */
 function mekkoSeriesRoles(options: MekkoOptions, seriesNorm: NormSer[], warnings: LintWarning[]) {
-  let mode: MekkoDomain['mode'] = VARIANT_MODE[options.variant ?? 'stacked100'];
-  if (options.valueAxis?.percent && mode === 'unit') mode = 'percent';
   let widthSer: NormSer | null = null;
   if (options.widthSeriesId) {
     widthSer = seriesNorm.find((s) => s.id === options.widthSeriesId) ?? null;
@@ -105,29 +100,28 @@ function mekkoSeriesRoles(options: MekkoOptions, seriesNorm: NormSer[], warnings
       message: `mekko does not plot reference series (${refSeries.map((s) => s.id).join(', ')})`,
     });
   }
-  let series = seriesNorm.filter((s) => s.role !== 'reference' && s !== widthSer);
+  const series = seriesNorm.filter((s) => s.role !== 'reference' && s !== widthSer);
   if (series.length === 0) {
     throw new NormalizeError('empty-data', 'series', 'mekko requires at least one data-role series');
   }
-  if (mode === 'bar' && series.length > 1) {
+  // One value per category cannot hold several series: draw them as stacked columns rather than drop all but the first.
+  if (options.variant === 'bar' && series.length > 1) {
     warnings.push({
       code: 'bar-mekko-extra-series',
       severity: 'warn',
-      message: `bar-mekko plots a single data series — using '${series[0]!.id}', ignoring ${series
-        .slice(1)
-        .map((s) => s.id)
-        .join(', ')}`,
+      message: `bar-mekko draws one value per category — ${series.length} data series (${series.map((s) => s.id).join(', ')}) are drawn as stacked columns. Give one data series, or mark the others role 'reference', for a bar`,
     });
-    series = series.slice(0, 1);
   }
-  if (mode === 'bar' && !widthSer) {
+  const mode = mekkoStackingMode(options, series.length);
+  if (options.variant === 'bar' && !widthSer) {
     warnings.push({
       code: 'bar-mekko-no-width-series',
       severity: 'info',
       message: 'bar-mekko without widthSeriesId — columns get equal widths',
     });
   }
-  return { mode, widthSer, series };
+  // The bar variant keeps equal widths without a width series, also once several series stack.
+  return { mode, widthSer, series, equalWidths: options.variant === 'bar' };
 }
 
 /**
@@ -139,6 +133,8 @@ interface ValueState {
   cats: Category[];
   series: NormSer[];
   widthSer: NormSer | null;
+  /** Columns are equally wide when no width series is set. */
+  equalWidths: boolean;
   nm: Set<Id>;
   na: Set<Id>;
 }
@@ -175,7 +171,7 @@ function valueFns(st: ValueState) {
       const v = st.widthSer.vals[ci]?.v;
       return v === null || v === undefined ? 0 : Math.max(0, v);
     }
-    if (st.mode === 'bar') return 1; // no width series: equal columns
+    if (st.equalWidths) return 1; // no width series: equal columns
     return Math.max(0, st.series.reduce((a, s) => a + (absAt(s, ci) ?? 0), 0));
   };
   return { invalidAt, basisAt, absAt, plottedAt, weightAt };
@@ -215,7 +211,7 @@ function reorderCategories(
   const bases = dropIdx.map(basisAt);
   const othersVals = seriesNorm.map((s) => s === st.widthSer
     ? { v: restSum(dropIdx.map((i) => s.vals[i]!.v)), isPct: false }
-    : poolMekkoCell(dropIdx.map((i, k) => ({ ...s.vals[i]!, basis: bases[k]!, weight: weightAt(i) })), st.mode, st.widthSer !== null));
+    : poolMekkoCell(dropIdx.map((i, k) => ({ ...s.vals[i]!, basis: bases[k]!, weight: weightAt(i) })), options.variant === 'bar' ? 'bar' : st.mode, st.widthSer !== null));
   const total100 = st.mode === 'percent' && dropIdx.some((i) => st.cats[i]!.total100 !== undefined)
     ? bases.reduce((sum, basis) => sum + basis, 0) : undefined;
   applyOrder(keptIdx);
