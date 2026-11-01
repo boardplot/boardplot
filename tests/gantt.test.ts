@@ -421,3 +421,18 @@ it('gantt keeps every row name at the declared minimum height for rows with and 
   expect(body.ok).toBe(true);
   expect(body.reading.omissions.filter(omission => omission.labelId.startsWith('activity:') || omission.labelId.startsWith('sublabel:'))).toEqual([]);
 });
+
+// A named diamond needs no key, and the today date needs no "Elapsed" key, so a 12-row plan fits the 396 pt slide; a tight height then keeps its Owner and Status columns, which only need width.
+it('gantt fits 12 named-milestone rows with owner and status columns on a 888 x 396 pt slide', () => {
+  const owners = ['Alex', 'Maya', 'Dan'];
+  const rows = Array.from({ length: 12 }, (_, i) => ({ id: `r${i}`, label: `Workstream ${i + 1}`,
+    cols: [{ text: owners[i % 3]! }, { text: i % 2 ? 'Green' : 'Amber', tone: i % 2 ? 'good' : 'warn' }],
+    items: [{ id: `b${i}`, kind: 'bar', start: `2026-0${1 + (i % 4)}-10`, end: `2026-0${3 + (i % 4)}-20`, label: `Task ${i + 1}` },
+      ...(i % 4 === 0 ? [{ id: `m${i}`, kind: 'milestone', start: `2026-0${3 + (i % 4)}-20`, label: 'Gate' }] : [])] }));
+  const spec = { type: 'gantt', data: { rows }, options: { target: 'slide', size: { width: 1184, height: 528 }, colHeaders: ['Owner', 'Status'], today: '2026-03-01' } };
+  const body = render({ spec, return: ['reading', 'svg'] }).body as { ok: boolean; svg: string; reading: { omissions: { text: string }[] } };
+  expect(body.ok).toBe(true);
+  for (const text of ['Milestone', 'Elapsed to today']) expect(body.svg).not.toContain(`>${text}<`);
+  expect(body.svg).toContain('>Owner<');
+  expect(body.svg).toContain('>Status<');
+});
