@@ -197,11 +197,7 @@ export function prepareLegendLayout<D, O extends ChartOptions, M extends object,
   const series = (data as { series?: { id: string; label?: string }[] } | undefined)?.series;
   const names = new Map(Array.isArray(series) ? series.map(item => [item.id, item.label ?? item.id]) : []);
   const refs = footnoteRefs(data);
-  const run = ((options?: O) => {
-    // An authored note nothing points at prints unnumbered.
-    if (Array.isArray(options?.footnotes) && options.footnotes.length > 0) {
-      options = Object.assign({} as O, options, { [FOOTNOTE_REFS]: refs });
-    }
+  const draw = (options?: O): LayoutResult<M, DV> => {
     const automatic = names.size > 0 && !contentSized(definition.type, options) && panelTypeClass(options) === undefined
       && (options?.legend === undefined || options.legend === 'auto');
     if (automatic && (options as { [LEGEND_HEIGHT]?: LegendBudget })?.[LEGEND_HEIGHT] === undefined) {
@@ -252,6 +248,24 @@ export function prepareLegendLayout<D, O extends ChartOptions, M extends object,
       result.warnings.push(...typeDocLints(definition.type, options as Record<string, unknown>, result));
     }
     return result;
+  };
+  const run = ((options?: O) => {
+    // An authored note nothing points at prints unnumbered.
+    if (Array.isArray(options?.footnotes) && options.footnotes.length > 0) {
+      options = Object.assign({} as O, options, { [FOOTNOTE_REFS]: refs });
+    }
+    // Grouped columns ignore seriesLabels (series-labels-ignored), so legend 'none' there
+    // leaves the series unnamed: the key policy decides as it does for an unset legend.
+    // The variant is the one the column resolves (valueAxis.percent makes it stacked100,
+    // which draws its edge names). A key that makes the canvas too small is dropped, and
+    // the key-less layout stays, as it was drawn before.
+    const column = options as { variant?: string; seriesLabels?: unknown; valueAxis?: { percent?: boolean } } | undefined;
+    if (definition.type === 'column' && options?.legend === 'none' && column?.seriesLabels !== undefined
+      && !column.valueAxis?.percent && (column.variant ?? 'grouped') === 'grouped') {
+      const keyed = draw(Object.assign({} as O, options, { legend: undefined }));
+      if (!keyed.refused) return keyed;
+    }
+    return draw(options);
   }) as FitLayout<O, M, DV>;
   run.finish = () => {
     baseline.finish(); candidate.finish(); unitBaseline.finish(); unitCandidate.finish();

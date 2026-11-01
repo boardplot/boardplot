@@ -31,7 +31,7 @@ import type { Geometry, LintWarning, Paint, SceneNode } from '../../types/scene'
 import type { Theme } from '../../types/theme';
 import { rowDrivenHeight } from '../../rowCanvas';
 import { rowLabelBand } from '../../label/rowLabels';
-import { fittedLabel, gutterBudget, stepDownFont } from '../../label/rowFit';
+import { fittedLabel, gutterBudget, pinnedRowFont, stepDownFont } from '../../label/rowFit';
 import { heightOmitted, matrixWidths, rowSizing } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { textScaleOf } from '../../typeFloors';
@@ -180,7 +180,8 @@ export function lintStatus(data: StatusData, options: StatusOptions): LintWarnin
 export function layoutStatus(
   data: StatusData,
   options: StatusOptions = { states: [] },
-  rowLines?: 1,
+  /** 'tight': the pinned names take the smaller font; 'single': one line each. */
+  rowLines?: 'tight' | 'single',
 ): Geometry<StatusMarks, StatusDerived> {
   const { rows, columns, cells, states } = normalizeStatusInput(data, options);
   const stateById = new Map(states.map((state) => [state.id, state]));
@@ -305,12 +306,20 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
   const openHeight = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false;
   // The two-line test reads the same pad as the natural pitch below (a keyed board keeps the solver's gap only),
   // so a pinned frame at the natural height wraps its row names as the taller frame did and round-trips.
-  const rowMaxLines = rowLines ?? (openHeight || estimatedCellH >= axisLineH * 2 + (keyNamesStates ? LABEL_PAD : 4) ? 2 : 1);
+  const fixedHeight = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height ?? !heightOmitted(options.size);
+  // A pinned height whose rows hold two lines of names only in a smaller font, set tighter, draws them there
+  // before it cuts a name: a plan of 'tight' tries that font, and falls back to one line each ('single').
+  const tightFont = fixedHeight && rowLines !== 'single' ? pinnedRowFont(theme, axisFont, 'axis', options.target, textScaleOf(options)) : undefined;
+  const rowFont = rowLines === 'tight' && tightFont ? tightFont : axisFont;
+  const rowLineH = rowFont.size * (rowFont.lineHeight ?? 1.2);
+  const rowMaxLines = rowLines === 'single' ? 1 : rowLines === 'tight' ? 2
+    : openHeight || estimatedCellH >= axisLineH * 2 + (keyNamesStates ? LABEL_PAD : 4) ? 2 : 1;
+  const pinnedFallback = rowLines === undefined && tightFont ? 'tight' : 'single';
   const axisStep = stepDownFont(theme, axisFont, 'axis', options.target, textScaleOf(options));
   // The grid keeps its natural 28 px per column, and the band widens into the rest. When a row
   // name would still be cut, the grid gives the band room down to MIN_CELL_W per column, so a
   // narrow card wraps its row names whole and its stage heads stagger.
-  const fitRows = (cellFloor: number, refWarnings: LintWarning[]) => rowLabelBand(rows, axisFont, rowBandCap, rowMaxLines, axisLineH, measure, {
+  const fitRows = (cellFloor: number, refWarnings: LintWarning[]) => rowLabelBand(rows, rowFont, rowBandCap, rowMaxLines, rowLineH, measure, {
     wider: gutterBudget(rowBandCap, framePlot.w, LABEL_GAP + columns.length * cellFloor + (columns.length - 1) * CELL_GAP),
     target: options.target, textScale: textScaleOf(options), typeRole: 'axis', shrink: axisStep,
     footnoteRefs: { count: authoredFootnoteCount(options), warnings: refWarnings },
@@ -332,6 +341,9 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
     if (oneLine.labels.every(text => text.title === undefined && text.lines.length === 1 && text.font === axisFont) && cellWFor(oneLine.width) >= 32) {
       ({ labels: rowText, width: rowBandW } = oneLine);
     }
+  }
+  if (rowLines === undefined && rowMaxLines === 1 && tightFont && rowText.some(text => text.title !== undefined)) {
+    return layoutStatus(data, options, 'tight');
   }
   const gridX = framePlot.x + rowBandW + LABEL_GAP;
   const gridW = Math.max(10, framePlot.w - rowBandW - LABEL_GAP);
@@ -375,7 +387,6 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
   }
   let columnLabelH =
     Math.max(headerTiers, maxOf(columnText.map((text) => text.lines.length))) * axisLineH + (headerTiers - 1) * 2 * LABEL_PAD;
-  const fixedHeight = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height ?? !heightOmitted(options.size);
   // A row needs its name's height and the label gap. A fixed 28 px floor refused a 12-row board on a full slide,
   // where a row name needs about 24 px. Cell text that must be read sets its own floor below (namedCellHeights).
   // A board that cuts a row name keeps the 28 px floor: the lower one is for names that stay whole.
@@ -415,7 +426,7 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
   const pitchCellH = keyNamesStates ? (cellW >= 72 ? 36 : cellW >= 48 ? Math.min(33, cellW) : Math.min(29, cellW)) : Math.min(36, cellW);
   // More height must not switch to wrapped row names before the full header and rows fit.
   if (fixedHeight && rowMaxLines === 2 && minimumRowsH > gridH) {
-    return layoutStatus(data, options, 1);
+    return layoutStatus(data, options, pinnedFallback);
   }
   const naturalCellH = Math.max(minimumCellH, maxOf(namedCellHeights), maxOf(rowText.map(text => text.h + (keyNamesStates ? LABEL_PAD : 4))), pitchCellH);
   {
@@ -643,7 +654,7 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
   });
   const solved = solveLabels(labelRequests, occupied, solveCtx);
   if (fixedHeight && rowMaxLines === 2 && solved.placed.some(label => label.kind === 'series' && label.hidden === 'collision')) {
-    return layoutStatus(data, options, 1);
+    return layoutStatus(data, options, pinnedFallback);
   }
   // A panel's explicit none leaves its state key with the host.
   if (!legend && !(options.legend === 'none' && panelTypeClass(options) !== undefined) && usedStates.some(state => !solved.placed.some(label =>
