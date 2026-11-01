@@ -343,7 +343,7 @@ it('draws series that share a colour role in distinct steps of that colour', () 
 });
 
 // Scenario series took their rank colour, so a prior year listed first painted darker than the actual and the look changed with series order.
-it('paints scenario columns from the actual, whatever the series order', () => {
+it.each(['column', 'bar'] as const)('paints scenario %s series from the actual, whatever the series order', (type) => {
   const series = {
     ac: { id: 'ac', label: 'Actual', scenario: 'AC' as const, values: [101, 108, null] },
     py: { id: 'py', label: 'Prior year', scenario: 'PY' as const, values: [90, 101, null] },
@@ -354,7 +354,7 @@ it('paints scenario columns from the actual, whatever the series order', () => {
     const resolved = resolveTheme(theme);
     const paints = (order: (keyof typeof series)[]) => {
       const geometry = layoutResolvedRequest(resolveChartRequest({
-        type: 'column',
+        type,
         theme,
         data: { categories: ['y1', 'y2', 'y3'].map(id => ({ id, label: id })), series: order.map(key => series[key]) },
         options: { variant: 'grouped' },
@@ -394,4 +394,30 @@ it('keeps scenario columns apart from an authored fill and in a stack', () => {
   expect(ac).not.toBe(py);
   const stack = fills('stacked', [{ id: 'a', label: 'North', values: [3, 4] }, { id: 'b', label: 'South', values: [2, 2] }, { id: 'py', label: 'Prior year', scenario: 'PY', values: [1, 2] }]);
   expect(new Set(stack).size).toBe(3);
+});
+
+// Sorting bar segments reordered the series before pairing, so a plan took the colour of another actual.
+it('pairs sorted bar scenarios with their own actual', () => {
+  const resolved = resolveTheme('standard');
+  const geometry = layoutResolvedRequest(resolveChartRequest({
+    type: 'bar', theme: 'standard',
+    data: {
+      categories: ['y1'].map(id => ({ id, label: id })),
+      series: [
+        { id: 'a', label: 'North', values: [100] },
+        { id: 'b', label: 'South', values: [20] },
+        { id: 'pa', label: 'North plan', scenario: 'PL', values: [10] },
+        { id: 'pb', label: 'South plan', scenario: 'PL', values: [80] },
+      ],
+    },
+    options: { variant: 'grouped', sort: { segments: 'asc' } },
+  }));
+  if (geometry.refused) throw new Error('refused');
+  const paint = (id: string) => {
+    const node = geometry.scene.find((n): n is Extract<SceneNode, { t: 'rect' }> => n.t === 'rect' && n.owner?.seriesId === id && !!n.owner.categoryId && !!n.fill);
+    return node?.fill ? resolvePaint(node.fill, resolved) : undefined;
+  };
+  expect(paint('pa')).toBe(paint('a'));
+  expect(paint('pb')).toBe(paint('b'));
+  expect(paint('a')).not.toBe(paint('b'));
 });
