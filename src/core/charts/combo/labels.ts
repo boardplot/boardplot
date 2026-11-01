@@ -221,7 +221,14 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
   const outerFont = rowFont ?? strongFont;
   // A stack still crowded at the step: every second total prints, counted back from
   // the latest column; the notes list names the others.
-  const thinned = !insideFont && domain.columns.length > 1 && valueRowCrowded(texts.map(outerSeat(outerFont)));
+  const crowded = !insideFont && valueRowCrowded(texts.map(outerSeat(outerFont)));
+  const thinned = crowded && domain.columns.length > 1;
+  // Under a floated line the columns keep a short band and the value row is
+  // their only scale reading: where neighbour totals crowd, the tallest and the
+  // lowest stack keep their value before the others.
+  const drawnTotals = domain.cats.flatMap((c, ci) => (texts[ci] === null || texts[ci] === undefined ? [] : [{ ci, v: domain.stackTotals[c.id] ?? 0 }]));
+  const extremeTotals = new Set(!crowded || !domain.lineFloat || drawnTotals.length < 3 ? [] : [
+    drawnTotals.reduce((a, b) => (b.v > a.v ? b : a)).ci, drawnTotals.reduce((a, b) => (b.v < a.v ? b : a)).ci]);
   // The line claims its segments as boxes, which over-claim the corners of a steep
   // segment. A shifted seat the drawn line clears by its half stroke and the label
   // air needs no further pad (on pareto at 320 a box corner would hide the first total, 8 px off
@@ -310,7 +317,7 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
       typeRole: 'label', font: outerFont,
       ...(rowFont ? { fontStep: rowFont } : {}),
       ...(thinned && ci % 2 !== (domain.cats.length - 1) % 2 && !env.highlights.has(c.id) ? { redundant: true, suppressedAs: 'density' as const, owed: true as const } : {}),
-      priority: PRIORITY.grandTotal + (env.highlights.has(c.id) ? PRIORITY.highlightBonus : 0),
+      priority: PRIORITY.grandTotal + (env.highlights.has(c.id) ? PRIORITY.highlightBonus : 0) + (extremeTotals.has(ci) ? EXTREME_TOTAL_BONUS : 0),
       candidates: nearestOwnMarkFirst([
         // An average marker across this seat does not move the total: it
         // crosses the rule on a halo, as on column.
@@ -325,6 +332,9 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
     });
   });
 }
+
+/** The lead the tallest and the lowest column total take over a crowding neighbour; under the next priority band. */
+const EXTREME_TOTAL_BONUS = 50;
 
 /** Air between a left-standing total and the line's start point, and the leftmost x it may take. */
 const LEFT_SEAT_AIR = 6;
@@ -579,11 +589,19 @@ export function planComboLabels(
   const { frame, labelFont, band } = area;
   const rightAxisActive = domain.rightTicks.length > 0;
   // Each authored title sits over its own tick column.
-  const requests = anchorComboAxisTitles(area.axisTitles, {
+  const anchored = anchorComboAxisTitles(area.axisTitles, {
     left: Number.isFinite(geometry.leftTickX) ? geometry.leftTickX : undefined,
     right: rightAxisActive ? area.rightTickX + area.rightAxisReserve - 10 : undefined,
     rightStart: rightAxisActive ? area.rightTickX : undefined,
   }, frame.plot);
+  // Under a floated line the left ticks stop at the column band, so the left
+  // title without a swatch sits over the band's top tick, not over the line.
+  const bandTop = domain.lineFloat && domain.showPrimaryAxis ? area.y(domain.pticks[domain.pticks.length - 1]!) - env.measure('0', area.tickFont).height / 2 : undefined;
+  const requests = anchored.map((request) => {
+    const first = request.candidates[0];
+    if (bandTop === undefined || request.id !== 'axis:primary:title' || area.axisTitles.swatches.has(request.id) || !first) return request;
+    return { ...request, candidates: [{ ...first, slot: 'overBand', rect: { ...first.rect, y: bandTop - 4 - first.rect.h } }, ...request.candidates] };
+  });
   segmentLabels(env, domain, area, geometry, paints, requests, warnings);
   // the drawn lines and column fills every line value keeps off or inside.
   const strokes = comboStrokes(geometry).map(preparePolyline);
