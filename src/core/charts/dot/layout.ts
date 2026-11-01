@@ -502,7 +502,11 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   const gapText = new Map<Id, string>();
   if (options.gapColumn === true && gaps !== undefined && size.width >= COLUMN_MIN_WIDTH) {
     const signedGap = differenceFormatter({ format: options.format, locale: options.locale?.language, decimals: valueSpec.spec.decimals, values: dataSeries.flatMap((s) => s.cells.map((cell) => cell.v)).filter((v): v is number => v !== null) });
-    for (const c of cats) if (gaps[c.id] !== undefined) gapText.set(c.id, signedGap(gaps[c.id]!));
+    cats.forEach((c, ci) => {
+      const a = dataSeries[0]!.cells[ci]!.v;
+      const b = dataSeries[1]!.cells[ci]!.v;
+      if (a !== null && b !== null) gapText.set(c.id, signedGap(b, a));
+    });
   }
   const gapHead = gapText.size === 0 ? undefined : columnHeadText(chartString(options, 'gapHead'), percent);
   const gapHeadFont = columnHeadFont(theme, options.target ?? DEFAULT_TARGET, textScaleOf(options));

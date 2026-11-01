@@ -17,7 +17,7 @@ import { asColumnHeads, fitHead, HEAD_PREFIX, headRequest } from '../bullet/colu
 import { COLUMN_GAP, COLUMN_MIN_WIDTH, columnCellRequest, columnHeadText, columnWidth, differenceFormatter } from '../diffColumn';
 import { marginBracketLayout } from '../../annotateLinks';
 import { memoFormatterFromExample, seriesRasterFormatter } from '../../formatSpec';
-import { clamp, cleanDiff, deltaGap, type Rect } from '../../geometry';
+import { clamp, deltaGap, type Rect } from '../../geometry';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelsToNodes } from '../../label/emit';
 import { isOthersFill, othersSeparation } from '../../markVisibility';
@@ -379,13 +379,30 @@ export function layoutButterfly(
   if ((opts.diffColumn ?? sortBy === 'diff') && redesign && !conflict && size.width >= COLUMN_MIN_WIDTH) {
     const raster = seriesRasterFormatter(opts.format, [...aCells, ...bCells].map(cellValue), opts.locale?.language, opts.unit, opts.target);
     const signed = differenceFormatter({ format: opts.format, locale: opts.locale?.language, decimals: raster.spec.decimals, values: [...aCells, ...bCells].flatMap((cell) => cellValue(cell) ?? []) });
-    for (const r of rows) if (r.a !== null && r.b !== null) diffText.set(r.id, signed(cleanDiff(r.b, r.a)));
+    for (const r of rows) if (r.a !== null && r.b !== null) diffText.set(r.id, signed(r.b, r.a));
   }
   const diffHead = diffText.size === 0 ? undefined
     : columnHeadText('Δ', opts.unit?.startsWith('%') === true || percentLevels([sA, sB].map((s, k) => ({ vals: (k === 0 ? aCells : bCells).map((cell) => ({ v: cellValue(cell), isPct: isPctCell(cell) })), format: s.format, unit: s.unit })), opts.format, opts.unit));
   const diffFont = (id: Id): FontSpec => (highlights.has(id) ? strongFont : labelFont);
   const diffW = diffHead === undefined ? 0 : columnWidth(measure, [...diffText].map(([id, text]) => ({ text, font: diffFont(id) })), { text: diffHead, font: strongFont });
   const diffReserve = diffW > 0 ? diffW + COLUMN_GAP : 0;
+  // An authored delta of b over a on a row the column covers would print the same number twice: the column keeps it.
+  const isPairDelta = (ann: NonNullable<typeof opts.annotations>[number]): boolean => {
+    if (ann.kind !== 'delta' || ann.text !== undefined || typeof ann.vs === 'number') return false;
+    const at = typeof ann.at === 'string' ? { categoryId: ann.at } : ann.at as { categoryId?: Id; seriesId?: Id };
+    const vs = typeof ann.vs === 'string' ? { categoryId: ann.vs } : ann.vs as { categoryId?: Id; seriesId?: Id };
+    return at.categoryId !== undefined && at.categoryId === vs.categoryId && diffText.has(at.categoryId) && (at.seriesId ?? sB.id) === sB.id && vs.seriesId === sA.id;
+  };
+  const annotations = (opts.annotations ?? []).filter((ann) => diffText.size === 0 || !isPairDelta(ann));
+  if (annotations.length < (opts.annotations ?? []).length) {
+    warnings.push({
+      code: 'delta-column-covers-annotation',
+      severity: 'info',
+      message: 'a delta annotation of the second series over the first on one row repeats the difference column, so only the column prints it',
+      suggest: 'drop the annotation, or set options.diffColumn to false to keep it',
+      field: ['annotations'],
+    });
+  }
 
   // ---- frame ----
   const occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
@@ -507,7 +524,7 @@ export function layoutButterfly(
   const room = comparison?.bracketRoom ?? { left: 0, right: 0 };
   // Comparison exhibits already use a readable 20 px run. A comparison
   // disclosed in the footer does not need a bracket gutter on the canvas.
-  const comparisonRun = opts.annotations?.some(ann => ann.kind === 'cagr' || ann.kind === 'diff') ? 20 : 40;
+  const comparisonRun = annotations.some(ann => ann.kind === 'cagr' || ann.kind === 'diff') ? 20 : 40;
   const minimumPane = (side: 'a' | 'b', bracketRoom: number) => comparisonRun + (valuesOff ? 0 : Math.max(0, maxOf(rows.map((r) => {
     const text = textOf(side === 'a' ? r.a : r.b, side === 'a' ? r.aMeta : r.bMeta, side);
     return text ? measure(text, labelFont).width + 10 : 0;
@@ -652,7 +669,7 @@ export function layoutButterfly(
   // The room a delta label on this row and side takes after its value label.
   function deltaTail(r: Row, side: 'a' | 'b'): number {
     let tail = 0;
-    for (const ann of opts.annotations ?? []) {
+    for (const ann of annotations) {
       if (ann.kind !== 'delta') continue;
       const at = typeof ann.at === 'string' ? { categoryId: ann.at } : ann.at as { categoryId?: Id; seriesId?: Id };
       if (at.categoryId !== r.id || (at.seriesId ?? sB.id) !== (side === 'a' ? sA.id : sB.id)) continue;
@@ -953,7 +970,7 @@ export function layoutButterfly(
   }
   const brackets = marginBracketLayout(theme, { left: outerEdge.left - BRACKET_CLEAR, right: outerEdge.right + BRACKET_CLEAR });
   const annResult = runAnnotatePass({
-    annotations: opts.annotations ?? [],
+    annotations,
     resolve,
     comparisonLayout: brackets,
     defaultSpan:
@@ -974,7 +991,7 @@ export function layoutButterfly(
   // value at every width, with no dash: a dash before a negative delta reads
   // as a minus sign ('60 – −21').
   function seatDeltas(): void {
-    (opts.annotations ?? []).forEach((ann, index) => {
+    annotations.forEach((ann, index) => {
       if (ann.kind !== 'delta') return;
       const at = typeof ann.at === 'string' ? { categoryId: ann.at } : ann.at as { categoryId?: Id; seriesId?: Id };
       const i = rows.findIndex((r) => r.id === at.categoryId);

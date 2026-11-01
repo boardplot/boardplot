@@ -9,8 +9,8 @@
 
 import { differenceExample, exampleSpec, formatWithSpec } from '../formatSpec';
 import { formatAutomaticNumber, PERCENTAGE_POINTS } from '../format';
-import { valueSetDecimals } from '../formatPrecision';
-import type { Rect } from '../geometry';
+import { roundHalfUp, valueSetDecimals } from '../formatPrecision';
+import { cleanDiff, type Rect } from '../geometry';
 import { PRIORITY, type LabelRequest } from '../label/solver';
 import type { FontSpec, TextMeasurer } from '../text';
 import type { OwnerRef } from '../types/cell';
@@ -20,14 +20,23 @@ export const COLUMN_MIN_WIDTH = 576;
 /** Clear space between the column and the content to its left. */
 export const COLUMN_GAP = 16;
 
-/** The signed text of a difference, at the precision of the plotted values it subtracts (the values the chart prints) and with no unit: the head carries the unit. */
-export function differenceFormatter(input: { format?: string; locale?: string; values: number[]; decimals?: number }): (value: number) => string {
+/**
+ * The signed text of a difference `minuend - subtrahend`, with no unit: the head carries the unit.
+ * Each operand is rounded to the decimals the chart prints it with before the subtraction, so the
+ * column foots with the two labels on the page (7.89 and 9.24 give -1.35, never -1.34 from 7.894 and 9.236).
+ * A scaled format (k, m, bn) prints the operands at another scale, so it subtracts the raw values.
+ */
+export function differenceFormatter(input: { format?: string; locale?: string; values: number[]; decimals?: number }): (minuend: number, subtrahend: number) => string {
+  const printed = (decimals: number | undefined, scaled: boolean) => (value: number): number =>
+    decimals === undefined || scaled ? value : Math.sign(value) * Number(roundHalfUp(Math.abs(value), decimals));
   if (input.format) {
     const spec = { ...exampleSpec(differenceExample(input.format), input.locale, undefined, input.values), signed: true, prefix: '', suffix: '' };
-    return (value) => formatWithSpec(value, spec);
+    const round = printed(spec.decimals, spec.magnitude !== 'none' || spec.significantDigits !== undefined || spec.autoMagnitude === true);
+    return (minuend, subtrahend) => formatWithSpec(cleanDiff(round(minuend), round(subtrahend)), spec);
   }
   const decimals = input.decimals ?? valueSetDecimals(input.values);
-  return (value) => formatAutomaticNumber(value, { locale: input.locale, signed: true, decimals });
+  const round = printed(decimals, false);
+  return (minuend, subtrahend) => formatAutomaticNumber(cleanDiff(round(minuend), round(subtrahend)), { locale: input.locale, signed: true, decimals });
 }
 
 /** "Change, pp" for a difference of percent levels, the word alone otherwise. */

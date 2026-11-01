@@ -384,7 +384,7 @@ export function layoutSlope(
     const pctDecimals = Math.min(1, valueSetDecimals(pcts));
     for (const s of plottedSeries) {
       const ch = changes[s.id]!;
-      if (changeMode === 'absolute') changeTexts.set(s.id, absText(ch.abs));
+      if (changeMode === 'absolute') changeTexts.set(s.id, absText(s.b.v!, s.a.v!));
       else if (ch.pct !== null) changeTexts.set(s.id, formatAutomaticNumber(ch.pct, { locale: lang, signed: true, decimals: pctDecimals }));
     }
   }

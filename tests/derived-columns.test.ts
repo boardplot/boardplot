@@ -28,10 +28,23 @@ it('slope change, dumbbell gap and butterfly difference print signed differences
     { variant: 'dumbbell', gapColumn: true, unit: '%', size: { width: 900, height: 300 } },
   );
   expect(shown(dot, 'gap:')).toEqual({ a: '+0.69', b: '−1.21' });
+  // The column foots with the two printed labels: 9.236 and 7.894 print 9.24 and 7.89, so the gap is -1.35, not -1.34.
+  const footing = layoutDot(
+    { categories, series: [{ id: 'p', values: [9.236, 8.619] }, { id: 'q', values: [7.894, 9.514] }] },
+    { variant: 'dumbbell', gapColumn: true, unit: '%', size: { width: 900, height: 300 } },
+  );
+  expect(shown(footing, 'gap:')).toEqual({ a: '−1.35', b: '+0.89' });
 
   const data = { categories, series: [{ id: 'p', values: [42, 60] }, { id: 'q', values: [45, 39] }] };
   expect(shown(layoutButterfly(data, { a: 'p', b: 'q', sortBy: 'diff', size: { width: 900, height: 400 } }), 'diff:')).toEqual({ a: '+3', b: '−21' });
   expect(shown(layoutButterfly(data, { a: 'p', b: 'q', size: { width: 900, height: 400 } }), 'diff:')).toEqual({});
+  // An authored delta of b over a repeats the column's number, so only the column prints it.
+  const authored = layoutButterfly(data, {
+    a: 'p', b: 'q', sortBy: 'diff', size: { width: 900, height: 400 },
+    annotations: [{ kind: 'delta', at: { categoryId: 'b', seriesId: 'q' }, vs: { categoryId: 'b', seriesId: 'p' } }],
+  });
+  expect(authored.labels.filter((l) => l.text.includes('21') && !l.hidden).map((l) => l.id)).toEqual(['diff:b']);
+  expect(authored.warnings.some((w) => w.code === 'delta-column-covers-annotation')).toBe(true);
 });
 
 // Footnotes are hidden in a static render, so the base of every share needs its own place on the page.
