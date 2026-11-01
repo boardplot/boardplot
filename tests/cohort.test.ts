@@ -135,6 +135,18 @@ it('wraps narrow cohort labels before the whole size suffix', () => {
   }
 });
 
+// A size wider than the label band must still break at its spaces instead of refusing the width.
+it('draws a cohort size wider than the label band instead of refusing the width', () => {
+  const fixture = getFixtures('cohort').find(f => f.id === 'saas-logo-retention')!;
+  const data = fixture.data as CohortData;
+  const wide = { ...data, cohorts: data.cohorts.map(cohort => ({ ...cohort, active: cohort.active.map(value => value === null ? null : value * 100000) })) } as CohortData;
+  const request = resolveChartRequest({ type: 'cohort', data: wide, options: { ...fixture.options as CohortOptions, size: { width: 358, height: 580 } } });
+  const shown = layoutResolvedRequest(request) as unknown as Geometry<CohortMarks, CohortDerived>;
+  expect(shown.refused).toBeFalsy();
+  const label = shown.labels.find(label => label.id === `series:${shown.derived.cohorts[0]!.id}`)!;
+  expect(label.lines).toEqual(['Jan 2025 (n =', '120,000,000)']);
+});
+
 // A cohort exhibit on a 280 px phone card refused (it needed 528 px); its compact form draws there and names each period it leaves out.
 it('draws the exhibit forms on a phone card and names the periods left out', () => {
   const at280 = (id: string, kept: number[], hidden: string[]) => {
