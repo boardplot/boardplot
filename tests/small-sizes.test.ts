@@ -550,6 +550,33 @@ it('does not refuse a diagram for its badges', () => {
   expect(tree.warnings.filter((warning) => warning.severity === 'error').map((warning) => warning.message).join(' ')).not.toMatch(/badge/i);
 });
 
+// Prevents a strategy house from refusing at half slide because a hyphenated name is one unbreakable word in a pillar,
+// and a two-line label from sitting flush left in a centred cell.
+it('breaks hyphenated house names at the hyphen instead of refusing', () => {
+  const cell = (id: string, kind: string, label: string, extra: object = {}) => ({ id, kind, shape: { kind: 'rectangle' }, label, role: 'primary', ...extra });
+  const house = {
+    groups: ['g1', 'g2', 'g3'].map((id, order) => ({ id, title: `Pillar ${order + 1}`, role: 'primary', order: order + 1 })),
+    nodes: [
+      cell('roof', 'vision', 'Research and development expenses', { shape: { kind: 'roof' } }),
+      cell('o0', 'objective', 'North-Westmoor (Riverland)', { groupId: 'g1' }),
+      cell('o1', 'objective', 'Depreciation of fixed assets', { groupId: 'g2' }),
+      cell('o2', 'objective', 'Depreciation and amortisation', { groupId: 'g3' }),
+      cell('a', 'initiative', 'Northumberland-Westmoreland', { groupId: 'g2', order: 1, role: 'secondary' }),
+      cell('b', 'initiative', 'Reinvoiced transportation costs', { groupId: 'g3', order: 1, role: 'secondary' }),
+      cell('c', 'initiative', 'Selling and distribution overheads', { groupId: 'g1', order: 1, role: 'secondary' }),
+      cell('e1', 'enabler', 'Other operating income', { order: 1, role: 'muted' }),
+      cell('base', 'foundation', 'Income from equity-accounted firms'),
+    ],
+  };
+  const half = getChart('diagram')!.layout(house as never, { variant: 'strategy-house', target: 'slide', size: { width: 432, height: 396, unit: 'pt' } } as never);
+  if (half.refused) throw new Error('the house is refused at half a slide');
+  expect(half.warnings.filter((warning) => warning.severity === 'error')).toEqual([]);
+  // The three-line label of the first pillar is centred, not flush left.
+  const aligned = half.scene.flatMap((n) => (n.t === 'text' && n.lines.length > 1 ? [n.align] : []));
+  expect(aligned.length).toBeGreaterThan(0);
+  expect(aligned.every((align) => align === 'middle')).toBe(true);
+});
+
 // Prevents measure and render from naming different floors: a height that render refuses, a card width
 // that render refuses while measure says it draws, and a pinned choropleth that draws taller than measure says.
 it('names the size that render draws in measure', () => {
@@ -1272,4 +1299,36 @@ describe('type steps toward the reader floor before a size refusal', () => {
     expect(result.refused).toBe(true);
     expect(result.warnings[0]!.code).toBe('size-below-floor');
   });
+});
+
+// Prevents three diagrams from refusing or crowding on a wide, short full slide: the strategy house refused 28 px short,
+// the eight-step stack refused 35 px short, and the six-step cycle drew a disc so wide that four of its six arrowheads were lost.
+it('draws the house, the stack and the cycle on a full slide with the height they have', () => {
+  const slide = { target: 'slide', size: { width: 888, height: 396, unit: 'pt' } };
+  const draw = (spec: object) => render({ spec: { type: 'diagram', ...spec } }).body as any;
+  const house = getFixtures('diagram').find(f => f.id === 'strategy-house')!;
+  expect(draw({ data: house.data, options: { ...house.options, ...slide } }).ok).toBe(true);
+
+  const named = (labels: string[], shape: string, extra: object = {}) => labels.map((label, i) => ({ id: `n${i}`, kind: 'step', shape: { kind: shape }, label, order: i + 1, role: 'primary', ...extra }));
+  const long = ['Depreciation of fixed assets', 'Customer acquisition cost', 'Depreciation and amortisation', 'Pension provisions, domestic',
+    'North-West Region (Lowlands)', 'Mid-Atlantic Operations', 'Change in net working capital', 'Maintenance and repair works'];
+  expect(draw({ data: { nodes: named(long, 'chevron', { caption: 'Phase' }) }, options: { variant: 'linear-process', ...slide } }).ok).toBe(true);
+
+  const cycle = draw({ data: { nodes: named(['Field service', 'Licence income', 'Net revenue', 'Upper region', 'Eastern Europe', 'Marketing spend'], 'circle') }, options: { variant: 'circular-process', ...slide } });
+  expect(cycle.ok).toBe(true);
+  expect(cycle.warnings.filter((warning: any) => warning.code === 'diagram-arrowhead-unplaced')).toEqual([]);
+});
+
+// Prevents the roof cut from hiding a required vision: a three-line vision on a 720 x 316 house that main draws was refused
+// ("label unplaced") because the cut left the roof shorter than the vision's three lines.
+it('keeps a three-line vision when the strategy house is a little short', () => {
+  const node = (id: string, kind: string, label: string, extra: object = {}) => ({ id, kind, shape: { kind: kind === 'vision' ? 'roof' : 'rectangle' }, label, role: 'primary', ...extra });
+  const data = {
+    groups: [{ id: 'g', title: 'Grow', role: 'primary', order: 1 }],
+    nodes: [node('v', 'vision', 'Trusted growth\npartner for\nevery customer'), node('o', 'objective', 'Grow', { groupId: 'g' }),
+      node('a', 'initiative', 'New segments', { groupId: 'g', order: 1 }), node('b', 'initiative', 'Pricing', { groupId: 'g', order: 2 }),
+      node('e', 'enabler', 'People', { order: 1 }), node('f', 'foundation', 'Customer trust')],
+  };
+  const body = render({ spec: { type: 'diagram', data, options: { variant: 'strategy-house', size: { width: 720, height: 316 } } } }).body as any;
+  expect(body.errors).toEqual([]);
 });

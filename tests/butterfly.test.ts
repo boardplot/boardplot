@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import '../src/core/charts';
 import { layoutButterfly } from '../src/core/charts/butterfly/layout';
-import { measure } from '../src/core/request';
+import { layoutResolvedRequest, measure, resolveChartRequest } from '../src/core/request';
 import { getChart } from '../src/core/registry';
 // @ts-expect-error The scorecard script has no declaration file.
 import { applyRepair } from '../scripts/layout-scorecard.mjs';
@@ -67,4 +67,32 @@ it('repairs the shared scale and the difference sort together', () => {
       expect(repaired.warnings.filter(w => w.severity !== 'info')).toEqual([]);
     }
   }
+});
+
+// A bracket's room was taken from both panes and kept even when its label went to the note list,
+// so bars stood as 20 px stubs in a 576 px chart that was mostly blank.
+it('gives bar length back to the panes when a comparison bracket takes room on one side only', () => {
+  const data = {
+    categories: [{ id: 'fy21', label: 'FY21' }, { id: 'fy22', label: 'FY22' }, { id: 'fy23', label: 'FY23' }],
+    series: [{ id: 'online', label: 'Online', values: [100, 120, 144] }, { id: 'store', label: 'Store', values: [130, 150, 180] }],
+  };
+  const longest = (g: ReturnType<typeof layoutButterfly>) => Math.max(...[...g.marks.left, ...g.marks.right].map((m) => m.rect.w));
+  const gap = { id: 'gap', kind: 'diff' as const, mode: 'absolute' as const,
+    from: { categoryId: 'fy21', seriesId: 'online' }, to: { categoryId: 'fy21', seriesId: 'store' } };
+  const base = { a: 'online', b: 'store', size: { width: 576, height: 528 } };
+  const bracket = layoutButterfly(data, { ...base, annotations: [gap] });
+  // The bracket is drawn, the panes differ in width, and the shared scale keeps both sides in proportion.
+  expect(bracket.annotations).toHaveLength(1);
+  expect(bracket.marks.center.x - bracket.plot.x).toBeLessThan(bracket.plot.x + bracket.plot.w - bracket.marks.center.x - bracket.marks.center.w);
+  expect(longest(bracket)).toBeGreaterThan(100);
+  expect(bracket.marks.left[2]!.rect.w / bracket.marks.right[2]!.rect.w).toBeCloseTo(144 / 180, 5);
+  // A pyramid whose comparison label cannot stand beside the bars sends it to the note list and keeps no room for it.
+  const bands = [{ id: 'young', from: 0, to: 20, label: '0 to 19' }, { id: 'adult', from: 20, to: 40, label: '20 to 39' }, { id: 'older', from: 40, to: 60, label: '40 to 59' }];
+  const groups = [{ id: 'before', label: 'FY21', date: '2021-12-31', values: [100, 120, 80] }, { id: 'after', label: 'FY23', date: '2023-12-31', values: [144, 150, 100] }];
+  const pyramid = layoutResolvedRequest(resolveChartRequest({ type: 'pyramid', data: { bands, groups },
+    options: { size: { width: 576, height: 528 }, target: 'slide', basis: 'shareOfTotal',
+      annotations: [{ id: 'gap', kind: 'diff', mode: 'absolute', from: { categoryId: 'adult', seriesId: 'before' }, to: { categoryId: 'adult', seriesId: 'after' },
+        text: 'FY21 to FY23, both snapshots combined: ${value}' }] } } as never)) as unknown as ReturnType<typeof layoutButterfly>;
+  expect(pyramid.labels.filter((l) => l.kind === 'annotation' && !l.hidden)).toHaveLength(0);
+  expect(longest(pyramid)).toBeGreaterThan(100);
 });

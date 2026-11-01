@@ -2,7 +2,7 @@ import type { Theme } from '../../types/theme';
 import { boundsOf, clamp, inflate, rectsOverlap, type Point, type Rect, type Size } from '../../geometry';
 import { monotonePath, monotoneSegments } from '../../curve';
 import { resolveSize } from '../../normalize/shared';
-import { wrapText, type FontSpec, type TextMeasurer } from '../../text';
+import { wrapNameText, wrapText, type FontSpec, type TextMeasurer } from '../../text';
 import { strokeToken, dashToken, panelTypeClass, resolveTheme, themeForWidth } from '../../theme';
 import type {
   DiagramEdge,
@@ -100,6 +100,9 @@ function dispatchPreset(theme: Theme, context: PresetContext): PresetLayout {
       return layoutStrategyHouse(context);
     case 'roadmap':
       return layoutRoadmap(theme, context);
+    case 'architecture':
+      // Laid out and routed by architecture.ts, before any preset runs.
+      return emptyResult(context.data);
   }
 }
 
@@ -502,7 +505,7 @@ function layoutIssueTree(context: PresetContext): PresetLayout {
   for (const node of context.data.nodes) {
     if (!node.secondaryLabel) continue;
     const width = Math.max(1, widths.get(ranks.get(node.id) ?? 0)! - 4 * context.u);
-    const primary = wrapText(node.label, context.font, width, 3, context.measure).lines.length;
+    const primary = wrapNameText(node.label, context.font, width, 3, context.measure).lines.length;
     const secondary = wrapText(node.secondaryLabel, context.font, width, 2, context.measure).lines.length;
     const size = context.sizes.get(node.id)!;
     const icon = node.icon || node.shape.kind === 'icon' ? 4.5 * context.u : 0;
@@ -529,7 +532,7 @@ function layoutIssueTree(context: PresetContext): PresetLayout {
     const heights = context.data.nodes.map(node => {
       const size = context.sizes.get(node.id)!;
       const width = Math.max(1, widths.get(ranks.get(node.id) ?? 0)! - 4 * context.u);
-      const primary = wrapText(node.label, context.font, width, 3, context.measure).lines.length;
+      const primary = wrapNameText(node.label, context.font, width, 3, context.measure).lines.length;
       const icon = node.icon || node.shape.kind === 'icon' ? 4.5 * context.u : 0;
       const minimum = Math.max(7 * context.u, primary * context.lineHeight + icon + 3 * context.u,
         node.minSize?.height ?? 0, node.size?.height ?? 0);
@@ -902,7 +905,10 @@ export function circularRing(
     const secondary = step.secondaryLabel ? Math.min(cap, text.measure(step.secondaryLabel, text.font).width + 4 * u) : 0;
     return Math.max(icon, secondary, step.size?.width ?? 0, step.size?.height ?? 0, step.minSize?.width ?? 0, step.minSize?.height ?? 0);
   };
-  const diameter = Math.max(8 * u, Math.min(16 + 0.08 * plot.w, 0.6 * plot.h), maxOf(steps.map(own)));
+  // The ring is limited by height: a disc past this size leaves less than 0.6 of a diameter between neighbours.
+  const s = Math.sin(Math.PI / Math.max(2, steps.length));
+  const spaced = (plot.h - 2 * circularLabelBand(text.font, u)) * s / (1.6 + s);
+  const diameter = Math.max(8 * u, Math.min(16 + 0.08 * plot.w, 0.6 * plot.h, spaced), maxOf(steps.map(own)));
   const captionHeight = Math.max(0, maxOf(steps.map(step => step.caption
     ? wrapText(step.caption, text.font, Math.max(diameter, 16 * u), 2, text.measure).lines.length * lineHeight + 2 * u : 0)));
   const minRadius = steps.length > 2 ? (diameter + captionHeight + 2 * u) / (2 * Math.sin(Math.PI / steps.length)) : diameter + captionHeight;
@@ -968,7 +974,7 @@ export function strategyHouseBands(
   const groups = data.groups;
   const columnW = width / Math.max(1, groups.length);
   const lines = (node: DiagramNode | undefined, w: number) => node
-    ? wrapText(node.label, node.kind === 'initiative' || node.kind === 'enabler' ? font : headFont, Math.max(1, w - 4 * u), 3, measure).lines.length : 1;
+    ? wrapNameText(node.label, node.kind === 'initiative' || node.kind === 'enabler' ? font : headFont, Math.max(1, w - 4 * u), 3, measure).lines.length : 1;
   const objectives = data.nodes.filter((node) => node.kind === 'objective').sort(nodeOrder);
   const enablers = data.nodes.filter((node) => node.kind === 'enabler').sort(nodeOrder);
   const foundation = data.nodes.find((node) => node.kind === 'foundation');
@@ -1011,7 +1017,15 @@ function layoutStrategyHouse(context: PresetContext): PresetLayout {
   const py = Math.ceil(context.plot.y * 2) / 2;
   const pw = Math.floor((context.plot.x + context.plot.w) * 2) / 2 - px;
   const ph = Math.floor((context.plot.y + context.plot.h) * 2) / 2 - py;
-  const bands = strategyHouseBands(context.data, pw, context.u, context.font, context.measure, context.headFont);
+  const raw = strategyHouseBands(context.data, pw, context.u, context.font, context.measure, context.headFont);
+  const visionWrap = wrapText(vision.label, context.headFont ?? context.font, Math.max(1, pw - 4 * context.u), 3, context.measure).lines;
+  const visionLines = visionWrap.length;
+  // A height deficit comes out of the roof first, down to 2.4 lines; only then do the other bands shrink. The cut stops
+  // where the scaled roof would be shorter than the vision's lines and insets, so it never hides a vision that fits without it.
+  const visionNeeds = visionLines * context.lineHeight + 2.6 * context.u;
+  const keepsVision = ph > visionNeeds ? (raw.roof * ph - visionNeeds * raw.height) / (ph - visionNeeds) : 0;
+  const roofCut = Math.max(0, Math.min(raw.height - ph, raw.roof - 2.4 * context.lineHeight, keepsVision));
+  const bands = { ...raw, roof: raw.roof - roofCut, height: raw.height - roofCut };
   const k = ph / bands.height;
   const columnW = pw / groups.length;
   const inset = bands.inset;
@@ -1021,8 +1035,6 @@ function layoutStrategyHouse(context: PresetContext): PresetLayout {
 
   result.nodeRects.set(vision.id, qRect({ x: px, y: py, w: pw, h: bands.roof * k }));
   // The vision sits in the roof's wide lower part, clear of its slopes.
-  const visionWrap = wrapText(vision.label, context.headFont ?? context.font, Math.max(1, pw - 4 * context.u), 3, context.measure).lines;
-  const visionLines = visionWrap.length;
   // Its lines centre on the roof's centroid, two thirds of the way down, and lower where the slopes would close in on the widest line.
   const roofH = bands.roof * k;
   const widest = Math.max(...visionWrap.map((line) => context.measure(line, context.headFont ?? context.font).width));

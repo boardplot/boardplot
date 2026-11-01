@@ -124,13 +124,11 @@ export function routeDiagramEdges(theme: Theme, input: RouteDiagramInput): Route
       const points = fixed.points;
       const start = points[0]!;
       const end = points.at(-1)!;
-      const sourcePort = resolvePort(sourceNode.id, sourceRect,
-        fixed.sourceSide === 'right'
-          ? { id: 'auto:org-out', at: { side: 'right', offset: (start.y - sourceRect.y) / sourceRect.h }, intent: 'out' }
-          : { id: 'auto:org-out', at: { side: 'bottom', offset: (start.x - sourceRect.x) / sourceRect.w }, intent: 'out' }, true);
-      const targetPort = resolvePort(targetNode.id, targetRect, fixed.targetSide === 'top'
-        ? { id: 'auto:org-in', at: { side: 'top', offset: (end.x - targetRect.x) / targetRect.w }, intent: 'in' }
-        : { id: 'auto:org-in', at: { side: 'left', offset: (end.y - targetRect.y) / targetRect.h }, intent: 'in' }, true);
+      const at = (side: 'top' | 'bottom' | 'left' | 'right', point: Point, rect: Rect) => ({
+        side, offset: side === 'left' || side === 'right' ? (point.y - rect.y) / rect.h : (point.x - rect.x) / rect.w,
+      });
+      const sourcePort = resolvePort(sourceNode.id, sourceRect, { id: 'auto:org-out', at: at(fixed.sourceSide ?? 'bottom', start, sourceRect), intent: 'out' }, true);
+      const targetPort = resolvePort(targetNode.id, targetRect, { id: 'auto:org-in', at: at(fixed.targetSide, end, targetRect), intent: 'in' }, true);
       const edgeResult: ResolvedDiagramEdge = {
         id: edge.id,
         source: endpoint({ ...sourcePort, point: start }, points[1] ?? end, input.clearance),
@@ -146,7 +144,9 @@ export function routeDiagramEdges(theme: Theme, input: RouteDiagramInput): Route
         bends: countBends(points),
         crossings: 0,
         sceneNodeIds: [],
+        ...(fixed.labelBox ? { labelBox: fixed.labelBox } : {}),
       };
+      if (fixed.labelBox) labelBoxes.set(edge.id, fixed.labelBox);
       edgeResult.sceneNodeIds = emitRouteScene(theme, edge, edgeResult, scene, claims, input.clearance, warnings, input.palette, input.edgePaint);
       resolved.push(edgeResult);
       recordPorts({ ...sourcePort, point: start }, { ...targetPort, point: end }, portsByNode, used);

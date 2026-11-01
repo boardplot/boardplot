@@ -1958,13 +1958,15 @@ function layoutWaterfallWithPad(
     const it = k < 0 ? step : caseItems[k]![i]!;
     const lvl = levels[it.id]!;
     const edge = norm.edge ?? 'total';
-    const value = edge === 'start' ? lvl.start : it.type === 'delta' ? lvl.end : totals[it.id]!;
+    const comparisonValue = edge === 'start' ? lvl.start : it.type === 'delta' ? lvl.end : totals[it.id]!;
+    const value = edge === 'total' && it.type === 'delta' ? lvl.end - lvl.start : comparisonValue;
     const anchorLevel =
       edge === 'start' ? lvl.start : edge === 'end' ? lvl.end : Math.max(lvl.start, lvl.end);
     return {
       x: k < 0 ? band.center(i) : band.position(i) + k * (caseW + CASE_GAP) + caseW / 2,
       y: y(anchorLevel),
       value,
+      comparisonValue,
       date: it.date,
       label: it.label,
       owner: k < 0 ? { categoryId: it.id } : { categoryId: step.id, seriesId: cases[k]!.id },
