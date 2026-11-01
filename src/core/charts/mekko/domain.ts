@@ -85,7 +85,6 @@ const VARIANT_MODE = { stacked100: 'percent', stacked: 'unit', bar: 'bar' } as c
 /** The mode, the width series and the plotted data series, each refusal said out loud. */
 function mekkoSeriesRoles(options: MekkoOptions, seriesNorm: NormSer[], warnings: LintWarning[]) {
   let mode: MekkoDomain['mode'] = VARIANT_MODE[options.variant ?? 'stacked100'];
-  if (options.valueAxis?.percent && mode === 'unit') mode = 'percent';
   let widthSer: NormSer | null = null;
   if (options.widthSeriesId) {
     widthSer = seriesNorm.find((s) => s.id === options.widthSeriesId) ?? null;
@@ -105,21 +104,20 @@ function mekkoSeriesRoles(options: MekkoOptions, seriesNorm: NormSer[], warnings
       message: `mekko does not plot reference series (${refSeries.map((s) => s.id).join(', ')})`,
     });
   }
-  let series = seriesNorm.filter((s) => s.role !== 'reference' && s !== widthSer);
+  const series = seriesNorm.filter((s) => s.role !== 'reference' && s !== widthSer);
   if (series.length === 0) {
     throw new NormalizeError('empty-data', 'series', 'mekko requires at least one data-role series');
   }
+  // One value per category cannot hold several series: draw them as stacked columns rather than drop all but the first.
   if (mode === 'bar' && series.length > 1) {
     warnings.push({
       code: 'bar-mekko-extra-series',
       severity: 'warn',
-      message: `bar-mekko plots a single data series — using '${series[0]!.id}', ignoring ${series
-        .slice(1)
-        .map((s) => s.id)
-        .join(', ')}`,
+      message: `bar-mekko draws one value per category — ${series.length} data series (${series.map((s) => s.id).join(', ')}) are drawn as stacked columns. Give one data series, or mark the others role 'reference', for a bar`,
     });
-    series = series.slice(0, 1);
+    mode = 'unit';
   }
+  if (options.valueAxis?.percent && mode === 'unit') mode = 'percent';
   if (mode === 'bar' && !widthSer) {
     warnings.push({
       code: 'bar-mekko-no-width-series',

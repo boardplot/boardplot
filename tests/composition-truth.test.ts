@@ -184,6 +184,16 @@ describe('line and mekko fail closed visibly', () => {
     expect(stacked.derived).toMatchObject({ columnTotals: { others: 200 } });
   });
 
+  // A bar mekko given two data series kept the first and dropped the second from the picture, so the totals read as one cost block.
+  it('draws every data series of a one-bar mekko as stacked columns and warns', () => {
+    const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'mekko', data: {
+      categories: ['a', 'b'].map((id) => ({ id })),
+      series: [{ id: 'labor', values: [34, 40] }, { id: 'material', values: [30, 34] }],
+    }, options: { variant: 'bar', size: { width: 960, height: 540 } } } as never)));
+    expect(geometry.derived).toMatchObject({ columnTotals: { a: 64, b: 74 } });
+    expect(geometry.warnings.map((warning) => warning.code)).toContain('bar-mekko-extra-series');
+  });
+
   // Mekko Others must convert percent cells to amounts and keep the present width values when one width is missing.
   it('pools equivalent Mekko amounts, percents and fractions through their category bases', () => {
     const bases = [5000, 1000, 100];
