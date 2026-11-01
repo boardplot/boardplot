@@ -202,6 +202,13 @@ export function prepareLegendLayout<D, O extends ChartOptions, M extends object,
     if (Array.isArray(options?.footnotes) && options.footnotes.length > 0) {
       options = Object.assign({} as O, options, { [FOOTNOTE_REFS]: refs });
     }
+    // Grouped columns ignore seriesLabels (series-labels-ignored), so legend 'none' there
+    // leaves the series unnamed: the key policy decides as it does for an unset legend.
+    const columnOptions = options as { variant?: string; seriesLabels?: unknown } | undefined;
+    if (definition.type === 'column' && options?.legend === 'none' && columnOptions?.seriesLabels !== undefined
+      && (columnOptions.variant ?? 'grouped') === 'grouped') {
+      options = Object.assign({} as O, options, { legend: undefined });
+    }
     const automatic = names.size > 0 && !contentSized(definition.type, options) && panelTypeClass(options) === undefined
       && (options?.legend === undefined || options.legend === 'auto');
     if (automatic && (options as { [LEGEND_HEIGHT]?: LegendBudget })?.[LEGEND_HEIGHT] === undefined) {

@@ -3,6 +3,7 @@ import { getFixtures } from '../src/fixtures';
 import { render } from '../src/cli/render';
 import { claimsForChart } from '../src/core/claims';
 import { layoutColumn } from '../src/core/charts/column/layout';
+import { getChart } from '../src/core/registry';
 import type { LintWarning } from '../src/core/types/scene';
 
 // A stacked column chart names four layers at the right edge (invented data).
@@ -22,7 +23,8 @@ const spec = (right: number) => ({
 });
 
 describe('right-edge series names', () => {
-  // Grouped columns must keep their series identifiable when authored edge names cannot draw.
+  // Grouped columns must keep their series identifiable when authored edge names cannot draw,
+  // and the key must shrink to fit a fixed canvas that draws without it instead of refusing it.
   it('keys grouped series when their authored edge names cannot draw', () => {
     const data = {
       categories: [{ id: 'q1', label: 'Q1' }, { id: 'q2', label: 'Q2' }],
@@ -31,23 +33,32 @@ describe('right-edge series names', () => {
         { id: 'b', label: 'Beta', values: [8, 9] },
       ],
     };
+    const keyed = (d: unknown, o: object) => getChart('column')!.layout(d, o) as ReturnType<typeof layoutColumn>;
+    const crowded = {
+      categories: ['q1', 'q2', 'q3', 'q4'].map((id) => ({ id, label: id.toUpperCase() })),
+      series: ['Enterprise software licences', 'Cloud subscription revenue', 'Professional services fees',
+        'Support and maintenance', 'Training and certification', 'Partner and reseller income']
+        .map((label, i) => ({ id: `s${i}`, label, values: [10 + i, 12 + i, 14 + i, 15 + i] })),
+    };
+    const fixed = keyed(crowded, { variant: 'grouped', legend: 'none', seriesLabels: { at: 'left-edge' }, size: { width: 320, height: 180 } });
+    expect(fixed.legend?.items).toHaveLength(6);
     for (const at of ['left-edge', 'right-edge'] as const) {
       const options = { variant: 'grouped', legend: 'none', seriesLabels: { at } } as const;
-      const grouped = layoutColumn(data, options);
+      const grouped = keyed(data, options);
       expect(grouped.legend?.items.map(item => item.id)).toEqual(['a', 'b']);
       expect(grouped.scene.flatMap(node => node.t === 'text' && node.part === 'legendLabel' ? [node.lines.join(' ')] : []))
         .toEqual(['Alpha', 'Beta']);
       expect(grouped.legend!.rect.y + grouped.legend!.rect.h).toBeLessThanOrEqual(grouped.plot.y);
       expect(grouped.warnings.map(warning => warning.code)).toContain('series-labels-ignored');
-      const single = { ...data, series: [data.series[0]!, { ...data.series[1]!, role: 'reference' as const }] };
-      expect(layoutColumn(single, options).legend).toBeUndefined();
-      expect(layoutColumn(data, { ...options, seriesLabels: undefined }).legend).toBeUndefined();
+      const single = { ...data, series: [data.series[0]!] };
+      expect(keyed(single, options).legend).toBeUndefined();
+      expect(keyed(data, { ...options, seriesLabels: undefined }).legend).toBeUndefined();
       const panelOptions = { ...options, typeClass: 'M' as const };
-      expect(layoutColumn(data, panelOptions).legend).toBeUndefined();
-      const bottom = layoutColumn(data, { ...options, legend: 'bottom' });
+      expect(keyed(data, panelOptions).legend).toBeUndefined();
+      const bottom = keyed(data, { ...options, legend: 'bottom' });
       expect(bottom.legend!.rect.y).toBeGreaterThanOrEqual(bottom.plot.y + bottom.plot.h);
       for (const variant of ['stacked', 'stacked100'] as const) {
-        const stacked = layoutColumn(data, { ...options, variant });
+        const stacked = keyed(data, { ...options, variant });
         expect(stacked.legend).toBeUndefined();
         expect(stacked.labels.filter(label => label.id.startsWith('seriesEdge:') && !label.hidden)).toHaveLength(2);
         expect(stacked.warnings.map(warning => warning.code)).not.toContain('series-labels-ignored');

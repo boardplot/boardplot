@@ -951,10 +951,6 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
   const lostDetails = othersId === null ? undefined : restDetailsWarning(data, new Set(cats.map((c) => c.id)));
   if (lostDetails) warnings.push(lostDetails);
   const stackedLike = variant !== 'grouped';
-  if (!stackedLike && options.seriesLabels !== undefined && options.legend === 'none' && dataSeries.length > 1
-    && panelTypeClass(options) === undefined) {
-    options = { ...options, legend: 'top' };
-  }
   const { pyRef, uniformScenario } = columnScenarios(options, variant, cats, dataSeries, refSeries, warnings);
   const lines = columnLines(options, stackedLike, dataSeries, warnings, cats.some((cat) => cat.total100 !== undefined));
   const va = options.valueAxis ?? {};
