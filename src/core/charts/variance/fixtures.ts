@@ -1,7 +1,8 @@
 /**
  * Variance fixtures — examples cover the three variance forms:
  * ΔPY absolute columns with forced signs, ΔPL% relative
- * pins, and integrated AC columns with solid good/bad caps.
+ * pins, and integrated AC columns with good/bad caps, a shortfall cap drawn
+ * as an outline.
  * Torture set: REF ≤ 0 suppression, all-positive, all-negative,
  * lowerIsBetter cost series inverting tones, and 12 dense categories.
  * Every fixture auto-enters the invariant suite.
@@ -120,6 +121,29 @@ export const fixtures: Fixture<ChartData, VarianceOptions>[] = [
       },
       unit: '$m',
       source: 'Alpenrand BU reporting; forecast of 30 Jun 2026',
+    },
+  },
+  {
+    id: 'integrated-solid-shortfall',
+    title: 'Integrated variance with a solid shortfall cap (surface.shortfallCap)',
+    kind: 'example',
+    tags: ['feature:theme'],
+    data: {
+      categories: [
+        { id: 'jan', label: 'Jan' },
+        { id: 'feb', label: 'Feb' },
+        { id: 'mar', label: 'Mar' },
+      ],
+      series: [
+        { id: 'actual', label: 'Actual', values: [120, 90, 95] },
+        { id: 'plan', label: 'Plan', role: 'reference', scenario: 'PL', values: [100, 100, 110] },
+      ],
+    },
+    options: {
+      variant: 'integrated', variance: { of: 'actual', vs: 'plan' },
+      theme: { preset: 'standard', overrides: { surface: { shortfallCap: 'solid' } } },
+      title: 'Two of three months fall short of plan',
+      source: 'Illustrative data',
     },
   },
   {

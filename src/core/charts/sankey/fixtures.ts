@@ -93,12 +93,12 @@ const frame = (title: string): SankeyOptions => ({ title, source: 'Illustrative 
 export const fixtures: Fixture<SankeyData, SankeyOptions>[] = [
   {
     id: 'channel-journeys',
-    title: 'Channel to landing page to outcome: stage headers, two small channels folded into Others and listed in the note',
+    title: 'Channel to landing page to outcome: stage headers, two small channels folded into Others and listed in the note, Purchase highlighted',
     kind: 'example',
     tags: ['interaction'],
     hover: { owner: { categoryId: 'search' } },
     data: journeys,
-    options: { ...frame('Search brings the most visits that end in a purchase'), unit: 'k visits', notes: { show: ['note', 'disclosure'] }, size: { width: 960, height: 560 } },
+    options: { ...frame('Search brings the most visits that end in a purchase'), unit: 'k visits', highlight: 'purchase', notes: { show: ['note', 'disclosure'] }, size: { width: 960, height: 560 } },
   },
   {
     id: 'channel-journeys-node-values',
@@ -119,7 +119,7 @@ export const fixtures: Fixture<SankeyData, SankeyOptions>[] = [
     title: 'Customers moving between segments month to month: stage-qualified nodes, one segment order in every month',
     kind: 'example',
     data: migration,
-    options: { ...frame('Most customers stay in their segment from month to month'), unit: 'customers' },
+    options: { ...frame('Most customers stay in their segment from month to month'), unit: 'customers', linkColor: 'source' },
   },
   {
     id: 'sales-stages',

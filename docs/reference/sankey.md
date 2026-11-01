@@ -75,7 +75,7 @@ One form; its chart ID is `sankey`.
 
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
-| linkColor | string | `'source'`, `'target'` |  | Which end's node colour a link takes: 'source' (default) shows where flows come from, 'target' where they go. Nodes that colour no link draw in the neutral mark colour. |
+| linkColor | string | `'source'`, `'target'` |  | Which end's node colour a ribbon takes. Unset: every node and ribbon draws neutral, and a node with fill, colorRole or a highlight colours the ribbons it touches. 'source' shows where flows come from and 'target' where they go, each with one palette step per node; with a highlight, only the highlighted nodes keep a colour. Nodes that colour no link draw in the neutral mark colour. |
 | order | string | `'flow'`, `'data'` |  | 'flow' orders the nodes of each column for the fewest weighted ribbon crossings. 'data' keeps the order of data.nodes, then first seen in links. Default 'flow', and 'data' when stage-qualified ids repeat across stages, so segments keep one order every month. |
 | other | false \| object | `false` (or another value of its type) |  | Small nodes folded into one Other node per column, so a long tail stays readable; the note lists every folded node with its value. A column folds only when at least two nodes qualify. The Other node is as tall as its members together, so each column keeps its total. Default { share: 0.02 } without stages; off with stage-qualified links, where an object folds an id in every stage or in none. false keeps every node. |
 | other.share | number |  |  | Fold nodes under this share of their column's total; default 0.02. |
@@ -83,7 +83,7 @@ One form; its chart ID is `sankey`.
 | nodeValue | string | `'value'`, `'share'`, `'value-share'` |  | What a node prints in bold after its name: 'value' (default), 'share' of its column's total, or 'value-share' as "420 (38%)". A percent format applies to the shares. |
 | linkValue | string | `'none'`, `'large'` | `'large'` | Flow values on the ribbons: 'large' (default) prints the value of every ribbon at least one line high at its arriving end, right aligned to the next bar; thinner ribbons print nothing, and a value that would cover a node label is left out. 'none' prints node values only. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `labels`, `categoryLabels`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `topN`, `bandFraction`, `highlight`, `story`, `hatchStrength`, `colorblindSafe`, `rounding`.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `labels`, `categoryLabels`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `topN`, `bandFraction`, `story`, `hatchStrength`, `colorblindSafe`, `rounding`.
 
 ## Annotations
 
@@ -99,7 +99,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 
 | ID | Kind | Use case |
 |---|---|---|
-| channel-journeys | example | Channel to landing page to outcome: stage headers, two small channels folded into Others and listed in the note |
+| channel-journeys | example | Channel to landing page to outcome: stage headers, two small channels folded into Others and listed in the note, Purchase highlighted |
 | channel-journeys-node-values | example | Channel journeys with linkValue none: node values only, no value on the ribbons |
 | budget-departments | example | Budget to departments to cost types, links coloured by target |
 | segment-migration | example | Customers moving between segments month to month: stage-qualified nodes, one segment order in every month |

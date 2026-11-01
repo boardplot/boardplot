@@ -125,6 +125,32 @@ it('segment-migration fixture balances inflow and outflow at every middle node',
   for (const node of middle) expect([node.key, node.out]).toEqual([node.key, node.in]);
 });
 
+// Without a colour option every ribbon drew a palette step, so eight colours sat on one page and none meant anything.
+it('draws neutral by default, accents a highlighted node and its ribbons, and keeps the palette for an explicit linkColor', () => {
+  const data: SankeyData = {
+    links: [
+      { source: 'a', target: 'm', value: 30 }, { source: 'b', target: 'm', value: 20 },
+      { source: 'm', target: 'won', value: 15 }, { source: 'm', target: 'lost', value: 35 },
+    ],
+  };
+  const fills = (options: Record<string, unknown>) => {
+    const request = resolveChartRequest({ type: 'sankey', data, options: { title: 'Flows', size: { width: 640, height: 400 }, ...options } });
+    const geometry = requireGeometry(layoutResolvedRequest(request));
+    const part = (name: string) => geometry.scene.filter((node) => node.part === name).map((node) => JSON.stringify((node as { fill?: unknown }).fill));
+    return { nodes: part('sankeyNode'), links: part('sankeyLink'), warnings: geometry.warnings.map((w) => w.code) };
+  };
+  const plain = fills({});
+  expect(new Set(plain.nodes).size).toBe(1);
+  expect(new Set(plain.links).size).toBe(1);
+  const accent = fills({ highlight: 'won' });
+  expect(new Set(accent.nodes).size).toBe(2);
+  expect(new Set(accent.links).size).toBe(2);
+  expect(accent.warnings).not.toContain('highlight-unknown-id');
+  expect(fills({ highlight: 'nope' }).warnings).toContain('highlight-unknown-id');
+  expect(new Set(fills({ linkColor: 'source' }).links).size).toBeGreaterThan(2);
+  expect(new Set(fills({ linkColor: 'target', highlight: 'won' }).nodes).size).toBe(2);
+});
+
 // A sankey page printed node totals only, so a reader could not read which ribbon is the biggest; thin ribbons stay unlabelled, the only inflow of a node repeats the node label so it stays unlabelled, and linkValue 'none' brings the old look.
 it('prints the value of ribbons at least one line high at their arriving end', () => {
   const links = [{ source: 'a', target: 'c', value: 300 }, { source: 'b', target: 'c', value: 100 }, { source: 'a', target: 'd', value: 2 }, { source: 'c', target: 'e', value: 400 }];

@@ -287,21 +287,37 @@ function headerRow(
   // fallback, so a clipped edge year never prints "27" beside "2026".
   const fromFmt = rowFmtIndex === -1 ? fmts.length - 1 : rowFmtIndex;
   const cellFmts = fmts.slice(fromFmt, unit === 'year' ? fromFmt + 1 : undefined);
+  // A start-day cell names the day it starts on, a clipped first cell the chart's first day, flush left.
+  // A name may take `span` cells: its neighbours stay blank.
+  const nameOf = (i: number, span: number): string | undefined => {
+    const named = startDay ? dateFromDay(Math.max(dayNum(starts[i]!), d0Day)) : starts[i]!;
+    return cellFmts.map((f) => formatDate(named, f, lang)).find((candidate) => sized(candidate).width + 6 <= span * cells[i]!.w);
+  };
+  // A minor tier whose cells hold no name prints every k-th cell, k the least that holds one.
+  let stride = 1;
+  if (kindTag === 'minor') while (stride < starts.length && !starts.some((_, i) => i % stride === 0 && nameOf(i, stride) !== undefined)) stride++;
   let printed = false;
-  starts.forEach((s, i) => {
+  let prevRight = -Infinity;
+  const spill: SceneNode[] = [];
+  starts.forEach((_, i) => {
     const cell = cells[i]!;
     ctx.nodes.push({ t: 'rect', id: `header:${kindTag}:${i}`, rect: cell, fill: { token: 'background' }, stroke: { token: 'grid' }, strokeWidth: strokeToken(ctx.env.theme, 'hair'), owner: {}, part: 'headerCell' });
-    // A start-day cell names the day it starts on, a clipped first cell the chart's first day, flush left.
-    const named = startDay ? dateFromDay(Math.max(dayNum(s), d0Day)) : s;
-    const text = cellFmts.map((f) => formatDate(named, f, lang)).find((candidate) => fits(candidate, i));
+    const text = i % stride === 0 ? nameOf(i, stride) : undefined;
     if (text !== undefined) {
       printed = true;
       const { width: tw, height: th } = sized(text);
-      const name = { x: startDay ? cell.x + 6 : cell.x + cell.w / 2 - tw / 2, y: cell.y + (headerRowH - th) / 2, w: tw, h: th };
+      // A spanning name stays inside the tier.
+      const at = startDay ? cell.x + 6 : cell.x + cell.w / 2 - tw / 2;
+      const name = { x: stride > 1 ? Math.max(cells[0]!.x, Math.min(at, cells[cells.length - 1]!.x + cells[cells.length - 1]!.w - tw)) : at, y: cell.y + (headerRowH - th) / 2, w: tw, h: th };
+      // Clamping a last spanning name into the tier can push it onto the name before it: that name stays unprinted.
+      if (name.x < prevRight + 4) return;
+      prevRight = name.x + name.w;
       ctx.headNames.push(name);
-      ctx.nodes.push({ t: 'text', typeRole: 'axis', id: `header:${kindTag}:${i}:text`, x: name.x, y: name.y, lines: [text], align: 'start', font, ink, owner: {}, part: 'scale' });
+      // A name that spans cells lies over the next ones, so it paints after them.
+      (stride > 1 ? spill : ctx.nodes).push({ t: 'text', typeRole: 'axis', id: `header:${kindTag}:${i}:text`, x: name.x, y: name.y, lines: [text], align: 'start', font, ink, owner: {}, part: 'scale' });
     }
   });
+  ctx.nodes.push(...spill);
   if (kindTag === 'major' && !printed) {
     ctx.warnings.push({
       code: 'gantt-calendar-unlabelled',
