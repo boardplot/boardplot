@@ -360,6 +360,18 @@ it('draws readable tilemap codes in a fixed card before requiring full-width til
   expect(canDraw({ ...request, options: { ...request.options, belowMinimum: 'refuse' } }).ok).toBe(false);
 });
 
+// A narrow tile map printed codes alone and showed no value anywhere in the drawing, although every value fits its tile at the type floor.
+it('steps every tile of a narrow tile map down to the type floor so each value prints under its code', () => {
+  const f = getFixtures('tilemap').find(f => f.id === 'eu27-demand-versus-plan')!;
+  const geometry = measure({ type: 'tilemap', data: f.data, options: { ...f.options, size: { width: 400 } } }).geometry!;
+  const tiles = geometry.labels.filter(label => label.kind === 'category');
+  const valued = tiles.filter(label => label.lines?.length === 2);
+  expect(valued).toHaveLength(26);
+  expect(tiles.filter(label => label.hidden)).toEqual([]);
+  // 2 lines at the 11 px report floor and 1.2 line height, where the 12 px label size needs 28.8 px of a 30 px tile.
+  expect(new Set(valued.map(label => label.rect.h))).toEqual(new Set([26.4]));
+});
+
 // An authored dot-axis title must reach the drawing instead of refusing the whole chart.
 it('draws a dot value-axis title inside its fixed canvas', () => {
   const request = { type: 'dot', data: { categories: ['North', 'South'], series: [{ id: 'orders', values: [10, 20] }] },
@@ -1299,6 +1311,53 @@ describe('bubble matrix key height', () => {
     // The ids hash the request and the sizing attribute names the request's size; the drawing is the rest.
     const drawing = (svg: string) => svg.replace(/-[0-9a-f]{10}\b/g, '').replace(/ data-bp-sizing="[^"]*"/, '');
     expect(drawing(pinned.svg)).toBe(drawing(open.svg));
+  });
+});
+
+// Prevents a slide or print canvas a few percent under the class-size floor from being refused where the same chart
+// draws with a slightly smaller type that stays at the reader floor.
+describe('type steps toward the reader floor before a size refusal', () => {
+  const half = (options: object) => ({
+    type: 'bar',
+    data: { categories: ['FY21', 'FY22', 'FY23', 'FY24'], series: [{ id: 'cloud', label: 'Cloud', values: [100, 130, 160, 200] }, { id: 'license', label: 'License', values: [124, 118, 109, 97] }] },
+    options: { variant: 'grouped', title: 'Cloud doubles in three years while license declines', subtitle: { measure: 'Revenue', period: 'FY21–FY24' }, unit: '$m', source: 'Invented accounts', target: 'slide', size: { width: 360, height: 405 }, ...options },
+    annotations: [
+      { kind: 'cagr', from: { categoryId: 'FY21', seriesId: 'cloud' }, to: { categoryId: 'FY24', seriesId: 'cloud' } },
+      { kind: 'diff', mode: 'absolute', from: { categoryId: 'FY24', seriesId: 'license' }, to: { categoryId: 'FY24', seriesId: 'cloud' } },
+    ],
+  });
+  const run = (spec: object) => layoutResolvedRequest(resolveChartRequest(spec as never));
+
+  it('draws a slide slot 5 px under the floor, names the step and keeps every text at its floor', () => {
+    const result = run(half({})) as Geometry;
+    expect(result.refused).toBeUndefined();
+    expect(result.warnings.find(w => w.code === 'type-stepped')).toMatchObject({ severity: 'info', suggest: expect.stringContaining('360 × 410px') });
+    const sizes = result.scene.flatMap(n => n.t === 'text' ? [n.font.size] : []);
+    expect(Math.min(...sizes)).toBeGreaterThanOrEqual(11);
+  });
+
+  // Prevents measure() from refusing a canvas that render() and canDraw() draw after the type step, which hides the chart in a host that measures first.
+  it('measures a stepped canvas as drawn and a refused one as refused, like render and canDraw', () => {
+    for (const size of [{ width: 360, height: 405 }, { width: 360, height: 380 }, { width: 200, height: 405 }]) {
+      const spec = half({ size });
+      const refused = run(spec).refused === true;
+      expect(measure(spec as never).refused !== undefined).toBe(refused);
+      expect(canDraw(spec as never).ok).toBe(!refused);
+    }
+    const measured = measure(half({}) as never);
+    expect(measured.warnings.map(w => w.code)).toContain('type-stepped');
+  });
+
+  it('keeps the refusal when the author sets the text size or the refusal', () => {
+    expect(run(half({ textScale: 1 })).refused).toBe(true);
+    expect(run(half({ textSize: 18 })).refused).toBe(true);
+    expect(run(half({ belowMinimum: 'refuse' })).refused).toBe(true);
+  });
+
+  it('refuses with the stepped need when the stepped text does not fit either', () => {
+    const result = run(half({ size: { width: 200, height: 405 } }));
+    expect(result.refused).toBe(true);
+    expect(result.warnings[0]!.code).toBe('size-below-floor');
   });
 });
 
