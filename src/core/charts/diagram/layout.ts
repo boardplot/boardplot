@@ -49,7 +49,7 @@ import {
 import { circularLabelBand, circularRing, layoutPreset, strategyHouseBands } from './presets';
 import { layoutOrgChart, orgChartEligible } from './orgChart';
 import { issueTreeEligible, layoutIssueTreeCompact } from './issueTreeCompact';
-import { architectureEligible, layoutArchitecture } from './architecture';
+import { architectureEligible, architectureFill, layoutArchitecture } from './architecture';
 import { journeyEligible, layoutJourneyCompact } from './journeyCompact';
 import { layoutLinearCompact, linearEligible } from './linearCompact';
 import { layoutRoadmapCompact, roadmapEligible } from './roadmapCompact';
@@ -123,20 +123,18 @@ function layoutDiagramPass(
       suggest: `name it in data.key, for example { role: '${unkeyed[0]}', label: '…' }`,
     });
   }
-  const keyItems: LegendItemInput[] = data.key.map((entry, index) => entry.line !== undefined
+  const keyItems: LegendItemInput[] = data.key.map((entry, index) => {
     // A line style is keyed as the edges draw it.
-    ? { id: `key:${index}`, label: entry.label, paint: { token: 'leader' }, key: 'line', width: strokeToken(theme, 'rule'), ...(entry.line === 'solid' ? {} : { dash: edgeDash(theme, entry.line)!, lineCap: entry.line === 'dotted' ? 'round' as const : 'butt' as const }) }
-    : {
-      id: `key:${index}`,
-      label: entry.label,
-      // The fill the nodes of that role wear, as nodeFillPaint paints them.
-      paint: nodeFillPaint(
-        data.nodes.find((node) => node.role === entry.role && node.paletteKey === entry.paletteKey) ??
-          ({ id: `key:${index}`, kind: 'step', label: entry.label, shape: { kind: 'rectangle' }, role: entry.role, paletteKey: entry.paletteKey } as DiagramNode),
-        diagramPalette,
-        theme,
-      ),
-    });
+    if (entry.line !== undefined) return { id: `key:${index}`, label: entry.label, paint: { token: 'leader' }, key: 'line', width: strokeToken(theme, 'rule'), ...(entry.line === 'solid' ? {} : { dash: edgeDash(theme, entry.line)!, lineCap: entry.line === 'dotted' ? 'round' as const : 'butt' as const }) };
+    const node = data.nodes.find((item) => item.role === entry.role && item.paletteKey === entry.paletteKey) ??
+      ({ id: `key:${index}`, kind: 'step', label: entry.label, shape: { kind: 'rectangle' }, role: entry.role, paletteKey: entry.paletteKey } as DiagramNode);
+    if (options.variant === 'architecture') {
+      const { fill, ring } = architectureFill(node, data.lanes, diagramPalette);
+      return { id: `key:${index}`, label: entry.label, ...(ring ? { paint: { token: ring }, hollow: true } : { paint: fill }) };
+    }
+    // The fill the nodes of that role wear, as nodeFillPaint paints them.
+    return { id: `key:${index}`, label: entry.label, paint: nodeFillPaint(node, diagramPalette, theme) };
+  });
   const occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
   const frame = solveFrame(
     {

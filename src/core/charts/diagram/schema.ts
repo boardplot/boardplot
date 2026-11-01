@@ -255,6 +255,10 @@ export const diagramDataSchema = z
       name: 'diagram lane',
       keys: 'membership, partitions and scene identities',
     });
+    addDuplicateIdIssues(ctx, data.channels ?? [], ['channels'], {
+      name: 'diagram channel',
+      keys: 'labels and scene identities',
+    });
     const nodes = new Map(data.nodes.map((node) => [node.id, node]));
     const groups = new Set((data.groups ?? []).map((group) => group.id));
     const lanes = new Set((data.lanes ?? []).map((lane) => lane.id));

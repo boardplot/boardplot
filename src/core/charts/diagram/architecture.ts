@@ -455,8 +455,8 @@ function place(arrangement: Arrangement, gaps: ReadonlyMap<string, number>, env:
     for (let c = 0; c + 1 < band.cols; c++) fixed += gap(key('v', c), unitAfter.has(c) ? unitGap : innerGap);
     if (!lanesFlow) fixed += framed.length * 2 * pad;
     const avail = right - left - fixed;
-    const fair = avail / band.cols;
-    if (fair < 1) return undefined;
+    if (avail / band.cols < 1 && !force) return undefined;
+    const fair = Math.max(1, avail / band.cols);
     // A short pipeline keeps its boxes in proportion, and the gutters take the rest.
     const columnW = band.units.length > 1 || band.cols > 1 ? Math.min(fair, 60 * u) : fair;
     const spare = band.cols > 1 ? (avail - columnW * band.cols) / (band.cols - 1) : 0;
@@ -602,7 +602,8 @@ function laneLabelWidth(env: Env): number {
     const words = (lane.label ?? '').split(/\s+/).map((word) => measure(word, title).width);
     return Math.min(measure(lane.label ?? '', title).width, Math.max(...words, plot.w * 0.13));
   }));
-  return Math.ceil(widest) + 3 * u;
+  // A long unbroken word wraps inside the cap, so it cannot take the plot from the nodes.
+  return Math.ceil(Math.min(widest, plot.w * 0.25)) + 3 * u;
 }
 
 function laneHeader(label: string, x: number, y: number, width: number, env: Env, above?: boolean): Rect {
@@ -1043,6 +1044,8 @@ function lineProblems(order: readonly DiagramEdge[], polylines: readonly Point[]
   const problems: string[] = [];
   order.forEach((edge, index) => {
     const points = polylines[index]!;
+    // A track offset can push an end past its node's side, so the line would float.
+    if (!touches(points[0]!, rects.get(edge.source.nodeId)!) || !touches(points.at(-1)!, rects.get(edge.target.nodeId)!)) problems.push(edge.id);
     forSegments(points, (a, b) => {
       for (const [id, rect] of rects) {
         const own = id === edge.source.nodeId || id === edge.target.nodeId;
@@ -1062,6 +1065,8 @@ function lineProblems(order: readonly DiagramEdge[], polylines: readonly Point[]
   });
   return problems;
 }
+
+const touches = (point: Point, rect: Rect) => point.x >= rect.x && point.x <= rect.x + rect.w && point.y >= rect.y && point.y <= rect.y + rect.h;
 
 function segmentHits(a: Point, b: Point, rect: Rect): boolean {
   const x0 = Math.min(a.x, b.x);
@@ -1259,23 +1264,26 @@ function laneRamp(index: number, count: number): Paint {
   return tint === 0 ? { token: 'total' } : { token: 'total', tint };
 }
 
+/** The fill of a node, with the ring of one that sits on the background. The diagram key shows the same paints. */
+export function architectureFill(node: DiagramNode, lanes: readonly { id: string }[], palette: DiagramPalette): { fill: Paint; ring?: 'axis' | 'grid' } {
+  const plain = node.role === undefined || node.role === 'primary';
+  const lane = lanes.findIndex((item) => item.id === node.laneId);
+  if (plain && lane >= 0) return { fill: laneRamp(lane, lanes.length) };
+  if (plain || node.role === 'secondary' || node.role === 'muted') return { fill: { token: 'background' }, ring: node.role === 'muted' ? 'grid' : 'axis' };
+  // The focal node stays apart from the solid lane, which shares its colour in some themes.
+  if (node.role === 'accent' && lane >= 0) return { fill: { token: 'focus', theme: { kind: 'focus-apart', apartFrom: [{ token: 'total' }] } } };
+  return { fill: palette.fill(node.role, node.paletteKey) };
+}
+
 function emit(arrangement: Arrangement, geometry: Geometry, routed: Routed, env: Env, palette: DiagramPalette, theme: Theme): OrgChartLayout {
   const { data, name } = env;
   const fills = new Map<string, Paint>();
   const rings = new Map<string, { stroke: Paint; width: number }>();
   const hair = strokeToken(theme, 'hair');
-  const laneIndex = new Map(data.lanes.map((lane, index) => [lane.id, index]));
   for (const node of data.nodes) {
-    const plain = node.role === undefined || node.role === 'primary';
-    const lane = node.laneId === undefined ? undefined : laneIndex.get(node.laneId);
-    if (plain && lane !== undefined) fills.set(node.id, laneRamp(lane, data.lanes.length));
-    else if (plain || node.role === 'secondary' || node.role === 'muted') {
-      fills.set(node.id, { token: 'background' });
-      rings.set(node.id, { stroke: { token: node.role === 'muted' ? 'grid' : 'axis' }, width: hair });
-    } else if (node.role === 'accent' && lane !== undefined) {
-      // The focal node stays apart from the solid lane, which shares its colour in some themes.
-      fills.set(node.id, { token: 'focus', theme: { kind: 'focus-apart', apartFrom: [{ token: 'total' }] } });
-    } else fills.set(node.id, palette.fill(node.role, node.paletteKey));
+    const { fill, ring } = architectureFill(node, data.lanes, palette);
+    fills.set(node.id, fill);
+    if (ring) rings.set(node.id, { stroke: { token: ring }, width: hair });
   }
 
   for (const [id, label] of routed.labels) {
