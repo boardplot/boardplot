@@ -438,6 +438,19 @@ it('draws a compact pie only when the radius and the explode fit, and names a si
   expect(draw('full-explode-envelope', repair).refused).toBeUndefined();
 });
 
+// Prevents a pie with labels off from leaving its colours unnamed and from growing taller than the labelled pie.
+it('keeps the height of a pie with labels off and names its slices in a key', () => {
+  const fixture = getFixtures('pie').find(f => f.id === 'doughnut-device-revenue')!;
+  const draw = (extra: object) => layoutResolvedRequest(resolveChartRequest({
+    type: 'pie', data: fixture.data, options: { ...fixture.options, ...extra } } as never)) as unknown as Geometry;
+  const labelled = draw({});
+  const off = draw({ labels: false });
+  expect(off.size.height).toBe(labelled.size.height);
+  expect(off.legend?.items.map(item => item.id)).toEqual(['mobile', 'pc', 'tablet']);
+  expect(off.labels.filter(label => !label.hidden)).toEqual([]);
+  expect(draw({ labels: false, legend: 'none' }).legend).toBeUndefined();
+});
+
 // Prevents a narrow diagram card from drawing one sibling group's frame inside another's (false nesting),
 // from refusing a width-only request at its probe height, and from dropping or cutting an edge label without a note.
 it('judges a narrow diagram card by its card and group text at its content height', () => {
@@ -1140,4 +1153,31 @@ it('keeps a cycle step secondary text inside its node', () => {
     const node = result.marks.nodes.find(mark => mark.id === label.owner.pointId)!;
     expect(label.rect.w).toBeLessThanOrEqual(node.contentRect.w);
   }
+});
+
+// Prevents a bubble matrix with few wide columns from reserving a size key as tall as a column is wide: at a 380 pt
+// height the key left the rows no room and the chart refused, though the bubbles it draws are small.
+describe('bubble matrix key height', () => {
+  const stages = ['Seed', 'Series A', 'Series B', 'Growth'];
+  const sizes = [[4, 12, 30, 0], [3, 9, 22, 48], [0, 8, 26, 0], [2, 14, 0, 0], [0, 0, 35, 70], [5, 10, 18, 0], [2, 6, 20, 41], [6, 16, 0, 0]];
+  const spec = (size: { width: number; height?: number; unit?: string }) => ({
+    type: 'heatmap',
+    data: {
+      categories: stages.map((label, i) => ({ id: `c${i}`, label })),
+      series: sizes.map((row, i) => ({ id: `s${i}`, label: `Company ${i + 1}`, values: row.map(v => (v > 0 ? v : null)), sizes: row })),
+    },
+    options: { variant: 'bubble', scale: 'discrete', breaks: [0, 50, 70, 100], bubble: { sizeLabel: 'Invested, EUR m', colorLabel: 'Invested, EUR m' }, title: 'Invested capital by stage', source: 'Invented ledger', target: 'slide', size },
+  });
+
+  it('draws at 380 pt of height', () => {
+    expect(canDraw(spec({ width: 960, height: 380, unit: 'pt' }) as never)).toMatchObject({ ok: true });
+  });
+
+  it('keeps a content-fit height: the pinned render at the height it returns is the same SVG', () => {
+    const open = render({ spec: spec({ width: 960 }), return: ['svg'] }).body as { svg: string; size: { width: number; height: number } };
+    const pinned = render({ spec: spec({ width: open.size.width, height: open.size.height }), return: ['svg'] }).body as { svg: string };
+    // The ids hash the request and the sizing attribute names the request's size; the drawing is the rest.
+    const drawing = (svg: string) => svg.replace(/-[0-9a-f]{10}\b/g, '').replace(/ data-bp-sizing="[^"]*"/, '');
+    expect(drawing(pinned.svg)).toBe(drawing(open.svg));
+  });
 });

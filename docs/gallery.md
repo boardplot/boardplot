@@ -1,6 +1,6 @@
 # Gallery
 
-Boardplot has 37 chart types, 83 variants and 569 example specs. This page shows one or two charts of each type except `creative` (early alpha), drawn by `boardplot render` from the spec under it with the default theme. Companies, products, sources and numbers are invented. Every spec is a fixture that ships with the package: `boardplot fixtures --type <type> --id <id>` returns it, and [fixtures.md](reference/fixtures.md) lists all of them.
+Boardplot has 37 chart types, 83 variants and 572 example specs. This page shows one or two charts of each type except `creative` (early alpha), drawn by `boardplot render` from the spec under it with the default theme. Companies, products, sources and numbers are invented. Every spec is a fixture that ships with the package: `boardplot fixtures --type <type> --id <id>` returns it, and [fixtures.md](reference/fixtures.md) lists all of them.
 
 - [Most common](#most-common): [column](#column), [bar](#bar), [line](#line), [dimswitch](#dimswitch), [table](#table), [waterfall](#waterfall)
 - [Variance, bridges and KPIs](#variance-bridges-and-kpis): [kpi](#kpi), [variance](#variance), [bullet](#bullet), [pvm](#pvm)
@@ -2427,7 +2427,7 @@ Row by column matrix. [Reference](reference/heatmap.md)
     },
     "source": "Illustrative capability assessment, June 2026",
     "highlight": ["digital-channels", "data-analytics"],
-    "footnotes": ["Shaded rows: the digital and analytics capabilities the title names."]
+    "footnotes": ["Highlighted rows: the digital and analytics capabilities the title names."]
   }
 }
 ```
@@ -2586,7 +2586,7 @@ Stage funnel with conversion rates. [Reference](reference/funnel.md)
 
 Variable-width stacked columns. [Reference](reference/mekko.md)
 
-![mekko chart: Acme leads in the two largest markets but trails everywhere in Asia](gallery/mekko-stacked100-market-map.svg)
+![mekko chart: Acme leads in the two largest markets but trails in APAC and LatAm](gallery/mekko-stacked100-market-map.svg)
 
 <details><summary>Spec: fixture <code>stacked100-market-map</code></summary>
 
@@ -2617,7 +2617,7 @@ Variable-width stacked columns. [Reference](reference/mekko.md)
     "variant": "stacked100",
     "ridge": "acme",
     "highlight": "acme",
-    "title": "Acme leads in the two largest markets but trails everywhere in Asia",
+    "title": "Acme leads in the two largest markets but trails in APAC and LatAm",
     "subtitle": {
       "company": "Acme Corp",
       "measure": "Market share by region",
@@ -4531,16 +4531,12 @@ Diverging bars for survey scales. [Reference](reference/likert.md)
     "summary": "net",
     "sortBy": "net",
     "labelDensity": "full",
-    "notes": { "show": ["note", "disclosure"] },
+    "notes": { "show": ["note", "method", "disclosure"] },
     "title": "Engagement survey — agreement by statement",
-    "subtitle": {
-      "measure": "Share of responses",
-      "period": "FY25 pulse",
-      "scenarios": ["Neutral split across the centre line"]
-    },
+    "subtitle": { "measure": "Share of responses", "period": "FY25 pulse" },
     "legend": "bottom",
     "source": "Employee pulse survey, n = 900 per statement",
-    "requiredNotes": { "neutral": false, "base": false }
+    "requiredNotes": { "base": false }
   }
 }
 ```

@@ -114,3 +114,13 @@ it('keeps the total when a source folds into an Other node that has inflow', () 
     expect(geometry.a11y.desc).toContain('total 102');
   }
 });
+
+// The segment-migration example let customers appear and vanish between months: a middle node drew the larger of its inflow and outflow.
+it('segment-migration fixture balances inflow and outflow at every middle node', async () => {
+  const { getFixtures } = await import('../src/fixtures');
+  const fixture = getFixtures('sankey').find((item) => item.id === 'segment-migration')!;
+  const { derived } = draw(fixture.data as SankeyData);
+  const middle = derived.nodes.filter((node) => node.column > 0 && node.column < derived.stages.length - 1);
+  expect(middle.length).toBeGreaterThan(0);
+  for (const node of middle) expect([node.key, node.out]).toEqual([node.key, node.in]);
+});

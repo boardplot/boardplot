@@ -65,7 +65,7 @@ export const pieOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions(
     .enum(['categorical', 'sequential'])
     .optional()
     .describe(
-      "Slice colour strategy. Defaults to 'categorical' for up to four nominal slices without topN/palette; otherwise 'sequential'.",
+      "Slice colour strategy. Default 'sequential': one ramp of the first series colour in slice order, the first slice strongest, at every slice count. 'categorical' gives each slice its own theme hue. A highlight keeps its accent and steps the other slices into grey.",
     ),
   othersShade: z
     .enum(['quietest', 'apart'])
