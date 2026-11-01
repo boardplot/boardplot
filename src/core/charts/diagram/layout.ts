@@ -208,9 +208,9 @@ function layoutDiagramPass(
     ?? (typeof rawOptions.size === 'object' && rawOptions.size.height !== undefined);
   // The compact org chart and issue tree lay out and route themselves.
   const org = architectureEligible(options) ? layoutArchitecture(data, options, plot, { name: stepFont, text: labelFont, title: laneFont }, measure, u, diagramPalette, theme, badgeSizes)
-    : orgChartEligible(data, options) ? layoutOrgChart(data, plot, labelFont, measure, u)
+    : orgChartEligible(data, options) ? layoutOrgChart(data, plot, labelFont, measure, u, fixedHeight)
     : issueTreeEligible(data, options) ? layoutIssueTreeCompact(data, plot, labelFont, measure, u, headingWeight(theme))
-    : journeyEligible(data, options) ? layoutJourneyCompact(data, options, plot, labelFont, axisFont, measure, u, diagramPalette, headingWeight(theme))
+    : journeyEligible(data, options) ? layoutJourneyCompact(data, options, plot, labelFont, axisFont, measure, u, diagramPalette, headingWeight(theme), fixedHeight)
     : linearEligible(data, options) ? layoutLinearCompact(data, plot, stepFont, badgeFont, captionFont, measure, u, badgeText,
       size.width >= 720 ? 2 * stepFont.size : 0, fixedHeight)
     : roadmapEligible(data, options) ? layoutRoadmapCompact(data, options, plot, labelFont, laneFont, measure, u, diagramPalette, theme) : undefined;

@@ -1,0 +1,4 @@
+### Changed / may need action
+
+- An org chart and a customer journey on a canvas with a set height, such as a full slide, now grow the gaps between their levels into the spare height instead of floating in the middle with empty bands above and below. The gaps grow up to 2.6 times, using 80% of the spare height, and stop growing when the spare height is used. The boxes keep their size. A canvas without a height, or one with no spare height, draws as before. The same rule applies to the stacked org chart and to the journey with phases in rows. At 888 x 396 pt the org chart now uses about 66% of the plot height where it used about 42%.
+- To bring back the old centred block, give the chart no height (a report or dashboard target that grows to its content), or set a height close to the natural height of the chart. There is no option for the old gaps.
