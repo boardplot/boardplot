@@ -159,11 +159,11 @@ function segmentLabels(ctx: LabelCtx, geometry: MekkoMarkGeometry): void {
       : [];
     const hl = env.highlights.has(c.id) || env.highlights.has(s.id);
     const priority = val.priority ?? PRIORITY.interior + Math.min(99, Math.abs(v)) + (hl ? PRIORITY.highlightBonus : 0);
-    const candidates = [...(typeof val.labelOverride === 'string' ? gutterSeat : []), ...clearOfRules(topSeat(stackSegmentCandidates(rect, tsize, fits, paints.inside(s, val, c, si, v), { baselineY: area.y0 })), rect, rules)
+    const candidates = [...gutterSeat, ...clearOfRules(topSeat(stackSegmentCandidates(rect, tsize, fits, paints.inside(s, val, c, si, v), { baselineY: area.y0 })), rect, rules)
       // A value escaping the first column into the axis gutter reads as a tick.
       .filter((candidate) => (typeof val.labelOverride === 'string' || candidate.insideFill !== undefined) && (!area.showAxis || candidate.rect.x >= area.plot.x))
       .map(candidate => ({ ...candidate, insidePaint: paints.cell(s, val, c, si, v), insidePattern: paints.pattern(s, val) }))];
-    const noInsideSeat = typeof val.labelOverride !== 'string' && !candidates.some(candidate => candidate.insideFill !== undefined);
+    const noInsideSeat = typeof val.labelOverride !== 'string' && gutterSeat.length === 0 && !candidates.some(candidate => candidate.insideFill !== undefined);
     ctx.requests.push({
       id: `segment:${s.id}:${c.id}`,
       kind: 'segment',

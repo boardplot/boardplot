@@ -59,7 +59,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | series[].id | string | yes | Series identity used by keyed options, annotations and legend entries. |
 | series[].label | string |  | Displayed series name; defaults to the series id. |
 | series[].values | (cell \| { categoryId, value: cell })[] | yes | Values in category order, or keyed entries pairing a categoryId with its value. |
-| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). Read only on the variance.vs series, where it names the tier (ΔPL). Every data value draws as the actual, so name a forecast or plan value in its category label or a footnote. |
+| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). Read only on the variance.vs series, where it names the tier (ΔPL). Every data value draws as the actual, so name a forecast or plan value in its category label or a footnote. In a grid tier, a category whose values are all FC draws hatched, like a partial one. |
 | series[].direction | string |  | Whether increases are favorable; defaults to higherIsBetter for directional comparisons. One of `'higherIsBetter'`, `'lowerIsBetter'`. |
 | series[].role | string |  | Data series or comparison-only reference series; references are excluded from the main plotted data. One of `'data'`, `'reference'`. |
 | series[].colorRole | string |  | Theme color role of the integrated actual columns and their key when this series is the actual and sets no fill; no effect in the other modes or on a reference series. One of good, bad, warn, neutral, neutralLight, highlight, total, others; series-N for step N of the theme ramp, 1-based (series-2 is color.series[1]); or status-<key> for a theme status colour. A hex colour goes in fill. |

@@ -829,13 +829,24 @@ export function layoutVariance(
     occupied.claim(rect, 'label', { categoryId });
   };
 
+  /**
+   * A running category hatches its marks. In a grid tier a forecast category
+   * does too, so the tier matches the column above it; it adds no partial-period
+   * key or note. A forecast category is one whose measured values are all FC.
+   */
+  const forecastIds = new Set<Id>(!isVarianceTier(options) ? [] : cats.filter((_, ci) => {
+    const measured = (ofSeries ? [ofSeries] : dataSeries).filter((s) => s.vals[ci]!.v !== null);
+    return measured.length > 0 && measured.every((s) => (s.vals[ci]!.scenario ?? s.scenario) === 'FC');
+  }).map((c) => c.id));
+  const unfinished = (c: Category): boolean => c.partial === true || forecastIds.has(c.id);
+
   cats.forEach((c, ci) => {
     const bx = band.position(ci);
     const bw = band.bandwidth;
     const cx = band.center(ci);
     const owner = { categoryId: c.id };
     const mv = measuredVal(ci);
-    const pattern = partialPattern(c, undefined);
+    const pattern = partialPattern({ partial: unfinished(c) }, undefined);
     const partialFill = (fill: Paint) => pattern
       ? { pattern, hatchGround: hatchGroundPaint(fill) }
       : {};
@@ -906,8 +917,8 @@ export function layoutVariance(
         cx,
         cy: yv,
         r: pin.r,
-        fill: c.partial ? { token: 'background' } : paint,
-        ...(c.partial ? { stroke: paint } : {}),
+        fill: unfinished(c) ? { token: 'background' } : paint,
+        ...(unfinished(c) ? { stroke: paint } : {}),
         owner,
         part: 'head',
         display: { value: pctSigned(d, ci) },
