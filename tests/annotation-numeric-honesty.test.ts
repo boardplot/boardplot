@@ -117,6 +117,9 @@ it('reads step amounts and explicit stack totals while keeping level comparisons
     [{ kind: 'abs', at: 'subtotal' }, '120'],
     [{ kind: 'abs', at: 'ending' }, '120'],
     [{ kind: 'delta', at: 'gain', vs: 0 }, '+30'],
+    // A delta against another anchor compares running levels, so it must not subtract a total from a step amount (it read 10 minus 100 here).
+    [{ kind: 'delta', at: 'drop', vs: 'opening' }, '+20'],
+    [{ kind: 'delta', at: 'gain', vs: 'opening' }, '+30'],
     [{ kind: 'diff', from: 'gain', to: 'drop', mode: 'absolute' }, '−10'],
     [{ kind: 'cagr', from: 'gain', to: 'drop' }, '−7.7% p.a.'],
   ];
