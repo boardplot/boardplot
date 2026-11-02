@@ -521,6 +521,10 @@ function glyphScene(
   const cy = rect.y + rect.h / 2;
   const r = rect.w / 2;
   const display = { state: description };
+  // A solid glyph can take the colour of the region under it (the darkest
+  // class of a ramp in the ink colour): a page-colour ring keeps its outline
+  // in every theme, as the status disc and the pie's slice edges already do.
+  const ring = { stroke: { token: 'background' } as Paint, strokeWidth: strokeToken(_theme, 'mark') };
   if (glyph.kind === 'status') {
     return [{
       t: 'circle',
@@ -529,7 +533,7 @@ function glyphScene(
       cy,
       r,
       fill: tonePaint(glyph.status),
-      stroke: { token: 'background' }, strokeWidth: strokeToken(_theme, 'mark'),
+      ...ring,
       owner,
       part: 'overlayGlyph',
       display,
@@ -538,16 +542,18 @@ function glyphScene(
   if (glyph.kind === 'marker') {
     const paint = tonePaint(glyph.tone);
     if ((glyph.shape ?? 'circle') === 'circle') {
-      return [{ t: 'circle', id, cx, cy, r, fill: paint, owner, part: 'overlayGlyph', display }];
+      return [{ t: 'circle', id, cx, cy, r, fill: paint, ...ring, owner, part: 'overlayGlyph', display }];
     }
     if (glyph.shape === 'square') {
-      return [{ t: 'rect', id, rect, fill: paint, owner, part: 'overlayGlyph', display }];
+      return [{ t: 'rect', id, rect, fill: paint, ...ring, owner, part: 'overlayGlyph', display }];
     }
     return [{
       t: 'path',
       id,
       d: `M${fmt(cx)} ${fmt(rect.y)}L${fmt(rect.x + rect.w)} ${fmt(cy)}L${fmt(cx)} ${fmt(rect.y + rect.h)}L${fmt(rect.x)} ${fmt(cy)}Z`,
       fill: paint,
+      stroke: ring.stroke,
+      width: ring.strokeWidth,
       owner,
       part: 'overlayGlyph',
       display,
@@ -617,7 +623,7 @@ function glyphScene(
       display,
     }];
     if (glyph.value >= 1) {
-      nodes.push({ t: 'circle', id, cx, cy, r, fill: paint, owner, part: 'overlayGlyph', display });
+      nodes.push({ t: 'circle', id, cx, cy, r, fill: paint, ...ring, owner, part: 'overlayGlyph', display });
     } else if (glyph.value > 0) {
       nodes.push({
         t: 'path',
@@ -647,6 +653,8 @@ function glyphScene(
         cy,
         r,
         fill: paint,
+        stroke: ring.stroke,
+        strokeWidth: strokeToken(_theme, 'rule'),
         owner,
         part: 'overlayGlyph',
         display,

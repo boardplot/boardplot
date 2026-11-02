@@ -6,7 +6,9 @@ import '../src/core/charts';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { requireGeometry } from '../src/core/sizing';
 import type { LineMarks } from '../src/core/charts/line/layout';
-import type { Geometry } from '../src/core/types/scene';
+import { contrastRatio } from '../src/core/color';
+import { paintColor, resolveTheme } from '../src/core/theme';
+import type { Geometry, Paint } from '../src/core/types/scene';
 
 // A linear value axis misplaces values by orders of magnitude when a log axis is requested.
 it('draws decade ticks evenly on a log axis and refuses zero', () => {
@@ -279,4 +281,24 @@ it('keeps the baseline tick and the value-line tick on a shown line value axis',
   };
   expect(tickValues({ min: 41 }, [])).toContain(41);
   expect(tickValues({}, [{ kind: 'valueLine', value: 37.5, label: 'Goal' }])).toContain(37.5);
+});
+
+// The Bridge palette paints the top stacked series in the ink colour, and a
+// value line drawn across that area in ink vanished ('Benchmark 100' pointed at nothing).
+it('keeps a value line legible where it crosses a stacked area of its own colour', () => {
+  const request = resolveChartRequest({
+    type: 'line',
+    data: {
+      categories: ['jan', 'feb', 'mar'],
+      series: [{ id: 'new', values: [42, 45, 48] }, { id: 'returning', values: [60, 62, 61] }],
+    },
+    options: { variant: 'stacked-area', size: { width: 720 } },
+    annotations: [{ kind: 'valueLine', value: 100, label: 'Benchmark' }],
+  } as never);
+  const geometry = requireGeometry(layoutResolvedRequest(request)) as Geometry;
+  const theme = resolveTheme(undefined);
+  const area = geometry.scene.find((node) => node.id === 'mark:area:returning') as { fill: Paint };
+  const pieces = geometry.scene.filter((node) => node.part === 'valueLine' && (node.t === 'line' || node.t === 'path')) as { stroke: Paint }[];
+  expect(pieces.length).toBeGreaterThan(0);
+  for (const piece of pieces) expect(contrastRatio(paintColor(theme, piece.stroke), paintColor(theme, area.fill))).toBeGreaterThan(3);
 });
