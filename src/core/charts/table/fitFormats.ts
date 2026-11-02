@@ -123,6 +123,8 @@ function shorterSpec(spec: NumberFormatSpec, figures?: readonly number[]): Numbe
   // 100,000. Where nothing shorter keeps them, the format stays and the clip warning says so.
   const maxAbs = figures === undefined ? Infinity : Math.max(0, maxOf(figures));
   figures ??= [];
+  // A figure count is exact: nothing shorter says the same, and the clip warning names the cell.
+  if (spec.significantDigits !== undefined) return undefined;
   if (spec.decimals > 0) {
     // A bare '1.234' reads as grouping, so four decimals go straight to two.
     const decimals = spec.decimals === 4 && spec.thousandsSep === '' ? 2 : spec.decimals - 1;
@@ -355,7 +357,7 @@ export function fitTableFormats(
       const cap = caps.get(unitOf(row, spec));
       // Three bare decimals read as a thousands group ('1.234'), so a cap of
       // three is left alone, as `shorterSpec` never writes one.
-      if (cap === undefined || spec.decimals <= cap || (cap === 3 && spec.thousandsSep === '')) continue;
+      if (cap === undefined || spec.significantDigits !== undefined || spec.decimals <= cap || (cap === 3 && spec.thousandsSep === '')) continue;
       // The shared precision stops where this row's smallest figure would lose its two digits.
       const decimals = floorDecimals(rowFigures.get(rowId) ?? [], spec, spec.magnitude, cap);
       if (decimals >= spec.decimals) continue;
@@ -415,6 +417,7 @@ export function fitTableFormats(
       const example = rowExample(authored, decimal);
       if (row === undefined || example === undefined || authored.calc !== undefined || authored.fitFormat === false) continue;
       const spec = parseFormatExample(example);
+      if (spec.significantDigits !== undefined) continue;
       const key = familyKey(row, spec);
       families.set(key, [...(families.get(key) ?? []), { id, spec }]);
     }
