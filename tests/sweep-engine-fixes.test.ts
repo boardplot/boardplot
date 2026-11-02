@@ -706,4 +706,28 @@ describe('chart layout edge cases', () => {
     const caps = geometry.scene.filter((node: { part?: string }) => node.part === 'cap').map((node: { id: string; pattern?: string }) => [node.id, node.pattern]);
     expect(caps).toEqual([['mark:cap:up', 'hollow'], ['mark:cap:down', 'hollow']]);
   });
+
+  // `labels: false` took the only scale with the value labels: histogram bin edges, bullet band names
+  // and edge numbers, and every number of a pyramid. A pinned pyramid height that holds the rows but not
+  // the axis under them still draws, without the axis and with a warning that names the height that keeps it.
+  it('labels false keeps histogram bin edges, bullet band names and a pyramid value axis', () => {
+    const draw = (type: string, id: string, size?: { width: number; height: number }) => {
+      const fixture = getFixtures(type).find((f) => f.id === id)!;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const geometry = layoutResolvedRequest(resolveChartRequest({ type, data: structuredClone(fixture.data), options: { ...structuredClone(fixture.options ?? {}), labels: false, ...(size ? { size } : {}) } } as any) as any) as any;
+      const texts: string[] = geometry.scene.flatMap((node: { t: string; lines?: string[] }) => (node.t === 'text' ? node.lines ?? [] : []));
+      return { geometry, texts, shown: geometry.labels.filter((l: { hidden?: unknown }) => !l.hidden).map((l: { text: string }) => l.text) };
+    };
+    expect(draw('histogram', 'cycle-time-days').shown).toEqual(expect.arrayContaining(['1', '7', '13']));
+    expect(draw('bullet', 'four-band-neutral-ladder').shown).toEqual(expect.arrayContaining(['Poor', 'Leading', '$0', '$50']));
+    const pyramid = draw('pyramid', 'workforce-tenure-gender');
+    expect(pyramid.geometry.axes.filter((axis: { axis: string }) => axis.axis === 'x')).toHaveLength(2);
+    expect(pyramid.texts).toContain('10%');
+    const tight = draw('pyramid', 'workforce-tenure-gender', { width: 900, height: 240 });
+    expect(tight.geometry.warnings.map((w: { code: string }) => w.code)).toContain('value-axis-dropped');
+    expect(tight.geometry.axes.filter((axis: { axis: string }) => axis.axis === 'x')).toHaveLength(0);
+    expect(tight.geometry.scene.length).toBeGreaterThan(0);
+    const keep = Number(/at least (\d+)px/.exec(tight.geometry.warnings.find((w: { code: string }) => w.code === 'value-axis-dropped').suggest)![1]);
+    expect(draw('pyramid', 'workforce-tenure-gender', { width: 900, height: keep }).geometry.axes.filter((axis: { axis: string }) => axis.axis === 'x')).toHaveLength(2);
+  });
 });
