@@ -8,7 +8,7 @@
 
 import { addWhereAbsent, toJsonPointer } from './diagnostics/jsonPatch';
 import { withValueLabelDefaults } from './charts/band/valueSelection';
-import { IGNORED_OPTION_KEYS, LEGEND_REFUSED, schemaRefusedKeys, valueAxisRefusal } from './schema/capability';
+import { IGNORED_OPTION_KEYS, LEGEND_REFUSED, schemaRefusedKeys, valueAxisOnly, valueAxisRefusal } from './schema/capability';
 import type { LintWarning } from './types/scene';
 
 type Scalar = string | number | boolean;
@@ -162,9 +162,13 @@ export function ignoreChartSettings<C extends { options?: unknown; data?: unknow
       message: `${dotted} has no effect on ${type} and is ignored.`,
       suggest: `Remove ${dotted}.`, fix: [{ op: 'remove', path: toJsonPointer(field) }] });
   };
-  const refused = schemaRefusedKeys(type);
-  for (const key of refused.options) {
-    if (IGNORED_OPTION_KEYS.has(key) && chart.options[key] !== undefined) ignore(['options', key]);
+  // Most requests carry none of these settings: leave before any table is read.
+  const authored = Object.keys(chart.options);
+  if (!authored.some((key) => IGNORED_OPTION_KEYS.has(key) || key === 'valueAxis' || key === 'legend' || key === 'valueLabels')) return { chart: next as C, warnings };
+  if (authored.some((key) => IGNORED_OPTION_KEYS.has(key))) {
+    for (const key of schemaRefusedKeys(type).options) {
+      if (IGNORED_OPTION_KEYS.has(key) && chart.options[key] !== undefined) ignore(['options', key]);
+    }
   }
   const axis = chart.options.valueAxis;
   if (isRecord(axis)) {
@@ -174,7 +178,7 @@ export function ignoreChartSettings<C extends { options?: unknown; data?: unknow
       ignore(['options', 'valueAxis', key], axis[key] === false ? 'info' : 'warn');
       dropped = true;
     }
-    if ((dropped || refused.options.includes('valueAxis')) && Object.keys(readAt(next, ['options', 'valueAxis']) as object).length === 0) {
+    if ((dropped || valueAxisOnly(type)?.keys.length === 0) && Object.keys(readAt(next, ['options', 'valueAxis']) as object).length === 0) {
       next = setAt(next, ['options', 'valueAxis'], undefined);
     }
   }
