@@ -19,6 +19,7 @@ import type { Category } from '../../types/data';
 import type { LabelDensity, MekkoOptions, ValueAxisOptions } from '../../types/options';
 import type { AxisGeometry, Paint, SceneNode } from '../../types/scene';
 import type { Theme } from '../../types/theme';
+import type { NumberFormatSpec } from '../../formatSpec';
 import type { MekkoMarks } from './layout';
 
 export interface NormVal {
@@ -58,6 +59,8 @@ export interface MekkoEnv {
   widthFmt: (v: number) => string;
   pctFmt: (p: number) => string;
   authoredPctFmt: (p: number) => string;
+  /** A percent cell of a unit stack: the percent format when authored, else the plain number precision with a % sign. */
+  cellPctFmt: (p: number) => string;
   highlights: ReadonlySet<Id>;
   density: LabelDensity;
   va: ValueAxisOptions;
@@ -133,6 +136,8 @@ export interface MekkoArea {
   showTotals: boolean;
   showAxis: boolean;
   axisFmt: (v: number) => string;
+  /** Percent cells without an authored format: the ticks take the digits that keep them apart. */
+  axisSpec?: NumberFormatSpec;
   xEdge: number[];
   dateNumericTicks: boolean;
   catPlan: CategoryRowPlan;

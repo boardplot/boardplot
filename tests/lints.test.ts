@@ -456,6 +456,36 @@ describe('mechanical lints', () => {
     }
   });
 
+  // A share chart kept "in $m" over its percent labels, and a mekko kept "in %" over amounts or dropped a percent cell's sign.
+  it('names the percent in the unit line of a share chart and keeps a mekko percent cell as a percent', () => {
+    const categories = [{ id: 'east', label: 'East' }, { id: 'west', label: 'West' }];
+    const series = [{ id: 'core', label: 'Core', values: [60, 40] }, { id: 'growth', label: 'Growth', values: [20, 40] }];
+    const body = (type: string, options: Record<string, unknown>, data: unknown = { categories, series }) => render({ spec: {
+      type, data, options: { title: 'West sells more growth than East', unit: '$m', subtitle: { measure: 'Revenue' }, ...options },
+    }, return: ['svg'] }).body as { warnings: { code: string; fix?: unknown }[]; svg: string };
+    const text = (svg: string) => svg.replace(/<[^>]+>/g, '|');
+    const column = text(body('column', { variant: 'stacked100' }).svg);
+    expect(column).toContain('in %');
+    expect(column).not.toContain('in $m');
+    // An absolute figure on the chart keeps the unit.
+    expect(text(body('bar', { variant: 'stacked100', grandTotalLabels: true }).svg)).toContain('in $m');
+    expect(text(body('column', { variant: 'stacked100', labels: { segment: ['absolute'] } }).svg)).toContain('in $m');
+    // An authored clause stays as written, warns, and the fix drops only the clause.
+    const authored = body('column', { variant: 'stacked100', subtitle: { measure: 'Revenue in $m' } });
+    expect(text(authored.svg)).not.toContain('in %');
+    expect(authored.warnings.find((warning) => warning.code === 'share-unit-conflict')?.fix).toEqual([{ op: 'replace', path: '/options/subtitle/measure', value: 'Revenue' }]);
+    const line = { categories: [{ id: 'y1', label: '2022' }, { id: 'y2', label: '2023' }], series };
+    expect(text(body('line', { valueAxis: { percent: true } }, line).svg)).toContain('in %');
+    const items = { items: [{ id: 'a', label: 'A', value: 70 }, { id: 'b', label: 'B', value: 30 }] };
+    expect(text(body('treemap', { cellValue: 'share' }, items).svg)).toContain('in %');
+    const margin = { categories, series: [{ id: 'margin', label: 'Margin', values: [{ pct: 12.5 }, { pct: 3.2 }] }] };
+    expect(text(body('mekko', { variant: 'stacked', unit: '%' }, margin).svg)).toMatch(/12\.5%[\s\S]*3\.2%/);
+    const amounts = { categories, series: series.map((entry) => ({ ...entry, unit: 'USD bn' })) };
+    expect(body('mekko', { variant: 'stacked', unit: '% of market' }, amounts).warnings.map((warning) => warning.code)).toContain('percent-unit-over-amounts');
+    // A format without a % sign changes no label of a 100% stack.
+    expect(body('column', { variant: 'stacked100', format: '0.0' }).warnings.map((warning) => warning.code)).toContain('format-ignored');
+  });
+
   // a tick step over an axis break left one side with only its end tick (0 under a 150-750 break at step 200).
   it('tick-step-ignored warns when a step leaves one side of an axis break only its end tick', () => {
     const fixture = getFixtures('column').find((f) => f.id === 'shared-absolute-outlier')!;

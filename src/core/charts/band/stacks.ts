@@ -1,5 +1,6 @@
 import type { StringsSpec } from '../../types/options';
 import { localeStrings } from '../../strings';
+import { cleanSum } from '../../geometry';
 /**
  * Data-unit stack accumulation shared by column and bar charts.
  *
@@ -64,7 +65,6 @@ export function stackParts(
 export function accumulateStack(values: readonly (number | null)[], ranked = false): StackExtents {
   let positive = 0;
   let negative = 0;
-  let total = 0;
   let hasValue = false;
   const segments: (StackSegmentExtent | null)[] = values.map(() => null);
   const order = values.map((_, index) => index);
@@ -73,14 +73,13 @@ export function accumulateStack(values: readonly (number | null)[], ranked = fal
     const value = values[index] ?? null;
     if (value === null) continue;
     hasValue = true;
-    total += value;
     const start = value >= 0 ? positive : negative;
     const end = start + value;
     if (value >= 0) positive = end;
     else negative = end;
     segments[index] = { index, value, start, end };
   }
-  return { segments, positive, negative, total, hasValue };
+  return { segments, positive, negative, total: cleanSum(values.map((value) => value ?? 0)), hasValue };
 }
 
 /**
@@ -139,6 +138,21 @@ export function grandTotalRequested(authored: boolean | undefined, variant: Stac
     });
   }
   return false;
+}
+
+/**
+ * A 100 % stack prints shares. A format without a % sign belongs to the values,
+ * so it changes nothing unless an absolute figure prints too.
+ */
+export function warnShareFormatIgnored(variant: StackVariant, format: string | undefined, shareExample: string | undefined, valuesPrint: boolean, warnings: LintWarning[]): void {
+  if (variant !== 'stacked100' || !format || shareExample || valuesPrint) return;
+  warnings.push({
+    code: 'format-ignored',
+    severity: 'warn',
+    message: `format '${format}' has no % sign, and a 100% stack prints shares only — the format changes no label`,
+    suggest: "give the shares a percent format such as '0.0%', or drop the format",
+    field: ['options', 'format'],
+  });
 }
 
 /**
@@ -348,6 +362,32 @@ export function mixedSignsWarning(
 
 const seriesScoped = (annotation: { from?: unknown; to?: unknown }): boolean =>
   [annotation.from, annotation.to].some((ref) => typeof ref === 'object' && ref !== null && 'seriesId' in ref);
+
+/**
+ * A valueLine with no number is the automatic mean of the plotted totals. On a
+ * 100% axis that mean reads "Average 100%" whenever every plotted column totals
+ * 100, which says nothing, so the line is dropped with a warning. When a
+ * column's total100 is larger than its parts, or authored percent cells add to
+ * less than 100, the mean is a real number below 100 and the line stays. A
+ * numeric valueLine and every other annotation pass, and a retained annotation
+ * keeps its original id.
+ */
+export function withoutShareMean<O extends { annotations?: Annotation[] }>(options: O, mean: number | undefined, warnings: LintWarning[]): O {
+  const all = options.annotations;
+  if (mean === undefined || Math.abs(mean - 100) > 1e-6 || !all?.some((a) => a.kind === 'valueLine' && typeof a.value !== 'number')) return options;
+  const kept = all.map((a, i) => ({ ...a, id: defaultAnnotationId(a, i) })).filter((a) => {
+    if (a.kind !== 'valueLine' || typeof a.value === 'number') return true;
+    warnings.push({
+      code: 'valueline-unsupported-stacked100',
+      severity: 'warn',
+      owner: { annotationId: a.id },
+      message: `valueLine '${a.id}' dropped: the mean of the plotted columns on a 100% axis is 100%, which states nothing`,
+      suggest: 'Give a share between 0 and 100 as the valueLine value, or draw the mean of the totals on the absolute chart (variant: stacked).',
+    });
+    return false;
+  });
+  return { ...options, annotations: kept };
+}
 
 /**
  * Drops the annotations that state a number a 100% axis does not show. Every

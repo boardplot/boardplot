@@ -53,7 +53,7 @@ export const bulletDataSchema = z
 export const bulletOptionsSchema = baseOptionsSchema
   .safeExtend(refusedBaseOptions('bullet'))
   .safeExtend({
-    labels: baseOptionsSchema.shape.labels.describe("False hides value, target-value and delta labels. Row names remain. category: false hides row names. density: compact draws no labels."),
+    labels: baseOptionsSchema.shape.labels.describe("False hides value, target-value and delta labels. Row names, band names and band-edge numbers remain. category: false hides row names. density: compact draws no labels."),
     axisTitles: primaryAxisTitleSchema('under the tick row of the shared-scale axis valueAxis.show draws, ending at its right end'),
     sharedScale: z
       .union([z.boolean(), z.literal('percentOfTarget')])
