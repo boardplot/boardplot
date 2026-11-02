@@ -29,7 +29,7 @@ import { usePrinting, watchPrint } from './printLayout';
 import { rebindable } from './linkedBinding';
 import { useExportLink, type DrawnChart, type ExportLink } from './exportLink';
 import { checkedIdPrefix, IdPrefixContext, useScopedId } from './idPrefix';
-import { frameSize, RefusalBoundary } from './RefusalBoundary';
+import { asSize, frameSize, RefusalBoundary, type PerTypeSizeOptions } from './RefusalBoundary';
 import { LayoutRefusal, LoadingPlaceholder, SizePlaceholder, type RefusalProps } from './SizePlaceholder';
 import { chartRefusals, isSizeDependentRefusal, optionRefusals, refusalFindings } from '../core/schema/refusals';
 import { useRefusalSettle } from './useRefusalSettle';
@@ -182,8 +182,11 @@ export interface TableRowLabelLead {
   render: (row: ResolvedRow) => ReactNode;
 }
 
-export type TableChartProps = OptionsInput<Omit<TableOptions, 'columnVisibility' | 'inlineVisibility' | 'size' | 'sort'>> & ContainerSizeOptions & RefusalProps & RowsProps & {
+export type TableChartProps = OptionsInput<Omit<TableOptions, 'columnVisibility' | 'inlineVisibility' | 'size' | 'sort'>> & PerTypeSizeOptions & RefusalProps & RowsProps & {
   data: TableData;
+  /** Applied to a wrapper around the table. */
+  className?: string;
+  style?: CSSProperties;
   /** Explicit target wins over the provider. Defaults to report. */
   target?: RenderTarget;
   /** Canonical findings and observed display findings, once per warning state. */
@@ -486,7 +489,8 @@ function columnVisibilityDefaults(table: ResolvedTable, authored?: Record<Id, bo
  * before the check.
  */
 export function createTableChart(checkKeys?: OptionKeyCheck, linked?: readonly DeferredName[]) {
-  function GatedTable(props: TableChartProps): ReactElement {
+  type NormalizedTableProps = Omit<TableChartProps, 'size' | 'fallbackSize'> & ContainerSizeOptions;
+  function GatedTable(props: NormalizedTableProps): ReactElement {
     // Rows answer before the table resolves: a table has no data while the rows chunk loads or after it refuses them.
     const { rows, columns, onRowsReading, ...table } = props;
     const gate = useRowsGate({ type: 'table', data: table.data }, { rows, columns, onRowsReading }, table);
@@ -494,9 +498,16 @@ export function createTableChart(checkKeys?: OptionKeyCheck, linked?: readonly D
   }
   // A bad value draws the refusal card in the table's own frame and never unmounts the host's root (RefusalBoundary).
   function TableChart(props: TableChartProps): ReactElement {
-    const { size, fallbackSize, target, title, theme } = props as TableChartProps & { title?: unknown; theme?: ThemeRef };
-    return <RefusalBoundary watch={props} fallback={(finding) => <LayoutRefusal refusals={[finding]} theme={theme}
-      size={frameSize(size === 'container' ? fallbackSize : size as Parameters<typeof frameSize>[0], target)} options={typeof title === 'string' ? { title } : {}} />}><GatedTable {...props} /></RefusalBoundary>;
+    const { className, style, size, fallbackSize, ...rest } = props;
+    const { target, title, theme } = props as TableChartProps & { title?: unknown; theme?: ThemeRef };
+    const normalizedSize = useMemo(() => asSize(size), [size]);
+    const normalizedFallback = useMemo(() => asSize(fallbackSize) as ContainerSizeOptions['fallbackSize'], [fallbackSize]);
+    const table = <RefusalBoundary watch={props} size={normalizedSize} fallbackSize={normalizedFallback} target={target} theme={theme}
+      fallback={(finding) => <LayoutRefusal refusals={[finding]} theme={theme}
+        size={frameSize(normalizedSize === 'container' ? normalizedFallback : normalizedSize, target)} options={typeof title === 'string' ? { title } : {}} />}>
+      <GatedTable {...rest} size={normalizedSize} fallbackSize={normalizedFallback} />
+    </RefusalBoundary>;
+    return className !== undefined || style !== undefined ? <div className={className} style={style}>{table}</div> : table;
   }
   // The registry type this component renders, stated by the component itself —
   // the same stamp createChartComponent writes, so the public API check resolves
@@ -510,7 +521,7 @@ export function createTableChart(checkKeys?: OptionKeyCheck, linked?: readonly D
 /** The table without the unknown-key check, for code that links this module directly. */
 export const TableChart = createTableChart();
 
-function DrawnTable({ table: props, checkKeys, linked }: { table: TableChartProps; checkKeys: OptionKeyCheck | undefined; linked: readonly DeferredName[] | undefined }): ReactElement {
+function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChartProps, 'size' | 'fallbackSize'> & ContainerSizeOptions; checkKeys: OptionKeyCheck | undefined; linked: readonly DeferredName[] | undefined }): ReactElement {
   const compiledRequest = useContext(TableFloorRequestContext);
   const originalFloorRequest = compiledRequest?.request;
   const {
