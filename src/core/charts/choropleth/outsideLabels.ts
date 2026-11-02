@@ -4,6 +4,11 @@ import type { FittedGeoRegion, GeoPoint } from '../../geo/types';
 
 /** Test against the drawn outlines, not the map's 4 px occupancy strips. */
 export function outsideLabelGuard(regions: readonly FittedGeoRegion[]) {
+  interface Query {
+    x: number; y: number; w: number; h: number;
+    fromX?: number; fromY?: number; toX?: number; toY?: number;
+    fits: boolean;
+  }
   const shapes = regions.map(region => {
     let pointCount = 0, minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     const polygons = region.polygons.map(polygon => polygon.map(ring => ring.map(([x, y]) => {
@@ -20,7 +25,7 @@ export function outsideLabelGuard(regions: readonly FittedGeoRegion[]) {
     const bounds = { x, y,
       w: pointCount ? maxX - x : 2 * marker.radius,
       h: pointCount ? maxY - y : 2 * marker.radius };
-    return { id: region.id, polygons, rings, outlineDistance, marker, bounds, maxY, queries: new Map<string, boolean>() };
+    return { id: region.id, polygons, rings, outlineDistance, marker, bounds, maxY, queries: new Map<number, Query>() };
   });
   type Shape = (typeof shapes)[number];
   const shapesById = new Map<string, Shape>();
@@ -55,14 +60,17 @@ export function outsideLabelGuard(regions: readonly FittedGeoRegion[]) {
       return end - cuts[i]! > 1e-8 && contains(shape, { x: from.x + t * dx, y: from.y + t * dy });
     });
   };
-  // Numeric keys retain signed zero. Each cache belongs to this fitted guard.
-  const numberKey = (value: number) => Object.is(value, -0) ? '-0' : String(value);
+  // Keep exact coordinates, including signed zero, without formatting a string for every seat.
+  // The numeric key only selects a cache entry; compare every coordinate before reusing it.
+  // A collision replaces an entry and can only cost a cache hit.
   return (id: string, rect: Rect, from?: GeoPoint, to?: GeoPoint): boolean => {
     const own = shapesById.get(id)!;
-    const key = `${numberKey(rect.x)},${numberKey(rect.y)},${numberKey(rect.w)},${numberKey(rect.h)};` +
-      (from && to ? `${numberKey(from[0])},${numberKey(from[1])},${numberKey(to[0])},${numberKey(to[1])}` : '');
+    const fromX = from && to ? from[0] : undefined, fromY = from && to ? from[1] : undefined;
+    const toX = from && to ? to[0] : undefined, toY = from && to ? to[1] : undefined;
+    const key = rect.x + 8192 * rect.y;
     const cached = own.queries.get(key);
-    if (cached !== undefined) return cached;
+    if (cached && Object.is(cached.x, rect.x) && Object.is(cached.y, rect.y) && Object.is(cached.w, rect.w) && Object.is(cached.h, rect.h)
+      && Object.is(cached.fromX, fromX) && Object.is(cached.fromY, fromY) && Object.is(cached.toX, toX) && Object.is(cached.toY, toY)) return cached.fits;
     const ownDistance = distance(own, rect);
     const routeBox = from && to ? { x: Math.min(from[0], to[0]), y: Math.min(from[1], to[1]),
       w: Math.abs(to[0] - from[0]), h: Math.abs(to[1] - from[1]) } : undefined;
@@ -75,7 +83,7 @@ export function outsideLabelGuard(regions: readonly FittedGeoRegion[]) {
       return !routeBox || boxGap(shape.bounds, routeBox) > 0 ||
         !crossed(shape, { x: from![0], y: from![1] }, { x: to![0], y: to![1] });
     });
-    own.queries.set(key, fits);
+    own.queries.set(key, { x: rect.x, y: rect.y, w: rect.w, h: rect.h, fromX, fromY, toX, toY, fits });
     return fits;
   };
 }

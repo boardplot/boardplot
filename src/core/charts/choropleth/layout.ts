@@ -102,6 +102,27 @@ type RegionLabelSolveResult = ReturnType<typeof solveLabels> & {
   fontByLabel: Map<string, FontSpec>;
 };
 
+type CalloutLabel = Pick<RegionLabelSolveResult['placed'][number], 'id' | 'kind' | 'hidden' | 'rect' | 'backing' | 'leader'>;
+interface CalloutPass {
+  claims: OccupiedClaim[];
+  plot: Rect;
+  labels: CalloutLabel[];
+  calls: { id: string; text: string; font: FontSpec; candidates: LabelRequest['candidates'] }[];
+}
+// A guard belongs to one fitted map. Probes and drawing can repeat the same callout search.
+const calloutPasses = new WeakMap<ReturnType<typeof outsideLabelGuard>, CalloutPass>();
+
+function sameCalloutRect(a: Rect | undefined, b: Rect | undefined): boolean {
+  return a === b || (a !== undefined && b !== undefined && Object.is(a.x, b.x) && Object.is(a.y, b.y)
+    && Object.is(a.w, b.w) && Object.is(a.h, b.h));
+}
+
+function sameCalloutClaim(a: OccupiedClaim, b: OccupiedClaim): boolean {
+  return a.kind === b.kind && a.part === b.part && sameCalloutRect(a.rect, b.rect)
+    && (a.polygon === b.polygon || (a.polygon !== undefined && b.polygon !== undefined && a.polygon.length === b.polygon.length
+      && a.polygon.every((point, i) => Object.is(point.x, b.polygon![i]!.x) && Object.is(point.y, b.polygon![i]!.y))));
+}
+
 const MAP_PAD = 8;
 /** A plot this much wider than tall is a wide slot: the one where an unnamed key may stand beside the map. */
 const WIDE_SLOT = 1.6;
@@ -1071,11 +1092,33 @@ function solveRegionLabels(
   // a probe's answer does not depend on the labels after its last region.
   let escalated = unresolved.length;
   if (reads) while (escalated > 0 && !reads(unresolved[escalated - 1]!.plan.region.id)) escalated--;
+  // Compare the occupied geometry once, after inline placement. Reuse stops at the first
+  // different earlier label or request. The solver still places and claims every label.
+  const previous = calloutPasses.get(outsideFits);
+  const calloutPass: CalloutPass | undefined = escalated > 0 && ctx.measure === defaultMeasurer
+    ? { claims: occupied.snapshot(), plot: { ...ctx.plot }, labels: [], calls: [] } : undefined;
+  let samePass = calloutPass !== undefined && previous !== undefined && sameCalloutRect(previous.plot, ctx.plot)
+    && previous.claims.length === calloutPass.claims.length
+    && previous.claims.every((claim, i) => sameCalloutClaim(claim, calloutPass.claims[i]!));
+  const inlineCount = result.placed.length;
   const solvedLeaders: { placed: ReturnType<typeof solveLabels>['placed'][number]; region: FittedGeoRegion }[] = [];
   for (const item of unresolved.slice(0, escalated)) {
     const callout = item.plan.variants.find((variant) => variant.callout);
     if (callout) {
-      const candidates = callout.callout!(occupied, ctx.plot);
+      if (calloutPass) for (let i = calloutPass.labels.length; i < result.placed.length - inlineCount; i++) {
+        const label = result.placed[inlineCount + i]!;
+        const old = previous?.labels[i];
+        samePass = samePass && old !== undefined && old.id === label.id && old.kind === label.kind && old.hidden === label.hidden
+          && sameCalloutRect(old.rect, label.rect) && sameCalloutRect(old.backing, label.backing) && old.leader?.d === label.leader?.d;
+        calloutPass.labels.push({ id: label.id, kind: label.kind, hidden: label.hidden, rect: { ...label.rect },
+          backing: label.backing ? { ...label.backing } : undefined, leader: label.leader ? { ...label.leader } : undefined });
+      }
+      const cached = calloutPass && previous?.calls[calloutPass.calls.length];
+      samePass = samePass && cached !== undefined && cached.id === item.plan.region.id && cached.text === callout.request.text
+        && Object.keys(callout.font).length === Object.keys(cached.font).length
+        && (Object.keys(callout.font) as (keyof FontSpec)[]).every(key => Object.is(callout.font[key], cached.font[key]));
+      const candidates = samePass ? cached!.candidates : callout.callout!(occupied, ctx.plot);
+      calloutPass?.calls.push({ id: item.plan.region.id, text: callout.request.text, font: { ...callout.font }, candidates });
       const next = solveLabels([{ ...callout.request, candidates }], occupied, solveCtx);
       const placed = next.placed[0];
       if (placed && !placed.hidden) {
@@ -1103,6 +1146,7 @@ function solveRegionLabels(
       solvedLeaders.push({ placed, region: item.plan.region });
     }
   }
+  if (calloutPass) calloutPasses.set(outsideFits, calloutPass);
   routeAndClaimLeaders(solvedLeaders, result.placed, ctx.plot, occupied, outsideFits);
   return result;
 }
@@ -2501,8 +2545,8 @@ function polygonsArea(polygons: GeoPoint[][][]): number {
 
 /** Where a callout's leader stops: the label box's nearest point, 2 px short of it. */
 function calloutTerminus(from: GeoPoint, rect: Rect): GeoPoint {
-  const box = { x: rect.x - 2, y: rect.y - 2, w: rect.w + 4, h: rect.h + 4 };
-  return [Math.max(box.x, Math.min(from[0], box.x + box.w)), Math.max(box.y, Math.min(from[1], box.y + box.h))];
+  const x = rect.x - 2, y = rect.y - 2;
+  return [Math.max(x, Math.min(from[0], x + (rect.w + 4))), Math.max(y, Math.min(from[1], y + (rect.h + 4)))];
 }
 
 /**
@@ -2526,23 +2570,29 @@ function calloutCandidates(
   const h = font.size * (font.lineHeight ?? 1.2);
   const from: GeoPoint = [region.anchor.x, region.anchor.y];
   const candidates: LabelRequest['candidates'] = [];
+  const rect = { x: 0, y: 0, w, h };
+  const right = plot.x + plot.w, bottom = plot.y + plot.h;
+  const codeOnly = !text.includes(' ');
   // The claim that blocked the last seat tried. The next seat out often meets
   // it again, and a box it meets is taken whatever else is near (a measure
   // runs this search some 15,000 times).
   let blocker: OccupiedClaim | undefined;
-  const taken = (claim: OccupiedClaim) => { blocker = claim; return false; };
+  const taken = (claim: OccupiedClaim) => { blocker = claim; return true; };
+  const skip = (claim: OccupiedClaim) => !taken(claim);
+  const crowdsCode = (claim: OccupiedClaim) => claim.kind === 'label' && boxGap(rect, claim.rect) < 8 &&
+    Math.abs(rect.y + h / 2 - claim.rect.y - claim.rect.h / 2) < Math.min(h, claim.rect.h) / 2;
   for (let k = 0; k < CALLOUT_DIRECTIONS; k++) {
     const angle = (2 * Math.PI * k) / CALLOUT_DIRECTIONS;
     const dx = Math.cos(angle);
     const dy = Math.sin(angle);
     const reach = Math.abs(dx) * (w / 2) + Math.abs(dy) * (h / 2);
     for (let d = Math.max(2, region.anchor.clearance); d <= 2 * CALLOUT_MAX_LEADER; d += Math.max(CALLOUT_STEP, d / 8)) {
-      const rect = { x: from[0] + dx * (d + reach) - w / 2, y: from[1] + dy * (d + reach) - h / 2, w, h };
-      if (rect.x < plot.x || rect.y < plot.y || rect.x + rect.w > plot.x + plot.w || rect.y + rect.h > plot.y + plot.h) break;
+      rect.x = from[0] + dx * (d + reach) - w / 2;
+      rect.y = from[1] + dy * (d + reach) - h / 2;
+      if (rect.x < plot.x || rect.y < plot.y || rect.x + rect.w > right || rect.y + rect.h > bottom) break;
       if (blocker && !blocker.polygon && rectsOverlap(blocker.rect, rect, 2)) continue;
-      if (occupied.hits(rect, 2, taken)) continue;
-      if (!text.includes(' ') && occupied.hitsWhich(rect, 8).some(claim => claim.kind === 'label' && boxGap(rect, claim.rect) < 8 &&
-        Math.abs(rect.y + h / 2 - claim.rect.y - claim.rect.h / 2) < Math.min(h, claim.rect.h) / 2)) continue;
+      if (occupied.some ? occupied.some(rect, 2, taken) : occupied.hits(rect, 2, skip)) continue;
+      if (codeOnly && (occupied.some ? occupied.some(rect, 8, crowdsCode) : occupied.hitsWhich(rect, 8).some(crowdsCode))) continue;
       const to = calloutTerminus(from, rect);
       if (!outsideFits(region.id, rect, from, to)) break;
       const length = Math.hypot(to[0] - from[0], to[1] - from[1]);
@@ -2573,7 +2623,7 @@ function calloutCandidates(
       if (!crossesLabel) {
         candidates.push({
           slot: `callout${k}`,
-          rect,
+          rect: { ...rect },
           penalty: Math.round(length + (length > CALLOUT_MAX_LEADER ? 1000 : 0)),
         });
       }
