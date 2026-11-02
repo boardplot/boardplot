@@ -57,16 +57,18 @@ const CELL = 16;
  * every claim. Any point two overlapping rects share lies in a cell of both.
  * A cell's key is x * 65536 + y.
  */
-function cellRange(rect: Rect, pad: number): [number, number, number, number] | undefined {
+function cellRange(rect: Rect, pad: number, range: [number, number, number, number]): [number, number, number, number] | undefined {
   const x0 = Math.floor((rect.x - pad) / CELL), x1 = Math.floor((rect.x + rect.w + pad) / CELL);
   const y0 = Math.floor((rect.y - pad) / CELL), y1 = Math.floor((rect.y + rect.h + pad) / CELL);
   // NaN fails every comparison, so it scans every claim too.
   if (!(x0 <= x1 && y0 <= y1 && (x1 - x0 + 1) * (y1 - y0 + 1) <= 256 && Math.max(-x0, x1, -y0, y1) < 1 << 15)) return undefined;
-  return [x0, x1, y0, y1];
+  range[0] = x0; range[1] = x1; range[2] = y0; range[3] = y1;
+  return range;
 }
 
 export function createOccupiedIndex(_plot: Rect): OccupiedIndex {
   const rects: OccupiedClaim[] = [];
+  const scratchRange: [number, number, number, number] = [0, 0, 0, 0];
   const released = new Set<number>();
   // Claims by grid cell, so a query tests the claims near it, not every
   // claim (a map claims its region fills as a thousand strips). Claims off
@@ -94,14 +96,15 @@ export function createOccupiedIndex(_plot: Rect): OccupiedIndex {
     try { return visitClaims(rect, pad, visit); } finally { visiting = false; }
   };
   const visitClaims = (rect: Rect, pad: number, visit: (i: number) => boolean): boolean => {
-    const range = cellRange(rect, pad);
+    const range = cellRange(rect, pad, scratchRange);
     if (range === undefined) {
       for (let i = 0; i < rects.length; i++) if (visit(i)) return true;
       return false;
     }
+    // Read the scratch range before a callback can add a claim to the same index.
+    const [x0, x1, y0, y1] = range;
     stamp++;
     for (let w = 0; w < wide.length; w++) if (visit(wide[w]!)) return true;
-    const [x0, x1, y0, y1] = range;
     for (let x = x0; x <= x1; x++) {
       for (let y = y0; y <= y1; y++) {
         const cell = cells.get(x * 65536 + y);
@@ -121,7 +124,7 @@ export function createOccupiedIndex(_plot: Rect): OccupiedIndex {
       const claimed: OccupiedClaim = part === undefined ? { rect: { ...rect }, kind, owner } : { rect: { ...rect }, kind, owner, part };
       if (polygon !== undefined) claimed.polygon = polygon.map((point) => ({ ...point }));
       const index = rects.push(claimed) - 1;
-      const range = cellRange(rect, 0);
+      const range = cellRange(rect, 0, scratchRange);
       if (range === undefined) wide.push(index);
       else {
         const [x0, x1, y0, y1] = range;

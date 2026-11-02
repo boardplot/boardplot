@@ -232,6 +232,13 @@ export interface AnnotatePassInput {
    * format): values print with '%' and their differences in percentage points.
    */
   percentLevels?: boolean;
+  /**
+   * The chart's axis is 100% and its percent `format` sets the printed shares. An
+   * annotation that states a source value (abs, delta) does not take that
+   * format, so a value of 8 never prints as "8.0%" and a difference of 2 never
+   * as "+2.0pp". A value line states a share and keeps it.
+   */
+  sharesFormat?: boolean;
   /** The value-line scale is percent; other annotations may use source amounts. */
   valueLinePercentLevels?: boolean;
   /** The value-line axis keeps its percent or percentage-point unit under an authored format. */
@@ -475,6 +482,9 @@ export function runAnnotatePass(input: AnnotatePassInput): AnnotatePassResult {
   const differenceFormat = input.differenceFormat ?? (input.format ? differenceExample(input.format) : undefined);
   // '+' once and never on a value that prints as zero.
   const differenceSpec = differenceFormat ? { ...exampleSpec(differenceFormat, locale), signed: true } : undefined;
+  // A percent format on a 100% axis names the shares; the annotations that state source values print without it.
+  const sharesOnly = input.sharesFormat === true && percent && input.format !== undefined;
+  const valueFmt = plain(input.percentLevels === true ? '%' : '', false);
   const run: AnnotateRun = {
     fmt,
     statFmt: input.format ? (v: number) => formatStatWithSpec(v, exampleSpec(input.format!, locale)) : fmt,
@@ -496,7 +506,8 @@ export function runAnnotatePass(input: AnnotatePassInput): AnnotatePassResult {
     // prints a difference or a rate. The copy shares the run's glyph map; the
     // counters are written through `nid` and `addLegDeficit`, which hold `run`.
     const secondaryLine = ann.kind === 'valueLine' && ann.axis === 'secondary';
-    const referenceFormat = secondaryLine ? input.secondaryFormat : input.format;
+    const valuesNotShares = sharesOnly && ann.kind !== 'valueLine';
+    const referenceFormat = secondaryLine ? input.secondaryFormat : valuesNotShares ? undefined : input.format;
     const anchorFormat = 'at' in ann && ann.at !== undefined ? input.resolve(ann.at)?.format
       : ann.kind === 'diff' ? (input.resolve(ann.to)?.format ?? input.resolve(ann.from)?.format)
         : ann.kind === 'valueLine' ? secondaryLine ? input.secondaryFormat : seriesMeanFormat(input, ann) : undefined;
@@ -511,7 +522,10 @@ export function runAnnotatePass(input: AnnotatePassInput): AnnotatePassResult {
         ? (v: number) => formatWithSpec(v, { ...exampleSpec(referenceFormat, locale), prefix: '', suffix: referenceUnit })
         : plain(referenceUnit, false) }
       : ann.kind === 'valueLine' && !referenceFormat && (secondaryLine || referencePercent !== percent)
-      ? { ...run, fmt: plain(referencePercent ? '%' : '', false) } : run;
+      ? { ...run, fmt: plain(referencePercent ? '%' : '', false) }
+      : valuesNotShares
+      ? { ...run, fmt: valueFmt, statFmt: valueFmt, fmtSigned: plain(input.percentLevels === true ? PERCENTAGE_POINTS : '', true), printsZero: (v: number) => roundsToZero(v, autoDecimals(v)) }
+      : run;
     const fmtRun: AnnotateRun = own
       ? {
           ...baseRun,
