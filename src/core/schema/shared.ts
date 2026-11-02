@@ -1503,7 +1503,12 @@ export const averageMarkerSchema = z
     z.object({
       scope: z
         .union([z.literal('all'), z.array(idSchema).min(1)])
+        .optional()
         .describe("Series included in the computed average; defaults to 'all'."),
+      includePartial: z
+        .boolean()
+        .optional()
+        .describe('true averages the categories marked partial too. By default they are left out, and the label names the periods the average covers. Column, bar and combo.'),
     }),
   ])
   .optional();
