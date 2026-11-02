@@ -20,7 +20,7 @@ This stacked column chart is one JSON spec drawn by `boardplot render`; the vari
 
 ## Match your design system
 
-- Set brand colours, series colours, type sizes and spacing through theme tokens, or start from one of eight presets.
+- Set brand colours, series colours, type sizes and spacing through theme tokens, or start from one of ten presets. Bridge is the default.
 - Style tables with the same tokens, or start from the ready table look.
 - Use your own font: `boardplot fonts build` makes the width tables that layout measures with. The font files must be loaded where the chart is shown, and installed where a PNG is drawn.
 - Choose the locale, the number formats and the reading target: report, dashboard, slide or print.

@@ -1,4 +1,4 @@
-import { libraryPatch, resolveTheme } from './theme';
+import { DEFAULT_PRESET, libraryPatch, resolveTheme } from './theme';
 import { themeForDensity } from './themeDensity';
 import type { BaseOptions } from './types/options';
 import type { ThemeRef } from './types/theme';
@@ -15,7 +15,7 @@ function tightTheme(ref: ThemeRef | undefined, width?: number): ThemeRef {
   // resolveTheme(ref) above succeeded, so a named ref resolves again with the
   // same overrides (a registered, adopted or self-contained theme alike).
   const named = typeof ref === 'string' ? ref : ref?.preset;
-  const preset = named ?? 'boardroom';
+  const preset = named ?? DEFAULT_PRESET;
   const authored = typeof ref === 'object' && ref !== null ? ref.overrides ?? {} : {};
   return { preset, overrides: libraryPatch({ ...authored, space: dense.space }, authored) };
 }
