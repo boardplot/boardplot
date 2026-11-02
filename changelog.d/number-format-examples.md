@@ -1,6 +1,6 @@
 ### Added
 
-- Unit-only number formats such as `$M`, `€bn`, `%` and `x` choose precision from the field's data. Spreadsheet number codes translate to examples with warning `format-spreadsheet-code`.
+- Unit-only number formats such as `$M`, `€bn`, `%` and `x` choose precision from the field's data, with two significant digits for the smallest value below 1. Spreadsheet number codes translate to examples with warning `format-spreadsheet-code`.
 - Direction glyphs and `±` act as signs. A trailing minus marks negatives. Integer examples such as `1st` print English ordinals, and `1.2E+06` prints scientific notation.
 
 ### Fixed
