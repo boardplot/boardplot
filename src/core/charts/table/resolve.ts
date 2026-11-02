@@ -9,6 +9,7 @@ import { disclosuresShown } from '../../notes';
 import { caseInsensitiveValue, inputConversion } from '../../inputConversion';
 import { bandFor } from '../../bandSelect';
 import { datePatternFromExample, formatDate, parseISODate } from '../../dateFormat';
+import { readDateFormat } from '../../dateFormatRead';
 import { currencyWholeNumbers, MINUS } from '../../format';
 import { MAX_FORMAT_DECIMALS, nonzeroDecimals, typicalDecimals, withSmallValues, zeroLifts } from '../../formatPrecision';
 import { unitPrinted } from '../../frame';
@@ -304,7 +305,18 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     return { ...spec };
   };
   const warnings: LintWarning[] = [];
+  const datePatterns = new Map<string, string>();
   data.columns.forEach((column, index) => {
+    if (column.kind === 'date') {
+      const read = readDateFormat(column.format, 'table', options.locale?.language);
+      datePatterns.set(column.id, read.pattern!);
+      for (const note of read.notes) warnings.push({
+        code: note.kind === 'fiscal' ? 'date-format-fiscal-year' : `date-format-${note.kind}`,
+        severity: note.kind === 'fiscal' ? 'info' : 'warn',
+        field: ['data', 'columns', index, 'format'], owner: { colId: column.id },
+        message: note.message, suggest: note.suggest,
+      });
+    }
     if (column.kind !== 'status') return;
     for (const [key, label] of Object.entries(column.labels ?? {})) {
       if (typeof label !== 'string' || label.trim() !== '') continue;
@@ -1790,7 +1802,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
             `'${v}' is not an ISO date (YYYY-MM-DD)`,
           );
         }
-        const pattern = datePatternFromExample(col.kind === 'date' ? col.format : undefined);
+        const pattern = datePatterns.get(col.id)!;
         return { ...base, raw: v, state: 'value', displayed: formatDate(d, pattern, options.locale?.language) };
       }
       case 'text': {

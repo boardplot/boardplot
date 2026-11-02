@@ -190,7 +190,7 @@ export function interactionValueText(value: InteractionValue, locale?: string): 
     const parsed = parseISODate(value.raw);
     if (!parsed) return value.raw;
     if (!value.format) return value.raw;
-    return formatDate(parsed, datePatternFromExample(value.format), locale);
+    return formatDate(parsed, datePatternFromExample(value.format, locale), locale);
   }
   if (typeof value.raw !== 'number') return String(value.raw);
   if (value.format && wholeCurrencyValue(value.raw, value.unit, value.renderTarget)) return displayedValueText(value, locale);
