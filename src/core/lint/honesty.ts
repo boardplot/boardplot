@@ -163,7 +163,7 @@ export function runHonestyLints(charts: readonly ScopedLintChart[]): DocLintWarn
   for (const chart of charts) {
     const offending = formatValuePairs(chart).find(
       // A format the schema refused already has its finding; it judges nothing here.
-      ({ format, value }) => Math.abs(value) >= 1000 && !formatExampleProblem(format) && parseFormatExample(format).decimals >= 3,
+      ({ format, value }) => Math.abs(value) >= 1000 && !formatExampleProblem(format) && parseFormatExample(format).decimals >= 3 && parseFormatExample(format).significantDigits === undefined,
     );
     if (offending) {
       warnings.push(

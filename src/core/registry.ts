@@ -24,7 +24,7 @@ import { markLostOnBandWarnings } from './paintWarnings';
 import { casingUnderFills, labelsOnFills, fillEdges, marksOnBands, referenceLineClearance, withoutOrphanAnnotationMarks } from './markVisibility';
 import { groundEdges } from './label/emit';
 import { withoutRepeatedAxisBreaks } from './axis';
-import { panelTypeClass, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, stampHatchLook } from './theme';
+import { DEFAULT_PRESET, panelTypeClass, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, stampHatchLook } from './theme';
 import { textScaleOf, textSizeOf } from './typeFloors';
 import { DEFAULT_TARGET, resolveTargetSize, TARGET_SIZE, withDefaultTarget } from './target';
 import type { Category } from './types/data';
@@ -276,7 +276,7 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     const ref = authored?.theme;
     // One pair of number marks per chart (numberMarks.ts).
     const localized = withNumberMarks(withLocaleStrings(footnoteSwitch(resolveCanvasOptions({ ...authored, target,
-      theme: { preset: typeof ref === 'string' ? ref : ref?.preset ?? 'boardroom', overrides: theme },
+      theme: { preset: typeof ref === 'string' ? ref : ref?.preset ?? DEFAULT_PRESET, overrides: theme },
     } as unknown as O))));
     const prepared = def.defaultStrings ? withChartDefaultStrings(localized, def.defaultStrings(localized)) : localized;
     if (def.type === 'grid') data = inheritGridTarget(data, target, textScale, textSize);

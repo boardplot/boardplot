@@ -696,6 +696,7 @@ export function layoutVariance(
       centers: cats.map((_, ci) => b.center(ci)),
       step: b.step,
       fonts: [tickFont, { family: theme.type.family, ...theme.type.footnote }],
+      stepToFloor: true,
       measure,
       plotHeight: fixedNames ? 0 : frameResult.plot.h,
       target: options.target, textScale: textScaleOf(options),
