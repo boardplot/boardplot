@@ -44,7 +44,7 @@ describe('drawn text stays on the canvas', () => {
     };
     for (const variant of ['grouped', 'stacked', 'stacked100']) {
       const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'column', data,
-        options: { variant, highlight: 'c0', size: { width: 720, height: 700 } },
+        options: { variant, highlight: 'c0', size: { width: 520, height: 700 } },
       } as never)) as Geometry;
       const label = geometry.scene.find(node => node.id === 'label:category:c0');
       expect(label?.t).toBe('text');

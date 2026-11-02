@@ -1,4 +1,5 @@
 import { applyAxisBounds } from '../../scale';
+import { cleanSum } from '../../geometry';
 import { percentCellsOnly, percentLevels } from '../../annotatePass';
 /**
  * Standard bar phase 1, domain: the options resolved once, the series
@@ -32,7 +33,7 @@ import { chosenValueIndices } from '../band/valueSelection';
 import { partialKeyForced, saysToDate } from '../../partialPeriod';
 import { chartString } from '../../strings';
 import type { LintWarning, Paint } from '../../types/scene';
-import { accumulateStack, averageMarkerLine, averageMarkerMean, averageMarkerScope as averageMarkerScopeOf, averageOfUnaddedSums, averageOfWholeShares, grandTotalRequested, compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning, plottedMean, sortSegments, stackTotalFormatter, warnIncompleteStacks } from '../band/stacks';
+import { accumulateStack, averageMarkerLine, averageMarkerMean, averageMarkerScope as averageMarkerScopeOf, averageOfUnaddedSums, averageOfWholeShares, grandTotalRequested, compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning, plottedMean, sortSegments, stackTotalFormatter, warnIncompleteStacks, withoutShareMean } from '../band/stacks';
 import { isIncomplete, warnShareRoundingDrift } from '../../dataGaps';
 import { roundingUnavailable, shareRoundingNotes, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
 import { NO_STACK_MEAN, stackAdds } from '../../stackAdds';
@@ -195,7 +196,7 @@ type BarBasis = Pick<BarDomain, 'totals' | 'nmRows' | 'naRows' | 'incompleteRows
  * rows lose segments, share labels, and the total.
  */
 function barBasis(variant: BarDomain['variant'], cats: NormCat[], dataSeries: NormSeries[], warnings: LintWarning[]): BarBasis {
-  const totals = cats.map((_, ci) => dataSeries.reduce((a, s) => a + (s.cells[ci]!.v ?? 0), 0));
+  const totals = cats.map((_, ci) => cleanSum(dataSeries.map((s) => s.cells[ci]!.v ?? 0)));
   const nmRows: boolean[] = cats.map(() => false);
   const naRows: boolean[] = cats.map(() => false);
   const overfull: { id: Id; sum: number }[] = [];
@@ -526,6 +527,7 @@ export function resolveBarDomain(data: ChartData, options: BarOptions, warnings:
   const addsOver = (series: NormSeries[]) => (variant !== 'stacked' && variant !== 'stacked100') || stackAdds(series, options.unit, options.sharesOfOneWhole);
   const partsAdd = addsOver(dataSeries);
   const meanValue = partsAdd ? plottedMean('all', variant !== 'grouped', cats.length, dataSeries, (_, si, ci) => basis.plotVal(ci, si)) : undefined;
+  if (variant === 'stacked100') options = withoutShareMean(options, meanValue, warnings);
   const averageMarkerScope = averageMarkerScopeOf(options.averageMarker) ?? 'all';
   const averageMarkerRequested = options.averageMarker !== undefined && options.averageMarker !== false &&
     !averageOfWholeShares(variant, averageMarkerScope, warnings) &&

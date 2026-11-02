@@ -13,6 +13,7 @@ import type { CellState, CellTone, ComputedCellRecord, TableCell, TableRow } fro
 import type { LintWarning } from '../../types/scene';
 import type { CompiledDimSwitch, DimSwitchData, DimSwitchExpression, DimSwitchMeasure, DimSwitchMember, DimSwitchOptions, DimSwitchPeriod, DimSwitchSums, DimSwitchComparisonKind, DimSwitchJudgeBase } from './types';
 import { maxOf } from '../../arrays';
+import { cleanDiff, cleanSum } from '../../geometry';
 import { emptyIdRecord } from '../../idRecords';
 
 const key = (...parts: string[]) => JSON.stringify(parts);
@@ -43,7 +44,7 @@ const affix = (m: DimSwitchMeasure): string | undefined => {
   return (m.unit === '%' || m.unit === 'pp') && (kind === 'percent' || kind === 'pp') ? undefined : m.unit;
 };
 interface Value { raw: number | null; state: CellState; blank?: boolean; nearZero?: true; negativeBase?: true }
-const combine = (op: 'add' | 'sub' | 'mul' | 'div', a: number, b: number) => op === 'sub' ? a - b : op === 'add' ? a + b : op === 'mul' ? a * b : a / b;
+const combine = (op: 'add' | 'sub' | 'mul' | 'div', a: number, b: number) => op === 'sub' ? cleanDiff(a, b) : op === 'add' ? cleanSum([a, b]) : op === 'mul' ? a * b : a / b;
 function evaluate(expr: DimSwitchExpression, sums: DimSwitchSums | undefined, total?: DimSwitchSums): Value {
   if (typeof expr === 'number') return { raw: expr, state: 'value' };
   if ('measure' in expr) throw new Error(`dimswitch internal: unresolved measure reference '${expr.measure}'`);
@@ -342,7 +343,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
               const gap=gaps.get(child.id+window) ?? {member:child.id,window,periods:new Set<string>(),fields:new Set<string>()};
               gap.periods.add(period.id);gap.fields.add(field);gaps.set(child.id+window,gap);
             }
-            const raw=inputs.some(i=>i.value===null)?null:inputs.reduce((sum,i)=>sum+i.value!,0);
+            const raw=inputs.some(i=>i.value===null)?null:cleanSum(inputs.map(i=>i.value!));
             next[window][field]=raw;
             if(window==='sums' && inputs.some(i=>i.value!==null || reaches.get(i.rowId)?.has(field))) {const set=reaches.get(member) ?? new Set<string>();set.add(field);reaches.set(member,set);}
             records.push({rowId:member,colId:key(period.id,window,field),op:'dimswitch:partition-sum',inputs,raw,state:raw===null?'missing':'value',displayed:raw===null?'—':String(raw),kind:'aggregate'});

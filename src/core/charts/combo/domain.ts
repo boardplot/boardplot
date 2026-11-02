@@ -9,6 +9,7 @@ import { cellFields, normalizeCategorySeries } from '../categorySeries';
 import { breakUnsupported, chartPalette, chartTheme } from '../chartEnv';
 import { defaultMeasurer } from '../../text';
 import { tickFormatter } from '../../axis';
+import { cleanSum } from '../../geometry';
 import { formatAutomaticPercent, formatShare } from '../../format';
 import { roundingUnavailable, shareRoundingNotes, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
 import { comboValueLabels, FIRST_END_BELOW_TOTALS } from './endpoints';
@@ -246,7 +247,7 @@ function comboStacks(cats: Category[], columnSeries: NormSer[]) {
     negBot[ci] = n;
     anyByCat[ci] = columnSeries.some((s) => s.vals[ci]!.v !== null);
     // Exact: the total label and the description round once, at print time.
-    if (columnSeries.length > 0) stackTotals[c.id] = p + n;
+    if (columnSeries.length > 0) stackTotals[c.id] = cleanSum([p, n]);
     lo = Math.min(lo, n);
     hi = Math.max(hi, p);
   });
