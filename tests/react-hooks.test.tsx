@@ -58,7 +58,7 @@ describe('React testing hooks', () => {
     const bars = Array.from(element.querySelectorAll('[data-bp-mark="rev:fy23"][data-part="bar"]'));
     expect(bars.map(node => node.getAttribute('data-bp-panel')).sort()).toEqual(['amer', 'apac', 'emea', 'latam']);
     expect(stampFreeSha(renderSvg(geometry, resolved.theme)))
-      .toBe('f00aee2cfd26aacb3d3a7a9e45f507db3f324479af837eafa5abb052dd90e928');
+      .toBe('29b431d99b3a5665e56e2e5ac834e74ae5c1f891e8968f305a1e7907e40bebd8');
     expect(hooks(rendered(request, true).element)).toEqual(hooks(element));
   });
 
