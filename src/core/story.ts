@@ -11,7 +11,7 @@
  */
 
 import type { Rect } from './geometry';
-import { STORY_NAVIGATION, copyFrame, footerPlans } from './footer';
+import { STORY_NAVIGATION, copyFrame, footerPlans, storyFrameFit } from './footer';
 import { interactionTokens } from './a11y/theme';
 import { strokeToken, canvasMargin, panelTypeClass, resolveTargetTheme, themeForWidth, typeWidthClass } from './theme';
 import { DEFAULT_TARGET } from './target';
@@ -41,6 +41,7 @@ interface StoryOptions extends Pick<BaseOptions, 'margin' | 'canvas'> {
   [STORY_NAVIGATION]?: boolean;
   measure?: TextMeasurer;
   strings?: StringsSpec;
+  legend?: BaseOptions['legend'];
   size?: { width?: number; height?: number };
 }
 
@@ -248,9 +249,21 @@ export function applyStory(geo: Geometry<object, object>, data: unknown, options
   }
   if (!placed) {
     let base = geo;
-    holdRow = fixed;
+    // A single step has no navigation row, so its two reserves are identical.
+    holdRow = fixed && spec.steps.length > 1;
     let below = laidOut(base.plot.w);
     let reserve = below.height + gap;
+    const footer = geo.frame?.footerRect;
+    const bottom = footer ? geo.size.height - footer.y - footer.h : margin.bottom;
+    const fits = storyFrameFit.get(geo.frame);
+    // A frame-only check must accept every chart variant at the held reserve
+    // and keep this plot width, so the held pass cannot cut panel text.
+    if (holdRow && !navigation && fits && options.legend !== undefined && options.legend !== 'auto'
+      && fits(bottom + reserve, base.plot.w)) {
+      holdRow = false;
+      below = laidOut(base.plot.w, below.limits);
+      reserve = below.height + gap;
+    }
     if (fixed) {
       // First let the plot shrink. At its floor, remove body lines, then
       // clamp the title to one line. Keep the whole navigation row.
@@ -258,8 +271,6 @@ export function applyStory(geo: Geometry<object, object>, data: unknown, options
       for (;;) {
         // Reserve inside the fixed canvas, so the standalone canvas minimum
         // is not charged again to the chart above the story panel.
-        const footer = geo.frame?.footerRect;
-        const bottom = footer ? geo.size.height - footer.y - footer.h : margin.bottom;
         const result = relayout(data, { ...options, size: geo.size,
           canvas: { margin: { ...options.canvas?.margin, bottom: bottom + reserve } } });
         if (!result.refused) {
