@@ -5,14 +5,15 @@ import { canonicalChartType, chartInputName, getChartSchemas, unsupported } from
 import { caseInsensitiveValue, inputConversion, replaceInputValue } from '../inputConversion';
 import { parseWithInputConversions } from '../schema/inputConversions';
 import { schemaNodeAtPath, type JsonSchemaNode } from '../schema/nodes';
-import { annotationSchema } from '../schema/shared';
+import { annotationSchema, diagnosedSafeParse } from '../schema/shared';
 import { flattenIssues } from '../schema/flattenIssues';
 import { allowedValues, expectedTypes } from '../diagnostics/describe';
 import { refusalSuggest } from '../schema/capabilityReasons';
 import { LABEL_KINDS } from '../schema/capability';
-import { WORDING_KEYS, closestKey, movedKey, nearestOptionTerm, typoRenameFix, unknownKeySuggest, unknownOptionMessage, valueChangeSuggest } from '../schema/unknownKeyWords';
+import { WORDING_KEYS, closestKey, dataKeySynonym, movedKey, nearestOptionTerm, typoRenameFix, unknownKeySuggest, unknownOptionMessage, valueChangeSuggest } from '../schema/unknownKeyWords';
 import { ownedDocumentCopy } from './docExpand';
-import { chartSchemaDiagnostic, completeChartDiagnostic } from './diagnostics';
+import { chartSchemaDiagnostic, chartSchemaSource, completeChartDiagnostic } from './diagnostics';
+import { parseJsonPointer, toJsonPointer, type JsonPatchOperation } from '../diagnostics/jsonPatch';
 import type { DocChart, BoardplotDoc, DocumentEnvelope } from './document';
 import { diagramKindError } from '../schema/diagramKind';
 import type { DiagramData, DiagramOptions } from '../types/diagram';
@@ -157,12 +158,14 @@ function parseChartInput(doc: BoardplotDoc, chart: DocChart, envelope: DocumentE
   }
   if (!dataResult.success && (!selectedSchema || optResult.success)) {
     for (const i of flattenIssues(dataResult.error.issues).flatMap(splitUnknownKeys)) {
-      const unknown = unknownKeyText(i, dataSchema, def.optionsSchema as z.ZodType, undefined, chart.data);
+      const source = i.code === 'unrecognized_keys' ? chartSchemaSource(doc, chart, 'data', i.path, chart.data) : undefined;
+      const unknown = unknownKeyText(i, dataSchema, def.optionsSchema as z.ZodType, undefined, chart.data, source);
       // The repair is the expected condition, as on every non-schema finding.
-      envelope.errors.push(chartSchemaDiagnostic(doc, chart, 'data', unknown ? { ...i, message: unknown.suggest } : i, chart.data, isEmptyDataIssue(i, chart.data) ? EMPTY_DATA : 'invalid-data',
+      const diagnostic = chartSchemaDiagnostic(doc, chart, 'data', unknown ? { ...i, message: unknown.suggest } : i, chart.data, isEmptyDataIssue(i, chart.data) ? EMPTY_DATA : 'invalid-data',
         unknown?.message ?? schemaIssueMessage(i, chart.data, i.path as (string | number)[], dataSchema) +
           inputHint(chart.data, i.path as (string | number)[], i.message === 'Invalid input'),
-        unknown?.suggest ?? dataIssueSuggest(def.type, chart.data, i.path as (string | number)[], i)));
+        unknown?.suggest ?? dataIssueSuggest(def.type, chart.data, i.path as (string | number)[], i));
+      envelope.errors.push(unknown?.fix ? { ...diagnostic, fix: unknown.fix } : diagnostic);
     }
     return null;
   }
@@ -616,6 +619,24 @@ function valueFitsKey(schema: z.ZodType, parent: readonly (string | number)[], k
   return !(schema.safeParse(probe).error?.issues ?? []).some((issue) => place.every((segment, index) => issue.path[index] === segment));
 }
 
+/** Check a data value in its authored object as well, so union branches see their other fields. */
+function dataValueFitsKey(schema: z.ZodType, data: unknown, path: (string | number)[], target: string): boolean {
+  const parent = path.slice(0, -1);
+  const value = valueAtPath(data, path);
+  if (!valueFitsKey(schema, parent, target, value)) return false;
+  const probe = ownedDocumentCopy(data);
+  const object = valueAtPath(probe, parent);
+  if (!isRecord(object)) return false;
+  delete object[String(path.at(-1))];
+  object[target] = value;
+  const place = [...parent, target];
+  const result = diagnosedSafeParse(schema, probe);
+  return result.success || !flattenIssues(result.error.issues).some((issue) =>
+    place.every((segment, index) => issue.path[index] === segment)
+    || (issue.code === 'invalid_union' && issue.path.length < place.length
+      && issue.path.every((segment, index) => place[index] === segment)));
+}
+
 /** Where the data of a chart type takes a key: on each series, at the data root, or both. */
 function dataKeyPlace(type: string, key: string): string | undefined {
   const dataSchema = getChartSchemas(type)?.dataSchema as z.ZodType | undefined;
@@ -659,7 +680,8 @@ function splitUnknownKeys(issue: z.core.$ZodIssue): z.core.$ZodIssue[] {
  */
 function unknownKeyText(
   issue: z.core.$ZodIssue, schema: z.ZodType, optionsSchema?: z.ZodType, optionsType?: string, authored?: unknown,
-): { message: string; suggest: string } | undefined {
+  source?: ReturnType<typeof chartSchemaSource>,
+): { message: string; suggest: string; fix?: JsonPatchOperation[] } | undefined {
   if (issue.code !== 'unrecognized_keys') return undefined;
   const path = issue.path as (string | number)[];
   const key = String(path.at(-1));
@@ -694,12 +716,86 @@ function unknownKeyText(
       suggest: `Move '${key}' into the value object: ${rich}.`,
     };
   }
-  const closest = closestKey(key, known);
+  const flatItems = optionsType === undefined && path.length === 1 && key === 'items'
+    && known.includes('categories') && known.includes('series')
+    ? flatItemsAdvice(schema, authored, source) : undefined;
+  if (flatItems) return {
+    message: `unknown key '${key}'; known keys: ${known.join(', ')}`,
+    ...flatItems,
+  };
+  let closest = closestKey(key, known, optionsType === undefined ? 'data' : 'option');
+  if (optionsType === undefined && closest?.near && !dataValueFitsKey(schema, authored, path, closest.key)) {
+    closest = { ...closest, near: false };
+  }
+  const message = `unknown key '${key}'${closest?.near ? ` — try: ${closest.key}` : ''}${known.length ? `; known keys: ${known.join(', ')}` : ''}`;
+  if (optionsType === undefined) {
+    const object = isRecord(source?.parent) ? source.parent : value;
+    if (closest?.near && isRecord(object) && Object.hasOwn(object, closest.key)) {
+      return { message, suggest: `'${key}' is not read; '${closest.key}' is already set. Remove '${key}' only if it repeats the value.` };
+    }
+    const content = valueAtPath(authored, path);
+    const suggest = closest?.near ? unknownKeySuggest(key, closest)
+      : content !== null && typeof content === 'object'
+        ? `'${key}' is not a data key of this chart, and its content is not drawn. Move the content to one of: ${known.length ? known.join(', ') : "the chart's documented data keys"}.`
+        : unknownKeySuggest(key, closest);
+    const fix = closest?.near ? dataRenameFix(key, closest, known, source) : undefined;
+    return { message, suggest, ...(fix ? { fix } : {}) };
+  }
   return {
-    message: `unknown key '${key}'${closest?.near ? ` — try: ${closest.key}` : ''}${known.length ? `; known keys: ${known.join(', ')}` : ''}`,
+    message,
     // A strict options schema refuses a capability key as unknown; the table still names the way out.
     suggest: (!closest?.near && optionsType && refusalSuggest(optionsType, path)) || unknownKeySuggest(key, closest),
   };
+}
+
+/** A rename must address the unchanged authored value and cannot overwrite another proposed rename. */
+function dataRenameFix(
+  key: string, closest: { key: string; near: boolean }, known: readonly string[], source?: ReturnType<typeof chartSchemaSource>,
+): JsonPatchOperation[] | undefined {
+  if (!source?.same || !isRecord(source.parent)) return undefined;
+  const segments = parseJsonPointer(source.path);
+  if (segments.some(segment => ['__proto__', 'prototype', 'constructor'].includes(segment))) return undefined;
+  const parent = source.parent;
+  if (Object.hasOwn(parent, closest.key) || Object.keys(parent).some(other => {
+    if (other === key || known.includes(other)) return false;
+    const candidate = closestKey(other, known, 'data');
+    return candidate?.near && candidate.key === closest.key;
+  })) return undefined;
+  if (dataKeySynonym(key, known) !== closest.key) return typoRenameFix(segments, closest, known, parent);
+  return [
+    { op: 'remove', path: source.path },
+    { op: 'add', path: toJsonPointer([...segments.slice(0, -1), closest.key]), value: parent[key] },
+  ];
+}
+
+/** Move a flat list only when its complete replacement passes the chart's data schema. */
+function flatItemsAdvice(
+  schema: z.ZodType, data: unknown, source?: ReturnType<typeof chartSchemaSource>,
+): { suggest: string; fix?: JsonPatchOperation[] } | undefined {
+  if (!isRecord(data) || !Array.isArray(data.items)) return undefined;
+  const plain = (item: unknown): item is Record<string, unknown> => isRecord(item)
+    && (Object.getPrototypeOf(item) === null || Object.getPrototypeOf(item) === Object.prototype);
+  if (!data.items.every(item => plain(item) && Object.keys(item).every(key => ['id', 'label', 'value'].includes(key))
+    && Object.hasOwn(item, 'id') && typeof item.id === 'string'
+    && Object.hasOwn(item, 'value') && (typeof item.value === 'number' || item.value === null))) return undefined;
+  const categories = data.items.map(item => ({ id: item.id, ...(Object.hasOwn(item, 'label') ? { label: item.label } : {}) }));
+  const series = [{ id: 'value', values: data.items.map(item => item.value) }];
+  const suggest = "This chart's data takes categories and series. Move each item's id and label to data.categories[] and its value to data.series[0].values.";
+  const parent = source?.parent;
+  if (!source?.same || !isRecord(parent) || !Array.isArray(parent.items) || !parent.items.every(plain)
+    || Object.hasOwn(parent, 'categories') || Object.hasOwn(parent, 'series')
+    || Object.hasOwn(data, 'categories') || Object.hasOwn(data, 'series')) return { suggest };
+  const segments = parseJsonPointer(source.path);
+  if (segments.some(segment => ['__proto__', 'prototype', 'constructor'].includes(segment))) return { suggest };
+  const replacement: Record<string, unknown> = { ...data, categories, series };
+  delete replacement.items;
+  if (!diagnosedSafeParse(schema, replacement).success) return { suggest };
+  const path = segments.slice(0, -1);
+  return { suggest, fix: [
+    { op: 'remove', path: source.path },
+    { op: 'add', path: toJsonPointer([...path, 'categories']), value: categories },
+    { op: 'add', path: toJsonPointer([...path, 'series']), value: series },
+  ] };
 }
 
 function nearestOptionKey(input: string, schema: z.ZodType): string | undefined {
