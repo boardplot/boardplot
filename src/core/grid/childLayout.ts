@@ -118,14 +118,15 @@ export function gridSizing(size: Size, area: Rect,
     + Math.max(0, resolveSizing(policy, size).naturalHeight - chrome - sum(rowGaps))
       * sum(rows.filter((_, row) => fixed[row] === undefined)) / sum(rows))
     : required('row', rows, rowGaps, true);
-  return resolveSizing(content || optionalLabels ? { ...policy, fit: 'content', aspect: 'content', minHeight: 0 } : policy, size, {
+  const sizing = resolveSizing(content ? { ...policy, fit: 'content', aspect: 'content', minHeight: 0 } : policy, size, {
     minWidth: size.width - area.w + required('column', columns, columnGaps),
     minHeight: chrome + minimumRows,
-    ...(content || optionalLabels ? { naturalHeight: Math.max(
-      content ? chrome + naturalRows : resolveSizing(policy, size).naturalHeight,
-      optionalLabels ? chrome + required('row', rows, rowGaps, 'tier-labels') : 0,
-    ) } : {}),
+    ...(content ? { naturalHeight: chrome + naturalRows } : {}),
   });
+  if (!optionalLabels) return sizing;
+  const naturalHeight = Math.max(sizing.naturalHeight, chrome + required('row', rows, rowGaps, 'tier-labels'));
+  return naturalHeight <= sizing.naturalHeight ? sizing
+    : { ...sizing, fit: 'content' as const, aspect: 'content' as const, naturalHeight: Math.ceil(naturalHeight) };
 }
 
 /** Unwind a composition pass before any code reads a refused child's geometry. */

@@ -12,6 +12,8 @@ import { chartString } from '../strings/layoutGrid';
 import { frameTextOptions, LEFT_OUT_OF_NOTE, valueNoteLine, panelNoteTexts, solveFrame, type FrameInput } from '../frame';
 import { collectGridLegendItems, gridLegendInput, gridPanelsKeepEndNames, hatchStrengthFor } from './gridKey';
 import { balanceVarianceTierPlots, FIT_TIER_LABELS, VARIANCE_TIER, varianceTierWeights } from './varianceTiers';
+import { TARGET_SIZE, type TargetSizeOptions } from '../target';
+import { heightOmitted } from '../sizing';
 import { boundsOf, type Rect } from '../geometry';
 import { createOccupiedIndex } from '../label/occupied';
 import { PRIORITY, solveLabels, type LabelRequest } from '../label/solver';
@@ -354,7 +356,9 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
       ...(def.type === 'kpi' ? { [KPI_HOST_TEXT]: stringsIn([panelCaption, (panel as { title?: unknown }).title, options.title, options.subtitle, options.footnotes, options.source]) } : {}),
       // The value is the panel count, so a tier knows whether it is the only one (isSingleVarianceTier).
       ...(varianceTiers && def.type === 'variance' ? { [VARIANCE_TIER]: data.panels.length } : {}),
-      ...(compactTiers && def.type === 'variance' ? { [FIT_TIER_LABELS]: (options as { [FIT_TIER_LABELS]?: boolean })[FIT_TIER_LABELS] !== false } : {}),
+      ...(compactTiers && def.type === 'variance' ? { [FIT_TIER_LABELS]:
+        (options as { [FIT_TIER_LABELS]?: boolean })[FIT_TIER_LABELS] === false ? false
+          : ((options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height ?? !heightOmitted(options.size)) ? true : 'auto' } : {}),
       ...(compactTiers
         ? { ...(suppressTitle ? { title: '' } : {}), ...(labels !== undefined ? { labels } : {}) }
         : {}),

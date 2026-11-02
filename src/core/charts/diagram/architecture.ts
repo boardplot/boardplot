@@ -5,7 +5,7 @@ import { compileIcon } from '../../icons';
 import { wrapText, type FontSpec, type TextMeasurer } from '../../text';
 import type { DiagramEdge, DiagramGroup, DiagramLane, DiagramNode, DiagramOptions } from '../../types/diagram';
 import type { LintWarning, Paint, SceneNode } from '../../types/scene';
-import { dashToken, strokeToken } from '../../theme';
+import { dashToken, groundTextPaint, secondaryFont, strokeToken } from '../../theme';
 import type { Theme } from '../../types/theme';
 import { diagramSceneId } from './ids';
 import { groupWithin, type NormalizedDiagram } from './model';
@@ -124,11 +124,12 @@ export function layoutArchitecture(
   badges: ReadonlyMap<string, Size>,
   plans?: ArchitecturePlans,
 ): OrgChartLayout {
-  if (!data.inset) return planArchitecture(data, options, plot, fonts, measure, u, palette, theme, badges, plans);
+  const planFonts = { ...fonts, text: { ...secondaryFont(theme), weight: 400 } };
+  if (!data.inset) return planArchitecture(data, options, plot, planFonts, measure, u, palette, theme, badges, plans);
   const beside = plot.w >= INSET_BESIDE_WIDTH;
   const gap = 6 * u;
   const width = beside ? insetWidth(data.inset, plot.w, fonts, measure, u) : plot.w;
-  const layout = planArchitecture(data, options, beside ? { ...plot, w: plot.w - width - gap } : plot, fonts, measure, u, palette, theme, badges, plans);
+  const layout = planArchitecture(data, options, beside ? { ...plot, w: plot.w - width - gap } : plot, planFonts, measure, u, palette, theme, badges, plans);
   const bottom = Math.max(...[...layout.preset.nodeRects.values(), ...layout.preset.groups.map((group) => group.bounds), ...layout.preset.lanes.map((lane) => lane.bounds), ...layout.extent!]
     .map((rect) => rect.y + rect.h));
   const box = { x: plot.x + plot.w - width, y: beside ? plot.y : bottom + gap, w: width };
@@ -617,7 +618,7 @@ function nodeText(node: DiagramNode, width: number, env: Env): NodeText | undefi
   if (lead.title !== undefined) return undefined;
   const second = node.secondaryLabel ? fitText(node.secondaryLabel, text, inner, 2, measure, { target: options.target, typeRole: 'label' }) : undefined;
   if (second?.title !== undefined) return undefined;
-  return { height: lead.lines.length * lineH(name) + (second ? u + second.lines.length * lineH(text) : 0) };
+  return { height: lead.lines.length * lineH(name) + (second ? 0.5 * u + second.lines.length * lineH(text) : 0) };
 }
 
 /** Turns cells and gap widths into pixels and corridor lines. */
@@ -851,7 +852,8 @@ function placePolicy(geometry: Geometry, env: Env): number | undefined {
     const row = items.slice(start, start + columnsWide);
     const texts = row.map((node) => nodeText(node, columnW + 4 * u, env));
     if (texts.some((text) => !text)) return undefined;
-    const height = Math.max(...texts.map((text) => text!.height));
+    // Round up to the drawing grid: a box rounded down to its nearest half pixel can end a hair short of its own text, and the second line is then dropped.
+    const height = Math.ceil(Math.max(...texts.map((text) => text!.height)) * 2) / 2;
     row.forEach((node, index) => {
       const rect = qRect({ x: plot.x + pad + index * (columnW + pad), y, w: columnW, h: height });
       const icon = node.icon ? 3.5 * u : 0;
@@ -1803,13 +1805,16 @@ function emit(arrangement: Arrangement, geometry: Geometry, routed: Routed, env:
       lanes, decorationScene: scene, decorationClaims: claims, contentTopReserves: new Map(),
     },
     routes: routed.routes, fonts, labelBoxes: geometry.textBoxes, icons: geometry.icons, rings, fills, plainShape: true, paths, overlay, discs,
-    badges: geometry.badges, labelInks: new Map(), laneFills: new Map(data.lanes.map((lane) => [lane.id, { token: 'background' as const }])),
+    badges: geometry.badges,
+    labelInks: new Map(data.nodes.filter(node => node.secondaryLabel).map(node =>
+      [`secondary-label:${node.id}`, groundTextPaint({ token: 'inkMuted' }, fills.get(node.id)!)])),
+    laneFills: new Map(data.lanes.map((lane) => [lane.id, { token: 'background' as const }])),
     extent, edgePaint: { token: 'inkMuted' }, secondaryFont: env.text,
     groupPaint: {
       fill: { token: 'total', tint: ZONE_TINT }, stroke: { token: 'axis' }, fills: zoneFills,
       dashed: new Set(geometry.zones.filter((zone) => zone.dashed).map((zone) => zone.id)),
     },
     warnings,
-    channelLabels: routed.channels.map((channel) => ({ id: `channel-label:${channel.id}`, text: channel.label, rect: channel.rect, owner: edgeOwner(channel.edgeId) })),
+    channelLabels: routed.channels.map((channel) => ({ id: `channel-label:${channel.id}`, text: channel.label, rect: channel.rect, owner: edgeOwner(channel.edgeId), font: env.text })),
   };
 }

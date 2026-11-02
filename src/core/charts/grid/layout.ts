@@ -11,7 +11,7 @@ import { fmtPathNumber as fmtN } from '../../curve';
 import { inferLinearYDomain } from '../../axis';
 import { frameTextOptions, normalizeLegendOption, solveFrame, type FrameInput, type LegendItemInput } from '../../frame';
 import { collectGridLegendItems, gridLegendInput, gridPanelsKeepEndNames, hatchStrengthFor } from '../../grid/gridKey';
-import { balanceVarianceTierPlots, FIT_TIER_LABELS, TIER_LABEL_HEIGHT, VARIANCE_TIER, varianceTierWeights } from '../../grid/varianceTiers';
+import { balanceVarianceTierPlots, FIT_TIER_LABELS, VARIANCE_TIER, varianceTierWeights } from '../../grid/varianceTiers';
 import { scalePanelSemantics } from '../../grid/sharedScale';
 import {
   layoutGrid as composeGrid,
@@ -220,14 +220,6 @@ export function layoutGrid(
   const legacyGrid = (at: GridLayoutOptions) => withSliverRoom(withOnePanelContent(withTierPlot(legacy(at), ordered.panels, at), legacy, ordered.panels, at), legacy, at, data);
   const geometry = withWarnings(authored ? layoutAuthoredGrid(ordered.panels, options, normalized.repeatFacet === true)
     : legacyGrid(reflowed(legacyGrid, ordered.panels, options, data)), ordered.warnings);
-  const fixedHeight = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height ?? !heightOmitted(options.size);
-  if (!geometry.refused && fixedHeight && geometry.sizing && geometry.sizing.naturalHeight > geometry.size.height
-    && geometry.marks.panels.some(panel => panel.chart && TIER_LABEL_HEIGHT in panel.chart.geometry.frame)) {
-    // Optional label rows never turn a pinned chart that draws into a refusal.
-    const fallback = layoutGrid(data, { ...options, [FIT_TIER_LABELS]: false } as GridLayoutOptions);
-    if (!fallback.refused && fallback.sizing) fallback.sizing.naturalHeight = Math.max(fallback.sizing.naturalHeight, geometry.sizing.naturalHeight);
-    return fallback;
-  }
   if (!geometry.refused && heightOmitted(options.size) && geometry.sizing?.fit === 'content'
     && Math.abs(geometry.size.height - geometry.sizing.naturalHeight) > 1) {
     return layoutGrid(data, { ...options, size: { width: geometry.size.width, height: geometry.sizing.naturalHeight } });
@@ -1576,7 +1568,9 @@ function layoutAuthoredChild(
       ...(hasKpiFigure(panel.type) && kpiValueSize !== undefined ? { [KPI_VALUE_SIZE]: kpiValueSize } : {}),
       ...(panel.type === 'kpi' ? { [KPI_HOST_TEXT]: stringsIn([panel.title, panel.caption, parentOptions.title, parentOptions.subtitle, parentOptions.footnotes, parentOptions.source]) } : {}),
       ...(panel.type === 'variance' && isAuthoredVarianceStack(panels, parentOptions) ? { [VARIANCE_TIER]: panels.length } : {}),
-      ...(compactTiers && panel.type === 'variance' ? { [FIT_TIER_LABELS]: (parentOptions as { [FIT_TIER_LABELS]?: boolean })[FIT_TIER_LABELS] !== false } : {}),
+      ...(compactTiers && panel.type === 'variance' ? { [FIT_TIER_LABELS]:
+        (parentOptions as { [FIT_TIER_LABELS]?: boolean })[FIT_TIER_LABELS] === false ? false
+          : ((parentOptions as TargetSizeOptions)[TARGET_SIZE]?.fixed.height ?? !heightOmitted(parentOptions.size)) ? true : 'auto' } : {}),
       ...(panel.annotations ? { annotations: panel.annotations } : {}),
       ...(parentOptions.palette !== undefined && panelOptions.palette === undefined
         ? { palette: parentOptions.palette }

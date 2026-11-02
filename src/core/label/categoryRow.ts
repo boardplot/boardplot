@@ -296,7 +296,7 @@ const ROTATED_HEIGHT_SHARE = 0.3;
  */
 const VERTICAL_HEIGHT_SHARE = 0.5;
 const VERTICAL_MIN_WIDTH = 130;
-const ROTATED_MIN_WIDTH = 110;
+export const ROTATED_MIN_WIDTH = 110;
 /** The most names a date row keeps once it has to thin its interval ticks. */
 const DATE_ROW_LABELS = 8;
 const YEAR_LABEL = /^(?:FY\s?)?\d{4}$|^(?:FY\s?)?'?\d{2}$/;

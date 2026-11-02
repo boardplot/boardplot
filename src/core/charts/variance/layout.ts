@@ -42,7 +42,7 @@ import { boxGap, cleanDiff, cleanFloat, cleanSum, type Rect } from '../../geomet
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { DEFAULT_TARGET, resolveTargetSize, TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { labelsToNodes } from '../../label/emit';
-import { categoryLineAlign, planCategoryRow, rotatedClaimRect, rotatedLeftOverhang, yearRowRequests } from '../../label/categoryRow';
+import { categoryLineAlign, planCategoryRow, ROTATED_MIN_WIDTH, rotatedClaimRect, rotatedLeftOverhang, yearRowRequests } from '../../label/categoryRow';
 import {
   isDateNumericTickSequence,
   type TickBandDerived,
@@ -169,8 +169,6 @@ const pinGeometry = (theme: Parameters<typeof strokeToken>[0], width: number): {
 
 /** Internal option: px of one more value row over (above) or under (below) the columns, set by the second pass. */
 const LIFT_ROW = Symbol('liftRow');
-/** Value type size tried only after a phone tier loses a name or value to a collision. */
-const TIER_LABEL_SIZE = Symbol('tierLabelSize');
 
 export function layoutVariance(
   data: ChartData,
@@ -581,12 +579,9 @@ export function layoutVariance(
   const tickFont: FontSpec = { family: theme.type.family, ...theme.type.axis };
   const labelFont: FontSpec = { family: theme.type.family, ...theme.type.label };
   const strongFont: FontSpec = { family: theme.type.family, ...theme.type.label, weight: emphasisWeight(theme) };
-  const tierLabelSize = (options as { [TIER_LABEL_SIZE]?: number })[TIER_LABEL_SIZE];
   const basePointFont = mode === 'relative' ? strongFont : labelFont;
-  const pointFont: FontSpec = tierLabelSize === undefined ? basePointFont : { ...basePointFont, size: tierLabelSize };
-  const labelH = measure('0', tierLabelSize === undefined ? labelFont : pointFont).height;
-  const fitTierLabels = mode !== 'integrated' && size.width < 480 && (options as { [FIT_TIER_LABELS]?: boolean })[FIT_TIER_LABELS] === true;
-  const fittingTierLabels = fitTierLabels && tierLabelSize !== undefined;
+  const tierLabelFit = (options as { [FIT_TIER_LABELS]?: boolean | 'auto' })[FIT_TIER_LABELS];
+  const fitTierLabels = mode !== 'integrated' && size.width < 480 && (tierLabelFit === true || tierLabelFit === 'auto');
   // The value-axis title in the head band, as on column; drawn only when authored.
   const axisTitle = options.valueAxis?.show && kindShown('axisTitle')
     ? planValueAxisTitle(options.axisTitles?.primary, theme, measure, frameResult.plot.w)
@@ -599,12 +594,15 @@ export function layoutVariance(
   // A running value's to-date words stand under it: the headroom holds the second line too.
   const wordsH = toDateIds.size > 0 ? measure(toDate, toDateFont(theme)).height : 0;
   // A larger variance that found no seat over its neighbours gets one more value row (second pass).
-  const liftRow = (options as { [LIFT_ROW]?: { above: number; below: number } })[LIFT_ROW];
-  const topPad = 8 + valueAxisTitleBand(axisTitle, theme, measure) + labelH + wordsH + 4 + bracketPad + (liftRow?.above ?? 0);
+  let liftRow = (options as { [LIFT_ROW]?: { above: number; below: number } })[LIFT_ROW];
+  let tierLabelSize: number | undefined;
+  let pointFont = basePointFont;
+  let labelH = measure('0', labelFont).height;
+  let topPad = 8 + valueAxisTitleBand(axisTitle, theme, measure) + labelH + wordsH + 4 + bracketPad + (liftRow?.above ?? 0);
   // an integrated chart with nothing under zero prints no
   // label below its columns; its name row starts at the baseline.
   const nothingBelowZero = mode === 'integrated' && cats.every((_, ci) => (acArr[ci] ?? 0) >= 0 && (refArr[ci] ?? 0) >= 0);
-  const bottomPad = (nothingBelowZero ? 0 : labelH + 4) + (liftRow?.below ?? 0);
+  let bottomPad = (nothingBelowZero ? 0 : labelH + 4) + (liftRow?.below ?? 0);
 
   // ---- domain (zero always included; user min/max may never clip data) ----
   // Computed BEFORE the plot rect: the tick-band reserve must measure its
@@ -687,16 +685,22 @@ export function layoutVariance(
   // Date/numeric ticks are one line on one row; prose wraps to two
   // and may stagger, so a crowded prose axis reserves its second tier.
   const dateNumericTicks = isDateNumericTickSequence(cats.map((c) => c.label ?? c.id));
-  const planRow = (b: typeof band) =>
-    planCategoryRow({
-      ...categoryLabelsAndMarks(cats, { count: authoredFootnoteCount(options), warnings }, partialAxisWords(options.strings, options, legendInput?.items.some((item) => item.id === '__partial') || partialNamed)),
+  const planRow = (b: typeof band) => {
+    const words = categoryLabelsAndMarks(cats, { count: authoredFootnoteCount(options), warnings }, partialAxisWords(options.strings, options, legendInput?.items.some((item) => item.id === '__partial') || partialNamed));
+    // A whole name within the rotation cap's fixed minimum has the same plan
+    // at every height. Keep those phone probes on one existing row-cache key.
+    const fixedNames = fitTierLabels && words.labels.every((label, ci) =>
+      measure([label, words.suffixes?.[ci], words.under?.[ci]].filter(Boolean).join(' '), tickFont).width <= ROTATED_MIN_WIDTH);
+    return planCategoryRow({
+      ...words,
       centers: cats.map((_, ci) => b.center(ci)),
       step: b.step,
       fonts: [tickFont, { family: theme.type.family, ...theme.type.footnote }],
       measure,
-      plotHeight: frameResult.plot.h,
+      plotHeight: fixedNames ? 0 : frameResult.plot.h,
       target: options.target, textScale: textScaleOf(options),
     });
+  };
   let catPlan = planRow(band);
   const catOverhang = rotatedLeftOverhang(catPlan, cats.map((_, ci) => band.center(ci)), 4);
   if (catOverhang > 0) {
@@ -726,6 +730,85 @@ export function layoutVariance(
     const losses = deltas.some((d) => d !== null && d < 0);
     return (!gains || below >= need) && (!losses || above >= need);
   };
+  const catBandWithoutLift = showCatTickRow && !besideZeroFits() ? catPlan.rowHeight + 8 : 0;
+  const plotFloorWithoutLift = Math.max(frameResult.frame.plotMinHeight ?? 0,
+    size.height + (frameResult.deficit ?? 0) + 10 - (frameResult.plot.h - catBandWithoutLift - topPad - bottomPad));
+  let tierValues: ({ ci: number; delta: number; text: string; width: number; height: number;
+    words: ReturnType<typeof toDateLabel> | undefined } | undefined)[] | undefined;
+  // Predict neighbouring text collisions before building marks or solving labels.
+  // Category widths already include the shared wrapping and rotation plan.
+  if (fitTierLabels) {
+    const widths = tierValues = cats.map((category, ci) => {
+      const delta = deltaOf(ci);
+      const cell = measuredVal(ci);
+      if (!kindShown('point') || delta === null || cell.labelOverride === false) return undefined;
+      let text = mode === 'relative' ? pctSigned(delta, ci) : absolute(delta, ci, true);
+      if (typeof cell.labelOverride === 'string') text = cell.labelOverride.replace(/\$\{value\}/g, text);
+      const words = toDateIds.has(category.id) ? toDateLabel(text, basePointFont, toDate, theme, measure) : undefined;
+      const measured = words?.size ?? measure(text, basePointFont);
+      return { ci, delta, text, width: measured.width, height: measured.height, words };
+    });
+    const crowded = [false, false];
+    const previous = [-1, -1];
+    const nativePlotH = Math.max(10, frameResult.plot.h - catBandWithoutLift - topPad - bottomPad);
+    for (const value of widths) {
+      if (!value) continue;
+      const side = value.delta < 0 ? 1 : 0;
+      const neighbour = widths[previous[side]!]!;
+      if (neighbour && (value.width + neighbour.width) / 2 + SERIES_VALUE_GAP > (value.ci - neighbour.ci) * band.step
+        && Math.abs(value.delta - neighbour.delta) * nativePlotH / (dHi - dLo) < Math.max(value.height, neighbour.height) + 4) crowded[side] = true;
+      previous[side] = value.ci;
+    }
+    let crowdedNames = false;
+    if (showCatTickRow) {
+      let end = -Infinity;
+      for (let ci = 0; ci < catInfos.length; ci++) {
+        if (!catPlan.keep[ci]) continue;
+        const info = catInfos[ci]!;
+        // Rotated names claim the line-height square used by rotatedClaimRect.
+        const width = catPlan.rotation === 0 ? info.w : info.h;
+        const x = catPlan.rotation === 0 ? catPlan.x(ci) : band.center(ci) - width;
+        if (x < end + 2) crowdedNames = true;
+        end = x + width;
+      }
+      crowdedNames ||= catPlan.rotation !== 0
+        && widths.some(value => value && value.delta < 0 && value.width + 4 > band.step);
+    }
+    if (crowded[0] || crowded[1] || crowdedNames) {
+      // Two alternating rows must clear their next neighbour at the chosen type size.
+      // Widths scale linearly in the cached font metrics, so no layout retries are needed.
+      const ends = [[-Infinity, -Infinity], [-Infinity, -Infinity]];
+      let scale = 1;
+      const previousRows: (typeof widths[number])[][] = [[], []];
+      for (const value of widths) {
+        if (!value) continue;
+        const side = value.delta < 0 ? 1 : 0;
+        const x = band.center(value.ci);
+        const row = x - value.width / 2 < ends[side]![0]! + SERIES_VALUE_GAP ? 1 : 0;
+        const neighbour = previousRows[side]![row];
+        if (neighbour) scale = Math.min(scale,
+          ((value.ci - neighbour.ci) * band.step - SERIES_VALUE_GAP) / ((value.width + neighbour.width) / 2));
+        ends[side]![row] = x + value.width / 2;
+        previousRows[side]![row] = value;
+      }
+      const floor = readerFloorPx(options.target ?? DEFAULT_TARGET, 'label', textScaleOf(options));
+      const fontSize = Math.max(floor, Math.min(basePointFont.size, Math.floor(basePointFont.size * scale)));
+      const row = measure('0', { ...basePointFont, size: fontSize }).height + 4;
+      const proposed = { above: crowded[0] ? row : 0, below: crowded[1] || crowdedNames ? row : 0 };
+      const cost = proposed.above + proposed.below;
+      // Automatic probes measure the rows. A short pinned tier uses no lift.
+      if (tierLabelFit === 'auto' || size.height >= Math.max(frameResult.frame.minHeight ?? 0, plotFloorWithoutLift + cost)) {
+        liftRow = proposed;
+        tierLabelSize = fontSize;
+        pointFont = { ...basePointFont, size: fontSize };
+        const heightChange = measure('0', pointFont).height - labelH;
+        labelH += heightChange;
+        topPad += heightChange + proposed.above;
+        bottomPad += heightChange + proposed.below;
+      }
+    }
+  }
+  const fittingTierLabels = tierLabelSize !== undefined;
   const catBandH = showCatTickRow && !besideZeroFits() ? catPlan.rowHeight + 8 : 0;
   // In relative mode the pins, their values and the month names
   // share the plot floor, so the label rows count as plot, not as chrome.
@@ -739,6 +822,14 @@ export function layoutVariance(
     w: frameResult.plot.w,
     h: plotHeightAfter(frameResult, size.height, frameResult.plot.h - catBandH - topPad - bottomPad),
   };
+  if (fittingTierLabels) {
+    frameResult.frame.plotMinHeight = plotFloorWithoutLift;
+    const chrome = plotChromeFloor.get(frameResult.frame);
+    if (chrome !== undefined && !floorTakesLabels) plotChromeFloor.set(frameResult.frame,
+      chrome - (liftRow?.above ?? 0) - (liftRow?.below ?? 0) - (catBandH - catBandWithoutLift));
+    Object.assign(frameResult.frame, { [TIER_LABEL_HEIGHT]: Math.max(frameResult.frame.minHeight ?? 0,
+      plotFloorWithoutLift + (liftRow?.above ?? 0) + (liftRow?.below ?? 0)) });
+  }
 
   // ---- value axis (optional; reserve measured above, shrinks plot) ----
   const nodes: SceneNode[] = [...frameResult.nodes];
@@ -792,7 +883,7 @@ export function layoutVariance(
   const marks: VarianceMarks = { bars: [], pins: [] };
   const pinInk = new Map<string, Paint>();
   const pin = pinGeometry(theme, size.width);
-  const tierPinHeads = fitTierLabels && mode === 'relative' ? cats.flatMap((category, ci) => dPctArr[ci] === null ? []
+  const tierPinHeads = fittingTierLabels && mode === 'relative' ? cats.flatMap((category, ci) => dPctArr[ci] === null ? []
     : [{ id: category.id, cx: band.center(ci), cy: y(dPctArr[ci]!), r: pin.r }]) : [];
   const labelRequests: LabelRequest[] = axisTitle
     ? [valueAxisTitleRequest(axisTitle, { x: frameResult.plot.x, y: frameResult.plot.y + 4 }, 'start', 'axis:y:title')]
@@ -946,12 +1037,13 @@ export function layoutVariance(
       visBottomY[ci] = Math.max(y0, yv + pin.r);
 
       if (!kindShown('point')) return;
-      let text = pctSigned(d, ci);
-      if (typeof mv.labelOverride === 'string') text = mv.labelOverride.replace(/\$\{value\}/g, text);
+      const predicted = pointFont.size === basePointFont.size ? tierValues?.[ci] : undefined;
+      let text = predicted?.text ?? pctSigned(d, ci);
+      if (!predicted && typeof mv.labelOverride === 'string') text = mv.labelOverride.replace(/\$\{value\}/g, text);
       if (mv.labelOverride === false) return;
       // The growth value prints bold in its pin's tone; a neutral pin keeps the ink.
-      const words = toDateIds.has(c.id) ? toDateLabel(text, pointFont, toDate, theme, measure) : undefined;
-      const tsize = words?.size ?? measure(text, pointFont);
+      const words = predicted?.words ?? (toDateIds.has(c.id) ? toDateLabel(text, pointFont, toDate, theme, measure) : undefined);
+      const tsize = words?.size ?? predicted ?? measure(text, pointFont);
       // seriesTextPaint darkens the tone only where it reads under 4.5:1 as text.
       if (tone !== 'neutral') pinInk.set(`point:${c.id}`, seriesTextPaint(paint));
       labelRequests.push({
@@ -966,14 +1058,14 @@ export function layoutVariance(
         ...words?.request,
         font: pointFont,
         ...(tierLabelSize === undefined ? {} : { fontStep: pointFont }),
-        ...(fitTierLabels ? { anchor: { x: cx, y: yv }, leaderClear: true } : {}),
+        ...(fittingTierLabels ? { anchor: { x: cx, y: yv }, leaderClear: true } : {}),
         priority:
           (mv.priority ?? PRIORITY.endpoint + Math.min(99, Math.abs(d))) +
           (hl ? PRIORITY.highlightBonus : 0),
         candidates: relativePointCandidates(cx, yv, y0, tsize, d < 0, pin.r,
           isVarianceTier(options) && !fittingTierLabels,
           !isVarianceTier(options) || isSingleVarianceTier(options) || fittingTierLabels)
-          .filter(candidate => !fitTierLabels || Math.abs(candidate.rect.x + candidate.rect.w / 2 - cx) <= 0.5
+          .filter(candidate => !fittingTierLabels || Math.abs(candidate.rect.x + candidate.rect.w / 2 - cx) <= 0.5
             || nearestIsOwn(candidate.rect, { id: c.id, cx, cy: yv, r: pin.r }, tierPinHeads))
           // The reserved row lies outside the pin plot, with its radius too.
           // Canvas bounds and occupied text still reject a blocked seat.
@@ -1016,11 +1108,12 @@ export function layoutVariance(
       visBottomY[ci] = Math.max(y0, yv);
 
       if (!kindShown('point')) return;
-      let text = absolute(d, ci, true);
-      if (typeof mv.labelOverride === 'string') text = mv.labelOverride.replace(/\$\{value\}/g, text);
+      const predicted = pointFont.size === basePointFont.size ? tierValues?.[ci] : undefined;
+      let text = predicted?.text ?? absolute(d, ci, true);
+      if (!predicted && typeof mv.labelOverride === 'string') text = mv.labelOverride.replace(/\$\{value\}/g, text);
       if (mv.labelOverride === false) return;
-      const words = toDateIds.has(c.id) ? toDateLabel(text, pointFont, toDate, theme, measure) : undefined;
-      const tsize = words?.size ?? measure(text, pointFont);
+      const words = predicted?.words ?? (toDateIds.has(c.id) ? toDateLabel(text, pointFont, toDate, theme, measure) : undefined);
+      const tsize = words?.size ?? predicted ?? measure(text, pointFont);
       labelRequests.push({
         id: `point:${c.id}`,
         claimId: `var:abs:${c.id}`,
@@ -1232,8 +1325,11 @@ export function layoutVariance(
   // Two aligned rows keep neighbouring values apart even when their mark
   // heights differ. Alternate crowded neighbours before the priority solve,
   // so an earlier, larger value cannot block the only row of a smaller one.
+  const categoryIndex = fittingTierLabels ? new Map(cats.map((category, ci) => [category.id, ci])) : undefined;
+  const naturalPoints = fittingTierLabels ? labelRequests.filter(request => request.kind === 'point') : [];
   if (fittingTierLabels) {
     for (const above of [true, false]) {
+      if (!(above ? liftRow?.above : liftRow?.below)) continue;
       const requests = labelRequests.filter(request => request.kind === 'point'
         && /^(above|outsideTop)/.test(request.candidates[0]!.slot) === above);
       if (requests.length === 0) continue;
@@ -1246,7 +1342,7 @@ export function layoutVariance(
         const natural = request.candidates[0]!;
         const preferred = natural.rect.x < rowEnds[0]! + SERIES_VALUE_GAP ? 1 : 0;
         rowEnds[preferred] = natural.rect.x + natural.rect.w;
-        const ci = cats.findIndex(category => category.id === request.owner.categoryId);
+        const ci = categoryIndex!.get(request.owner.categoryId!)!;
         const anchor = { x: band.center(ci), y: anchorTopY[ci]! };
         request.anchor = anchor;
         request.leaderClear = true;
@@ -1388,60 +1484,37 @@ export function layoutVariance(
     plot,
     labelPad: 2,
   });
+  const checkTierCounts = fittingTierLabels && size.height >= plotFloorWithoutLift + (liftRow?.above ?? 0) + (liftRow?.below ?? 0);
+  const beforeSolve = checkTierCounts ? occupied.snapshot() : undefined;
   const solved: SolveResult & { stranded?: LabelRequest[] } = mode === 'integrated'
     ? solveVarianceLabels(labelRequests, occupied, solveCtx, liftSeats)
     : solveLabels(labelRequests, occupied, solveCtx);
-  // A phone tier first reserves a second row at native type, then steps down
-  // only to the target floor with those rows. Names win a contested seat.
-  // Standalone, integrated and wider charts keep their original solve and bytes.
-  const crowded = fitTierLabels && tierLabelSize === undefined
-    ? solved.placed.filter(label => label.hidden === 'collision' && (label.kind === 'category' || label.kind === 'point')) : [];
-  let optionalTierHeight: number | undefined;
-  if (crowded.length > 0) {
-    const counts = (labels: PlacedLabel[]) => [
-      labels.filter(label => label.kind === 'category' && label.hidden === undefined).length,
-      labels.filter(label => label.kind === 'point' && label.hidden === undefined).length,
-    ] as const;
-    let best = counts(solved.placed);
-    let fitted: Geometry<VarianceMarks, VarianceDerived> | undefined;
-    const optionalRows = (): Geometry<VarianceMarks, VarianceDerived> => {
-      const candidate = fitted!;
-      const naturalHeight = Math.max(candidate.frame.minHeight ?? 0, candidate.frame.plotMinHeight ?? 0, candidate.sizing?.minHeight ?? 0);
-      if (candidate.sizing) candidate.sizing.naturalHeight = naturalHeight;
-      Object.assign(candidate.frame, { plotMinHeight: frameResult.frame.plotMinHeight, [TIER_LABEL_HEIGHT]: naturalHeight });
-      const chrome = plotChromeFloor.get(frameResult.frame);
-      if (chrome === undefined) plotChromeFloor.delete(candidate.frame);
-      else plotChromeFloor.set(candidate.frame, chrome);
-      return candidate;
-    };
-    const wanted = counts(solved.placed.map(label => label.hidden === 'collision' ? { ...label, hidden: undefined } : label));
-    const deltas = crowded.filter(label => label.kind === 'point')
-      .map(label => deltaOf(cats.findIndex(category => category.id === label.owner.categoryId)));
-    const above = deltas.some(delta => delta !== null && delta >= 0);
-    const below = crowded.some(label => label.kind === 'category') || deltas.some(delta => delta !== null && delta < 0);
-    const trySize = (fontSize: number): boolean => {
-      const row = measure('0', { ...pointFont, size: fontSize }).height + 4;
-      const candidate = layoutVariance(data, { ...options, [TIER_LABEL_SIZE]: fontSize,
-        [LIFT_ROW]: { above: above ? row : 0, below: below ? row : 0 } } as VarianceOptions);
-      const fits = (candidate.frame.plotMinHeight ?? 0) <= size.height
-        && (candidate.sizing === undefined || candidate.sizing.minWidth <= size.width && candidate.sizing.minHeight <= size.height);
-      const seated = counts(candidate.labels);
-      if (optionalTierHeight === undefined && (seated[0] > best[0] || seated[0] === best[0] && seated[1] > best[1])) {
-        optionalTierHeight = Math.max(candidate.frame.minHeight ?? 0, candidate.frame.plotMinHeight ?? 0, candidate.sizing?.minHeight ?? 0);
-      }
-      if (fits && (seated[0] > best[0] || seated[0] === best[0] && seated[1] > best[1])) {
-        fitted = candidate;
-        best = seated;
-      }
-      return best[0] === wanted[0] && best[1] === wanted[1];
-    };
-    const floor = readerFloorPx(options.target ?? DEFAULT_TARGET, 'label', textScaleOf(options));
-    for (let fontSize = Math.max(pointFont.size, floor);; fontSize = Math.max(floor, fontSize - 1)) {
-      if (trySize(fontSize)) return optionalRows();
-      if (fontSize === floor) break;
+  // A short automatic probe only measures the rows. At a height that holds
+  // them, compare any losses with the normal seats on the same mark geometry.
+  // Only a prediction that loses a name or value can request one no-lift build.
+  if (beforeSolve && solved.placed.some(label => label.hidden === 'collision' && (label.kind === 'category' || label.kind === 'point'))) {
+    const normal = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
+    for (const claim of beforeSolve) normal.claim(claim.rect, claim.kind, claim.owner, claim.part, claim.polygon);
+    normal.tickColumns = occupied.tickColumns;
+    const requests = labelRequests.filter(request => request.kind !== 'point').map(request => request.kind !== 'category' ? request : {
+      ...request, priority: PRIORITY.endpoint, candidates: request.candidates.map(candidate => /^(below|belowShifted)$/.test(candidate.slot)
+        ? { ...candidate, rect: { ...candidate.rect, y: candidate.rect.y - (liftRow?.below ?? 0) } } : candidate),
+    });
+    requests.push(...naturalPoints.map(request => {
+      const ci = categoryIndex!.get(request.owner.categoryId!)!;
+      const delta = deltaOf(ci)!;
+      const text = tierValues![ci]!;
+      const { anchor: _anchor, fontStep: _fontStep, leaderClear: _clear, ...plain } = request;
+      return { ...plain, font: basePointFont, candidates: mode === 'relative'
+        ? relativePointCandidates(band.center(ci), anchorTopY[ci]!, y0, text, delta < 0, pin.r,
+          isVarianceTier(options), !isVarianceTier(options) || isSingleVarianceTier(options))
+        : deltaBarCandidates(marks.bars.find(mark => mark.categoryId === request.owner.categoryId)!.rect, text, delta < 0, toneCss(toneOf(delta, ci), measuredVal(ci).fill)) };
+    }));
+    const baseline = solveLabels(requests, normal, solveCtx);
+    const count = (labels: PlacedLabel[], kind: 'category' | 'point') => labels.filter(label => label.kind === kind && label.hidden === undefined).length;
+    if (count(baseline.placed, 'category') > count(solved.placed, 'category') || count(baseline.placed, 'point') > count(solved.placed, 'point')) {
+      return layoutVariance(data, { ...options, [FIT_TIER_LABELS]: false } as VarianceOptions);
     }
-    if (fitted) return optionalRows();
-    if (optionalTierHeight !== undefined) Object.assign(frameResult.frame, { [TIER_LABEL_HEIGHT]: optionalTierHeight });
   }
   // The plot holds one value row over the tallest column. When a larger
   // variance still finds no seat while a smaller one keeps its value (the seat
@@ -1578,7 +1651,7 @@ export function layoutVariance(
   const sizing = bandFloorSizing('variance', size, plot, allLabels, [...marks.bars, ...marks.pins].map((mark) => ({
     bar: mark.rect, labelIds: [`total:${mark.categoryId}`, `point:${mark.categoryId}`],
   })), options);
-  if (optionalTierHeight !== undefined) sizing.naturalHeight = optionalTierHeight;
+  if (fittingTierLabels) sizing.naturalHeight = (frameResult.frame as { [TIER_LABEL_HEIGHT]?: number })[TIER_LABEL_HEIGHT]!;
   // The to-date words never raise the floor: below it the hatch key names the period.
   if (toDateIds.size > 0 && (sizing.minWidth > size.width || sizing.minHeight > size.height)) {
     return layoutVariance(data, { ...options, [PARTIAL_KEY]: true } as VarianceOptions);
