@@ -257,7 +257,7 @@ export const lineOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions
     .meta({ default: 'grey' }),
   scenarioStyle: z
     .partialRecord(
-      z.enum(['AC', 'PY', 'PL', 'FC']).describe('Scenario the weight and ink apply to.'),
+      z.enum(['AC', 'PY', 'PL', 'FC']).describe('Scenario the weight and ink apply to. LY means PY (last year); codes accept any case.'),
       z.object({
         width: z.number().positive().max(8).optional().describe('Stroke width in px for the lines of this scenario.'),
         ink: z.enum(['ink', 'inkMuted']).optional().describe('Which neutral ink the lines of this scenario take.'),

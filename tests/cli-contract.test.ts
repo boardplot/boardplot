@@ -24,6 +24,27 @@ import rowMappings from './fixtures/row-mappings.json';
 import overwriteExample from './fixtures/render-overwrite.json';
 
 const dirs: string[] = [];
+
+// An explicit SVG format must return the drawing without changing the default reading response.
+it('returns an explicit SVG format and accepts enum argument case', () => {
+  const dir = tdir();
+  const doc = writeDoc(dir, 'spec.json', SPEC);
+  const ordinary = envelope(runCli(['render', doc]));
+  expect(ordinary.svg).toBeUndefined();
+  const explicit = envelope(runCli(['render', doc, '--format', 'svg']));
+  expect(explicit.svg).toContain('<svg');
+  expect(explicit.reading).toEqual(ordinary.reading);
+  expect(explicit.warnings).toContainEqual(expect.objectContaining({ code: 'svg-returned', severity: 'info' }));
+  const cased = envelope(runCli(['render', doc, '--format', 'SVG', '--target', 'Report', '--background', 'Transparent', '--return', 'SVG,Reading']));
+  expect(cased.ok).toBe(true);
+  expect(cased.svg).toContain('<svg');
+  expect(cased.warnings.filter(warning => (warning as { code: string }).code === 'input-converted')).toHaveLength(5);
+  const quiet = envelope(runCli(['render', doc, '--format', 'SVG', '--quiet']));
+  expect(quiet.svg).toContain('<svg');
+  expect(quiet.warnings).toContainEqual(expect.objectContaining({ code: 'svg-returned' }));
+  expect(envelope(runCli(['render', doc, '--quiet', '--return', 'SVG'])).svg).toContain('<svg');
+  expect(envelope(runCli(['measure', doc, '--target', 'Report'])).warnings).toContainEqual(expect.objectContaining({ code: 'input-converted', path: '/target' }));
+});
 afterEach(() => {
   vi.restoreAllMocks();
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
@@ -538,7 +559,7 @@ describe('render and measure on the command line', () => {
 
   it('refuses a column below its size floor with the pixels it needs', () => {
     const dir = tdir();
-    const small = { ...SPEC, options: { ...SPEC.options, size: { width: 240, height: 140 } } };
+    const small = { ...SPEC, options: { ...SPEC.options, size: { width: 100, height: 140 } } };
     const doc = writeDoc(dir, 'small.json', small);
     const result = runCli(['render', doc, '--out', join(dir, 'out')]);
     expect(result.code).toBe(1);
@@ -546,7 +567,7 @@ describe('render and measure on the command line', () => {
     expect(existsSync(join(dir, 'out'))).toBe(false);
     const measured = JSON.parse(runCli(['measure', doc]).log[0]!);
     // Below the full floor the column falls back to compact, so measure names the size compact draws at.
-    expect(measured.refused).toMatchObject({ code: 'size-below-floor', required: { width: 280, height: 240 } });
+    expect(measured.refused).toMatchObject({ code: 'size-below-floor', required: { width: 120 } });
   });
 
   it('refuses in measure what render refuses for a reason other than size', () => {

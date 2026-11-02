@@ -47,7 +47,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | series[].id | string | yes | Series identity used by keyed options, annotations and legend entries. |
 | series[].label | string |  | Displayed series name; defaults to the series id. |
 | series[].values | (cell \| { categoryId, value: cell })[] | yes | Values in category order, or keyed entries pairing a categoryId with its value. |
-| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). Controls scenario labels and paint conventions. |
+| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. Controls scenario labels and paint conventions. |
 | series[].role | string |  | Data series or comparison-only reference series; references are excluded from the main plotted data. One of `'data'`, `'reference'`. |
 | series[].colorRole | string |  | Theme color role used for a single displayed slice; multi-slice charts use the selected slice ramp. One of good, bad, warn, neutral, neutralLight, highlight, total, others; series-N for step N of the theme ramp, 1-based (series-2 is color.series[1]); or status-<key> for a theme status colour. A hex colour goes in fill. |
 | series[].unit | string |  | Unit shown with this series values and used to check shared-scale compatibility. |
@@ -58,14 +58,14 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
 | labels | false \| object | `false` (or another value of its type) |  | Up to four displayed slices (eight without a legend) default to named outside labels with leaders in two columns; without a legend every label names its slice at any count. Explicit inside/outside settings take priority. |
-| topN | object |  |  | Defaults to the seven largest slices plus Others, merged only when Others would hold three slices or more; an authored topN overrides the default. |
+| topN | object \| integer |  |  | Defaults to the seven largest slices plus Others, merged only when Others would hold three slices or more; an authored topN overrides the default. A positive integer n means { n }. |
 | doughnut | number |  |  | Hole radius as a fraction of outer radius. Inside labels cap the hole at 0.72; centre totals include the declared unit. |
 | rotate | number | `0`, `90`, `180`, `270` |  | Starting angle clockwise from 12 o'clock, in quarter turns. Defaults to 0 degrees. |
 | explode | object |  |  | Slice category ids mapped to outward offsets as fractions of the outer radius. |
 | colors | string | `'categorical'`, `'sequential'` |  | Slice colour strategy. Default 'sequential': one ramp of the first series colour in slice order, the first slice strongest, at every slice count. 'categorical' gives each slice its own theme hue. A highlight keeps its accent and steps the other slices into grey. |
 | othersShade | string | `'quietest'`, `'apart'` |  | Sequential ramp beside an Others slice. Without an Others slice the ramp does not change. Default 'quietest'. 'quietest': Others is the quietest part, so every named step has more contrast against the background than Others and none matches it. 'apart': named steps only differ from Others, and some may be quieter. If Others is stronger than the first named step, the ramp falls back to 'apart' and the chart warns others-shade-unavailable. |
 
-Plus the [shared options](options.md). This type does not accept `categoryLabels`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `bandFraction`, `hatchStrength`, `colorblindSafe`.
+Plus the [shared options](options.md). This type does not accept `valueAxis`, `hatchStrength`, `colorblindSafe`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 
@@ -82,8 +82,9 @@ An annotation anchor is a category or item id string, or an object with category
 
 ## Sizing
 
-Floor 280 × 320 px; fit `content`.
+Floor 120 × 320 px; fit `content`.
 Below 320 px high, down to the compact floor of 280 × 160 px, the chart draws in compact mode; `belowMinimum: 'refuse'` refuses there instead.
+Narrower than the compact floor, a pie draws while its circle keeps a radius of at least 36 px beside its labels.
 
 Below the floor a render is refused with `size-below-floor` and the pixels it needs. `measure` returns the natural and comfortable size for a given spec; see [Sizing in the manual](../manual.md#sizing).
 

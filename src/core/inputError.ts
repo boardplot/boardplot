@@ -4,6 +4,24 @@
  * rows helper throws it to the caller.
  */
 import type { DocumentFinding } from './doc/diagnostics';
+import type { LintWarning } from './types/scene';
+
+/** MCP spec strings are parsed before the ordinary object ownership guard. */
+export function parseSpecString(spec: unknown, warnings: LintWarning[]): unknown {
+  if (typeof spec !== 'string') return spec;
+  let parsed: unknown;
+  try { parsed = JSON.parse(spec); } catch { /* The original refusal names the string. */ }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    assertSpecObject(spec);
+    return spec;
+  }
+  warnings.push({
+    code: 'spec-parsed-from-string', severity: 'info', path: '/spec',
+    message: 'spec arrived as a JSON string and was parsed; send the object',
+    fix: [{ op: 'replace', path: '/spec', value: parsed }],
+  });
+  return parsed;
+}
 
 /** An input the verb rejects before or instead of doing its work. */
 export class InputError extends Error {

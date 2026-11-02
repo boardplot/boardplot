@@ -401,7 +401,7 @@ describe('histogram disclosures', () => {
     expect(codes(large)).not.toContain('histogram-small-sample');
   });
 
-  it('refuses sort and topN by name instead of warning that it ignores them ', () => {
+  it('keeps unused options disabled in the published schemas', () => {
     const refusal = (type: string, options: object) =>
       getChartDefinition(type)!.optionsSchema.safeParse(options).error?.issues[0]?.message ?? 'accepted';
     expect(refusal('histogram', { sort: { categories: 'desc' } })).toMatch(/^'sort' is not implemented by 'histogram' — /);

@@ -26,6 +26,8 @@ interface SceneRendererProps {
   theme: Theme;
   /** Shrink to the parent width, or keep intrinsic size. */
   responsive?: boolean;
+  /** Leave out the canvas rectangle when transparent. */
+  background?: 'theme' | 'transparent';
   style?: CSSProperties;
   onElementClick?: (node: SceneNode) => void;
   /** Called with the series id when the reader clicks a series' line or area, its name label or its legend entry. */
@@ -228,6 +230,7 @@ export function SceneRenderer({
   geometry,
   theme,
   responsive = true,
+  background: canvasBackground,
   style,
   onElementClick,
   onSeriesClick,
@@ -267,7 +270,7 @@ export function SceneRenderer({
       {geometry.a11y.includeTitle === true && <title>{geometry.a11y.title}</title>}
       <desc id={`${patternScope}-desc`}>{geometry.a11y.desc}</desc>
       <ScenePatternDefs geometry={geometry} theme={theme} scope={patternScope} paint={paint} />
-      <rect x={0} y={0} width={size.width} height={size.height} fill={background} />
+      {canvasBackground !== 'transparent' && <rect x={0} y={0} width={size.width} height={size.height} fill={background} />}
       {geometry.scene.map((node) =>
         node.tx || node.ty ? (
           <g key={node.id} transform={`translate(${node.tx ?? 0},${node.ty ?? 0})`}>

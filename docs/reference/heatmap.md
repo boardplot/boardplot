@@ -55,7 +55,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | series[].id | string | yes | Series identity used by keyed options, annotations and legend entries. |
 | series[].label | string |  | Displayed series name; defaults to the series id. |
 | series[].values | (cell \| { categoryId, value: cell })[] | yes | Values in category order, or keyed entries pairing a categoryId with its value. |
-| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). Controls scenario labels and paint conventions. |
+| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. Controls scenario labels and paint conventions. |
 | series[].direction | string |  | Declares this row's judgment for the continuous scale and PINS the whole matrix on the good/bad valence ramp (like table heat's signed flag) — declaring 'higherIsBetter' is therefore not a paint no-op on an all-positive matrix. 'lowerIsBetter' inverts the row's poles. Breaks bins go bad to good; under a breaks key every row needs the same direction (else refused). Ignored by the plain discrete ladder and harvey glyphs (warned). One of `'higherIsBetter'`, `'lowerIsBetter'`. |
 | series[].colorRole | string |  | Accepted series color role; heatmap colors are resolved by the matrix scale and cell fills. One of good, bad, warn, neutral, neutralLight, highlight, total, others; series-N for step N of the theme ramp, 1-based (series-2 is color.series[1]); or status-<key> for a theme status colour. A hex colour goes in fill. |
 | series[].unit | string |  | Unit shown with this series values and used to check shared-scale compatibility. |
@@ -82,7 +82,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | minBase | number |  |  | Low-base threshold. Cells whose series bases entry is below it draw hatched, with a note. |
 | missing | string | `'hatch'`, `'blank'` |  | How a cell with no value is drawn. 'hatch' (the default) stripes the cell and names it in the key. 'blank' draws no fill and no stripe; the same key entry or note still says that a blank cell is no data. A blank cell keeps its grid line and dash, so it does not read as the palest value. A low base (bases and minBase) stays hatched. |
 
-Plus the [shared options](options.md). This type does not accept `categoryLabels`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `topN`, `bandFraction`, `rounding`.
+Plus the [shared options](options.md). This type does not accept `valueAxis`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `topN`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 

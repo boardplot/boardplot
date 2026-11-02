@@ -10,15 +10,35 @@ import type { Theme } from '../../types/theme';
 import { resolveSurface, semanticPalettePaint, strokeToken } from '../../theme';
 import { tableInk } from './statement';
 
+/** A head that holds a bracket or a word with a capital after a lowercase letter (mW, kWh, eBay) needs the careful path. */
+const HEAD_KEEPS = /[([]|\p{Ll}\p{Lu}/u;
+const INNER_CAPITAL = /\p{Ll}\p{Lu}/u;
+const HEAD_PARTS = /[^\s,]+|[\s,]+/gu;
+
 /**
- * A field head's text: in capitals, unless `table.head.case` is 'asis'. The
- * comma and a unit after the last one ("Revenue, $bn", "Power,mW") stay as
- * written, so "mW" never reads as "MW".
+ * A field head's text: in capitals, unless `table.head.case` is 'asis'. Case
+ * carries meaning in a unit, so three parts stay as written: the text after
+ * the last comma ("Revenue, $bn"), text in parentheses or square brackets
+ * ("Standby power (mW)"), and a word with a capital after a lowercase letter
+ * ("kWh", "eBay"). "mW" never reads as "MW", nor "Mb" as "MB".
  */
 export function fieldHeadText(label: string, theme: Pick<Theme, 'table'>): string {
   if (theme.table?.head?.case === 'asis') return label;
   const cut = label.lastIndexOf(',');
-  return cut < 0 ? label.toUpperCase() : `${label.slice(0, cut).toUpperCase()}${label.slice(cut)}`;
+  const head = cut < 0 ? label : label.slice(0, cut);
+  const tail = cut < 0 ? '' : label.slice(cut);
+  if (!HEAD_KEEPS.test(head)) return head.toUpperCase() + tail;
+  let depth = 0;
+  let text = '';
+  for (const part of head.match(HEAD_PARTS) ?? []) {
+    const keep = INNER_CAPITAL.test(part);
+    for (const char of part) {
+      if (char === '(' || char === '[') depth++;
+      text += keep || depth > 0 ? char : char.toUpperCase();
+      if ((char === ')' || char === ']') && depth > 0) depth--;
+    }
+  }
+  return text + tail;
 }
 
 /** The field-head face: `table.head` over the axis role, with no tracking where the theme names none. */

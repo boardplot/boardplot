@@ -29,9 +29,9 @@ import type { LineArea, LineDomain, LineEnv, LineMarkGeometry, LinePaints, LineR
 import { layoutReferenceBands } from './referenceBands';
 import { drawLineTrends } from './trend';
 import { pushAll } from '../../arrays';
+import { INTERVAL_TICK } from '../../intervalTicks';
 
 /** Length of a date-interval tick under the plot; the category names start 6 px below the plot. */
-const INTERVAL_TICK = 4;
 /** Interval ticks closer than this (px) draw only where a label prints. */
 const MIN_TICK_GAP = 2;
 /** A stacked band's forecast stripes sit 1/√2 of the theme's second-cue pitch apart (9.6 px along x at the default). */

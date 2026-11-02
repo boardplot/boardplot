@@ -32,12 +32,12 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 
 | Path | Type | Required | Meaning |
 |---|---|---|---|
-| label | string | yes | Name of the metric displayed above the main value. |
+| label | string | yes | Name of the metric displayed above the main value. An empty string omits the label and its space. |
 | value | number | yes | Main metric value in its original units. |
 | format | string |  | Format-by-example for the main metric and absolute comparison values (a % example expects percent units: 3.53 for 3.53%). |
 | delta | object |  | Single scenario comparison; cannot be combined with compare. |
 | delta.vs | number | yes | Reference value subtracted from the main metric. |
-| delta.scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). Code of the comparison baseline; a baseline with its own name, such as a month, goes in compare[].label instead. |
+| delta.scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. Code of the comparison baseline; a baseline with its own name, such as a month, goes in compare[].label instead. |
 | delta.direction | string |  | Whether an increase from the reference is favorable. neutral prints ordinary ink without a judgment; omission keeps higherIsBetter. One of `'higherIsBetter'`, `'lowerIsBetter'`, `'neutral'`. |
 | delta.mode | string |  | Display absolute change, relative change, or both. Defaults to relative; under a percent format it defaults to absolute, which prints in pp. A zero or negative vs shows the absolute change with a ref-nonpositive warning, and a value on the other side of zero from vs shows it with a sign-change warning. One of `'absolute'`, `'relative'`, `'both'`. |
 | compare | array |  | One or two named comparisons below the metric; cannot be combined with delta. An empty compare list is the same as none. |
@@ -67,7 +67,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | density | string | `'compact'`, `'regular'` | `'regular'` | Card density. 'compact' uses the smaller figure and spark share, and a 280 px default card width instead of 360. An unsized card takes its content height. 'regular' is the default. |
 | comparisons | string | `'chip'`, `'text'` |  | How compare[] and attainment are drawn. Omitted, a standalone regular card without a spark draws the steering form: the comparisons as rows of toned text with their names in a column, the attainment as a progress bar with a 100% tick, in one band on a wide card; a grid panel, a compact card, a card with a spark and a card whose height cannot hold the form draw chips. 'chip' tints a chip behind each; 'text' draws each as delta is drawn: text in its tone, no fill, compare entries on one row. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `categoryLabels`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `topN`, `bandFraction`, `story`, `hatchStrength`, `colorblindSafe`, `rounding`.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis`, `story`, `hatchStrength`, `colorblindSafe`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 
@@ -75,7 +75,8 @@ This type takes no annotations.
 
 ## Sizing
 
-Floor 280 × 28 px; fit `content`.
+Floor 120 × 28 px; fit `content`.
+Narrower than 280 px a card draws while its figure fits.
 
 Below the floor a render is refused with `size-below-floor` and the pixels it needs. `measure` returns the natural and comfortable size for a given spec; see [Sizing in the manual](../manual.md#sizing).
 

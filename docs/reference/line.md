@@ -99,7 +99,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | series[].label | string |  | Displayed series name; defaults to the series id. |
 | series[].shortLabel | string |  | Short end-label name. End labels get 18% of the effective width: Boardplot tries the full label on one line, then on two, then shortLabel with a full-name legend key, then a legend with value-only end labels. legend 'none' removes the shortLabel and legend steps, a labelPlacements pin the legend step. Boardplot adds no abbreviation or ellipsis. |
 | series[].values | (cell \| { categoryId, value: cell })[] | yes | Values in category order, or keyed entries pairing a categoryId with its value. |
-| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). Controls scenario labels and paint conventions. |
+| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. Controls scenario labels and paint conventions. |
 | series[].role | string |  | Data series or comparison-only reference series; references are excluded from the main plotted data. One of `'data'`, `'reference'`. |
 | series[].colorRole | string |  | Theme color role used for this series when no explicit fill takes precedence. One of good, bad, warn, neutral, neutralLight, highlight, total, others; series-N for step N of the theme ramp, 1-based (series-2 is color.series[1]); or status-<key> for a theme status colour. A hex colour goes in fill. |
 | series[].fill | string |  | Explicit CSS fill color for this series; remains authored across theme changes. |
@@ -222,7 +222,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | referenceBands[].label | string |  |  | REQUIRED. The band's name, printed bold at the start of its entry in the column right of the plot: the level or range as the reader should say it. Example: '60+'. |
 | referenceBands[].description | string |  |  | What the level means, in plain type after the name; it wraps under it when the column is narrow. Example: 'very strong cycle'. |
 
-Plus the [shared options](options.md). This type does not accept `categoryLabels`, `valueAxis.break`, `secondaryAxis`, `rowLabels`, `sort`, `topN`, `bandFraction`, `colorblindSafe`.
+Plus the [shared options](options.md). This type does not accept `valueAxis.break`, `colorblindSafe`. This type ignores `animate`, `debug`, `rowLabels`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction` with an `option-ignored` warning.
 
 ## Annotations
 

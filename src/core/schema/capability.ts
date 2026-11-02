@@ -6,26 +6,30 @@
  * tables into `z.never` keys and answer with the reasons in
  * capabilityReasons.ts, which only the schema side links. The per-type React
  * entries do not link zod or the reasons: `optionRefusals` (refusals.ts)
- * reads these tables through `schemaRefusedKeys` and refuses the same keys
- * with the same code, path and patch and a short sentence of its own.
- * A test sweeps every key the published schemas refuse through
- * both doors.
+ * reads these tables through `schemaRefusedKeys`. Settings a type ignores
+ * are removed before validation with an `option-ignored` warning.
  */
 
 /**
  * Types whose layout draws nothing for any legend value: the
- * key is refused by name there.
+ * key is ignored with a warning there.
  */
 export const LEGEND_REFUSED: readonly string[] = ['box'];
 
 /**
  * Types on which some legend values draw exactly what the default draws:
- * those values are refused by name, and the values that draw a key
- * stay accepted.
+ * 'none' and 'auto' are ignored with a warning, and the values that draw a
+ * key stay accepted.
  */
 export const LEGEND_DRAWS: Readonly<Record<string, readonly string[]>> = {
-  slope: ['top', 'bottom'],
+  slope: ['top', 'bottom', 'right', 'left'],
 };
+
+/** Options ignored with a warning when a chart type does not read them. */
+export const IGNORED_OPTION_KEYS: ReadonlySet<string> = new Set([
+  'animate', 'debug', 'sort', 'topN', 'bandFraction', 'secondaryAxis',
+  'rowLabels', 'categoryAxis', 'categoryLabels',
+]);
 
 /**
  * Per-capability narrowing of the shared base.
@@ -62,7 +66,7 @@ export const OPTION_CAPABILITY = {
     implementedBy: ['bar', 'bullet', 'box', 'dot', 'likert'],
   },
   categoryAxis: {
-    implementedBy: ['line'],
+    implementedBy: ['column', 'combo', 'line'],
   },
   categoryLabels: {
     implementedBy: ['column', 'combo', 'pareto'],
@@ -110,7 +114,7 @@ export const OPTION_CAPABILITY = {
   // pareto, pvm and pyramid forward bandFraction to the host layout that draws
   // their bands. Histogram sort and topN, and box
   // topN and bandFraction are read only to warn that they do nothing; they
-  // are refused here like every other ignored option.
+  // remain disabled in the published schema and are removed before validation.
   sort: {
     implementedBy: ['bar', 'box', 'cohort', 'column', 'dot', 'heatmap', 'mekko', 'pie', 'table', 'dimswitch'],
   },

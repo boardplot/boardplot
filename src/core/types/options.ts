@@ -68,8 +68,8 @@ export interface LocaleSpec {
   language?: string;
   /** Decimal mark of every number the chart prints. Default '.'. The language does not change it. */
   decimal?: '.' | ',';
-  /** Grouping mark of every number the chart prints. Default ',', or '.' with decimal ','. A value equal to the decimal mark uses that fallback. */
-  thousands?: ',' | '.' | '’' | ' ';
+  /** Grouping mark of every number the chart prints. The apostrophe `'` is the same as `’`, and the narrow no-break space `\u202f` is the same as the space. Default ',', or '.' with decimal ','. A value equal to the decimal mark uses that fallback. */
+  thousands?: ',' | '.' | '’' | "'" | ' ' | '\u202f';
   minusGlyph?: '−' | '-';
   weekStartsOn?: 0 | 1;
 }
@@ -316,7 +316,7 @@ export interface StorySpec {
 }
 
 export interface LegendOptions {
-  position: 'right' | 'bottom' | 'top';
+  position: 'right' | 'left' | 'bottom' | 'top';
   order?: Id[];
 }
 
@@ -565,7 +565,7 @@ export interface BaseOptions {
    */
   categoryLabels?: 'axis' | 'staircase';
 
-  legend?: 'none' | 'right' | 'bottom' | 'top' | 'auto' | LegendOptions; // auto accepts a visible subtitle measure or unit naming one primary series; explicit settings take precedence
+  legend?: 'none' | 'right' | 'left' | 'bottom' | 'top' | 'auto' | LegendOptions; // auto accepts a visible subtitle measure or unit naming one primary series; explicit settings take precedence
   valueAxis?: ValueAxisOptions;
   categoryAxis?: CategoryAxisOptions;
   /**
@@ -860,8 +860,10 @@ export interface BarOptions
   extends Omit<
     ColumnOptions,
     'ratioTier' | 'variant' | 'anomaly' | 'rowLabels' | 'events'
-    | 'seriesRamp' | 'othersShade' | 'seriesLabels' | 'shareLabels' | 'window' | 'viewDomain' | 'categoryLabels' | 'ribbons'
+    | 'seriesRamp' | 'othersShade' | 'seriesLabels' | 'shareLabels' | 'window' | 'viewDomain' | 'categoryLabels' | 'categoryAxis' | 'ribbons'
   > {
+  /** Refused: a bar has no date ticks or band crossing; column, combo and line read categoryAxis. */
+  categoryAxis?: { crossesBetween?: never; dateTicks?: never };
   /** Refused: a horizontal bar prints each name beside its row already (staircase names are column, combo and pareto). */
   categoryLabels?: never;
   /**

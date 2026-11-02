@@ -48,7 +48,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | series[].id | string | yes | Series identity used by keyed options, annotations and legend entries. |
 | series[].label | string |  | Displayed series name; defaults to the series id. |
 | series[].values | (cell \| { categoryId, value: cell })[] | yes | Values in category order, or keyed entries pairing a categoryId with its value. |
-| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). |
+| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. |
 | series[].direction | string |  | Declared preference for higher or lower values in directional comparisons. One of `'higherIsBetter'`, `'lowerIsBetter'`. |
 | series[].role | string |  | Declares a plotted data series or a comparison reference series. One of `'data'`, `'reference'`. |
 | series[].colorRole | string |  | Theme color role used for this series when no explicit fill takes precedence. One of good, bad, warn, neutral, neutralLight, highlight, total, others; series-N for step N of the theme ramp, 1-based (series-2 is color.series[1]); or status-<key> for a theme status colour. A hex colour goes in fill. |
@@ -60,7 +60,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
-| legend | string \| object | `'top'`, `'bottom'`, `'none'`, `'auto'` (or another value of its type) |  | Key position. Multiple series get a key by default unless visible direct labels name them. 'none' hides the key; unnamed series warn. |
+| legend | string \| object | `'top'`, `'bottom'`, `'right'`, `'left'`, `'none'`, `'auto'` (or another value of its type) |  | Key position. Multiple series get a key by default unless visible direct labels name them. 'none' hides the key; unnamed series warn. |
 | axisTitles | object |  |  | Title of the value axis when it is drawn: under the value-axis tick row, ending at the right edge of the plot. Drawn only when authored. |
 | axisTitles.primary | string |  |  | 'Measure, unit' title of the value axis, e.g. 'Margin, %'. |
 | variant | string | `'dot'`, `'dumbbell'`, `'lollipop'` | `'dot'` | Dot by default; dumbbell joins paired values and lollipop joins values to the baseline. |
@@ -75,7 +75,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | range.values | boolean |  |  | Default false. true prints each range's low and high value beside its caps. |
 | range.midLabel | string |  |  | The key entry for the open marker that draws each supplied range.mid, for example 'Peer midpoint'. Default 'Midpoint'. When only some rows carry a mid, a note names the others. |
 
-Plus the [shared options](options.md). This type does not accept `categoryLabels`, `valueAxis.tickStep`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `categoryAxis`, `secondaryAxis`, `topN`, `hatchStrength`, `colorblindSafe`, `rounding`.
+Plus the [shared options](options.md). This type does not accept `valueAxis.tickStep`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `hatchStrength`, `colorblindSafe`, `rounding`. This type ignores `animate`, `debug`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `topN` with an `option-ignored` warning.
 
 ## Annotations
 

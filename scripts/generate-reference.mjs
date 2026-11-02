@@ -219,12 +219,21 @@ function annotationSection(description, anchorForm) {
 /** A grid draws down to its 320 px card floor only when every panel chart has a compact floor (grid/layout.ts); otherwise the class floor applies. */
 const FLOOR_NOTES = { grid: ` (${chartSizing('grid').minWidth} px wide when a panel chart has no compact floor; when that refuses, the compact form stacks an authored grid of several columns in one column and draws down to the width its widest panel measures)` };
 
+/** Types that draw narrower than the card width while their measured content fits. */
+const NARROW_NOTES = {
+  column: 'Narrower than the compact floor, down to 120 px wide, a column draws while its bars stay at least 3 px wide.',
+  pie: 'Narrower than the compact floor, a pie draws while its circle keeps a radius of at least 36 px beside its labels.',
+  kpi: 'Narrower than 280 px a card draws while its figure fits.',
+  choropleth: 'Narrower than 280 px a map draws while its key and small members fit.',
+};
+
 function sizingLines(sizing, type) {
   const lines = [`Floor ${sizing.minWidth} × ${sizing.minHeight} px${FLOOR_NOTES[type] ?? ''}; fit \`${sizing.fit}\`.`];
   const compact = sizing.compactFloor;
   // Name only the axes the compact floor lowers: a floor as wide as the minimum draws nothing narrower.
   const below = [compact && compact.width < sizing.minWidth ? `${sizing.minWidth} px wide` : '', compact && compact.height < sizing.minHeight ? `${sizing.minHeight} px high` : ''].filter(Boolean);
   if (compact && below.length) lines.push(`Below ${below.join(' or ')}, down to the compact floor of ${compact.width} × ${compact.height} px, the chart draws in compact mode; \`belowMinimum: 'refuse'\` refuses there instead.`);
+  if (NARROW_NOTES[type]) lines.push(NARROW_NOTES[type]);
   lines.push('', 'Below the floor a render is refused with `size-below-floor` and the pixels it needs. `measure` returns the natural and comfortable size for a given spec; see [Sizing in the manual](../manual.md#sizing).');
   return lines;
 }
@@ -263,7 +272,7 @@ export function typePage(type, anchorForm) {
     '## Options', '', description.options.length
       ? table(['Path', 'Type', 'Values', 'Default', 'Meaning'], foldCells(description.options).map((field) => [field.branch ? `${field.path} (${field.branch})` : field.path, field.type, values(field), fallback(field), field.description]))
       : 'This type has no options of its own.', '',
-    `Plus the [shared options](options.md).${description.notAccepted ? ` This type does not accept ${description.notAccepted.map((path) => `\`${path}\``).join(', ')}.` : ''}`, '',
+    `Plus the [shared options](options.md).${description.notAccepted ? ` This type does not accept ${description.notAccepted.map((path) => `\`${path}\``).join(', ')}.` : ''}${description.ignored ? ` This type ignores ${description.ignored.map((path) => `\`${path}\``).join(', ')} with an \`option-ignored\` warning.` : ''}`, '',
     '## Annotations', '', ...annotationSection(description, anchorForm), '',
     ...(RECIPES[type] ?? []).flatMap((recipe) => [`## ${recipe.title}`, '', ...recipe.text.flatMap((paragraph) => [paragraph, '']), ...(recipe.spec ? [code(recipe.spec), ''] : []), ...(recipe.tsx ? ['```tsx', recipe.tsx, '```', ''] : [])]),
     '## Sizing', '', ...sizingLines(description.sizing, type), '',

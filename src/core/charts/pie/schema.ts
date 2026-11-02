@@ -53,7 +53,7 @@ export const pieOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions(
   doughnut: z.number().min(0).max(1).optional().describe(
     'Hole radius as a fraction of outer radius. Inside labels cap the hole at 0.72; centre totals include the declared unit.',
   ),
-  topN: baseOptionsSchema.shape.topN.describe('Defaults to the seven largest slices plus Others, merged only when Others would hold three slices or more; an authored topN overrides the default.'),
+  topN: baseOptionsSchema.shape.topN.describe('Defaults to the seven largest slices plus Others, merged only when Others would hold three slices or more; an authored topN overrides the default. A positive integer n means { n }.'),
   labels: baseOptionsSchema.shape.labels.describe(
     'Up to four displayed slices (eight without a legend) default to named outside labels with leaders in two columns; without a legend every label names its slice at any count. Explicit inside/outside settings take priority.',
   ),
