@@ -349,6 +349,32 @@ const seriesScoped = (annotation: { from?: unknown; to?: unknown }): boolean =>
   [annotation.from, annotation.to].some((ref) => typeof ref === 'object' && ref !== null && 'seriesId' in ref);
 
 /**
+ * A valueLine with no number is the automatic mean of the plotted totals. On a
+ * 100% axis that mean reads "Average 100%" whenever every plotted column totals
+ * 100, which says nothing, so the line is dropped with a warning. When a
+ * column's total100 is larger than its parts, or authored percent cells add to
+ * less than 100, the mean is a real number below 100 and the line stays. A
+ * numeric valueLine and every other annotation pass, and a retained annotation
+ * keeps its original id.
+ */
+export function withoutShareMean<O extends { annotations?: Annotation[] }>(options: O, mean: number | undefined, warnings: LintWarning[]): O {
+  const all = options.annotations;
+  if (mean === undefined || Math.abs(mean - 100) > 1e-6 || !all?.some((a) => a.kind === 'valueLine' && typeof a.value !== 'number')) return options;
+  const kept = all.map((a, i) => ({ ...a, id: defaultAnnotationId(a, i) })).filter((a) => {
+    if (a.kind !== 'valueLine' || typeof a.value === 'number') return true;
+    warnings.push({
+      code: 'valueline-unsupported-stacked100',
+      severity: 'warn',
+      owner: { annotationId: a.id },
+      message: `valueLine '${a.id}' dropped: the mean of the plotted columns on a 100% axis is 100%, which states nothing`,
+      suggest: 'Give a share between 0 and 100 as the valueLine value, or draw the mean of the totals on the absolute chart (variant: stacked).',
+    });
+    return false;
+  });
+  return { ...options, annotations: kept };
+}
+
+/**
  * Drops the annotations that state a number a 100% axis does not show. Every
  * column stands at 100%, so a difference arrow or a total growth bracket would
  * read absolute totals over equal columns, and a numeric value line in data

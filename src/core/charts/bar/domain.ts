@@ -33,7 +33,7 @@ import { chosenValueIndices } from '../band/valueSelection';
 import { partialKeyForced, saysToDate } from '../../partialPeriod';
 import { chartString } from '../../strings';
 import type { LintWarning, Paint } from '../../types/scene';
-import { accumulateStack, averageMarkerLine, averageOfUnaddedSums, averageOfWholeShares, grandTotalRequested, compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning, plottedMean, sortSegments, stackTotalFormatter, warnIncompleteStacks } from '../band/stacks';
+import { accumulateStack, averageMarkerLine, averageOfUnaddedSums, averageOfWholeShares, grandTotalRequested, compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning, plottedMean, sortSegments, stackTotalFormatter, warnIncompleteStacks, withoutShareMean } from '../band/stacks';
 import { isIncomplete, warnShareRoundingDrift } from '../../dataGaps';
 import { roundingUnavailable, shareRoundingNotes, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
 import { NO_STACK_MEAN, stackAdds } from '../../stackAdds';
@@ -526,6 +526,7 @@ export function resolveBarDomain(data: ChartData, options: BarOptions, warnings:
   const addsOver = (series: NormSeries[]) => (variant !== 'stacked' && variant !== 'stacked100') || stackAdds(series, options.unit, options.sharesOfOneWhole);
   const partsAdd = addsOver(dataSeries);
   const meanValue = partsAdd ? plottedMean('all', variant !== 'grouped', cats.length, dataSeries, (_, si, ci) => basis.plotVal(ci, si)) : undefined;
+  if (variant === 'stacked100') options = withoutShareMean(options, meanValue, warnings);
   const averageMarkerScope =
     typeof options.averageMarker === 'object' ? options.averageMarker.scope : 'all';
   const averageMarkerRequested = options.averageMarker !== undefined && options.averageMarker !== false &&

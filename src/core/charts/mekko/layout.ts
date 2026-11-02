@@ -1,5 +1,5 @@
 import { PLOT_FLOOR_RECT } from '../../sizing';
-import { sk, stackParts } from '../band/stacks';
+import { sk, stackParts, withoutShareMean } from '../band/stacks';
 import { chartString } from '../../strings/mekko';
 import { noTotal } from '../../stackAdds';
 import { withSegmentSeams } from '../../markVisibility';
@@ -356,6 +356,7 @@ function layoutMekkoPass(
   const warnings: LintWarning[] = [];
   const env = resolveMekkoEnv(options, warnings, data);
   const domain = resolveMekkoDomain(data, env, warnings);
+  if (domain.mode === 'percent') env.options = withoutShareMean(env.options, domain.meanValue, warnings);
   if (named) {
     if (domain.mode !== 'percent' || domain.series.length < 2 || kindSetting(env, 'segment') !== true) return { geometry: undefined!, namedAll: false };
     env.namesInPlace = true;
