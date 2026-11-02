@@ -3261,7 +3261,7 @@ const logAxisFixture: LineFixture = {
       { id: 'trial', label: 'Trial users', values: [40, 150, 800, 2100, 3500] },
     ],
   },
-  options: { title: 'Active users grow over five years', source: 'Illustrative data', valueAxis: { log: true, show: true } },
+  options: { title: 'Active users grow over five years', unit: 'users', source: 'Illustrative data', valueAxis: { log: true, show: true } },
 };
 
 registerFixtures('line', [...fixtures, smallDrawerFixture, anomalyLineFixture, weeklyEventsLineFixture, eventsKeyLineFixture, focusFixture, nearZeroTailsFixture, partialWeekFixture, hostCardFixture, hostCardUnitShownFixture, markInkFixture, cellLabelFixture, ...cohortLineFixtures, briefLineFixture, themeConventionsFixture, areaFromOriginFixture, ...coverageLineFixtures, cycleBandsFixture, gapBracketFixture, stackedAreaBenchmarkFixture, stackedAreaRestFixture, strokeSamplerFixture, ratioPlainFormatRefusal, rebaseMissingNoteFixture, rebaseZeroNoteFixture, bandHeadroomFixture, lateStartFixture, trendFixture, ...continuousLineFixtures, logAxisFixture]);
