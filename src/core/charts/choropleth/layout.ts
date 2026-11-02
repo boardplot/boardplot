@@ -2647,7 +2647,6 @@ function calloutCandidates(
   const crossingCandidates: LabelRequest['candidates'] = [];
   const rect = { x: 0, y: 0, w, h };
   const right = plot.x + plot.w, bottom = plot.y + plot.h;
-  const codeOnly = !text.includes(' ');
   // A seat clear at pad 2 is clear at the solver's pad 0. When the plot fits the canvas,
   // the first sorted callout always places, and the chart replaces its published slot list.
   const bestOnly = (!canvas || rectContains(canvas, plot)) && w >= 0 && h >= 0
@@ -2664,8 +2663,9 @@ function calloutCandidates(
     return true;
   };
   const skip = (claim: OccupiedClaim) => !taken(claim);
-  const crowdsCode = (claim: OccupiedClaim) => claim.kind === 'label' && boxGap(rect, claim.rect) < 8 &&
-    Math.abs(rect.y + h / 2 - claim.rect.y - claim.rect.h / 2) < Math.min(h, claim.rect.h) / 2;
+  // Skip leaders before the index checks their geometry. Crowding concerns labels only.
+  const skipUncrowdedLabel = (claim: OccupiedClaim) => !(claim.kind === 'label' &&
+    Math.abs(rect.y + h / 2 - claim.rect.y - claim.rect.h / 2) < Math.min(h, claim.rect.h) / 2 && boxGap(rect, claim.rect) < 8);
   for (let k = 0; k < CALLOUT_DIRECTIONS; k++) {
     const angle = (2 * Math.PI * k) / CALLOUT_DIRECTIONS;
     const dx = Math.cos(angle);
@@ -2681,7 +2681,7 @@ function calloutCandidates(
       if (rect.x < plot.x || rect.y < plot.y || rect.x + rect.w > right || rect.y + rect.h > bottom) break;
       if (blocker && !blocker.polygon && rectsOverlap(blocker.rect, rect, 2)) continue;
       if (occupied.some ? occupied.some(rect, 2, taken) : occupied.hits(rect, 2, skip)) continue;
-      if (codeOnly && (labelOccupied.some ? labelOccupied.some(rect, 8, crowdsCode) : labelOccupied.hitsWhich(rect, 8).some(crowdsCode))) continue;
+      if (labelOccupied.hits(rect, 8, skipUncrowdedLabel)) continue;
       const to = calloutTerminus(from, rect);
       const fits = outsideFits(region.id, rect, from, to);
       if (!fits && (!crossingCallouts || candidates.length > 0)) break;
