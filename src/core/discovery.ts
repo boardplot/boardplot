@@ -503,16 +503,16 @@ const THEME_ERRORS: Record<string, string> = {
 
 /** A minimal brand theme: a preset plus the tokens a brand changes. */
 const BRAND_THEME_EXAMPLE = {
-  preset: 'standard',
+  preset: 'bridge',
   overrides: { color: { highlight: '#0B5CAD', series: ['#0B5CAD', '#5B8DB8', '#A9C1D9'] } },
 };
 
-/** The theme token contract (`describe theme`). Defaults are the `standard` preset's values. */
+/** The theme token contract (`describe theme`). Defaults are the `bridge` preset's values. */
 export function describeTheme(detail: 'compact' | 'full' = 'compact') {
-  const tokenFields = themeFieldReference(themes.standard);
+  const tokenFields = themeFieldReference(themes.bridge);
   return {
     type: 'theme',
-    summary: 'The theme token contract. A spec takes theme as a preset name, as { preset, overrides } or as a full token object with its own name; defaults below are the standard preset.',
+    summary: 'The theme token contract. A spec takes theme as a preset name, as { preset, overrides } or as a full token object with its own name. Defaults below are the bridge preset.',
     presets: [...PRESET_THEME_NAMES],
     example: BRAND_THEME_EXAMPLE,
     tokens: detail === 'full' ? fieldRows(tokenFields, true) : fieldLines(tokenFields, true),

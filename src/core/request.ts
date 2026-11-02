@@ -9,7 +9,7 @@ import { EMPTY_DATA, hasNoDataRows } from './emptyData';
 import { NormalizeError, canonicalLanguage } from './normalize/shared';
 import { withNumberMarks } from './numberMarks';
 import { chartRefusals, isRefused } from './schema/refusals';
-import { REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, resolveTheme } from './theme';
+import { DEFAULT_PRESET, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, resolveTheme } from './theme';
 import { DEFAULT_TARGET, floorTextScale, resolveTargetSize } from './target';
 import { textScaleOf, textSizeOf } from './typeFloors';
 import { defaultMeasurer, type TextMeasurer } from './text';
@@ -446,7 +446,7 @@ function preparedLayout(request: ResolvedChartRequest, verifyAdvice = false): La
   const ref = request.options.theme;
   const options = {
     ...request.options,
-    theme: { preset: typeof ref === 'string' ? ref : ref?.preset ?? 'boardroom', overrides: request.theme },
+    theme: { preset: typeof ref === 'string' ? ref : ref?.preset ?? DEFAULT_PRESET, overrides: request.theme },
     [REMOVED_NAMES]: removedNameWarnings(request.options),
     ...(verifyAdvice ? { [VERIFY_ADVICE]: true } : {}),
   };

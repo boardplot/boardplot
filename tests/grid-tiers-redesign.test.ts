@@ -195,8 +195,8 @@ describe('variance growth values print in the pin tone', () => {
       ],
     }, { variant: 'relative', variance: { vs: 'py' }, size: { width: 480 }, locale: 'en' }) as Geometry;
     const text = (id: string) => cost.scene.find((n) => n.id === id) as unknown as { ink: unknown; font: { weight: number } };
-    expect(text('label:point:q1')).toMatchObject({ ink: { theme: { kind: 'series-text', base: { token: 'bad' } } }, font: { weight: 700 } });
-    expect(text('label:point:q2')).toMatchObject({ ink: { theme: { kind: 'series-text', base: { token: 'good' } } }, font: { weight: 700 } });
+    expect(text('label:point:q1')).toMatchObject({ ink: { theme: { kind: 'series-text', base: { token: 'bad' } } }, font: { weight: 600 } });
+    expect(text('label:point:q2')).toMatchObject({ ink: { theme: { kind: 'series-text', base: { token: 'good' } } }, font: { weight: 600 } });
   });
 
   // standard's good and bad read 3.38 and 3.71 on its page: as text they must reach the 4.5:1 floor.

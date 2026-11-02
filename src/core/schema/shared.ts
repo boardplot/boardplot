@@ -348,7 +348,7 @@ export const dataValueKindSchema = valueKindSchema.describe('Default valueKind f
 const PERCENT_FORMAT_UNITS = 'A % example expects values in percent units: 3.53 prints 3.53%, a fraction 0.0353 prints 0.04%.';
 
 /** Every magnitude word parseFormatExample reads (formatSpec.ts MAGNITUDE_SUFFIXES). */
-export const MAGNITUDE_WORDS_DOC = "A magnitude after the number divides the raw value: k, thousand, Tsd., Tausend (10³); m, M, mn, mm, million(s), Mio., Million(en) (10⁶); b, B, bn, billion(s), Mrd., Milliarde(n), milliard(s) (10⁹); tn, trillion(s), Bio., Billionen (10¹²). The letters k, m, M, mm, b, B and T scale only glued to the number: '12 m/s' and '50 B' keep their unit. A value of 1000 or more in a scale rolls up and one that would print as 0 rolls down, in the example's spelling; a German or French chart prints its own words (Mrd., Bio.; Md, Bn).";
+export const MAGNITUDE_WORDS_DOC = "A magnitude after the number divides the raw value: k, thousand, Tsd., Tausend (10³); m, M, mn, mm, million(s), Mio., Million(en) (10⁶); b, B, bn, billion(s), Mrd., Milliarde(n), milliard(s) (10⁹); tn, trillion(s), Bio., Billionen (10¹²). The letters k, m, M, mm, b, B and T scale only glued to the number: '12 m/s' and '50 B' keep their unit. A value of 1000 or more in a scale rolls up and one that would print as 0 rolls down, in the example's spelling; a German or French chart prints its own words (Mrd., Bio.; Md, Bn). With no digit, one run of 1–15 @ fixes significant figures: '$@@@M' prints 4,270,000 as $4.27M.";
 
 /**
  * A scenario field: the codes normalizeScenario accepts lead every field's
@@ -1220,7 +1220,7 @@ export const baseOptionsSchema = z.object({
     ]), z.strictObject({
       overrides: z.record(z.string(), z.unknown()).describe('Partial token tree applied to the default preset.'),
     }))
-    .optional().describe('Theme preset or preset with overrides. An object with only overrides uses the default preset. Request context may supply a theme, otherwise resolution uses boardroom.'),
+    .optional().describe('Theme preset or preset with overrides. An object with only overrides uses the default preset. Request context may supply a theme, otherwise resolution uses bridge.'),
   locale: optionShapeSchema('locale', z
     .object({
       language: languageSchema
@@ -1512,7 +1512,12 @@ export const averageMarkerSchema = z
     z.object({
       scope: z
         .union([z.literal('all'), z.array(idSchema).min(1)])
+        .optional()
         .describe("Series included in the computed average; defaults to 'all'."),
+      includePartial: z
+        .boolean()
+        .optional()
+        .describe('true averages the categories marked partial too. By default they are left out, and the label names the periods the average covers. Column, bar and combo.'),
     }),
   ])
   .optional();

@@ -2,9 +2,9 @@ import { isHatchPattern } from './svgPath';
 import { adaptivePaintColor } from './colorRecipes';
 /**
  * Theme presets + resolution. Chart code references semantic
- * tokens only; the theme resolves them. 'boardroom' is the shipped default —
- * one of the four design families (boardroom/capital/studio/
- * glass) that ship as presets with fixed schemes and page chrome. 'standard'
+ * tokens only; the theme resolves them. 'bridge' (light) and 'bridge-dark'
+ * are the shipped default. 'boardroom', 'capital', 'studio' and 'glass' are
+ * the other design families, with fixed schemes and page chrome. 'standard'
  * and 'notation' (+ dark pairs) are the other presets.
  */
 
@@ -20,6 +20,8 @@ import { pieRamp, quietestTintCap } from './pieRamp';
 import { FILL_SEPARATION_FLOOR, MARK_CONTRAST_FLOOR, TEXT_CONTRAST_FLOOR, oklabLightness, PALETTE_CVD_FLOOR, PALETTE_NORMAL_FLOOR, PALETTE_TRITAN_FLOOR, palettePerceptualDistance, swatchApart } from './themeRules';
 import { registerDeferredLoader, requireDeferred } from './deferred';
 import boardroomFamilyJson from './themeFamilies/boardroom.json';
+import bridgeFamilyJson from './themeFamilies/bridge.json';
+import bridgeDarkFamilyJson from './themeFamilies/bridge-dark.json';
 import capitalFamilyJson from './themeFamilies/capital.json';
 import studioFamilyJson from './themeFamilies/studio.json';
 import glassFamilyJson from './themeFamilies/glass.json';
@@ -568,6 +570,19 @@ export const roadshowFamilyThemes: Readonly<
   glass: { ...(glassFamilyJson as Theme), table: tableFamily() },
 });
 
+/**
+ * Bridge, the default design system: navy ink, one cobalt accent, a slate
+ * neutral. Every data mark reaches 3:1 on its page, and the status and gantt
+ * colours stay apart in greyscale. Text sizes come from the render target,
+ * and the font is the engine's measured default stack.
+ */
+export const bridgeTheme: Theme = bridgeFamilyJson as Theme;
+/** Bridge on its navy page. A dark host passes this preset; it does not flip by itself. */
+export const bridgeDarkTheme: Theme = bridgeDarkFamilyJson as Theme;
+
+/** The preset a chart draws with when it names none. */
+export const DEFAULT_PRESET = DEFAULT_THEME;
+
 /** The glass design family. */
 export const glassTheme: Theme = roadshowFamilyThemes.glass;
 
@@ -580,6 +595,8 @@ export const glassTheme: Theme = roadshowFamilyThemes.glass;
  * for EVERY consumer of this export (CLI included), not just resolveTheme.
  */
 export const themes: Record<string, Theme> = Object.assign(Object.create(null) as Record<string, Theme>, {
+  bridge: bridgeTheme,
+  'bridge-dark': bridgeDarkTheme,
   boardroom: roadshowFamilyThemes.boardroom,
   capital: roadshowFamilyThemes.capital,
   studio: roadshowFamilyThemes.studio,
@@ -785,7 +802,7 @@ function currentPreset(name: string): string {
 }
 
 function targetTheme(ref: ThemeRef | undefined, target: RenderTarget): Theme {
-  const preset = currentPreset(typeof ref === 'string' ? ref : ref?.preset ?? DEFAULT_THEME);
+  const preset = currentPreset(typeof ref === 'string' ? ref : ref?.preset ?? DEFAULT_PRESET);
   // A registered/uploaded complete theme owns its sizes. Internal resolved themes
   // also travel as full overrides and must not receive the target table twice.
   if (!PRESET_NAMES.has(preset) || (typeof ref === 'object' && ref.overrides && ownThemes.has(ref.overrides))) {
@@ -844,11 +861,11 @@ export function removedNameWarnings(options: { theme?: unknown; palette?: unknow
 }
 
 export function resolveTheme(ref?: ThemeRef): Theme {
-  // The shipped default is the boardroom design family. A document that wants
-  // the standard family pins `theme: 'standard'` explicitly.
-  if (!ref) return own(roadshowFamilyThemes[DEFAULT_THEME]);
+  // The shipped default is Bridge. A document that wants the old look pins
+  // `theme: 'boardroom'` (light) or `theme: 'standard-dark'` (dark) explicitly.
+  if (!ref) return own(bridgeTheme);
   ref = themeShape(ref);
-  const presetName = currentPreset(typeof ref === 'string' ? ref : ref.preset ?? DEFAULT_THEME);
+  const presetName = currentPreset(typeof ref === 'string' ? ref : ref.preset ?? DEFAULT_PRESET);
   // A registered theme, else one a spec brought along (core/themeStore). Own
   // keys only: a name is data, never a path to Object.prototype; a non-string
   // name matches neither.

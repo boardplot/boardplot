@@ -2143,6 +2143,17 @@ fixtures.push({
   },
 });
 
+// The average rule leaves the running week out and names the weeks it covers; includePartial brings it back.
+const partialWeek = fixtures.find((fixture) => fixture.id === 'column-partial-week')!;
+for (const [id, averageMarker] of [['column-partial-week-average', true], ['column-partial-week-average-included', { includePartial: true }]] as const) {
+  fixtures.push({
+    ...partialWeek,
+    id,
+    title: averageMarker === true ? 'Stacked weekly orders with an average rule that leaves the running week out' : 'Stacked weekly orders with an average rule that includes the running week',
+    options: { ...partialWeek.options, averageMarker },
+  });
+}
+
 // Long names at a generous size read whole. The rendered SVG has no ellipsis.
 fixtures.push({
   id: 'torture-long-labels',

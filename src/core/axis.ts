@@ -85,7 +85,8 @@ export function tickFormatter(
   // Ticks share one precision; the value-label unit rule (wholeFrom) stays off the axis.
   // One scale down the axis: an engine-chosen M or B does not step down per tick
   // as value labels do ("0.5M", not "500k" under "1.0M"); zero prints bare.
-  const tickSpec: NumberFormatSpec = { ...spec, autoMagnitude: undefined, wholeFrom: undefined, decimals: Math.max(0, maxOf(scaled.map((tick) => neededDecimals(tick, cap, noise, spec.decimals)))) };
+  // Ticks are not data: a significant-figure example gives them its style, and their spacing sets the digits ("$10M", "$12.5M").
+  const tickSpec: NumberFormatSpec = { ...spec, ...(spec.significantDigits === undefined ? {} : { significantDigits: undefined }), autoMagnitude: undefined, wholeFrom: undefined, decimals: Math.max(0, maxOf(scaled.map((tick) => neededDecimals(tick, cap, noise, spec.decimals)))) };
   const finite = ticks.filter((tick) => Number.isFinite(tick));
   const distinct = () => new Set(finite.map((tick) => formatWithSpec(tick, tickSpec))).size === new Set(finite).size;
   while (tickSpec.decimals < MAX_FORMAT_DECIMALS && !distinct()) {
