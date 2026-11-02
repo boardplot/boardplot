@@ -40,13 +40,13 @@ def test_wrong_role_raises_input_error():
 def test_size_refusal_gives_a_chart_with_a_warning():
     with pytest.warns(bp.BoardplotWarning, match="size-below-floor"):
         chart = bp.chart(ROWS, "column", category="region", value="revenue",
-                         options={"title": "East leads", "size": {"width": 160, "height": 100}})
-    assert chart.size == (280, 180)
+                         options={"title": "East leads", "size": {"width": 100, "height": 100}})
+    assert chart.size == (120, 180)
     assert chart.svg.startswith("<svg")
     assert chart.spec["data"]["categories"]
     with pytest.raises(bp.RefusalError) as caught:
         chart.to_svg(width=120, height=80)
-    assert caught.value.minimum == (280, 180)
+    assert caught.value.minimum == (120, 180)
 
 
 def _full_theme(cli, tmp_path, name):
@@ -166,7 +166,7 @@ def test_size_below_the_engine_floor_raises_refusal_error_with_the_minimum():
         chart = bp.Chart.from_spec(COLUMN)
     with pytest.raises(bp.RefusalError) as caught:
         chart.to_svg(width=40, height=40)
-    assert caught.value.minimum == (280, 180)
+    assert caught.value.minimum == (120, 184)
 
 
 # A non-callable click handler was accepted and failed only when a reader clicked.
@@ -219,7 +219,7 @@ def test_document_below_the_size_floor_raises_refusal_error():
         chart = bp.Chart.from_spec({"version": 1, "charts": [{**COLUMN, "name": "revenue"}]})
     with pytest.raises(bp.RefusalError) as caught:
         chart.to_svg(width=40, height=40)
-    assert caught.value.minimum == (280, 180)
+    assert caught.value.minimum == (120, 184)
 
 
 # The height floor (24 px) was taken as 100 px, so a sparkline 10 px high named a minimum taller than it needs.
@@ -239,7 +239,7 @@ def test_size_retry_keeps_the_rows_reading():
         warnings.simplefilter("ignore")
         chart = bp.chart(rows, "column", category="c", value="v", state="st", title="B has no published value",
                          options={"size": {"width": 100, "height": 100}})
-    assert chart.size == (280, 180)
+    assert chart.size == (120, 180)
     assert chart.reading["data"]["states"][0]["state"] == "suppressed"
 
 

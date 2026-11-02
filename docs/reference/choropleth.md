@@ -75,7 +75,7 @@ One form; its chart ID is `choropleth`.
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
 | labels | string \| false | `'auto'`, `'all'`, `'none'`, `false` | `'auto'` | Region-label selection policy; placement still respects available space. false is the same as 'none'. |
-| topN | object |  |  | On the world pack, the automatic labels name the n regions with the largest absolute values, plus the large countries (default 12). The other packs label every region, and labels 'all' or 'none' decide for themselves, so there topN changes nothing. |
+| topN | object \| integer |  |  | On the world pack, the automatic labels name the n regions with the largest absolute values, plus the large countries (default 12). The other packs label every region, and labels 'all' or 'none' decide for themselves, so there topN changes nothing. A positive integer n means { n }. |
 | topN.n | integer |  |  | How many regions with the largest absolute values the automatic labels name. |
 | scale | object |  | `{"kind":"sequential"}` | Sequential magnitude or diverging midpoint color scale. |
 | scale.kind (scale branch 1) | string | `'sequential'` | `'sequential'` | Encode ordered magnitudes with one color ramp. |
@@ -100,7 +100,7 @@ One form; its chart ID is `choropleth`.
 | valueTable | string \| false | `'auto'`, `'side'`, `'below'`, `false` |  | The table of every region with its class swatch, code and value; the top values print bold and the map then prints codes only. 'auto' (default): beside the map when the map keeps most of the row, else under it; off above 20 regions, without numeric values, or when a pinned canvas is too short for it. 'side' or 'below' forces the place; false leaves it off. |
 | methodNote | boolean |  |  | Default false. true adds the method footnote on which regions the automatic label policy names. The world pack's endorsement disclaimer stays on the source line and prints once. The inset scale note is required for interpretation and prints regardless. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `categoryLabels`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `bandFraction`, `highlight`, `story`, `rounding`.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis`, `highlight`, `story`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 
@@ -108,7 +108,8 @@ This type takes no annotations.
 
 ## Sizing
 
-Floor 280 × 270 px; fit `content`.
+Floor 160 × 270 px; fit `content`.
+Narrower than 280 px a map draws while its key and small members fit.
 
 Below the floor a render is refused with `size-below-floor` and the pixels it needs. `measure` returns the natural and comfortable size for a given spec; see [Sizing in the manual](../manual.md#sizing).
 

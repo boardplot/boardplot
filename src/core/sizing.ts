@@ -30,6 +30,14 @@ const BAND_FAMILY = ['waterfall', 'pareto', 'variance', 'pyramid', 'box', 'mekko
  * draws full where its content fits and compact below that.
  */
 export const CARD_MIN_WIDTH = 280;
+/**
+ * The narrowest canvas a KPI, pie or column draws on (a map: MAP_MIN_WIDTH). Between this and CARD_MIN_WIDTH the
+ * chart's measured content decides: a KPI's figure, a pie's circle and labels, a map's key and small
+ * members, a column's bars (`columnBarFloor`). Under it no readable chart fits any content.
+ */
+export const NARROW_MIN_WIDTH = 120;
+/** A map is unreadable under this width: its regions and key run together. */
+const MAP_MIN_WIDTH = 160;
 /** Canvases narrower than this are cards: a fill chart there is never shorter than at this width. */
 export const CARD_CLASS_WIDTH = 480;
 /** The card widths a host steps through; each card is no shorter than the next wider one. */
@@ -61,7 +69,9 @@ const CONTENT_TYPES = new Set([...ROW_TYPES, 'kpi', 'pie', 'diagram', 'sparkline
  * count, so only its width floor moves. The width is 280 px: a 360 px phone with a
  * 16 px page gutter and a 24 px card padding leaves 280 px, and compact keeps its
  * text sizes there (scaling a 320 px drawing down
- * would put 11 px text at 9.6 px).
+ * would put 11 px text at 9.6 px). A column and a pie draw below it, down to NARROW_MIN_WIDTH, while
+ * their measured content fits (`columnBarFloor`, the pie's circle radius). The compact floor stays
+ * the size that `measure` verifies for a host.
  *
  * Every row and band chart has a compact form. Its static width floor is
  * CARD_MIN_WIDTH, so compact is not a width band below a static minimum: full draws where the
@@ -211,22 +221,19 @@ export const DIAGRAM_MIN_HEIGHT = 160;
 /**
  * Default sizing for built-in types and compatible third-party definitions.
  *
- * `options` is read for the one option that moves a floor: a KPI card at
- * `density: 'compact'` keeps the 280 px card floor (CARD_MIN_WIDTH), the
- * tile a dashboard puts nine of in a row. It keeps every part of the card, so
- * this is a smaller card and not a poorer one. A KPI card's height floor is
- * measured from its content like a row chart's: an unsized card takes
+ * `options` is read for the one option that moves a floor: a compact bullet is a 120 px mark.
+ * A KPI card's width floor is NARROW_MIN_WIDTH and its measured figure gates above it. Its
+ * height floor is measured from its content like a row chart's: an unsized card takes
  * the height of its content, so a static 144 would pad a value-only card.
  */
 export function chartSizing(type: string, options?: { density?: unknown }): ChartSizing {
-  const compactKpi = type === 'kpi' && options?.density === 'compact';
   // A compact bullet is a 120 px mark in a KPI column.
   const compactBullet = type === 'bullet' && options?.density === 'compact';
   const cardFloor = CARD_FLOOR_TYPES.has(type);
   return {
     aspect: type === 'scatter' ? '4:3' : type === 'pie' ? '1:1' : CONTENT_TYPES.has(type) ? 'content' : '16:9',
-    minWidth: type === 'table' ? 100 : type === 'sparkline' ? 88 : compactKpi ? 280 : compactBullet ? 120
-      : type === 'kpi' || type === 'pie' || type === 'choropleth' || cardFloor ? CARD_MIN_WIDTH : CARD_CLASS_WIDTH,
+    minWidth: type === 'table' ? 100 : type === 'sparkline' ? 88 : compactBullet ? 120
+      : type === 'kpi' || type === 'pie' ? NARROW_MIN_WIDTH : type === 'choropleth' ? MAP_MIN_WIDTH : cardFloor ? CARD_MIN_WIDTH : CARD_CLASS_WIDTH,
     minHeight: type === 'scatter' ? 360 : type === 'pie' ? 320 : type === 'table' ? 80 : type === 'sparkline' ? 24 : ROW_TYPES.has(type) || type === 'kpi' ? 28
       : type === 'diagram' && DIAGRAM_BELOW_SHARED_MIN ? DIAGRAM_MIN_HEIGHT : 270,
     fit: CONTENT_TYPES.has(type) ? 'content' : 'fill',
@@ -728,9 +735,8 @@ export function requireGeometry<M extends object, D extends object>(result: Layo
 /**
  * The floor a request is measured against: the definition's own, unless an
  * option moves it. `chartSizing` answers for a type and for the options it
- * was called with, and the two differ in two cases: a KPI card at
- * `density: 'compact'` stands 280 wide, a bullet 120. A definition that
- * brought a floor of its own keeps it everywhere else.
+ * was called with, and the two differ for a bullet at `density: 'compact'`, which
+ * stands 120 wide. A definition that brought a floor of its own keeps it everywhere else.
  */
 export function declaredSizing<D, O extends ChartOptions, M extends object, DV extends object>(
   definition: ChartCore<D, O, M, DV>,
@@ -1764,6 +1770,35 @@ function fitSizeMemo<D, O extends ChartOptions, M extends object, DV extends obj
   return result;
 }
 
+/** The thinnest column a canvas under CARD_MIN_WIDTH draws (px). */
+const MIN_COLUMN_BAR = 3;
+
+/**
+ * Whether a canvas is too narrow for even one MIN_COLUMN_BAR px bar per category. Such a column is refused at the
+ * gate with no layout, as it was before the gate went below the compact floor. A topN or a zoom draws fewer
+ * categories than the data holds, so those requests are always laid out.
+ */
+function columnCannotFit(data: unknown, options: { topN?: unknown; viewDomain?: unknown } | undefined, width: number): boolean {
+  const categories = (data as { categories?: unknown } | undefined)?.categories;
+  return options?.topN === undefined && options?.viewDomain === undefined
+    && Array.isArray(categories) && categories.length * MIN_COLUMN_BAR > width;
+}
+
+/**
+ * The canvas width under CARD_MIN_WIDTH at which the thinnest drawn column of this layout is still
+ * MIN_COLUMN_BAR px: the columns scale with the plot, the frame around the plot does not. Never
+ * above CARD_MIN_WIDTH, so a canvas at that width and wider is judged as before (a hundred
+ * categories draw at 280 px), and 0 when the layout draws no bar.
+ */
+function columnBarFloor(geometry: Pick<Geometry<object, object>, 'type' | 'size' | 'plot' | 'marks'>): number {
+  // A column that stepped to bars has horizontal bars: their `rect.w` is a length, not a thickness.
+  if (geometry.type !== 'column' || geometry.size.width >= CARD_MIN_WIDTH) return 0;
+  const bars = (geometry.marks as { bars?: { rect: Rect }[] } | undefined)?.bars ?? [];
+  const thinnest = Math.min(...bars.map((bar) => bar.rect.w).filter((w) => w > 0));
+  if (!Number.isFinite(thinnest) || thinnest >= MIN_COLUMN_BAR) return 0;
+  return Math.min(CARD_MIN_WIDTH, Math.ceil(geometry.size.width - geometry.plot.w + (geometry.plot.w * MIN_COLUMN_BAR) / thinnest));
+}
+
 /** Lay out one fixed size. Height searches never enter the search again. */
 function fitSize<D, O extends ChartOptions, M extends object, DV extends object>(
   definition: ChartCore<D, O, M, DV>, data: D, options: O | undefined, compactFallback: boolean,
@@ -1783,7 +1818,10 @@ function fitSize<D, O extends ChartOptions, M extends object, DV extends object>
   // The tight band lowers what the chart ACCEPTS, never what it reports. A
   // caller asking `measure` still hears the type's own 480 x 270 alongside the
   // compact floor, and a measured requirement (a bar's five rows) still gates.
-  const gatePolicy = tight ? { ...declared, minWidth: floor.width, minHeight: floor.height } : declared;
+  // A column draws narrower than its compact floor while its bars fit (`columnBarFloor`). The compact floor stays
+  // the size `measure` verifies and reports, so a host that reads it keeps a size that draws.
+  const gateWidth = definition.type === 'column' && !columnCannotFit(data, options, requested.width) ? Math.min(floor.width, NARROW_MIN_WIDTH) : floor.width;
+  const gatePolicy = tight ? { ...declared, minWidth: gateWidth, minHeight: floor.height } : declared;
   if (!nested && !fitsSize(requested, definition.type === 'grid' ? { ...gatePolicy, minHeight: 0 } : gatePolicy)) {
     return sizeRefusal(definition.type, definition.title, requested, resolveSizing(gatePolicy, requested));
   }
@@ -1835,8 +1873,10 @@ function fitSize<D, O extends ChartOptions, M extends object, DV extends object>
   const floorWithFooter = Math.max(geometry.sizing?.minHeight ?? 0, geometry.frame.minHeight ?? 0, geometry.frame.plotMinHeight ?? 0,
     (heightShort || tight) && HOLDS_COMPACT_PLOT.has(definition.type)
       ? Math.ceil(geometry.size.height + (atHardMinimum(options) && !HARD_KEEPS_COMPACT_PLOT.has(definition.type) ? HARD_COMPACT_PLOT : MIN_COMPACT_PLOT) - plotForFloor(geometry).h) : 0);
+  const barFloor = definition.type === 'column' ? columnBarFloor(geometry) : 0;
   const measured = {
     ...geometry.sizing,
+    ...(barFloor > (geometry.sizing?.minWidth ?? 0) ? { minWidth: barFloor } : {}),
     ...(definition.type === 'kpi' ? { naturalWidth: Math.min(geometry.sizing?.naturalWidth ?? 360, 360) } : {}),
     // The height that holds a plot of MIN_COMPACT_PLOT px is the measured floor (HOLDS_COMPACT_PLOT).
     minHeight: floorWithFooter - footerExtra,

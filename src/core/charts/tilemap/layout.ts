@@ -2,7 +2,7 @@ import { staticFrame } from '../../footer';
 import { chartTheme } from '../chartEnv';
 import { chartString } from '../../strings/tilemap';
 import { structureCount } from '../../structureCounts';
-import { authoredNotes, DEFAULT_NOTE_LIMIT, valueNoteLine, frameTextOptions, settledAutoHeight, legendRequired, noteCap, noteLine, solveFrame, type FrameResult, type LegendItemInput, type NoteCapOptions } from '../../frame';
+import { authoredNotes, DEFAULT_NOTE_LIMIT, valueNoteLine, frameTextOptions, settledAutoHeight, legendRequired, noteCap, noteLine, solveFrame, SIDE_KEY_PLOT_SHARE, type FrameResult, type LegendItemInput, type NoteCapOptions } from '../../frame';
 import { formatAutomaticNumber } from '../../format';
 import { formatterFromExample } from '../../formatSpec';
 import type { Rect } from '../../geometry';
@@ -101,7 +101,7 @@ export function layoutTilemap(
   const size = resolveSize(options.size);
   // A right key can change width when overlay entries drop. Keep its first
   // automatic frame separate from fixed repair probes at the same width.
-  const rightKey = options.legend === 'right' || (typeof options.legend === 'object' && options.legend.position === 'right');
+  const rightKey = [options.legend, typeof options.legend === 'object' ? options.legend.position : undefined].some(side => side === 'right' || side === 'left');
   if (rightKey && data.overlays?.length && constraints && !constraints.fixed.height && size.width === constraints.sizePx.width) constraints[AUTOMATIC_FRAME] ??= size;
   const automaticFrame = constraints?.[AUTOMATIC_FRAME];
   const fixedHeight = constraints?.fixed.height || (constraints !== undefined
@@ -206,7 +206,7 @@ function layoutTilemapPass(
   // The note-list fallback records omissions without taking tile space.
   // The layout, not the spec, put the key beside the tiles.
   let keyChosen = false;
-  let rightKey = options.legend === 'right' || (typeof options.legend === 'object' && options.legend.position === 'right');
+  let rightKey = legendOptions.position === 'right' || legendOptions.position === 'left';
   // A stopped automatic height is not a pinned frame. Its note stays in the
   // frame, so the reported floor holds the note the static footer prints.
   const listOmissions = !staticFrame.pinned && ((fixedHeight && !stopped) || rightKey || panelTypeClass(options) !== undefined);
@@ -227,6 +227,8 @@ function layoutTilemapPass(
         // the reading and in derived.pack.attribution.
         source: options.source,
         legend: { options: legendOptions, items: [...scale.legend.filter((item) => !key?.owns.has(item.id)), ...overlayLegend.items] },
+        // The layout decides below whether a named side key keeps its place.
+        sideKeyFixed: true,
         theme,
         measure,
       },
@@ -262,6 +264,29 @@ function layoutTilemapPass(
     return { overlayLegend, occupied, frameResult, available, tileSize };
   };
   let frame = layoutFrame();
+  // A key the spec put beside the tiles stays there while the tiles keep their share of the width
+  // and, on a pinned canvas, the key's column fits the height; else it stands in the row above them.
+  if (rightKey) {
+    const side = frame;
+    const sideOptions = legendOptions;
+    const widthShare = side.frameResult.plot.w / size.width;
+    const tooTall = fixedHeight && (side.frameResult.frame.minHeight ?? 0) > size.height + SIZE_TOLERANCE;
+    if (widthShare < SIDE_KEY_PLOT_SHARE || tooTall) {
+      legendOptions = { ...sideOptions, position: 'top' };
+      key = steppedKey();
+      rightKey = false;
+      frame = layoutFrame();
+      warnings.push({
+        code: 'legend-side-fallback',
+        severity: 'warn',
+        message: tooTall && widthShare >= SIDE_KEY_PLOT_SHARE
+          ? `the key stays in the row above the tiles: its column is taller than the ${Math.round(size.height)} px canvas`
+          : `the key stays in the row above the tiles: a column beside them would leave the tiles ${Math.round(widthShare * 100)}% of the width, under ${Math.round(SIDE_KEY_PLOT_SHARE * 100)}%`,
+        suggest: 'Give the chart more width, or more height, to keep the key beside the tiles.',
+        field: ['options', 'legend'],
+      });
+    }
+  }
   // A pinned canvas whose tiles are bound by its height wastes the key row: an unnamed key stands
   // in a column beside the tiles when that makes them clearly larger.
   if (keyUnnamed && fixedHeight && !stopped) {

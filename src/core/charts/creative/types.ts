@@ -58,7 +58,7 @@ export interface CreativeData {
 }
 
 /** Creative exhibit metadata and canvas size. */
-export type CreativeOptions = Pick<BaseOptions, 'target' | 'textScale' | 'textSize' | 'title' | 'subtitle' | 'source' | 'theme' | 'size' | 'mode' | 'interactive' | 'embed' | 'palette' | 'locale' | 'notes'> & {
+export type CreativeOptions = Pick<BaseOptions, 'target' | 'textScale' | 'textSize' | 'title' | 'subtitle' | 'source' | 'theme' | 'size' | 'mode' | 'interactive' | 'embed' | 'palette' | 'locale' | 'notes' | 'colorblindSafe'> & {
   /** false leaves the source line and the method lines off the card; frame.source and frame.notes keep them. */
   footnotes?: false;
 };

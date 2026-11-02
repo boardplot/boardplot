@@ -90,7 +90,7 @@ One form; its chart ID is `tilemap`.
 | overlayMeasure | string |  |  | The measure the overlay glyphs show, e.g. 'Activation progress, %'. The overlay key prints it as a heading without a category swatch, apart from the colour key; Harvey-ball overlays without it warn geo-overlay-measure-unnamed. |
 | regionValues | boolean |  |  | Print each tile's value under its code, e.g. 'CA' over '52'. Unset prints the values when every value fits its tile and keeps the codes alone when one does not. true prints them where they fit: a tile too small for both keeps its code and the layout warns that its value shows on hover only. false prints codes only. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `categoryLabels`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `topN`, `bandFraction`, `highlight`, `story`, `rounding`.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis`, `highlight`, `story`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 
@@ -112,6 +112,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | eu27-demand-versus-plan | example | Demand above plan is favorable |
 | eu27-cost-versus-plan | example | Cost below plan is favorable |
 | eu27-demand-colorblind | example | Demand versus plan in the colorblind-safe good/bad pair |
+| tile-key-right | example | The value key in a column right of the tiles |
 | us-state-tile-grid-wide-slot | example | US states on a wide slot: the value key stands beside the tiles |
 | tile-key-bottom | example | The value key in one row below the tiles |
 | us-states-overlay-tones | example | Five state overlays in every tone, the tones and the ball measure named in the overlay key |

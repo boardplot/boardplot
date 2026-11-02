@@ -93,7 +93,7 @@ export const creativeOptionsSchema: z.ZodType<CreativeOptions> = z.strictObject(
   ...refusedBaseOptions('creative'),
   target: baseOptionsSchema.shape.target, textScale: baseOptionsSchema.shape.textScale, textSize: baseOptionsSchema.shape.textSize,
   mode: baseOptionsSchema.shape.mode, interactive: baseOptionsSchema.shape.interactive, embed: baseOptionsSchema.shape.embed,
-  palette: baseOptionsSchema.shape.palette, locale: baseOptionsSchema.shape.locale,
+  palette: baseOptionsSchema.shape.palette, locale: baseOptionsSchema.shape.locale, colorblindSafe: baseOptionsSchema.shape.colorblindSafe,
   title: baseOptionsSchema.shape.title, subtitle: baseOptionsSchema.shape.subtitle,
   source: baseOptionsSchema.shape.source, theme: baseOptionsSchema.shape.theme, size: baseOptionsSchema.shape.size,
   notes: baseOptionsSchema.shape.notes,

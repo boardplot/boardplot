@@ -6,6 +6,7 @@
 import type { ChartMeasurement } from '../core/request';
 import type { RenderTarget } from '../core/types/options';
 import type { DocumentFinding } from '../core/doc/diagnostics';
+import type { LintWarning } from '../core/types/scene';
 import { asSent, loadSpec, measureChart, shareScaleGroups } from './spec';
 import { ok, rejected, type VerbResult } from './result';
 import { keepSizeUnit, length, targetArgument, withSize } from './size';
@@ -66,12 +67,14 @@ export function measure(input: MeasureInput): VerbResult {
 
 function measureWithTables(input: MeasureInput): VerbResult {
   const width = length('width', input.width);
-  const target = targetArgument(input.target);
+  const argumentWarnings: LintWarning[] = [];
+  const target = targetArgument(input.target, argumentWarnings);
   const rows = applyRows(input.spec, input);
   const loaded = loadSpec(rows.spec, { width, target, measure: true });
   if ('errors' in loaded) return rejected(rewriteRowsDiagnostics(asSent(loaded.errors, loaded.bare), rows.pathMap));
   shareScaleGroups(loaded);
   const { doc, envelope, bare } = loaded;
+  envelope.warnings.push(...argumentWarnings);
   envelope.warnings.push(...(rows.warnings ?? []));
   const measured: { name: string; result: Measured }[] = [];
   for (const chart of doc.charts) {

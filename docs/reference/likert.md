@@ -72,7 +72,7 @@ One form; its chart ID is `likert`.
 | requiredNotes.neutral | boolean |  |  | Default true. false drops the note on the neutral treatment; set it when the title or subtitle already states it ('Neutral split across the centre line'). |
 | requiredNotes.base | boolean |  |  | Default true. false drops the note on the base of the shares; set it when the source or a footnote already states it ('n = 882 per statement'). |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `categoryLabels`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `sort`, `topN`, `hatchStrength`, `colorblindSafe`, `rounding`.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis`, `hatchStrength`, `rounding`. This type ignores `animate`, `debug`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 

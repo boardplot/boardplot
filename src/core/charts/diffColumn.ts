@@ -7,7 +7,7 @@
  * levels). Cells are labels like any other, placed by the solver in one seat.
  */
 
-import { differenceExample, exampleSpec, formatWithSpec } from '../formatSpec';
+import { differenceExample, exampleSpec, formatWithSpec, roundedNumber } from '../formatSpec';
 import { formatAutomaticNumber, PERCENTAGE_POINTS } from '../format';
 import { roundHalfUp, valueSetDecimals } from '../formatPrecision';
 import { cleanDiff, type Rect } from '../geometry';
@@ -31,7 +31,8 @@ export function differenceFormatter(input: { format?: string; locale?: string; v
     decimals === undefined || scaled ? value : Math.sign(value) * Number(roundHalfUp(Math.abs(value), decimals));
   if (input.format) {
     const spec = { ...exampleSpec(differenceExample(input.format), input.locale, undefined, input.values), signed: true, prefix: '', suffix: '' };
-    const round = printed(spec.decimals, spec.magnitude !== 'none' || spec.significantDigits !== undefined || spec.autoMagnitude === true);
+    const round = spec.exponent ? (value: number) => roundedNumber(value, spec)
+      : printed(spec.decimals, spec.magnitude !== 'none' || spec.significantDigits !== undefined || spec.autoMagnitude === true);
     return (minuend, subtrahend) => formatWithSpec(cleanDiff(round(minuend), round(subtrahend)), spec);
   }
   const decimals = input.decimals ?? valueSetDecimals(input.values);

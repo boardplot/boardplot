@@ -1,3 +1,4 @@
+import { optionShapeSchema } from '../../schema/shared';
 import { geoRegionSchema } from '../../schema/geoRegion';
 import * as z from 'zod';
 import {
@@ -8,7 +9,7 @@ import {
   refusedBaseOptions,
 } from '../../schema/shared';
 import { isIconName, listIcons } from '../../icons';
-import { COLORBLIND_WITHOUT_PAIR_REFUSED, highlightRefused, LEGEND_NONE_REFUSED, regionValuesWithoutLabelsRefused } from './geoRefusals';
+import { highlightRefused, LEGEND_NONE_REFUSED, regionValuesWithoutLabelsRefused } from './geoRefusals';
 import type { ChoroplethData, ChoroplethOptions } from './types';
 import type { GeoOverlay } from './overlayTypes';
 
@@ -114,18 +115,6 @@ export const geoScaleSchema = (midpointLabel: boolean) => z.discriminatedUnion('
     .strict().describe('Diverging scale with an explicit neutral midpoint.'),
 ]).describe('Color scale for the region measure.');
 
-/** colorblindSafe swaps the good/bad poles of a diverging scale; a sequential ramp has none to swap. */
-export function addGeoColorblindIssue(options: { colorblindSafe?: boolean; scale?: { kind: string } }, ctx: z.RefinementCtx): void {
-  if (options.colorblindSafe !== true || options.scale?.kind === 'diverging') return;
-  ctx.addIssue({
-    code: 'custom',
-    path: ['colorblindSafe'],
-    // The key is refused, so the diagnostic carries the remove fix.
-    params: { refused: true },
-    message: COLORBLIND_WITHOUT_PAIR_REFUSED,
-  });
-}
-
 /**
  * A map's key names what its colours measure, so it cannot be hidden: legend
  * 'none' is refused with the remove fix.
@@ -161,12 +150,12 @@ export const choroplethOptionsSchema = z
     ...baseOptionsSchema.shape,
     ...refusedBaseOptions('choropleth'),
     highlight: geoHighlightRefused('choropleth'),
-    topN: z
+    topN: optionShapeSchema('topN', z
       .strictObject({
         n: z.number().int().positive().describe('How many regions with the largest absolute values the automatic labels name.'),
-      })
+      }), z.number().int().positive())
       .optional()
-      .describe("On the world pack, the automatic labels name the n regions with the largest absolute values, plus the large countries (default 12). The other packs label every region, and labels 'all' or 'none' decide for themselves, so there topN changes nothing."),
+      .describe("On the world pack, the automatic labels name the n regions with the largest absolute values, plus the large countries (default 12). The other packs label every region, and labels 'all' or 'none' decide for themselves, so there topN changes nothing. A positive integer n means { n }."),
     scale: geoScaleSchema(true).optional().describe('Sequential magnitude or diverging midpoint color scale.'),
     classes: z.number().int().min(3).max(7).optional().describe('Number of equal-interval color classes, from 3 through 7. Explicit steps define five classes instead.'),
     steps: geoStepsSchema,
@@ -182,7 +171,6 @@ export const choroplethOptionsSchema = z
     methodNote: z.boolean().optional().describe("Default false. true adds the method footnote on which regions the automatic label policy names. The world pack's endorsement disclaimer stays on the source line and prints once. The inset scale note is required for interpretation and prints regardless."),
   })
   .superRefine(addCanvasBoundsIssues)
-  .superRefine(addGeoColorblindIssue)
   .superRefine(addGeoLegendNoneIssue)
   .superRefine(addGeoStepsIssue)
   .superRefine((options, ctx) => {
@@ -194,6 +182,6 @@ export const choroplethOptionsSchema = z
         params: { refused: true },
       });
     }
-  }).describe("Map framing, color scale and region-label policies. The titled colour key and the Small members block sit together in the row above the map, and the map rises under that row where no region lies. On a canvas of a set height whose plot is at least 1.6 times wider than tall, where a column beside the map makes the map clearly larger and no value table is drawn, they stand in a column right of the map instead; legend 'top' keeps the row. legend 'bottom' puts them under the map. legend 'right' is refused (a side column takes the map's width), and so is 'none' (the key names what the colours measure).") as unknown as z.ZodType<ChoroplethOptions>;
+  }).describe("Map framing, color scale and region-label policies. The titled colour key and the Small members block sit together in the row above the map, and the map rises under that row where no region lies. On a canvas of a set height whose plot is at least 1.6 times wider than tall, where a column beside the map makes the map clearly larger and no value table is drawn, they stand in a column right of the map instead; legend 'top' keeps the row. legend 'bottom' puts them under the map. legend 'right' or 'left' puts them in a column beside the map. legend 'none' is refused (the key names what the colours measure).") as unknown as z.ZodType<ChoroplethOptions>;
 
 export const choroplethDataSchema = baseChoroplethDataSchema.superRefine(addGeoIdIssues);

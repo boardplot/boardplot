@@ -152,6 +152,8 @@ export interface SlotCandidate {
   /** The seat lies on the key line, right of its entries: the legend's whole-row claim does not block it (the chart checked the entries). */
   overLegend?: boolean;
   leaderFrom?: { x: number; y: number };
+  /** One text line for a wrapped seat's leader gutter and minimum drawn run. */
+  leaderLineHeight?: number;
   /**
    * When `leaderFrom` lies under the label's own span, draw the leader
    * from above or below (a callout over its slice). Without it such a seat
@@ -1282,8 +1284,9 @@ const LEADER_MIN_DRAWN_RATIO = 0.6;
 export function leaderTerminus(
   rect: { x: number; y: number; w: number; h: number },
   from: { x: number; y: number },
+  lineHeight = rect.h,
 ): { x: number; y: number } {
-  const gutter = LEADER_GUTTER_RATIO * rect.h;
+  const gutter = LEADER_GUTTER_RATIO * lineHeight;
   const approachesFromLeft = from.x <= rect.x;
   const edgeX = approachesFromLeft ? rect.x : rect.x + rect.w;
   return {
@@ -1300,19 +1303,33 @@ function leaderExceedsLimit(req: LabelRequest, cand: SlotCandidate): boolean {
   const { rect, leaderFrom: from } = cand;
   // A vertical leader (the anchor under the label's span) runs to the near edge.
   if (from.x > rect.x && from.x < rect.x + rect.w) return Math.max(rect.y - from.y, from.y - rect.y - rect.h) > req.maxLeaderLength;
-  const end = leaderTerminus(cand.rect, cand.leaderFrom);
+  const end = leaderTerminus(cand.rect, cand.leaderFrom, leaderHeightOf(cand));
   const dx = Math.abs(end.x - cand.leaderFrom.x);
   const dy = Math.abs(end.y - cand.leaderFrom.y);
   const length = dx <= 8 || dy <= 8 ? Math.hypot(dx, dy) : dx + dy;
   return length > req.maxLeaderLength;
 }
 
-function leaderFor(cand: SlotCandidate): { d: string; curved: boolean } | undefined {
+/**
+ * The leader of a candidate. A wrapped seat that would draw no leader at its full height gets a second try at one
+ * text line: a run is a stub next to one line, not next to four.
+ */
+export function leaderFor(cand: SlotCandidate): { d: string; curved: boolean } | undefined {
+  const full = leaderAt(cand, cand.rect.h);
+  return full ?? (cand.leaderLineHeight === undefined ? undefined : leaderAt(cand, cand.leaderLineHeight));
+}
+
+/** The height the candidate's leader is measured at: its full height, or one line when only that draws a leader. */
+export function leaderHeightOf(cand: SlotCandidate): number {
+  return cand.leaderLineHeight !== undefined && !leaderAt(cand, cand.rect.h) ? cand.leaderLineHeight : cand.rect.h;
+}
+
+function leaderAt(cand: SlotCandidate, lineHeight: number): { d: string; curved: boolean } | undefined {
   const from = cand.leaderFrom;
   if (!from) return undefined;
-  const minimum = LEADER_MIN_DRAWN_RATIO * cand.rect.h;
+  const minimum = LEADER_MIN_DRAWN_RATIO * lineHeight;
   const approachesFromLeft = from.x <= cand.rect.x;
-  const toEdge = leaderTerminus(cand.rect, from);
+  const toEdge = leaderTerminus(cand.rect, from, lineHeight);
 
   const dx = toEdge.x - from.x;
   const dy = toEdge.y - from.y;
