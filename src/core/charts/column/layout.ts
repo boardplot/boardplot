@@ -24,6 +24,7 @@ import { stackBreakReversesOrder } from '../band/breakOrder';
  * which this function replays in claim order.
  */
 
+import { maxOf } from '../../arrays';
 import { BAND_PAD, hiddenValueLineReserve, VALUE_LINE_RESERVE } from '../../annotateParts';
 import { applyValueAxisTitleInk, valueAxisTitleRequest } from '../../axis';
 import { rectSeriesAdjacentWarnings } from '../../adjacentSeries';
@@ -642,6 +643,9 @@ function layoutColumnKeyed(data: ChartData, resolved: AnomalyColumnOptions, keep
   return withBandValueNotes(data, again, next => layoutColumnWithNotes(data, next, keepEachValue, axis));
 }
 
+/** The air over a callout's seat in the room a stacked100 plot makes over its columns, in px. */
+const CALLOUT_SEAT_AIR = 12;
+
 /** A ribbon chart names its series at the right edge of the last column, not in a legend. */
 function ribbonDefaults(options: AnomalyColumnOptions): AnomalyColumnOptions {
   // valueAxis.percent resolves to stacked100 in the domain.
@@ -725,6 +729,15 @@ function layoutColumnSettled(
     if (hiddenTicks(pass) < hiddenTicks(before)) options = reserved;
     else pass = before;
   }
+  // A stacked100 plot ends at 100%, so a callout or note with no seat beside its column gets the room
+  // over the plot that a stacked chart keeps for its totals. Kept only when it seats a callout.
+  for (let round = 0; round < 2 && pass.unseated > 0; round++) {
+    const before = pass;
+    const pad = ((options as { [BAND_PAD]?: number })[BAND_PAD] ?? 0) + pass.seatNeed;
+    const padded = run({ ...options, [BAND_PAD]: pad } as AnomalyColumnOptions);
+    if (pass.unseated >= before.unseated) { pass = before; break; }
+    options = padded;
+  }
   // A grid panel stops here; other charts settle band headroom after their notes.
   if (panelTypeClass(options) !== undefined) {
     settleBandHeadroom(options);
@@ -785,7 +798,7 @@ function layoutColumnPass(
   keepEachValue: boolean,
   axisProbe?: AxisProbe,
   probeAxis = false,
-): { geometry: Geometry<ColumnMarks, ColumnDerived>; unprinted: Map<string, string>; categoryNotes: string[]; planNotes: string[]; rankKey: () => string[]; legDeficit: number; bandNeed: number; valueLineReserve: number; tickReserve: number; staircase?: StaircaseOutcome } {
+): { geometry: Geometry<ColumnMarks, ColumnDerived>; unprinted: Map<string, string>; categoryNotes: string[]; planNotes: string[]; rankKey: () => string[]; legDeficit: number; bandNeed: number; valueLineReserve: number; tickReserve: number; unseated: number; seatNeed: number; staircase?: StaircaseOutcome } {
   const prepared = axisProbe?.prepared;
   if (axisProbe) axisProbe.prepared = undefined;
   const warnings: LintWarning[] = prepared ? [...prepared.warnings] : [];
@@ -956,5 +969,11 @@ function layoutColumnPass(
   const lastBar = lastTick && lastCategory ? area.band.position(domain.cats.length - 1) + area.band.bandwidth : 0;
   const tickReserve = lastTick ? Math.max(0, Math.ceil(lastBar + PY_TICK_LEAD + domain.measure(lastTick.text, area.tickFont).width + 2 - size.width)) : 0;
   const rankKey = () => rankNotes(domain.cats.map((c) => c.label ?? c.id), domain.options);
-  return { geometry, unprinted, categoryNotes, planNotes, rankKey, legDeficit: annotated.legDeficit, bandNeed: annotated.bandNeed, valueLineReserve, tickReserve: tickReserve <= size.width / 3 ? tickReserve : 0, ...(staircase ? { staircase } : {}) };
+  // An authored callout or note that found no seat on a stacked100 chart, whose plot ends at 100% with nothing above it.
+  const unseatedLabels = domain.variant === 'stacked100'
+    ? annotated.placed.flatMap((entry) => (entry.kind === 'callout' || entry.kind === 'note') && entry.labelId !== undefined
+      ? geometry.labels.filter((label) => label.id === entry.labelId && label.hidden !== undefined) : [])
+    : [];
+  const seatNeed = Math.ceil(maxOf(unseatedLabels.map((label) => label.rect.h))) + CALLOUT_SEAT_AIR;
+  return { geometry, unprinted, categoryNotes, planNotes, rankKey, legDeficit: annotated.legDeficit, bandNeed: annotated.bandNeed, valueLineReserve, tickReserve: tickReserve <= size.width / 3 ? tickReserve : 0, unseated: unseatedLabels.length, seatNeed: unseatedLabels.length > 0 ? seatNeed : 0, ...(staircase ? { staircase } : {}) };
 }
