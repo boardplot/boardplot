@@ -739,6 +739,9 @@ function shortMonthNames(labels: readonly string[]): string[] | undefined {
   return undefined;
 }
 
+/** Lines an upright name may take at the floor size. */
+const PROSE_FLOOR_LINES = 3;
+
 function planRow(input: CategoryRowInput, bundled: boolean): CategoryRowPlan {
   const { labels, centers, step, measure } = input;
   const n = labels.length;
@@ -752,8 +755,18 @@ function planRow(input: CategoryRowInput, bundled: boolean): CategoryRowPlan {
   // A row of names (not periods or an ordered sequence) may step down to the reader floor before it rotates.
   const smallest = fonts.at(-1)!;
   const nameRow = input.stepToFloor === true && !periodRow && !(input.ordered || input.strideFromEnd || numberedSequence(labels));
-  const stepsToFloor = nameRow && smallest.size > axisFloor + 0.01;
-  if (stepsToFloor) fonts.push({ ...fonts[0]!, size: axisFloor });
+  const floorFont: FontSpec = { ...fonts[0]!, size: axisFloor };
+  // The floor step is worth its planning cost only where every name can wrap on three lines at that size
+  // and no word (or hyphen part) is wider than its slot; else the row rotates as it did.
+  const floorHolds = () => labels.every((label, i) => {
+    const suffix = input.suffixes?.[i] ?? '';
+    const slot = (input.widths?.[i] ?? step) - (suffix ? measure(suffix, floorFont).width : 0);
+    if (/[\n\u200d\u{E0020}-\u{E007F}]/u.test(label)) return true;
+    const parts = label.split(/[^\S\u00a0\u202f]+/).filter(Boolean).flatMap(word => word.split(/(?<=-)(?=[^-])/));
+    return measure(label, floorFont).width <= PROSE_FLOOR_LINES * slot && parts.every(part => measure(part, floorFont).width <= slot);
+  });
+  const stepsToFloor = nameRow && smallest.size > axisFloor + 0.01 && floorHolds();
+  if (stepsToFloor) fonts.push(floorFont);
   // The floor step serves upright names only: a rotated row keeps the ladder it had.
   const rotateFonts = stepsToFloor ? fonts.slice(0, -1) : fonts;
   // 4 px between neighbouring names; the row thins only where names collide.
@@ -800,7 +813,9 @@ function planRow(input: CategoryRowInput, bundled: boolean): CategoryRowPlan {
       if (single !== undefined && measure(single, font).width <= width) {
         return withSuffix({ lines: [single], w: Math.max(measure(single, font).width, 1), h: font.size * (font.lineHeight ?? 1.2), truncated: false }, i, font);
       }
-      const wrap = fitText(label, font, width, maxLines, measure, nameRow ? { hyphenRetry: true } : {});
+      // A break after a hyphen is tried only where the name could fit in its lines at all.
+      const hyphenRetry = nameRow && /[-_/.]/.test(label) && measure(label, font).width <= maxLines * width;
+      const wrap = fitText(label, font, width, maxLines, measure, hyphenRetry ? { hyphenRetry: true } : {});
       const lines = wrap.lines.length ? wrap.lines : [''];
       return withSuffix({
         lines,
