@@ -141,6 +141,21 @@ export function grandTotalRequested(authored: boolean | undefined, variant: Stac
 }
 
 /**
+ * A 100 % stack prints shares. A format without a % sign belongs to the values,
+ * so it changes nothing unless an absolute figure prints too.
+ */
+export function warnShareFormatIgnored(variant: StackVariant, format: string | undefined, shareExample: string | undefined, valuesPrint: boolean, warnings: LintWarning[]): void {
+  if (variant !== 'stacked100' || !format || shareExample || valuesPrint) return;
+  warnings.push({
+    code: 'format-ignored',
+    severity: 'warn',
+    message: `format '${format}' has no % sign, and a 100% stack prints shares only — the format changes no label`,
+    suggest: "give the shares a percent format such as '0.0%', or drop the format",
+    field: ['options', 'format'],
+  });
+}
+
+/**
  * a stack whose parts do not add has no sums to average, so an
  * average marker over it is skipped with a warning. True when skipped.
  */
