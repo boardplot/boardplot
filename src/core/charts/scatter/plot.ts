@@ -383,7 +383,7 @@ export function scatterPlotArea(
   const axisTitles = options.axisTitles ?? {};
   const qualitative = showAxes && options.qualitativeAxes === true;
   const yAxisW = qualitative ? qualitativeColumn(env, fonts, frame.plot.w).width + QUALITATIVE_GAP : showAxes && !banded.y
-    ? measureValueAxisWidth([dyLo, dyHi], yFmt, theme, measure, 5, env.log.y ? undefined : linearAxisSpec(env.axisSpec.y, [dyLo, dyHi]), env.log.y ? logTickTiers(dyLo, dyHi)[0] : domain.ticks?.y) : 0;
+    ? measureValueAxisWidth([dyLo, dyHi], yFmt, theme, measure, 5, env.log.y ? undefined : linearAxisSpec(env.axisSpec.y, [dyLo, dyHi]), env.log.y ? logTickTiers(dyLo, dyHi)[0] : domain.stepTicks ?? domain.ticks?.y) : 0;
   // A banded axis prints no numbers, so it reserves no tick row or column (scatter.matrix).
   const xAxisH = showAxes && !banded.x ? tickH + 6 : 0;
   // A qualitative x title shares the row of its ends; the y title sits in the axis column.

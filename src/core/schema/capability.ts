@@ -154,9 +154,9 @@ export const OPTION_CAPABILITY = {
 /**
  * The nested twin of OPTION_CAPABILITY for the shared `valueAxis` object,
  * whose sub-keys every type would inherit whether its layout reads them or not
- * (tickStep and reverse draw byte-identical SVG on
- * column, bar, combo, mekko, pareto and variance; waterfall and pvm read no
- * sub-key but break). Two shapes, both enforced by `narrowValueAxis`:
+ * (reverse draws byte-identical SVG on bar, column, combo, mekko, pareto
+ * and variance; waterfall and pvm read no sub-key but break).
+ * Two shapes, both enforced by `narrowValueAxis`:
  *
  * - `VALUE_AXIS_CAPABILITY`: a sub-key only some types read, fail-closed like
  *   the table above. box reads tickStep and reverse only to warn that it
@@ -170,7 +170,7 @@ export const OPTION_CAPABILITY = {
  */
 export const VALUE_AXIS_CAPABILITY = {
   tickStep: {
-    implementedBy: ['box', 'column', 'line'],
+    implementedBy: ['bar', 'box', 'bullet', 'column', 'combo', 'dot', 'histogram', 'line', 'mekko', 'scatter', 'variance'],
   },
   reverse: {
     implementedBy: ['box', 'line', 'scatter'],

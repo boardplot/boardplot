@@ -20,7 +20,7 @@ import {
   resolveHighlight,
   resolveSize,
 } from '../../normalize/shared';
-import { applyAxisBounds, niceDomain } from '../../scale';
+import { applyAxisBounds, applyTickStep, niceDomain } from '../../scale';
 import { type Id } from '../../types/cell';
 import type { Category, ChartData } from '../../types/data';
 import type { MekkoOptions } from '../../types/options';
@@ -439,6 +439,8 @@ export function resolveMekkoDomain(data: ChartData, env: MekkoEnv, warnings: Lin
     if (st.mode === 'bar' && va.show !== true) [dLo, dHi] = loAll === 0 && hiAll === 0 ? [0, 1] : [loAll, hiAll];
   }
   [dLo, dHi] = applyAxisBounds([dLo, dHi], [Math.min(loAll, 0), Math.max(hiAll, 0)], va, warnings);
+  const stepped = applyTickStep([dLo, dHi], va.tickStep, warnings);
+  [dLo, dHi] = stepped.domain;
 
   // valueLine 'mean' is the WIDTH-WEIGHTED mean of the plotted totals
   const plottedTotal = (ci: number) => stacks.posTop[ci]! + stacks.negBot[ci]!;
@@ -466,6 +468,7 @@ export function resolveMekkoDomain(data: ChartData, env: MekkoEnv, warnings: Lin
     ...stacks,
     dLo,
     dHi,
+    stepTicks: stepped.ticks,
     meanValue,
     validCount,
     plottedAt: fns.plottedAt,

@@ -238,6 +238,7 @@ export interface BarArea {
   /** Where the title ends on the right and where its top sits. */
   axisTitleAt?: { x: number; y: number };
   activeBreak: LinearBreak | undefined;
+  stepTicks?: number[];
   x: LinearScale;
   x0: number;
   /** A theme's outside labels put negative values right of the zero line. */

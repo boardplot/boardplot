@@ -21,7 +21,8 @@ import {
 } from '../../normalize/shared';
 import { resolveCellRange, type DataRange } from '../../rangeRules';
 import { axisBreakInvalid } from '../../axisBreakInvalid';
-import { applyAxisBounds, invalidLinearBreakReason, niceDomain, type LinearBreak } from '../../scale';
+import { applyAxisBounds, applyTickStep, invalidLinearBreakReason, niceDomain, type LinearBreak } from '../../scale';
+import { stepFitsAxisBreak } from '../band/ticks';
 import { defaultMeasurer } from '../../text';
 import { canvasMargin, headingWeight, labelsOffKeepsNames, panelTypeClass, resolveTheme, themeForWidth } from '../../theme';
 import { measureValueAxisWidth } from '../../axis';
@@ -822,21 +823,8 @@ function columnValueDomain(
   [dLo, dHi] = applyAxisBounds([dLo, dHi], [Math.min(lo, 0), Math.max(hi, 0)], va, warnings);
   // An authored tick step sets the tick rhythm, as on line: the domain snaps
   // out to the step, so no value is cut; more than 20 intervals are ignored.
-  const step = va.tickStep;
-  if (step !== undefined && step > 0) {
-    const from = Math.floor(dLo / step + 1e-9);
-    const to = Math.ceil(dHi / step - 1e-9);
-    if (to - from >= 1 && to - from <= 20) {
-      const stepTicks = Array.from({ length: to - from + 1 }, (_, i) => Number(((from + i) * step).toFixed(10)));
-      return { posTopP, negBotP, dLo: stepTicks[0]!, dHi: stepTicks.at(-1)!, stepTicks, rendered };
-    }
-    warnings.push({
-      code: 'tick-step-ignored', severity: 'warn',
-      message: `valueAxis.tickStep ${step} would draw ${to - from} intervals over the value domain; the nice ticks are drawn instead`,
-      suggest: 'pick a step that gives 1 to 20 intervals',
-    });
-  }
-  return { posTopP, negBotP, dLo, dHi, rendered };
+  const stepped = applyTickStep([dLo, dHi], va.tickStep, warnings);
+  return { posTopP, negBotP, dLo: stepped.domain[0], dHi: stepped.domain[1], ...(stepped.ticks ? { stepTicks: stepped.ticks } : {}), rendered };
 }
 
 /** The value-axis break, validated against every value the exhibit renders. */
@@ -1074,15 +1062,8 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
   // An authored step keeps its rhythm across a break only while each side keeps an inner tick, not its end tick alone.
   let { stepTicks, ...span } = extent;
   const checked = activeBreak;
-  const stepAcross = !stepTicks || !checked
-    || (stepTicks.filter((v) => v < checked.from).length >= 2 && stepTicks.filter((v) => v > checked.to).length >= 2);
+  const stepAcross = stepFitsAxisBreak(stepTicks, checked, va.tickStep, warnings);
   if (!stepAcross) {
-    warnings.push({
-      code: 'tick-step-ignored', severity: 'warn',
-      message: `valueAxis.tickStep ${va.tickStep} leaves one side of the axis break with only its end tick; the break's own ticks are drawn instead`,
-      suggest: 'pick a smaller tickStep, or drop the axis break',
-      field: ['options', 'valueAxis', 'tickStep'],
-    });
     // The rejected step sets no extent either: the nice extent is taken again and the break checked against it.
     // A break excludes the anomaly corridor, so the corridor does not move. Its warnings were given above.
     const { tickStep: _rejected, ...nice } = va;

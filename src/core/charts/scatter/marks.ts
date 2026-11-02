@@ -185,7 +185,10 @@ function scatterAxes(env: ScatterEnv, domain: ScatterDomain, area: ScatterPlotAr
   const ticksOf = (scale: typeof x, orient: 'x' | 'y') => {
     const spec = env.axisSpec[orient];
     // A cut value breaks the even tick ladder, so the 2x2 ticks are kept as given and only thinned where labels meet.
-    if (!scale.log) return { format: axisFmt[orient], formatSpec: linearAxisSpec(spec, scale.domain), ...(domain.ticks ? { ticks: domain.ticks[orient], ...(domain.quadrants.derived ? { keepEndTicks: true } : {}) } : {}) };
+    if (!scale.log) return { format: axisFmt[orient], formatSpec: linearAxisSpec(spec, scale.domain),
+      ticks: orient === 'y' ? domain.stepTicks ?? domain.ticks?.y : domain.ticks?.x,
+      ...(domain.ticks && domain.quadrants.derived ? { keepEndTicks: true } : {}),
+    };
     const tickFmt = logSpecFormat(spec, scale.domain);
     return { format: tickFmt, ticks: fitLogTicks(scale, orient, tickFmt, fonts.tick, measure) };
   };

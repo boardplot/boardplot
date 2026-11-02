@@ -97,6 +97,7 @@ export interface MekkoDomain {
   shares: Record<Id, Record<Id, number>>;
   dLo: number;
   dHi: number;
+  stepTicks?: number[];
   /** Width-weighted mean of the plotted totals (valueLine 'mean'). */
   meanValue: number | undefined;
   validCount: number;

@@ -47,7 +47,7 @@ import { accessibleTitle,
   resolveSize,
 } from '../../normalize/shared';
 import { rangeMidUndrawn, resolveCellRange, type RangeMark } from '../../rangeRules';
-import { applyAxisBounds, bandScale, linearScale, niceDomain, type BandScale } from '../../scale';
+import { applyAxisBounds, applyTickStep, shownTickStep, bandScale, linearScale, niceDomain, type BandScale } from '../../scale';
 import { authoredNotes, frameTextOptions, normalizeLegendOption, noteLine, solveFrame, type LegendItemInput, plotHeightAfter, authoredFootnoteCount } from '../../frame';
 import { HARD_MINIMUM, rowSizing, SIZE_TOLERANCE } from '../../sizing';
 import { rowDrivenHeight } from '../../rowCanvas';
@@ -1115,7 +1115,7 @@ function layoutRowIntervals(
     };
     const x = linearScale([dLo, dHi], [plot.x, plot.x + plot.w]);
     const titleEnd = axisTitle && !titleRow
-      ? tickRowTitleEnd(axisTitle, { scale: x, plot, orient: 'x', gridlines: false, format: fmt, formatSpec: valueSpec.spec, theme, measure, canvasWidth: size.width }, plot0.x)
+      ? tickRowTitleEnd(axisTitle, { scale: x, ticks: stepped.ticks, plot, orient: 'x', gridlines: false, format: fmt, formatSpec: valueSpec.spec, theme, measure, canvasWidth: size.width }, plot0.x)
       : undefined;
     const minWidth = size.width - plot0.w + nameW + leftReserve + rightReserve + 10;
     return { availH, minWidth, catCap, catLines, catBandW, fixedRow, fixedRowsH, valueBody, plot, x, titleEnd, titleRow };
@@ -1123,11 +1123,13 @@ function layoutRowIntervals(
   // With no tick row nothing reads the round ends, so the bars span the plot.
   // A football field reads its ranges against the current value, not against
   // zero or a round end, so its ticks stand inside the data extent too.
-  const [dLo, dHi] = !axisShown || mode === 'football-field' ? [rawLo, rawHi] : niceDomain(rawLo, rawHi, 5, {
+  const nice: [number, number] = !axisShown || mode === 'football-field' ? [rawLo, rawHi] : niceDomain(rawLo, rawHi, 5, {
     dataExtent: [rawLo, rawHi],
     maxWasteFraction: 0.15,
     preserveDataSideOfZero: true,
   });
+  const stepped = applyTickStep(nice, shownTickStep(options.valueAxis?.tickStep, axisShown, warnings), warnings);
+  const [dLo, dHi] = stepped.domain;
   const planRows = (noNameColumn: boolean, out: LintWarning[]) => {
     const sharedWarnings: LintWarning[] = [];
     const first = rowsFor(false, sharedWarnings, noNameColumn);
@@ -1161,6 +1163,7 @@ function layoutRowIntervals(
     const axis = layoutValueAxis(
       {
         scale: x,
+        ticks: stepped.ticks,
         plot,
         orient: 'x',
         gridlines: options.valueAxis?.gridlines ?? false,
