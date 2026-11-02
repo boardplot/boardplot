@@ -580,7 +580,7 @@ export function layoutColumn(
 ): Geometry<ColumnMarks, ColumnDerived> {
   const dropped: LintWarning[] = [];
   const resolved = withoutShareAnnotations(
-    withValueLabelDefaults(ribbonDefaults(withLocaleStrings(options)), 'column', options.valueAxis?.percent ? 'stacked100' : options.variant),
+    withValueLabelDefaults(ribbonDefaults(withLocaleStrings(options)), 'column', options.valueAxis?.percent ? 'stacked100' : options.variant, dropped),
     options.variant === 'stacked100' || Boolean(options.valueAxis?.percent), dropped);
   const geometry = layoutColumnKeyed(data, resolved, keepEachValue);
   geometry.warnings.push(...dropped);

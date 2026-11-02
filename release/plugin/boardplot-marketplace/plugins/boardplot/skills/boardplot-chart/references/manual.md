@@ -748,6 +748,12 @@ Provider strings `refusalMessage`, `refusalHint`, `emptyMessage`, `emptyHint`, `
 
 In code, `refused` on a layout from `layoutResolvedRequest` marks a size refusal only. A layout whose own lints carry severity `error` is refused too: render answers it with those errors and the components draw the error card. `isRefused(layout)` from `boardplot` is true in both cases; `measure` reports both in `refused`, without `geometry`. The second argument of `measure(request, context)` takes only `theme`, `locale` and `strings`; any other key is ignored with the warning `unknown-context-key`, and a width or height belongs in `options.size`.
 
+### Ignored options
+
+An option a chart type does not read is ignored with an `option-ignored` warning and a JSON Patch that removes the setting. A setting that already matches the drawing gives the same warning at `info` level: for example, `valueAxis.show: false` on a chart without a value axis, or `legend: 'none'` on slope and box charts. Unsupported settings that change a number or a scale still refuse the chart.
+
+`valueLabels` modes other than `'all'` are ignored on stacked, stacked100, football-field and tornado variants. These variants keep their normal labels and value axis.
+
 ### Design advice
 
 Bar, line, waterfall and diagram have a design card: what the chart says, when to use it and when not, and four to eight rules. `boardplot_describe` prints the message, the use, the not-when and the first two rules; `path: "design"` (CLI: `boardplot describe bar --path design`) prints every rule. Each rule is marked `engine` or `describe`. Render checks the `engine` rules on the drawn chart and returns each finding as a warning with severity `advice`, a code that starts with `design-`, one sentence and a `docs` link to the rule. A `fix` patch is included only when it can apply to the input as sent. Otherwise follow `suggest`; for example, a waterfall built from rows gets written advice when a patch would target generated items. Advice never changes the drawing and never refuses. A render returns at most three, the MCP server returns each code once per session, and a refused render returns none. The `describe` rules need the author's judgment, such as the business order of a bridge.

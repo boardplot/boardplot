@@ -100,7 +100,7 @@ One form; its chart ID is `choropleth`.
 | valueTable | string \| false | `'auto'`, `'side'`, `'below'`, `false` |  | The table of every region with its class swatch, code and value; the top values print bold and the map then prints codes only. 'auto' (default): beside the map when the map keeps most of the row, else under it; off above 20 regions, without numeric values, or when a pinned canvas is too short for it. 'side' or 'below' forces the place; false leaves it off. |
 | methodNote | boolean |  |  | Default false. true adds the method footnote on which regions the automatic label policy names. The world pack's endorsement disclaimer stays on the source line and prints once. The inset scale note is required for interpretation and prints regardless. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `categoryLabels`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `bandFraction`, `highlight`, `story`, `rounding`.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis`, `highlight`, `story`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 

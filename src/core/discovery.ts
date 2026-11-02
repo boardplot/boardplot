@@ -9,6 +9,7 @@ import { ANNOTATION_KIND_PURPOSES, type AnnotationKind } from './types/annotatio
 import { fieldLine, firstClause, optionFields, PRESET_THEME_NAMES, sharedOptionFields, shortSummaryFor, useCasesFor, chartIds, chartIdOf, compactDesignCard, designCardFor } from './catalog';
 import { themeFieldReference } from './themeFields';
 import { themes } from './theme';
+import { IGNORED_OPTION_KEYS, LEGEND_DRAWS, schemaRefusedKeys, valueAxisRefusal } from './schema/capability';
 
 /** A bare chart's `name` as describe shows it: it sits beside data and options, in neither. Kept here, off the browser bundle. */
 const BARE_NAME_FIELD = {
@@ -325,11 +326,11 @@ const COMPACT_FIXTURES = 5;
  * The option rows describe shows for one type: its own fields, plus every
  * shared field whose contract differs here (pie's topN default, mekko's mode,
  * choropleth's labels). Shared fields the type refuses (`never`) or lacks are
- * named in `notAccepted` instead, as are the keys other types take that this
- * one refuses by name. The annotation subtree is left to the
+ * named in `ignored` when removed with a warning, otherwise in `notAccepted`.
+ * The annotation subtree is left to the
  * `annotations` section, which lists the kinds this type draws.
  */
-function typeOptions(type: string): { own: SchemaFieldReference[]; notAccepted: string[] } {
+function typeOptions(type: string): { own: SchemaFieldReference[]; notAccepted: string[]; ignored: string[] } {
   const base = new Map<string, SchemaFieldReference[]>();
   for (const field of sharedOptionFields()) base.set(field.path, [...base.get(field.path) ?? [], field]);
   const all = optionFields(type);
@@ -352,7 +353,12 @@ function typeOptions(type: string): { own: SchemaFieldReference[]; notAccepted: 
     .map((field) => field.path);
   // Keys another type takes that this one refuses by name (slope's seriesLabels).
   const refusedOwn = [...firstByPath.values()].filter((field) => field.type === 'never' && !base.has(field.path) && !/[.[]/.test(field.path));
-  return { own, notAccepted: [...notAccepted, ...refusedOwn.map((field) => field.path)] };
+  const ignored = [
+    ...schemaRefusedKeys(type).options.filter(key => IGNORED_OPTION_KEYS.has(key) || key === 'legend'),
+    ...['show', 'gridlines'].filter(key => valueAxisRefusal(type, key) !== undefined).map(key => `valueAxis.${key}`),
+    ...(Object.hasOwn(LEGEND_DRAWS, type) ? ["legend: 'none'", "legend: 'auto'"] : []),
+  ];
+  return { own, notAccepted: [...notAccepted, ...refusedOwn.map((field) => field.path)].filter(path => !ignored.includes(path)), ignored };
 }
 
 function fields(schema: z.ZodType, defaults?: unknown): SchemaFieldReference[] {
@@ -364,7 +370,7 @@ export function describeType(type: string, detail: 'compact' | 'full' = 'compact
   const definition = getChartDefinition(type);
   if (!definition) throw new Error(`unknown chart type '${type}'`);
   const full = detail === 'full';
-  const { own, notAccepted } = typeOptions(definition.type);
+  const { own, notAccepted, ignored } = typeOptions(definition.type);
   const dataFields = fields(definition.dataSchema);
   const fixtures = getFixtures(definition.type);
   const shown = full ? fixtures : fixtures.filter((fixture) => fixture.kind === 'example').slice(0, COMPACT_FIXTURES);
@@ -386,6 +392,7 @@ export function describeType(type: string, detail: 'compact' | 'full' = 'compact
     options: full ? fieldRows(own, true) : fieldLines(own, true),
     sharedOptions: 'plus boardplot_list sharedOptions, which a path here replaces. … ends a cut row: describe its path for the rest',
     ...(notAccepted.length ? { notAccepted } : {}),
+    ...(full && ignored.length ? { ignored } : {}),
     sizing: {
       minWidth: sizing.minWidth,
       minHeight: sizing.minHeight,

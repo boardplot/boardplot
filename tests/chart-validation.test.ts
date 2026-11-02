@@ -715,16 +715,61 @@ describe('a theme given as preset and overrides', () => {
   });
 });
 
-describe('legend values that draw nothing on a slope chart ', () => {
-  it('refuses none and auto with the remove patch and keeps the values that draw a key', () => {
-    const errors = (legend: unknown) => (render({ spec: { type: 'slope', data: {
+describe('ignored options', () => {
+  // A shared options block must survive a type switch.
+  it('draws with unused settings removed and keeps number and scale refusals', () => {
+    const data = { categories: ['First', 'Second', 'Third'], series: [{ id: 'north', label: 'North', values: [10, 16, 12] }] };
+    const draw = (type: string, options: object, chartData: unknown = data) => render({ spec: { type, data: chartData, options }, return: ['svg'] }).body;
+    const ignored = (body: ReturnType<typeof draw>) => (body.warnings as { code: string; severity: string; path: string; fix?: unknown }[])
+      .filter(warning => warning.code === 'option-ignored');
+    const lineOptions = { sort: { categories: 'desc' }, topN: { n: 1 }, bandFraction: 0.4, secondaryAxis: { acknowledge: true }, animate: true };
+    const untouched = structuredClone(lineOptions);
+    const line = draw('line', lineOptions);
+    expect(line.ok, JSON.stringify(line.errors)).toBe(true);
+    expect(ignored(line)).toHaveLength(5);
+    for (const key of Object.keys(lineOptions)) {
+      expect(ignored(line)).toContainEqual(expect.objectContaining({ severity: 'warn', path: `/options/${key}`, fix: [{ op: 'remove', path: `/options/${key}` }] }));
+    }
+    expect(line.svg).toBe(draw('line', {}).svg);
+    expect(lineOptions).toEqual(untouched);
+
+    const pie = draw('pie', { valueAxis: { show: false } });
+    expect(pie.ok, JSON.stringify(pie.errors)).toBe(true);
+    expect(ignored(pie)).toMatchObject([{ severity: 'info', path: '/options/valueAxis/show', fix: [{ op: 'remove', path: '/options/valueAxis/show' }] }]);
+    const scale = draw('pie', { valueAxis: { min: 0 } });
+    expect(scale.ok).toBe(false);
+    expect(scale.errors).toContainEqual(expect.objectContaining({ code: 'invalid-options', path: '/options/valueAxis' }));
+    const gridData = { panels: [{ id: 'share', type: 'pie', data, options: { valueAxis: { show: false } } }] };
+    const grid = draw('grid', {}, gridData);
+    expect(grid.ok, JSON.stringify(grid.errors)).toBe(true);
+    expect(ignored(grid)).toMatchObject([{ severity: 'info', path: '/data/panels/0/options/valueAxis/show' }]);
+    expect(grid.svg).toBe(draw('grid', {}, { panels: [{ ...gridData.panels[0], options: {} }] }).svg);
+
+    const boxData = { groups: [{ id: 'north', label: 'North', observations: [2, 4, 6, 8, 10, 12] }] };
+    for (const [type, chartData] of [['slope', { ...data, categories: ['2024', '2025'], series: [{ id: 'north', label: 'North', values: [10, 12] }] }], ['box', boxData]] as const) {
+      const result = draw(type, { legend: 'none' }, chartData);
+      expect(result.ok, JSON.stringify(result.errors)).toBe(true);
+      expect(ignored(result)).toMatchObject([{ severity: 'info', path: '/options/legend' }]);
+    }
+
+    for (const type of ['bar', 'column']) {
+      const stack = draw(type, { variant: 'stacked', valueLabels: 'last' });
+      expect(stack.ok, JSON.stringify(stack.errors)).toBe(true);
+      expect(ignored(stack)).toMatchObject([{ severity: 'warn', path: '/options/valueLabels', fix: [{ op: 'remove', path: '/options/valueLabels' }] }]);
+      expect(stack.svg).toBe(draw(type, { variant: 'stacked' }).svg);
+    }
+  });
+
+  it('ignores none and auto on slope with the remove patch and keeps the values that draw a key', () => {
+    const body = (legend: unknown) => render({ spec: { type: 'slope', data: {
       categories: ['2024', '2025'], series: [{ id: 'a', label: 'North', values: [10, 12] }, { id: 'b', label: 'South', values: [8, 7] }],
-    }, options: { title: 'Share', legend } } }).body.errors ?? []) as { path: string; fix?: unknown }[];
-    expect([errors('none')[0], errors('auto')[0], errors('top'), errors('bottom')]).toMatchObject([
-      { path: '/options/legend', fix: [{ op: 'remove', path: '/options/legend' }] },
-      { path: '/options/legend', fix: [{ op: 'remove', path: '/options/legend' }] },
-      [], [],
-    ]);
+    }, options: { title: 'Share', legend } } }).body;
+    for (const legend of ['none', 'auto']) {
+      const result = body(legend);
+      expect(result.ok, JSON.stringify(result.errors)).toBe(true);
+      expect(result.warnings).toContainEqual(expect.objectContaining({ code: 'option-ignored', severity: 'info', path: '/options/legend', fix: [{ op: 'remove', path: '/options/legend' }] }));
+    }
+    for (const legend of ['top', 'bottom', 'right', 'left', { position: 'top' }]) expect(body(legend).ok).toBe(true);
   });
 });
 

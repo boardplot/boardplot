@@ -272,7 +272,7 @@ export function typePage(type, anchorForm) {
     '## Options', '', description.options.length
       ? table(['Path', 'Type', 'Values', 'Default', 'Meaning'], foldCells(description.options).map((field) => [field.branch ? `${field.path} (${field.branch})` : field.path, field.type, values(field), fallback(field), field.description]))
       : 'This type has no options of its own.', '',
-    `Plus the [shared options](options.md).${description.notAccepted ? ` This type does not accept ${description.notAccepted.map((path) => `\`${path}\``).join(', ')}.` : ''}`, '',
+    `Plus the [shared options](options.md).${description.notAccepted ? ` This type does not accept ${description.notAccepted.map((path) => `\`${path}\``).join(', ')}.` : ''}${description.ignored ? ` This type ignores ${description.ignored.map((path) => `\`${path}\``).join(', ')} with an \`option-ignored\` warning.` : ''}`, '',
     '## Annotations', '', ...annotationSection(description, anchorForm), '',
     ...(RECIPES[type] ?? []).flatMap((recipe) => [`## ${recipe.title}`, '', ...recipe.text.flatMap((paragraph) => [paragraph, '']), ...(recipe.spec ? [code(recipe.spec), ''] : []), ...(recipe.tsx ? ['```tsx', recipe.tsx, '```', ''] : [])]),
     '## Sizing', '', ...sizingLines(description.sizing, type), '',

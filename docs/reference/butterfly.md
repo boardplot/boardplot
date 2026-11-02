@@ -74,7 +74,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | sharedScale | boolean |  | `true` | Use the same value scale on both sides by default. False gives independent scales and warns that lengths are not comparable. |
 | negatives | string | `'direction'`, `'magnitude'` | `'direction'` | A negative value: direction (default) runs its bar from the pane's zero line toward the category names, and positive bars run outward; magnitude draws the bar length of the absolute value outward in a lighter tint. |
 
-Plus the [shared options](options.md). This type does not accept `categoryLabels`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `colorblindSafe`, `rounding`.
+Plus the [shared options](options.md). This type does not accept `valueAxis`, `colorblindSafe`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 
