@@ -10,7 +10,7 @@ import type { Theme } from '../../types/theme';
 
 import { BAND_PAD, GAP_BRACKET_RESERVE, VALUE_LINE_RESERVE } from '../../annotateParts';
 import { AXIS_TITLE_GAP, measureValueAxisWidth, planValueAxisTitle, valueAxisTitleBand, valueAxisTitleText, valueAxisUnit, type ValueAxisTitle } from '../../axis';
-import { dateTickRow, dayCategories } from '../../calendarLabels';
+import { authoredDateTicks, dayCategories } from '../../calendarLabels';
 import type { DateTickInterval } from '../../dateFormat';
 import { formatAutomaticPercent, notApplicableGlyph, numberRange } from '../../format';
 import { percentCellsOnly } from '../../annotatePass';
@@ -539,22 +539,7 @@ function categoryRow(env: LineEnv, domain: LineDomain, text: LineText, reserves:
   const categoryCentersFor = (x0: number, width: number) =>
     cats.map((_, ci) => liveCategoryX(ci, n, crossesBetween, spanOf(x0, width), grid));
   const dateTicks = options.categoryAxis?.dateTicks as DateTickInterval | undefined;
-  const ticked = dateTicks ? dateTickRow(cats, dateTicks, options.locale?.language, options.locale?.weekStartsOn) : undefined;
-  if (dateTicks && ticked!.ticks === null) {
-    warnings.push({
-      code: 'date-ticks-unsupported',
-      severity: 'info',
-      message: `categoryAxis.dateTicks '${dateTicks}' was ignored: not every category carries an ISO date, so no calendar interval can be resolved`,
-      suggest: "give each category an ISO 'date' or drop categoryAxis.dateTicks",
-    });
-  } else if (dateTicks && dateTicks !== 'weeks' && options.locale?.weekStartsOn !== undefined) {
-    warnings.push({
-      code: 'week-start-ignored',
-      severity: 'info',
-      message: `locale.weekStartsOn was ignored: a week boundary only decides something for dateTicks 'weeks', and the requested interval is '${dateTicks}'`,
-      suggest: "set categoryAxis.dateTicks to 'weeks' or drop locale.weekStartsOn",
-    });
-  }
+  const ticked = authoredDateTicks(cats, options, warnings);
   // Line keys no running period, so its name says so where the note does not print.
   const row = categoryLabelsAndMarks(cats, { count: authoredFootnoteCount(options), warnings }, partialAxisWords(options.strings, options, lineToDateIds(env, domain, text).size > 0));
   ticked?.name(row);

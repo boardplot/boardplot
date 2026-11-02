@@ -15,6 +15,7 @@ import { dateNames } from './dateNames';
 import { wordLanguage } from './numberMarks';
 import { parseISODate, utcDate } from './isoDate';
 import type { Category } from './types/data';
+import type { LintWarning } from './types/scene';
 
 type CalendarUnit = 'day' | 'week' | 'month' | 'quarter' | 'year';
 
@@ -223,6 +224,37 @@ export function dateTickRow(cats: readonly Category[], dateTicks: DateTickInterv
       }
     },
   };
+}
+
+/**
+ * The category row an author's categoryAxis.dateTicks asks for, or undefined
+ * when none is set. A row without an ISO date on every category keeps its own
+ * ticks and says so; a week start the interval cannot use says so too.
+ */
+export function authoredDateTicks(
+  cats: readonly Category[],
+  options: { categoryAxis?: { dateTicks?: DateTickInterval }; locale?: { language?: string; weekStartsOn?: 0 | 1 } },
+  warnings: LintWarning[],
+): ReturnType<typeof dateTickRow> | undefined {
+  const dateTicks = options.categoryAxis?.dateTicks;
+  if (!dateTicks) return undefined;
+  const ticked = dateTickRow(cats, dateTicks, options.locale?.language, options.locale?.weekStartsOn);
+  if (ticked.ticks === null) {
+    warnings.push({
+      code: 'date-ticks-unsupported',
+      severity: 'info',
+      message: `categoryAxis.dateTicks '${dateTicks}' was ignored: not every category carries an ISO date, so no calendar interval can be resolved`,
+      suggest: "give each category an ISO 'date' or drop categoryAxis.dateTicks",
+    });
+  } else if (dateTicks !== 'weeks' && options.locale?.weekStartsOn !== undefined) {
+    warnings.push({
+      code: 'week-start-ignored',
+      severity: 'info',
+      message: `locale.weekStartsOn was ignored: a week boundary only decides something for dateTicks 'weeks', and the requested interval is '${dateTicks}'`,
+      suggest: "set categoryAxis.dateTicks to 'weeks' or drop locale.weekStartsOn",
+    });
+  }
+  return ticked;
 }
 
 /**

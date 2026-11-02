@@ -62,7 +62,7 @@ export const OPTION_CAPABILITY = {
     implementedBy: ['bar', 'bullet', 'box', 'dot', 'likert'],
   },
   categoryAxis: {
-    implementedBy: ['line'],
+    implementedBy: ['column', 'combo', 'line'],
   },
   categoryLabels: {
     implementedBy: ['column', 'combo', 'pareto'],

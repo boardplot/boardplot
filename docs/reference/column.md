@@ -132,7 +132,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | viewDomain | object |  |  | Zoom the visible categories. Means, the average marker and anomaly rules keep every source period. A mean's Ø label names the periods it covers where the plot draws fewer, 'Ø 40.4 (Jan 25–Dec 26)'. Refused with a category sort or topN, which break the period order. |
 | viewDomain.x | array |  |  | Inclusive category ids bounding the visible x axis. |
 
-Plus the [shared options](options.md). This type does not accept `valueAxis.log`, `valueAxis.reverse`, `categoryAxis`, `secondaryAxis`, `rowLabels`.
+Plus the [shared options](options.md). This type does not accept `valueAxis.log`, `valueAxis.reverse`, `secondaryAxis`, `rowLabels`.
 
 ## Annotations
 

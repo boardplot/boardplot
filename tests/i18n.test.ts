@@ -157,6 +157,17 @@ describe('categoryAxis.dateTicks', () => {
     expect(texts(layout('column', { data: data(b) }))).toBe(alone);
   });
 
+  // Column and combo refused categoryAxis, so quarter ticks under 24 monthly columns were impossible.
+  it.each(['column', 'combo'])('ticks a %s row at each calendar quarter, and says when crossesBetween is ignored', (type) => {
+    const months = Array.from({ length: 24 }, (_, i) => `${2024 + Math.floor(i / 12)}-${String(i % 12 + 1).padStart(2, '0')}-01`);
+    const monthly = { categories: months.map((date) => ({ id: date, date })), series: [{ id: 'orders', label: 'Orders', values: months.map((_, i) => 100 + i) }] };
+    const ticks = (extra: Record<string, unknown>) => layout(type, { data: monthly }, extra).scene.filter((node) => node.id.startsWith('axis:x:tick:'));
+    expect(ticks({ categoryAxis: { dateTicks: 'quarters' } })).toHaveLength(8);
+    expect(ticks({})).toHaveLength(0);
+    const geo = layout(type, { data: monthly }, { categoryAxis: { crossesBetween: false } });
+    expect(geo.warnings.map((warning) => warning.code)).toContain('cross-between-ignored');
+  });
+
   it('refuses the combination when a category carries no ISO date', () => {
     const undated = { ...data, categories: data.categories.map((category, index) => index === 1
       ? { id: category.id, label: category.label }

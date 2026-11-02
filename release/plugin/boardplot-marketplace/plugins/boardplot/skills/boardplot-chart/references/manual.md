@@ -786,6 +786,10 @@ A line or area draws `data.categories` as evenly spaced names by default. For re
 
 The fixtures `x-time-daily`, `x-time-berlin-dst`, `x-time-uneven-sensors` and `x-number-trail` show the forms.
 
+## Calendar ticks on dated categories
+
+A line, column or combo chart takes `options.categoryAxis.dateTicks` (`years`, `quarters`, `months`, `weeks` or `days`) when every category has an ISO `date`. A short tick under the row marks the first category of each interval, and the labels name those intervals. On column and combo the tick stands at the middle of its band, and every column keeps its place. A category without a date leaves the option unused and warns `date-ticks-unsupported`. `categoryAxis.crossesBetween` is a line setting: column and combo ignore `false` and warn `cross-between-ignored`.
+
 ## Themes
 
 A theme sets colours, type sizes, spacing and the scenario patterns. The presets are `boardroom` (the default), `standard`, `standard-dark`, `notation`, `notation-dark`, `capital`, `studio` and `glass`.

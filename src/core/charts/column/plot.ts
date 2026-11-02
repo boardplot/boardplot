@@ -9,7 +9,8 @@ import { DEFAULT_TARGET, scaleTextPx } from '../../target';
 
 import { BAND_PAD, VALUE_LINE_RESERVE } from '../../annotateParts';
 import { axisTitleAllowed, measureValueAxisWidth, planValueAxisTitle, valueAxisTitleBand, valueAxisTitleText, valueAxisUnit } from '../../axis';
-import { longDayMonths, type dateTickRow } from '../../calendarLabels';
+import { bandedCrossesBetween } from '../../intervalTicks';
+import { authoredDateTicks, longDayMonths, type dateTickRow } from '../../calendarLabels';
 import { formatAutomaticPercent, notApplicableGlyph } from '../../format';
 import { percentCellsOnly } from '../../annotatePass';
 import {
@@ -372,7 +373,7 @@ function columnBand(
   warnings: LintWarning[],
   stair: boolean,
   beforeCategoryRow?: (bandwidth: number) => void,
-): Pick<ColumnArea, 'band' | 'catPlan'> {
+): Pick<ColumnArea, 'band' | 'catPlan' | 'intervalTicks'> {
   const { options, theme, measure, cats, va } = domain;
   let plotX0 = frame.plot.x + (va.show ? valueAxisReserve : 0);
   let plotW0 = va.show
@@ -541,6 +542,9 @@ function columnBand(
   }
   let band = bandFor(plotX0, plotW0);
   beforeCategoryRow?.(band.bandwidth);
+  // categoryAxis.dateTicks sets the interval; without it a long day row names its months.
+  const authored = authoredDateTicks(cats, options, warnings);
+  bandedCrossesBetween(options, warnings);
   // One cascade decides the whole row (wrap, font step, uniform
   // stride for dates, 45° for prose); no label is hidden by a local sweep.
   // A cut name takes a note mark and prints whole in the notes; once
@@ -564,6 +568,8 @@ function columnBand(
       // Under notes.show 'ranks' alone a cut name takes no mark, since its note does not print.
       ...(disclosuresShown(options) ? { cutMarkFrom: authoredFootnoteCount(options) + 1 } : rankKeyShown(options) ? {} : { everyName: true }),
       ...ticked?.plan,
+      // An authored interval counts back from the latest period, as on a line.
+      ...(ticked !== undefined && ticked === authored ? { ordered: true, strideFromEnd: true } : {}),
     }), measure, cats.map((c) => c.label ?? c.id), (options as { [FORCE_CATEGORY_RANKS]?: true })[FORCE_CATEGORY_RANKS] === true, rankKeyShown(options));
     // Rotated total and highlighted names need their drawn width for the row height and left overhang.
     if (plan.rotation !== 0) {
@@ -578,9 +584,10 @@ function columnBand(
     }
     return plan;
   };
-  let catPlan = planRow(band);
-  const ticked = longDayMonths(cats, catPlan.stride, options.locale?.language);
-  if (ticked) catPlan = planRow(band, ticked);
+  // categoryAxis.dateTicks sets the interval; without it a long day row names its months.
+  let catPlan = planRow(band, authored);
+  const ticked = authored ?? longDayMonths(cats, catPlan.stride, options.locale?.language);
+  if (ticked && ticked !== authored) catPlan = planRow(band, ticked);
   // A rotated first name hangs left of its column; the band yields that much.
   const catOverhang = stair ? 0 : rotatedLeftOverhang(catPlan, cats.map((_, ci) => band.center(ci)), 4);
   if (catOverhang > 0) {
@@ -589,7 +596,7 @@ function columnBand(
     band = bandFor(plotX0, plotW0);
     catPlan = planRow(band, ticked);
   }
-  return { band, catPlan };
+  return { band, catPlan, ...(authored?.ticks ? { intervalTicks: authored.ticks } : {}) };
 }
 
 /**
@@ -657,7 +664,7 @@ export function columnPlotArea(
     : undefined;
   // Staircase names replace the category row (options.categoryLabels).
   const stair = staircaseOn(options.categoryLabels, options) && kindSetting(options, 'category') !== false && cats.length > 1;
-  const { band, catPlan } = columnBand(domain, frame, valueAxisReserve, tickFont, warnings, stair, beforeCategoryRow);
+  const { band, catPlan, intervalTicks } = columnBand(domain, frame, valueAxisReserve, tickFont, warnings, stair, beforeCategoryRow);
   const showCatRow = kindSetting(options, 'category') !== false && cats.length > 0 && !stair;
   if (showCatRow) pushAll(warnings, catPlan.warnings);
   if (showCatRow && catPlan.step === 'ranks') warnings.push(categoryRanksLint(cats.map((c) => c.label ?? c.id), band.step));
@@ -769,7 +776,7 @@ export function columnPlotArea(
     : linearScale([dLo, dHi], [plot.y + plot.h, plot.y]);
   return {
     frame, axisFmt, axisSpec, tier, tickFont, labelFont, strongFont, gtH, ruleOn, ruleText, ruleWrap, ruleH, axisTitle, axisTitleBand, topPad, band,
-    catPlan, showCatRow, tickReserve, catBandH: catBandH + hangingReserve,
+    catPlan, ...(intervalTicks ? { intervalTicks } : {}), showCatRow, tickReserve, catBandH: catBandH + hangingReserve,
     // The names may rise to the frame top, under the rule and the axis title.
     ...(stair ? { stairTop: frame.plot.y + ruleH + (axisTitle ? axisTitle.height + 8 : 0) } : {}),
     // A date row stays at the plot's bottom band; prose reads under the
