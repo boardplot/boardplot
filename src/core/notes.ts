@@ -192,10 +192,11 @@ type Noted = { [NOTE_META]?: EngineNoteMeta };
 // its own metadata, including consumers that run after the layout has ended.
 let current: { notes: Map<string, EngineNoteMeta> } | undefined;
 
-export function withEngineNotes<T>(run: () => T): T {
-  if (current) return run();
-  current = { notes: new Map() };
-  try { return run(); } finally { current = undefined; }
+export function withEngineNotes<T>(run: () => T, isolated = false): T {
+  if (current && !isolated) return run();
+  const previous = current;
+  current = { notes: new Map(isolated && previous ? [...previous.notes].map(([text, meta]) => [text, { ...meta }]) : []) };
+  try { return run(); } finally { current = previous; }
 }
 
 /** Each note owns metadata outside its public, enumerable fields. */

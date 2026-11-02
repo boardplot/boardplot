@@ -150,8 +150,38 @@ const MAGNITUDE_WORD_LETTER: Record<string, string> = {
   milliard: 'b', milliards: 'b', tn: 't', bio: 't', trillion: 't', trillions: 't', billionen: 't',
 };
 
+/** The most significant figures an `@` example names: a double holds 15 of them. */
+const MAX_FIGURES = 15;
+
+/**
+ * A significant-figure example writes one `@` for each figure and no digit ("$@@@M",
+ * "@@@%"). Any digit in the text makes it an ordinary example, and an `@` in it stays text.
+ * Undefined for an ordinary example; otherwise the example with "1,234" for the run (grouped, as a count is) and the count.
+ */
+function figureExample(s: string): { standIn: string; figures: number } | undefined {
+  if (!s.includes('@') || /[0-9]/.test(s)) return undefined;
+  const runs = s.match(/@+/g)!;
+  if (runs.length > 1) {
+    const fixed = s.slice(0, s.indexOf('@')) + '@'.repeat(runs.join('').length) + s.slice(s.lastIndexOf('@') + 1);
+    throw new NormalizeError('invalid-format', 'format', `invalid-format-example: '${s}' splits its significant figures into more than one run of @; the engine places the decimal mark and the group marks`, `write one run of @, e.g. '${fixed}'`);
+  }
+  if (runs[0]!.length > MAX_FIGURES) {
+    throw new NormalizeError('invalid-format', 'format', `invalid-format-example: '${s}' asks for ${runs[0]!.length} significant figures; the most is ${MAX_FIGURES}`, `write at most ${MAX_FIGURES} @`);
+  }
+  return { standIn: s.replace('@'.repeat(runs[0]!.length), '1,234'), figures: runs[0]!.length };
+}
+
 export function parseFormatExample(example: string, keepWord = false): NumberFormatSpec {
   const s = String(example).trim();
+  const figures = figureExample(s);
+  if (figures) {
+    // The "1,234" is a stand-in: grouped, no decimals. The grouped digits before a magnitude lock the scale; a figure count rolls up at 1000.
+    const spec = parseFormatExample(figures.standIn, keepWord);
+    delete spec.rollMagnitude;
+    spec.significantDigits = figures.figures;
+    spec.decimals = Math.min(MAX_FORMAT_DECIMALS, figures.figures - 1);
+    return spec;
+  }
 
   const spec: NumberFormatSpec = {
     decimals: 0,
@@ -254,6 +284,11 @@ export function formatExampleProblem(example: string): { message: string; replac
     parseFormatExample(example);
     return undefined;
   } catch (error) {
+    // Figures split over runs, or past the most: one run of at most MAX_FIGURES @.
+    if (example.includes('@') && !/[0-9]/.test(example)) {
+      const figures = Math.min(MAX_FIGURES, example.replace(/[^@]/g, '').length);
+      return { message: (error as Error).message, replacement: example.slice(0, example.indexOf('@')) + '@'.repeat(figures) + example.slice(example.lastIndexOf('@') + 1) };
+    }
     const code = example.replace(/"/g, '').replace(/;.*$/, '');
     let replacement = '1,234';
     try {
@@ -577,8 +612,10 @@ export function effectiveScale(
     const scaled = Math.abs(value) / MAGNITUDE_DIVISOR[magnitude];
     decimals = !currencyWhole && scaled < 10 && magnitude !== spec.magnitude ? Math.max(baseDecimals, 1) : baseDecimals;
     const next: NumberFormatSpec['magnitude'] | null = MAGNITUDE_NEXT[magnitude];
-    if (Number(scaled.toFixed(decimals)) < 1000 || next === null) {
-      return !spec.nonzero || spec.automatic || value === 0 || !roundsToZero(scaled, decimals) ? { magnitude, decimals } : rolledDown(value, magnitude, baseDecimals);
+    // Figures count from the first digit: 999.6 at three figures prints 1000 and rolls, 0.0004 prints 0.000400 and stays.
+    const shown = spec.significantDigits === undefined ? Number(scaled.toFixed(decimals)) : Number(roundSignificant(scaled, spec.significantDigits).text);
+    if (shown < 1000 || next === null) {
+      return !spec.nonzero || spec.automatic || spec.significantDigits !== undefined || value === 0 || !roundsToZero(scaled, decimals) ? { magnitude, decimals } : rolledDown(value, magnitude, baseDecimals);
     }
     magnitude = next;
   }
@@ -1244,12 +1281,14 @@ export function unscaledFormatLint(
   // sign and size; the fix carries the decimals that show it.
   const found = numericBody(format);
   const body = found && { index: found.index, text: found.text.trimEnd() }; // as parseFormatExample: a space after the number belongs to the unit
-  const checked = options?.variant !== 'bump' && !spec.suffix.includes('%');
+  // A figure count names its own precision: it shows every nonzero value and hides what its count says.
+  const figures = spec.significantDigits;
+  const checked = options?.variant !== 'bump' && !spec.suffix.includes('%') && figures === undefined;
   const zero = formatWithSpec(0, spec);
   const zeroed = checked ? numbers.flat().filter((v) => v !== 0 && formatWithSpec(v, spec) === zero) : [];
   // An authored scale holds the chart to one precision (shareAuthoredScale): the warning says what that draws.
   const locale = (options?.locale as { language?: string } | undefined)?.language;
-  const shared = spec.magnitude !== 'none' ? seriesRasterFormatter(format, numbers.flat(), locale, unit) : undefined;
+  const shared = spec.magnitude !== 'none' && figures === undefined ? seriesRasterFormatter(format, numbers.flat(), locale, unit) : undefined;
   const raised = checked && shared !== undefined && shared.spec.decimals > spec.decimals;
   const smallest = numbers.flat().reduce((small, v) => v !== 0 && (small === 0 || Math.abs(v) < Math.abs(small)) ? v : small, 0);
   // Distinct at 12 significant digits, so float noise never asks for 20 decimals.
@@ -1288,7 +1327,7 @@ export function unscaledFormatLint(
   if (spec.magnitude !== 'none' || spec.suffix.includes('%') || unitMagnitude(unit)) return [];
   const largest = Math.max(0, maxOf(numbers.flat().map(Math.abs)));
   if (largest < 1e6) return [];
-  const compact = `${spec.prefix}1${spec.decimalSep}2${largest >= 1e9 ? 'bn' : 'm'}${spec.suffix}`;
+  const compact = `${spec.prefix}${figures === undefined ? `1${spec.decimalSep}2` : '@'.repeat(figures)}${largest >= 1e9 ? 'bn' : 'm'}${spec.suffix}`;
   return [{
     code: 'format-unscaled',
     severity: 'warn',

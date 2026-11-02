@@ -30,7 +30,7 @@ Every chart is one JSON object, the spec.
     "subtitle": { "measure": "Revenue by line" },
     "unit": "$m"
   },
-  "theme": "boardroom"
+  "theme": "bridge"
 }
 ```
 
@@ -228,6 +228,16 @@ Other data schemas refuse the field. For a combo rate, keep its separate percent
 Without an authored format, each table column and each chart series gets one precision from its largest value. Below 1, that value keeps two significant digits: 0.0341 gives three decimals, so 0.0123 and 0.0051 print 0.012 and 0.005. No automatic format prints more than four decimals. A nonzero value below the last shown digit prints its bound: `<0.001` at three decimals, `>−0.001` below zero, `<1` for whole numbers. A signed change label keeps its sign: `<+0.001` and `>−0.001`, so it reads as a change like its neighbours. Below 0.0001 it prints in scientific form, `1.2 × 10⁻⁹`. A true zero prints in the column's format, such as `0.0`. Set `options.smallValues: "zero"` for spreadsheet style (`0.000`) or `"scientific"` for a power of ten. `"p-value"` prints every value from 0 to 1 as APA 7 writes a p-value: three decimals without the leading zero (`.042`) and `<.001` below. An authored format prints as authored.
 
 A `k`, `M` or `B` after the digits of a format example scales the value: `"$1.2M"` prints 2,456,000 as `$2.5M`, and `"1.2k"` prints 1,250 as `1.3k`. The letter must touch the digits. After a space it is a unit: `"12 m/s"` and `"50 B"` print the value as it is. The words `mn`, `bn`, `Mio.`, `Mrd.`, `thousand`, `million` and `billion` scale with or without a space.
+
+A plain example fixes decimals: `"$1.2M"` prints 4,270,000 as `$4.3M`. With no digit, one `@` per figure fixes significant figures:
+
+| Value | `"$@@@M"` | `"$1.2M"` |
+| --- | --- | --- |
+| 42,700,000 | $42.7M | $42.7M |
+| 4,270,000 | $4.27M | $4.3M |
+| 430,000 | $0.430M | $0.4M |
+
+Trailing zeros stay. The value rolls up at 1000: 999,600 prints `$1.00M`, and 999,960,000 prints `$1.00B`. A scale word holds the authored scale for a value far below it. Axis ticks keep the example's style and take their digits from their spacing: `$10M`, not `$10.0M`. Write every `@` in one run. A split run such as `"@@.@%"` is refused with the fix `"@@@%"`. More than 15 figures are refused. A digit anywhere makes an ordinary example, where `@` stays literal text.
 
 An example with one dot before three digits, such as `"1.234"`, can be a thousands group or three decimals. The chart's numbers decide. Where every number is below 1000 and one has a fraction, it means three decimals: 0.512 prints `0.512`. Otherwise it is a group: 1,200 prints `1,200`, and where a small number loses its fraction beside large ones, the warning `format-reads-as-group` names it. `"0.000"` always means three decimals, and `"1,234"` always means a group.
 
@@ -780,7 +790,9 @@ The fixtures `x-time-daily`, `x-time-berlin-dst`, `x-time-uneven-sensors` and `x
 
 ## Themes
 
-A theme sets colours, type sizes, spacing and the scenario patterns. The presets are `boardroom` (the default), `standard`, `standard-dark`, `notation`, `notation-dark`, `capital`, `studio` and `glass`.
+A theme sets colours, type sizes, spacing and the scenario patterns. The presets are `bridge` (the default), `bridge-dark` (its dark pair), `boardroom`, `standard`, `standard-dark`, `notation`, `notation-dark`, `capital`, `studio` and `glass`. Use `theme: "boardroom"` for the old light look and `theme: "standard-dark"` for the old dark look. The host passes `bridge-dark` when it needs a dark chart. Presets do not switch automatically.
+
+Bridge keeps the engine's measured default font stack: `'Helvetica Neue', Helvetica, Arial, Roboto, sans-serif`. Bridge keeps the engine's role type sizes, which the render target replaces for a preset. A host with width tables for its own licensed brand font can set `type.family` and pass its own measurer, as described in [FONTS.md](../../../runtime/docs/FONTS.md).
 
 The `notation` preset follows the IBCS® Standards; IBCS is a registered trademark of the IBCS Institute, and the standards are published under CC BY-SA 4.0 at [www.ibcs.com](https://www.ibcs.com).
 
@@ -790,7 +802,7 @@ A brand theme is a preset plus overrides:
 {
   "type": "column",
   "data": { "categories": ["2024", "2025"], "series": [{ "id": "revenue", "values": [120, 135] }] },
-  "theme": { "preset": "standard", "overrides": { "color": { "highlight": "#0B5CAD", "series": ["#0B5CAD", "#5B8DB8", "#A9C1D9"] } } }
+  "theme": { "preset": "bridge", "overrides": { "color": { "highlight": "#0B5CAD", "series": ["#0B5CAD", "#5B8DB8", "#A9C1D9"] } } }
 }
 ```
 
@@ -816,7 +828,7 @@ import { ColumnChart } from 'boardplot/react/column';
 
 export function BrandChart({ dark = false }) {
   const theme = {
-    preset: dark ? 'standard-dark' : 'boardroom',
+    preset: dark ? 'bridge-dark' : 'bridge',
     overrides: { color: { series: [dark ? '#8cbcff' : '#1f4e79'] } },
   };
   return <BoardplotTheme theme={theme}>
@@ -844,7 +856,7 @@ const visibleSeries = colouredSeries.filter(s => selectedIds.has(s.id));
 
 Map every id whose colour must stay fixed. Unmapped series keep the automatic order-based colours. The map is application data; no provider state or new Boardplot option is needed. Roles follow the active theme, so a light-to-dark theme change keeps the series' rank while the theme chooses its colour. Use a shared map to `fill` instead when each id must keep an exact literal colour, and check that colour on both page themes.
 
-If the ramp runs out, Boardplot keeps its repeat policy and warns. `series-colour-repeated` names each group that shares a colour. `series-indistinguishable` names keys with the same colour and shape. Group the tail into an “Other” series only when the values add. Otherwise use small multiples, or supply more distinct colours and assign them with `colorRole` or `fill`. Changing `seriesOverflow` to `cycle` still repeats colours. Boardroom's eight colours and their order stay unchanged.
+If the ramp runs out, Boardplot keeps its repeat policy and warns. `series-colour-repeated` names each group that shares a colour. `series-indistinguishable` names keys with the same colour and shape. Group the tail into an “Other” series only when the values add. Otherwise use small multiples, or supply more distinct colours and assign them with `colorRole` or `fill`. Changing `seriesOverflow` to `cycle` still repeats colours. The `boardroom` preset keeps its old eight colours and their order.
 
 Render checks colour roles present in the chart layout. `validateTheme(theme)` from `boardplot/validate` checks the full theme. Colour findings name the measured colours, vision mode and floor; contrast ratios round down to two decimals.
 

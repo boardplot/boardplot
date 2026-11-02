@@ -85,3 +85,59 @@ it('does not cut a treemap name that a larger label size prints whole', () => {
   const lines = requireGeometry(layoutResolvedRequest(request)).scene.flatMap((n) => (n.t === 'text' && n.id === 'label:item:n10' ? n.lines : []));
   expect(lines.join(' ')).toContain('Health');
 });
+
+// Problem: the label-size search ranked a 10 percent tile left blank like one cut word, so it kept the larger size and left the tile blank while an 8.5 percent tile kept its name.
+it('names a large treemap tile when a smaller label size can fit it', () => {
+  const items = [
+    ['k1', 'Wages and salaries for operations staff', 'g0', 280],
+    ['k2', 'Wages and salaries for workshops and maintenance staff', 'g0', 110],
+    ['k3', 'Social contributions and pensions', 'g0', 96],
+    ['k4', 'Training and workplace safety', 'g0', 2.1],
+    ['k5', 'Temporary staff and part-time help', 'g0', 6.4],
+    ['k6', 'Traction power for trams and metro', 'g1', 70],
+    ['k7', 'Diesel fuel for the bus fleet', 'g1', 26],
+    ['k8', 'Natural gas for depots', 'g1', 3.2],
+    ['k9', 'Heating for office buildings', 'g1', 1.1],
+    ['k10', 'Charging power for electric buses', 'g1', 9.5],
+    ['k11', 'Infrastructure Electromechanical and Weatherproofing', 'g2', 82],
+    ['k12', 'Maintenance of buses', 'g2', 17],
+    ['k13', 'Spare parts and wear material', 'g2', 10],
+    ['k14', 'Tires and operating supplies', 'g2', 4.6],
+    ['k15', 'Cleaning and painting of vehicles', 'g2', 2.8],
+    ['k16', 'External workshops and warranty work', 'g2', 0.9],
+    ['k17', 'Trackbed construction and rail replacement', 'g3', 38],
+    ['k18', 'Tunnel maintenance', 'g3', 9],
+    ['k19', 'Signal systems and control center', 'g3', 6],
+    ['k20', 'Stops and passenger information', 'g3', 3.3],
+    ['k21', 'Bridge inspection', 'g3', 1.4],
+    ['k22', 'Winter service', 'g3', 0.4],
+    ['k23', 'Administration and overhead', 'g4', 26],
+    ['k24', 'IT and ticketing systems', 'g4', 7],
+    ['k25', 'Insurance', 'g4', 4.7],
+    ['k26', 'Consulting and audit', 'g4', 2.3],
+    ['k27', 'Marketing and customer service', 'g4', 1.6],
+  ] as const;
+  const request = resolveChartRequest({
+    type: 'treemap',
+    data: {
+      groups: [
+        { id: 'g0', label: 'Payroll' }, { id: 'g1', label: 'Energy and fuel' },
+        { id: 'g2', label: 'Fleet upkeep' }, { id: 'g3', label: 'Infrastructure' },
+        { id: 'g4', label: 'Administration' },
+      ],
+      items: items.map(([id, label, group, value]) => ({ id, label, group, value })),
+    },
+    options: {
+      title: 'Five cost types cause 78 percent of total cost',
+      subtitle: { company: 'Example Transit', measure: 'Total cost by cost type' },
+      unit: 'EUR m', cellValue: 'value-share', total: true,
+      source: 'Source: example data',
+      target: 'slide', size: { width: 440, height: 380, unit: 'pt' }, locale: { language: 'en' },
+      footnotes: ['Excludes the training refund (-3.1 EUR m): a negative value has no area. Shares refer to the sum of the positive cost types.'],
+    },
+  });
+  const geometry = requireGeometry(layoutResolvedRequest(request));
+  const label = geometry.labels.find((candidate) => candidate.id === 'item:k11');
+  expect(label).toBeDefined();
+  expect(label!.hidden).toBeUndefined();
+});

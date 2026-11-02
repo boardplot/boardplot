@@ -84,10 +84,15 @@ export function viewportMeanSpan(population: { categories: Category[]; indexes: 
     if (lo < 0 || hi < 0) return undefined;
     const [a, b] = [Math.min(lo, hi), Math.max(lo, hi)];
     const drawn = new Set(population.indexes);
-    const name = (c: Category) => (c.label ?? c.id).replace(/\s*\n\s*/g, ' ');
-    for (let i = a; i <= b; i += 1) if (!drawn.has(i)) return `${name(cats[a]!)}–${name(cats[b]!)}`;
+    for (let i = a; i <= b; i += 1) if (!drawn.has(i)) return periodSpanName(cats, a, b);
     return undefined;
   };
+}
+
+/** The label of a run of periods, "Jan 25–Dec 26": the first and the last name; a run of one is its name. */
+export function periodSpanName(cats: readonly { id: string; label?: string }[], from: number, to: number): string {
+  const name = (c: { id: string; label?: string }) => (c.label ?? c.id).replace(/\s*\n\s*/g, ' ');
+  return from === to ? name(cats[from]!) : `${name(cats[from]!)}–${name(cats[to]!)}`;
 }
 
 /** A sampled window says so in the subtitle: "Showing 12 of 36 periods". Line, column and combo. */

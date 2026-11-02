@@ -253,6 +253,12 @@ export function roundSignificant(abs: number, sig: number): { text: string; deci
     return { text: (0).toFixed(decimals), decimals };
   }
   const order = Math.floor(Math.log10(abs));
+  const rounded = significantAt(abs, digits, order);
+  // 9.996 at three figures rounds up to 10.00, a figure too many: the carry moves the order up by one.
+  return Number(rounded.text) >= 10 ** (order + 1) ? significantAt(abs, digits, order + 1) : rounded;
+}
+
+function significantAt(abs: number, digits: number, order: number): { text: string; decimals: number } {
   const decimals = digits - order - 1;
   if (decimals >= 0) {
     const fraction = Math.min(MAX_FORMAT_DECIMALS, decimals);
