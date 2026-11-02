@@ -69,7 +69,7 @@ import { applyAxisBounds, bandScale, linearScale, niceDomain } from '../../scale
 import { valueLineExtent } from '../../valueLineDomain';
 import { applyValueAxisTitleInk, layoutValueAxis, measureValueAxisWidth, planValueAxisTitle, valueAxisTitleBand, valueAxisTitleRequest } from '../../axis';
 import { PLOT_FLOOR_RECT } from '../../sizing';
-import { authoredNotes, frameTextOptions, legendOff, legendRequired, normalizeLegendOption, solveFrame, fixedPlotChrome, plotHeightAfter, authoredFootnoteCount, withAuthoredFootnotes, type LegendItemInput } from '../../frame';
+import { authoredNotes, frameTextOptions, legendOff, legendRequired, normalizeLegendOption, solveFrame, fixedPlotChrome, plotChromeFloor, plotHeightAfter, authoredFootnoteCount, withAuthoredFootnotes, type LegendItemInput } from '../../frame';
 import { defaultMeasurer, type FontSpec } from '../../text';
 import {
   labelsOffKeepsNames,
@@ -102,7 +102,7 @@ import type {
   SceneNode,
 } from '../../types/scene';
 import { autoDecimals, currentSmallValues, roundHalfUp, roundsToZero, valueSetDecimals } from '../../formatPrecision';
-import { FIT_TIER_LABELS, isSingleVarianceTier, isVarianceTier } from '../../grid/varianceTiers';
+import { FIT_TIER_LABELS, isSingleVarianceTier, isVarianceTier, TIER_LABEL_HEIGHT } from '../../grid/varianceTiers';
 import { relativePointCandidates } from './pointLabels';
 import { nearestIsOwn } from '../../label/ownership';
 import { categoryLabelsAndMarks } from '../../footnoteMark';
@@ -1396,6 +1396,7 @@ export function layoutVariance(
   // Standalone, integrated and wider charts keep their original solve and bytes.
   const crowded = fitTierLabels && tierLabelSize === undefined
     ? solved.placed.filter(label => label.hidden === 'collision' && (label.kind === 'category' || label.kind === 'point')) : [];
+  let optionalTierHeight: number | undefined;
   if (crowded.length > 0) {
     const counts = (labels: PlacedLabel[]) => [
       labels.filter(label => label.kind === 'category' && label.hidden === undefined).length,
@@ -1403,6 +1404,16 @@ export function layoutVariance(
     ] as const;
     let best = counts(solved.placed);
     let fitted: Geometry<VarianceMarks, VarianceDerived> | undefined;
+    const optionalRows = (): Geometry<VarianceMarks, VarianceDerived> => {
+      const candidate = fitted!;
+      const naturalHeight = Math.max(candidate.frame.minHeight ?? 0, candidate.frame.plotMinHeight ?? 0, candidate.sizing?.minHeight ?? 0);
+      if (candidate.sizing) candidate.sizing.naturalHeight = naturalHeight;
+      Object.assign(candidate.frame, { plotMinHeight: frameResult.frame.plotMinHeight, [TIER_LABEL_HEIGHT]: naturalHeight });
+      const chrome = plotChromeFloor.get(frameResult.frame);
+      if (chrome === undefined) plotChromeFloor.delete(candidate.frame);
+      else plotChromeFloor.set(candidate.frame, chrome);
+      return candidate;
+    };
     const wanted = counts(solved.placed.map(label => label.hidden === 'collision' ? { ...label, hidden: undefined } : label));
     const deltas = crowded.filter(label => label.kind === 'point')
       .map(label => deltaOf(cats.findIndex(category => category.id === label.owner.categoryId)));
@@ -1415,6 +1426,9 @@ export function layoutVariance(
       const fits = (candidate.frame.plotMinHeight ?? 0) <= size.height
         && (candidate.sizing === undefined || candidate.sizing.minWidth <= size.width && candidate.sizing.minHeight <= size.height);
       const seated = counts(candidate.labels);
+      if (optionalTierHeight === undefined && (seated[0] > best[0] || seated[0] === best[0] && seated[1] > best[1])) {
+        optionalTierHeight = Math.max(candidate.frame.minHeight ?? 0, candidate.frame.plotMinHeight ?? 0, candidate.sizing?.minHeight ?? 0);
+      }
       if (fits && (seated[0] > best[0] || seated[0] === best[0] && seated[1] > best[1])) {
         fitted = candidate;
         best = seated;
@@ -1423,10 +1437,11 @@ export function layoutVariance(
     };
     const floor = readerFloorPx(options.target ?? DEFAULT_TARGET, 'label', textScaleOf(options));
     for (let fontSize = Math.max(pointFont.size, floor);; fontSize = Math.max(floor, fontSize - 1)) {
-      if (trySize(fontSize)) return fitted!;
+      if (trySize(fontSize)) return optionalRows();
       if (fontSize === floor) break;
     }
-    if (fitted) return fitted;
+    if (fitted) return optionalRows();
+    if (optionalTierHeight !== undefined) Object.assign(frameResult.frame, { [TIER_LABEL_HEIGHT]: optionalTierHeight });
   }
   // The plot holds one value row over the tallest column. When a larger
   // variance still finds no seat while a smaller one keeps its value (the seat
@@ -1563,6 +1578,7 @@ export function layoutVariance(
   const sizing = bandFloorSizing('variance', size, plot, allLabels, [...marks.bars, ...marks.pins].map((mark) => ({
     bar: mark.rect, labelIds: [`total:${mark.categoryId}`, `point:${mark.categoryId}`],
   })), options);
+  if (optionalTierHeight !== undefined) sizing.naturalHeight = optionalTierHeight;
   // The to-date words never raise the floor: below it the hatch key names the period.
   if (toDateIds.size > 0 && (sizing.minWidth > size.width || sizing.minHeight > size.height)) {
     return layoutVariance(data, { ...options, [PARTIAL_KEY]: true } as VarianceOptions);

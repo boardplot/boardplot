@@ -354,7 +354,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
       ...(def.type === 'kpi' ? { [KPI_HOST_TEXT]: stringsIn([panelCaption, (panel as { title?: unknown }).title, options.title, options.subtitle, options.footnotes, options.source]) } : {}),
       // The value is the panel count, so a tier knows whether it is the only one (isSingleVarianceTier).
       ...(varianceTiers && def.type === 'variance' ? { [VARIANCE_TIER]: data.panels.length } : {}),
-      ...(compactTiers && def.type === 'variance' ? { [FIT_TIER_LABELS]: true } : {}),
+      ...(compactTiers && def.type === 'variance' ? { [FIT_TIER_LABELS]: (options as { [FIT_TIER_LABELS]?: boolean })[FIT_TIER_LABELS] !== false } : {}),
       ...(compactTiers
         ? { ...(suppressTitle ? { title: '' } : {}), ...(labels !== undefined ? { labels } : {}) }
         : {}),
@@ -583,7 +583,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
   let effectiveTierGap = theme.space.tierGap;
   const requirements = () => gridSizing(size, area, sizingChildren(),
     packedTiers ? [...bottomUpOrder].reverse().map(index => children[index]!.geo.sizing!.minHeight) : rowWeights,
-    Array(columns).fill(1), rowGaps, Array(columns - 1).fill(gap), true);
+    Array(columns).fill(1), rowGaps, Array(columns - 1).fill(gap), true, packedTiers);
   // A short probe already needs a larger canvas. Packing slack there cannot
   // make it renderable and can repeatedly cross label-wrapping thresholds.
   if (packedTiers && requirements().minHeight <= size.height) {

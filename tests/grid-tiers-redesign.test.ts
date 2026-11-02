@@ -79,12 +79,14 @@ it('draws every category name and variance value on a phone-width tier grid', ()
     { id: 'pl', label: 'Plan', scenario: 'PL' as const, role: 'reference' as const, values: [10, 8, 6, 12, 14.7, 6.25, 7.5, 2.5, 0] },
     { id: 'py', label: 'Prior year', scenario: 'PY' as const, role: 'reference' as const, values: [9.8, 7.6, 5.5, 11.9, 13.1, 5.9, 7, 2.1, 0] },
   ] };
-  const grid = measure({ type: 'grid', theme: 'notation-dark', data: { panels: [
+  const request = { type: 'grid', theme: 'notation-dark', data: { panels: [
     { id: 'abs', type: 'variance', data, options: { variant: 'absolute', variance: { of: 'ac', vs: 'pl' } } },
     { id: 'rel', type: 'variance', data, options: { variant: 'relative', variance: { of: 'ac', vs: 'pl' } } },
-  ] }, options: { target: 'dashboard', size: { width: 375 }, sharedAxis: 'category',
+  ] }, options: { target: 'dashboard' as const, size: { width: 375 }, sharedAxis: 'category',
     title: 'Revenue and variance in one chart per region', subtitle: { measure: 'Revenue versus plan', period: 'Q3' },
-    unit: 'EUR m', source: 'Invented example' } }).geometry as unknown as Geometry<GridMarks>;
+    unit: 'EUR m', source: 'Invented example' } };
+  const grid = measure(request).geometry as unknown as Geometry<GridMarks>;
+  expect(measure({ ...request, options: { ...request.options, size: { width: 375, height: 430 } } }).refused).toBeUndefined();
   expect(grid.refused).toBeFalsy();
   const names = grid.labels.filter(label => label.id.startsWith('abs/category:'));
   const values = grid.labels.filter(label => /^(abs|rel)\/point:/.test(label.id));

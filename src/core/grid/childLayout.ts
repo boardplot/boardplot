@@ -2,7 +2,7 @@
 import type { Geometry, LayoutResult, RefusedLayout } from '../types/scene';
 import type { Rect, Size } from '../geometry';
 import { chartSizing, resolveSizing, sizeRefusal } from '../sizing';
-import { isVarianceTier } from './varianceTiers';
+import { isVarianceTier, TIER_LABEL_HEIGHT } from './varianceTiers';
 import { maxOf, minOf } from '../arrays';
 
 type ChildChartLayout = (data: unknown, options: unknown) => LayoutResult;
@@ -82,9 +82,15 @@ export function gridSizing(size: Size, area: Rect,
   children: GridChild[],
   rows: number[], columns: number[], rowGaps: number[], columnGaps: number[],
   automaticRows = false,
+  packedRows = false,
 ) {
   const fixed = contentRows(children, rows, rowGaps, automaticRows);
-  const required = (axis: 'row' | 'column', weights: number[], gaps: number[], natural = false) => {
+  const labelHeight = (g: LayoutResult) => Math.max(g.sizing?.minHeight ?? 0,
+    g.refused ? 0 : (g.frame as { [TIER_LABEL_HEIGHT]?: number })[TIER_LABEL_HEIGHT] ?? 0);
+  const optionalLabels = children.some(child => !child.geometry.refused && TIER_LABEL_HEIGHT in child.geometry.frame);
+  const required = (axis: 'row' | 'column', weights: number[], gaps: number[], natural: boolean | 'tier-labels' = false) => {
+    if (natural === 'tier-labels' && packedRows) weights = weights.map((weight, row) =>
+      Math.max(weight, maxOf(children.filter(child => child.row === row).map(child => labelHeight(child.geometry)))));
     const heights = weights.map((_, row) => axis === 'row' ? fixed[row] : undefined);
     const flexible = weights.map((weight, row) => heights[row] === undefined ? weight : 0);
     const total = sum(flexible);
@@ -93,6 +99,7 @@ export function gridSizing(size: Size, area: Rect,
       const span = axis === 'row' ? child.rowSpan : child.columnSpan;
       const g = child.geometry;
       const need = axis === 'column' ? g.sizing?.minWidth ?? 0
+        : natural === 'tier-labels' ? labelHeight(g)
         : (natural ? g.sizing?.naturalHeight : g.sizing?.minHeight) ?? (g.refused ? 0 : Math.max(g.frame.minHeight ?? 0, g.frame.plotMinHeight ?? 0));
       const weight = sum(flexible.slice(start, start + span));
       const held = sum(heights.slice(start, start + span).map(value => value ?? 0));
@@ -111,10 +118,13 @@ export function gridSizing(size: Size, area: Rect,
     + Math.max(0, resolveSizing(policy, size).naturalHeight - chrome - sum(rowGaps))
       * sum(rows.filter((_, row) => fixed[row] === undefined)) / sum(rows))
     : required('row', rows, rowGaps, true);
-  return resolveSizing(content ? { ...policy, fit: 'content', aspect: 'content', minHeight: 0 } : policy, size, {
+  return resolveSizing(content || optionalLabels ? { ...policy, fit: 'content', aspect: 'content', minHeight: 0 } : policy, size, {
     minWidth: size.width - area.w + required('column', columns, columnGaps),
     minHeight: chrome + minimumRows,
-    ...(content ? { naturalHeight: chrome + naturalRows } : {}),
+    ...(content || optionalLabels ? { naturalHeight: Math.max(
+      content ? chrome + naturalRows : resolveSizing(policy, size).naturalHeight,
+      optionalLabels ? chrome + required('row', rows, rowGaps, 'tier-labels') : 0,
+    ) } : {}),
   });
 }
 
