@@ -27,7 +27,7 @@ export { yearSpan } from './periodYears';
 import { rectsOverlap, unionRect, type Point, type Rect } from './geometry';
 import { compileIcon, type IconName } from './icons';
 import type { OccupiedIndex } from './label/occupied';
-import { leaderTerminus, PRIORITY, solveLabels, type LabelRequest, type SlotCandidate, type SolveCtx } from './label/solver';
+import { leaderFor, leaderHeightOf, leaderTerminus, PRIORITY, solveLabels, type LabelRequest, type SlotCandidate, type SolveCtx } from './label/solver';
 import { leaderPath } from './svgPath';
 import { arrowSeats, finishCalloutHeads, leadersOffAnchorValues, type CalloutHeadPlan } from './annotateCallout';
 import { composedTextRole, computedTextRole } from './textRole';
@@ -1665,7 +1665,11 @@ function calloutLabel(
       const extra = 100 + (wrapped.length - 2) * 10;
       const seat = (slot: string, x: number, y: number, penalty: number, leader = false) => {
         const rect = { x, y, w: ww, h: hh };
-        wrappedSeats.push({ slot, rect, penalty: extra + penalty, lines: wrapped, ...(leader ? { leaderFrom: edgeToward(rect) } : {}) });
+        const candidate = { slot, rect, penalty: extra + penalty, lines: wrapped, ...(leader ? { leaderFrom: edgeToward(rect), leaderLineHeight: lineH } : {}) };
+        // A diagonal seat without a drawn leader can read as a neighbour's callout: it comes after every seat with one,
+        // and still draws when nothing else fits.
+        if (leader && /^(above|below)/.test(slot) && !leaderFor(candidate)) candidate.penalty += 1000;
+        wrappedSeats.push(candidate);
       };
       seat('aboveWrap', cx, top - hh - gap, prefer === 'above' ? -1 : 0);
       seat('rightWrapAt', right + gap * 2, sideY - hh / 2, prefer === 'right' ? -1 : 1, true);
@@ -1698,7 +1702,7 @@ function calloutLabel(
       const placement = glyph?.placements.get(candidate.slot);
       const ends = placement
         ? [placement.chipCenter, placement.anchor]
-        : candidate.leaderFrom ? [candidate.leaderFrom, leaderTerminus(candidate.rect, candidate.leaderFrom)] : undefined;
+        : candidate.leaderFrom ? [candidate.leaderFrom, leaderTerminus(candidate.rect, candidate.leaderFrom, leaderHeightOf(candidate))] : undefined;
       if (!ends) return true;
       const [a, b] = ends as [Point, Point];
       const run = { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) };
