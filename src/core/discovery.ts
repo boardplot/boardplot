@@ -392,7 +392,7 @@ export function describeType(type: string, detail: 'compact' | 'full' = 'compact
     options: full ? fieldRows(own, true) : fieldLines(own, true),
     sharedOptions: 'plus boardplot_list sharedOptions, which a path here replaces. … ends a cut row: describe its path for the rest',
     ...(notAccepted.length ? { notAccepted } : {}),
-    ...(ignored.length ? { ignored } : {}),
+    ...(full && ignored.length ? { ignored } : {}),
     sizing: {
       minWidth: sizing.minWidth,
       minHeight: sizing.minHeight,

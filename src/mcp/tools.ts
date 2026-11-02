@@ -184,7 +184,7 @@ const described = {
   data: { type: ['object', 'array'] }, options: { type: ['object', 'array'] },
   sharedOptions: { type: 'string' },
   notAccepted: { type: 'array', items: { type: 'string' }, description: 'Options this type refuses after ignored settings have been removed.' },
-  ignored: { type: 'array', items: { type: 'string' }, description: 'Options or option values this type ignores with an option-ignored warning and a remove patch.' },
+  ignored: { type: 'array', items: { type: 'string' }, description: 'Full detail only. Options or option values this type ignores with an option-ignored warning and a remove patch.' },
   sizing: { type: 'object' },
   annotations: { type: ['object', 'array'] }, fixtures: { type: ['object', 'array'] },
   moreFixtures: { type: 'number', description: 'Fixtures left out of the compact list.' },
