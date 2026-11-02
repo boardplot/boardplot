@@ -2143,6 +2143,17 @@ fixtures.push({
   },
 });
 
+// The average rule leaves the running week out and names the weeks it covers; includePartial brings it back.
+const partialWeek = fixtures.find((fixture) => fixture.id === 'column-partial-week')!;
+for (const [id, averageMarker] of [['column-partial-week-average', true], ['column-partial-week-average-included', { includePartial: true }]] as const) {
+  fixtures.push({
+    ...partialWeek,
+    id,
+    title: averageMarker === true ? 'Stacked weekly orders with an average rule that leaves the running week out' : 'Stacked weekly orders with an average rule that includes the running week',
+    options: { ...partialWeek.options, averageMarker },
+  });
+}
+
 // Long names at a generous size read whole. The rendered SVG has no ellipsis.
 fixtures.push({
   id: 'torture-long-labels',
@@ -2536,11 +2547,11 @@ fixtures.push({
   annotations: [{ kind: 'valueLine', value: 100, label: 'Benchmark' }],
 });
 
-// a valueLine prints its label, so text on it is refused with the
-// patch that renames it (column/stacked-benchmark-line shows the fix).
+// a valueLine prints its label; text alone is read as the label, but text that
+// differs from label names two captions and is refused.
 fixtures.push({
   id: 'value-line-text-refused',
-  title: 'Refusal example: a valueLine named with text instead of label',
+  title: 'Refusal example: a valueLine with a text that differs from its label',
   kind: 'torture',
   refuses: { code: 'invalid-annotation', path: 'annotations.0.text' },
   data: {
@@ -2552,7 +2563,7 @@ fixtures.push({
     subtitle: { measure: 'Orders', period: 'Q1' },
   },
   // The type refuses text on a valueLine too; the cast keeps the authored mistake.
-  annotations: [{ kind: 'valueLine', value: 100, text: 'Benchmark' } as unknown as Annotation],
+  annotations: [{ kind: 'valueLine', value: 100, text: 'Benchmark', label: 'Plan' } as unknown as Annotation],
 });
 
 // one demo per render target, physical unit and print preset.
@@ -2709,6 +2720,32 @@ fixtures.push({
     variant: 'grouped',
     format: '1.2bn',
     source: 'Illustrative data',
+    target: 'slide',
+    size: { width: 1184, height: 528 },
+  },
+});
+
+// A named key in a column right of the plot, on a wide slide chart that has the width to spare.
+fixtures.push({
+  id: 'key-right-slide',
+  title: 'Clustered columns on a slide with the key in a column right of the plot',
+  kind: 'example',
+  tags: ['feature:options'],
+  data: {
+    categories: ['FY23', 'FY24', 'FY25', 'FY26'].map((label) => ({ id: label.toLowerCase(), label })),
+    series: [
+      { id: 'subscriptions', label: 'Subscriptions', values: [310, 355, 402, 448] },
+      { id: 'services', label: 'Professional services', values: [190, 204, 211, 226] },
+      { id: 'hardware', label: 'Hardware', values: [120, 112, 98, 91] },
+    ],
+  },
+  options: {
+    variant: 'grouped',
+    title: 'Subscriptions grow every year while hardware shrinks',
+    subtitle: { measure: 'Revenue', period: 'FY23 to FY26' },
+    unit: '$m',
+    legend: 'right',
+    source: 'Illustrative revenue model',
     target: 'slide',
     size: { width: 1184, height: 528 },
   },

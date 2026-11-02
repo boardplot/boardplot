@@ -1164,7 +1164,7 @@ it('lays out no bar for the probes that price a refusal at a pinned width', () =
   const names = Array.from({ length: 20 }, (_, i) => `Sector number ${i + 1} of the survey`);
   const data = { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [{ id: 's', label: 'Margin', values: names.map((_, i) => 8 + ((i * 7) % 23)) }] };
   barLayoutCalls.count = 0;
-  const refused = layoutResolvedRequest(resolveChartRequest({ type: 'column', data, options: { title: 'Margin by sector', unit: '%', size: { width: 240 } } } as never)) as Geometry;
+  const refused = layoutResolvedRequest(resolveChartRequest({ type: 'column', data, options: { title: 'Margin by sector', unit: '%', size: { width: 100 } } } as never)) as Geometry;
   expect(refused.refused).toBe(true);
   expect(barLayoutCalls.count).toBe(0);
 });
@@ -1461,4 +1461,22 @@ it('spreads an org chart over the height the host sets', () => {
   expect(span(396)).toBeLessThan(2.6 * natural);
   // heightFill 'none' is the old look: the natural gaps at any canvas height.
   expect(span(396, 'none')).toBe(natural);
+});
+
+// A KPI tile, a pie and a four-bar column that fit a 200 to 240 px dashboard tile were refused by the fixed 280 px floor; a hundred bars still do not fit.
+it('draws a KPI, a pie and a column below 280 px when their content fits, and refuses a column whose bars do not', () => {
+  const at = (type: string, data: unknown, options: object, width: number, height: number) =>
+    layoutResolvedRequest(resolveChartRequest({ type, data, options: { target: 'dashboard', size: { width, height }, ...options } } as never)) as Geometry;
+  const quarters = { categories: ['2021', '2022', '2023', '2024'], series: [{ id: 'rev', label: 'Revenue', values: [10, 12, 15, 19] }] };
+  const slices = { categories: ['North', 'South', 'East', 'West'].map(label => ({ id: label, label })), series: [{ id: 's', label: 'Sales', values: [40, 30, 20, 10] }] };
+  for (const width of [160, 200, 240]) {
+    expect(at('kpi', { label: 'Revenue', value: 4200000, format: '$1.2M' }, {}, width, 110).refused, `kpi ${width}`).toBeFalsy();
+    expect(at('column', quarters, { title: 'Revenue grows' }, width, 200).refused, `column ${width}`).toBeFalsy();
+  }
+  expect(at('pie', slices, {}, 240, 240).refused).toBeFalsy();
+  // A pie whose circle and labels need 224 px names that width.
+  expect(at('pie', slices, {}, 200, 240)).toMatchObject({ refused: true, warnings: [{ code: 'size-below-floor', expected: { minimum: { width: 224 } } }] });
+  const hundred = { categories: Array.from({ length: 100 }, (_, i) => `Item ${i + 1}`), series: [{ id: 's', label: 'Count', values: Array.from({ length: 100 }, (_, i) => 1 + (i % 13)) }] };
+  expect(at('column', hundred, {}, 200, 240)).toMatchObject({ refused: true, warnings: [{ code: 'size-below-floor', expected: { minimum: { width: 280 } } }] });
+  expect(at('column', hundred, {}, 280, 240).refused).toBeFalsy();
 });

@@ -395,3 +395,37 @@ it('a derived value reaches the format unrounded', () => {
   const noisy = layout('variance', { categories: ['A'], series: [{ id: 'ac', values: [100.35] }, { id: 'py', role: 'reference', values: [100] }] }, { variant: 'absolute', variance: { vs: 'py' }, format: '1.1' });
   expect(noisy.derived.deltaAbs.A).toBe(0.35);
 });
+
+// Amounts that cancel (0.1 + 0.2 - 0.3) kept a 5.55e-17 residue: a total printed a bound ("<0.1", ">−0.1", "<1") and a ratio or share over it printed a 17-digit number.
+it('a sum of cancelling amounts is exactly 0 on a table, a bridge, a stack and a switch', () => {
+  const noise = /&[lg]t;|\d{9,}/;
+  const leaf = (id: string, p: number) => ({ id, label: id, cells: { a: 1, p } });
+  const tableData = {
+    columns: [
+      { id: 'label', kind: 'rowLabel', label: 'Row' }, { id: 'a', kind: 'value', label: 'Act', format: '1,234.5' }, { id: 'p', kind: 'value', label: 'Plan', format: '1,234.5' },
+      { id: 'r', kind: 'computed', label: 'a/p', calc: { op: 'div', a: { ref: 'a' }, b: { ref: 'p' } }, format: '0.00' },
+      { id: 's', kind: 'computed', label: 'share', calc: { op: 'share', of: 'p' }, format: '0.0%' },
+    ],
+    rows: [{ id: 'tot', label: 'Total', role: 'total', totalPolicy: 'derive', cells: {}, children: [leaf('x', 0.1), leaf('y', 0.2), leaf('z', -0.3)] }],
+  };
+  const table = texts('table', tableData, {});
+  expect(table.filter((text) => noise.test(text))).toEqual([]);
+  expect(table).toContain('n.m.');
+  const bridge = texts('waterfall', { items: [{ id: 'open', label: 'Open', type: 'total', value: 10.1 }, { id: 'up', label: 'Up', value: 3.3 }, { id: 'down', label: 'Down', value: -13.4 }, { id: 'close', label: 'Close', type: 'total' }] }, {});
+  expect(bridge.filter((text) => noise.test(text))).toEqual([]);
+  const stack = { categories: [{ id: 'x', label: 'X' }, { id: 'y', label: 'Y' }], series: [{ id: 'a', label: 'A', values: [0.1, 1] }, { id: 'b', label: 'B', values: [0.2, 1] }, { id: 'c', label: 'C', values: [-0.3, 1] }] };
+  for (const type of ['bar', 'column']) expect(texts(type, stack, { variant: 'stacked', grandTotalLabels: true }).filter((text) => noise.test(text))).toEqual([]);
+  const facts = ['m1', 'm2', 'm3'].flatMap((memberId, i) => ['range', 'prior', 'w1'].map((periodId) => ({ memberId, periodId, sums: { o: [0.1, 0.2, -0.3][i]!, s: 100 } })));
+  const dimswitch = texts('dimswitch', {
+    dimension: { label: 'Ch', total: { id: 'total', label: 'Total' }, members: ['m1', 'm2', 'm3'].map((id) => ({ id, label: id })), headline: ['orders'], sums: true },
+    measures: [{ id: 'orders', scale: 'count', label: 'Net orders', value: { field: 'o' } }, { id: 'cac', scale: 'perUnit', label: 'Spend per net order', value: { op: 'div', a: { field: 's' }, b: { field: 'o' } }, format: '1.2' }],
+    periods: [{ id: 'range', label: 'Range', kind: 'range' }, { id: 'prior', label: 'Prior', kind: 'prior' }, { id: 'w1', label: 'W1' }], facts,
+  }, {});
+  expect(dimswitch.filter((text) => noise.test(text))).toEqual([]);
+  expect(dimswitch).toContain('n.m.');
+  const combo = { ...stack, series: [...stack.series.map((s) => ({ ...s, kind: 'column' })), { id: 'l', label: 'Line', kind: 'line', values: [1, 2] }] };
+  expect(texts('combo', combo, { unit: 'EUR m' }).filter((text) => noise.test(text))).toEqual([]);
+  // topN folds C, D and E into Others; their sum cancels.
+  const topN = { categories: ['A', 'B', 'C', 'D', 'E'].map((id) => ({ id, label: id })), series: [{ id: 's', label: 'S', values: [50, 40, 0.1, 0.2, -0.3] }] };
+  for (const type of ['bar', 'column']) expect(texts(type, topN, { unit: 'EUR m', topN: { n: 2, rest: true } }).filter((text) => noise.test(text))).toEqual([]);
+});

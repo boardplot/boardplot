@@ -4,6 +4,7 @@ import { render } from '../src/cli/render';
 import { getFixtures } from '../src/fixtures';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { defaultMeasurer } from '../src/core/text';
+import { emphasisWeight, resolveTheme } from '../src/core/theme';
 import { clippedTextWarnings } from '../src/core/textClip';
 import type { Geometry } from '../src/core/types/scene';
 // @ts-expect-error The census script is plain JavaScript.
@@ -51,7 +52,7 @@ describe('drawn text stays on the canvas', () => {
       if (label?.t !== 'text') continue;
       expect(label.rotate).toBe(-45);
       expect(label.lines).toEqual([names[0]]);
-      expect(label.font.weight).toBe(700);
+      expect(label.font.weight).toBe(emphasisWeight(resolveTheme()));
       expect(clippedTextWarnings(geometry, defaultMeasurer)).toEqual([]);
     }
   });

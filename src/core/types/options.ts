@@ -316,7 +316,7 @@ export interface StorySpec {
 }
 
 export interface LegendOptions {
-  position: 'right' | 'bottom' | 'top';
+  position: 'right' | 'left' | 'bottom' | 'top';
   order?: Id[];
 }
 
@@ -565,7 +565,7 @@ export interface BaseOptions {
    */
   categoryLabels?: 'axis' | 'staircase';
 
-  legend?: 'none' | 'right' | 'bottom' | 'top' | 'auto' | LegendOptions; // auto accepts a visible subtitle measure or unit naming one primary series; explicit settings take precedence
+  legend?: 'none' | 'right' | 'left' | 'bottom' | 'top' | 'auto' | LegendOptions; // auto accepts a visible subtitle measure or unit naming one primary series; explicit settings take precedence
   valueAxis?: ValueAxisOptions;
   categoryAxis?: CategoryAxisOptions;
   /**
@@ -767,8 +767,8 @@ export interface ColumnOptions extends BaseOptionsFor<'column'> {
   referenceStyle?: 'tick' | 'line' | 'marker'; // default 'tick'
   /** Per-category cumulative-boundary ticks; ordered column axes connect them by default. */
   netLine?: boolean | { seriesId?: Id; connectors?: boolean };
-  /** Computed arithmetic-average rule; Id[] limits the contributing series. */
-  averageMarker?: boolean | { scope: 'all' | Id[] };
+  /** Computed arithmetic-average rule; Id[] limits the contributing series. Categories marked partial are left out unless includePartial is true. */
+  averageMarker?: boolean | { scope?: 'all' | Id[]; includePartial?: boolean };
   /**
    * `style` is 'line' (default) or 'dashed'; dashed matches the waterfall
    * bridge's dash.reference token. There is no 'dot' or 'line-dot' variant:

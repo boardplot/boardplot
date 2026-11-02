@@ -108,6 +108,12 @@ export function normalizeLegendOption(option: LegendOptionInput, defaultOptions?
 
 export type { SeriesIdentity as LegendItemInput } from './seriesIdentity';
 
+/**
+ * The share of the chart width a plot block keeps beside a key column that a spec names. The block
+ * holds the axis labels, so this is the lint's 62% floor for the drawn plot plus their gutter.
+ */
+export const SIDE_KEY_PLOT_SHARE = 0.68;
+
 /** Internal fixed-frame retries: shorten attribution before leaving it off. */
 export const COMPACT_SOURCE_LINES = Symbol('compactSourceLines');
 /** Automatic frame budget, or the height left after chart axes have been measured. */
@@ -224,6 +230,8 @@ export interface FrameInput extends IdentityCollectionOptions, CompactSourceOpti
    */
   eventKey?: FrameBand;
   legend?: { options: LegendOptions; items: LegendItemInput[] };
+  /** The layout chose the key beside the plot itself, and checks the room itself: no fallback to the row above the plot. */
+  sideKeyFixed?: boolean;
   /** Automatic legend keys use the footnote token ('compact': the smaller of it and the secondary step); explicit keys keep axis type. */
   legendFont?: 'footnote' | 'compact';
   theme: Theme;
@@ -1596,12 +1604,14 @@ export function markNotedLabels(
 /** The drawing prints no `options.unit` although the author declared one (the test `unit-not-shown` and the unit line share). */
 export function unitMissing(
   options: Record<string, unknown> | undefined,
-  geo: { type?: string; scene: readonly SceneNode[]; warnings: readonly LintWarning[] },
+  geo: { type?: string; scene: readonly SceneNode[]; warnings: readonly LintWarning[]; derived?: unknown },
 ): boolean {
   const unit = typeof options?.unit === 'string' ? options.unit.trim() : '';
   if (!unit || options?.unitShown === true || geo.warnings.some((w) => w.severity === 'error')) return false;
   // A relative variance prints its differences in % on purpose; the unit is the base's, not the drawing's.
   if (geo.type === 'variance' && (options as { variant?: string } | undefined)?.variant === 'relative') return false;
+  // Shares print with their own % sign, and options.unit names values no label shows.
+  if (printsOnlyShares(geo.type, options, geo.derived)) return false;
   const subtitle = resolveSubtitle(options?.subtitle as BaseOptions['subtitle']);
   if (subtitle && subtitleUnitClause(unit, subtitle.measure) === '') return false;
   if (!squeezeUnit(unit)) return false;
@@ -1613,40 +1623,86 @@ export function unitMissing(
 
 /** A unit that says percent: "%", "% of revenue", "percent", "per cent", "pct", "percentage". */
 const PERCENT_UNIT = /^(?:%|percent|per\s*cent|pct|percentage)(?!\p{L})/iu;
+export const isPercentUnit = (unit: string): boolean => PERCENT_UNIT.test(unit.trim());
 
 /**
- * `share-unit-conflict`: a computed-share variant (stacked100,
- * stacked100-area) plots % and its axis says %, but a subtitle that prints a unit
- * clause such as "in TWh" names the raw values. When the engine composed the
- * clause from options.unit, the fix removes options.unit and with it the
- * clause. An authored clause ("Generation in TWh", "Generation (TWh)") stays
- * the author's: the warning asks for a subtitle edit and offers no fix. A
- * measure that names the unit as its base ("Share of generation from 100
- * TWh of output") is no unit clause and does not warn.
+ * Whether a column prints an absolute figure on its segments: `labels.segment`
+ * names 'absolute', or `shareLabels` adds the value to segments that are not
+ * switched off. A 100% column prints the share alone by default.
+ */
+export function columnSegmentsPrintAbsolute(options: object | undefined): boolean {
+  const o = (options ?? {}) as { labels?: false | { segment?: boolean | readonly string[] }; shareLabels?: unknown };
+  if (o.labels === false) return false;
+  const segment = o.labels?.segment;
+  return Array.isArray(segment) ? segment.includes('absolute') : segment !== false && o.shareLabels !== undefined;
+}
+
+/**
+ * Whether the chart's values all print as shares: a computed-share variant
+ * (stacked100, stacked100-area) or a treemap with `cellValue: 'share'`. An
+ * absolute figure printed beside them (an authored grand total, absolute
+ * column segment values, a treemap total, or the group totals in a treemap key) keeps `options.unit`
+ * meaningful, so such a chart does not count. The treemap key shows when the
+ * layout's `derived.groups` lists more than one group. A mekko is left out:
+ * its `options.unit` already names the shares.
+ */
+export function printsOnlyShares(type: string | undefined, options: object | undefined, derived?: unknown): boolean {
+  const o = (options ?? {}) as { variant?: string; valueAxis?: { percent?: boolean }; grandTotalLabels?: boolean; cellValue?: string; total?: unknown; legend?: unknown };
+  const groupKey = ((derived as { groups?: readonly unknown[] } | undefined)?.groups?.length ?? 0) > 1 && o.legend !== 'none';
+  switch (type) {
+    case 'column': return (o.variant === 'stacked100' || o.valueAxis?.percent === true) && o.grandTotalLabels !== true && !columnSegmentsPrintAbsolute(options);
+    case 'bar': return o.variant === 'stacked100' && o.grandTotalLabels !== true;
+    case 'line': return o.variant === 'stacked100-area' || o.valueAxis?.percent === true;
+    case 'treemap': return o.cellValue === 'share' && !o.total && !groupKey;
+    default: return false;
+  }
+}
+
+/**
+ * The options the frame reads for its unit line. A chart that prints only
+ * shares names the percent there: `options.unit` states the raw values, which
+ * no label shows. Authored text is never rewritten.
+ */
+export function shareUnitOptions<O extends { unit?: string }>(type: string, options: O, derived?: unknown): O {
+  const unit = options.unit?.trim();
+  if (!unit || PERCENT_UNIT.test(unit) || !printsOnlyShares(type, options, derived)) return options;
+  // A subtitle that already names the unit stays as written: the engine adds no second clause beside it.
+  const measure = resolveSubtitle((options as BaseOptions).subtitle)?.measure;
+  if (measure && measureNamesUnit(unit, measure)) return options;
+  return { ...options, unit: '%' };
+}
+
+/**
+ * `share-unit-conflict`: a chart that prints only shares says % in its unit
+ * line, but an authored subtitle clause such as "Generation in TWh" or
+ * "Generation (TWh)" names the raw values. The clause stays the author's: the
+ * warning asks for a subtitle edit. A measure that names the unit as its base
+ * ("Share of generation from 100 TWh of output") is no unit clause and does
+ * not warn.
  */
 export function shareUnitLints(
   options: Record<string, unknown> | undefined,
-  geo: { scene: readonly SceneNode[]; warnings: readonly LintWarning[] },
+  geo: { type?: string; scene: readonly SceneNode[]; warnings: readonly LintWarning[]; derived?: unknown },
 ): LintWarning[] {
   const unit = typeof options?.unit === 'string' ? options.unit.trim() : '';
-  if (!unit || PERCENT_UNIT.test(unit) || !['stacked100', 'stacked100-area'].includes(options?.variant as string)) return [];
+  if (!unit || PERCENT_UNIT.test(unit) || !printsOnlyShares(geo.type, options, geo.derived)) return [];
   if (geo.warnings.some((w) => w.severity === 'error')) return [];
   const measure = resolveSubtitle(options?.subtitle as BaseOptions['subtitle'])?.measure ?? '';
   const subtitleText = geo.scene.flatMap((node) => (node.t === 'text' && node.id.startsWith('frame:subtitle') ? node.lines : [])).join(' ');
   if (!measure || !textCarriesUnit(subtitleText, unit)) return [];
-  const composed = subtitleUnitClause(unit, measure) !== '';
   const escaped = unit.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
-  const authored = !composed && new RegExp(`(?:\\bin|,|\\()\\s*${escaped}\\s*\\)?\\s*$`, 'iu').test(measure);
-  if (!composed && !authored) return [];
+  const clause = new RegExp(`(?:\\bin|,|\\()\\s*${escaped}\\s*\\)?\\s*$`, 'iu');
+  if (!clause.test(measure)) return [];
+  // The fix drops only the unit clause; the engine's unit line then names the percent.
+  const kept = measure.replace(clause, '').trim();
+  const path = typeof options?.subtitle === 'string' ? '/options/subtitle' : '/options/subtitle/measure';
   return [{
     code: 'share-unit-conflict',
     severity: 'warn',
-    message: `variant '${options!.variant}' plots shares in %, but the subtitle names the unit '${unit}' of the raw values`,
-    suggest: composed
-      ? `remove options.unit, or name the base in the measure (subtitle: { measure: 'Share of generation' })`
-      : `remove the unit clause from the subtitle measure '${measure}', or name the base instead ('Share of generation')`,
-    field: composed ? ['options', 'unit'] : ['options', 'subtitle'],
-    ...(composed ? { fix: [{ op: 'remove' as const, path: '/options/unit' }] } : {}),
+    message: `the chart prints shares in %, but the subtitle names the unit '${unit}' of the raw values`,
+    suggest: `remove the unit clause from the subtitle measure '${measure}', or name the base instead ('Share of generation')`,
+    field: ['options', 'subtitle'],
+    ...(kept ? { fix: [{ op: 'replace' as const, path, value: kept }] } : {}),
   }];
 }
 
@@ -2399,12 +2455,13 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
   let legendBand = 0;
   let rightLegendBottom = 0;
   let plotRight = size.width - margin.right;
+  let plotLeft = margin.left;
   const bandKeys = input.eventKey?.legendYieldsToSeries && (input.legend?.items.length ?? 0) > 0 ? [] : input.eventKey?.legend ?? [];
   const legendInput = bandKeys.length > 0
     ? { options: input.legend?.options ?? { position: 'top' as const }, items: [...(input.legend?.items ?? []), ...bandKeys] }
     : input.legend;
   if (legendInput && legendInput.items.length > 0) {
-    const { options } = legendInput;
+    let { options } = legendInput;
     const { items } = dedupeLegendKeys(legendInput.items, item => identityAppearance(item, theme));
     pushAll(warnings, identityCollisionWarnings(items, theme));
     // The key is reference text, never larger than the
@@ -2418,7 +2475,8 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
     const font = withFamily(!hasAuthoredTypeSize(keyRole) && keyRole.size > keyCap ? { ...keyRole, size: keyCap } : keyRole);
     const lineH = Math.max(SWATCH, font.size * (font.lineHeight ?? 1.2));
     const typeRole = footKey ? 'footnote' : 'secondary';
-    const labelBudget = options.position === 'right' ? contentW * 0.45 : contentW;
+    const sideWanted = options.position === 'right' || options.position === 'left';
+    const labelBudget = sideWanted ? contentW * 0.45 : contentW;
     // A size key's ring is drawn at the plot's scale, and its row grows to the
     // ring's diameter, in whole pixels so the scatter's ring-and-row loop settles.
     const ringH = (it: LegendItemInput) => (it.key === 'sizes' ? Math.max(it.ringRow ?? 0, Math.ceil(2 * Math.max(0.5, ...(it.radii ?? [])))) : 0);
@@ -2427,8 +2485,9 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
     // A group's value (its total) sits after the label, bold, in every position.
     const valueFont: FontSpec = { ...font, weight: emphasisWeight(theme) };
     // The label wraps in the room its own value leaves, so label and value fit the budget together.
-    const wrappedKeys = new Map(items.map(it => [it, wrapFootnote(it.label, font,
-      Math.max(1, labelBudget - maxKeyW - SWATCH_GAP - (it.value ? SWATCH_GAP + measure(it.value, valueFont).width : 0)), measure)]));
+    const wrapKeys = (budget: number) => new Map(items.map(it => [it, wrapFootnote(it.label, font,
+      Math.max(1, budget - maxKeyW - SWATCH_GAP - (it.value ? SWATCH_GAP + measure(it.value, valueFont).width : 0)), measure)]));
+    let wrappedKeys = wrapKeys(labelBudget);
     // A blank name wraps to no lines; its key still keeps one line of height and zero text width.
     const keyTextH = (it: LegendItemInput) => Math.max(1, wrappedKeys.get(it)!.length) * lineH;
     const textWOf = (it: LegendItemInput) => Math.max(0, ...wrappedKeys.get(it)!.map(line => measure(line, font).width));
@@ -2450,11 +2509,34 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
     const onLabelLine = (keys: SceneNode[], textTop: number): SceneNode[] =>
       keys.map((node) => (node.t === 'text' && node.part === 'swatch' ? { ...node, y: textTop } : node));
 
-    if (options.position === 'right') {
-      const keyW = maxOf(items.map((it) => keyWidth(it, Math.max(lineH, ringH(it)))));
-      const maxLabelW = maxOf(items.map(itemTextW));
-      const legendW = keyW + SWATCH_GAP + maxLabelW;
-      const legendX = size.width - margin.right - legendW;
+    // A key beside the plot: `legendW` wide, in a column as high as its rows.
+    const sideKeyW = maxOf(items.map((it) => keyWidth(it, Math.max(lineH, ringH(it)))));
+    const sideLegendW = sideKeyW + SWATCH_GAP + maxOf(items.map(itemTextW));
+    if (sideWanted && !input.sideKeyFixed) {
+      // The column stays beside the plot only where the plot keeps its share of the width and the
+      // rows fit the height; else the key stands in the row above the plot, as it does by default.
+      const columnH = items.reduce((h, it) => h + Math.max(keyTextH(it), ringH(it)) + 4, -4);
+      const plotW = size.width - margin.right - margin.left - sideLegendW - 16 - Math.max(0, input.plotInset?.left ?? 0);
+      const widthShort = plotW < SIDE_KEY_PLOT_SHARE * size.width;
+      if (widthShort || columnH > bottomY - topY) {
+        warnings.push({
+          code: 'legend-side-fallback',
+          severity: 'warn',
+          message: widthShort
+            ? `the key stays in the row above the plot: a column beside it would leave the plot ${Math.round(Math.max(0, plotW))} px, under ${Math.round(SIDE_KEY_PLOT_SHARE * 100)}% of the ${Math.round(size.width)} px width`
+            : `the key stays in the row above the plot: its ${Math.round(columnH)} px column is taller than the ${Math.round(Math.max(0, bottomY - topY))} px beside the plot`,
+          suggest: widthShort ? 'Give the chart more width, or shorten the series names, to keep the key beside the plot.' : 'Give the chart more height, or show fewer series, to keep the key beside the plot.',
+          field: ['options', 'legend'],
+        });
+        options = { ...options, position: 'top' };
+        wrappedKeys = wrapKeys(contentW);
+      }
+    }
+
+    if (options.position === 'right' || options.position === 'left') {
+      const keyW = sideKeyW;
+      const legendW = sideLegendW;
+      const legendX = options.position === 'left' ? contentX : size.width - margin.right - legendW;
       let y = topY;
       const legendItems: LegendGeometry['items'] = [];
       for (const it of items) {
@@ -2483,12 +2565,13 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
       rightLegendBottom = y - 4;
       occupied.claim(rect, 'legend', {});
       legendGeom = { rect, items: legendItems };
-      plotRight = legendX - 16;
-      // Only a spec that names 'right' gets here; every default is 'top'.
+      if (options.position === 'left') plotLeft = legendX + legendW + 16;
+      else plotRight = legendX - 16;
+      // Only a spec that names 'right' or 'left' gets here; every default is 'top'.
       warnings.push({
         code: 'legend-beside-plot',
         severity: 'info',
-        message: `the key stands beside the plot and takes ${Math.round(size.width - margin.right - plotRight)} px of its width; 'top' keeps the plot full width`,
+        message: `the key stands beside the plot and takes ${Math.round(legendW + 16)} px of its width; 'top' keeps the plot full width`,
       });
     } else {
       // top/bottom: single wrapped band — rows step at the legend.rowH
@@ -2631,9 +2714,9 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
 
   const plotInsetLeft = Math.max(0, input.plotInset?.left ?? 0);
   const plot: Rect = {
-    x: contentX + plotInsetLeft,
+    x: plotLeft + plotInsetLeft,
     y: topY,
-    w: Math.max(10, plotRight - contentX - plotInsetLeft),
+    w: Math.max(10, plotRight - plotLeft - plotInsetLeft),
     h: Math.max(MIN_PLOT_H, bottomY - topY),
   };
   // Repeat only bottom-position arithmetic: adding a delta can change React's float bytes.

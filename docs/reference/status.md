@@ -64,8 +64,8 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
 | labels | false \| object | `false` (or another value of its type) |  | False hides cell state and value labels. Row and stage names remain. series: false hides row names; category: false hides stage names. When the state key is drawn and colour or hatch tells the states apart, the key names them and the cells print no state names, unless labelDensity is 'full'; then the names print at the largest type step where all of them fit, and if no step fits they stay off with a label-hidden warning and one reading.omissions entry per state. Otherwise state names print in every bound cell only when all of them fit; else the key names states. |
-| legend | string \| object | `'top'`, `'bottom'`, `'none'` (or another value of its type) |  | State-legend placement, or none to suppress the legend while cells name every used state. A required key remains when cell state names are not drawn, including a one-state matrix. A grid panel's explicit none leaves the state key with the host. |
-| legend.position | string | `'top'`, `'bottom'` |  | Place the categorical state legend at the top or bottom. |
+| legend | string \| object | `'top'`, `'bottom'`, `'right'`, `'left'`, `'none'` (or another value of its type) |  | State-legend placement, or none to suppress the legend while cells name every used state. A required key remains when cell state names are not drawn, including a one-state matrix. A grid panel's explicit none leaves the state key with the host. |
+| legend.position | string | `'top'`, `'bottom'`, `'right'`, `'left'` |  | Place the categorical state legend at the top or bottom, or in a column beside the matrix. |
 | states | array |  |  | One to six declared categorical states defining cell meaning, legend labels and paint. |
 | states[].id | string |  |  | Unique state identity referenced by matrix cells. |
 | states[].label | string |  |  | Visible state name used by the legend and the accessible description. The description lists each state with its cell count, as 'On track 12', then 'No status 3' for empty cells; the reading carries each count as a derived claim with that text. |
@@ -94,6 +94,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | programme-rollout-rag | example | Consulting programme rollout RAG board with sparse future gates |
 | capability-assessment | example | Capability assessment with a patterned unverified state |
 | review-status-legend-none | torture | Review status with one explained state and no legend |
+| review-status-legend-right | example | Review status with a state legend in a column beside the grid |
 | review-status-legend-bottom | torture | Review status with a bottom legend |
 | review-status-legend-top | torture | Review status with a top legend |
 | torture-long-labels | torture | Torture: long names at a generous size read whole, never cut |

@@ -354,7 +354,7 @@ export function prepareEndpointLabels(input: {
   const shortWrapped = hasShort ? wrappedLabels(seeds, (seed) => seed.shortText ?? seed.fullText, labelFont, labelH, textBudget, measure) : null;
   const legendPosition = typeof options.legend === 'object' ? options.legend.position : options.legend;
   const gridLegend = (options as LineOptions & { gridEndpointIdentity?: unknown }).gridEndpointIdentity === 'legend';
-  const legendAllowed = !isBump && endContent !== null && legendPosition !== 'none' && legendPosition !== 'right' && !seeds.some((seed) => options.labelPlacements?.[seed.id] !== undefined);
+  const legendAllowed = !isBump && endContent !== null && legendPosition !== 'none' && legendPosition !== 'right' && legendPosition !== 'left' && !seeds.some((seed) => options.labelPlacements?.[seed.id] !== undefined);
   // The key row names the series instead, so the ends carry nothing.
   const legend: EndLabel[] | null = legendAllowed || gridLegend ? [] : null;
   const candidates: { strategy: EndpointLabelStrategy; labels: EndLabel[] }[] = [
@@ -788,6 +788,8 @@ interface PointLabelSeed {
   w: number;
   priority: number;
   suppressed: boolean;
+  /** The value is the lowest or the highest of its series. */
+  extreme: boolean;
 }
 
 interface PointLabelCandidate extends PointLabelSeed {
@@ -851,7 +853,7 @@ function pointLabelSeeds(input: PointLabelInput): PointLabelSeed[] {
     const extreme = value === min || value === max;
     const highlighted = input.highlights.has(series.id) || input.highlights.has(category.id);
     const priority = cell.priority ?? (endpoint ? PRIORITY.endpoint : extreme ? PRIORITY.extreme : PRIORITY.interior + Math.min(99, Math.abs(value))) + (highlighted ? PRIORITY.highlightBonus : 0);
-    seeds.push({ ci, text, w: input.measure(text || '0', input.labelFont).width, priority, suppressed: cell.labelOverride === false });
+    seeds.push({ ci, text, w: input.measure(text || '0', input.labelFont).width, priority, suppressed: cell.labelOverride === false, extreme });
   }
   return seeds;
 }
@@ -1000,8 +1002,13 @@ function pushPointRequests(input: {
   // An authored `label: false` draws nothing, so it holds no room from a neighbour (a hidden
   // running week must not take the authored value of the last complete week with it).
   // The solver must try the whole row before it retries the alternate subset.
+  // A high and a low value more than three lines apart sit in different rows, so a wide one
+  // over a point never takes the room of one under another (the maximum and the minimum of a series).
+  const pys = input.candidates.map((candidate) => candidate.py);
+  const middle = (minOf(pys) + maxOf(pys)) / 2;
+  const rowOf = (candidate: PointLabelCandidate) => (!input.isStacked && maxOf(pys) - minOf(pys) > 3 * input.labelH && candidate.py > middle ? 1 : 0);
   const keep = input.regularRow ? input.candidates.map(candidate => !candidate.suppressed)
-    : sweepHide(input.candidates.map((candidate) => ({ start: candidate.x - candidate.w / 2, size: candidate.w, priority: candidate.suppressed ? -Infinity : candidate.priority })), 4);
+    : sweepHide(input.candidates.map((candidate) => ({ start: candidate.x - candidate.w / 2, size: candidate.w, priority: candidate.suppressed ? -Infinity : candidate.priority, lane: rowOf(candidate) })), 4);
   const lastDrawn = input.series.vals.reduce((last, cell, ci) => (cell.v === null ? last : ci), -1);
   const firstDrawn = input.series.vals.findIndex((cell) => cell.v !== null);
   const { ownQueries, otherQueries } = input;
@@ -1126,6 +1133,11 @@ function pushPointRequests(input: {
           { slot: 'forecastAboveEdge', rect: { x: px - w / 2, y: candidate.py - labelH - 5, w: w, h: labelH }, penalty: 4.2 },
           { slot: 'forecastBelowEdge', rect: { x: px - w / 2, y: candidate.py + 5, w: w, h: labelH }, penalty: 4.3 },
         ] : []),
+        // A narrow trough or peak inside the line leaves no seat over or under its point, where the
+        // line climbs into both: its lowest or highest value may stand level with it, beside the point.
+        ...(candidate.extreme && !last && candidate.ci !== firstDrawn && !input.bump ? [-1, 1].map((side) => ({
+          slot: side < 0 ? 'left' : 'right', rect: { x: side < 0 ? px - w - 7 : px + 7, y: candidate.py - labelH / 2, w, h: labelH }, penalty: 4,
+        })) : []),
         ...(last && input.besideLast ? [{ slot: 'right', rect: { x: px + 7, y: candidate.py - labelH / 2, w: w, h: labelH }, penalty: 4 }] : []),
         // Two lines that end a line apart share the seat right of their
         // points; the second value steps half a line off it on a short leader.
@@ -1215,7 +1227,7 @@ function pushPointRequests(input: {
     if (!candidate.suppressed && !rest && !keep[index]) input.lost.thinned.push(name);
     input.labelRequests.push({ id: `point:${input.series.id}:${category.id}`, kind: 'point', role: composedTextRole(candidate.text), owner: { seriesId: input.series.id, categoryId: category.id }, text: candidate.text, lines: words?.lines ?? [candidate.text], ...words?.request, typeRole: 'label', font: input.labelFont, priority: candidate.priority, redundant, ...lost, ...restFields, candidates: slots, ...(computed && !input.highlighted && !continuedEnd ? { noLeader: true } : {}),
       // A value over a neighbour's point reads as that point's value.
-      ...(input.isStacked || input.bump ? {} : { anchor: { x: input.xOf(candidate.ci), y: candidate.py }, ...(computed ? { ownStrokeClear: true } : {}) }) });
+      ...(input.isStacked || input.bump ? {} : { anchor: { x: input.xOf(candidate.ci), y: candidate.py }, ...(computed ? { ownStrokeClear: true } : {}) }), ...(input.isStacked ? {} : { ownStroke: ownQueries }) });
   });
 }
 

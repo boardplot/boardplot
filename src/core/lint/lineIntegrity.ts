@@ -39,6 +39,7 @@ export function lineIntegrityDocLints(
     const horizontalLegendAllowed =
       legendPosition !== 'none' &&
       legendPosition !== 'right' &&
+      legendPosition !== 'left' &&
       (!options?.labelPlacements || Object.keys(options.labelPlacements as object).length === 0);
     // legend:'none' also disqualifies the short rung (its key would be a legend),
     // so series.shortLabel is not a usable repair there.
