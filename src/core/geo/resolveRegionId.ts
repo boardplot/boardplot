@@ -26,7 +26,7 @@ export interface GeoRegionIdIndex {
   /** Alias -> the sorted canonical ids that claim it, for aliases with >1 claimant. */
   readonly ambiguous: ReadonlyMap<string, readonly string[]>;
   /** Lower-case spellings mapped to every region they can name. Exact spellings win. */
-  readonly folded: ReadonlyMap<string, readonly string[]>;
+  readonly folded: () => ReadonlyMap<string, readonly string[]>;
   /** Every accepted spelling, ambiguous ones included — the vocabulary for suggestions. */
   readonly keys: readonly string[];
 }
@@ -68,13 +68,18 @@ export function buildGeoRegionIdIndex(
     canonical.set(alias, ids[0]!);
   }
   const keys = [...canonical.keys(), ...ambiguous.keys()];
-  const folded = new Map<string, string[]>();
-  for (const key of keys) {
-    const ids = canonical.has(key) ? [canonical.get(key)!] : ambiguous.get(key)!;
-    const claims = folded.get(key.toLowerCase()) ?? [];
-    for (const id of ids) if (!claims.includes(id)) claims.push(id);
-    folded.set(key.toLowerCase(), claims.sort());
-  }
+  let foldedClaims: Map<string, string[]> | undefined;
+  const folded = () => {
+    if (foldedClaims) return foldedClaims;
+    foldedClaims = new Map<string, string[]>();
+    for (const key of keys) {
+      const ids = canonical.has(key) ? [canonical.get(key)!] : ambiguous.get(key)!;
+      const claims = foldedClaims.get(key.toLowerCase()) ?? [];
+      for (const id of ids) if (!claims.includes(id)) claims.push(id);
+      foldedClaims.set(key.toLowerCase(), claims.sort());
+    }
+    return foldedClaims;
+  };
   return { canonical, ambiguous, folded, keys };
 }
 
@@ -99,7 +104,7 @@ export function resolveGeoRegionId(
   if (resolved !== undefined) return { kind: 'resolved', id: resolved };
   const candidates = index.ambiguous.get(id);
   if (candidates) return { kind: 'ambiguous', candidates };
-  const folded = index.folded.get(id.toLowerCase());
+  const folded = index.folded().get(id.toLowerCase());
   if (folded?.length === 1) return { kind: 'resolved', id: folded[0]! };
   if (folded?.length) return { kind: 'ambiguous', candidates: folded };
   return { kind: 'unknown' };
