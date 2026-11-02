@@ -116,22 +116,35 @@ function readExample(text: string, language?: string): DateFormatRead | undefine
   if (months.length > 1 || weekdays.length > 1) return undefined;
   const notes: DateFormatNote[] = [];
   if (months.length) {
+    const month = months[0]!;
     const years = numbers.filter(field => field.text.length === 4);
     const short = numbers.filter(field => field.text.length <= 2);
-    if (years.length > 1 || short.length > 1 || years.length + short.length !== numbers.length) return undefined;
+    if (years.length > 1 || short.length > 2 || years.length + short.length !== numbers.length) return undefined;
     if (years[0]) pattern[years[0].index] = 'yyyy';
-    if (short[0]) {
+    const dayToken = (field: { text: string }) => (field.text.startsWith('0') ? 'dd' : 'd');
+    const validDay = (field: { text: string }) => +field.text >= 1 && +field.text <= 31;
+    if (years.length) {
+      // With a four-digit year, a short number is the day, on either side of the month.
+      if (short.length > 1 || (short[0] && !validDay(short[0]))) return undefined;
+      if (short[0]) pattern[short[0].index] = dayToken(short[0]);
+    } else if (short.length === 2) {
+      // '30 Sep 26': the number before the month is the day, the one after it the year.
+      const [first, second] = short as [typeof short[0], typeof short[0]];
+      if (first.index > month.index || second.index < month.index || !validDay(first)) return undefined;
+      pattern[first.index] = dayToken(first);
+      pattern[second.index] = 'yy';
+    } else if (short[0]) {
       const field = short[0];
-      if (years.length) {
-        if (+field.text < 1 || +field.text > 31) return undefined;
-        pattern[field.index] = field.text.startsWith('0') ? 'dd' : 'd';
+      if (field.index < month.index || weekdays.length) {
+        // '30 Sep', 'Wed 30 Sep': a number before the month, or beside a weekday, is the day.
+        if (!validDay(field)) return undefined;
+        pattern[field.index] = dayToken(field);
       } else {
         pattern[field.index] = 'yy';
-        const month = months[0]!;
-        const between = parts.slice(Math.min(field.index, month.index) + 1, Math.max(field.index, month.index)).join('');
+        const between = parts.slice(month.index + 1, field.index).join('');
         if (+field.text <= 31 && /[ ,]/.test(between)) notes.push({
           kind: 'ambiguous',
-          message: `Read '${text}' as ${month.index < field.index ? 'month/year' : 'year/month'}. '${field.text}' is the year.`,
+          message: `Read '${text}' as month/year. '${field.text}' is the year.`,
           suggest: "Use 'MMM d' for month and day, or write a four-digit year.",
         });
       }
@@ -150,17 +163,18 @@ function readExample(text: string, language?: string): DateFormatRead | undefine
     const pair = numbers.filter(field => field !== year);
     if (pair.some(field => field.text.length > 2 || +field.text < 1 || +field.text > 31)) return undefined;
     const first = pair[0]!, second = pair[1]!;
-    const iso = /^\d{4}-\d{2}-\d{2}$/.test(text);
-    const monthFirst = iso || +second.text > 12;
+    // A year in front always reads year, month, day (2026-09-30, 2026/09/30).
+    const yearFirst = year === numbers[0];
+    const monthFirst = yearFirst || +second.text > 12;
     const day = monthFirst ? second : first, month = monthFirst ? first : second;
     if (+month.text > 12) return undefined;
     const padded = pair.some(field => field.text.startsWith('0')) || pair.every(field => field.text.length === 2);
     pattern[year.index] = year.text.length === 4 ? 'yyyy' : 'yy';
     pattern[day.index] = padded ? 'dd' : 'd';
     pattern[month.index] = padded ? 'MM' : 'M';
-    if (!iso && pair.every(field => +field.text <= 12)) notes.push({
+    if (!yearFirst && pair.every(field => +field.text <= 12)) notes.push({
       kind: 'ambiguous',
-      message: `Read '${text}' as ${year === numbers[0] ? 'year/day/month' : 'day/month/year'}, ${+day.text} ${dateNames('en').months[+month.text - 1]} ${year.text}.`,
+      message: `Read '${text}' as day/month/year, ${+day.text} ${dateNames('en').months[+month.text - 1]} ${year.text}.`,
       suggest: "Write a day above 12, or use the pattern 'MM/dd/yyyy' for month/day/year.",
     });
   } else if (numbers.length || !fields.length) return undefined;

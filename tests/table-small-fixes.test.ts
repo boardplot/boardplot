@@ -722,13 +722,13 @@ it('warns about a number in a date cell, naming the row and the column', () => {
 
 // Date examples must control the printed cells, and ambiguous numeric dates must warn once per column.
 it('reads date examples and patterns and names the day-first reading once per column', () => {
-  const formats = ['30.09.2026', '09/30/2026', 'September 2026', '2026', 'dd.MM.yyyy', '03/04/2026'];
+  const formats = ['30.09.2026', '09/30/2026', 'September 2026', '2026', 'dd.MM.yyyy', '03/04/2026', '2026/03/04', 'Wed 30 Sep'];
   const data: TableData = {
     columns: [{ id: 'l', kind: 'rowLabel' }, ...formats.map((format, index) => ({ id: `d${index}`, kind: 'date' as const, format }))],
     rows: ['a', 'b'].map(id => ({ id, label: id, cells: Object.fromEntries(formats.map((_, index) => [`d${index}`, '2026-09-30'])) })),
   };
   const { table, warnings } = resolveTable(data);
-  const expected = ['30.09.2026', '09/30/2026', 'September 2026', '2026', '30.09.2026', '30/09/2026'];
+  const expected = ['30.09.2026', '09/30/2026', 'September 2026', '2026', '30.09.2026', '30/09/2026', '2026/09/30', 'Wed 30 Sep'];
   expect(formats.map((_, index) => table.rows[0]!.cells[`d${index}`]!.displayed)).toEqual(expected);
   expect(formats.map(format => interactionValueText({ raw: '2026-09-30', state: 'value', kind: 'date', format }))).toEqual(expected);
   const ambiguous = warnings.filter(warning => warning.code === 'date-format-ambiguous');

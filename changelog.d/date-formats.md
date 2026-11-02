@@ -1,6 +1,6 @@
 ### Changed / may need action
 
-- An unreadable time-axis format now warns `date-format-unknown` and uses default ticks instead of printing literal letters. Unreadable table date formats warn and keep the default `d MMM yyyy`. Ambiguous numeric examples read day first and warn `date-format-ambiguous`. ISO examples keep year/month/day.
+- An unreadable time-axis format now warns `date-format-unknown` and uses default ticks instead of printing literal letters. Unreadable table date formats warn and keep the default `d MMM yyyy`. Ambiguous numeric examples read day first and warn `date-format-ambiguous`. A year in front keeps year/month/day.
 
 ### Added
 
