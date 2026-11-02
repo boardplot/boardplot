@@ -228,7 +228,8 @@ export function layoutBarMarks(domain: BarDomain, paints: BarPaints, area: BarAr
   if (options.valueAxis?.show) {
     const axisResult = layoutValueAxis(
       {
-        scale: breakAxisScale(x),
+        scale: breakAxisScale(x, area.stepTicks),
+        ...(area.activeBreak ? {} : { ticks: area.stepTicks }),
         plot,
         orient: 'x',
         gridlines: options.valueAxis.gridlines ?? false,

@@ -9,8 +9,8 @@ import type { Theme } from '../../types/theme';
 import type { LegendItemInput } from '../../frame';
 import type { Rect } from '../../geometry';
 import type { OwnerRef } from '../../types/cell';
-import type { Paint, SceneNode } from '../../types/scene';
-import { linearScale, type LinearScale } from '../../scale';
+import type { LintWarning, Paint, SceneNode } from '../../types/scene';
+import { linearScale, type LinearBreak, type LinearScale } from '../../scale';
 import type { BandOrientation } from './labels';
 
 /**
@@ -85,4 +85,16 @@ export function breakAxisScale(scale: LinearScale, stepTicks?: readonly number[]
     ...side(br.to, d1, (v) => v > br.to),
   ])].sort((a, b) => a - b);
   return Object.assign(((value: number) => scale(value)) as LinearScale, scale, { ticks });
+}
+
+/** A step across a break needs an inner tick on each visible side. */
+export function stepFitsAxisBreak(ticks: readonly number[] | undefined, br: LinearBreak | undefined, step: number | undefined, warnings: LintWarning[]): boolean {
+  if (!ticks || !br || (ticks.filter((v) => v < br.from).length >= 2 && ticks.filter((v) => v > br.to).length >= 2)) return true;
+  warnings.push({
+    code: 'tick-step-ignored', severity: 'warn',
+    message: `valueAxis.tickStep ${step} leaves one side of the axis break with only its end tick; the break's own ticks are drawn instead`,
+    suggest: 'pick a smaller tickStep, or drop the axis break',
+    field: ['options', 'valueAxis', 'tickStep'],
+  });
+  return false;
 }

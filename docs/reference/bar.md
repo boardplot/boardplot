@@ -131,7 +131,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | connectors.style | string | `'line'`, `'dashed'` |  | Connector stroke: solid 'line' (default) or 'dashed', matching the waterfall bridge's dash. |
 | connectors.scope | string \| array | `'all'` (or another value of its type) |  | Series boundaries to connect; defaults to 'all'. |
 
-Plus the [shared options](options.md). This type does not accept `categoryLabels`, `valueAxis.tickStep`, `valueAxis.log`, `valueAxis.reverse`, `categoryAxis`, `secondaryAxis`, `ribbons`.
+Plus the [shared options](options.md). This type does not accept `categoryLabels`, `valueAxis.log`, `valueAxis.reverse`, `categoryAxis`, `secondaryAxis`, `ribbons`.
 
 ## Annotations
 
@@ -186,6 +186,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | tornado-degenerate | torture | Torture: 14 drivers, a base the model does not reproduce, a dead driver and a gap |
 | tornado-two-drivers | example | Sensitivity tornado: the two-driver case, direct labels only |
 | tornado-theme-cases | example | Sensitivity cases using an authored theme pair |
+| tick-step | example | Horizontal value axis with ticks every five units |
 | usd-k-precision | example | Unit-aware precision: $k values from 100 up print whole, smaller values keep one decimal |
 | option-reference-line | example | Actual orders against plan with line references |
 | option-reference-marker | example | Actual orders against plan with marker references |

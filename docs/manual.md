@@ -39,6 +39,8 @@ Every chart is one JSON object, the spec.
 - `annotations` is optional. An annotation attaches a callout, note, difference arrow, CAGR arrow or value line to a data id, and the engine computes the number it prints. A `cagr` draws a bracket over the marks. With `shape: "arrow"` it draws one straight arrow with the rate in an oval on it, and falls back to the bracket with the warning `cagr-arrow-no-room` where no straight line clears the chart or the span is too short for the oval.
 - `theme` is optional. It takes a preset name or a theme object; see [Themes](#themes).
 
+`options.valueAxis.tickStep` sets ticks at multiples of a positive step and extends the linear axis outward without cutting data, except that dot keeps its data ends when at least two multiples fit inside. The step must give 1 to 20 intervals, otherwise nice ticks are drawn with `tick-step-ignored`.
+
 A field the type does not list is an error. `boardplot_render`, `boardplot_measure`, the CLI and the React component `BoardplotChart` all take this spec.
 
 ## Choosing a chart

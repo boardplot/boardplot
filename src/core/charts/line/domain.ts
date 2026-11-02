@@ -24,7 +24,7 @@ import {
   resolveHighlight,
   resolveSize,
 } from '../../normalize/shared';
-import { applyAxisBounds, axisGrid, niceDomain } from '../../scale';
+import { applyAxisBounds, applyTickStep, axisGrid, niceDomain } from '../../scale';
 import { type Id } from '../../types/cell';
 import type { Category, LineChartData } from '../../types/data';
 import type { LintWarning } from '../../types/scene';
@@ -612,18 +612,10 @@ function valueDomain(d: Core & { cumTop: number[][]; cumBot: number[][] }, isBum
   if (!d.bumpDerived && tickStep !== undefined && tickStep > 0) {
     const baseLo = va.min !== undefined || variant === 'stacked100-area' ? dLo : dLo <= 0 && dataLo >= 0 ? 0 : dataLo;
     const baseHi = va.max !== undefined || variant === 'stacked100-area' ? dHi : dHi >= 0 && dataHi <= 0 ? 0 : dataHi;
-    const from = Math.floor(baseLo / tickStep + 1e-9);
-    const to = Math.ceil(baseHi / tickStep - 1e-9);
-    if (to - from >= 1 && to - from <= 20) {
-      stepTicks = Array.from({ length: to - from + 1 }, (_, i) => Number(((from + i) * tickStep).toFixed(10)));
-      dLo = stepTicks[0]!;
-      dHi = stepTicks[stepTicks.length - 1]!;
-    } else {
-      warnings.push({
-        code: 'tick-step-ignored', severity: 'warn',
-        message: `valueAxis.tickStep ${tickStep} would draw ${to - from} intervals over the value domain; the nice ticks are drawn instead`,
-        suggest: 'pick a step that gives 1 to 20 intervals',
-      });
+    const stepped = applyTickStep([baseLo, baseHi], tickStep, warnings);
+    if (stepped.ticks) {
+      stepTicks = stepped.ticks;
+      [dLo, dHi] = stepped.domain;
     }
   }
   let bumpLadderMax = d.bumpDerived?.maxRank ?? 1;

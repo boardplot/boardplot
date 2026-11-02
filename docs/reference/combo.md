@@ -136,7 +136,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | events.groups[].glyph | string | `'dot'`, `'triangle'`, `'diamond'`, `'square'` |  | Shape that marks the kind without colour; default by group order: dot, triangle, diamond, square. |
 | events.keyTitle | string |  |  | Heading printed over the event key. |
 
-Plus the [shared options](options.md). This type does not accept `valueAxis.tickStep`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `categoryAxis`, `rowLabels`, `sort`, `topN`, `colorblindSafe`.
+Plus the [shared options](options.md). This type does not accept `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `categoryAxis`, `rowLabels`, `sort`, `topN`, `colorblindSafe`.
 
 ## Annotations
 

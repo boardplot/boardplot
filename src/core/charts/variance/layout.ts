@@ -37,7 +37,7 @@ import type { AnchorResolution } from '../../annotate';
 import { percentLevels, runAnnotatePass } from '../../annotatePass';
 import { hiddenValueLineReserve, VALUE_LINE_RESERVE } from '../../annotateParts';
 import { defaultNumberDecimals, formatAutomaticNumber, formatAutomaticPercent, PERCENTAGE_POINTS, seriesValueFormatter } from '../../format';
-import { exampleSpec, formatterFromExample, formatWithSpec, parseFormatExample, roundedNumber, signedFormatterFromExample, specUnitKind } from '../../formatSpec';
+import { defaultFormatSpec, exampleSpec, formatterFromExample, formatWithSpec, parseFormatExample, roundedNumber, signedFormatterFromExample, specUnitKind } from '../../formatSpec';
 import { boxGap, cleanDiff, cleanFloat, cleanSum, type Rect } from '../../geometry';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { DEFAULT_TARGET, resolveTargetSize, TARGET_SIZE, type TargetSizeOptions } from '../../target';
@@ -65,7 +65,7 @@ import { accessibleTitle,
   resolveHighlight,
   resolveSize,
 } from '../../normalize/shared';
-import { applyAxisBounds, bandScale, linearScale, niceDomain } from '../../scale';
+import { applyAxisBounds, applyTickStep, bandScale, linearScale, niceDomain } from '../../scale';
 import { valueLineExtent } from '../../valueLineDomain';
 import { applyValueAxisTitleInk, layoutValueAxis, measureValueAxisWidth, planValueAxisTitle, valueAxisTitleBand, valueAxisTitleRequest } from '../../axis';
 import { PLOT_FLOOR_RECT } from '../../sizing';
@@ -653,12 +653,19 @@ export function layoutVariance(
     })
     : lo === 0 && hi === 0 ? [0, 1] : [lo, hi];
   [dLo, dHi] = applyAxisBounds([dLo, dHi], [Math.min(lo, 0), Math.max(hi, 0)], va, warnings);
+  const stepped = applyTickStep([dLo, dHi], va.show ? va.tickStep : undefined, warnings);
+  [dLo, dHi] = stepped.domain;
 
   const axisFmt = mode === 'relative' ? (v: number) => formatAutomaticPercent(v, 0, false, options.locale?.language)
     : percentDifferences || integratedPercent ? (v: number) => options.format
       ? formatWithSpec(v, { ...exampleSpec(options.format, options.locale?.language), prefix: '', suffix: percentDifferences ? PERCENTAGE_POINTS : '%' })
       : formatAutomaticNumber(v, { locale: options.locale?.language, decimals: autoDecimals(v), suffix: percentDifferences ? PERCENTAGE_POINTS : '%' }) : fmt;
-  const axisReserve = va.show ? measureValueAxisWidth([dLo, dHi], axisFmt, theme, measure) : 0;
+  const stepSpec = stepped.ticks ? {
+    ...(options.format ? exampleSpec(options.format, options.locale?.language) : defaultFormatSpec(options.locale?.language)),
+    ...(mode === 'relative' || percentDifferences || integratedPercent
+      ? { prefix: '', suffix: percentDifferences ? PERCENTAGE_POINTS : '%' } : {}),
+  } : undefined;
+  const axisReserve = va.show ? measureValueAxisWidth([dLo, dHi], axisFmt, theme, measure, 5, stepSpec, stepped.ticks) : 0;
   let plotX0 = frameResult.plot.x + axisReserve;
   let plotW0 = va.show ? Math.max(10, frameResult.plot.w - axisReserve) : frameResult.plot.w;
   // integrated columns take 60 % of the band, so the cap
@@ -745,6 +752,8 @@ export function layoutVariance(
     const axisResult = layoutValueAxis(
       {
         scale: y,
+        ticks: stepped.ticks,
+        formatSpec: stepSpec,
         plot,
         orient: 'y',
         gridlines: va.gridlines ?? false,

@@ -74,7 +74,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | widthSeriesId | string |  |  | Series supplying category widths; omitted uses category totals, or equal widths in bar mode. |
 | ridge | string |  |  | Data-series id whose top boundary is emphasized across the variable-width columns. |
 
-Plus the [shared options](options.md). This type does not accept `mode`, `categoryLabels`, `valueAxis.tickStep`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `bandFraction`, `colorblindSafe`.
+Plus the [shared options](options.md). This type does not accept `mode`, `categoryLabels`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `bandFraction`, `colorblindSafe`.
 
 ## Annotations
 

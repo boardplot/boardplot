@@ -433,7 +433,7 @@ function comboFrameMargins(env: ComboEnv, domain: ComboDomain) {
   const { theme, size, measure } = env;
   const { options, dLo, dHi, fmt, secondaryActive } = domain;
   const leftAxisReserve = domain.showPrimaryAxis
-    ? measureValueAxisWidth([dLo, dHi], fmt, theme, measure, 5, domain.valueSpec)
+    ? measureValueAxisWidth([dLo, dHi], fmt, theme, measure, 5, domain.valueSpec, domain.stepTicks)
     : 0;
   const margin = { ...canvasMargin(theme, size.width), ...options.margin };
   // Try a narrower unused canvas gutter before the category row rotates.

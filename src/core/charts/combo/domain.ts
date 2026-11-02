@@ -23,7 +23,7 @@ import {
   resolveHighlight,
   resolveSize,
 } from '../../normalize/shared';
-import { applyAxisBounds, linearScale, niceDomain } from '../../scale';
+import { applyAxisBounds, applyTickStep, linearScale, niceDomain } from '../../scale';
 import type { Annotation } from '../../types/annotations';
 import { type Id } from '../../types/cell';
 import { stackAdds } from '../../stackAdds';
@@ -283,7 +283,7 @@ type Gate = ReturnType<typeof comboAxisGate>;
  * all-candidates-collide: a label traded for geometry. That the defaults plus
  * labels satisfy the 0.80 floor is measured, not assumed.
  */
-function primaryDomain(options: ComboOptions, gate: Gate, extent: { lo: number; hi: number; dataHi: number }, fmt: (v: number) => string, warnings: LintWarning[]) {
+function primaryDomain(options: ComboOptions, gate: Gate, extent: { lo: number; hi: number; dataHi: number }, fmt: (v: number) => string, warnings: LintWarning[]): Pick<ComboDomain, 'dLo' | 'dHi' | 'pticks' | 'stepTicks'> {
   const { lo, hi, dataHi } = extent;
   const { ruler } = gate;
   const va = options.valueAxis ?? {};
@@ -310,17 +310,19 @@ function primaryDomain(options: ComboOptions, gate: Gate, extent: { lo: number; 
     }
   }
   // Ticks depend only on the domain, so sync before any pixel work.
-  let pticks = linearScale([dLo, dHi], [0, 1]).ticks(5);
+  const stepped = applyTickStep([dLo, dHi], va.tickStep, warnings);
+  [dLo, dHi] = stepped.domain;
+  let pticks = stepped.ticks ?? linearScale([dLo, dHi], [0, 1]).ticks(5);
   if (pticks.length < 2) pticks = [dLo, dHi];
   // With a ruler the percent ladder drives the rows, not the count values:
   // the reader's ladder is 0/20/…/100%, and the left-hand count ticks land
   // wherever that puts them (generally not round — truthful, and the reason
   // the primary axis stays off by default).
-  if (ruler) {
+  if (!stepped.ticks && ruler) {
     pticks = Array.from({ length: ruler.intervals + 1 }, (_, i) =>
       roundTick(dLo + ((dHi - dLo) * i) / ruler.intervals),
     );
-  } else if (gate.secondaryActive && (va.min !== undefined || va.max !== undefined) && !(options as { [SECONDARY_FULL_DOMAIN]?: unknown })[SECONDARY_FULL_DOMAIN]
+  } else if (!stepped.ticks && gate.secondaryActive && (va.min !== undefined || va.max !== undefined) && !(options as { [SECONDARY_FULL_DOMAIN]?: unknown })[SECONDARY_FULL_DOMAIN]
     && (pticks[0] !== dLo || pticks[pticks.length - 1] !== dHi)) {
     // A second scale reads off the same rows, so they run the whole scale: an authored
     // bound between two ticks moves the rows, it is not left above them. A Pareto total
@@ -328,7 +330,7 @@ function primaryDomain(options: ComboOptions, gate: Gate, extent: { lo: number; 
     const step = pinnedStep(dLo, dHi, pticks.length - 1);
     pticks = Array.from({ length: Math.round((dHi - dLo) / step) + 1 }, (_, i) => Number((dLo + step * i).toPrecision(12)));
   }
-  return { dLo, dHi, pticks };
+  return { dLo, dHi, pticks, stepTicks: stepped.ticks };
 }
 
 /** The step of a pinned range: a ladder step that divides it, in the count nearest `rows`, more rows on a tie; else an even division. */
@@ -895,7 +897,7 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
   // a scale from starting at zero; either way the plain dual axis stays and
   // an info lint says why.
   const anatomyRequested = dualAxisAnatomy(options, secondaryActive, theme);
-  const pinnedBy = [options.valueAxis?.min !== undefined ? 'valueAxis.min' : '', options.valueAxis?.max !== undefined ? 'valueAxis.max' : ''].filter(Boolean);
+  const pinnedBy = [options.valueAxis?.min !== undefined ? 'valueAxis.min' : '', options.valueAxis?.max !== undefined ? 'valueAxis.max' : '', primary.stepTicks ? 'valueAxis.tickStep' : ''].filter(Boolean);
   const negative = lo < 0 || sLoRaw < 0;
   const anatomy = anatomyRequested && pinnedBy.length === 0 && !negative;
   if (anatomyRequested && !anatomy) {

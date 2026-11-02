@@ -18,7 +18,7 @@ import { partialAxisWords, partialFootnotes, partialLegendKeys, partialPattern, 
 import { axisBreakInvalid } from '../../axisBreakInvalid';
 import { axisBreakHeightOrderWarning } from '../../axisBreakOrder';
 import { breakStyleRefusal, stackBreakReversesOrder } from '../band/breakOrder';
-import { bandScale, brokenLinearScale, invalidLinearBreakReason, linearScale, niceDomain, type LinearBreak } from '../../scale';
+import { applyTickStep, bandScale, brokenLinearScale, invalidLinearBreakReason, linearScale, niceDomain, type LinearBreak } from '../../scale';
 import { resolveSize } from '../../normalize/shared';
 import { COLLECT_IDENTITIES } from '../../seriesIdentity';
 import { defaultMeasurer, type FontSpec } from '../../text';
@@ -27,7 +27,7 @@ import type { BarOptions, LegendOptions } from '../../types/options';
 import type { LintWarning } from '../../types/scene';
 import { groupedOffsets } from '../band/groups';
 import { netLineName } from '../band/stacks';
-import { referenceMarkerKey } from '../band/ticks';
+import { breakAxisScale, referenceMarkerKey, stepFitsAxisBreak } from '../band/ticks';
 import { compactValueLabelFont, compactValueTextSize, groupedValueLabelPolicy, INSIDE_MIN_H } from '../band/labels';
 import { partialNamedOnValues, textFor } from './domain';
 import { labelOn } from '../labelOn';
@@ -412,11 +412,22 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
   // The fP/fN reserves are occupied by outside-end labels, so the waste bound
   // measures snap overshoot beyond that intent, not beyond the raw data
   // (the domain-economy invariant).
-  const [dLo, dHi] = fullBars ? [0, hi || 100] : exactDomain ? [loExt, hiExt || 1] : niceDomain(loExt, hiExt || 1, 5, {
+  const nice: [number, number] = fullBars ? [0, hi || 100] : exactDomain ? [loExt, hiExt || 1] : niceDomain(loExt, hiExt || 1, 5, {
     dataExtent: [loExt, hiExt || 1],
     maxWasteFraction: 0.15,
   });
+  const stepped = applyTickStep(nice, options.valueAxis?.show ? options.valueAxis.tickStep : undefined, warnings);
+  let [dLo, dHi] = stepped.domain;
+  let stepTicks = stepped.ticks;
   let activeBreak = barAxisBreak(domain, dLo, dHi, warnings);
+  if (!stepFitsAxisBreak(stepTicks, activeBreak, options.valueAxis?.tickStep, warnings)) {
+    [dLo, dHi] = nice;
+    stepTicks = undefined;
+    const checks: LintWarning[] = [];
+    activeBreak = barAxisBreak(domain, dLo, dHi, checks);
+    warnings.push(...checks.map((warning) => warning.code === 'axis-break-invalid'
+      ? { ...warning, severity: 'warn' as const, message: `${warning.message}; the chart is drawn without the break` } : warning));
+  }
   if (activeBreak && variant !== 'grouped' && stackBreakReversesOrder(brokenLinearScale([dLo, dHi], [plot.x, plot.x + plot.w], activeBreak), domain.stacks)) {
     warnings.push(axisBreakHeightOrderWarning());
     activeBreak = undefined;
@@ -425,7 +436,7 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
     ? brokenLinearScale([dLo, dHi], [plot.x, plot.x + plot.w], activeBreak)
     : linearScale([dLo, dHi], [plot.x, plot.x + plot.w]);
   const titleEnd = axisTitle && options.valueAxis?.show && !titleRow
-    ? tickRowTitleEnd(axisTitle, { scale: x, plot, orient: 'x', gridlines: false, ...domain.axisFmt, theme, measure, canvasWidth: size.width }, plot0.x)
+    ? tickRowTitleEnd(axisTitle, { scale: stepTicks ? breakAxisScale(x, stepTicks) : x, ...(activeBreak ? {} : { ticks: stepTicks }), plot, orient: 'x', gridlines: false, ...domain.axisFmt, theme, measure, canvasWidth: size.width }, plot0.x)
     : undefined;
   if (axisTitle && options.valueAxis?.show && !titleRow && titleEnd === undefined) return undefined;
   const bandFraction = options.bandFraction ?? fixedRow?.fraction ?? 0.7;
@@ -478,7 +489,7 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
     // Grouped value labels print in the emphasis weight, so a value inside a
     // bar end reads at a glance.
     pointFont: { ...(compact ? compactLabelFont : labelFont), ...(variant === 'grouped' && dataSeries.length > 1 ? { weight: emphasisWeight(theme) } : {}) }, compact, thinBars,
-    availH, minWidth: size.width - plotW + 10, capW, catLines, cutNotes, catBandW, plot, axisTitle, activeBreak, x: scale, x0: scale(0), band, negativeLabelsAcross,
+    availH, minWidth: size.width - plotW + 10, capW, catLines, cutNotes, catBandW, plot, axisTitle, activeBreak, stepTicks, x: scale, x0: scale(0), band, negativeLabelsAcross,
     ...(axisTitle ? { axisTitleAt: { x: titleEnd ?? plot.x + plot.w, y: plot.y + plot.h + 6 + (titleRow ? tickRowH + 2 : 0) } } : {}),
     ...(fixedRowsH === undefined ? {} : { fixedRowsH }),
     segmentStep: Math.ceil(Math.max(segmentBar, groupedH) / bandFraction),

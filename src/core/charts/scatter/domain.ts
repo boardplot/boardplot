@@ -26,7 +26,7 @@ import {
   resolveHighlight,
   resolveSize,
 } from '../../normalize/shared';
-import { applyAxisBounds, niceDomain } from '../../scale';
+import { applyAxisBounds, applyTickStep, niceDomain } from '../../scale';
 import type { Annotation } from '../../types/annotations';
 import type { Id } from '../../types/cell';
 import { cellMeta, cellValue, isDateCell, isPctCell } from '../../types/cell';
@@ -374,7 +374,7 @@ function scatterAxisDomain(
   input: AxisDomainInput,
   env: ScatterEnv,
   warnings: LintWarning[],
-): { dx: [number, number]; dy: [number, number]; annotations: Annotation[]; ticks?: { x: number[]; y: number[] }; evenGrid?: { x: boolean; y: boolean } } {
+): { dx: [number, number]; dy: [number, number]; annotations: Annotation[]; ticks?: { x: number[]; y: number[] }; stepTicks?: number[]; evenGrid?: { x: boolean; y: boolean } } {
   const { options, va } = env;
   const fmt = env.axisFmt.y;
   const { clamp, valueLines } = input;
@@ -472,6 +472,19 @@ function scatterAxisDomain(
       ticks = { x: ax.ticks, y: ay.ticks };
     }
   }
+  let stepTicks: number[] | undefined;
+  if (env.log.y && va.tickStep !== undefined) {
+    warnings.push({
+      code: 'tick-step-ignored', severity: 'warn',
+      message: `valueAxis.tickStep ${va.tickStep} applies to a linear axis only; the log ticks are drawn instead`,
+      suggest: 'drop valueAxis.tickStep, or use a linear value axis',
+      field: ['options', 'valueAxis', 'tickStep'],
+    });
+  } else {
+    const stepped = applyTickStep([dyLo, dyHi], va.tickStep, warnings);
+    [dyLo, dyHi] = stepped.domain;
+    stepTicks = stepped.ticks;
+  }
   [dxLo, dxHi] = numericViewportRange(options.viewDomain?.x, [dxLo, dxHi]);
   [dyLo, dyHi] = numericViewportRange(options.viewDomain?.y, [dyLo, dyHi]);
   // The axis ends ON the clamp, so a clipped point lands exactly on the edge
@@ -480,10 +493,14 @@ function scatterAxisDomain(
   if (clamp?.edges.x.max !== undefined) dxHi = clamp.edges.x.max;
   if (clamp?.edges.y.min !== undefined) dyLo = clamp.edges.y.min;
   if (clamp?.edges.y.max !== undefined) dyHi = clamp.edges.y.max;
+  if (stepTicks) {
+    stepTicks = stepTicks.filter((v) => v >= dyLo && v <= dyHi);
+    if (ticks) ticks = { ...ticks, y: stepTicks };
+  }
   const viewY = options.viewDomain?.y ? ([dyLo, dyHi] as [number, number]) : undefined;
   refuseValueLinesOutsideAxis(valueLines, [dyLo, dyHi], viewY ? {} : { min: va.min, max: va.max }, fmt);
   const annotations = valueLinesInView(options.annotations, valueLines, viewY, warnings, fmt);
-  return { dx: [dxLo, dxHi], dy: [dyLo, dyHi], annotations, ...(ticks ? { ticks } : {}), ...(evenGrid ? { evenGrid } : {}) };
+  return { dx: [dxLo, dxHi], dy: [dyLo, dyHi], annotations, ...(ticks ? { ticks } : {}), ...(stepTicks ? { stepTicks } : {}), ...(evenGrid ? { evenGrid } : {}) };
 }
 
 /**
@@ -709,6 +726,7 @@ export function resolveScatterDomain(data: ScatterData, env: ScatterEnv, warning
     dx: axes.dx,
     dy: axes.dy,
     ...(ticks ? { ticks } : {}),
+    ...(axes.stepTicks ? { stepTicks: ticks?.y ?? axes.stepTicks } : {}),
     ...(axes.evenGrid ? { evenGrid: axes.evenGrid } : {}),
     annotations: axes.annotations,
     baselineNotes,

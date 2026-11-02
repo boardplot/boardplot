@@ -137,6 +137,7 @@ export interface ComboDomain {
   dLo: number;
   dHi: number;
   pticks: number[];
+  stepTicks?: number[];
   secondaryDomain?: [number, number];
   rightTicks: { at: number; text: string }[];
 }

@@ -191,7 +191,7 @@ export function layoutMekkoMarks(
   const { nodes, claims } = geometry;
   if (area.showAxis) {
     const axisResult = layoutValueAxis(
-      { scale: y, plot, orient: 'y', gridlines: env.va.gridlines ?? false, format: area.axisFmt, theme: env.theme, measure: env.measure },
+      { scale: y, ticks: domain.stepTicks, plot, orient: 'y', gridlines: env.va.gridlines ?? false, format: area.axisFmt, theme: env.theme, measure: env.measure },
       claims,
     );
     nodes.push(...axisResult.nodes);

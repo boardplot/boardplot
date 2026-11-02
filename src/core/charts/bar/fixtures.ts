@@ -607,6 +607,19 @@ export const fixtures: Fixture<RangeChartData, BarOptions>[] = [
       size: { width: 640, height: 430 },
     },
   },
+  {
+    id: 'tick-step',
+    title: 'Horizontal value axis with ticks every five units',
+    kind: 'example',
+    data: {
+      categories: [{ id: 'north', label: 'North' }, { id: 'south', label: 'South' }, { id: 'west', label: 'West' }],
+      series: [{ id: 'orders', label: 'Orders', values: [10, 23, 31] }],
+    },
+    options: {
+      title: 'Orders by region',
+      valueAxis: { show: true, tickStep: 5 },
+    },
+  },
 ];
 
 const naturalHeightExample = fixtures.find((fixture) => fixture.id === 'margin-by-brand')!;

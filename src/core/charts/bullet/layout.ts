@@ -42,7 +42,7 @@ import {
   type SolveCtx,
 } from '../../label/solver';
 import { accessibleTitle, MAGNITUDE_CEILING, NormalizeError, resolveHighlight, resolveSize, resolveSubtitle } from '../../normalize/shared';
-import { applyAxisBounds, bandScale, linearScale, niceDomain, type BandScale, type LinearScale } from '../../scale';
+import { applyAxisBounds, applyTickStep, bandScale, linearScale, niceDomain, type BandScale, type LinearScale } from '../../scale';
 import { readerFloorPx, textScaleOf } from '../../typeFloors';
 import { cardFrameTheme, cardSize } from '../sparkline/layout';
 import { frameTextOptions, normalizeLegendOption, solveFrame, type FrameInput, type LegendItemInput, plotHeightAfter, authoredFootnoteCount, authoredNotes } from '../../frame';
@@ -973,16 +973,20 @@ export function layoutBullet(
   };
   let scaleAt: (ri: number) => LinearScale;
   let axisScale: LinearScale | null = null;
+  let stepTicks: number[] | undefined;
   if (sharedScale) {
     applyAxisBounds([lo, hi], [lo, hi], options.valueAxis, warnings);
     const [loExt, hiExt] = extend(lo, hi);
     // The fP/fN reserves are occupied by outside-end value labels, so the waste
     // bound measures snap overshoot beyond that label-extended intent, not beyond
     // the raw data (the domain-economy invariant).
-    const [dLo, dHi] = niceDomain(loExt, hiExt || 1, 5, {
+    const nice = niceDomain(loExt, hiExt || 1, 5, {
       dataExtent: [loExt, hiExt || 1],
       maxWasteFraction: 0.15,
     });
+    const stepped = applyTickStep(nice, options.valueAxis?.show ? options.valueAxis.tickStep : undefined, warnings);
+    const [dLo, dHi] = stepped.domain;
+    stepTicks = stepped.ticks;
     const x = linearScale([dLo, dHi], [plot.x, plot.x + plot.w]);
     axisScale = x;
     scaleAt = () => x;
@@ -1025,6 +1029,8 @@ export function layoutBullet(
     const axisResult = layoutValueAxis(
       {
         scale: axisScale,
+        ticks: stepTicks,
+        ...(stepTicks ? { formatSpec: chartSpec ?? defaultFormatSpec(options.locale?.language) } : {}),
         plot,
         orient: 'x',
         gridlines: options.valueAxis.gridlines ?? false,
