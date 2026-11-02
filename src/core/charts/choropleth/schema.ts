@@ -8,7 +8,7 @@ import {
   refusedBaseOptions,
 } from '../../schema/shared';
 import { isIconName, listIcons } from '../../icons';
-import { COLORBLIND_WITHOUT_PAIR_REFUSED, highlightRefused, LEGEND_NONE_REFUSED, regionValuesWithoutLabelsRefused } from './geoRefusals';
+import { highlightRefused, LEGEND_NONE_REFUSED, regionValuesWithoutLabelsRefused } from './geoRefusals';
 import type { ChoroplethData, ChoroplethOptions } from './types';
 import type { GeoOverlay } from './overlayTypes';
 
@@ -114,18 +114,6 @@ export const geoScaleSchema = (midpointLabel: boolean) => z.discriminatedUnion('
     .strict().describe('Diverging scale with an explicit neutral midpoint.'),
 ]).describe('Color scale for the region measure.');
 
-/** colorblindSafe swaps the good/bad poles of a diverging scale; a sequential ramp has none to swap. */
-export function addGeoColorblindIssue(options: { colorblindSafe?: boolean; scale?: { kind: string } }, ctx: z.RefinementCtx): void {
-  if (options.colorblindSafe !== true || options.scale?.kind === 'diverging') return;
-  ctx.addIssue({
-    code: 'custom',
-    path: ['colorblindSafe'],
-    // The key is refused, so the diagnostic carries the remove fix.
-    params: { refused: true },
-    message: COLORBLIND_WITHOUT_PAIR_REFUSED,
-  });
-}
-
 /**
  * A map's key names what its colours measure, so it cannot be hidden: legend
  * 'none' is refused with the remove fix.
@@ -182,7 +170,6 @@ export const choroplethOptionsSchema = z
     methodNote: z.boolean().optional().describe("Default false. true adds the method footnote on which regions the automatic label policy names. The world pack's endorsement disclaimer stays on the source line and prints once. The inset scale note is required for interpretation and prints regardless."),
   })
   .superRefine(addCanvasBoundsIssues)
-  .superRefine(addGeoColorblindIssue)
   .superRefine(addGeoLegendNoneIssue)
   .superRefine(addGeoStepsIssue)
   .superRefine((options, ctx) => {

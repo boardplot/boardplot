@@ -86,9 +86,6 @@ export const OPTION_CAPABILITY = {
       'slope', 'status', 'tilemap', 'variance',
     ],
   },
-  colorblindSafe: {
-    implementedBy: ['bar', 'choropleth', 'column', 'heatmap', 'status', 'table', 'dimswitch', 'tilemap', 'variance'],
-  },
   // the types that draw a forecast, partial-period or no-data hatch
   // the key can strengthen or soften. Per the option census
   // in tests/option-capability.test.ts, variance draws no hatch,

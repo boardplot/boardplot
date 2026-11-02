@@ -7,8 +7,6 @@
  */
 import type { LintWarning } from '../../types/scene';
 
-export const COLORBLIND_WITHOUT_PAIR_REFUSED = "colorblindSafe swaps the good/bad poles of a diverging scale, and a sequential scale paints one ramp with no good/bad pair, so it would change nothing; drop colorblindSafe, or declare scale: { kind: 'diverging', midpoint, polarity }";
-
 export const REGION_VALUES_WITHOUT_CODES_REFUSED = 'regionValues prints values under the tile codes, and labels switch the codes off; turn the category labels on, or drop regionValues';
 
 export const LEGEND_NONE_REFUSED = "a map's colours are its values, so its key cannot be hidden; drop legend: 'none', or name where the key goes ('top' or 'bottom')";
@@ -25,16 +23,13 @@ function refusedKey(key: string, message: string): LintWarning {
 }
 
 export function geoOptionRefusals(
-  options: { colorblindSafe?: unknown; scale?: { kind?: unknown }; regionValues?: unknown; labels?: unknown; legend?: unknown; highlight?: unknown },
+  options: { regionValues?: unknown; labels?: unknown; legend?: unknown; highlight?: unknown },
   type: 'choropleth' | 'tilemap',
 ): LintWarning[] {
   const found: LintWarning[] = [];
   // A map's key cannot be hidden, and a region has no emphasis state.
   if (options.legend === 'none') found.push(refusedKey('legend', LEGEND_NONE_REFUSED));
   if (options.highlight !== undefined) found.push(refusedKey('highlight', highlightRefused(type)));
-  if (options.colorblindSafe === true && options.scale?.kind !== 'diverging') {
-    found.push(refusedKey('colorblindSafe', COLORBLIND_WITHOUT_PAIR_REFUSED));
-  }
   const labels = options.labels as false | 'none' | { category?: unknown } | undefined;
   if (type === 'tilemap' && options.regionValues === true && (labels === false || (typeof labels === 'object' && labels?.category === false))) {
     found.push(refusedKey('regionValues', REGION_VALUES_WITHOUT_CODES_REFUSED));

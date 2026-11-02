@@ -57,7 +57,7 @@ One form; its chart ID is `pareto`.
 | totalScale | boolean |  |  | Scale the left axis to the total: 100% on the right sits level with the total on the left, so the curve starts at the top of the first column and each column reads against the curve. Default: on when a vital few reaches the threshold and no valueAxis.min or max is set; off for a flat distribution, whose columns would shrink to a sliver. false caps the column axis on the columns alone and the curve rides its own 0-100% scale. |
 | methodNote | boolean |  | `false` | Footnotes stating the derivation and the vital-few set. Default false: the reader gets the exhibit, not a method statement. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis.tickStep`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `hatchStrength`, `colorblindSafe`, `rounding`.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis.tickStep`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `hatchStrength`, `rounding`.
 
 ## Annotations
 

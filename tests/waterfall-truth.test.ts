@@ -19,7 +19,50 @@ import { getChartDefinition } from '../src/core/registry';
 import { unscaledFormatLint } from '../src/core/formatSpec';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/index';
 import { getFixtures } from '../src/fixtures';
+import { resolvePaint } from '../src/core/svg/paint';
+import { resolveTheme } from '../src/core/theme';
 import type { Geometry } from '../src/core/types/scene';
+
+// colorblindSafe was refused on KPI, waterfall and pvm although all three paint a good/bad pair, and on every chart that paints none.
+it('accepts colorblindSafe on every chart and swaps the good/bad paints of KPI, waterfall and pvm', () => {
+  const layout = (spec: object, options: object) => {
+    const result = layoutResolvedRequest(resolveChartRequest({ ...spec, options } as never));
+    if (result.refused) throw new Error('colorblindSafe chart refused');
+    return result;
+  };
+  const colorblind = (role: string) => expect.objectContaining({ theme: expect.objectContaining({ kind: 'colorblind', role }) });
+  const theme = resolveTheme('standard');
+  const options = { colorblindSafe: true };
+
+  const kpi = layout({ type: 'kpi', data: { label: 'Revenue', value: 120, delta: { vs: 100, scenario: 'PY' } } }, options);
+  const caret = kpi.scene.find(node => node.id === 'mark:delta:caret');
+  if (caret?.t !== 'path' || !caret.fill) throw new Error('delta caret missing');
+  expect(caret.fill).toEqual(colorblind('good'));
+  expect(resolvePaint(caret.fill, theme)).toBe(theme.color.colorblind.good);
+  const delta = kpi.scene.find(node => node.id === 'label:point:delta');
+  expect(delta?.t === 'text' && delta.ink).toEqual(caret.fill);
+
+  const bridge = { type: 'waterfall', data: { items: [
+    { id: 'open', type: 'total', value: 100 }, { id: 'gain', value: 12 }, { id: 'loss', value: -8 }, { id: 'close', type: 'total' },
+  ] } };
+  for (const variant of ['vertical', 'horizontal']) {
+    const drawn = layout(bridge, { ...options, variant, theme: { preset: 'standard', overrides: { marks: { bridge: 'sign' } } } });
+    for (const [id, tone] of [['gain', 'good'], ['loss', 'bad']] as const) {
+      const bar = drawn.scene.find(node => node.t === 'rect' && node.part === 'segment' && node.owner?.categoryId === id);
+      if (bar?.t !== 'rect') throw new Error(`${id} step missing`);
+      expect(bar.fill).toEqual(colorblind(`${tone}Fill`));
+      const label = drawn.scene.find(node => node.id === `label:sum:${id}`);
+      expect(label?.t === 'text' && label.ink).toEqual(colorblind(tone));
+    }
+  }
+  const pvm = getFixtures('pvm')[0]!;
+  const bridgePvm = layout({ type: 'pvm', data: pvm.data }, { ...pvm.options, ...options });
+  expect(bridgePvm.scene.some(node => node.t === 'rect' && node.fill && 'theme' in node.fill && node.fill.theme?.kind === 'colorblind')).toBe(true);
+
+  // A chart with no good/bad pair draws the same geometry with the flag.
+  const line = { type: 'line', data: { categories: [{ id: 'a' }, { id: 'b' }], series: [{ id: 's', values: [3, 1] }] } };
+  expect(layout(line, options).scene).toEqual(layout(line, {}).scene);
+});
 
 const def = getChartDefinition('waterfall')!;
 

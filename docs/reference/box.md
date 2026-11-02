@@ -56,7 +56,7 @@ One form; its chart ID is `box`.
 | methodNote | boolean |  | `false` | Default false. true adds the footnote stating the quartile definition and the Tukey whisker rule. A 'minmax' or 'p10p90' whisker rule changes what whiskers and dots mean, so its note prints regardless, as do the small-n dot note and the note on withheld observations. |
 | boxValues | string | `'median'`, `'all'` | `'median'` | Default 'median': each box prints its median. 'all' also prints Q1 and Q3 under the box edges and the whisker ends under the caps, so a quartile or percentile reads as a number. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `categoryLabels`, `legend`, `valueAxis.log`, `categoryAxis`, `topN`, `bandFraction`, `hatchStrength`, `colorblindSafe`, `rounding`.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `categoryLabels`, `legend`, `valueAxis.log`, `categoryAxis`, `topN`, `bandFraction`, `hatchStrength`, `rounding`.
 
 ## Annotations
 

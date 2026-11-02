@@ -21,8 +21,6 @@ export const OPTION_REASONS: Readonly<Record<keyof typeof OPTION_CAPABILITY, str
     "only 'combo' and 'box' have a second value scale to acknowledge; a single-scale chart has no second axis, so declaring one acknowledges nothing",
   labels:
     "this type never consults the per-kind label toggle map. On waterfall/pvm use labelDensity ('minimal' keeps totals and endpoints, dropping delta and segment values); on grid author labels on each panel's own options; table and diagram have their own display models",
-  colorblindSafe:
-    "colorblindSafe swaps a SEMANTIC good/bad pair for the colour-vision-safe one; bar, column, variance and status swap their signed marks, heatmap its valence cells, table its tones, grounds, bars and badges, and choropleth and tilemap the poles of a diverging scale. This type paints no good/bad pair; on a categorical ramp the equivalent control is a colorblind-safe 'palette'",
   hatchStrength:
     "this type draws no forecast, partial-period or no-data hatch, so there is nothing to strengthen or soften. Drop hatchStrength",
   sort:
@@ -163,11 +161,6 @@ const ALTERNATIVES: Readonly<Record<string, Readonly<Record<string, string>>>> =
     bartable: "each row's value prints at its bar end",
     creative: 'the card prints the figures it is given',
     diagram: 'a diagram prints its own node and edge text',
-  },
-  colorblindSafe: {
-    '*': 'this type paints no good/bad pair; options.palette names a colorblind-safe categorical ramp',
-    likert: 'a likert always paints its agree side in color.colorblind.goodFill, so its sides stay apart without the option',
-    slope: "variant 'diverging' always paints its better side in color.colorblind.good and goodFill, so its sides stay apart without the option; the other variants paint no good/bad pair",
   },
   hatchStrength: {
     '*': 'this type draws no forecast, partial-period or no-data hatch',

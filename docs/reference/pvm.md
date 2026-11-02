@@ -74,7 +74,7 @@ One form; its chart ID is `pvm`.
 | methodNote | boolean |  |  | Default false. true adds the short convention ("volume and mix at prior prices") to the one footer line, which joins the coverage note ("Covers the 4 items in both periods") while items enter or leave the book; the coverage part prints regardless. Where Volume and Mix nearly cancel (their sum under a tenth of the larger) the convention and the counting unit print without it, since the split between them then carries the story. The long method notes are in derived, and join the notes list when notes is set. |
 | netChange | boolean |  | `true` | Default true. Prints the net change from the opening to the closing total, absolute and in percent, in its sign colour above the closing column. false leaves the closing column with its value only. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `labels`, `categoryLabels`, `valueAxis.show`, `valueAxis.min`, `valueAxis.max`, `valueAxis.tickStep`, `valueAxis.includeZero`, `valueAxis.percent`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.gridlines`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `topN`, `hatchStrength`, `colorblindSafe`, `rounding`.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `labels`, `categoryLabels`, `valueAxis.show`, `valueAxis.min`, `valueAxis.max`, `valueAxis.tickStep`, `valueAxis.includeZero`, `valueAxis.percent`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.gridlines`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `topN`, `hatchStrength`, `rounding`.
 
 ## Annotations
 

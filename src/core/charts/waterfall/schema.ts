@@ -190,7 +190,7 @@ const waterfallOptionsShape = baseOptionsSchema.safeExtend(refusedBaseOptions('w
   axisTitles: primaryAxisTitleSchema('above the vertical plot').describe('Authored primary value-axis title above the vertical plot, using column title styling. Waterfall draws no value ticks. Horizontal mode accepts this key but does not print it.'),
   variant: z.enum(['vertical', 'horizontal']).optional().describe("Left out: vertical columns, turned into a horizontal bridge when the step names would rotate, shorten or drop, the horizontal bridge draws without a new finding, and the spec has no cases and no annotations. 'vertical' always keeps columns. A horizontal bridge draws no annotations: it suppresses them and warns horizontal-annotations-unsupported, so use vertical for annotations."),
   build: z.enum(['up', 'down']).optional().describe("Build label in the accessible description; defaults to up. Item types and signed values determine accumulation in both modes."),
-  signColor: z.boolean().optional().describe("Paint each plain step good or bad by sign × item direction, as column's signColor; zero is neutral. Default true unless the theme sets marks.bridge or a palette is named; false paints steps neutral."),
+  signColor: z.boolean().optional().describe("Paint each plain step good or bad by sign × item direction, as column's signColor; zero is neutral. Default true unless the theme sets marks.bridge or a palette is named; false paints steps neutral. colorblindSafe paints signed steps, labels and key swatches with the theme's colour-blind pair."),
 });
 
 export const waterfallOptionsSchema =

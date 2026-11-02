@@ -93,7 +93,7 @@ One form; its chart ID is `gantt`.
 | calendar.span | string | `'periods'`, `'data'` |  | Timeline span. 'periods' (default): whole calendar periods of the head's finer tier. 'data': from the first item or cadence day to the later of the last item end and options.today, so the arrows end at the edge. A milestone or cadence marker on the first or last day keeps room for its radius inside the edge. Event annotations and a today before the first item do not extend the span; they are left out with event-out-of-range or today-out-of-range. |
 | colHeaders | array |  |  | Positional headers for up to three existing metadata columns. Omitted or empty entries have no header; entries without a displayed column are ignored. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `categoryLabels`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `topN`, `hatchStrength`, `colorblindSafe`, `rounding`.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `categoryLabels`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `topN`, `hatchStrength`, `rounding`.
 
 ## Annotations
 
