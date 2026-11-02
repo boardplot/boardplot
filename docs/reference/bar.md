@@ -127,6 +127,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | netLine.connectors | boolean |  |  | Must remain false for bars because structural category axes carry no sequence. |
 | averageMarker | boolean \| object |  |  | Computed dashed average rule with a solver-placed Ø label. |
 | averageMarker.scope | string \| array | `'all'` (or another value of its type) |  | Series included in the computed average; defaults to 'all'. |
+| averageMarker.includePartial | boolean |  |  | true averages the categories marked partial too. By default they are left out, and the label names the periods the average covers. Column, bar and combo. |
 | connectors | boolean \| object |  |  | Connect matching series boundaries between adjacent stacked bars. |
 | connectors.style | string | `'line'`, `'dashed'` |  | Connector stroke: solid 'line' (default) or 'dashed', matching the waterfall bridge's dash. |
 | connectors.scope | string \| array | `'all'` (or another value of its type) |  | Series boundaries to connect; defaults to 'all'. |

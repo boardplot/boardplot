@@ -621,7 +621,7 @@ export function layoutBullet(
   const bandedRows = rows.filter((row) => row.bands.length > 0);
   const namesEveryBand = bandedRows.length > 0 && bandedRows.every((row) => row.bands.every((band) => band.label !== undefined));
   // An authored band fraction sizes today's rows; 'auto' keeps them for it.
-  const rowWanted = !rowKeyOff && !compact && labelOn('annotation') && namesEveryBand
+  const rowWanted = !rowKeyOff && !compact && (options.labels === false || labelOn('annotation')) && namesEveryBand
     && (keyMode === 'row' || (keyMode === 'auto' && rows.length <= 4 && options.bandFraction === undefined));
   if (rowWanted && options.bandFraction !== undefined) {
     warnings.push({

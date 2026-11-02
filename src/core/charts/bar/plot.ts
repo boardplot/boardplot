@@ -7,7 +7,7 @@ import { stringFields } from '../../strings';
 
 import { BAND_PAD } from '../../annotateParts';
 import { axisTitleAllowed, planValueAxisTitle, tickRowTitleEnd, valueAxisTitleText, valueAxisUnit } from '../../axis';
-import { authoredNotes, cappedItems, frameTextOptions, normalizeLegendOption, plotHeightAfter, solveFrame, type FrameInput, type FrameResult, type LegendItemInput, authoredFootnoteCount } from '../../frame';
+import { authoredNotes, cappedItems, frameTextOptions, normalizeLegendOption, plotHeightAfter, shareUnitOptions, solveFrame, type FrameInput, type FrameResult, type LegendItemInput, authoredFootnoteCount } from '../../frame';
 import type { Rect } from '../../geometry';
 import { dedupeLegendKeys, scenarioLegendKeys } from '../../label/legendFidelity';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
@@ -168,7 +168,7 @@ export function solveBarFrame(domain: BarDomain, paints: BarLegendPaints, warnin
     {
       size,
       margin: { ...canvasMargin(theme, size.width), ...options.margin },
-      ...frameTextOptions(options),
+      ...frameTextOptions(shareUnitOptions('bar', options)),
       footnotes: [...partialFootnotes(cats, options.strings, legend?.items.some(item => item.id === '__partial') || partialNamedOnValues(domain)),
         ...(domain.variant === 'stacked' && domain.incompleteRows.size ? [disclosureNote(stringFields(options.strings!.incompleteStacks!, {
           categories: cappedItems(cats.filter(c => domain.incompleteRows.has(c.id)).map(c => c.label ?? c.id), options).join(', '),
@@ -203,7 +203,7 @@ export function barChromeFloor(options: BarOptions): number {
   const frame = solveFrame({
     size,
     margin: { ...canvasMargin(theme, size.width), ...options.margin },
-    ...frameTextOptions(options),
+    ...frameTextOptions(shareUnitOptions('bar', options)),
     [COLLECT_IDENTITIES]: undefined,
     footnotes: authoredNotes(options),
     theme,

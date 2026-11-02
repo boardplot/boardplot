@@ -24,7 +24,7 @@ import {
   type FrameInput,
   type FrameResult,
   type LegendItemInput,
-  authoredFootnoteCount, authoredNotes, noteLine, type NoteCapOptions } from '../../frame';
+  authoredFootnoteCount, authoredNotes, noteLine, shareUnitOptions, type NoteCapOptions } from '../../frame';
 import type { Rect } from '../../geometry';
 import { categoryRowTop, hangingLabelReserve, planCategoryRow, rotatedLeftOverhang } from '../../label/categoryRow';
 import { fitText } from '../../label/fitText';
@@ -304,7 +304,7 @@ export function solveColumnFrame(
     {
       size,
       margin,
-      ...frameTextOptions(options),
+      ...frameTextOptions(shareUnitOptions('column', options)),
       footnotes: [
         ...partialFootnotes(domain.cats, options.strings, legend?.items.some(item => item.id === '__partial') || partialNamedOnValues(domain)), ...authoredNotes(options),
         // Above 8 values the note counts them against all drawn values.
@@ -554,6 +554,7 @@ function columnBand(
       centers: cats.map((_, ci) => b.center(ci)),
       step: b.step,
       fonts: [tickFont, { ...tickFont, size: tickFont.size - scaleTextPx(1, textScaleOf(options)) }, { family: theme.type.family, ...theme.type.footnote }],
+      stepToFloor: true,
       secondary: secondaryFont(theme), periods: cats.length > 0 && cats.every(c => c.date !== undefined),
       padding: 4,
       measure,

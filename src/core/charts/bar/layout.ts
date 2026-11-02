@@ -390,6 +390,7 @@ function annotateBar(
     format: domain.options.format,
     locale: domain.options.locale?.language,
     strings: domain.options.strings,
+    sharesFormat: domain.variant === 'stacked100',
     valueLinePercentLevels: domain.variant === 'stacked100' || domain.options.unit === '%' || percentLevels(domain.dataSeries.map(series => ({ vals: series.cells }))),
     solveCtx,
     meanValue: domain.meanValue,

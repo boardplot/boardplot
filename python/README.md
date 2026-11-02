@@ -189,7 +189,7 @@ print([t["type"] for t in catalog["types"]][:5], bar["summary"])
 
 ## Interactive view
 
-In a live notebook (JupyterLab, Notebook 7, VS Code, Colab), a chart shows as an interactive view. It draws at the width of the output area, shows a hover card for each mark, and takes the keyboard: Tab moves into the chart, the arrow keys move between marks, and Enter clicks. Without an explicit `theme=`, the view follows the notebook: `boardroom` on a light page, `standard-dark` on a dark one.
+In a live notebook (JupyterLab, Notebook 7, VS Code, Colab), a chart shows as an interactive view. It draws at the width of the output area, shows a hover card for each mark, and takes the keyboard: Tab moves into the chart, the arrow keys move between marks, and Enter clicks. Without an explicit `theme=`, the view follows the notebook: `bridge` on a light page, `bridge-dark` on a dark one.
 
 ```python
 import boardplot as bp
@@ -243,7 +243,7 @@ if result.click:
 
 Inside `st.form`, Streamlit drops click events, so a chart there takes only `on_click="ignore"`.
 
-Without `theme=`, the chart follows the app theme, also when the reader switches it: `boardroom` on a light app, `standard-dark` on a dark one. An explicit `theme=` always wins. `python/examples/streamlit_app.py` is a complete app.
+Without `theme=`, the chart follows the app theme, also when the reader switches it: `bridge` on a light app, `bridge-dark` on a dark one. An explicit `theme=` always wins. `python/examples/streamlit_app.py` is a complete app.
 
 ## Display modes
 
@@ -276,14 +276,14 @@ JupyterLab's "Save Widget State Automatically" setting is off by default. If you
 import boardplot as bp
 
 rows = [{"q": "Q1", "v": 1234.5}, {"q": "Q2", "v": 1410.0}]
-dark = bp.chart(rows, "column", category="q", value="v", title="Q2 is up", theme="standard-dark",
+dark = bp.chart(rows, "column", category="q", value="v", title="Q2 is up", theme="bridge-dark",
                 options={"unit": "EUR"})
 german = bp.chart(rows, "column", category="q", value="v", title="Q2 liegt vorn",
                   options={"unit": "EUR", "locale": {"language": "de-DE"}})
 ```
 
 - `theme=` takes a preset name, `{"preset": ..., "overrides": {...}}` or a full theme object. It replaces every theme in the spec or template. `bp.describe("theme")` lists the tokens. `Chart.theme` returns the theme in force, or `None`.
-- With no theme, the static SVG uses the engine default, `boardroom`.
+- With no theme, the static SVG uses the engine default, `bridge`.
 - The package never sets a locale. It does not read the locale of the operating system, the browser or Python. Numbers keep Boardplot's default marks (1,234.5: comma groups, dot decimal) unless your options set them. `{"language": "de-DE"}` alone does not change the marks.
 
 ## Network and telemetry

@@ -9,12 +9,13 @@ import { cellFields, normalizeCategorySeries } from '../categorySeries';
 import { breakUnsupported, chartPalette, chartTheme } from '../chartEnv';
 import { defaultMeasurer } from '../../text';
 import { tickFormatter } from '../../axis';
+import { cleanSum } from '../../geometry';
 import { formatAutomaticPercent, formatShare } from '../../format';
 import { roundingUnavailable, shareRoundingNotes, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
 import { comboValueLabels, FIRST_END_BELOW_TOTALS } from './endpoints';
 import { unitConflict, unitConflictRefusal } from '../../schema/units';
 import { formatStatWithSpec, formatterFromExample, memoFormatterFromExample, percentRasterFormatter, seriesRasterFormatter } from '../../formatSpec';
-import { averageMarkerLine, averageMarkerScope, averageOfUnaddedSums, warnIncompleteStacks } from '../band/stacks';
+import { averageMarkerLine, averageMarkerMean, averageMarkerSpan, averageMarkerScope, averageOfUnaddedSums, warnIncompleteStacks } from '../band/stacks';
 import { anomalyCorridor, anomalyModel, refuseAnomalySpec } from '../column/anomaly';
 import type { LineAnomaly } from '../line/model';
 import {
@@ -246,7 +247,7 @@ function comboStacks(cats: Category[], columnSeries: NormSer[]) {
     negBot[ci] = n;
     anyByCat[ci] = columnSeries.some((s) => s.vals[ci]!.v !== null);
     // Exact: the total label and the description round once, at print time.
-    if (columnSeries.length > 0) stackTotals[c.id] = p + n;
+    if (columnSeries.length > 0) stackTotals[c.id] = cleanSum([p, n]);
     lo = Math.min(lo, n);
     hi = Math.max(hi, p);
   });
@@ -664,10 +665,10 @@ export function dualAxisAnatomy(options: ComboOptions, secondaryActive: boolean,
  * dashed Ø rule on the primary axis. A line in the scope is left out and
  * named: its values sit on their own scale more often than not.
  */
-function averageMarkerMean(
+function comboAverageRun(
   options: ComboOptions, cats: Category[], columns: NormSer[], lines: NormSer[], warnings: LintWarning[],
   adds: (columns: NormSer[]) => boolean,
-): number | undefined {
+): ReturnType<typeof averageMarkerMean> | undefined {
   const scope = averageMarkerScope(options.averageMarker);
   if (scope === undefined) return undefined;
   const lineIds = scope === 'all' ? [] : scope.filter((id) => lines.some((s) => s.id === id));
@@ -681,15 +682,12 @@ function averageMarkerMean(
   }
   const selected = columns.filter((s) => scope === 'all' || scope.includes(s.id));
   if (averageOfUnaddedSums(adds(selected), warnings)) return undefined;
-  const stacks = cats.flatMap((_, ci) => {
-    const values = selected.flatMap((s) => (s.vals[ci]?.v == null ? [] : [s.vals[ci]!.v!]));
-    return values.length > 0 ? [values.reduce((sum, v) => sum + v, 0)] : [];
-  });
-  if (stacks.length === 0) {
+  const run = averageMarkerMean(options.averageMarker, 'all', cats, true, selected, (s, _, ci) => s.vals[ci]?.v ?? null);
+  if (run.mean === undefined) {
     warnings.push({ code: 'average-marker-empty', severity: 'warn', message: 'averageMarker scope has no plotted values; marker omitted' });
     return undefined;
   }
-  return stacks.reduce((sum, v) => sum + v, 0) / stacks.length;
+  return run;
 }
 
 /**
@@ -811,7 +809,7 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
   // the column stack has a total, and a mean, only when its parts add.
   const addsOver = (series: NormSer[]) => stackAdds(series.map((s) => ({ label: s.label, unit: s.unit, pctCells: s.vals.some((val) => val.isPct) })), options.unit, undefined);
   const columnsAdd = addsOver(columns);
-  const averageMean = averageMarkerMean(options, cats, columns, lines, warnings, addsOver);
+  const averageRun = comboAverageRun(options, cats, columns, lines, warnings, addsOver);
   // The anomaly rule reads every source period of the one line, before a window or zoom.
   const anomalyRun = options.anomaly
     ? comboAnomalyModel(options.anomaly, cats, lines, secondarySpec, valueSpec, pctFmt, options.locale?.language, warnings, options.strings)
@@ -822,9 +820,9 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
   // A mean keeps every source period, and its label names them where the plot draws fewer.
   const meanSpan = viewportMeanSpan(population);
   const shown = population ? population.annotations : options.annotations;
-  const marker = averageMean === undefined
+  const marker = averageRun === undefined
     ? undefined
-    : { ...averageMarkerLine(shown ?? [], averageMean, (v) => formatStatWithSpec(v, valueSpec.spec), meanSpan(), options.strings?.average), side: 'right' as const };
+    : { ...averageMarkerLine(shown ?? [], averageRun.mean!, (v) => formatStatWithSpec(v, valueSpec.spec), averageMarkerSpan(averageRun, meanSpan), options.strings?.average), side: 'right' as const };
   const averageMarkerId = marker?.id;
   const annotations = marker ? [...(shown ?? []), marker] : shown;
   const effective = population
