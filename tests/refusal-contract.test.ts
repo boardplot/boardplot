@@ -12,7 +12,7 @@ import '../src/core/charts';
 import { render } from '../src/cli/render';
 import { getFixtures, getRefusalExamples } from '../src/fixtures';
 import { getChartSchemas, listCharts } from '../src/core/registry';
-import { schemaRefusedKeys } from '../src/core/schema/capability';
+import { IGNORED_OPTION_KEYS, LEGEND_REFUSED, schemaRefusedKeys, valueAxisRefusal } from '../src/core/schema/capability';
 import { SparklineChart } from '../src/react/charts/sparkline';
 
 type Node = Record<string, any>;
@@ -98,6 +98,8 @@ describe('refusal contract', () => {
         paths.set(path.join('.'), path);
       }
       for (const [dotted, path] of paths) {
+        if (path.length === 1 && (IGNORED_OPTION_KEYS.has(dotted) || (dotted === 'legend' && LEGEND_REFUSED.includes(type)))) continue;
+        if (path[0] === 'valueAxis' && ['show', 'gridlines'].includes(path[1]!) && valueAxisRefusal(type, path[1]!) !== undefined) continue;
         const options: Record<string, unknown> = {};
         setAt(options, path, true);
         const error = cliErrors(type, options).find((candidate) => candidate.path === `/options/${path.join('/')}`);

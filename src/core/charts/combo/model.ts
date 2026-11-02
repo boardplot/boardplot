@@ -181,6 +181,8 @@ export interface ComboArea {
   endpointWidth: number;
   band: BandScale;
   catPlan: CategoryRowPlan;
+  /** categoryAxis.dateTicks: true at the first category of each calendar interval. */
+  intervalTicks?: readonly boolean[];
   dateNumericTicks: boolean;
   showCatTickRow: boolean;
   /** options.categoryLabels 'staircase' on this pass: the highest y the names may use. */

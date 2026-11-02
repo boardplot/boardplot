@@ -1,3 +1,4 @@
+import type { OptionsInput } from '../core/types/optionInput';
 import { hasPolarityBadge, isFigureCell, polarityBadgeInk } from '../core/charts/table/chips';
 import { belowTableViewportFloor, tableWidths } from '../core/charts/table/widths';
 import {
@@ -28,9 +29,9 @@ import { usePrinting, watchPrint } from './printLayout';
 import { rebindable } from './linkedBinding';
 import { useExportLink, type DrawnChart, type ExportLink } from './exportLink';
 import { checkedIdPrefix, IdPrefixContext, useScopedId } from './idPrefix';
-import { frameSize, RefusalBoundary } from './RefusalBoundary';
+import { asSize, frameSize, RefusalBoundary, type PerTypeSizeOptions } from './RefusalBoundary';
 import { LayoutRefusal, LoadingPlaceholder, SizePlaceholder, type RefusalProps } from './SizePlaceholder';
-import { chartRefusals, isSizeDependentRefusal, optionRefusals, refusalFindings } from '../core/schema/refusals';
+import { chartRefusals, isSizeDependentRefusal, optionRefusals } from '../core/schema/refusals';
 import { useRefusalSettle } from './useRefusalSettle';
 import type { OptionKeyCheck } from '../core/schema/unknownKeys';
 import { publishTableChart } from './specHandover';
@@ -128,7 +129,7 @@ export type { TableScrollState } from './scrollState';
  * one question: in which order do the rows come out. The shapes say which is
  * meant — a column sort names a column, an authored order names `categories`.
  */
-type TableSortProp = TableSort | TableOptions['sort'] | null;
+type TableSortProp = TableSort | OptionsInput<TableOptions>['sort'] | null;
 
 /** From this many columns on, the grid builds only the columns near its scroll viewport, so a table of hundreds of day columns stays responsive. */
 const WINDOW_COLUMNS = 40;
@@ -181,8 +182,11 @@ export interface TableRowLabelLead {
   render: (row: ResolvedRow) => ReactNode;
 }
 
-export type TableChartProps = Omit<TableOptions, 'columnVisibility' | 'inlineVisibility' | 'size' | 'sort'> & ContainerSizeOptions & RefusalProps & RowsProps & {
+export type TableChartProps = OptionsInput<Omit<TableOptions, 'columnVisibility' | 'inlineVisibility' | 'size' | 'sort'>> & PerTypeSizeOptions & RefusalProps & RowsProps & {
   data: TableData;
+  /** Applied to a wrapper around the table. */
+  className?: string;
+  style?: CSSProperties;
   /** Explicit target wins over the provider. Defaults to report. */
   target?: RenderTarget;
   /** Canonical findings and observed display findings, once per warning state. */
@@ -485,7 +489,8 @@ function columnVisibilityDefaults(table: ResolvedTable, authored?: Record<Id, bo
  * before the check.
  */
 export function createTableChart(checkKeys?: OptionKeyCheck, linked?: readonly DeferredName[]) {
-  function GatedTable(props: TableChartProps): ReactElement {
+  type NormalizedTableProps = Omit<TableChartProps, 'size' | 'fallbackSize'> & ContainerSizeOptions;
+  function GatedTable(props: NormalizedTableProps): ReactElement {
     // Rows answer before the table resolves: a table has no data while the rows chunk loads or after it refuses them.
     const { rows, columns, onRowsReading, ...table } = props;
     const gate = useRowsGate({ type: 'table', data: table.data }, { rows, columns, onRowsReading }, table);
@@ -493,9 +498,16 @@ export function createTableChart(checkKeys?: OptionKeyCheck, linked?: readonly D
   }
   // A bad value draws the refusal card in the table's own frame and never unmounts the host's root (RefusalBoundary).
   function TableChart(props: TableChartProps): ReactElement {
-    const { size, fallbackSize, target, title, theme } = props as TableChartProps & { title?: unknown; theme?: ThemeRef };
-    return <RefusalBoundary watch={props} fallback={(finding) => <LayoutRefusal refusals={[finding]} theme={theme}
-      size={frameSize(size === 'container' ? fallbackSize : size as Parameters<typeof frameSize>[0], target)} options={typeof title === 'string' ? { title } : {}} />}><GatedTable {...props} /></RefusalBoundary>;
+    const { className, style, size, fallbackSize, ...rest } = props;
+    const { target, title, theme } = props as TableChartProps & { title?: unknown; theme?: ThemeRef };
+    const normalizedSize = useMemo(() => asSize(size), [size]);
+    const normalizedFallback = useMemo(() => asSize(fallbackSize) as ContainerSizeOptions['fallbackSize'], [fallbackSize]);
+    const table = <RefusalBoundary watch={props} size={normalizedSize} fallbackSize={normalizedFallback} target={target} theme={theme}
+      fallback={(finding) => <LayoutRefusal refusals={[finding]} theme={theme}
+        size={frameSize(normalizedSize === 'container' ? normalizedFallback : normalizedSize, target)} options={typeof title === 'string' ? { title } : {}} />}>
+      <GatedTable {...rest} size={normalizedSize} fallbackSize={normalizedFallback} />
+    </RefusalBoundary>;
+    return className !== undefined || style !== undefined ? <div className={className} style={style}>{table}</div> : table;
   }
   // The registry type this component renders, stated by the component itself —
   // the same stamp createChartComponent writes, so the public API check resolves
@@ -509,7 +521,7 @@ export function createTableChart(checkKeys?: OptionKeyCheck, linked?: readonly D
 /** The table without the unknown-key check, for code that links this module directly. */
 export const TableChart = createTableChart();
 
-function DrawnTable({ table: props, checkKeys, linked }: { table: TableChartProps; checkKeys: OptionKeyCheck | undefined; linked: readonly DeferredName[] | undefined }): ReactElement {
+function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChartProps, 'size' | 'fallbackSize'> & ContainerSizeOptions; checkKeys: OptionKeyCheck | undefined; linked: readonly DeferredName[] | undefined }): ReactElement {
   const compiledRequest = useContext(TableFloorRequestContext);
   const originalFloorRequest = compiledRequest?.request;
   const {
@@ -574,7 +586,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: TableChartProp
   const [scrollWidth, setScrollWidth] = useState<number>();
   const resolvedSize = size === 'container' ? container.size : size;
   const stableSize = useStableValue(typeof resolvedSize === 'object' ? resolvedSize : {});
-  const authoredTableOptions: TableOptions = {
+  const authoredTableOptions: OptionsInput<TableOptions> = {
     ...options,
     // An authored sibling order goes back into the options the core resolves;
     // a column sort is reader state and never reaches resolveTable.
@@ -624,7 +636,6 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: TableChartProp
   // spec that carries `expansion.rootsHidden` or the totals step hides its
   // roots in the grid as the SVG does.
   const rootsHidden = controlledRootsHidden ?? (resolved === undefined ? false : expansionRootsHidden(resolved.table, tableOptions?.expansion));
-  const colorblindSafe = tableOptions?.colorblindSafe === true;
   // By content: a container that reports its width re-derives the theme, and the same theme must not fit and measure
   // every cell again.
   // A table in a container, mounted fresh on the client, waits the frame its container takes to report a width, as a
@@ -638,12 +649,6 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: TableChartProp
   // every cell again.
   const theme = useStableValue(useMemo(() => request && !waitsForWidth ? tableRenderTheme(request) : undefined,
     [request?.theme, request?.target, request?.size.width, tableOptions, waitsForWidth]));
-  // Whether the table paints a good/bad pair at all is the SVG layout's own
-  // check (table-colorblind-safe-unused), so the grid refuses what the CLI
-  // refuses. It lays the table out only when colorblindSafe is on.
-  const colorblindWarnings = useMemo(() => colorblindSafe && layoutRequest && tableOptions
-    ? tableCore.layout(layoutRequest.data as TableData, tableOptions).warnings.filter((warning) => warning.code === 'table-colorblind-safe-unused')
-    : [], [layoutRequest, colorblindSafe]);
   const metricMeasure = request?.fontMetrics ?? defaultMeasurer;
   const width = useWidthMeasure(metricMeasure, measureWidths === 'browser');
   const statement = resolved?.table.rows.some(row => row.sign === -1 || row.operator !== undefined || row.kind === 'subtotal' || row.kind === 'result' || row.kind === 'driver') ?? false;
@@ -1041,10 +1046,10 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: TableChartProp
   const spacerWidths = measured?.spacerBefore ?? new Map<Id, number>();
   const labelsWrap = measured?.labelsWrap ?? false;
   const diagnostics = useMemo(() => layoutRequest && resolved ? {
-    warnings: [...resolved.warnings, ...(layoutRequest.inputWarnings ?? []), ...(fittedNote === undefined ? [] : [fittedNote]), ...colorblindWarnings, ...(measured?.warnings ?? []), ...(sized?.warnings ?? [])],
+    warnings: [...resolved.warnings, ...(layoutRequest.inputWarnings ?? []), ...(fittedNote === undefined ? [] : [fittedNote]), ...(measured?.warnings ?? []), ...(sized?.warnings ?? [])],
     presentation: initialPrepared?.presentation ?? tablePresentation(layoutRequest, resolved.table),
     refused: sized?.refused,
-  } : undefined, [layoutRequest, resolved, initialPrepared, sized, colorblindWarnings, fittedNote, measured?.warnings]);
+  } : undefined, [layoutRequest, resolved, initialPrepared, sized, fittedNote, measured?.warnings]);
   const displayRef = useDisplayWarnings(settling ? undefined : diagnostics, onWarnings, null);
   const headFonts = measured?.fonts;
   const frameRoom = !rowToFrame || tableOptions?.frameFill === 'none' ? undefined
@@ -1533,7 +1538,6 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: TableChartProp
   const refusedOptions = [
     ...refusedProps,
     ...heatEncodingRefusals((stableOptions as { encodings?: Record<string, unknown> }).encodings),
-    ...refusalFindings(colorblindWarnings),
     // The table is the vertical scroll owner under fillHeight, so it cannot also pin its head to the page.
     ...(pageHead && fillHeight ? [{
       code: 'invalid-options',

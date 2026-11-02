@@ -80,6 +80,28 @@ describe('time zone reading', () => {
 });
 
 describe('continuous axis layout', () => {
+  // Quarter examples must change with the date, and unreadable formats must keep the default ticks with one warning.
+  it('reads a quarter example and warns once when a time format cannot be read', () => {
+    const data = { x: ['2026-01-01', '2026-07-01', '2027-01-01'], series: series(3) };
+    const ticks = (geometry: Geometry) => geometry.labels.filter(label => label.id.startsWith('xtick:') && !label.hidden).map(label => label.text);
+    const quarters = lay(data, { xAxis: { type: 'time', format: 'Q1 2026', tickStep: { unit: 'quarter', step: 2 } } });
+    expect(ticks(quarters.geometry)).toEqual(['Q1 2026', 'Q3 2026', 'Q1 2027']);
+    // An apostrophe year such as Jan '26 is a pattern main already draws.
+    const apostrophe = lay(data, { xAxis: { type: 'time', format: "MMM 'yy", tickStep: { unit: 'month', step: 6 } } });
+    expect(ticks(apostrophe.geometry)).toEqual(["Jan '26", "Jul '26", "Jan '27"]);
+    expect(apostrophe.geometry.warnings.filter(warning => warning.code === 'date-format-unknown')).toEqual([]);
+    // Letters outside A-Z are literal text on main, so a CJK pattern keeps drawing.
+    const cjk = lay(data, { xAxis: { type: 'time', format: 'yyyy年M月', tickStep: { unit: 'month', step: 6 } } });
+    expect(ticks(cjk.geometry)).toEqual(['2026年1月', '2026年7月', '2027年1月']);
+    const defaults = lay(data, { xAxis: { type: 'time' } });
+    const unknown = lay(data, { xAxis: { type: 'time', format: 'unreadable' } });
+    expect(ticks(unknown.geometry)).toEqual(ticks(defaults.geometry));
+    expect(unknown.svg).toBe(defaults.svg);
+    expect(unknown.geometry.warnings.filter(warning => warning.code === 'date-format-unknown')).toEqual([
+      expect.objectContaining({ severity: 'warn', field: ['options', 'xAxis', 'format'], message: expect.stringContaining("'unreadable'") }),
+    ]);
+  });
+
   // A cut range must keep its edge segments without inventing readings, bridging nulls or changing a smooth curve.
   it('clips lines, areas and bands to the original segments at both range edges', () => {
     const x = ['2026-01-01', '2026-01-02', '2026-01-03', '2026-01-04', '2026-01-05'];

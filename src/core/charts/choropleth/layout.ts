@@ -2,7 +2,7 @@ import { chartString } from '../../strings/choropleth';
 import { chartTheme } from '../chartEnv';
 import { structureCount } from '../../structureCounts';
 import { levenshtein } from '../../spelling';
-import { authoredNotes, frameTextOptions, legendRequired, solveFrame, unitPrinted } from '../../frame';
+import { authoredNotes, frameTextOptions, legendRequired, solveFrame, SIDE_KEY_PLOT_SHARE, unitPrinted } from '../../frame';
 import { formatAutomaticNumber } from '../../format';
 import { formatterFromExample } from '../../formatSpec';
 import { boxGap, rectContains, rectHitsConvexPolygon, rectsOverlap, round2, type Rect, type Size } from '../../geometry';
@@ -355,7 +355,8 @@ export function layoutChoropleth(
         ...authoredNotes(options),
       ],
       // The colour key is drawn by layoutMapKeys beside the small members; the frame keeps the overlay key.
-      legend: { options: legendOptions, items: overlayLegend.items },
+      // The map draws its own key beside itself; the overlay entries keep the row above the plot.
+      legend: { options: legendOptions.position === 'right' || legendOptions.position === 'left' ? { ...legendOptions, position: 'top' } : legendOptions, items: overlayLegend.items },
       theme,
       measure,
     },
@@ -433,7 +434,7 @@ export function layoutChoropleth(
   // An unnamed key stands in a column beside the map, instead of a row above it, when the map
   // comes out clearly larger that way: a wide slot of a set height, which the key row would eat. The
   // choice counts the small regions only, so a later pass that lists more labels keeps it.
-  let position: 'right' | 'bottom' | 'top' | 'auto' = named ? legendOptions.position : 'auto';
+  let position: 'right' | 'left' | 'bottom' | 'top' | 'auto' = named ? legendOptions.position : 'auto';
   const widthFloor = PLOT_W_FLOOR_DEMOTED * size.width;
   if (!named && !table && pinnedHeight && plot0.w >= WIDE_SLOT * plot0.h) try {
     const decide = { ...keyBase, smallIds: new Set([...baseSmallIds].filter((id) => valuesById.has(id))) };
@@ -446,6 +447,24 @@ export function layoutChoropleth(
   } catch (error) {
     // A key that does not fit the column keeps its row.
     if (!(error instanceof NormalizeError) || error.code !== 'geo-key-overflow') throw error;
+  }
+  // A key the spec put beside the map stays there while the map keeps its share of the width; else it stands in the row above.
+  if (named && (position === 'right' || position === 'left')) {
+    let columnW = Infinity;
+    try {
+      columnW = mapKeysSize({ ...keyBase, smallIds: new Set([...baseSmallIds].filter((id) => valuesById.has(id))), position, plot: plot0 }).w;
+    } catch (error) {
+      if (!(error instanceof NormalizeError) || error.code !== 'geo-key-overflow') throw error;
+    }
+    const share = (plot0.w - columnW - MAP_GAP) / size.width;
+    if (!(share >= SIDE_KEY_PLOT_SHARE)) {
+      warnings.push({
+        code: 'legend-side-fallback', severity: 'warn', field: ['options', 'legend'],
+        message: `the key stays in the row above the map: a column beside it would leave the map ${Math.round(Math.max(0, share) * 100)}% of the width, under ${Math.round(SIDE_KEY_PLOT_SHARE * 100)}%`,
+        suggest: 'Give the chart more width to keep the key beside the map.',
+      });
+      position = 'top';
+    }
   }
   const keyInput = { ...keyBase, position } as const;
   let sideKeyH = 0;
@@ -566,7 +585,7 @@ export function layoutChoropleth(
   // leaves the right edge free, the lanes may run the full plot height, so a
   // long lane stack does not spill into the footer.
   const plot = frameResult.plot;
-  const laneSpan = !tableDrawn && small.position !== 'right' && small.blocks.x + small.blocks.w <= plot.x + plot.w - LEADER_GUTTER
+  const laneSpan = !tableDrawn && small.position !== 'right' && small.position !== 'left' && small.blocks.x + small.blocks.w <= plot.x + plot.w - LEADER_GUTTER
     ? { y: plot.y, h: mapArea.y + mapArea.h - plot.y } : { y: mapArea.y, h: mapArea.h };
   // The key row may stand over the map's empty corner. The map rises into
   // the row as far as no region or dot of it lies under the key.
@@ -809,7 +828,7 @@ export function layoutChoropleth(
     // published; the width only grows for a small-members block.
     sizing: resolveSizing(chartSizing('choropleth'), size, {
       ...(smallIds.size ? { minWidth: size.width - frameResult.plot.w +
-        (small.position === 'right' ? small.blocks.w + 200 : Math.max(200, small.blocks.w)) } : {}),
+        (small.position === 'right' || small.position === 'left' ? small.blocks.w + 200 : Math.max(200, small.blocks.w)) } : {}),
       minHeight: Math.max(size.height - frameResult.plot.h + small.minPlotH,
         size.height - area.h + (table && tablePlace ? sideForm ? Math.max(minMapHeight, sideBlockH)
           : tablePlace.y === area.y ? Math.max(minMapHeight, table.size(tablePlace.perColumn).h)
@@ -905,7 +924,7 @@ export function layoutChoropleth(
     passes.set(key, next);
     const fits = !next.labels.some((label) => label.hidden && label.slot === 'smallMember') &&
       // A longer list must not widen a side key past the width floor.
-      (position !== 'right' || next.plot.w >= widthFloor) &&
+      ((position !== 'right' && position !== 'left') || next.plot.w >= widthFloor) &&
       (next.sizing?.minHeight ?? 0) <= next.size.height && hidden(next) <= hidden(geometry);
     if (fits) return next;
   }
@@ -1925,12 +1944,18 @@ function labelPlanForRegion(
   const compactText = regionLabelText(region, compactFont, measure, valueTexts);
   // Labels claim room in value order, so the highest values keep theirs.
   const priority = PRIORITY.interior + Math.max(0, 300 - rank);
+  const inlineCandidates = inlineRegionCandidates(region, compactText, compactFont, effectiveFill(paintColor(theme, insidePaint), pattern, theme), measure, insidePaint, pattern);
   const compact = regionLabelRequest(
     region,
     compactText,
     compactFont,
     priority,
-    inlineRegionCandidates(region, compactText, compactFont, effectiveFill(paintColor(theme, insidePaint), pattern, theme), measure, insidePaint, pattern),
+    valueTexts.has(region.id)
+      // A value label is wide enough to reach a coastline from inside its region. A seat whose
+      // box meets the region's outline puts a line through the figures, so the label takes a
+      // callout or the list, which carries the value.
+      ? candidatesOffOutline(inlineCandidates, region)
+      : inlineCandidates,
   );
   const markerNeedsLeader = region.marker !== undefined && region.polygons.length === 0;
   // Marker records stay visible as marks; their labels must not cover the marker.
@@ -2536,6 +2561,106 @@ function claimLeader(
       'regionLeader',
     );
   }
+}
+
+// Which seats of a label cross the outline is a function of the polygons, the anchor and the
+// label's size. A layout asks again for the same label in every pass, so the answer is kept.
+const outlineMasks = new WeakMap<GeoPoint[][][], Map<string, boolean[]>>();
+
+/**
+ * The candidates whose box meets no edge of the region's outline. A box that lies inside the
+ * anchor's clearance disc cannot meet the outline, so it needs no edge test. One pass over the
+ * edges collects those that reach the boxes still in question; each box is tested against them.
+ */
+function candidatesOffOutline(
+  candidates: LabelRequest['candidates'],
+  region: Pick<FittedGeoRegion, 'anchor' | 'polygons'>,
+): LabelRequest['candidates'] {
+  if (candidates.length === 0) return candidates;
+  const first = candidates[0]!.rect;
+  const key = `${first.w}|${first.h}|${region.anchor.x}|${region.anchor.y}`;
+  let masks = outlineMasks.get(region.polygons);
+  if (masks === undefined) outlineMasks.set(region.polygons, masks = new Map());
+  let meets = masks.get(key);
+  if (meets === undefined || meets.length !== candidates.length) {
+    meets = candidatesMeetingOutline(candidates, region);
+    masks.set(key, meets);
+  }
+  const mask = meets;
+  return mask.some(Boolean) ? candidates.filter((_, index) => !mask[index]) : candidates;
+}
+
+function candidatesMeetingOutline(
+  candidates: LabelRequest['candidates'],
+  region: Pick<FittedGeoRegion, 'anchor' | 'polygons'>,
+): boolean[] {
+  const { x: ax, y: ay, clearance } = region.anchor;
+  const reach = clearance * clearance;
+  const none = candidates.map(() => false);
+  const open = candidates.filter(({ rect }) => {
+    const dx = Math.max(Math.abs(rect.x - ax), Math.abs(rect.x + rect.w - ax));
+    const dy = Math.max(Math.abs(rect.y - ay), Math.abs(rect.y + rect.h - ay));
+    return dx * dx + dy * dy >= reach;
+  });
+  if (open.length === 0) return none;
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (const { rect } of open) {
+    x0 = Math.min(x0, rect.x);
+    y0 = Math.min(y0, rect.y);
+    x1 = Math.max(x1, rect.x + rect.w);
+    y1 = Math.max(y1, rect.y + rect.h);
+  }
+  const [minX, minY, maxX, maxY] = boundsOfPolygons(region.polygons);
+  if (x1 < minX || x0 > maxX || y1 < minY || y0 > maxY) return none;
+  const edges: number[] = [];
+  for (const polygon of region.polygons) {
+    for (const ring of polygon) {
+      let previous = ring[ring.length - 1];
+      for (const point of ring) {
+        if (
+          previous !== undefined
+          && Math.max(previous[0], point[0]) >= x0 && Math.min(previous[0], point[0]) <= x1
+          && Math.max(previous[1], point[1]) >= y0 && Math.min(previous[1], point[1]) <= y1
+        ) edges.push(previous[0], previous[1], point[0], point[1]);
+        previous = point;
+      }
+    }
+  }
+  if (edges.length === 0) return none;
+  return candidates.map(({ rect }) => {
+    for (let i = 0; i < edges.length; i += 4) {
+      if (segmentMeetsRect(edges[i]!, edges[i + 1]!, edges[i + 2]!, edges[i + 3]!, rect.x, rect.y, rect.x + rect.w, rect.y + rect.h)) return true;
+    }
+    return false;
+  });
+}
+
+/** Liang-Barsky clip of the segment (ax, ay)-(bx, by) against the box. */
+function segmentMeetsRect(ax: number, ay: number, bx: number, by: number, x0: number, y0: number, x1: number, y1: number): boolean {
+  const dx = bx - ax;
+  const dy = by - ay;
+  let t0 = 0;
+  let t1 = 1;
+  for (let side = 0; side < 4; side++) {
+    const p = side === 0 ? -dx : side === 1 ? dx : side === 2 ? -dy : dy;
+    const q = side === 0 ? ax - x0 : side === 1 ? x1 - ax : side === 2 ? ay - y0 : y1 - ay;
+    if (p === 0) {
+      if (q < 0) return false;
+      continue;
+    }
+    const t = q / p;
+    if (p < 0) {
+      if (t > t1) return false;
+      if (t > t0) t0 = t;
+    } else {
+      if (t < t0) return false;
+      if (t < t1) t1 = t;
+    }
+  }
+  return true;
 }
 
 function boundsOfPolygons(polygons: GeoPoint[][][]): [number, number, number, number] {

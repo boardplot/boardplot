@@ -12,6 +12,7 @@ import { notApplicableGlyph } from '../../format';
 
 import { categoryBandFromCenters } from '../../annotateFields';
 import { layoutValueAxis, straightBreakGlyph, valueAxisTitleRequest } from '../../axis';
+import { fitLogTicks } from '../logAxis';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import type { LabelRequest } from '../../label/solver';
 import { strokeToken, HATCH_STRENGTH_DEFAULT, hatchGapFactor } from '../../theme';
@@ -28,9 +29,9 @@ import type { LineArea, LineDomain, LineEnv, LineMarkGeometry, LinePaints, LineR
 import { layoutReferenceBands } from './referenceBands';
 import { drawLineTrends } from './trend';
 import { pushAll } from '../../arrays';
+import { INTERVAL_TICK } from '../../intervalTicks';
 
 /** Length of a date-interval tick under the plot; the category names start 6 px below the plot. */
-const INTERVAL_TICK = 4;
 /** Interval ticks closer than this (px) draw only where a label prints. */
 const MIN_TICK_GAP = 2;
 /** A stacked band's forecast stripes sit 1/√2 of the theme's second-cue pitch apart (9.6 px along x at the default). */
@@ -78,6 +79,14 @@ export function layoutLineMarks(
   const claims = createOccupiedIndex({ x: 0, y: 0, w: env.size.width, h: env.size.height });
   const axes: AxisGeometry[] = [];
   if (area.axisShown || area.disclosedTicks) {
+    const logTicks = y.log && area.axisShown ? fitLogTicks(y, 'y', area.axisFmt, tickFont, measure) : undefined;
+    if (logTicks && logTicks.length > 2) {
+      const decade = (v: number) => Math.abs(Math.log10(v) - Math.round(Math.log10(v))) < 1e-9;
+      const gap = measure('0', tickFont).height + 4;
+      if (decade(logTicks[1]!) && Math.abs(y(logTicks[1]!) - y(logTicks[0]!)) < gap) logTicks.shift();
+      if (logTicks.length > 2 && decade(logTicks[logTicks.length - 2]!)
+        && Math.abs(y(logTicks[logTicks.length - 1]!) - y(logTicks[logTicks.length - 2]!)) < gap) logTicks.pop();
+    }
     const axisResult = layoutValueAxis(
       {
         scale: y,
@@ -91,6 +100,7 @@ export function layoutLineMarks(
         ...(area.axisTickSpec ? { formatSpec: area.axisTickSpec } : {}),
         theme,
         measure,
+        ...(logTicks ? { ticks: logTicks, keepEndTicks: true } : {}),
         ...(area.bumpTicks ? { ticks: area.bumpTicks, keepEndTicks: true } : {}),
         ...(!area.bumpTicks && area.disclosedTicks ? { ticks: area.disclosedTicks, keepEndTicks: true } : {}),
         ...(!area.bumpTicks && !area.disclosedTicks && area.stepTicks ? { ticks: area.stepTicks } : {}),

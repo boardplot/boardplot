@@ -62,7 +62,7 @@ One form; its chart ID is `likert`.
 
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
-| sort | object |  |  | Order statements by net score without changing the ordered response scale. |
+| sort | object \| string \| true | `'sheet'`, `'asc'`, `'desc'`, `'reverse'`, `true` (or another value of its type) |  | Order statements by net score without changing the ordered response scale. |
 | sort.categories | string | `'sheet'`, `'asc'`, `'desc'`, `'reverse'` |  | Statement order: sheet keeps authored order, reverse reverses it, asc and desc rank by net score with stable ties. Overrides sortBy direction. |
 | values | string | `'counts'`, `'percent'` |  | REQUIRED. A 5-point row of counts 20/20/20/20/20 also sums to 100, so counts-vs-percent cannot be sniffed from the data. |
 | neutral | string | `'split'`, `'positive'`, `'negative'`, `'exclude'` | `'split'` | Where the midpoint's share goes. Default 'split' (half each side, the published convention for diverging Likert charts); 'exclude' drops it and warns that the bars no longer sum to the base. |
@@ -74,7 +74,7 @@ One form; its chart ID is `likert`.
 | requiredNotes.neutral | boolean |  |  | Default true. false drops the note on the neutral treatment; set it when the title or subtitle already states it ('Neutral split across the centre line'). |
 | requiredNotes.base | boolean |  |  | Default true. false drops the note on the base of the shares; set it when the source or a footnote already states it ('n = 882 per statement'). |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `categoryLabels`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `topN`, `hatchStrength`, `colorblindSafe`, `rounding`.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis`, `hatchStrength`, `rounding`. This type ignores `animate`, `debug`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `topN`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 

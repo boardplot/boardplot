@@ -55,7 +55,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | series[].id | string | yes | Series identity used by keyed options, annotations and legend entries. |
 | series[].label | string |  | Displayed series name; defaults to the series id. |
 | series[].values | (cell \| { categoryId, value: cell })[] | yes | Values in category order, or keyed entries pairing a categoryId with its value. A cell label replaces its value text; false hides it. A centered funnel with several series prints stage totals and warns that cell labels need variant 'rows'. |
-| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). |
+| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. |
 | series[].role | string |  | Declares a plotted data series or a comparison reference series. One of `'data'`, `'reference'`. |
 | series[].colorRole | string |  | Theme outcome role for this series, such as a status role. 'others' paints the series in the Others fill (color.othersMark) which takes a separation outline when that fill is pale only under marks.contrastEdge: true, unless marks.othersOutline is false. One of good, bad, warn, neutral, neutralLight, highlight, total, others; series-N for step N of the theme ramp, 1-based (series-2 is color.series[1]); or status-<key> for a theme status colour. A hex colour goes in fill. |
 | series[].fill | string |  | Explicit CSS fill color for this series; remains authored across theme changes. |
@@ -71,7 +71,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | stageShade | string | `'darken'`, `'lighten'` |  | Centered single-series stage shading; default 'darken'. Authored paints and palettes take priority. |
 | worstDropCallout | boolean |  | `false` | Rows only: draws the automatic 'Biggest drop' callout at the step with the largest loss. Default false: the step captions already print every rate. An authored note replaces it. |
 
-Plus the [shared options](options.md). This type does not accept `categoryLabels`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `topN`, `colorblindSafe`, `rounding`.
+Plus the [shared options](options.md). This type does not accept `valueAxis`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 

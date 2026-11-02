@@ -9,7 +9,7 @@ import { sparkLabelsProblem } from './sparkLabels';
 import type { KpiOptions } from '../../types/options';
 
 export const kpiDataSchema = z.strictObject({
-  label: z.string().min(1).describe("Name of the metric displayed above the main value."),
+  label: z.string().describe("Name of the metric displayed above the main value. An empty string omits the label and its space."),
   value: z.number().finite().describe("Main metric value in its original units."),
   format: formatExample.optional().describe("Format-by-example for the main metric and absolute comparison values (a % example expects percent units: 3.53 for 3.53%)."),
   delta: z
@@ -67,6 +67,6 @@ export const kpiOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions(
   density: z.enum(['compact', 'regular']).optional()
     .describe("Card density. 'compact' uses the smaller figure and spark share, and a 280 px default card width instead of 360. An unsized card takes its content height. 'regular' is the default."),
   comparisons: z.enum(['chip', 'text']).optional()
-    .describe("How compare[] and attainment are drawn. Omitted, a standalone regular card without a spark draws the steering form: the comparisons as rows of toned text with their names in a column, the attainment as a progress bar with a 100% tick, in one band on a wide card; a grid panel, a compact card, a card with a spark and a card whose height cannot hold the form draw chips. 'chip' tints a chip behind each; 'text' draws each as delta is drawn: text in its tone, no fill, compare entries on one row."),
+    .describe("How compare[] and attainment are drawn. Omitted, a standalone regular card without a spark draws the steering form: the comparisons as rows of toned text with their names in a column, the attainment as a progress bar with a 100% tick, in one band on a wide card; a grid panel, a compact card, a card with a spark and a card whose height cannot hold the form draw chips. 'chip' tints a chip behind each; 'text' draws each as delta is drawn: text in its tone, no fill, compare entries on one row. colorblindSafe paints good and bad deltas, chips, attainment and value bands with the theme's colour-blind pair."),
 })
   .describe('Standalone KPI width defaults to 360px and is capped at 420px. Metric text is at least 13px; comparisons sit directly under the value. Minimum height includes measured card text and comparison rows. Nested grid sizing stays separate.') as unknown as z.ZodType<KpiOptions>;

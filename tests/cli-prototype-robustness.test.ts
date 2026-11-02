@@ -122,11 +122,11 @@ describe('a bare chart name names its file under -o', () => {
     expect(readFileSync(join(out, 'revenue-q.svg'), 'utf8')).toBe(first);
   });
 
-  it('refuses a name that is not a file stem, and points a named chart\'s findings at the bare spec', () => {
+  it('keeps a name inside the output folder and points errors at the bare spec', () => {
     const out = join(tempDir(), 'out');
     const unsafe = renderTo(out, { ...NAMED, name: '../escape' });
-    expect(unsafe.code).toBe(1);
-    expect(unsafe.body.errors).toMatchObject([{ code: 'invalid-name', path: '/name' }]);
+    expect(unsafe.code).toBe(0);
+    expect(unsafe.body.outputs).toEqual([join(out, 'escape.svg')]);
     expect(readdirSync(join(out, '..'))).not.toContain('escape.svg');
     const mistyped = renderTo(out, { ...NAMED, type: 'colum' });
     expect(mistyped.code).toBe(1);

@@ -366,6 +366,7 @@ const commonDiagramOptions = z.object({
   theme: baseOptionsSchema.shape.theme,
   locale: baseOptionsSchema.shape.locale,
   palette: baseOptionsSchema.shape.palette,
+  colorblindSafe: baseOptionsSchema.shape.colorblindSafe,
   transpose: baseOptionsSchema.shape.transpose,
   // Ninth common key: consumed by
   // the shared render layer's interactive context, so accepting it is

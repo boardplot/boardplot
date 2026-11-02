@@ -15,6 +15,7 @@ import { checkItemBudget, ITEM_BUDGET } from '../src/core/itemBudget';
 import { chartNotes } from '../src/core/notes';
 import type { ChartReading } from '../src/core/reading';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
+import { flattenIssues } from '../src/core/schema/flattenIssues';
 import { requireGeometry } from '../src/core/sizing';
 import type { ChartData } from '../src/core/types/data';
 import type { Annotation } from '../src/core/types/annotations';
@@ -91,7 +92,7 @@ it('orders likert statements by net score and refuses segment reordering', () =>
   expect(layoutLikert(data, { ...options, sort: { categories: 'reverse' } }).derived.order).toEqual(['care', 'speed', 'help']);
   const segments = likertOptionsSchema.safeParse({ values: 'counts', sort: { segments: 'reverse' } });
   expect(segments.success).toBe(false);
-  if (!segments.success) expect(segments.error.issues[0]!.message).toMatch(/ordered axis.*diverging baseline.*sort.categories/);
+  if (!segments.success) expect(flattenIssues(segments.error.issues)[0]!.message).toMatch(/ordered axis.*diverging baseline.*sort.categories/);
 });
 
 // An explicit category mode must control butterfly order while keeping the rest row last and disclosing unused settings.
@@ -106,7 +107,7 @@ it('uses the butterfly measure with the requested direction and warns on conflic
   expect(ids(conflict)).toEqual(['elm', 'amber', '__rest']);
   expect(conflict.warnings).toContainEqual(expect.objectContaining({ code: 'butterfly-sort-conflict', severity: 'warn', fix: [{ op: 'remove', path: '/options/sortBy' }] }));
   expect(conflict.warnings).toContainEqual(expect.objectContaining({ code: 'sort-segments-ignored', severity: 'info' }));
-  expect(butterflyOptionsSchema.safeParse({ ...options, sort: 'desc' }).success).toBe(false);
+  expect(butterflyOptionsSchema.parse({ ...options, sort: 'desc' }).sort).toEqual({ categories: 'desc' });
 });
 
 // A period-spanning annotation must retain chronological rows even when the author requests a different order.

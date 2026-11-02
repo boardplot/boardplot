@@ -7,6 +7,7 @@
  */
 
 import { seriesRasterFormatter } from '../../formatSpec';
+import { readDateFormat } from '../../dateFormatRead';
 import { niceStep } from '../../scale';
 import { disclosureNote } from '../../notes';
 import { chartString } from '../../strings/line';
@@ -67,9 +68,9 @@ function impliedStep(values: readonly number[], model: LineXModel): TimeStep {
   return { unit: 'year', n: 1 };
 }
 
-function labelOf(model: LineXModel, value: number, step: TimeStep | undefined, numberFmt: ((v: number) => string) | undefined): string {
+function labelOf(model: LineXModel, value: number, step: TimeStep | undefined, numberFmt: ((v: number) => string) | undefined, timePattern: string | undefined): string {
   if (model.clock) {
-    return model.axis.format ? formatTimePattern(value, model.clock, model.axis.format, model.language) : timeTickText(value, step!, model.clock, model.language);
+    return timePattern !== undefined ? formatTimePattern(value, model.clock, timePattern, model.language) : timeTickText(value, step!, model.clock, model.language);
   }
   return numberFmt!(value);
 }
@@ -107,13 +108,20 @@ export function planXTicks(input: {
 }): XTickPlan {
   const { model, lo, hi, measure, font } = input;
   const axis = model.axis;
+  const timeFormat = model.clock && axis.format !== undefined ? readDateFormat(axis.format, 'time', model.language) : undefined;
+  for (const note of timeFormat?.notes ?? []) {
+    const code = note.kind === 'fiscal' ? 'date-format-fiscal-year' : `date-format-${note.kind}`;
+    if (input.warnings.some(warning => warning.code === code && warning.field?.join('.') === 'options.xAxis.format')) continue;
+    input.warnings.push({ code, severity: note.kind === 'fiscal' ? 'info' : 'warn',
+      field: ['options', 'xAxis', 'format'], message: note.message, suggest: note.suggest });
+  }
   const width = (text: string) => measure(text, font).width;
   const lineH = font.size * (font.lineHeight ?? 1.2);
   const maxTicks = axis.maxTicks ?? DEFAULT_MAX_TICKS;
   const numberFmt = (values: readonly number[]) => (model.clock ? undefined : seriesRasterFormatter(axis.format, values, model.language).fmt);
   const build = (values: number[], step: TimeStep | undefined, authoredLabels?: (string | undefined)[]): Row => {
     const fmt = numberFmt(values);
-    return { values, step, labels: values.map((v, i) => authoredLabels?.[i] ?? labelOf(model, v, step, fmt)) };
+    return { values, step, labels: values.map((v, i) => authoredLabels?.[i] ?? labelOf(model, v, step, fmt, timeFormat?.pattern)) };
   };
   let row: Row | undefined;
   let authored = false;

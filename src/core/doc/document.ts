@@ -11,6 +11,7 @@ import { DocExpansionError, expandDoc, missingChartName, ownedDocumentCopy } fro
 import { completeDiagnostic, rememberDiagnosticSource, sourceSchemaDiagnostic, type DocumentFinding } from './diagnostics';
 import { toJsonPointer } from '../diagnostics/jsonPatch';
 import { atPath, messageText } from '../diagnostics/describe';
+import { themeShape } from '../normalize/optionShapes';
 
 export interface DocumentEnvelope {
   ok: boolean;
@@ -60,7 +61,7 @@ const documentSchema = z.preprocess(
     .object({
       $schema: z.string().optional().describe('Optional schema-location hint; document version selects the supported format.'),
       version: z.literal(1).describe('Document format version; the supported value is 1.'),
-      theme: z.unknown().optional().describe('Document theme inherited by charts without an explicit theme; checked during theme resolution.'),
+      theme: z.unknown().optional().describe('Document theme inherited by charts without an explicit theme. Accepts a preset name, a full theme object, { preset, overrides }, or { overrides } for the default preset.'),
       locale: z.unknown().optional().describe('Root language tag inherited by charts. Non-string values are accepted structurally but warn and have no effect; explicit chart format examples take precedence.'),
       charts: z
         .array(
@@ -102,6 +103,15 @@ const SHAPE_SUGGEST = 'Send { type, data } for one chart, or { version: 1, chart
 /** The name a bare chart without `name` takes inside its one-chart envelope. */
 export const BARE_CHART_NAME = 'chart';
 export const NAME_RULE = "letters, digits, '.', '_' and '-', at most 100, not starting with '.'";
+
+/** Preserve existing stems exactly. Turn other usable string names into a stem. */
+function fileStem(name: unknown): string | undefined {
+  if (typeof name !== 'string') return undefined;
+  if (FILE_STEM.test(name)) return name;
+  const slug = name.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase()
+    .replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^[-.]+|[-.]+$/g, '').slice(0, 100).replace(/[-.]+$/g, '');
+  return slug || undefined;
+}
 
 export { isBareChart };
 
@@ -156,7 +166,7 @@ function unknownField(
 }
 
 /** Chart furniture an author often puts at the top level; options takes each of these as a string. */
-const MOVABLE_KEYS = ['title', 'subtitle', 'unit', 'source'] as const;
+const MOVABLE_KEYS = ['title', 'subtitle', 'unit', 'source', 'locale'] as const;
 
 /**
  * Reads a spec the way the caller will: `accepts` says whether a spec with no
@@ -262,7 +272,7 @@ function bareFieldErrors(spec: Record<string, unknown>, accepts: (candidate: Rec
   const strays = Object.keys(spec).filter((key) => !BARE_FIELDS.has(key));
   const moved = movableKeys(spec, strays, accepts);
   const errors = strays.map((key) => strayKey(spec, key, 'Top-level', moved));
-  if (Object.hasOwn(spec, 'name') && !(typeof spec.name === 'string' && FILE_STEM.test(spec.name))) {
+  if (Object.hasOwn(spec, 'name') && fileStem(spec.name) === undefined) {
     errors.push(completeDiagnostic({
       code: 'invalid-name',
       message: `name names the output file: ${NAME_RULE}`,
@@ -279,12 +289,24 @@ function bareFieldErrors(spec: Record<string, unknown>, accepts: (candidate: Rec
  */
 export function parseDocumentInput(input: unknown, hooks: ParseHooks = {}): DocumentParseResult {
   const accepts = hooks.accepts ?? (() => false);
+  const nameWarnings: LintWarning[] = [];
   if (isBareChart(input)) {
     const unknown = bareFieldErrors(input, accepts);
     if (unknown.length) throw new DocumentSchemaError(unknown.map((finding) => ({ ...finding, path: `/charts/0${finding.path}`,
       fix: finding.fix?.map((operation) => ({ ...operation, path: `/charts/0${operation.path}` })) })));
-    input = bareEnvelope(input);
+    const name = fileStem(input.name);
+    if (name !== undefined && name !== input.name) {
+      nameWarnings.push(completeDiagnostic({
+        code: 'name-slugified', severity: 'warn',
+        message: `Name ${JSON.stringify(input.name)} is used as ${JSON.stringify(name)}.`,
+        suggest: `Set name to ${JSON.stringify(name)}.`,
+        fix: [{ op: 'replace', path: '/charts/0/name', value: name }],
+      }, bareEnvelope(input), ['charts', 0, 'name'], 'docs/manual.md#the-spec'));
+      input = { ...input, name };
+    }
+    input = bareEnvelope(input as Record<string, unknown>);
   }
+  if (isRecord(input) && Object.hasOwn(input, 'theme')) input = { ...input, theme: themeShape(input.theme) };
   let expanded: ReturnType<typeof expandDoc>;
   try {
     expanded = expandDoc(input);
@@ -311,7 +333,7 @@ export function parseDocumentInput(input: unknown, hooks: ParseHooks = {}): Docu
   rememberDiagnosticSource(doc, source);
   return { doc, envelope: {
     ok: true, errors: [],
-    warnings: [...fields.warnings, ...expanded.warnings.map(warning => completeDiagnostic(warning, input))],
+    warnings: [...nameWarnings, ...fields.warnings, ...expanded.warnings.map(warning => completeDiagnostic(warning, input))],
   } };
 }
 
