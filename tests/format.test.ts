@@ -423,6 +423,21 @@ describe('an example is read as its author wrote it', () => {
     expect(formatExampleProblem('$@@@M')).toBeUndefined();
   });
 
+  // Prevents maps from refusing exact thresholds that need more decimals than an @ example's fallback.
+  it('accepts exact significant-figure map thresholds and refuses thresholds the format rounds', async () => {
+    await import('../src/core/geo/packs');
+    const regions = ['DE-BW', 'DE-BY', 'DE-BE', 'DE-BB', 'DE-HB', 'DE-HH']
+      .map((id, index) => ({ id, value: [0.00043, 0.00427, 0.0427, 0.427, 4.27, 42.7][index]! }));
+    const render = (steps: number[]) => {
+      const request = resolveChartRequest({ type: 'choropleth', data: { pack: 'de-states', regions },
+        options: { format: '@@@%', steps } } as never);
+      return renderSvg(requireGeometry(layoutResolvedRequest(request)), request.theme);
+    };
+    const svg = render([0.00427, 0.0427, 0.427, 4.27]);
+    expect(svg).toContain('0.00427%');
+    expect(() => render([0.004271, 0.0427, 0.427, 4.27])).toThrow('the format rounds an explicit threshold');
+  });
+
   it('distinguishes thousands grouping from three decimal places', () => {
     expect(parseFormatExample('1.000')).toMatchObject({ thousandsSep: '.', decimalSep: ',', decimals: 0 });
     expect(parseFormatExample('0.000')).toMatchObject({ thousandsSep: '', decimalSep: '.', decimals: 3 });
