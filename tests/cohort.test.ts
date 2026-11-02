@@ -785,6 +785,24 @@ describe('cohort — governing unit', () => {
     { variant: 'stepped', formatScope: 'classic', legend: 'none' },
   ] as const;
 
+  // A basis switch leaves an authored "% of cohort base" caption true for the other number: the chart must warn and keep the text.
+  it('warns when the unit or key caption names another retention basis', () => {
+    const code = 'cohort-basis-caption-mismatch';
+    for (const variant of ['heatmap', 'stepped'] as const) {
+      const options: CohortOptions = { variant, basis: 'previous', unit: '% of cohort base', formatScope: 'classic', subtitle: { measure: 'Members retained' }, size: { width: 960 } };
+      const geometry = layout(clean(), options);
+      expect(geometry.warnings.filter(w => w.code === code)).toMatchObject([{
+        severity: 'warn', field: ['options', 'unit'],
+        suggest: expect.stringContaining("options.basis to 'cohort'"),
+      }]);
+      expect(readerText(geometry)).toContain('% of cohort base');
+      expect(codes(layout(clean(), { ...options, basis: 'cohort' }))).not.toContain(code);
+      expect(codes(layout(clean(), { ...options, unit: '% of previous period' }))).not.toContain(code);
+    }
+    const caption = layout(clean(), { basis: 'cohort', unit: '%', strings: { cohortMeasure: 'Retention (% of previous period)' } });
+    expect(caption.warnings.filter(w => w.code === code)).toMatchObject([{ field: ['options', 'strings', 'cohortMeasure'] }]);
+  });
+
   // Bare rates read as counts; a unit line must not cost a header row or refuse fixed heights that fit.
   it('states the unit once in an existing header line at the same size', () => {
     for (const variant of variants) for (const size of [{ width: 720 }, { width: 720, height: 316 }]) {
