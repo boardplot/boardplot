@@ -437,14 +437,12 @@ export function shortestRegionName(
   font: FontSpec,
   measure: TextMeasurer,
 ): string {
-  const forms = [region.anchor.shortName, region.id];
-  return forms.reduce((best, candidate) => {
-    const width = measure(candidate, font).width;
-    const bestWidth = measure(best, font).width;
-    return width < bestWidth || (width === bestWidth && compareText(candidate, best) < 0)
-      ? candidate
-      : best;
-  });
+  const shortName = region.anchor.shortName;
+  if (shortName === region.id) return shortName;
+  const shortWidth = measure(shortName, font).width;
+  const idWidth = measure(region.id, font).width;
+  return idWidth < shortWidth || (idWidth === shortWidth && compareText(region.id, shortName) < 0)
+    ? region.id : shortName;
 }
 
 /** At most this many rows make the automatic value table (more is a list, not a glance). */
