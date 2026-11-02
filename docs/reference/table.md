@@ -328,7 +328,7 @@ Consulting-grade table: hierarchy with honest totals (derive/validate/source), t
 | labelIndent.step | number |  |  | px per rung; default 16. |
 | outlineMarks | boolean |  | `false` | Fold marks beside parent rows. Drawn in static SVG/PNG and read-only grids. Default false: no marks or gutter. true draws the marks and reserves their gutter. Interactive grids keep their fold buttons either way. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `labels`, `categoryLabels`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `bandFraction`, `story`, `hatchStrength`, `rounding`.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `labels`, `valueAxis`, `story`, `hatchStrength`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 

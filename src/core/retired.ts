@@ -7,6 +7,8 @@
  */
 
 import { addWhereAbsent, toJsonPointer } from './diagnostics/jsonPatch';
+import { withValueLabelDefaults } from './charts/band/valueSelection';
+import { IGNORED_OPTION_KEYS, LEGEND_REFUSED, schemaRefusedKeys, valueAxisRefusal } from './schema/capability';
 import type { LintWarning } from './types/scene';
 
 type Scalar = string | number | boolean;
@@ -131,10 +133,72 @@ const quoted = (value: unknown) => typeof value === 'string' ? `'${value}'` : St
 /** The content parts a `labels` array can name. */
 const LABEL_PARTS: readonly unknown[] = ['absolute', 'percent', 'category', 'series'];
 
+/** A chart copy without settings its type ignores, with one remove warning per setting. */
+export function ignoreChartSettings<C extends { options?: unknown; data?: unknown }>(
+  type: string, chart: C, canonical: (name: string) => string | undefined = (name) => name,
+): { chart: C; warnings: LintWarning[] } {
+  const warnings: LintWarning[] = [];
+  let next: unknown = chart;
+  const panels = type === 'grid' ? readAt(chart, ['data', 'panels']) : undefined;
+  const nested: (string | number)[][] = [
+    ...(Array.isArray(panels) ? panels.map((_, index) => ['data', 'panels', index]) : []),
+    ...(type === 'grid' && isRecord(readAt(chart, ['data', 'template'])) ? [['data', 'template']] : []),
+  ];
+  for (const at of nested) {
+    const panel = readAt(chart, at);
+    const panelType = isRecord(panel) && typeof panel.type === 'string' ? canonical(panel.type) : undefined;
+    if (panelType === undefined) continue;
+    const ignored = ignoreChartSettings(panelType, panel as { options?: unknown; data?: unknown }, canonical);
+    if (ignored.chart === panel) continue;
+    next = setAt(next, at, ignored.chart);
+    for (const warning of ignored.warnings) warnings.push({ ...warning, field: [...at, ...warning.field!],
+      fix: warning.fix!.map(operation => ({ ...operation, path: toJsonPointer(at) + operation.path })) });
+  }
+  if (!isRecord(chart.options)) return { chart: next as C, warnings };
+  const ignore = (field: string[], severity: 'warn' | 'info' = 'warn') => {
+    next = setAt(next, field, undefined);
+    const dotted = field.join('.');
+    warnings.push({ code: 'option-ignored', severity, field,
+      message: `${dotted} has no effect on ${type} and is ignored.`,
+      suggest: `Remove ${dotted}.`, fix: [{ op: 'remove', path: toJsonPointer(field) }] });
+  };
+  const refused = schemaRefusedKeys(type);
+  for (const key of refused.options) {
+    if (IGNORED_OPTION_KEYS.has(key) && chart.options[key] !== undefined) ignore(['options', key]);
+  }
+  const axis = chart.options.valueAxis;
+  if (isRecord(axis)) {
+    let dropped = false;
+    for (const key of ['show', 'gridlines']) {
+      if (axis[key] === undefined || valueAxisRefusal(type, key) === undefined) continue;
+      ignore(['options', 'valueAxis', key], axis[key] === false ? 'info' : 'warn');
+      dropped = true;
+    }
+    if ((dropped || refused.options.includes('valueAxis')) && Object.keys(readAt(next, ['options', 'valueAxis']) as object).length === 0) {
+      next = setAt(next, ['options', 'valueAxis'], undefined);
+    }
+  }
+  const legend = chart.options.legend;
+  if (legend !== undefined && (LEGEND_REFUSED.includes(type) || (type === 'slope' && (legend === 'none' || legend === 'auto')))) {
+    ignore(['options', 'legend'], legend === 'none' || legend === 'auto' ? 'info' : 'warn');
+  }
+  // Remove an ignored label mode before the chart's SVG ids are computed too.
+  const options = readAt(next, ['options']) as Record<string, unknown>;
+  if (type === 'bar' || type === 'column') {
+    const variant = type === 'column' && isRecord(options.valueAxis) && options.valueAxis.percent ? 'stacked100' : options.variant;
+    if (typeof variant === 'string' && variant !== 'grouped') {
+      const kept = withValueLabelDefaults(options, type, variant, warnings);
+      if (kept !== options) next = setAt(next, ['options'], kept);
+    }
+  }
+  return { chart: next as C, warnings };
+}
+
 /**
  * The chart's options and data with every retired setting rewritten to its
- * successor or removed, and one `option-deprecated` warning for each. The
- * input is never changed: an edited object is a copy. `type` is canonical.
+ * successor or removed, and one `option-deprecated` warning for each.
+ * Unused settings are removed with `option-ignored`. The input is never
+ * changed: an edited object is a copy. `type` is canonical.
  */
 export function retireChartSettings<C extends { options?: unknown; data?: unknown }>(
   type: string, chart: C, canonical: (name: string) => string | undefined = (name) => name,
@@ -152,7 +216,7 @@ export function retireChartSettings<C extends { options?: unknown; data?: unknow
     const panelType = isRecord(panel) && typeof panel.type === 'string' ? canonical(panel.type) : undefined;
     if (panelType === undefined) continue;
     const retired = retireChartSettings(panelType, panel as { options?: unknown; data?: unknown }, canonical);
-    if (!retired.warnings.length) continue;
+    if (retired.chart === panel) continue;
     next = setAt(next, at, retired.chart);
     for (const warning of retired.warnings) {
       warnings.push({ ...warning, field: [...at, ...warning.field!],
@@ -212,7 +276,8 @@ export function retireChartSettings<C extends { options?: unknown; data?: unknow
       suggest: kept.length > 0 ? `Set ${dotted} to ${JSON.stringify(kept)}.` : `Remove ${dotted} for the default label, or set one of the parts.`,
       fix: kept.length > 0 ? [{ op: 'test', path, value: content }, { op: 'replace', path, value: kept }] : [{ op: 'remove', path }] });
   }
-  return { chart: next as C, warnings };
+  const ignored = ignoreChartSettings(type, next as C, canonical);
+  return { chart: ignored.chart, warnings: [...warnings, ...ignored.warnings] };
 }
 
 /**

@@ -19,6 +19,8 @@ import { rasterize } from './raster';
 import { applyRows, rewriteRowsDiagnostics, type RowsInput } from './rows';
 import { activeFontTables, fontTablesSummary, withFontTables } from './activeFontTables';
 import { pushAll } from '../core/arrays';
+import { canonicalChartType } from '../core/registry';
+import { ignoreChartSettings } from '../core/retired';
 
 interface RenderInput extends RowsInput {
   spec: unknown;
@@ -180,7 +182,8 @@ function renderWithTables(input: RenderInput): VerbResult {
     // copies distinct ids while scene data-id part names remain stable. A second
     // identical chart in the same call takes `-2`, a third `-3`: the copies
     // would otherwise share every id on the page they are inlined into.
-    const { name: _name, ...drawing } = sized;
+    // Ignored settings do not change the chart's SVG ids.
+    const { name: _name, ...drawing } = ignoreChartSettings(canonicalChartType(sized.type) ?? sized.type, sized, canonicalChartType).chart;
     // A target argument draws differently, so it joins the hash; without one the hash keeps its old input.
     const hashed = sha256(canonicalJson({ drawing, locale: doc.locale ?? null, theme: resolveTheme(doc.theme), ...(options.target ? { target: options.target } : {}) })).slice(0, 10);
     const uses = (scopeUses.get(hashed) ?? 0) + 1;

@@ -22,7 +22,7 @@ import {
 import { parseFormatExample, specUnitKind } from '../formatSpec';
 import { isIconName, listIcons } from '../icons';
 import { SIDE_KEY_REFUSED } from './refusals';
-import { LEGEND_DRAWS, LEGEND_REFUSED, OPTION_CAPABILITY, legendDrawsNothing, valueAxisOnly, valueAxisRefusal } from './capability';
+import { IGNORED_OPTION_KEYS, LEGEND_DRAWS, LEGEND_REFUSED, OPTION_CAPABILITY, legendDrawsNothing, valueAxisOnly, valueAxisRefusal } from './capability';
 import {
   LEGEND_DRAWS_REASONS, LEGEND_REFUSED_REASONS, OPTION_REASONS, TRANSPOSE_REFUSED, VALUE_AXIS_ONLY_REASONS, notImplemented, valueAxisReason,
 } from './capabilityReasons';
@@ -1375,7 +1375,7 @@ export const baseOptionsSchema = z.object({
       crossesBetween: z.boolean().optional().describe('Line-chart category placement: default true centres categories in bands; false places the end categories at the plot edges.'),
       dateTicks: z.enum(['years', 'quarters', 'months', 'weeks', 'days']).optional().describe("Line-chart date tick interval. A short tick under the plot marks the first category of each calendar interval. 'years', 'quarters' and 'months' name those ticks on the calendar: quarters read Jan, Apr, Jul, Oct. A row too narrow for every name keeps a larger round step counted from January (years 2, 5, 10, 20, 25, 50 or 100, so every tenth year from 1980; quarters 2, 4, 8, 20 or 40; months 2, 3, 6, 12, 24, 60 or 120), at most eight names. The latest period is always named; if it collides with the tick before it, that tick drops. 'weeks' and 'days' count equal steps back from the latest period (weeks 2, 4, 13, 26 or 52; days 2, 7, 14 or 28) and name it too. 'years' names the year alone ('Jan 1980' reads 1980) where the label carries it. 'months' over day dates the engine labels names the month ('1 Apr 2025' reads Apr 2025, then May, Jun). A monthly series through July 2026 with 'years' reads 1980, 1990, 2000, 2010, 2020, Jul 2026. Without dateTicks, column, stacked column, line, area and combo pick tick months by the same calendar rule for rows of months and quarters (step 3: Jan, Apr, Jul, Oct; step 6: Jan, Jul; step 12: Jan; plus the latest period) and count back from the latest period for days and weeks, so side-by-side panels with the same categories show the same months. A line or area day row that would step past 28 days names months as 'months' does. Categories without an ISO date leave the option unused and report date-ticks-unsupported."),
     })
-    .optional().describe('Category-axis settings implemented by line charts; other shared-base charts refuse this option.'),
+    .optional().describe('Category-axis settings implemented by line charts; other shared-base charts ignore this option with an option-ignored warning.'),
   secondaryAxis: z.object({ acknowledge: z.literal(true).describe('Explicitly acknowledge that the chart uses an independent second value scale.') }).optional().describe('Opt in to a second value scale on supported charts; combo adds chart-specific secondary-axis options.'),
   scaleGroup: z.object({
     // x shares nothing: no type reads back or pins its x domain, so it is refused.
@@ -1454,12 +1454,12 @@ export const baseOptionsSchema = z.object({
     .describe("How strongly forecast, partial-period and no-data hatches draw, 0 to 100; 100 is the theme's recipe. Lower values fade the stripes toward their ground and, on a line or area forecast, spread them up to 2.5 times the theme's gap. The fade stops at a floor: where the hatch is the only cue (a forecast column or bar, a partial period, a no-data cell) the stripes keep 3:1 on their ground and their spacing; on a line or area forecast, where the dashed line, the divider and the key already mark the forecast, they keep 2:1. A status cell lays its stripes on its own tone: there 60 is the theme's recipe at 3:1, 100 deepens the stripes to 4.5:1 on the same ground, and lower values fade them only as far as the cell stays apart from a cell with no status. Default 60 on a line or area forecast and a status cell, 100 elsewhere. The key swatch draws the same hatch."),
   colorblindSafe: z.boolean().optional().describe("Paint the semantic good/bad pair from theme.color.colorblind, a pair told apart without red and green: signed bars and columns, variance bars, status cells, heatmap valence cells, table tones, heat grounds, in-cell bars and badges, and the poles of a diverging choropleth or tilemap scale. Other types refuse this option. Use palette for categorical colours."),
   rounding: z.enum(['nearest', 'sum-consistent']).optional().describe("How computed shares print. nearest rounds each share separately. sum-consistent uses largest remainders to total 100%. For equal remainders, when the sum must go up, round up the smaller share first; when the sum must go down, take the step from the larger share first. Equal-size ties use the first input index. reading.rounding lists changes. Use format: 1.0% for one decimal. Mekko cell, series and chart share formats set the precision. Bar, column and combo stacks default to sum-consistent for each complete stack; a column's shares keep the chart's one share precision or shareLabels.format. Incompatible precisions or more than 13 decimals warn and keep the requested formats without sum-consistent rounding."),
-  animate: z.boolean().optional().describe('Reserved motion flag; registered charts currently refuse it because the engine emits static geometry.'),
+  animate: z.boolean().optional().describe('Motion flag ignored with an option-ignored warning because charts emit static geometry.'),
   interactive: z
     .boolean()
     .optional()
     .describe('Emit data-bp-* semantics for dependency-free web interactivity; static output is unchanged by default.'),
-  debug: z.boolean().optional().describe('Reserved layout debug flag; registered charts refuse it.'),
+  debug: z.boolean().optional().describe('Layout debug flag ignored with an option-ignored warning.'),
   annotations: annotationArraySchema(annotationSchema).optional().describe('Data-bound annotations in authored order; explicit ids must be unique and each chart advertises its supported kinds.'),
 }).superRefine(addCanvasBoundsIssues).describe('Shared JSON chart options; selected chart schemas narrow unsupported fields and add chart-specific settings.');
 
@@ -1522,7 +1522,7 @@ export function narrowValueAxis<S extends z.ZodObject>(type: string, base: S) {
     refusals[key] = z
       .never({ error: notImplemented(`valueAxis.${key}`, type, suggest) })
       .optional()
-      .describe(`Refused on '${type}': ${suggest}`);
+      .describe(`${key === 'show' || key === 'gridlines' ? `Ignored on '${type}' with an option-ignored warning` : `Refused on '${type}'`}: ${suggest}`);
   }
   // Only bridges implement automatic placement. Other break-capable charts keep
   // their existing false/object contract in schemas, discovery and React entries.
@@ -1578,7 +1578,7 @@ export function refusedBaseOptions<T extends string>(type: T): RefusedBaseOption
     out[key] = z
       .never({ error: notImplemented(key, type, suggest) })
       .optional()
-      .describe(`Refused on '${type}': ${suggest}`);
+      .describe(`${IGNORED_OPTION_KEYS.has(key) ? `Ignored on '${type}' with an option-ignored warning` : `Refused on '${type}'`}: ${suggest}`);
   }
   if (Object.hasOwn(LEGEND_DRAWS, type)) {
     const values = LEGEND_DRAWS[type]!;
@@ -1590,13 +1590,13 @@ export function refusedBaseOptions<T extends string>(type: T): RefusedBaseOption
         }
       })
       .optional()
-      .describe(`On '${type}' only ${values.map((value) => `'${value}'`).join(' and ')} or a position object draw a key: ${why}.`);
+      .describe(`On '${type}' only ${values.map((value) => `'${value}'`).join(' and ')} or a position object draw a key. 'none' and 'auto' are ignored with an option-ignored warning at info level: ${why}. 'right' stays refused.`);
   }
   if (LEGEND_REFUSED.includes(type)) {
     out.legend = z
       .never({ error: notImplemented('legend', type, LEGEND_REFUSED_REASONS[type]!) })
       .optional()
-      .describe(`Refused on '${type}': ${LEGEND_REFUSED_REASONS[type]}`);
+      .describe(`Ignored on '${type}' with an option-ignored warning: ${LEGEND_REFUSED_REASONS[type]}`);
   }
   const only = valueAxisOnly(type);
   const valueAxis = narrowValueAxis(type, valueAxisSchema);
@@ -1604,7 +1604,7 @@ export function refusedBaseOptions<T extends string>(type: T): RefusedBaseOption
     out.valueAxis = z
       .never({ error: notImplemented('valueAxis', type, VALUE_AXIS_ONLY_REASONS[type as keyof typeof VALUE_AXIS_ONLY_REASONS]) })
       .optional()
-      .describe(`Refused on '${type}': ${VALUE_AXIS_ONLY_REASONS[type as keyof typeof VALUE_AXIS_ONLY_REASONS]}`);
+      .describe(`Ignored on '${type}' with an option-ignored warning: valueAxis.show and valueAxis.gridlines. Other valueAxis settings are refused: ${VALUE_AXIS_ONLY_REASONS[type as keyof typeof VALUE_AXIS_ONLY_REASONS]}`);
   } else if (valueAxis !== valueAxisSchema) {
     (out as Record<string, z.ZodType>).valueAxis = valueAxis.optional().describe(baseOptionsSchema.shape.valueAxis.description!);
   }

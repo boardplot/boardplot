@@ -200,7 +200,7 @@ export function layoutBar(
   annotationPass?: BarAnnotationPass,
 ): Geometry<BarMarks, BarDerived> {
   const dropped: LintWarning[] = [];
-  options = withoutShareAnnotations(withValueLabelDefaults(withLocaleStrings(options), 'bar', options.variant), options.variant === 'stacked100', dropped);
+  options = withoutShareAnnotations(withValueLabelDefaults(withLocaleStrings(options), 'bar', options.variant, dropped), options.variant === 'stacked100', dropped);
   const layout = (next: BarOptions) => layoutBarSized(data, next, annotationPass);
   const geo = withBandValueNotes(data, options, layout);
   const natural = geo.sizing?.naturalHeight;

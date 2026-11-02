@@ -74,7 +74,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | states[].pattern | string | `'hatch45'` |  | Optional 45-degree hatching to distinguish this state beyond color. |
 | columnLabels | string | `'top'`, `'bottom'` | `'top'` | Column-caption position; defaults to top. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `categoryLabels`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `topN`, `bandFraction`, `rounding`.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 
