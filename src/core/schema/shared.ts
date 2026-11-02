@@ -356,7 +356,9 @@ export const MAGNITUDE_WORDS_DOC = "A magnitude after the number divides the raw
  * string: codes and aliases match in any case.
  */
 export const scenarioField = (meaning: string) =>
-  z.string().optional().describe(`AC, PY, PL, FC (or ACT, BUD, FCST).${meaning ? ` ${meaning}` : ''}`);
+  z.string().superRefine((value, ctx) => {
+    if (/^ly$/i.test(value)) ctx.addIssue({ code: 'custom', message: 'LY is drawn as PY', params: { scenarioAlias: true } });
+  }).optional().describe(`AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case.${meaning ? ` ${meaning}` : ''}`);
 
 export const cellMetaSchema = {
   fill: z.string().optional().describe('Authored cell fill colour; overrides the inherited series fill where supported.'),
@@ -893,7 +895,7 @@ const bandAnnotationSchema = (timeX = false) => z
     high: z.number().finite().optional().describe('Upper value-axis bound for corridor and tolerance bands.'),
     value: z.number().finite().optional().describe('Plan value for attainment shading; actuals are resolved per category.'),
     seriesId: idSchema.optional().describe('Series whose actuals are shaded for attainment; omission uses the category total.'),
-    scenario: z.enum(['AC', 'PY', 'PL', 'FC']).optional().describe('Scenario notation for a plan corridor; default PL.'),
+    scenario: z.enum(['AC', 'PY', 'PL', 'FC']).optional().describe('Scenario notation for a plan corridor; default PL. LY means PY (last year); codes accept any case.'),
     direction: z.enum(['higherIsBetter', 'lowerIsBetter']).optional().describe('Whether exceeding the plan is favorable for attainment shading; default higherIsBetter.'),
   })
   // Loose, so the refinement sees a misspelt key instead of zod dropping it.

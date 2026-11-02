@@ -24,6 +24,27 @@ import rowMappings from './fixtures/row-mappings.json';
 import overwriteExample from './fixtures/render-overwrite.json';
 
 const dirs: string[] = [];
+
+// An explicit SVG format must return the drawing without changing the default reading response.
+it('returns an explicit SVG format and accepts enum argument case', () => {
+  const dir = tdir();
+  const doc = writeDoc(dir, 'spec.json', SPEC);
+  const ordinary = envelope(runCli(['render', doc]));
+  expect(ordinary.svg).toBeUndefined();
+  const explicit = envelope(runCli(['render', doc, '--format', 'svg']));
+  expect(explicit.svg).toContain('<svg');
+  expect(explicit.reading).toEqual(ordinary.reading);
+  expect(explicit.warnings).toContainEqual(expect.objectContaining({ code: 'svg-returned', severity: 'info' }));
+  const cased = envelope(runCli(['render', doc, '--format', 'SVG', '--target', 'Report', '--background', 'Transparent', '--return', 'SVG,Reading']));
+  expect(cased.ok).toBe(true);
+  expect(cased.svg).toContain('<svg');
+  expect(cased.warnings.filter(warning => (warning as { code: string }).code === 'input-converted')).toHaveLength(5);
+  const quiet = envelope(runCli(['render', doc, '--format', 'SVG', '--quiet']));
+  expect(quiet.svg).toContain('<svg');
+  expect(quiet.warnings).toContainEqual(expect.objectContaining({ code: 'svg-returned' }));
+  expect(envelope(runCli(['render', doc, '--quiet', '--return', 'SVG'])).svg).toContain('<svg');
+  expect(envelope(runCli(['measure', doc, '--target', 'Report'])).warnings).toContainEqual(expect.objectContaining({ code: 'input-converted', path: '/target' }));
+});
 afterEach(() => {
   vi.restoreAllMocks();
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });

@@ -54,7 +54,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | points[].size | number |  | Bubble magnitude; proportional to area by default, or diameter when sizeBy requests it. |
 | points[].fill | string |  | Explicit CSS fill for this point, overriding group paint. |
 | points[].marker | string |  | Point symbol overriding its group marker. One of `'circle'`, `'square'`, `'triangle'`, `'diamond'`, `'none'`. |
-| points[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). Scenario controlling the point paint convention. |
+| points[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. Scenario controlling the point paint convention. |
 | points[].count | number |  | Observations behind this point. options.minCount filters on this field and refuses when it is absent. |
 | groups | array |  | Named point groups supplying shared legend and styling information. |
 | groups[].id | string | yes | Group identity referenced by point.group. |

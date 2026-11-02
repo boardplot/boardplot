@@ -5,6 +5,7 @@
  */
 
 import { prepareFractionAnnotations } from './normalize/fraction';
+import { caseInsensitiveValue } from './inputConversion';
 import type { z } from 'zod';
 import { withChartDefaultStrings, withLocaleStrings } from './strings';
 import { withNumberMarks } from './numberMarks';
@@ -931,7 +932,14 @@ function noPlottedValuesWarning(data: unknown): LintWarning | null {
   };
 }
 
+/** Resolve an unknown spelling only when one registered type or alias matches its case. */
+export function chartInputName(name: string): string | undefined {
+  if (registry.has(name) || aliasIndex.has(name) || schemaIndex.has(name) || schemaAliasIndex.has(name)) return name;
+  return caseInsensitiveValue(name, [...registry.keys(), ...aliasIndex.keys(), ...schemaIndex.keys(), ...schemaAliasIndex.keys()]);
+}
+
 export function getChart(typeOrAlias: string): RegisteredChart<any, any, any, any> | undefined {
+  typeOrAlias = chartInputName(typeOrAlias) ?? typeOrAlias;
   const chart = registry.get(typeOrAlias) ?? registry.get(aliasIndex.get(typeOrAlias) ?? '');
   const defaults = chart?.aliasDefaults?.[typeOrAlias];
   if (!chart || !defaults) return chart;
@@ -970,6 +978,7 @@ export function registerChartSchemas(schemas: ChartSchemas<any, any>, aliases: r
  * registered core-only with no schema chunk beside it.
  */
 export function getChartSchemas(typeOrAlias: string): ChartSchemas<any, any> | undefined {
+  typeOrAlias = chartInputName(typeOrAlias) ?? typeOrAlias;
   const chart = getChart(typeOrAlias);
   if (chart && isDefinition(chart)) return chart;
   return schemaIndex.get(typeOrAlias) ?? schemaIndex.get(schemaAliasIndex.get(typeOrAlias) ?? '');

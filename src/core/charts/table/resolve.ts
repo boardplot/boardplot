@@ -6,6 +6,7 @@
  */
 
 import { disclosuresShown } from '../../notes';
+import { caseInsensitiveValue, inputConversion } from '../../inputConversion';
 import { bandFor } from '../../bandSelect';
 import { datePatternFromExample, formatDate, parseISODate } from '../../dateFormat';
 import { currencyWholeNumbers, MINUS } from '../../format';
@@ -70,7 +71,7 @@ import {
   ranksAsData,
   requireAdditiveRanking,
 } from './rank';
-import { BADGE_SECTION_ONLY, BADGE_TEXT_EMPTY, STATUS_VALUES } from './rules';
+import { BADGE_SECTION_ONLY, BADGE_TEXT_EMPTY, STATUS_VALUES, STATUS_WORDS } from './rules';
 import { ARROW_FOOTNOTE } from './encodings/arrow';
 import { heatRanges, statusDirectionNote } from './encodings/heat';
 import { chartNumberMarks } from '../../numberMarks';
@@ -1720,7 +1721,8 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
       }
       case 'status': {
         const given = typeof authored === 'number' ? authored : obj?.v;
-        const v = typeof authored === 'string' ? authored : typeof given === 'string' ? given : null;
+        const written = typeof authored === 'string' ? authored : typeof given === 'string' ? given : null;
+        let v = written;
         // A number is no status. It still draws the missing dash, as before,
         // and now warns; a later release refuses it as an unknown key.
         if (typeof given === 'number') {
@@ -1733,10 +1735,28 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
           return { ...base, displayed: missingGlyph };
         }
         if (v !== null && !(STATUS_VALUES as readonly string[]).includes(v)) {
+          const converted = caseInsensitiveValue(v, STATUS_VALUES) ?? (Object.hasOwn(STATUS_WORDS, v.toLowerCase()) ? STATUS_WORDS[v.toLowerCase()] : undefined);
+          if (converted !== undefined) {
+            const rowPath = (rows: TableData['rows'], base: (string | number)[]): (string | number)[] | undefined => {
+              for (const [index, candidate] of rows.entries()) {
+                const path = [...base, index];
+                if (candidate.id === row.id) return path;
+                const child = candidate.children && rowPath(candidate.children, [...path, 'children']);
+                if (child) return child;
+              }
+              return undefined;
+            };
+            const field = [...rowPath(data.rows, ['data', 'rows'])!, 'cells', col.id, ...(obj ? ['v'] : [])];
+            warnings.push(inputConversion(field, v, converted));
+            v = converted;
+          }
+        }
+        if (v !== null && !(STATUS_VALUES as readonly string[]).includes(v)) {
           throw new NormalizeError(
             'status-value-invalid',
             `rows[${row.id}].cells[${col.id}]`,
             `status '${v}' is not one of: ${STATUS_VALUES.join(' · ')}; for free status text use a text column with a cell tone`,
+            'Use on-track, at-risk, off-track, done or pending, or green, amber, yellow or red (any case). For free status text use a text column with a cell tone.',
           );
         }
         if (v === null) return { ...base, displayed: missingGlyph };
@@ -1746,7 +1766,8 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
         const tone: CellTone =
           v === 'off-track' ? 'bad' : v === 'at-risk' ? 'warn' : v === 'done' || v === 'on-track' ? 'good' : 'neutral';
         const labels: Readonly<Record<string, string | undefined>> | undefined = col.kind === 'status' ? col.labels : undefined;
-        return { ...base, raw: v, state: 'value', displayed: labels?.[v] ?? v, tone: judgementTone(tone, obj?.strong) };
+        const displayed = written === v ? labels?.[v] ?? v : labels?.[written!] ?? labels?.[v] ?? v;
+        return { ...base, raw: v, state: 'value', displayed, tone: judgementTone(tone, obj?.strong) };
       }
       case 'date': {
         const given = typeof authored === 'number' ? authored : obj?.v;

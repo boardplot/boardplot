@@ -272,7 +272,7 @@ Every chart type accepts these options unless its own page names them as not acc
 | annotations[].high (annotations[] branch 2) | number |  |  | Upper value-axis bound for corridor and tolerance bands. |
 | annotations[].value (annotations[] branch 2) | number |  |  | Plan value for attainment shading; actuals are resolved per category. |
 | annotations[].seriesId (annotations[] branch 2) | string |  |  | Series whose actuals are shaded for attainment; omission uses the category total. |
-| annotations[].scenario (annotations[] branch 2) | string | `'AC'`, `'PY'`, `'PL'`, `'FC'` |  | Scenario notation for a plan corridor; default PL. |
+| annotations[].scenario (annotations[] branch 2) | string | `'AC'`, `'PY'`, `'PL'`, `'FC'` |  | Scenario notation for a plan corridor; default PL. LY means PY (last year); codes accept any case. |
 | annotations[].direction (annotations[] branch 2) | string | `'higherIsBetter'`, `'lowerIsBetter'` |  | Whether exceeding the plan is favorable for attainment shading; default higherIsBetter. |
 
 Set `locale.decimal` (and optionally `locale.thousands`) to choose the marks of every number in the chart, as in a spreadsheet. The default is `1,234.5` in every language; `locale.language` changes words only, never the marks. Format examples give only the shape; `1.2%` and `1,2 %` both mean one decimal; `1,2 %` keeps its space and prints `1.2 %` by default.
