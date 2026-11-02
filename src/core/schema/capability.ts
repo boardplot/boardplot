@@ -24,7 +24,7 @@ export const LEGEND_REFUSED: readonly string[] = ['box'];
  * stay accepted.
  */
 export const LEGEND_DRAWS: Readonly<Record<string, readonly string[]>> = {
-  slope: ['top', 'bottom'],
+  slope: ['top', 'bottom', 'right', 'left'],
 };
 
 /**
