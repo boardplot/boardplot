@@ -632,21 +632,25 @@ export function layoutChoropleth(
       undrawnUnlisted += 1;
       continue;
     }
-    const d = regionVisible
-      ? region.polygons.length > 0
-        ? polygonsPath(region.polygons)
-        : markerPath(
-            region.marker?.x ?? region.anchor.x,
-            region.marker?.y ?? region.anchor.y,
-            region.marker?.radius ?? 2.5,
-            regionStroke,
-          )
-      : '';
+    // Listed and sizing passes can discard this scene. Format its coordinates only when read.
+    let d: string | undefined;
     const fill: Paint = state ? { token: 'inkMuted' } : noData ? { token: 'background' } : unlisted ? landPaint : scale.paint(value);
     (unlisted ? landNodes : nodes).push({
       t: 'path',
       id: pathNodeId,
-      d,
+      get d() {
+        return d ??= regionVisible
+          ? region.polygons.length > 0
+            ? polygonsPath(region.polygons)
+            : markerPath(
+                region.marker?.x ?? region.anchor.x,
+                region.marker?.y ?? region.anchor.y,
+                region.marker?.radius ?? 2.5,
+                regionStroke,
+              )
+          : '';
+      },
+      set d(value: string) { d = value; },
       fill,
       stroke: unlisted ? { token: 'background' } : { token: 'inkMuted' },
       width: regionStroke,
@@ -911,7 +915,9 @@ function prepareMapLayout(pack: GeoPack, plot: Rect, laneSpan: { y: number; h: n
     let prepared = fits.get(key);
     if (!prepared) {
       const fitted = fitGeoPack(pack, frame);
-      const outsideFits = outsideLabelGuard(fitted.regions.filter(region => region.polygons.length > 0 || visibleMarkerIds.has(region.id)));
+      let guard: ReturnType<typeof outsideLabelGuard> | undefined;
+      const outsideFits: ReturnType<typeof outsideLabelGuard> = (id, rect, from, to) =>
+        (guard ??= outsideLabelGuard(fitted.regions.filter(region => region.polygons.length > 0 || visibleMarkerIds.has(region.id))))(id, rect, from, to);
       prepared = { fitted, outsideFits };
       fits.set(key, prepared);
     }
@@ -1522,9 +1528,11 @@ function resolveRegionLabelLayout(
       .map((region) => region.id),
   );
   if (leaderIds.size > 0) {
-    const initialFit = fitGeoPack(pack, choroplethMapFrame(plot, 0, pack.id));
-    gutter = measuredLeaderGutter(initialFit.regions, leaderIds, plot, theme, measure, valueTexts);
+    gutter = measuredLeaderGutter(decodeGeoPack(pack).regions, leaderIds, plot, theme, measure, valueTexts);
   }
+  // A probe can only add an eligible leader. With none left, every iteration returns this gutter.
+  if (!pack.regions.some(region => labelIds.has(region.id) && leaderEligibleIds.has(region.id) && !leaderIds.has(region.id)
+    && (pack.id !== 'world' || region.microState))) return { gutter, leaderIds };
   const ranks = valueRanks(valuesById);
   for (let iteration = 0; iteration <= pack.regions.length; iteration++) {
     const mapFrame = choroplethMapFrame(plot, gutter, pack.id);
@@ -1697,9 +1705,21 @@ function certainlyUnderKey(pack: GeoPack, rect: Rect, padding: number | undefine
   const margin = 16 * Number.EPSILON * magnitude;
   const inner = { x: keyArea.x + margin, y: keyArea.y + margin, w: keyArea.w - 2 * margin, h: keyArea.h - 2 * margin };
   if (!(inner.w >= 0 && inner.h >= 0)) return false;
-  const inside = (px: number, py: number) => fits.every((fit) => pointInRect(px * fit.scale + fit.x, py * fit.scale + fit.y, inner));
+  const inside = (px: number, py: number) => {
+    for (const fit of fits) if (!pointInRect(px * fit.scale + fit.x, py * fit.scale + fit.y, inner)) return false;
+    return true;
+  };
   for (const region of decodeGeoPack(pack).regions) {
     if (region.marker !== undefined && inside(region.marker.x, region.marker.y)) return true;
+    const [x0, y0, x1, y1] = boundsOfPolygons(region.polygons);
+    // A vertex must be under the key in every fit. Reject a whole region when its extrema
+    // miss the key in any fit; the positive scale preserves the coordinate order exactly.
+    let apart = false;
+    for (const fit of fits) {
+      if (x1 * fit.scale + fit.x < inner.x || x0 * fit.scale + fit.x > inner.x + inner.w
+        || y1 * fit.scale + fit.y < inner.y || y0 * fit.scale + fit.y > inner.y + inner.h) { apart = true; break; }
+    }
+    if (apart) continue;
     for (const polygon of region.polygons) for (const ring of polygon) for (const [px, py] of ring) if (inside(px, py)) return true;
   }
   return false;
@@ -1717,7 +1737,7 @@ function choroplethMapFrame(plot: Rect, gutter: number, packId: GeoPack['id'], p
 }
 
 function measuredLeaderGutter(
-  regions: FittedGeoRegion[],
+  regions: Pick<FittedGeoRegion, 'id' | 'anchor'>[],
   leaderIds: Set<string>,
   plot: Rect,
   theme: Theme,
@@ -1923,7 +1943,7 @@ function labelPlanForRegion(
 
 /** The region's code, followed by its value when `regionValues` prints them. */
 function regionLabelText(
-  region: FittedGeoRegion,
+  region: Pick<FittedGeoRegion, 'id' | 'anchor'>,
   font: FontSpec,
   measure: typeof defaultMeasurer,
   valueTexts: ReadonlyMap<string, string>,
@@ -2127,6 +2147,8 @@ function regionLabelRequest(
 const regionPaths = new WeakMap<GeoPoint[][][], string>();
 const regionStrips = new WeakMap<GeoPoint[][][], Rect[]>();
 const regionHatches = new WeakMap<GeoPoint[][][], HatchSegment[]>();
+const regionAreas = new WeakMap<GeoPoint[][][], number>();
+const regionBounds = new WeakMap<GeoPoint[][][], [number, number, number, number]>();
 
 function polygonsPath(polygons: GeoPoint[][][]): string {
   let d = regionPaths.get(polygons);
@@ -2294,7 +2316,8 @@ function claimPolygonFill(
 ): void {
   let strips = regionStrips.get(polygons);
   if (!strips) regionStrips.set(polygons, strips = polygonFillStrips(polygons));
-  for (const strip of strips) occupied.claim(strip, 'mark', { categoryId: regionId }, 'region');
+  const owner = { categoryId: regionId };
+  for (const strip of strips) occupied.claim(strip, 'mark', owner, 'region');
 }
 
 /** The CLAIM_STEP strips that cover the polygons, in claim order. */
@@ -2315,13 +2338,11 @@ function polygonFillStrips(polygons: GeoPoint[][][]): Rect[] {
         const low = Math.min(a[1], b[1]);
         const high = Math.max(a[1], b[1]);
         if (!(low < high)) continue;
-        let lo = 0;
-        let hi = rows.length;
-        while (lo < hi) {
-          const mid = (lo + hi) >> 1;
-          if (rows[mid]! < low) lo = mid + 1;
-          else hi = mid;
-        }
+        // Rows are 4 px apart. Correct the direct estimate against the actual rows so rounding
+        // keeps the same first crossing as the binary search.
+        let lo = Math.max(0, Math.min(rows.length, Math.ceil((low - firstY) / CLAIM_STEP))) || 0;
+        while (lo > 0 && rows[lo - 1]! >= low) lo--;
+        while (lo < rows.length && rows[lo]! < low) lo++;
         for (let row = lo; row < rows.length && rows[row]! < high; row++) crossing[row]!.push(a, b);
       }
     }
@@ -2476,6 +2497,8 @@ function claimLeader(
 }
 
 function boundsOfPolygons(polygons: GeoPoint[][][]): [number, number, number, number] {
+  const known = regionBounds.get(polygons);
+  if (known !== undefined) return known;
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -2490,7 +2513,9 @@ function boundsOfPolygons(polygons: GeoPoint[][][]): [number, number, number, nu
       }
     }
   }
-  return [minX, minY, maxX, maxY];
+  const bounds: [number, number, number, number] = [minX, minY, maxX, maxY];
+  regionBounds.set(polygons, bounds);
+  return bounds;
 }
 
 function nearestRegionId(
@@ -2532,7 +2557,9 @@ function valueRanks(valuesById: ReadonlyMap<string, number | null>): Map<string,
 }
 
 function polygonsArea(polygons: GeoPoint[][][]): number {
-  return polygons.reduce((total, polygon) => total + polygon.reduce((sum, ring, index) => {
+  const known = regionAreas.get(polygons);
+  if (known !== undefined) return known;
+  const area = polygons.reduce((total, polygon) => total + polygon.reduce((sum, ring, index) => {
     let twice = 0;
     for (let i = 0; i < ring.length; i++) {
       const a = ring[i]!;
@@ -2541,6 +2568,8 @@ function polygonsArea(polygons: GeoPoint[][][]): number {
     }
     return sum + (index === 0 ? 1 : -1) * Math.abs(twice) / 2;
   }, 0), 0);
+  regionAreas.set(polygons, area);
+  return area;
 }
 
 /** Where a callout's leader stops: the label box's nearest point, 2 px short of it. */
