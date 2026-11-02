@@ -53,12 +53,12 @@ describe('parseFormatExample', () => {
 
   it('rejects examples with no numeric body', () => {
     expect(() => parseFormatExample('garbage')).toThrow(/invalid-format-example/);
-    expect(() => formatterFromExample('USD', undefined)).toThrow(/invalid-format-example/);
+    expect(() => formatterFromExample('abc', undefined)).toThrow(/invalid-format-example/);
     expect(() => parseFormatExample('   ')).toThrow(/invalid-format-example/);
   });
 
   it('refuses a bad example with a NormalizeError that carries a code and a fix', () => {
-    for (const bad of ['garbage', '#,##0']) {
+    for (const bad of ['garbage', '0.0,"M"']) {
       try {
         parseFormatExample(bad);
         throw new Error('expected a throw');

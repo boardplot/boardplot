@@ -7,7 +7,7 @@ import { logSpecFormat } from '../src/core/charts/scatter/logAxis';
 import { formatAutomaticNumber as formatAutomaticNumberSync, formatNumber } from '../src/core/format';
 import { shareSetDecimals } from '../src/core/formatPrecision';
 import { shareSetFormatter } from '../src/core/format';
-import { defaultFormatSpec, formatWithSpec, parseFormatExample, sameUnit, seriesRasterFormatter, unscaledFormatLint } from '../src/core/formatSpec';
+import { defaultFormatSpec, formatterFromExample, formatWithSpec, parseFormatExample, readFormatExamples, roundedNumber, sameUnit, seriesRasterFormatter, signedFormatterFromExample, unscaledFormatLint } from '../src/core/formatSpec';
 import { niceDomain } from '../src/core/scale';
 import type { SceneNode } from '../src/core/types/scene';
 import { createElement } from 'react';
@@ -18,6 +18,138 @@ import { renderSvg } from '../src/core/svg/renderSvg';
 import { LineChart } from '../src/react/charts/line';
 import { TableChart } from '../src/react/charts/table';
 import { prepareChart } from '../src/react/prepare';
+
+describe('ordinary number examples', () => {
+  const column = (format: string, values: number[]) => {
+    const request = resolveChartRequest({ type: 'column', data: {
+      categories: values.map((_, index) => ({ id: String(index) })), series: [{ id: 's', values }],
+    }, options: { format, valueLabels: 'all', size: { width: 960 } } } as never);
+    return { request, texts: requireGeometry(layoutResolvedRequest(request)).labels.filter(label => label.kind === 'point' && !label.hidden).map(label => label.text) };
+  };
+
+  // Prevents currency scale words from naming thousands or millions while the cells print base units.
+  it('scales spaced currency magnitudes and currency affixes while keeping physical units literal', () => {
+    for (const [example, expected] of [['$1.2 k', '$1.2 k'], ['€1.2 m', '€0.0 m'], ['CHF 1.2 m', 'CHF 0.0 m'],
+      ['USD 5 b', 'USD 0 b'], ['1.2 k USD', '1.2 k USD']]) {
+      expect(formatWithSpec(1200, parseFormatExample(example!, true))).toBe(expected);
+    }
+    expect(formatterFromExample('$1.2 k', undefined)(1_300_000)).toBe('$1.3 M');
+    for (const [example, positive, negative] of [['USDm 1.2', 'USDm 1.2', '−USDm 0.2'], ['1.2 €m', '1.2 €m', '−0.2 €m'],
+      ['CHF m 1.2', 'CHF m 1.2', '−CHF m 0.2'], ['Mio. CHF 1.2', 'Mio. CHF 1.2', '−Mio. CHF 0.2']]) {
+      const fmt = formatterFromExample(example!, undefined);
+      expect(fmt(1_234_567)).toBe(positive);
+      expect(fmt(-234_567)).toBe(negative);
+      expect(unscaledFormatLint({ format: example }, { values: [1_234_567] })).toEqual([]);
+    }
+    for (const [example, expected] of [['12 m/s', '1200 m/s'], ['50 B', '1200 B'], ['$5 m/s', '$1200 m/s']]) {
+      expect(formatWithSpec(1200, parseFormatExample(example!))).toBe(expected);
+    }
+    const table = (format: string) => {
+      const request = resolveChartRequest({ type: 'table', data: { columns: [{ id: 'name', kind: 'rowLabel', label: 'Region' },
+        { id: 'v', kind: 'value', label: 'Value', format }], rows: [1234, -567, 89].map((v, index) => ({ id: String(index), label: String(index), cells: { v } })) },
+      options: { title: 'Values' } } as never);
+      return [...renderSvg(requireGeometry(layoutResolvedRequest(request)), request.theme).matchAll(/<text\b[^>]*>(.*?)<\/text>/gs)].map(match => match[1]!.replace(/<[^>]*>/g, ''));
+    };
+    expect(table('$1.2 k')).toEqual(table('$1.2k'));
+    expect(table('$1.2 k')).toContain('VALUE ($k)');
+    expect(table('$1.2 k')).toContain('−0.6');
+  });
+
+  // Prevents spreadsheet placeholders from leaking into labels or silently changing their divisor and negative style.
+  it('translates spreadsheet codes and reports the example used by the request', () => {
+    for (const [code, expected] of [['#,##0', '1,235'], ['#,##0.0', '1,234.6'], ['$#,##0', '$1,235'],
+      ['#,##0;(#,##0)', '(1,235)'], ['+0.0%;(0.0%)', '(1,234.6%)'], ['0.0,,"M"', '1.2M'], ['#,##0,', '1,235k']]) {
+      const value = code!.includes(',,') ? 1_234_567 : code === '#,##0,' ? 1_234_567 : code!.includes(';') ? -1234.56 : 1234.56;
+      expect(formatterFromExample(code!, undefined)(value), code).toBe(expected);
+    }
+    const result = column('#,##0;(#,##0)', [1234, -567]);
+    expect(result.texts).toEqual(expect.arrayContaining(['1,234', '(567)']));
+    expect(result.request.inputWarnings).toContainEqual(expect.objectContaining({ code: 'format-spreadsheet-code', severity: 'warn',
+      message: "format '#,##0;(#,##0)' is a spreadsheet number code, so the chart prints it as the example '(1,234)'", field: ['options', 'format'] }));
+    const signed = formatterFromExample('+0.0%;(0.0%)', undefined);
+    expect([1.2, -1.2, 0].map(signed)).toEqual(['+1.2%', '(1.2%)', '0.0%']);
+    for (const code of ['0.0,"M"', '0.0"M"', '0.0"unfinished']) expect(() => parseFormatExample(code)).toThrow(/invalid-format/);
+    expect(parseFormatExample('0.000"kg"')).toMatchObject({ decimals: 3, thousandsSep: '', magnitude: 'none', suffix: 'kg' });
+    expect(formatterFromExample('[$€-407]#,##0.00', undefined)(1234.5)).toBe('€1,234.50');
+    expect(formatterFromExample('#,##0 "EUR"', undefined)(1234)).toBe('1,234 EUR');
+    expect(formatterFromExample('0.00E+00', undefined)(1_234_567)).toBe('1.23E+06');
+    for (const example of ['1.2 "kg"', '1.2 [kg]', '12 "b"', '#1', 'Rank #1']) expect(() => parseFormatExample(example)).not.toThrow();
+    const rewritten = readFormatExamples({ series: [{ format: '#,##0', values: [{ number: 12, format: '#,##0' }] }] }, { format: '#,##0' });
+    expect(rewritten.warnings.filter(warning => warning.code === 'format-spreadsheet-code')).toHaveLength(1);
+  });
+
+  // Prevents a unit-only format from forcing the stand-in's decimals onto data at another precision.
+  it('chooses unit-only precision from the original values of each field', () => {
+    for (const [format, values, texts] of [['$M', [1_200_000, 5_000_000, 7_000_000], ['$1.2M', '$5.0M', '$7.0M']],
+      ['€bn', [1_200_000_000, 5_000_000_000], ['€1.2bn', '€5.0bn']], ['%', [12, 5, 7], ['12%', '5%', '7%']],
+      ['x', [1.2, 5, 7], ['1.2x', '5.0x', '7.0x']]] as const) {
+      const result = column(format, [...values]);
+      expect(result.texts).toEqual(expect.arrayContaining([...texts]));
+      expect(result.request.inputWarnings?.filter(warning => warning.code.startsWith('format-')) ?? []).toEqual([]);
+    }
+    const own = readFormatExamples({ series: [{ format: '%', values: [1, 2] }, { format: '%', values: [{ number: 1.25 }, 2] }] }, {});
+    expect(own.data.series.map(series => parseFormatExample(series.format).decimals)).toEqual([0, 2]);
+    const table = readFormatExamples({ columns: [{ id: 'v', format: '$M' }, { id: 'computed', format: '%' }], rows: [
+      { cells: { v: 1_200_000 }, children: [{ cells: { v: { v: 5_000_000 } } }] },
+    ] }, {});
+    expect(table.data.columns.map(col => parseFormatExample(col.format).decimals)).toEqual([1, 1]);
+    expect(parseFormatExample('$M').decimals).toBe(1);
+    expect(parseFormatExample('$').decimals).toBe(0);
+    for (const example of ['Revenue', 'm', 'M', 'abc']) expect(() => parseFormatExample(example)).toThrow(/at least one digit/);
+  });
+
+  // Prevents literal direction signs and trailing minuses from giving positive or zero values a negative label.
+  it('prints direction signs, plus-minus and trailing minus by value', () => {
+    for (const example of ['▲1.2%', '▼1.2%']) expect([1.2, -0.5, 0].map(formatterFromExample(example, undefined))).toEqual(['▲1.2%', '▼0.5%', '0.0%']);
+    expect([1.2, -0.5, 0].map(formatterFromExample('↑ 1.2%', undefined))).toEqual(['↑ 1.2%', '↓ 0.5%', '0.0%']);
+    expect([1.2, -0.5, 0].map(formatterFromExample('1.2% △', undefined))).toEqual(['1.2% △', '0.5% ▽', '0.0%']);
+    expect(signedFormatterFromExample('▲$1.2M', undefined)(-400_000)).toBe('▼$0.4M');
+    expect(seriesRasterFormatter('▲1.2%', [1.2]).fmtSigned(1.2)).toBe('▲1.2%');
+    expect([1.2, -0.8, 0].map(formatterFromExample('±1.2%', undefined))).toEqual(['+1.2%', '−0.8%', '0.0%']);
+    expect([1_234_567, -234_567, 0].map(formatterFromExample('1,234-', undefined))).toEqual(['1,234,567', '234,567-', '0']);
+    expect(formatterFromExample('+1,234 EUR−', undefined)(12)).toBe('+12 EUR');
+    expect(formatterFromExample('1,234 EUR−', undefined)(-12)).toBe('12 EUR−');
+    expect(formatterFromExample('(1,234)-', undefined)(-12)).toBe('(12)');
+    const request = resolveChartRequest({ type: 'table', data: { columns: [{ id: 'n', kind: 'rowLabel', label: 'Item' },
+      { id: 'v', kind: 'value', label: 'Value', format: '$1.2k-' }], rows: [{ id: 'a', label: 'A', cells: { v: -1200 } }] }, options: {} } as never);
+    const svg = renderSvg(requireGeometry(layoutResolvedRequest(request)), request.theme);
+    expect(svg).toContain('VALUE ($k)');
+    expect(svg).toContain('>1.2-<');
+  });
+
+  // Prevents fixed ordinal suffixes and literal exponents from printing the wrong rank or numeric scale.
+  it('prints English ordinals and scientific mantissas and exponents by value', () => {
+    expect([1, 2, 3, 4, 11, 12, 13, 21, 22, 101, 111, 0, -1, 1.6].map(formatterFromExample('1st', undefined)))
+      .toEqual(['1st', '2nd', '3rd', '4th', '11th', '12th', '13th', '21st', '22nd', '101st', '111th', '0th', '−1st', '2nd']);
+    expect(formatterFromExample('21ST place', 'de')(22)).toBe('22ND place');
+    const values = [1_200_000, 2_500_000, 800_000, 1_960_000, 9_960_000, 0.0034, 0, -0.0034];
+    expect(values.map(formatterFromExample('1.2E+06', undefined))).toEqual(['1.2E+06', '2.5E+06', '8.0E+05', '2.0E+06', '1.0E+07', '3.4E-03', '0.0E+00', '−3.4E-03']);
+    expect(values.map(value => roundedNumber(value, parseFormatExample('1.2E+06')))).toEqual([1_200_000, 2_500_000, 800_000, 2_000_000, 10_000_000, 0.0034, 0, -0.0034]);
+    expect(formatterFromExample('USD1.2e6', undefined)(0.0034)).toBe('USD3.4e-3');
+    expect(formatterFromExample('1.234E+06', undefined)(1_234_567)).toBe('1.235E+06');
+    expect(column('1.2E+06', [1_200_000, 800_000]).texts).toEqual(expect.arrayContaining(['1.2E+06', '8.0E+05']));
+    for (const format of ['1st', '1.2E+06']) expect(unscaledFormatLint({ format }, { values: [1_200_000] })).toEqual([]);
+  });
+
+  // Prevents a signed waterfall step example from putting a plus on level totals.
+  it('prints signed waterfall steps and unsigned totals', () => {
+    const request = resolveChartRequest({ type: 'waterfall', data: { items: [
+      { id: 'start', label: 'Start', type: 'total', value: 1200 }, { id: 'step', label: 'Step', value: 200 }, { id: 'end', label: 'End', type: 'total' },
+    ] }, options: { format: '+$1,234' } } as never);
+    const texts = requireGeometry(layoutResolvedRequest(request)).labels.filter(label => !label.hidden).map(label => label.text);
+    expect(texts).toEqual(expect.arrayContaining(['$1,200', '+$200', '$1,400']));
+    expect(texts).not.toContain('+$1,200');
+  });
+
+  // Prevents accepted grouping mark spellings from being refused or changing the chart's decimal mark.
+  it('accepts the typed apostrophe and narrow no-break space as locale grouping marks', () => {
+    for (const [thousands, expected] of [["'", "1'234.5"], ['\u202f', '1\u00a0234.5']]) {
+      const request = resolveChartRequest({ type: 'column', data: { categories: ['a'], series: [{ id: 's', values: [1234.5] }] },
+        options: { format: '1,234.5', locale: { thousands } } } as never);
+      expect(requireGeometry(layoutResolvedRequest(request)).labels.map(label => label.text)).toContain(expected);
+    }
+  });
+});
 
 // Prevents the shared accounting format from giving a false sign on any SVG or React number surface.
 it('keeps accounting signs in labels, axes, tables, keys, annotations and accessible descriptions', async () => {
@@ -159,11 +291,13 @@ it('reads a raw value with its unit as the marks place it, without the magnitude
     const text = accessibleDataTable(interactionRecords({ request: trillions, geometry: requireGeometry(layoutResolvedRequest(trillions)), scope: trillions.scope, claims: [] })).rows[0]!.cells[0]!.text;
     expect(text, language).not.toMatch(/Bio|Bn|T/);
   }
-  // A literal suffix scales nothing: '1,234 EURk' reads its raw figure with the whole unit.
-  const literal = resolveChartRequest({ type: 'table', data: { columns: [{ id: 'label', kind: 'rowLabel', label: 'Row' }, { id: 'v', kind: 'value', label: 'Value', format: '1,234 EURk' }],
-    rows: [{ id: 'r', label: 'r', cells: { v: 1234 } }] }, options: { title: 'Literal' } } as never);
-  const literalTable = accessibleDataTable(interactionRecords({ request: literal, geometry: requireGeometry(layoutResolvedRequest(literal)), scope: literal.scope, claims: [] }));
-  expect(literalTable.rows[0]!.cells[0]!.text).toMatch(/EURk/);
+  // A physical unit stays literal; a currency affix drops its scale when reading the raw value.
+  for (const [format, expected] of [['1,234 EUR/kg', '1,234 EUR/kg'], ['1,234 EURk', '1,234 EUR']]) {
+    const literal = resolveChartRequest({ type: 'table', data: { columns: [{ id: 'label', kind: 'rowLabel', label: 'Row' }, { id: 'v', kind: 'value', label: 'Value', format }],
+      rows: [{ id: 'r', label: 'r', cells: { v: 1234 } }] }, options: { title: 'Units' } } as never);
+    const literalTable = accessibleDataTable(interactionRecords({ request: literal, geometry: requireGeometry(layoutResolvedRequest(literal)), scope: literal.scope, claims: [] }));
+    expect(literalTable.rows[0]!.cells[0]!.text).toBe(expected);
+  }
   // A magnitude options.magnitude adds is hoisted too: the raw value drops it.
   for (const [magnitude, raw] of [['thousand', 950000], ['million', 2470000]] as const) {
     const forced = resolveChartRequest({ type: 'table', data: { columns: [{ id: 'label', kind: 'rowLabel', label: 'Row' }, { id: 'v', kind: 'value', label: 'Value', format: '$1,234' }, { id: 'n', kind: 'value', label: 'Count', format: '1,234' }],

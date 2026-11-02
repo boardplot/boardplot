@@ -37,7 +37,7 @@ import { normalizeLegendOption } from '../../frame';
 import { refreshPaintWarnings, resolvePaintWarnings } from '../../paintWarnings';
 import { PALETTE_NORMAL_FLOOR } from '../../themeRules';
 import { formatAutomaticNumber } from '../../format';
-import { formatterFromExample, formatWithSpec, parseFormatExample, roundedNumber, withChartMarks } from '../../formatSpec';
+import { formatExampleText, formatterFromExample, formatWithSpec, parseFormatExample, roundedNumber, withChartMarks } from '../../formatSpec';
 import { shareDrift } from '../../dataGaps';
 import { accessibleTitle, NormalizeError, resolveSize } from '../../normalize/shared';
 import {
@@ -796,7 +796,7 @@ export function layoutLikert(
 
   // The net column is the stack's SIGNED SUM, which equals the net score only
   // under 'split' and 'exclude' — the two modes `summary: 'net'` allows.
-  const netExample = `+${(opts.format ?? DEFAULT_SHARE_FORMAT).replace(/%/g, '')}`;
+  const netExample = `+${formatExampleText(opts.format ?? DEFAULT_SHARE_FORMAT).replace(/%/g, '')}`;
   // The printed net names its unit: a difference of two shares is in
   // percentage points, and a bare "+75" reads as a count.
   // The unit prints once, in the column head "Net, pp".

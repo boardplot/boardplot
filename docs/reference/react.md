@@ -304,7 +304,7 @@ export function Dashboard() {
 | locale | string \| object |  |  | Inherited locale. Locale support follows each chart formatter. |
 | locale.language | string |  |  | BCP 47 language tag. Changes words only, such as notes and month names. It never changes the decimal or grouping marks; they come only from locale.decimal and locale.thousands. E.g. "de"; "de_DE" is read as "de-DE"; "en-US" puts the month first (Sep 4). |
 | locale.decimal | string | `'.'`, `','` |  | Decimal mark of every number the chart prints. Default '.'. The language does not change it. |
-| locale.thousands | string | `','`, `'.'`, `'’'`, `' '` |  | Grouping mark of every number the chart prints. Default ',', or '.' with decimal ','. The language does not change it. A value equal to the decimal mark uses that fallback. |
+| locale.thousands | string | `','`, `'.'`, `'’'`, `'\\''`, `' '`, `' '` |  | Grouping mark of every number the chart prints. The apostrophe ' is the same as ’, and the narrow no-break space is the same as the space. Default ',', or '.' with decimal ','. The language does not change it. A value equal to the decimal mark uses that fallback. |
 | locale.minusGlyph | string | `'−'`, `'-'` |  | Minus glyph for locale-derived table formats; default Unicode minus. |
 | locale.weekStartsOn | number | `0`, `1` |  | First weekday for week-granularity date ticks; default Monday. Line date ticks read this field, other layouts ignore it and report it. |
 | motion | string | `'system'`, `'reduce'`, `'full'` |  | Motion preference. Default system; charts remain static unless motion is enabled. |

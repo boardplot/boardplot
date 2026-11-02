@@ -313,8 +313,8 @@ export function parseData<T>(schema: z.ZodType<T>, raw: unknown): T {
 }
 
 /**
- * A number format-by-example. A spreadsheet code ("#,##0") or a text without
- * a number is refused as invalid-format with the example to write.
+ * A number example, a recognized unit alone, or a translatable spreadsheet
+ * number code. An ambiguous or unrecognized format is refused as invalid-format.
  */
 const formatField = (withFix: boolean) => z.string().superRefine((value, ctx) => {
   const problem = formatExampleProblem(value);
@@ -339,7 +339,7 @@ export const dataValueKindSchema = valueKindSchema.describe('Default valueKind f
 const PERCENT_FORMAT_UNITS = 'A % example expects values in percent units: 3.53 prints 3.53%, a fraction 0.0353 prints 0.04%.';
 
 /** Every magnitude word parseFormatExample reads (formatSpec.ts MAGNITUDE_SUFFIXES). */
-export const MAGNITUDE_WORDS_DOC = "A magnitude after the number divides the raw value: k, thousand, Tsd., Tausend (10³); m, M, mn, mm, million(s), Mio., Million(en) (10⁶); b, B, bn, billion(s), Mrd., Milliarde(n), milliard(s) (10⁹); tn, trillion(s), Bio., Billionen (10¹²). The letters k, m, M, mm, b, B and T scale only glued to the number: '12 m/s' and '50 B' keep their unit. A value of 1000 or more in a scale rolls up and one that would print as 0 rolls down, in the example's spelling; a German or French chart prints its own words (Mrd., Bio.; Md, Bn).";
+export const MAGNITUDE_WORDS_DOC = "A magnitude after the number divides the raw value: k, thousand, Tsd., Tausend (10³); m, M, mn, mm, million(s), Mio., Million(en) (10⁶); b, B, bn, billion(s), Mrd., Milliarde(n), milliard(s) (10⁹); tn, trillion(s), Bio., Billionen (10¹²). The letters k, m, M, mm, b, B and T scale when glued to the number or spaced beside a currency ('$1.2 k'); '12 m/s' and '50 B' keep their unit. A scale inside a currency affix ('USDm 1.2', '1.2 €m') holds that divisor. A value of 1000 or more in a free scale rolls up and one that would print as 0 rolls down, in the example's spelling; a German or French chart prints its own words (Mrd., Bio.; Md, Bn). A unit alone ('$M', '€bn', '%', 'x') picks precision from the data. Spreadsheet number codes translate to examples with warning format-spreadsheet-code; percent values stay percent points. Direction glyphs (▲/▼, ↑/↓) and ± carry a sign. A trailing minus marks negatives, '1st' prints English ordinals, and '1.2E+06' prints scientific notation.";
 
 /**
  * A scenario field: the codes normalizeScenario accepts lead every field's
