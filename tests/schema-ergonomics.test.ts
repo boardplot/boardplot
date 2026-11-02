@@ -248,6 +248,10 @@ it('accepts short option shapes and preserves their content', async () => {
   for (const name of [' / .. ', 12]) expect(() => parseDocumentInput({ ...spec, name })).toThrow();
   expect(parseDocumentInput({ version: 1, charts: [{ name: 'Revenue Q3 2024', type: 'column', data }] }).doc.charts[0]!.name).toBe('Revenue Q3 2024');
 
+  // The overrides-only theme gets the same contrast refusal as { preset, overrides }.
+  const unreadable = render({ spec: { type: 'column', data, options: { theme: { overrides: { color: { ink: '#fdfdfd' } } } } }, return: ['svg'] }).body as { errors: { code: string }[] };
+  expect(unreadable.errors[0]!.code).toBe('contrast-ink');
+
   const stray = render({ spec: { type: 'column', data, locale: 'de' }, return: ['svg'] }).body as { errors: { fix: unknown }[] };
   expect(stray.errors[0]!.fix).toEqual([{ op: 'add', path: '/options', value: { locale: 'de' } }, { op: 'remove', path: '/locale' }]);
   const annotation = { kind: 'valueLine', value: 1500, text: 'Target' };

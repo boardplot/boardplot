@@ -44,6 +44,7 @@ import { InputError } from './result';
 import { withSize, type Length } from './size';
 import { assertSpecObject } from '../core/inputError';
 import { pushAll } from '../core/arrays';
+import { themeShape } from '../core/normalize/optionShapes';
 
 interface LoadedSpec {
   doc: BoardplotDoc;
@@ -111,6 +112,7 @@ function registerThemeObject(doc: BoardplotDoc, envelope: DocumentEnvelope): boo
  * by the preset tests.
  */
 function judgeTheme(doc: BoardplotDoc, ref: unknown, segments: (string | number)[], envelope: DocumentEnvelope, charts: DocChart[], geometry?: Geometry): DocumentFinding[] {
+  ref = themeShape(ref);
   if (ref === null || typeof ref !== 'object' || !Object.hasOwn(ref, 'preset')) return [];
   let resolved: ReturnType<typeof resolveTheme>;
   let base: ReturnType<typeof resolveTheme>;
