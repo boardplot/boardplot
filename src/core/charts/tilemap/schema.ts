@@ -7,7 +7,7 @@ import type { TilemapData, TilemapOptions } from './types';
 
 const baseTilemapDataSchema = z
   .object({
-    pack: z.enum(['eu27', 'europe', 'world', 'us-states']).describe('Built-in equal-area tile layout; region ids must belong to this pack.'),
+    pack: z.enum(['eu27', 'europe', 'world', 'us-states']).describe('Built-in equal-area tile layout. Unknown data region ids are left out with a warning and a note; all-unknown data is refused.'),
     regions: z
       .array(geoRegionSchema)
       .min(1).describe('Observed regions keyed by pack id; omitted pack members are not in the data and draw plain background. Zero regions is empty-data.'),

@@ -129,9 +129,12 @@ function layoutTilemapPass(
   if (!data.regions.length) throw new NormalizeError(EMPTY_DATA, 'regions', 'tilemap requires at least one region', 'add regions[].id and value');
   const pack = getTilePack(data.pack);
   const idIndex = geoRegionIdIndex(pack.regions);
-  const { valuesById, statesById } = ingestGeoRegions(data.regions, idIndex, { where: `tile pack '${pack.id}'`, regionWord: 'tile-pack region' }, warnings, (id, index) => {
-    throw new NormalizeError('tilemap-unknown-region', `regions[${index}].id`, `region '${id}' is not present in tile pack '${pack.id}'`);
-  });
+  const { valuesById, statesById, leftOut } = ingestGeoRegions(data.regions, idIndex, { where: `tile pack '${pack.id}'`, regionWord: 'tile-pack region' }, warnings, (id, index) => ({
+    code: 'tilemap-unknown-region', severity: 'warn',
+    message: chartString(options, 'unknownRegionLeftOut', { v1: id, v2: pack.id }),
+    owner: { categoryId: id }, field: ['data', 'regions', index, 'id'],
+  }));
+  if (leftOut.length) options = { ...options, notes: { ...options.notes, show: [...new Set([...(options.notes?.show ?? ['note']), 'disclosure' as const])] } };
 
   const theme = resolveSemanticPaletteTheme(
     chartTheme(options),
@@ -220,7 +223,7 @@ function layoutTilemapPass(
         margin,
         ...frameTextOptions(options),
         // Only drawn glyphs can have a key or a label in the tile note.
-        footnotes: [...overlayNote(drawableOverlays, listed, pack, idIndex, options), ...codeLookup(options, pack),
+        footnotes: [...noteLine(chartString(options, 'regionsLeftOutNote'), leftOut, options).map(disclosureNote), ...overlayNote(drawableOverlays, listed, pack, idIndex, options), ...codeLookup(options, pack),
           ...(listOmissions ? [] : omissionLines), ...authoredNotes(options)],
         // The tile layout is Boardplot's own and carries no third-party data, so the
         // source line names only the author's source. The full attribution stays in

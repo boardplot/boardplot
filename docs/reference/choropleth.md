@@ -40,13 +40,13 @@ One form; its chart ID is `choropleth`.
 |---|---|---|---|
 | pack | string | yes | Built-in boundary pack that supplies region shapes and identifiers. 'europe' holds the EU27, CH, NO, IS, GB, the Balkan states, UA, BY, MD and the small states, without RU and TR; it follows the EU view, shows Crimea as part of Ukraine and shows Cyprus whole. 'world' also shows Crimea as part of Ukraine and keeps Natural Earth's de facto view elsewhere; it also holds small places such as HK, MO, GI, AD, LI, MC, SM and VA as markers. One of `'de-states'`, `'eu27'`, `'dach'`, `'europe'`, `'world'`, `'us-states'`. |
 | regions | array | yes | Observed regions keyed by pack id; omitted pack members are not in the data and draw plain background. |
-| regions[].id | string | yes | Region identifier from the selected geographic pack. |
+| regions[].id | string | yes | Region identifier from the selected geographic pack. Exact spellings win, then ids and aliases match without regard to case. Unknown data ids are left out with a warning and a note; all-unknown data is refused. |
 | regions[].value | number \| null | yes | Region measure; null without a state means missing data. |
 | regions[].state | string |  | Named null state: suppressed, not meaningful (nm), or not applicable (na). Each has a distinct pattern and key. Requires value null. One of `'na'`, `'nm'`, `'suppressed'`. |
 | overlays | array |  | Named glyphs and labels placed at geographic anchors. |
 | overlays[].id | string | yes | Stable overlay identifier, unique within the exhibit. |
 | overlays[].at | object | yes | Region or longitude/latitude anchor for the overlay. |
-| overlays[].at.region (overlays[].at branch 1) | string | yes | Region id whose pack anchor positions the overlay. |
+| overlays[].at.region (overlays[].at branch 1) | string | yes | Region id whose pack anchor positions the overlay. Exact spellings win, then ids and aliases match without regard to case. |
 | overlays[].at.lon (overlays[].at branch 2) | number | yes | Longitude in degrees, west negative and east positive. |
 | overlays[].at.lat (overlays[].at branch 2) | number | yes | Latitude in degrees, south negative and north positive. |
 | overlays[].glyph | object | yes | Overlay mark and its semantic data. |

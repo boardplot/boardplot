@@ -20,8 +20,8 @@ export interface TreemapItem {
   label?: string;
   /** Group id; leave it out on every item for a one-level treemap. */
   group?: Id;
-  /** Positive value; the cell area is proportional to it. */
-  value: number;
+  /** Cell area is proportional to a value above 0; zero and null items are left out. */
+  value: number | null;
 }
 
 export interface TreemapData {

@@ -17,7 +17,8 @@ import { chartString } from '../../strings/treemap';
 
 import { chartPalette } from '../chartEnv';
 import { structureCount } from '../../structureCounts';
-import { authoredNotes, fixedPlotChrome, frameTextOptions, shareUnitOptions, hiddenNoteWith, markNotedLabels, normalizeLegendOption, NOTED_LABELS, solveFrame, type LegendItemInput } from '../../frame';
+import { authoredNotes, fixedPlotChrome, frameTextOptions, shareUnitOptions, hiddenNoteWith, markNotedLabels, normalizeLegendOption, NOTED_LABELS, solveFrame, valueNoteLine, type LegendItemInput } from '../../frame';
+import { disclosureNote } from '../../notes';
 import { shareSetFormatter } from '../../format';
 import { formatterFromExample, parseFormatExample, seriesRasterFormatter } from '../../formatSpec';
 import { withUnit } from '../../unitJoin';
@@ -161,24 +162,35 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
   if (!data || !Array.isArray(data.items) || data.items.length === 0) {
     throw new NormalizeError('empty-data', 'items', 'treemap requires at least one item');
   }
-  if (shape === 'circle' && data.items.length > TREEMAP_CIRCLE_MAX_ITEMS) {
-    throw new NormalizeError('treemap-circle-too-many-items', 'options.variant',
-      `a circle treemap draws at most ${TREEMAP_CIRCLE_MAX_ITEMS} items, and this one has ${data.items.length}; its layout time grows with the square of the item count`,
-      "Use variant 'rect', or group small items into Other.", undefined, ['options', 'variant']);
-  }
-  const grouped = data.items.some((item) => item.group !== undefined) || (data.groups?.length ?? 0) > 0;
-  const items: Item[] = data.items.map((item, index) => {
+  const leftOut: string[] = [];
+  const grouped = data.items.some((item) => item.value !== null && item.value > 0 && item.group !== undefined) || (data.groups?.length ?? 0) > 0;
+  const items: Item[] = data.items.flatMap((item, index): Item[] => {
+    if (item.value === 0 || item.value === null) {
+      leftOut.push(item.label ?? item.id);
+      warnings.push({ code: 'treemap-item-left-out', severity: 'warn',
+        message: chartString(options, 'treemapItemLeftOut', { v1: item.label ?? item.id, v2: String(item.value) }),
+        owner: { categoryId: item.id }, field: ['data', 'items', index, 'value'] });
+      return [];
+    }
     if (typeof item.value !== 'number' || !Number.isFinite(item.value) || item.value <= 0) {
       throw new NormalizeError('treemap-value-not-positive', `items[${item.id}].value`,
-        `treemap value ${String(item.value)} for '${item.id}' is not above 0; a cell area is its value`,
+        item.value < 0 ? chartString(options, 'treemapNegativeValue', { v1: String(item.value), v2: item.label ?? item.id })
+          : `treemap value ${String(item.value)} for '${item.id}' is not above 0; a cell area is its value`,
         'Leave the item out, or send a value above 0. Use a bar chart for zero or negative values.', undefined, ['data', 'items', index, 'value']);
     }
     if (grouped && item.group === undefined) {
       throw new NormalizeError('treemap-group-missing', `items[${item.id}].group`, `item '${item.id}' names no group, while other items or data.groups do`,
         'Give every item a group, or leave groups out on every item for a one-level treemap.', undefined, ['data', 'items', index, 'group']);
     }
-    return { id: item.id, label: item.label ?? item.id, ...(item.group !== undefined ? { group: item.group } : {}), value: item.value, index };
+    return [{ id: item.id, label: item.label ?? item.id, ...(item.group !== undefined ? { group: item.group } : {}), value: item.value, index }];
   });
+  if (items.length === 0) throw new NormalizeError('empty-data', 'items', chartString(options, 'treemapNoPositiveValues'));
+  if (leftOut.length) options = { ...options, notes: { ...options.notes, show: [...new Set([...(options.notes?.show ?? ['note']), 'disclosure' as const])] } };
+  if (shape === 'circle' && items.length > TREEMAP_CIRCLE_MAX_ITEMS) {
+    throw new NormalizeError('treemap-circle-too-many-items', 'options.variant',
+      `a circle treemap draws at most ${TREEMAP_CIRCLE_MAX_ITEMS} items, and this one has ${items.length}; its layout time grows with the square of the item count`,
+      "Use variant 'rect', or group small items into Other.", undefined, ['options', 'variant']);
+  }
   const groupSpecs = data.groups ?? [...new Set(items.flatMap((item) => (item.group !== undefined ? [item.group] : [])))].map((id) => ({ id }));
   const known = new Set(groupSpecs.map((g) => g.id));
   items.forEach((item) => {
@@ -234,8 +246,9 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
   // The complete list of the names too small to print, on the page: neither
   // notes.maxListed nor the registry's move of its own line to the description takes it off.
   const hiddenNote = hiddenNoteWith({ ...options, notes: { ...options.notes, maxListed: 'all' } }, []);
+  const leftOutNote = valueNoteLine(chartString(options, 'treemapLeftOutNote'), leftOut, options).map(disclosureNote);
   const frame = solveFrame({
-    size, margin, ...frameTextOptions(shareUnitOptions('treemap', options, { groups })), footnotes: hiddenNote.line.length === 0 ? authoredNotes(options) : [...hiddenNote.footnotes, ...hiddenNote.line], theme, measure,
+    size, margin, ...frameTextOptions(shareUnitOptions('treemap', options, { groups })), footnotes: [...(hiddenNote.line.length === 0 ? authoredNotes(options) : [...hiddenNote.footnotes, ...hiddenNote.line]), ...leftOutNote], theme, measure,
     ...(legendOptions ? { legend: { options: legendOptions, items: legendItems } } : {}),
   }, occupied);
   fixedPlotChrome(frame);

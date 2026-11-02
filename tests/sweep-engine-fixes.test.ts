@@ -19,6 +19,20 @@ function layoutFixture(type: string, id: string, options: Record<string, unknown
 }
 
 describe('chart layout edge cases', () => {
+  // Intermediate categories must not prevent a slope from drawing its two endpoint values.
+  it('draws first versus last and names the omitted slope categories', () => {
+    const spec = { type: 'slope', data: {
+      categories: [{ id: 'start', label: '2023' }, { id: 'middle', label: '2024' }, { id: 'last', label: '2025' }],
+      series: [{ id: 'north', label: 'North', values: [10, 900, 25] }],
+    } };
+    const body = render({ spec, return: ['svg', 'reading'] }).body as any;
+    expect(body.ok).toBe(true);
+    expect(body.warnings).toContainEqual(expect.objectContaining({ code: 'slope-too-many-points', severity: 'warn' }));
+    expect(body.reading.notes).toContainEqual(expect.objectContaining({ kind: 'disclosure', inFrame: true, text: expect.stringContaining('2024') }));
+    const geometry = layoutResolvedRequest(resolveChartRequest(spec as never)) as any;
+    expect(geometry.derived.changes.north).toEqual({ abs: 15, pct: 150 });
+    expect(geometry.labels.filter((label: { hidden?: boolean }) => !label.hidden).map((label: { text: string }) => label.text)).not.toContain('900');
+  });
   // On a long line, valueLabels 'all' gave the whole row up and printed no end value, where 'last' prints both.
   it('a line with valueLabels all that cannot print every value keeps its end values (gap-bracket)', () => {
     const geometry = layoutFixture('line', 'gap-bracket', { valueLabels: 'all' });
