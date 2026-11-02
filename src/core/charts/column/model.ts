@@ -219,6 +219,8 @@ export interface ColumnArea {
   topPad: number;
   band: BandScale;
   catPlan: CategoryRowPlan;
+  /** categoryAxis.dateTicks: true at the first category of each calendar interval. */
+  intervalTicks?: readonly boolean[];
   showCatRow: boolean;
   /** options.categoryLabels 'staircase' on this pass: the highest y the names may use. */
   stairTop?: number;

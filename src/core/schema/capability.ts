@@ -24,7 +24,7 @@ export const LEGEND_REFUSED: readonly string[] = ['box'];
  * stay accepted.
  */
 export const LEGEND_DRAWS: Readonly<Record<string, readonly string[]>> = {
-  slope: ['top', 'bottom'],
+  slope: ['top', 'bottom', 'right', 'left'],
 };
 
 /**
@@ -62,7 +62,7 @@ export const OPTION_CAPABILITY = {
     implementedBy: ['bar', 'bullet', 'box', 'dot', 'likert'],
   },
   categoryAxis: {
-    implementedBy: ['line'],
+    implementedBy: ['column', 'combo', 'line'],
   },
   categoryLabels: {
     implementedBy: ['column', 'combo', 'pareto'],

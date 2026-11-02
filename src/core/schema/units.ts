@@ -56,3 +56,15 @@ export function unitConflictRefusal(
     field: ['data', 'series', seriesIndex, 'unit'],
   };
 }
+
+/** Refuse the first data series that conflicts with the shared scale, in the authored series order. */
+export function dataSeriesUnitRefusal(
+  series: readonly { id: string; role: string; unit?: string }[], chartUnit?: string,
+): LintWarning | undefined {
+  const dataSeries = series.filter((entry) => entry.role === 'data');
+  const conflict = unitConflict(dataSeries, chartUnit);
+  if (!conflict) return undefined;
+  const refused = dataSeries[conflict.index]!;
+  return unitConflictRefusal(conflict, refused.id, series.indexOf(refused), 'the shared scale',
+    'give the series one unit, or show the measures in their own charts', chartUnit);
+}

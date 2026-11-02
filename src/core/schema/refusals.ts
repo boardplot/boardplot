@@ -70,9 +70,6 @@ export function refusalFindings(refusals: readonly LintWarning[]): RefusalFindin
   }));
 }
 
-/** Why a key beside the plot is refused; the schema and React word it alike. */
-export const SIDE_KEY_REFUSED = "legend 'right' is refused: a key beside the plot takes the plot's width; use 'top', one row above the plot";
-
 /**
  * A key the schema refuses by name, answered with the remove patch the schema
  * diagnostic gives it and a short sentence: the schema's full reason stays on
@@ -86,8 +83,7 @@ function refusedKey(path: readonly string[], message: string): RefusalFinding {
 /**
  * The option values the schemas refuse, for the per-type React entries,
  * which do not link zod: every key the capability tables refuse on `type`
- * (schemaRefusedKeys), a legend value that draws nothing there, and the side
- * key. Each finding carries the code, path and patch the CLI prints.
+ * (schemaRefusedKeys) and a legend value that draws nothing there. Each finding carries the code, path and patch the CLI prints.
  * The map entries refuse their own cross-field options
  * in their layouts (charts/choropleth/geoRefusals.ts). With a per-type
  * entry's key check, a chart those leave alone is checked for unknown keys
@@ -112,17 +108,5 @@ export function optionRefusals(options: Record<string, unknown>, type: string, c
   }
   const legend = options.legend;
   if (legendDrawsNothing(type, legend)) found.push(refusedKey(['options', 'legend'], `legend '${String(legend)}' has no effect on ${type}`));
-  const inObject = typeof legend === 'object' && legend !== null && (legend as { position?: unknown }).position === 'right';
-  // A type that refuses legend already answers it with the remove patch; the
-  // side key's patch to 'top' would be refused there too.
-  if ((legend === 'right' || inObject) && !refused.options.includes('legend')) {
-    const path = inObject ? '/options/legend/position' : '/options/legend';
-    found.push({
-      code: 'invalid-options',
-      message: SIDE_KEY_REFUSED,
-      path: path.slice(1).replaceAll('/', '.'),
-      suggest: "Set legend to 'top'. The key row can need more height; leave the height open or increase the chart size.",
-    });
-  }
   return found.length || !checkKeys ? found : checkKeys(options, providerStrings);
 }

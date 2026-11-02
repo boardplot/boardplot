@@ -527,6 +527,12 @@ export function layoutHeatmap(
     && vMax > vMin && !compactKey && panelTypeClass(options) === undefined && options.legend !== 'none'
     && !rows.some(r => r.direction === 'lowerIsBetter');
   const keyRight = normalizeLegendOption(options.legend)?.position === 'right';
+  // The gradient key stands above the matrix or at its right edge; a key named at the left stays above it.
+  if (continuousKey && normalizeLegendOption(options.legend)?.position === 'left') warnings.push({
+    code: 'legend-side-fallback', severity: 'warn', field: ['options', 'legend'],
+    message: "the gradient key stays above the matrix: it has no place at the left of it",
+    suggest: "Set legend to 'right' to put the gradient key beside the matrix.",
+  });
   // The styled value matrix sets its gradient key 8 px over the month row.
   // The unit sits centred on the bar and its line box is taller than the bar:
   // the key row starts at the top of that box, not at the top of the bar.

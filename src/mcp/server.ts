@@ -28,7 +28,12 @@ import { allFixtures } from '../fixtures';
 import { sanitizeObjectPrototype } from '../core/doc/docExpand';
 import { API_VERSION, BOARDPLOT_VERSION } from '../version';
 import { InputError, rejectedInput, runVerb, type VerbResult } from '../cli/result';
-import { assertSpecObject } from '../cli/spec';
+import { parseSpecString } from '../core/inputError';
+import { parseWithInputConversions } from '../core/schema/inputConversions';
+import { chartInputName } from '../core/registry';
+import { inputConversion } from '../core/inputConversion';
+import { completeDiagnostic } from '../core/doc/diagnostics';
+import type { LintWarning } from '../core/types/scene';
 import { list } from '../cli/list';
 import { describe } from '../cli/describe';
 import { fixtures } from '../cli/fixtures';
@@ -517,11 +522,30 @@ function adviceOnce(result: VerbResult): VerbResult {
 function dispatch(name: string, args: unknown): VerbResult {
   const tool = tools().find((candidate) => candidate.name === name);
   if (!tool) return unknownTool(name);
-  // A spec sent as a JSON string is the most common agent mistake; it gets its own code.
-  if (isRecord(args) && typeof args.spec === 'string') return runVerb(() => { assertSpecObject(args.spec); return unknownTool(name); });
-  const failure = argumentFailure(args, tool);
+  const warnings: LintWarning[] = [];
+  if (isRecord(args) && tool.inputSchema.properties?.spec && typeof args.spec === 'string') {
+    try { args = { ...args, spec: parseSpecString(args.spec, warnings) }; }
+    catch (error) { return runVerb(() => { throw error; }); }
+  }
+  let failure = argumentFailure(args, tool);
+  if (failure) {
+    const converted = parseWithInputConversions<unknown>(cachedInputs![name as keyof ReturnType<typeof toolInputs>], args, [], true);
+    if (converted.warnings.length) {
+      warnings.push(...converted.warnings.map(warning => completeDiagnostic(warning, args, warning.field)));
+      args = converted.input;
+      failure = argumentFailure(args, tool);
+    }
+  }
   if (failure) return invalidArgument(failure);
-  const result = runVerb(() => runTool(name, args as Record<string, unknown>));
+  if (name === 'boardplot_fixtures' && isRecord(args) && typeof args.type === 'string') {
+    const type = chartInputName(args.type);
+    if (type !== undefined && type !== args.type) {
+      warnings.push(completeDiagnostic(inputConversion(['type'], args.type, type), args, ['type']));
+      args = { ...args, type };
+    }
+  }
+  let result = runVerb(() => runTool(name, args as Record<string, unknown>));
+  if (warnings.length) result = { ...result, body: { ...result.body, warnings: [...warnings, ...((result.body.warnings ?? []) as LintWarning[])] } };
   // Usage counts never change a tool's answer.
   try {
     if (isRecord(args)) usage.record({ command: name, spec: args.spec, type: args.type, format: args.format, body: result.body, host: clientHost });

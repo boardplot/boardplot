@@ -15,7 +15,7 @@ const BARE_NAME_FIELD = {
   path: 'name',
   type: 'string',
   default: BARE_CHART_NAME,
-  description: `Output file name and chart identity of a bare chart: ${NAME_RULE}. A taken file name gets -2; an existing file is never replaced.`,
+  description: `Bare chart file name: ${NAME_RULE}. Valid names stay unchanged. Other strings become safe names and warn name-slugified with a fix. Empty results are refused. Document names stay unchanged. Taken names get -2 and keep existing files.`,
 };
 
 interface AnnotationAnchor {
@@ -330,8 +330,8 @@ const COMPACT_FIXTURES = 5;
  * `annotations` section, which lists the kinds this type draws.
  */
 function typeOptions(type: string): { own: SchemaFieldReference[]; notAccepted: string[] } {
-  const base = new Map<string, SchemaFieldReference>();
-  for (const field of sharedOptionFields()) if (!base.has(field.path)) base.set(field.path, field);
+  const base = new Map<string, SchemaFieldReference[]>();
+  for (const field of sharedOptionFields()) base.set(field.path, [...base.get(field.path) ?? [], field]);
   const all = optionFields(type);
   const firstByPath = new Map<string, SchemaFieldReference>();
   for (const field of all) if (!firstByPath.has(field.path)) firstByPath.set(field.path, field);
@@ -340,11 +340,11 @@ function typeOptions(type: string): { own: SchemaFieldReference[]; notAccepted: 
     const shared = base.get(field.path);
     if (!shared) return true;
     if (field.path === 'annotations' || field.path.startsWith('annotations[')) return false;
-    return field.type !== 'never' && contract(field) !== contract(shared);
+    return field.type !== 'never' && !shared.some(candidate => contract(field) === contract(candidate));
   });
   // valueAxis sub-keys are narrowed per type too (VALUE_AXIS_CAPABILITY), so
   // they are named here unless the whole object is refused.
-  const advertised = [...base.values()].filter((field) =>
+  const advertised = [...base.values()].map(fields => fields[0]!).filter((field) =>
     (!/[.[]/.test(field.path) || /^valueAxis\.\w+$/.test(field.path)) && field.type !== 'never' && !isReserved(field));
   const refused = (path: string) => { const here = firstByPath.get(path); return !here || here.type === 'never'; };
   const notAccepted = advertised

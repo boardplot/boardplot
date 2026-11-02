@@ -11,7 +11,8 @@ import { resolveSubtitle } from '../../normalize/shared';
  */
 
 import { measureValueAxisWidth } from '../../axis';
-import { longDayMonths, type dateTickRow } from '../../calendarLabels';
+import { bandedCrossesBetween } from '../../intervalTicks';
+import { authoredDateTicks, longDayMonths, type dateTickRow } from '../../calendarLabels';
 import type { Rect } from '../../geometry';
 import { authoredNotes, frameTextOptions, normalizeLegendOption, noteLine, plotHeightAfter, recordFreedChrome, solveFrame, textCarriesUnit, type FrameBand, type FrameInput, type FrameResult, type LegendItemInput, authoredFootnoteCount } from '../../frame';
 import { plotFloorRows } from '../../sizing';
@@ -797,6 +798,9 @@ export function comboPlotArea(
   const categoryNames = cats.map(category => category.label ?? category.id);
   const periodRow = cats.some(category => (category as { calendar?: unknown }).calendar) || isDateNumericTickSequence(categoryNames)
     || calendarLike(categoryNames) || categoryNames.every(label => /^[MWT]\d+$/i.test(label));
+  // categoryAxis.dateTicks sets the interval; without it a long day row names its months.
+  const authored = authoredDateTicks(cats, options, warnings);
+  bandedCrossesBetween(options, warnings);
   // Combo publishes the rank to name mapping, so it takes ranks over a
   // row of cut names. `withCategoryRanks` keeps that decision, and the strings
   // that carry the mapping, out of the shared cascade every type imports.
@@ -825,12 +829,15 @@ export function comboPlotArea(
       // Under notes.show 'ranks' alone a cut name takes no mark, since its note does not print.
       ...(disclosuresShown(options) ? { cutMarkFrom: authoredFootnoteCount(options) + 1 } : rankKeyShown(options) ? {} : { everyName: true }),
       ...ticked?.plan,
+      // An authored interval counts back from the latest period, as on a line.
+      ...(ticked !== undefined && ticked === authored ? { ordered: true, strideFromEnd: true } : {}),
     }), measure, cats.map((c) => c.label ?? c.id), (options as { [FORCE_CATEGORY_RANKS]?: true })[FORCE_CATEGORY_RANKS] === true, rankKeyShown(options));
   };
-  let catPlan = planRow(band);
+  // categoryAxis.dateTicks sets the interval; without it a long day row names its months.
+  let catPlan = planRow(band, authored);
   // A ranked row (pareto) is not a timeline, so it keeps its day names.
-  const ticked = (options as { [CATEGORY_ROW_FROM_END]?: boolean })[CATEGORY_ROW_FROM_END] === false ? undefined : longDayMonths(cats, catPlan.stride, options.locale?.language);
-  if (ticked) catPlan = planRow(band, ticked);
+  const ticked = authored ?? ((options as { [CATEGORY_ROW_FROM_END]?: boolean })[CATEGORY_ROW_FROM_END] === false ? undefined : longDayMonths(cats, catPlan.stride, options.locale?.language));
+  if (ticked && ticked !== authored) catPlan = planRow(band, ticked);
   const catOverhang = stair ? 0 : rotatedLeftOverhang(catPlan, cats.map((_, ci) => band.center(ci)), 4);
   if (catOverhang > 0) {
     plotX0 += catOverhang;
@@ -908,6 +915,7 @@ export function comboPlotArea(
   return {
     frame, leftAxisReserve, rightAxisReserve, axisTitles, topPad, tickFont, labelFont, strongFont, gtH, valueLineRows,
     first: texts.first, last: texts.last, gutters, endpointWidth, band, catPlan,
+    ...(authored?.ticks ? { intervalTicks: authored.ticks } : {}),
     dateNumericTicks,
     // A date row stays at the plot's bottom band; prose reads under the
     // lowest column and the value or total hanging under it.
