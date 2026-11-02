@@ -84,6 +84,26 @@ describe('chart layout edge cases', () => {
     expect(geometry.warnings.some((w: { code: string; message: string }) => w.code === 'footnotes-off' && w.message.includes('methodNote'))).toBe(true);
   });
 
+  // A slide-sized EU map with 27 values left labelled regions without a number anywhere on the page.
+  it('an EU map without a value table prints a number on every region label that fits', () => {
+    const ids = ['AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU', 'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE'];
+    const regions = ids.map((id, i) => ({ id, value: i + 1 }));
+    const request = {
+      type: 'choropleth',
+      data: { pack: 'eu27', regions },
+      options: { valueTable: false, format: '1', size: { width: 888, height: 396 } },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+    expect(geometry.refused).toBeFalsy();
+    const labels = geometry.labels.filter((label: { id: string; hidden?: unknown; slot?: string }) => label.id.startsWith('category:') && !label.hidden && label.slot !== 'smallMember');
+    expect(labels.length).toBeGreaterThan(0);
+    for (const label of labels) {
+      const region = regions.find(({ id }) => id === label.owner.categoryId)!;
+      expect(label.text).toBe(`${region.id} ${region.value}`);
+    }
+  });
+
   // A format coarser than the class width ('$0M' over 1.2M to 1.48M) rounded the class edges into one
   // value: the key printed '$1M to under $1M' and every region took the darkest class.
   for (const type of ['choropleth', 'tilemap'] as const) {
