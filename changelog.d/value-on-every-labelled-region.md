@@ -1,3 +1,7 @@
 ### Changed / may need action
 
 - A choropleth map without a value table now prints each labelled region's value after its code when the map labels more than 10 regions and the canvas is at least 560 px wide with room for every label. Before, the values printed only for 10 labels or fewer, so a map of 27 regions showed codes with no number anywhere on the page. Value labels are wider, so some regions that had a label on the map now stand in the "Not labelled on the map" list with their value. The world map and narrow cards keep their codes. To bring back the old look, set `options.regionValues` to `false`. To print the values on a map that keeps codes, set it to `true`.
+
+### Fixed
+
+- Two choropleth callout labels that carry values, such as `LT 8.0` and `RO 4.6`, no longer stand on one line closer than 8 px and read as one string. Bare codes already kept this distance.
