@@ -1,5 +1,6 @@
 import type { StringsSpec } from '../../types/options';
 import { localeStrings } from '../../strings';
+import { cleanSum } from '../../geometry';
 /**
  * Data-unit stack accumulation shared by column and bar charts.
  *
@@ -64,7 +65,6 @@ export function stackParts(
 export function accumulateStack(values: readonly (number | null)[], ranked = false): StackExtents {
   let positive = 0;
   let negative = 0;
-  let total = 0;
   let hasValue = false;
   const segments: (StackSegmentExtent | null)[] = values.map(() => null);
   const order = values.map((_, index) => index);
@@ -73,14 +73,13 @@ export function accumulateStack(values: readonly (number | null)[], ranked = fal
     const value = values[index] ?? null;
     if (value === null) continue;
     hasValue = true;
-    total += value;
     const start = value >= 0 ? positive : negative;
     const end = start + value;
     if (value >= 0) positive = end;
     else negative = end;
     segments[index] = { index, value, start, end };
   }
-  return { segments, positive, negative, total, hasValue };
+  return { segments, positive, negative, total: cleanSum(values.map((value) => value ?? 0)), hasValue };
 }
 
 /**

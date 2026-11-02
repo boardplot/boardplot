@@ -1,4 +1,5 @@
 import { applyAxisBounds } from '../../scale';
+import { cleanSum } from '../../geometry';
 import { percentCellsOnly, percentLevels } from '../../annotatePass';
 /**
  * Standard bar phase 1, domain: the options resolved once, the series
@@ -195,7 +196,7 @@ type BarBasis = Pick<BarDomain, 'totals' | 'nmRows' | 'naRows' | 'incompleteRows
  * rows lose segments, share labels, and the total.
  */
 function barBasis(variant: BarDomain['variant'], cats: NormCat[], dataSeries: NormSeries[], warnings: LintWarning[]): BarBasis {
-  const totals = cats.map((_, ci) => dataSeries.reduce((a, s) => a + (s.cells[ci]!.v ?? 0), 0));
+  const totals = cats.map((_, ci) => cleanSum(dataSeries.map((s) => s.cells[ci]!.v ?? 0)));
   const nmRows: boolean[] = cats.map(() => false);
   const naRows: boolean[] = cats.map(() => false);
   const overfull: { id: Id; sum: number }[] = [];
