@@ -558,6 +558,7 @@ function columnBand(
       centers: cats.map((_, ci) => b.center(ci)),
       step: b.step,
       fonts: [tickFont, { ...tickFont, size: tickFont.size - scaleTextPx(1, textScaleOf(options)) }, { family: theme.type.family, ...theme.type.footnote }],
+      stepToFloor: true,
       secondary: secondaryFont(theme), periods: cats.length > 0 && cats.every(c => c.date !== undefined),
       padding: 4,
       measure,

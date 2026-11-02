@@ -818,6 +818,7 @@ export function comboPlotArea(
       centers: cats.map((_, ci) => b.center(ci)),
       step: b.step,
       fonts: [tickFont, { ...tickFont, size: tickFont.size - scaleTextPx(1, textScaleOf(options)) }, { family: theme.type.family, ...theme.type.footnote }],
+      stepToFloor: true,
       secondary: secondaryFont(theme), periods: periodRow,
       padding: 4,
       measure,
