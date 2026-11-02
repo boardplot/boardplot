@@ -1774,6 +1774,17 @@ function fitSizeMemo<D, O extends ChartOptions, M extends object, DV extends obj
 const MIN_COLUMN_BAR = 3;
 
 /**
+ * Whether a canvas is too narrow for even one MIN_COLUMN_BAR px bar per category. Such a column is refused at the
+ * gate with no layout, as it was before the gate went below the compact floor. A topN or a zoom draws fewer
+ * categories than the data holds, so those requests are always laid out.
+ */
+function columnCannotFit(data: unknown, options: { topN?: unknown; viewDomain?: unknown } | undefined, width: number): boolean {
+  const categories = (data as { categories?: unknown } | undefined)?.categories;
+  return options?.topN === undefined && options?.viewDomain === undefined
+    && Array.isArray(categories) && categories.length * MIN_COLUMN_BAR > width;
+}
+
+/**
  * The canvas width under CARD_MIN_WIDTH at which the thinnest drawn column of this layout is still
  * MIN_COLUMN_BAR px: the columns scale with the plot, the frame around the plot does not. Never
  * above CARD_MIN_WIDTH, so a canvas at that width and wider is judged as before (a hundred
@@ -1809,7 +1820,7 @@ function fitSize<D, O extends ChartOptions, M extends object, DV extends object>
   // compact floor, and a measured requirement (a bar's five rows) still gates.
   // A column draws narrower than its compact floor while its bars fit (`columnBarFloor`). The compact floor stays
   // the size `measure` verifies and reports, so a host that reads it keeps a size that draws.
-  const gateWidth = definition.type === 'column' ? Math.min(floor.width, NARROW_MIN_WIDTH) : floor.width;
+  const gateWidth = definition.type === 'column' && !columnCannotFit(data, options, requested.width) ? Math.min(floor.width, NARROW_MIN_WIDTH) : floor.width;
   const gatePolicy = tight ? { ...declared, minWidth: gateWidth, minHeight: floor.height } : declared;
   if (!nested && !fitsSize(requested, definition.type === 'grid' ? { ...gatePolicy, minHeight: 0 } : gatePolicy)) {
     return sizeRefusal(definition.type, definition.title, requested, resolveSizing(gatePolicy, requested));
