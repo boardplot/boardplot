@@ -19,6 +19,7 @@ import {
   qPoint,
   qRect,
   segmentBounds,
+  BOX_LABEL_INSET,
   type DiagramPalette,
 } from './primitives';
 import { automaticEdgeId, compareDiagramIds, diagramSceneId } from './ids';
@@ -1315,6 +1316,11 @@ function groupsFromMembers(context: PresetContext, result: PresetLayout): Preset
         if (split.length > 0 && place(Math.min(...split) + 2 * context.u, true)) header = Math.max(header, 2 * line + context.u / 2);
         else title = stretches.reduce((best, stretch) => (stretch.w > best.w ? stretch : best));
       }
+    } else if (width(group.title) + BOX_LABEL_INSET > title.w) {
+      // No tree edge crosses the title row: a title wider than its members
+      // takes the frame's whole row, and one wider than the frame a second line.
+      title = { x: left, w: right - left };
+      if (width(group.title) + BOX_LABEL_INSET > title.w) header = Math.max(header, 2 * line + context.u / 2);
     }
     frames[index] = { x: left, y: memberBounds.y - header, w: right - left, h: memberBounds.h + header + pad };
     return {

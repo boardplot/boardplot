@@ -45,6 +45,7 @@ import {
   nodeShapeScene,
   q,
   qRect,
+  BOX_LABEL_INSET,
 } from './primitives';
 import { circularLabelBand, circularRing, layoutPreset, strategyHouseBands } from './presets';
 import { layoutOrgChart, orgChartEligible } from './orgChart';
@@ -214,7 +215,7 @@ function layoutDiagramPass(
   // heightFill 'none' keeps the org chart and journey gaps at their natural size.
   const spreadGaps = (options as { heightFill?: string }).heightFill !== 'none';
   // The compact org chart and issue tree lay out and route themselves.
-  const org = architectureEligible(options) ? layoutArchitecture(data, options, plot, { name: stepFont, text: labelFont, title: laneFont }, measure, u, diagramPalette, theme, badgeSizes,
+  const org = architectureEligible(options) ? layoutArchitecture(data, options, plot, { name: stepFont, text: labelFont, title: laneFont, badge: badgeFont }, measure, u, diagramPalette, theme, badgeSizes,
       (rawOptions as { [ARCHITECTURE_PLANS]?: ArchitecturePlans })[ARCHITECTURE_PLANS])
     : orgChartEligible(data, options) ? layoutOrgChart(data, plot, labelFont, measure, u, fixedHeight && spreadGaps)
     : issueTreeEligible(data, options) ? layoutIssueTreeCompact(data, plot, labelFont, measure, u, headingWeight(theme))
@@ -1122,7 +1123,7 @@ function addBoxLabelRequest(
 ): void {
   // An edge label takes the lines its box was seated for.
   const maxLines = kind === 'diagramEdge' ? Math.max(2, Math.round(box.h / (font.size * (font.lineHeight ?? 1.2)))) : 2;
-  const wrapped = fitText(text, font, Math.max(1, box.w - (kind === 'diagramEdge' ? 0 : 8)), maxLines, measure, { target, typeRole: kind === 'diagramBadge' || kind === 'diagramEdge' ? 'label' : 'axis' });
+  const wrapped = fitText(text, font, Math.max(1, box.w - (kind === 'diagramEdge' ? 0 : BOX_LABEL_INSET)), maxLines, measure, { target, typeRole: kind === 'diagramBadge' || kind === 'diagramEdge' ? 'label' : 'axis' });
   const lineH = font.size * (font.lineHeight ?? 1.2);
   const width = Math.max(1, ...wrapped.lines.map((line) => measure(line, font).width));
   const height = wrapped.lines.length * lineH;
