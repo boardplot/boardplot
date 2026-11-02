@@ -143,7 +143,7 @@ const columnSchema = z
       ...columnBase,
       kind: z.literal('date').describe('Date cell: an ISO date (YYYY-MM-DD) or { v: date } (other text refuses: date-invalid; numbers draw the missing dash and warn: date-value-number).'),
       format: z.string().optional()
-        .describe("Date format example. Examples: '30 Sep 2026', 'Sep-26', '2026-09-30'."),
+        .describe("Date pattern or example: '30 Sep 2026', 'Sep-26', '2026-09-30', '30.09.2026', '09/30/2026', 'September 2026' or '2026'. Tokens: d, dd, ddd, dddd, M, MM, MMM, MMMM, MMMMM, Q (1), QQ (Q1), QQQ (Quarter 1), w, ww, yy, yyyy and 'quoted literals'. Excel mmm/mmmm name months and 'dd/mm/yyyy' uses lowercase months. YYYY/YY mean year and D/DD mean day. Numeric dates use a day above 12 to choose the order. Otherwise they read day first and warn date-format-ambiguous. ISO dates keep year/month/day. A short year beside a month name with a space or comma also warns when it could be a day. 'FY26' reads the calendar year and gives date-format-fiscal-year (info). Unreadable text warns date-format-unknown and uses 'd MMM yyyy'."),
     }),
     z.strictObject({
       ...columnBase,
