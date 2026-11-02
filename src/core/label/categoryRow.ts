@@ -752,7 +752,10 @@ function planRow(input: CategoryRowInput, bundled: boolean): CategoryRowPlan {
   // A row of names (not periods or an ordered sequence) may step down to the reader floor before it rotates.
   const smallest = fonts.at(-1)!;
   const nameRow = input.stepToFloor === true && !periodRow && !(input.ordered || input.strideFromEnd || numberedSequence(labels));
-  if (nameRow && smallest.size > axisFloor + 0.01) fonts.push({ ...fonts[0]!, size: axisFloor });
+  const stepsToFloor = nameRow && smallest.size > axisFloor + 0.01;
+  if (stepsToFloor) fonts.push({ ...fonts[0]!, size: axisFloor });
+  // The floor step serves upright names only: a rotated row keeps the ladder it had.
+  const rotateFonts = stepsToFloor ? fonts.slice(0, -1) : fonts;
   // 4 px between neighbouring names; the row thins only where names collide.
   const gap = input.gap ?? 4;
   const padding = input.padding ?? 6;
@@ -1131,10 +1134,10 @@ function planRow(input: CategoryRowInput, bundled: boolean): CategoryRowPlan {
   }
   // A nominal row that keeps every name turns -90° only where 45° has no room.
   const everyName = input.everyName === true && !orderedProse;
-  const room45 = allowRotate && fonts.some((font) => step * SIN45 >= font.size * (font.lineHeight ?? 1.2) + 2);
+  const room45 = allowRotate && rotateFonts.some((font) => step * SIN45 >= font.size * (font.lineHeight ?? 1.2) + 2);
   if (allowRotate && (input.rotate90 || everyName && !room45)) {
     // Vertical names stand side by side: the pitch holds one line and 2 px.
-    const upright = fonts.filter((font) => step >= font.size * (font.lineHeight ?? 1.2) + 2);
+    const upright = rotateFonts.filter((font) => step >= font.size * (font.lineHeight ?? 1.2) + 2);
     const cap = Math.max(VERTICAL_MIN_WIDTH, Math.floor((input.plotHeight ?? 0) * VERTICAL_HEIGHT_SHARE));
     const font = upright.find((f) => measureAll(f, 1).every((info) => info.w <= cap)) ?? upright[0];
     if (font) {
@@ -1163,7 +1166,7 @@ function planRow(input: CategoryRowInput, bundled: boolean): CategoryRowPlan {
     // Rotated labels lie on parallel 45° lines; the clear distance between
     // neighbours is the pitch × sin 45°, which must hold one line of text.
     // A smaller step that holds every name whole beats a cut at the base size.
-    const rotatable = fonts.filter((font) => step * SIN45 >= font.size * (font.lineHeight ?? 1.2) + 2);
+    const rotatable = rotateFonts.filter((font) => step * SIN45 >= font.size * (font.lineHeight ?? 1.2) + 2);
     const whole = rotatable.find((font) => measureAll(font, 1).every((info) => info.w <= maxRotatedWidth));
     const font = whole ?? rotatable[0];
     if (font) {
