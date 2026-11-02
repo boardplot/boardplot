@@ -1527,6 +1527,7 @@ function placeLabels(
   const frames = geometry.zones.flatMap(({ bounds: { x, y, w, h } }) => [{ x, y, w, h: 1 }, { x, y: y + h, w, h: 1 }, { x, y, w: 1, h }, { x: x + w, y, w: 1, h }]);
   const blockers = labelClaims(polylines, [...geometry.rects.values(), ...geometry.labelClaims, ...rules, ...frames]);
   const claims = blockers.slice();
+  const otherLabels: Rect[] = [];
   const plot = { ...env.plot, x: geometry.labelLeft, w: env.plot.x + env.plot.w - geometry.labelLeft };
   const lineH = text.size * (text.lineHeight ?? 1.2);
   const rows = geometry.gaps.filter((item) => item.axis === 'h');
@@ -1548,39 +1549,81 @@ function placeLabels(
     for (const wrapped of [two, three]) {
       if (!wrapped.truncated && wrapped.lines.length > 1) blocks.push({ width: Math.ceil(Math.max(...wrapped.lines.map((line) => measure(line, text).width))) + 1 + disc, height: wrapped.lines.length * lineH });
     }
-    const seats = blocks.flatMap(({ width, height }) => [
-      ...flat.flatMap(([a, b]) => {
-        // A run near the plot edge keeps its label inside the plot.
-        const inPlot = (x: number) => Math.max(env.plot.x, Math.min(x, env.plot.x + env.plot.w - width));
-        // Besides the middle of the run, each side of a gutter it crosses, clear of a trunk there.
-        const columns = geometry.gaps.filter((item) => item.axis === 'v' && Math.min(a.x, b.x) <= item.rect.x && Math.max(a.x, b.x) >= item.rect.x + item.rect.w);
-        // And the middle of each stretch between a zone frame and the end of the run.
-        const walls = geometry.zones.flatMap(({ bounds }) => [bounds.x, bounds.x + bounds.w]).filter((x) => x > Math.min(a.x, b.x) && x < Math.max(a.x, b.x));
-        const spots = [(a.x + b.x) / 2, ...columns.flatMap(({ rect }) => [rect.x + rect.w / 4, rect.x + (3 * rect.w) / 4]),
-          ...walls.flatMap((x) => [(a.x + x) / 2, (b.x + x) / 2])];
-        return spots.flatMap((spot) => [{ x: inPlot(spot - width / 2), y: a.y - off - height, w: width, h: height }, { x: inPlot(spot - width / 2), y: a.y + off, w: width, h: height }])
-          .map((box) => ({ box: qRect(box), axis: 'x' as const, from: Math.min(a.x, b.x), to: Math.max(a.x, b.x) }));
-      }),
-      ...upright.flatMap(([a, b]) => {
-        const y = (a.y + b.y) / 2 - height / 2;
-        const beside = (top: number) => [{ x: a.x + off + 2, y: top, w: width, h: height }, { x: a.x - off - 2 - width, y: top, w: width, h: height }];
-        const crossed = rows.filter((row) => row.rect.y > Math.min(a.y, b.y) && row.rect.y + row.rect.h < Math.max(a.y, b.y));
-        // A line just outside a zone seats its label inside the frame, in the same row gutter.
-        const inset = (top: number) => geometry.zones.flatMap(({ bounds }) => (a.x > bounds.x + bounds.w && a.x - bounds.x - bounds.w < width + 2 * off
-          ? [{ x: bounds.x + bounds.w - off - width, y: top, w: width, h: height }]
-          : a.x < bounds.x && bounds.x - a.x < width + 2 * off ? [{ x: bounds.x + off, y: top, w: width, h: height }] : []));
-        // The middle of each stretch between a zone frame and the end of the run.
-        const walls = geometry.zones.flatMap(({ bounds }) => [bounds.y, bounds.y + bounds.h]).filter((wall) => wall > Math.min(a.y, b.y) && wall < Math.max(a.y, b.y));
-        return [...beside(y), ...walls.flatMap((wall) => [...beside((a.y + wall) / 2 - height / 2), ...beside((b.y + wall) / 2 - height / 2)]), ...crossed.flatMap((row) => {
-          const top = row.rect.y + (row.rect.h - height) / 2;
-          return [...beside(top), ...inset(top)];
-        })].map((box) => ({ box: qRect(box), axis: 'y' as const, from: Math.min(a.y, b.y), to: Math.max(a.y, b.y) }));
-      }),
-    ]);
-    const bands = new Map<string, { positions: number[]; seen: Set<number>; blockers: Rect[] }>();
+    // Run crossings do not change between the one-, two- and three-line blocks.
+    const horizontal = flat.map(([a, b]) => {
+      const from = Math.min(a.x, b.x);
+      const to = Math.max(a.x, b.x);
+      const spots = [(a.x + b.x) / 2];
+      for (const gap of geometry.gaps) if (gap.axis === 'v' && from <= gap.rect.x && to >= gap.rect.x + gap.rect.w) {
+        spots.push(gap.rect.x + gap.rect.w / 4, gap.rect.x + (3 * gap.rect.w) / 4);
+      }
+      for (const { bounds } of geometry.zones) for (const wall of [bounds.x, bounds.x + bounds.w]) {
+        if (wall > from && wall < to) spots.push((a.x + wall) / 2, (b.x + wall) / 2);
+      }
+      return { y: a.y, from, to, spots };
+    });
+    const vertical = upright.map(([a, b]) => {
+      const from = Math.min(a.y, b.y);
+      const to = Math.max(a.y, b.y);
+      const middles = [(a.y + b.y) / 2];
+      for (const { bounds } of geometry.zones) for (const wall of [bounds.y, bounds.y + bounds.h]) {
+        if (wall > from && wall < to) middles.push((a.y + wall) / 2, (b.y + wall) / 2);
+      }
+      return { x: a.x, from, to, middles, crossed: rows.filter((row) => row.rect.y > from && row.rect.y + row.rect.h < to) };
+    });
+    // Generate seats in their original order, stopping as soon as the distance cannot improve.
+    function* seats() {
+      for (const { width, height } of blocks) {
+        if (q(width) > plot.w) continue;
+        for (const { y, from, to, spots } of horizontal) for (const spot of spots) {
+          // A run near the plot edge keeps its label inside the plot.
+          const x = Math.max(env.plot.x, Math.min(spot - width / 2, env.plot.x + env.plot.w - width));
+          yield { box: qRect({ x, y: y - off - height, w: width, h: height }), axis: 'x' as const, from, to };
+          yield { box: qRect({ x, y: y + off, w: width, h: height }), axis: 'x' as const, from, to };
+        }
+        for (const { x, from, to, middles, crossed } of vertical) {
+          for (const middle of middles) {
+            const y = middle - height / 2;
+            yield { box: qRect({ x: x + off + 2, y, w: width, h: height }), axis: 'y' as const, from, to };
+            yield { box: qRect({ x: x - off - 2 - width, y, w: width, h: height }), axis: 'y' as const, from, to };
+          }
+          for (const row of crossed) {
+            const y = row.rect.y + (row.rect.h - height) / 2;
+            yield { box: qRect({ x: x + off + 2, y, w: width, h: height }), axis: 'y' as const, from, to };
+            yield { box: qRect({ x: x - off - 2 - width, y, w: width, h: height }), axis: 'y' as const, from, to };
+            // A line just outside a zone seats its label inside the frame, in the same row gutter.
+            for (const { bounds } of geometry.zones) {
+              if (x > bounds.x + bounds.w && x - bounds.x - bounds.w < width + 2 * off) {
+                yield { box: qRect({ x: bounds.x + bounds.w - off - width, y, w: width, h: height }), axis: 'y' as const, from, to };
+              } else if (x < bounds.x && bounds.x - x < width + 2 * off) {
+                yield { box: qRect({ x: bounds.x + off, y, w: width, h: height }), axis: 'y' as const, from, to };
+              }
+            }
+          }
+        }
+      }
+    }
+    type LabelBand = { positions?: number[]; seen: Set<number>; blockers: Rect[] };
+    const bands = new Map<string, LabelBand>();
     let seat: Rect | undefined;
     let nearest = Infinity;
-    for (const { box, axis, from, to } of seats) {
+    const consider = (box: Rect, axis: 'x' | 'y', band: LabelBand, pos: number) => {
+      if (band.seen.has(pos)) return;
+      band.seen.add(pos);
+      const candidate = pos === box[axis] ? box : {
+        x: axis === 'x' ? pos : box.x, y: axis === 'y' ? pos : box.y, w: box.w, h: box.h,
+      };
+      if (!labelClear(candidate, band.blockers, plot)
+        || (otherLabels.length > 0 && !labelsApart(candidate, otherLabels, env.u))) return;
+      const distance = rectLineDistance(candidate, points);
+      if (seat && distance >= nearest) return;
+      if (env.ownReturnLabels && edge.flow === 'return'
+        && !polylines.every((line, other) => other === index || distance <= rectLineDistance(candidate, line))) return;
+      seat = candidate;
+      nearest = distance;
+    };
+    for (const { box, axis, from, to } of seats()) {
+      if (axis === 'y' && (box.x < plot.x || box.x + box.w > plot.x + plot.w)) continue;
       const cross = axis === 'x' ? 'y' : 'x';
       const across = axis === 'x' ? 'h' : 'w';
       const size = axis === 'x' ? box.w : box.h;
@@ -1589,27 +1632,25 @@ function placeLabels(
       if (!band) {
         const halo = grown(box, TEXT_CLEARANCE);
         band = {
-          positions: slidePositions(box, axis, claims).sort((a, b) => a - b),
           seen: new Set(),
           blockers: blockers.filter((rect) => halo[cross] < rect[cross] + rect[across] && rect[cross] < halo[cross] + halo[across]),
         };
         bands.set(key, band);
       }
-      const consider = (pos: number) => {
-        if (band.seen.has(pos)) return;
-        band.seen.add(pos);
-        const candidate = { ...box, [axis]: pos };
-        if (!labelClear(candidate, band.blockers, plot) || !labelsApart(candidate, out.values(), env.u)) return;
-        const distance = rectLineDistance(candidate, points);
-        if (seat && distance >= nearest) return;
-        if (env.ownReturnLabels && edge.flow === 'return'
-          && !polylines.every((line, other) => other === index || distance <= rectLineDistance(candidate, line))) return;
-        seat = candidate;
-        nearest = distance;
-      };
-      consider(box[axis]);
+      consider(box, axis, band, box[axis]);
+      // A slide cannot improve on the distance from the whole allowed band to this edge.
+      // Keep the first seat on a tie, just as the full candidate search does.
+      const start = axis === 'x' ? Math.max(from - size / 2, plot.x) : from - size / 2;
+      const end = axis === 'x' ? Math.min(to - size / 2, plot.x + plot.w - box.w) : to - size / 2;
+      if (nearest === TEXT_CLEARANCE) break;
+      if (band.positions?.length === 0) continue;
+      if (start > end) continue;
+      const sweep = axis === 'x'
+        ? { x: start, y: box.y, w: end - start + box.w, h: box.h }
+        : { x: box.x, y: start, w: box.w, h: end - start + box.h };
+      if (nearest <= rectLineDistance(sweep, points)) continue;
       // Visit slides in the original distance-from-base order, lower position first on a tie.
-      const positions = band.positions;
+      const positions = band.positions ??= slidePositions(box, axis, claims).sort((a, b) => a - b);
       let lo = 0;
       let hi = positions.length;
       while (lo < hi) {
@@ -1623,14 +1664,17 @@ function placeLabels(
         const before = left >= 0 ? positions[left]! : -Infinity;
         const after = right < positions.length ? positions[right]! : Infinity;
         const pos = box[axis] - before <= after - box[axis] ? positions[left--]! : positions[right++]!;
-        if (pos + size / 2 >= from && pos + size / 2 <= to) consider(pos);
+        if (pos >= start && pos <= end) consider(box, axis, band, pos);
       }
+      // A later base seat in this band only needs slides that have not been checked yet.
+      band.positions = positions.filter((pos) => !band.seen.has(pos));
       // A clear halo puts every seat at least TEXT_CLEARANCE from its own line.
       // The first seat at that distance also wins the stable distance sort.
       if (nearest === TEXT_CLEARANCE) break;
     }
     if (seat) {
       out.set(edge.id, seat);
+      otherLabels.push(seat);
       blockers.push(seat);
       claims.push(seat, spacedLabel(seat, env.u));
       return;
