@@ -603,3 +603,33 @@ describe('waterfall automatic break with none found', () => {
     expect(heightWith({ break: 'auto' })).toBe(heightWith({ break: false }));
   });
 });
+
+// colorblindSafe was accepted on bullet and on a grid but left their good/bad paints red and green.
+it('swaps the good/bad paints of a bullet delta and of the panels of a grid under colorblindSafe', () => {
+  const plain = (paint: unknown): number => Array.isArray(paint) ? paint.reduce((sum: number, item) => sum + plain(item), 0)
+    : paint === null || typeof paint !== 'object' ? 0
+    : Object.values(paint).reduce((sum: number, item) => sum + plain(item), 0)
+      + (['good', 'bad', 'goodFill', 'badFill'].includes((paint as { token?: string }).token ?? '') && !('theme' in paint) ? 1 : 0);
+  const unswapped = (geometry: Geometry) => plain([geometry.scene, geometry.labels]);
+  const drawn = (spec: object) => {
+    const result = layoutResolvedRequest(resolveChartRequest({ ...spec, options: { colorblindSafe: true } } as never));
+    if (result.refused) throw new Error('chart refused');
+    return result as Geometry;
+  };
+  const bullet = drawn({ type: 'bullet', data: { rows: [
+    { id: 'rev', label: 'Revenue', value: { number: 80 }, target: { number: 100 } },
+    { id: 'cost', label: 'Cost', value: { number: 120 }, target: { number: 100 }, direction: 'lowerIsBetter' },
+  ] } });
+  expect(unswapped(bullet)).toBe(0);
+  const column = getFixtures('column').find(fixture => JSON.stringify(drawnPlain(fixture)).includes('"token":"good'));
+  if (!column) throw new Error('no column fixture paints a good/bad pair');
+  const grid = drawn({ type: 'grid', data: { panels: [{ id: 'p', type: 'column', data: column.data, options: column.options }] } });
+  expect(unswapped(grid)).toBe(0);
+  const panels = (grid.marks as { panels: { chart?: { geometry: Geometry } }[] }).panels;
+  expect(panels.reduce((sum, panel) => sum + (panel.chart ? unswapped(panel.chart.geometry) : 0), 0)).toBe(0);
+
+  function drawnPlain(fixture: { data: unknown; options?: object }) {
+    const result = layoutResolvedRequest(resolveChartRequest({ type: 'column', data: fixture.data, options: { ...fixture.options } } as never));
+    return result.refused ? [] : [result.scene, result.labels];
+  }
+});

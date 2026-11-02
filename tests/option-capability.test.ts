@@ -411,7 +411,7 @@ describe('published option behaviour census', () => {
     ["bar bartable cohort combo gantt grid heatmap histogram kpi likert pareto pie sparkline status dimswitch table tilemap treemap waffle", "focus", "The selected owner has no changed static SVG focus mark on this fixture."],
     ["bar butterfly choropleth cohort combo funnel grid heatmap line mekko slope status", "hatchStrength", "This fixture has no responsive hatch; the wider hatch census above remains in force."],
     ["bar column heatmap", "colorblindSafe", "This fixture has no responsive good/bad fill pair."],
-    ["bartable box bullet butterfly cohort combo creative diagram dot funnel gantt grid histogram likert line mekko pareto pie pyramid scatter slope sparkline sankey treemap waffle", "colorblindSafe", "This fixture has no responsive good/bad pair; the flag is accepted and draws the same."],
+    ["bartable box butterfly cohort combo dot funnel gantt histogram mekko pareto pie pyramid scatter slope sparkline sankey treemap waffle", "colorblindSafe", "This fixture has no responsive good/bad pair; the flag is accepted and draws the same."],
     ["bar bartable box bullet butterfly choropleth cohort column combo creative diagram dot funnel gantt grid heatmap histogram kpi likert line mekko pareto pie pvm pyramid scatter slope sparkline status dimswitch table tilemap sankey treemap variance waffle waterfall", "interactive", "React host setting; the static SVG has no interaction state."],
     ["bar butterfly column combo dot funnel heatmap line mekko pie slope", "detailFields", "Hover-record labels for cell details; the static SVG draws the same picture."],
     ["bar bullet histogram variance", "axisTitles", "The primary title probe changes no visible axis title on this fixture."],

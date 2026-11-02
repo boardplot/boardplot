@@ -24,7 +24,7 @@ import { markLostOnBandWarnings } from './paintWarnings';
 import { casingUnderFills, labelsOnFills, fillEdges, marksOnBands, referenceLineClearance, withoutOrphanAnnotationMarks } from './markVisibility';
 import { groundEdges } from './label/emit';
 import { withoutRepeatedAxisBreaks } from './axis';
-import { DEFAULT_PRESET, panelTypeClass, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, stampHatchLook } from './theme';
+import { colorblindRoles, DEFAULT_PRESET, panelTypeClass, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, stampHatchLook } from './theme';
 import { textScaleOf, textSizeOf } from './typeFloors';
 import { DEFAULT_TARGET, resolveTargetSize, TARGET_SIZE, withDefaultTarget } from './target';
 import type { Category } from './types/data';
@@ -740,6 +740,14 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
       if (!(options as { [FULL_LAYOUT_PROBE]?: boolean })[FULL_LAYOUT_PROBE]
         && !(options as { [ACCEPTANCE_PROBE]?: boolean })[ACCEPTANCE_PROBE]) {
         estimatedPlotAdvice(geo, options);
+      }
+      // colorblindSafe swaps every good/bad paint the chart drew, whichever type drew it; a paint a layout already
+      // swapped carries its colorblind recipe and stays as it is.
+      if (!geo.refused && (options as { colorblindSafe?: boolean }).colorblindSafe === true) {
+        geo.scene = colorblindRoles(geo.scene).value;
+        geo.labels = colorblindRoles(geo.labels).value;
+        if (geo.legend) geo.legend = colorblindRoles(geo.legend).value;
+        geo.annotations = colorblindRoles(geo.annotations).value;
       }
       if (geo.warnings.some(warning => warning.fix)) {
         geo.warnings = geo.warnings.map(warning => warning.fix
