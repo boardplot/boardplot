@@ -8,6 +8,7 @@ import { checkThemeShape, unknownThemeKeyRepair } from '../src/core/themeShape';
 import { getChartDefinition, measure } from '../src/index';
 import { getFixtures } from '../src/fixtures';
 import { requireGeometry } from '../src/core/sizing';
+import { resolveChartRequest } from '../src/core/request';
 
 const clone = (value: unknown): Record<string, unknown> => JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
 const drop = (theme: Record<string, unknown>, path: string[]): void => {
@@ -17,6 +18,15 @@ const drop = (theme: Record<string, unknown>, path: string[]): void => {
 };
 
 describe('theme shape', () => {
+  // A spec that names no theme must draw as Bridge, and the old look must stay one named preset away.
+  it('resolves a request without a theme to bridge and preserves the named boardroom colours', () => {
+    const request = { type: 'column', data: { categories: [{ id: 'a' }], series: [{ id: 's', values: [10] }] } };
+    expect(resolveChartRequest(request).theme.name).toBe('bridge');
+    expect(resolveChartRequest({ ...request, theme: 'boardroom' }).theme).toMatchObject({
+      name: 'boardroom', color: { background: '#FFFFFF', highlight: '#10529E' },
+    });
+  });
+
   // A two-series chart must accept two authored colours without repeating them in preset-filled slots.
   it('fills a short series override from distinct preset colours', () => {
     const preset = themes.boardroom!;
