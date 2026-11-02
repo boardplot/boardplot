@@ -11,8 +11,10 @@ import type { DeferredName } from '../core/deferred';
 import { optionRefusals } from '../core/schema/refusals';
 import { retireChartSettings } from '../core/retired';
 import { LayoutRefusal } from './SizePlaceholder';
+import { asSize, frameSize, RefusalBoundary } from './RefusalBoundary';
 import { freezeValue, useStableValue } from './useStableValue';
 import { useRowsGate } from './rowsGate';
+import type { ContainerSizeOptions } from './useContainerSize';
 
 export interface DimSwitchView { variant: DimSwitchVariant; depth: number; splits: boolean; collapsed: string[] }
 export type DimSwitchViewReason = 'variant' | 'depth' | 'splits' | 'collapsed';
@@ -33,14 +35,25 @@ export type DimSwitchChartProps = Omit<TableChartProps, 'data' | 'collapsed' | '
 export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readonly DeferredName[]) {
  // The table it draws counts the same fetched modules as this component's own entry.
  const Table = linked === undefined ? TableChart : linkedBinding(TableChart, linked);
- function DimSwitchChart(props: DimSwitchChartProps): ReactElement {
+ type NormalizedProps = Omit<DimSwitchChartProps, 'size' | 'fallbackSize'> & ContainerSizeOptions;
+ function GatedDimSwitch(props: NormalizedProps): ReactElement {
   // Rows answer before the compile: a dimswitch has no data while the rows chunk loads or after it refuses them.
   // A frozen table snapshot cannot match a table compiled from the variant, depth and splits, so a `prepared` prop from untyped code is dropped and the chart draws from data.
-  const {rows,columns,onRowsReading,prepared:_prepared,...chart}=props as DimSwitchChartProps & {prepared?:unknown};
+  const {rows,columns,onRowsReading,prepared:_prepared,...chart}=props as NormalizedProps & {prepared?:unknown};
   const gate=useRowsGate({type:'dimswitch',data:chart.data},{rows,columns,onRowsReading},chart);
   return gate.element ?? <DrawnDimSwitch {...chart} data={gate.data!}/>;
  }
- function DrawnDimSwitch(props: DimSwitchChartProps): ReactElement {
+ function DimSwitchChart(props: DimSwitchChartProps): ReactElement {
+  const {className,style,size,fallbackSize,...rest}=props;
+  const normalizedSize=useMemo(()=>asSize(size),[size]);
+  const normalizedFallback=useMemo(()=>asSize(fallbackSize) as ContainerSizeOptions['fallbackSize'],[fallbackSize]);
+  const chart=<RefusalBoundary watch={props} size={normalizedSize} fallbackSize={normalizedFallback} target={props.target} theme={props.theme}
+   fallback={finding=><LayoutRefusal refusals={[finding]} theme={props.theme} size={frameSize(normalizedSize==='container'?normalizedFallback:normalizedSize,props.target)} options={typeof props.title==='string'?{title:props.title}:{}}/>}>
+   <GatedDimSwitch {...rest} size={normalizedSize} fallbackSize={normalizedFallback}/>
+  </RefusalBoundary>;
+  return className!==undefined || style!==undefined ? <div className={className} style={style}>{chart}</div> : chart;
+ }
+ function DrawnDimSwitch(props: NormalizedProps): ReactElement {
   const {data,variant:controlledVariant,defaultVariant='by-measure',depth:controlledDepth,defaultDepth=1,splits:controlledSplits,defaultSplits=false,collapsed:controlledCollapsed,defaultCollapsed,onViewChange,inlineVisibility,defaultInlineVisibility,onInlineVisibilityChange,size,fit,fallbackSize,measureWidths,hover,onWarnings,onRefused,renderRefused,scope,fontMetrics,styleNonce,idPrefix,handleRef,onContentWidth,onScrollChange,fillHeight,rowLabelLead,portalContainer,onRowSelect,isRowSelectable,toolbar=false,interactions,defaultColumnVisibility,onColumnVisibilityChange,sortable,defaultSort,onSortChange,rootsHidden,onEmpty,onFormatsFit,exporter,...options}=props;
   const refusals=optionRefusals({...options,variant:controlledVariant,depth:controlledDepth,splits:controlledSplits},'dimswitch',checkKeys);
   const [initial] = useState(()=>({variant:defaultVariant,depth:defaultDepth,splits:defaultSplits}));
