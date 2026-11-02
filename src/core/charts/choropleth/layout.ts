@@ -5,7 +5,7 @@ import { levenshtein } from '../../spelling';
 import { authoredNotes, frameTextOptions, legendRequired, solveFrame, unitPrinted } from '../../frame';
 import { formatAutomaticNumber } from '../../format';
 import { formatterFromExample } from '../../formatSpec';
-import { boxGap, rectHitsConvexPolygon, rectsOverlap, round2, type Rect } from '../../geometry';
+import { boxGap, rectHitsConvexPolygon, rectsOverlap, round2, type Rect, type Size } from '../../geometry';
 // The geo modules by name, not the '../../geo' barrel: the barrel re-exports
 // './packs', whose import registers every pack, and a choropleth must not
 // register the pack it draws.
@@ -123,6 +123,7 @@ const CALLOUT_STEP = 4;
 const LABEL_MAX_COVER = 0.3;
 /** Up to this many regions labelled on the map, each label prints its value by default. */
 const REGION_VALUES_DEFAULT_MAX = 10;
+const REGION_VALUES_MIN_AREA_PER_LABEL = 8000;
 /** A leader longer than this share of the map width sends its region to the table. */
 const LISTED_LEADER_FRACTION = 0.2;
 const LISTED_PASSES = 4;
@@ -151,6 +152,14 @@ const MIN_MAP_AREA_H = 120;
 // Canonical clearance 14.5 is the first tier that includes India plus the
 // six continent-scale anchors without admitting the broader mid-size tier.
 const WORLD_LARGE_REGION_CLEARANCE = 14.5;
+
+// Choose the label form from canvas room before solving so it stays stable across frame passes.
+function defaultRegionValues(pack: GeoPack, size: Size, autoLabelled: number, tableDrawn: boolean): boolean {
+  return !tableDrawn && autoLabelled > 0 && (
+    autoLabelled <= REGION_VALUES_DEFAULT_MAX ||
+    (pack.id !== 'world' && size.width * size.height / autoLabelled >= REGION_VALUES_MIN_AREA_PER_LABEL)
+  );
+}
 
 export function layoutChoropleth(
   data: ChoroplethData,
@@ -515,13 +524,10 @@ export function layoutChoropleth(
     // The complete table names the regions; the map needs only its thumbnail reserve.
     minMapHeight = Math.min(minMapHeight, 2 * (compactPadding ?? MAP_PAD) + 2 * theme.type.label.size);
   }
-  // A map that names only a few regions prints their values too, so the
-  // reader need not match a tint against the key. The count is taken before
-  // any label drops for room, so the label form is one at every width; with
-  // the value table the values stand there and the map prints codes.
+  // Count before labels drop for room so the default stays stable across frame passes.
   const autoLabelled = [...labelPolicy.eligibleIds].filter((id) => !baseSmallIds.has(id)).length;
   const regionValues = options.regionValues ??
-    (!tableDrawn && autoLabelled > 0 && autoLabelled <= REGION_VALUES_DEFAULT_MAX);
+    defaultRegionValues(pack, size, autoLabelled, Boolean(tableDrawn));
   // The table's top group is bold on the map too, so the two read as one key.
   const withTable: TableLabels = tableDrawn ? { emphasis: topIds } : undefined;
   const valueTexts = new Map<string, string>(regionValues
