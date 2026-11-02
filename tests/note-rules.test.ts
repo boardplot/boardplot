@@ -113,6 +113,18 @@ describe('note rules', () => {
     if (plain.labels.find((label) => label.id === 'point:b:d0')?.hidden) expect(noteTexts(plain).join(' ')).toContain('Series B 1,020 (09/01)');
   });
 
+  // A sentence-long callout at 720 px found no one-line seat and was left off the chart: it must wrap and draw.
+  it('wraps a sentence-long callout to a seat on the chart instead of dropping it', () => {
+    const text = 'New pricing launched in March lifted the average deal size by a fifth, and two large renewals closed early in the fourth quarter';
+    const geo = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'column',
+      data: { categories: ['2022', '2023', '2024'], series: [{ id: 'a', label: 'Revenue', values: [10, 12, 15] }] },
+      options: { title: 'Revenue grows', unit: '$m' }, annotations: [{ kind: 'callout', id: 'c1', at: { categoryId: '2023', seriesId: 'a' }, text }] } as never)));
+    const label = geo.labels.find((entry) => entry.id === 'annotation:c1')!;
+    expect(label.hidden).toBeUndefined();
+    expect(label.lines!.length).toBeGreaterThan(1);
+    expect(label.lines!.join(' ')).toBe(text);
+  });
+
   // A callout on a stacked column's total led from the edge of a segment's value: it pointed at the wrong number.
   it('a callout on a stacked column total leads from the total, not from a segment value', () => {
     const series = (id: string, c: number) => ({ id, label: id.toUpperCase(), values: [10, 10, c, 10, 10, 10] });
