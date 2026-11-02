@@ -15,7 +15,6 @@ import { geoRegionIdIndex, resolveGeoRegionId, claimedRegionIds } from './geo/re
 import { getGeoPack } from './geo/packs/registry';
 import type { GeoPackId } from './geo/types';
 import type { TilePack, TilePackId } from './geo/tiles/types';
-import { closestKey } from './schema/unknownKeyWords';
 import { cellValue, isNumberCell, isPctCell, type Cell } from './types/cell';
 import { CHART_TYPE_OF, ROWS_SHAPES, type RowsShape } from './rowsTypes';
 
@@ -696,11 +695,6 @@ export function adaptRows(spec: unknown, columns: unknown, source: RowsSource): 
         const ids = claimedRegionIds(resolution);
         if (ids.some(id => claimed.has(id))) throw new InputError('duplicate-id', `${displayPath}: region '${category.id}' repeats a pack member`, { path: sourcePath, displayPath, suggest: 'Keep one source row per pack member, using its canonical id.' });
         ids.forEach(id => claimed.add(id));
-        if (resolution.kind === 'unknown') {
-          const nearest = closestKey(category.id, [...index.canonical.keys()]);
-          const hint = nearest?.near ? `; did you mean '${index.canonical.get(nearest.key)}'?` : '';
-          throw new InputError(`${spec.type}-unknown-region`, `${displayPath}: region '${category.id}' is not in pack '${data.pack}'${hint}`, { path: sourcePath, displayPath, suggest: 'Use a canonical region id or an unambiguous pack alias.' });
-        }
       });
     }
   }

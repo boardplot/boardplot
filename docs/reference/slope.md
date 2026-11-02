@@ -41,7 +41,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | Path | Type | Required | Meaning |
 |---|---|---|---|
 | valueKind | string |  | Default valueKind for all series. One of `'fraction'`. |
-| categories | array | yes | Endpoint categories; exactly two are intended. Extra categories are warned about and only first and last are shown. |
+| categories | array | yes | Endpoint categories. With more than two, the line variant draws first versus last, warns slope-too-many-points and names the omitted categories in a note. The diverging variant requires exactly two. |
 | categories[].id | string | yes | Category identity used to match keyed values and annotation anchors. |
 | categories[].label | string |  | Displayed category name; defaults to the category id and supports line breaks. A date id or `date` without a label prints a short date such as '4 Sep'. |
 | categories[].date | string |  | ISO 8601 date associated with the category. |

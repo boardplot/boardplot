@@ -195,30 +195,6 @@ export const fixtures: Fixture<SlopeChartData, SlopeOptions>[] = [
     },
   },
   {
-    id: 'too-many-categories',
-    title: 'Refusal example: a slope chart given four periods instead of two',
-    kind: 'torture',
-    refuses: { code: 'slope-too-many-points' },
-    data: {
-      categories: [
-        { id: 'q1', label: 'Q1' },
-        { id: 'q2', label: 'Q2' },
-        { id: 'q3', label: 'Q3' },
-        { id: 'q4', label: 'Q4' },
-      ],
-      series: [
-        { id: 'north', label: 'North', values: [12, 14, 15, 18] },
-        { id: 'south', label: 'South', values: [16, 15, 13, 11] },
-        { id: 'west', label: 'West', values: [9, 10, 12, 12] },
-      ],
-    },
-    options: {
-      title: 'Quarterly data pushed into a slope — lint routes to line',
-      subtitle: { measure: 'Order intake', period: 'FY26 by quarter' },
-      unit: '$m',
-    },
-  },
-  {
     id: 'single-series-cagr',
     title: 'Torture: single series with default-span CAGR arrow',
     kind: 'torture',

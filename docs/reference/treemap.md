@@ -49,7 +49,7 @@ Part of a whole in one or two levels (group, item): cell area is value. Squarifi
 | items[].id | string | yes | Item identity, one cell. |
 | items[].label | string |  | Name printed on the cell, or beside it with a leader when the cell is too small; defaults to the id. |
 | items[].group | string |  | Id of the group this item belongs to. Leave it out on every item for a one-level treemap. |
-| items[].value | number | yes | Value of the item, above 0. The cell area is proportional to it. Zero, negative and missing values are refused. |
+| items[].value | number \| null | yes | Value of the item. The cell area is proportional to a value above 0. Zero and null items are left out with a warning and a note. Negative values are refused. |
 
 ## Options
 
@@ -84,4 +84,4 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 
 ## Not for
 
-Zero or negative values, or values that do not add up to one whole; use bar for a ranking and waterfall for signed changes.
+Negative values, or values that do not add up to one whole; use bar for a ranking and waterfall for signed changes. Zero and null items are left out with a warning and a note.

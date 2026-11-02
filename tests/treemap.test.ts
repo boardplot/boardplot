@@ -3,6 +3,37 @@ import '../src/core/charts';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { renderSvg } from '../src/core/svg/renderSvg';
 import { requireGeometry } from '../src/core/sizing';
+import { checkItemBudget } from '../src/core/itemBudget';
+import { layoutTreemap } from '../src/core/charts/treemap/layout';
+
+// Zero and null items must not prevent positive cells from drawing or enter their totals and limits.
+it('leaves zero and null items out of the drawn treemap and names them in a note', () => {
+  const data = {
+    groups: [{ id: 'core' }, { id: 'empty' }],
+    items: [
+      { id: 'a', label: 'North', group: 'core', value: 40 },
+      { id: 'b', label: 'West', value: 0 },
+      { id: 'c', label: 'South', group: 'unknown', value: null },
+      { id: 'd', label: 'East', group: 'core', value: 60 },
+      { id: 'e', group: 'empty', value: null },
+    ],
+  };
+  const request = resolveChartRequest({ type: 'treemap', data });
+  const geometry = requireGeometry(layoutResolvedRequest(request));
+  expect(geometry.marks.cells).toEqual([expect.objectContaining({ id: 'd' }), expect.objectContaining({ id: 'a' })]);
+  expect(geometry.derived).toMatchObject({ total: 100, groups: [{ id: 'core', total: 100, share: 100 }], items: [{ id: 'd', share: 60 }, { id: 'a', share: 40 }] });
+  expect(geometry.warnings.filter((warning) => warning.code === 'treemap-item-left-out')).toHaveLength(3);
+  expect(geometry.warnings).toContainEqual(expect.objectContaining({ code: 'treemap-empty-group' }));
+  expect(geometry.frame?.noteList).toContainEqual(expect.objectContaining({ kind: 'disclosure', inFrame: true, text: expect.stringContaining('West') }));
+  expect(geometry.a11y.counts).toContainEqual(expect.objectContaining({ what: 'cells', n: 2 }));
+  expect(() => layoutTreemap({ items: [{ id: 'zero', value: 0 }, { id: 'blank', value: null }] })).toThrow(expect.objectContaining({ code: 'empty-data' }));
+  expect(() => layoutTreemap({ items: [{ id: 'negative', value: -1 }] })).toThrow(expect.objectContaining({ code: 'treemap-value-not-positive' }));
+  const omitted = Array.from({ length: 2001 }, (_, i) => ({ id: `empty${i}`, value: null }));
+  const longData = { items: [{ id: 'a', value: 1 }, ...omitted] };
+  expect(() => checkItemBudget('treemap', longData, {})).not.toThrow();
+  const circle = layoutTreemap(longData, { variant: 'circle', notes: { maxListed: 2 } });
+  expect(circle.marks.cells).toHaveLength(1);
+});
 
 // Reusing data after a different-size request must not change which treemap labels are drawn.
 it('keeps public treemap output independent of earlier sizes and data identity', () => {
