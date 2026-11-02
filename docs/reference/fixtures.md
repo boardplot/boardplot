@@ -79,6 +79,8 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | column-compact-380 | column.grouped | example | Column in a 380px dashboard column |
 | column-card-320-frame-rules | column.grouped | example | Grouped column in a 320px card with an automatic height |
 | column-partial-week | column.stacked | example | Stacked weekly orders with the running week marked partial |
+| column-partial-week-average | column.stacked | example | Stacked weekly orders with an average rule that leaves the running week out |
+| column-partial-week-average-included | column.stacked | example | Stacked weekly orders with an average rule that includes the running week |
 | torture-long-labels | column.grouped | torture | Torture: long names at a generous size read whole, never cut |
 | revenue-axis-title | column.grouped | example | Grouped columns with a titled value axis |
 | weekly-events-lane | column.grouped | example | Event lane: stock-outs and launches over weekly revenue, the rest numbered in the key |

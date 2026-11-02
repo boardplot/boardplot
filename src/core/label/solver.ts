@@ -206,6 +206,8 @@ export interface LabelRequest {
   noLeader?: true;
   /** Candidates were checked against the exact own stroke; its coarse boxes need no extra air. */
   ownStrokeClear?: true;
+  /** The drawn stroke of the value's own line: a seat added later (a flag seat) may not cross it. */
+  ownStroke?: readonly { hits(rect: Rect, pad: number): boolean }[];
   /** This numeric label names a mark rather than a separate readout rail. false: a name or other text, never bound to the plot. */
   markAnchored?: boolean;
   /** Authored value text stays eligible when the planner ranks engine values. */
@@ -344,8 +346,11 @@ export interface SolveCtx {
    * of leaving a scatter of survivors the reader cannot interpret.
    */
   seriesUniform?: { kinds: LabelKind[]; maxHiddenShare?: number };
-  /** Ordered computed rows: keep all, every second from the end when allowed, or none. */
-  valueRows?: { ids: readonly Id[]; alternate?: boolean }[];
+  /**
+   * Ordered computed rows: keep all, every second from the end when allowed, or none.
+   * `keepEnds` makes a row that is omitted keep its first and last value.
+   */
+  valueRows?: { ids: readonly Id[]; alternate?: boolean; keepEnds?: boolean }[];
   /**
    * The drawn line points of the plot. With it, a value
    * label on a line point takes a seat only where it reads as that point's
@@ -395,6 +400,16 @@ export interface SolveResult {
 const DENSITY_MIN_PRIORITY = PRIORITY.endpoint; // 'minimal' keeps >= endpoint band
 const REQUIRED_VALUE_PRIORITY = PRIORITY.valueLine;
 
+/**
+ * Whether the value at `index` of a row that gave up its full set goes to the note. An
+ * alternate row keeps every second value from the end. An omitted row keeps its first
+ * and last value when it asks for that (`keepEnds`).
+ */
+function dropsFromRow(row: { mode: 'all' | 'alternate' | 'none'; eligible: Id[]; keepEnds?: boolean }, index: number): boolean {
+  const last = row.eligible.length - 1;
+  return row.mode === 'none' ? !(row.keepEnds && (index === 0 || index === last)) : (last - index) % 2 !== 0;
+}
+
 export function solveLabels(requests: LabelRequest[], occupied: OccupiedIndex, ctx: SolveCtx): SolveResult {
   if (!ctx.valueRows?.length) return solveLabelPass(requests, occupied, ctx);
   const initial = occupied.snapshot();
@@ -421,7 +436,8 @@ export function solveLabels(requests: LabelRequest[], occupied: OccupiedIndex, c
         row.mode = row.mode === 'all' && row.alternate ? 'alternate' : 'none';
         row.reason = `computed row ${row.mode === 'alternate' ? 'uses alternate values from the end' : 'omitted'}; skipped ${skipped}: no candidate for '${unseated}'`;
         row.eligible.forEach((id, index) => {
-          if (row.mode === 'none' || (row.eligible.length - 1 - index) % 2 !== 0) dropped.add(id);
+          if (dropsFromRow(row, index)) dropped.add(id);
+          else dropped.delete(id);
         });
       }
     }
@@ -447,7 +463,9 @@ export function solveLabels(requests: LabelRequest[], occupied: OccupiedIndex, c
       row.mode = row.mode === 'all' && row.alternate ? 'alternate' : 'none';
       row.reason = `computed row ${row.mode === 'alternate' ? 'uses alternate values from the end' : 'omitted'}; unplaced: ${failed.join(', ')}`;
       row.eligible.forEach((id, index) => {
-        if (!pinned.has(id) && (row.mode === 'none' || (row.eligible.length - 1 - index) % 2 !== 0)) dropped.add(id);
+        if (pinned.has(id)) return;
+        if (dropsFromRow(row, index)) dropped.add(id);
+        else dropped.delete(id);
       });
       retry = true;
     }

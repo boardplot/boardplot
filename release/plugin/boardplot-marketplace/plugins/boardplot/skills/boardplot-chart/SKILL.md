@@ -7,6 +7,8 @@ description: Draws consulting-grade charts, tables and maps as SVG or PNG from a
 
 Before the first chart, read [references/manual.md](references/manual.md): the Boardplot manual. It covers the spec, the chart types, sizing, themes, the MCP tools, the CLI and the React components.
 
+The default look is Bridge. Use `theme: "boardroom"` for the old light look.
+
 The MCP tools come first. They appear with a host prefix; match on the suffix `boardplot_list`, `boardplot_describe`, `boardplot_render`, `boardplot_measure`, `boardplot_fixtures`, `boardplot_feedback`. `boardplot_describe` with `detail: "full"` returns the whole reference of a chart type. Before the first chart of a type that has a design card (bar, line, waterfall), read its card with `boardplot_describe` and `path: "design"`.
 
 The plugin root is the directory two levels above this file. The plugin adds no `boardplot` command. If `boardplot --version` works, another install provides it: compare its version with the `version` field the MCP tools return before you use it. Otherwise run the CLI of the manual as `node <plugin root>/scripts/boardplot.mjs <verb> ...` from the folder the paths are relative to. It runs the Boardplot version of this plugin: the bundled runtime of the offline ZIP install, else the matching npm package, which it installs once into a Boardplot cache folder. The manual's links to reference pages resolve in the offline ZIP install only.

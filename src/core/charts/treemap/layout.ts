@@ -17,7 +17,7 @@ import { chartString } from '../../strings/treemap';
 
 import { chartPalette } from '../chartEnv';
 import { structureCount } from '../../structureCounts';
-import { authoredNotes, fixedPlotChrome, frameTextOptions, hiddenNoteWith, markNotedLabels, normalizeLegendOption, NOTED_LABELS, solveFrame, type LegendItemInput } from '../../frame';
+import { authoredNotes, fixedPlotChrome, frameTextOptions, shareUnitOptions, hiddenNoteWith, markNotedLabels, normalizeLegendOption, NOTED_LABELS, solveFrame, type LegendItemInput } from '../../frame';
 import { shareSetFormatter } from '../../format';
 import { formatterFromExample, parseFormatExample, seriesRasterFormatter } from '../../formatSpec';
 import { withUnit } from '../../unitJoin';
@@ -87,9 +87,11 @@ export function treemapDefaultStrings(options: TreemapOptions): Record<string, s
 
 /** The label size of one fit step, set on the options of the stepped pass. */
 const FIT_STEP = Symbol('treemapFitStep');
-/** What a pass left unsolved: names not printed, words broken with a hyphen, and the circle's diameter. */
-type FitScore = { hidden: number; broken: number; side: number; base: number; wanted: number };
+/** What a pass left unsolved: blank names, large blank tiles, cut words, and the circle's diameter. */
+type FitScore = { hidden: number; broken: number; bigHidden: number; side: number; base: number; wanted: number };
 const FIT_SCORE = new WeakMap<object, FitScore>();
+/** A cut word on a tile of at least this share reads better than a blank large tile. */
+const LARGE_TILE_SHARE = 0.05;
 /** The smallest step a label takes: 11 px, and 10 pt (the slide's footnote step) on a slide. */
 const FIT_FLOOR = 11;
 const SLIDE_FIT_FLOOR = 40 / 3;
@@ -98,7 +100,9 @@ const SLIDE_FIT_FLOOR = 40 / 3;
  * Type steps. The labels of one tier step down
  * 1 px at a time, to 11 px at least, when the step prints a name the base
  * size cannot, breaks fewer words, or gives a circle that is smaller than its
- * content side more room. Rectangles step all their cells as one tier; a
+ * content side more room. A blank tile of 5% or more of the total counts double,
+ * so a size that names a large tile can win even if it hyphenates a word.
+ * Rectangles step all their cells as one tier; a
  * circle steps its leader columns only, and its cells keep the base size.
  */
 export function layoutTreemap(data: TreemapData, options: TreemapOptions = {}): Geometry<TreemapMarks, TreemapDerived> {
@@ -112,10 +116,11 @@ export function layoutTreemap(data: TreemapData, options: TreemapOptions = {}): 
   let best = layoutTreemapAt(data, options, memo);
   const first = FIT_SCORE.get(best);
   if (!first) return best;
-  // Fewer names that are blank or cut win. At the same count, fewer cut words win. A step that cuts a name main printed whole must not win by naming more cells.
-  const better = (got: FitScore, than: FitScore) => got.hidden + got.broken < than.hidden + than.broken
-    || got.hidden + got.broken === than.hidden + than.broken && got.broken < than.broken
-    || got.hidden === than.hidden && got.broken === than.broken && than.side < than.wanted && got.side >= than.side + 4;
+  // Blank large tiles count twice. At equal cost, fewer cut words win.
+  const cost = (score: FitScore) => score.hidden + score.broken + score.bigHidden;
+  const better = (got: FitScore, than: FitScore) => cost(got) < cost(than)
+    || cost(got) === cost(than) && got.broken < than.broken
+    || got.hidden === than.hidden && got.broken === than.broken && got.bigHidden === than.bigHidden && than.side < than.wanted && got.side >= than.side + 4;
   // The sizes to try, from the next step down to the floor. The last one is the floor itself, not a whole pixel above it.
   const floor = options.target === 'slide' ? SLIDE_FIT_FLOOR : FIT_FLOOR;
   const steps: number[] = [];
@@ -230,7 +235,7 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
   // notes.maxListed nor the registry's move of its own line to the description takes it off.
   const hiddenNote = hiddenNoteWith({ ...options, notes: { ...options.notes, maxListed: 'all' } }, []);
   const frame = solveFrame({
-    size, margin, ...frameTextOptions(options), footnotes: hiddenNote.line.length === 0 ? authoredNotes(options) : [...hiddenNote.footnotes, ...hiddenNote.line], theme, measure,
+    size, margin, ...frameTextOptions(shareUnitOptions('treemap', options, { groups })), footnotes: hiddenNote.line.length === 0 ? authoredNotes(options) : [...hiddenNote.footnotes, ...hiddenNote.line], theme, measure,
     ...(legendOptions ? { legend: { options: legendOptions, items: legendItems } } : {}),
   }, occupied);
   fixedPlotChrome(frame);
@@ -766,9 +771,11 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
     warnings, debug: { occupied: occupied.snapshot(), decisions: solved.decisions },
   };
   markNotedLabels(geometry, hiddenNote.ids, { strings: options.strings });
+  const bigItemIds = new Set(ordered.filter((item) => item.value / total >= LARGE_TILE_SHARE).map((item) => item.id));
   FIT_SCORE.set(geometry, {
     hidden: solved.placed.filter((l) => l.hidden && l.kind !== 'grandTotal').length,
     broken: texts.filter((t, k) => t.inside && brokeWord(ordered[k]!.label, t.inside.nameLines)).length,
+    bigHidden: new Set(solved.placed.filter((l) => l.hidden && l.kind !== 'grandTotal' && l.owner.categoryId !== undefined && bigItemIds.has(l.owner.categoryId)).map((l) => l.owner.categoryId)).size,
     side: shape === 'circle' ? region.w : 0, wanted: shape === 'circle' ? Math.min(plot.w, contentSide) : 0, base: theme.type.label.size,
   });
   return geometry;

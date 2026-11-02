@@ -1,4 +1,5 @@
 import { applyAxisBounds } from '../../scale';
+import { cleanSum } from '../../geometry';
 import { percentCellsOnly, percentLevels } from '../../annotatePass';
 /**
  * Standard bar phase 1, domain: the options resolved once, the series
@@ -32,7 +33,7 @@ import { chosenValueIndices } from '../band/valueSelection';
 import { partialKeyForced, saysToDate } from '../../partialPeriod';
 import { chartString } from '../../strings';
 import type { LintWarning, Paint } from '../../types/scene';
-import { accumulateStack, averageMarkerLine, averageOfUnaddedSums, averageOfWholeShares, grandTotalRequested, compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning, plottedMean, sortSegments, stackTotalFormatter, warnIncompleteStacks } from '../band/stacks';
+import { accumulateStack, averageMarkerLine, averageMarkerMean, averageMarkerScope as averageMarkerScopeOf, averageOfUnaddedSums, averageOfWholeShares, grandTotalRequested, compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning, plottedMean, sortSegments, stackTotalFormatter, warnIncompleteStacks, warnShareFormatIgnored, withoutShareMean } from '../band/stacks';
 import { isIncomplete, warnShareRoundingDrift } from '../../dataGaps';
 import { roundingUnavailable, shareRoundingNotes, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
 import { NO_STACK_MEAN, stackAdds } from '../../stackAdds';
@@ -196,7 +197,7 @@ type BarBasis = Pick<BarDomain, 'totals' | 'nmRows' | 'naRows' | 'incompleteRows
  * rows lose segments, share labels, and the total.
  */
 function barBasis(variant: BarDomain['variant'], cats: NormCat[], dataSeries: NormSeries[], warnings: LintWarning[]): BarBasis {
-  const totals = cats.map((_, ci) => dataSeries.reduce((a, s) => a + (s.cells[ci]!.v ?? 0), 0));
+  const totals = cats.map((_, ci) => cleanSum(dataSeries.map((s) => s.cells[ci]!.v ?? 0)));
   const nmRows: boolean[] = cats.map(() => false);
   const naRows: boolean[] = cats.map(() => false);
   const overfull: { id: Id; sum: number }[] = [];
@@ -348,9 +349,10 @@ function barAnnotations(
   variant: BarDomain['variant'],
   averageMarkerValue: number | undefined,
   statFmt: (v: number) => string,
+  averageSpan: string | undefined,
 ): Pick<BarDomain, 'localAnns' | 'passAnns'> {
   const annotationInput: Annotation[] = [...(options.annotations ?? [])];
-  if (averageMarkerValue !== undefined) annotationInput.push(averageMarkerLine(annotationInput, averageMarkerValue, statFmt, undefined, options.strings?.average));
+  if (averageMarkerValue !== undefined) annotationInput.push(averageMarkerLine(annotationInput, averageMarkerValue, statFmt, averageSpan, options.strings?.average));
   const annotationsAll: Annotation[] = annotationInput.map((a, n) => ({ ...a, id: a.id ?? `${a.kind}-${n + 1}` }));
   const localAnns = annotationsAll.filter((a) => a.kind === 'indicator100' || (a.kind === 'valueLine' && !valueLineHasTargetExtras(a)));
   const passAnns = annotationsAll.filter((a) => !localAnns.includes(a));
@@ -530,14 +532,15 @@ export function resolveBarDomain(data: ChartData, options: BarOptions, warnings:
   const addsOver = (series: NormSeries[]) => (variant !== 'stacked' && variant !== 'stacked100') || stackAdds(series, options.unit, options.sharesOfOneWhole);
   const partsAdd = addsOver(dataSeries);
   const meanValue = partsAdd ? plottedMean('all', variant !== 'grouped', cats.length, dataSeries, (_, si, ci) => basis.plotVal(ci, si)) : undefined;
-  const averageMarkerScope =
-    typeof options.averageMarker === 'object' ? options.averageMarker.scope : 'all';
+  if (variant === 'stacked100') options = withoutShareMean(options, meanValue, warnings);
+  const averageMarkerScope = averageMarkerScopeOf(options.averageMarker) ?? 'all';
   const averageMarkerRequested = options.averageMarker !== undefined && options.averageMarker !== false &&
     !averageOfWholeShares(variant, averageMarkerScope, warnings) &&
     !averageOfUnaddedSums(addsOver(averageMarkerScope === 'all' ? dataSeries : dataSeries.filter((s) => averageMarkerScope.includes(s.id))), warnings);
-  const averageMarkerValue = averageMarkerRequested
-    ? plottedMean(averageMarkerScope, variant !== 'grouped', cats.length, dataSeries, (_, si, ci) => basis.plotVal(ci, si))
+  const averageRun = averageMarkerRequested
+    ? averageMarkerMean(options.averageMarker, averageMarkerScope, cats, variant !== 'grouped', dataSeries, (_, si, ci) => basis.plotVal(ci, si), rawCats.map((c) => c.id))
     : undefined;
+  const averageMarkerValue = averageRun?.mean;
   if (averageMarkerRequested && averageMarkerValue === undefined) {
     warnings.push({
       code: 'average-marker-empty',
@@ -557,6 +560,7 @@ export function resolveBarDomain(data: ChartData, options: BarOptions, warnings:
   }
   const sharesOn = variant === 'stacked100' && labelOn(options, 'segment');
   warnIncompleteStacks(variant, cats, basis.incompleteRows, grandTotalsOn, sharesOn, 'bars', warnings, disclosuresShown(options));
+  warnShareFormatIgnored(variant, options.format, shareFormatExample(options), grandTotalsOn, warnings);
   // Computed shares only: an authored total100 is the author's whole.
   const wholes = sharesOn ? cats.flatMap((c, ci) =>
     basis.nmRows[ci] || basis.naRows[ci] || basis.incompleteRows.has(c.id) || c.total100 !== undefined
@@ -617,7 +621,7 @@ export function resolveBarDomain(data: ChartData, options: BarOptions, warnings:
     restRecedes: dataSeries.length === 1 && cats.some((cat, ci) => highlights.has(cat.id) && (dataSeries[0]!.cells[ci]!.v ?? 0) !== 0),
     ...basis, meanValue,
     ...barNetLine(options, variant, dataSeries, warnings),
-    ...barAnnotations(options, variant, averageMarkerValue, statFmt),
+    ...barAnnotations(options, variant, averageMarkerValue, statFmt, averageRun?.span),
   };
   return { ...domain, ...barValueExtent(domain, warnings) };
 }
