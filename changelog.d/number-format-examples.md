@@ -6,7 +6,7 @@
 ### Fixed
 
 - Spaced magnitudes beside currencies scale values, including table cells under a shared unit. Currency affixes such as `USDm` and `€m` hold their divisor without printing a second magnitude word.
-- Signed waterfall examples keep the plus on steps and omit it on totals. Locale grouping accepts the typed apostrophe and the narrow no-break space.
+- Signed waterfall examples keep plus signs and direction glyphs on steps and omit them on totals. Locale grouping accepts the typed apostrophe and the narrow no-break space.
 
 ### Changed / may need action
 

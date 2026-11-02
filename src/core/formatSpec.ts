@@ -296,12 +296,16 @@ function parseExample(example: string, keepWord: boolean): NumberFormatSpec {
  * a dot, or a ; section. A lone # before a digit is a literal ("#0", "#1").
  */
 const SPREADSHEET_CODE = /[#?][#?,.]|[,.][#?]|;/;
+const SPREADSHEET_BRACKET = /^\[(?:Black|Blue|Cyan|Green|Magenta|Red|White|Yellow|Color(?:[1-9]|[1-4][0-9]|5[0-6])|[<>=][^\]]*|\$[^\]]*)\]$/i;
+const SPREADSHEET_SCALE_COMMAS = /[0#?](,+)(?=\s*(?:$|["\\_[;]))/;
 
 function isSpreadsheetCode(text: string): boolean {
-  return SPREADSHEET_CODE.test(text) || (!/[1-9]/.test(text) && /"|\\|\[|[_*].|[0#?],(?![0-9#?])|[Ee][+-]0+/.test(text));
+  const withoutInstructions = text.replace(/\[[^\]]*\]/g, bracket => SPREADSHEET_BRACKET.test(bracket) ? '' : bracket);
+  return SPREADSHEET_CODE.test(text) || (!/[1-9]/.test(withoutInstructions)
+    && (withoutInstructions !== text || /"|\\|_[()]|\* |[Ee][+-]0+/.test(text) || SPREADSHEET_SCALE_COMMAS.test(text)));
 }
 
-type CodeToken = { text: string; literal: boolean };
+type CodeToken = { text: string; literal: boolean; at: number };
 
 /** Quoted and escaped characters stay literal; display instructions do not print. */
 function spreadsheetSections(code: string): CodeToken[][] | undefined {
@@ -313,20 +317,21 @@ function spreadsheetSections(code: string): CodeToken[][] | undefined {
     if (char === '"') {
       const end = code.indexOf('"', i + 1);
       if (end < 0) return undefined;
-      section.push({ text: code.slice(i + 1, end), literal: true });
+      section.push({ text: code.slice(i + 1, end), literal: true, at: i });
       i = end;
     } else if (char === '\\') {
       if (++i === code.length) return undefined;
-      section.push({ text: code[i]!, literal: true });
+      section.push({ text: code[i]!, literal: true, at: i });
     } else if (char === '[') {
       const end = code.indexOf(']', i + 1);
       if (end < 0) return undefined;
       const currency = /^\$(.*?)(?:-[0-9a-f]+)?$/i.exec(code.slice(i + 1, end));
-      if (currency) section.push({ text: currency[1]!, literal: true });
+      if (currency) section.push({ text: currency[1]!, literal: true, at: i });
+      else if (!SPREADSHEET_BRACKET.test(code.slice(i, end + 1))) section.push({ text: code.slice(i, end + 1), literal: true, at: i });
       i = end;
     } else if (char === '_' || char === '*') {
       if (++i === code.length) return undefined;
-    } else section.push({ text: char, literal: false });
+    } else section.push({ text: char, literal: false, at: i });
   }
   return sections;
 }
@@ -358,7 +363,9 @@ export function spreadsheetExample(code: string): { example: string; notes: stri
   const grouped = /[0-9#?],[0-9#?]{2,}/.test(integer!);
   const decimals = fraction.length;
   let end = last + 1;
-  while (tokens[end]?.text === ',' && !tokens[end]!.literal) end++;
+  if (SPREADSHEET_SCALE_COMMAS.exec(code.slice(tokens[last]!.at))?.index === 0) {
+    while (tokens[end]?.text === ',' && !tokens[end]!.literal) end++;
+  }
   const commas = end - last - 1;
   if (commas > 4 || (exponent && commas > 0)) return undefined;
   const magnitude: NumberFormatSpec['magnitude'] = (['none', 'k', 'm', 'bn', 't'] as const)[commas]!;
@@ -1301,12 +1308,20 @@ export function signedFormatterFromExample(example: string, locale: string | und
 }
 
 /**
- * The level face of an example: the same, without the forced '+'. A bridge writes "+$1.2M"
+ * The level face of a spec keeps negative signs and removes forced positive signs and direction glyphs.
+ */
+export function levelFormatSpec(spec: NumberFormatSpec): NumberFormatSpec {
+  const level = { ...spec, signed: false };
+  delete level.glyphs;
+  return level;
+}
+
+/**
+ * The level face of an example: the same, without a forced '+' or direction glyph. A bridge writes "+$1.2M"
  * for its steps; its totals are levels and print "$1.2M".
  */
 export function levelFormatterFromExample(example: string, locale: string | undefined, unit?: string, values?: Iterable<number | null | undefined>): (value: number) => string {
-  const spec = exampleSpec(example, locale, unit, values);
-  const level = spec.signed ? { ...spec, signed: false } : spec;
+  const level = levelFormatSpec(exampleSpec(example, locale, unit, values));
   return (value: number) => formatWithSpec(value, level);
 }
 

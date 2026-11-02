@@ -92,6 +92,22 @@ describe('ordinary number examples', () => {
     }
   });
 
+  // Prevents bracketed units from disappearing while spreadsheet colours still warn and do not print.
+  it('keeps bracketed units and drops spreadsheet colour tokens with a warning', () => {
+    expect(formatterFromExample('0.0 [kWh]', undefined)(1234.5)).toBe('1,234.5 [kWh]');
+    expect(formatterFromExample('0.0 [%]', undefined)(12.3)).toBe('12.3 [%]');
+    const result = column('0.0 [Red]', [1234.5]);
+    expect(result.texts).toEqual(['1,234.5']);
+    expect(result.request.inputWarnings).toContainEqual(expect.objectContaining({ code: 'format-spreadsheet-code', severity: 'warn' }));
+  });
+
+  // Prevents literal comma suffixes from scaling values and literal asterisks from disappearing.
+  it('keeps literal comma suffixes and asterisks in zero-only examples', () => {
+    expect(formatterFromExample('0, EUR', undefined)(1234.5)).toBe('1.235 EUR');
+    expect(formatterFromExample('0,- €', undefined)(1234.5)).toBe('1.235- €');
+    expect(formatterFromExample('0*x', undefined)(1234.5)).toBe('1,235*x');
+  });
+
   // Prevents a unit-only format from forcing the stand-in's decimals onto data at another precision.
   it('chooses unit-only precision from the original values of each field', () => {
     for (const [format, values, texts] of [['$M', [1_200_000, 5_000_000, 7_000_000], ['$1.2M', '$5.0M', '$7.0M']],
@@ -165,6 +181,17 @@ describe('ordinary number examples', () => {
     const texts = requireGeometry(layoutResolvedRequest(request)).labels.filter(label => !label.hidden).map(label => label.text);
     expect(texts).toEqual(expect.arrayContaining(['$1,200', '+$200', '$1,400']));
     expect(texts).not.toContain('+$1,200');
+  });
+
+  // Prevents direction glyphs on waterfall totals, including negative totals with a cell format.
+  it('keeps direction glyphs on waterfall steps and off level totals', () => {
+    const request = resolveChartRequest({ type: 'waterfall', data: { items: [
+      { id: 'start', label: 'Start', type: 'total', value: -1200 }, { id: 'step', label: 'Step', value: 200 },
+      { id: 'end', label: 'End', type: 'total', value: { number: -1000, format: '▲$1,234' } },
+    ] }, options: { format: '▲$1,234' } } as never);
+    const texts = requireGeometry(layoutResolvedRequest(request)).labels.filter(label => !label.hidden).map(label => label.text);
+    expect(texts).toEqual(expect.arrayContaining(['−$1,200', '▲$200', '−$1,000']));
+    expect(texts.filter(text => /[▲▼]/.test(text))).toEqual(['▲$200']);
   });
 
   // Prevents accepted grouping mark spellings from being refused or changing the chart's decimal mark.
