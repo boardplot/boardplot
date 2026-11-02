@@ -13,9 +13,9 @@
 <text data-id="header:label" data-part="tableHeader" data-bp-role="category" x="36" y="126.66" text-anchor="start" font-size="12" font-weight="600" fill="#0B1B3A"><tspan x="36" dy="0">SEGMENT</tspan></text>
 <text data-id="header:mtdLy" data-part="tableHeader" data-bp-role="category" x="324" y="126.66" text-anchor="end" font-size="12" font-weight="600" fill="#0B1B3A"><tspan x="324" dy="0">PRIOR YEAR</tspan></text>
 <text data-id="header:mtdAc" data-part="tableHeader" data-bp-role="category" x="400" y="126.66" text-anchor="end" font-size="12" font-weight="600" fill="#0B1B3A"><tspan x="400" dy="0">ACTUAL</tspan></text>
-<text data-id="header:mtdYoY" data-part="tableHeader" data-bp-role="category" x="466" y="126.66" text-anchor="end" font-size="12" font-weight="600" fill="#0B1B3A"><tspan x="466" dy="0">YOY</tspan></text>
+<text data-id="header:mtdYoY" data-part="tableHeader" data-bp-role="category" x="466" y="126.66" text-anchor="end" font-size="12" font-weight="600" fill="#0B1B3A"><tspan x="466" dy="0">YoY</tspan></text>
 <text data-id="header:ycAc" data-part="tableHeader" data-bp-role="category" x="542" y="126.66" text-anchor="end" font-size="12" font-weight="600" fill="#0B1B3A"><tspan x="542" dy="0">ACTUAL</tspan></text>
-<text data-id="header:ycYoY" data-part="tableHeader" data-bp-role="category" x="608" y="126.66" text-anchor="end" font-size="12" font-weight="600" fill="#0B1B3A"><tspan x="608" dy="0">YOY</tspan></text>
+<text data-id="header:ycYoY" data-part="tableHeader" data-bp-role="category" x="608" y="126.66" text-anchor="end" font-size="12" font-weight="600" fill="#0B1B3A"><tspan x="608" dy="0">YoY</tspan></text>
 <text data-id="header:ycPlan" data-part="tableHeader" data-bp-role="category" x="684" y="126.66" text-anchor="end" font-size="12" font-weight="600" fill="#0B1B3A"><tspan x="684" dy="0">PLAN</tspan></text>
 <text data-id="header:ycVsPlan" data-part="tableHeader" data-bp-role="category" x="764" y="126.66" text-anchor="end" font-size="12" font-weight="600" fill="#0B1B3A"><tspan x="764" dy="0">VS PLAN</tspan></text>
 <line data-id="rule:header" data-part="tableHeaderRule" x1="24" y1="138.50" x2="776" y2="138.50" stroke="#0B1B3A" stroke-width="1"/>

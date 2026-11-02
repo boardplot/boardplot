@@ -258,7 +258,7 @@ Defaults are the `bridge` preset.
 | table.head.weight | number |  |  | `600` | Font weight (100 to 1000). |
 | table.head.lineHeight | number |  |  |  | Line height as a ratio of the size. Both surfaces reserve a whole-pixel line box, ceil(size x ratio): 10.5 x 1.33 gives 14. |
 | table.head.tracking | number |  |  | `0` | Letter-spacing in em of the size (0 to 0.3). |
-| table.head.case | string |  | `'upper'`, `'asis'` |  | 'upper' sets the column heads in capitals, on the SVG and in the grid; 'asis' prints each label as authored ("Apr 25", "L10W avg"), and the tracks measure that text. Absent means 'upper'. Column-group headings and section rows keep their capitals. |
+| table.head.case | string |  | `'upper'`, `'asis'` |  | 'upper' (the default) capitalizes column heads on the SVG and in the grid, but keeps text after the last comma, text in parentheses or square brackets, and tokens with an inner capital such as mW or kWh as authored. 'asis' keeps each field head as authored, while column-group headings always use the default rule and section rows use capitals. |
 | table.section | object |  |  | `{"weight":500,"tracking":0.14,"ink":"ink"}` | Section row face, on the SVG and in the grid. Absent keys give the column-head size, the emphasis weight, line height 1.33 and tracking 0.14 em. |
 | table.section.size | number |  |  |  | Font size in px at every density and width class. |
 | table.section.weight | number |  |  | `500` | Font weight (100 to 1000). |

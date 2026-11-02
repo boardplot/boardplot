@@ -300,7 +300,7 @@ const THEME_FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze
   'table.<face>.weight': 'Font weight (100 to 1000).',
   'table.<face>.lineHeight': 'Line height as a ratio of the size. Both surfaces reserve a whole-pixel line box, ceil(size x ratio): 10.5 x 1.33 gives 14.',
   'table.<face>.tracking': 'Letter-spacing in em of the size (0 to 0.3).',
-  'table.head.case': "'upper' sets the column heads in capitals, on the SVG and in the grid; 'asis' prints each label as authored (\"Apr 25\", \"L10W avg\"), and the tracks measure that text. Absent means 'upper'. Column-group headings and section rows keep their capitals.",
+  'table.head.case': "'upper' (the default) capitalizes column heads on the SVG and in the grid, but keeps text after the last comma, text in parentheses or square brackets, and tokens with an inner capital such as mW or kWh as authored. 'asis' keeps each field head as authored, while column-group headings always use the default rule and section rows use capitals.",
   'table.section.ink': "Text colour of a section heading: 'ink', 'inkMuted' or 'inkMeta'. Absent means 'ink'; every preset sets 'ink'.",
   'table.fixedType':
     "True makes a density change row height and cell padding only: compact heads, body and total keep their size, and the label of a cohort grid's closing row keeps the total face while the matrix cells keep their own step. Absent or false steps compact type 0.5 px down as before.",
