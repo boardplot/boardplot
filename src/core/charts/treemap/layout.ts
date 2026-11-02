@@ -17,7 +17,7 @@ import { chartString } from '../../strings/treemap';
 
 import { chartPalette } from '../chartEnv';
 import { structureCount } from '../../structureCounts';
-import { authoredNotes, fixedPlotChrome, frameTextOptions, hiddenNoteWith, markNotedLabels, normalizeLegendOption, NOTED_LABELS, solveFrame, type LegendItemInput } from '../../frame';
+import { authoredNotes, fixedPlotChrome, frameTextOptions, shareUnitOptions, hiddenNoteWith, markNotedLabels, normalizeLegendOption, NOTED_LABELS, solveFrame, type LegendItemInput } from '../../frame';
 import { shareSetFormatter } from '../../format';
 import { formatterFromExample, parseFormatExample, seriesRasterFormatter } from '../../formatSpec';
 import { withUnit } from '../../unitJoin';
@@ -235,7 +235,7 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
   // notes.maxListed nor the registry's move of its own line to the description takes it off.
   const hiddenNote = hiddenNoteWith({ ...options, notes: { ...options.notes, maxListed: 'all' } }, []);
   const frame = solveFrame({
-    size, margin, ...frameTextOptions(options), footnotes: hiddenNote.line.length === 0 ? authoredNotes(options) : [...hiddenNote.footnotes, ...hiddenNote.line], theme, measure,
+    size, margin, ...frameTextOptions(shareUnitOptions('treemap', options, { groups })), footnotes: hiddenNote.line.length === 0 ? authoredNotes(options) : [...hiddenNote.footnotes, ...hiddenNote.line], theme, measure,
     ...(legendOptions ? { legend: { options: legendOptions, items: legendItems } } : {}),
   }, occupied);
   fixedPlotChrome(frame);

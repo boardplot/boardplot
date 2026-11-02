@@ -11,6 +11,7 @@ import { strokeToken, dashToken, secondaryFont } from '../../theme';
 
 import { sweepHide } from '../../collide';
 import { layoutValueAxis } from '../../axis';
+import { bandedIntervalTicks } from '../../intervalTicks';
 import { curvePathFromSegments, drawnStroke, monotoneSegments, splitCurveSegmentsAtX, type CurveSegment } from '../../curve';
 import { formatterFromExample } from '../../formatSpec';
 import { round2, type Rect } from '../../geometry';
@@ -124,6 +125,8 @@ function comboAxes(ctx: MarkCtx): void {
   // fraction (see insideCenterY).
   nodes.push({ t: 'line', id: 'axis:baseline', x1: plot.x, y1: y0, x2: plot.x + plot.w, y2: y0, stroke: { token: 'axis' }, width: strokeToken(env.theme, 'rule'), owner: {}, part: 'baseline' });
   claims.claim({ x: plot.x, y: y0 - 0.5, w: plot.w, h: 1 }, 'axis', {});
+  // categoryAxis.dateTicks: a short tick over the name row at every calendar interval.
+  if (area.intervalTicks && area.showCatTickRow) bandedIntervalTicks(env.theme, domain.cats, area.intervalTicks, (ci) => area.band.center(ci), area.catRowY, nodes, claims);
 }
 
 /** One stacked group per category, then the reference series as plan ticks, dashed lines or markers (never bars). */

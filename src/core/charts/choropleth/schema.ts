@@ -1,3 +1,4 @@
+import { optionShapeSchema } from '../../schema/shared';
 import { geoRegionSchema } from '../../schema/geoRegion';
 import * as z from 'zod';
 import {
@@ -161,17 +162,17 @@ export const choroplethOptionsSchema = z
     ...baseOptionsSchema.shape,
     ...refusedBaseOptions('choropleth'),
     highlight: geoHighlightRefused('choropleth'),
-    topN: z
+    topN: optionShapeSchema('topN', z
       .strictObject({
         n: z.number().int().positive().describe('How many regions with the largest absolute values the automatic labels name.'),
-      })
+      }), z.number().int().positive())
       .optional()
-      .describe("On the world pack, the automatic labels name the n regions with the largest absolute values, plus the large countries (default 12). The other packs label every region, and labels 'all' or 'none' decide for themselves, so there topN changes nothing."),
+      .describe("On the world pack, the automatic labels name the n regions with the largest absolute values, plus the large countries (default 12). The other packs label every region, and labels 'all' or 'none' decide for themselves, so there topN changes nothing. A positive integer n means { n }."),
     scale: geoScaleSchema(true).optional().describe('Sequential magnitude or diverging midpoint color scale.'),
     classes: z.number().int().min(3).max(7).optional().describe('Number of equal-interval color classes, from 3 through 7. Explicit steps define five classes instead.'),
     steps: geoStepsSchema,
     labels: z.union([z.enum(['auto', 'all', 'none']).describe('Automatic selection, all regions, or no region labels.'), z.literal(false).describe("The same as 'none', kept for the shared labels: false.")]).optional().describe("Region-label selection policy; placement still respects available space. false is the same as 'none'."),
-    regionValues: z.boolean().optional().describe("Print each labelled region's value after its code, e.g. 'DE 2.2%', through the same placement and fit tiers as the code. Default true when the map labels at most 10 regions, else false. Needs region labels, so labels 'none' or false refuse it."),
+    regionValues: z.boolean().optional().describe("Print each labelled region's value after its code, e.g. 'DE 2.2%', through the same placement and fit tiers as the code. Default true when no value table is drawn and the map labels at most 10 regions, or, off the world map, when the canvas is at least 560 px wide and gives each label at least 8000 square pixels; else false. A region whose label no longer fits is listed with its value. Needs region labels, so labels 'none' or false refuse it."),
     labelRegions: z.array(idSchema.describe('Pack region id requested for labeling.')).optional().describe('Explicit region ids to label, retained by the small-region filter.'),
     microStateMarkers: z.boolean().optional().describe("Draw a dot for a micro-state the data lists without a value (null); one with a value is always drawn. Default off on the world pack, the only pack whose micro-states have no outline; on the other packs it would change nothing and is refused."),
     smallRegionArea: z.number().min(0).max(1).optional().describe('Area fraction below which automatic labels move to Small members. Default 0.001; 0 disables. Explicit label requests are retained.'),
@@ -194,6 +195,6 @@ export const choroplethOptionsSchema = z
         params: { refused: true },
       });
     }
-  }).describe("Map framing, color scale and region-label policies. The titled colour key and the Small members block sit together in the row above the map, and the map rises under that row where no region lies. On a canvas of a set height whose plot is at least 1.6 times wider than tall, where a column beside the map makes the map clearly larger and no value table is drawn, they stand in a column right of the map instead; legend 'top' keeps the row. legend 'bottom' puts them under the map. legend 'right' is refused (a side column takes the map's width), and so is 'none' (the key names what the colours measure).") as unknown as z.ZodType<ChoroplethOptions>;
+  }).describe("Map framing, color scale and region-label policies. The titled colour key and the Small members block sit together in the row above the map, and the map rises under that row where no region lies. On a canvas of a set height whose plot is at least 1.6 times wider than tall, where a column beside the map makes the map clearly larger and no value table is drawn, they stand in a column right of the map instead; legend 'top' keeps the row. legend 'bottom' puts them under the map. legend 'right' or 'left' puts them in a column beside the map. legend 'none' is refused (the key names what the colours measure).") as unknown as z.ZodType<ChoroplethOptions>;
 
 export const choroplethDataSchema = baseChoroplethDataSchema.superRefine(addGeoIdIssues);

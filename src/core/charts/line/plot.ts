@@ -10,11 +10,11 @@ import type { Theme } from '../../types/theme';
 
 import { BAND_PAD, GAP_BRACKET_RESERVE, VALUE_LINE_RESERVE } from '../../annotateParts';
 import { AXIS_TITLE_GAP, measureValueAxisWidth, planValueAxisTitle, valueAxisTitleBand, valueAxisTitleText, valueAxisUnit, type ValueAxisTitle } from '../../axis';
-import { dateTickRow, dayCategories } from '../../calendarLabels';
+import { authoredDateTicks, dayCategories } from '../../calendarLabels';
 import type { DateTickInterval } from '../../dateFormat';
 import { formatAutomaticPercent, notApplicableGlyph, numberRange } from '../../format';
 import { percentCellsOnly } from '../../annotatePass';
-import { frameTextOptions, normalizeLegendOption, plotHeightAfter, solveFrame, type FrameBand, type FrameInput, type FrameResult, type LegendItemInput, authoredFootnoteCount } from '../../frame';
+import { frameTextOptions, normalizeLegendOption, plotHeightAfter, shareUnitOptions, solveFrame, type FrameBand, type FrameInput, type FrameResult, type LegendItemInput, authoredFootnoteCount } from '../../frame';
 import { stepDownFont } from '../../label/rowFit';
 import { planCategoryRow, rotatedLeftOverhang } from '../../label/categoryRow';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
@@ -246,7 +246,7 @@ function lineLegend(theme: Theme, domain: LineDomain, paints: LinePaints, _text:
     omittedKey(s.id, stringFields(s.zero ? options.strings!.rebaseZero! : options.strings!.rebaseMissing!, { series: s.series, period: s.period })));
   const narrow = width <= SIDE_KEY_MIN_WIDTH;
   // Overriding legend: 'none' (legend-none-overridden) the key goes into a row: a side key would starve the plot again.
-  const legendOption = boundedKey ? narrow || legendPosition === 'none' || domain.x?.range && (isArea || fan) ? 'top' as const : 'right' as const : reserves.endpoint.endpointLegendFallback
+  const legendOption = boundedKey ? narrow || legendPosition === 'none' || domain.x?.range && (isArea || fan) ? 'top' as const : legendPosition === 'left' ? 'left' as const : 'right' as const : reserves.endpoint.endpointLegendFallback
     ? legendPosition === 'top' || legendPosition === 'bottom' ? legendPosition : ('top' as const)
     : labelModes.series === 'key' && (legendPosition === undefined || legendPosition === 'none')
       ? ('top' as const)
@@ -430,7 +430,7 @@ export function solveLineFrame(
       ...frameTextOptions(frameOptions),
       // Actually ignored, not merely warned about: `bump-unit-ignored` would
       // be a lie if the frame still printed "in EUR m" over a rank ladder.
-      unit: isBump ? undefined : options.unit,
+      unit: isBump ? undefined : shareUnitOptions('line', options).unit,
       footnotes: [
         ...lineFrameFootnotes({ fan: domain.fan, cats, partialNamed: lineToDateIds(env, domain, text).size > 0, bumpDerived: domain.bumpDerived, nearZeroTail: reserves.endpoint.nearZeroTail, options: frameOptions,
           footer: { width: size.width - margin.left - margin.right, font: { family: theme.type.family, ...footerType(theme.type.footnote, options.target, textScaleOf(options)) }, measure },
@@ -442,6 +442,8 @@ export function solveLineFrame(
         ...timeZoneNote(domain, options),
       ],
       legend,
+      // The end-name key the engine puts beside the plot keeps its place whatever the room.
+      ...(usesEndLabelKey(options) ? { sideKeyFixed: true } : {}),
       ...(eventKey ? { eventKey } : {}),
       theme,
       measure,
@@ -539,22 +541,7 @@ function categoryRow(env: LineEnv, domain: LineDomain, text: LineText, reserves:
   const categoryCentersFor = (x0: number, width: number) =>
     cats.map((_, ci) => liveCategoryX(ci, n, crossesBetween, spanOf(x0, width), grid));
   const dateTicks = options.categoryAxis?.dateTicks as DateTickInterval | undefined;
-  const ticked = dateTicks ? dateTickRow(cats, dateTicks, options.locale?.language, options.locale?.weekStartsOn) : undefined;
-  if (dateTicks && ticked!.ticks === null) {
-    warnings.push({
-      code: 'date-ticks-unsupported',
-      severity: 'info',
-      message: `categoryAxis.dateTicks '${dateTicks}' was ignored: not every category carries an ISO date, so no calendar interval can be resolved`,
-      suggest: "give each category an ISO 'date' or drop categoryAxis.dateTicks",
-    });
-  } else if (dateTicks && dateTicks !== 'weeks' && options.locale?.weekStartsOn !== undefined) {
-    warnings.push({
-      code: 'week-start-ignored',
-      severity: 'info',
-      message: `locale.weekStartsOn was ignored: a week boundary only decides something for dateTicks 'weeks', and the requested interval is '${dateTicks}'`,
-      suggest: "set categoryAxis.dateTicks to 'weeks' or drop locale.weekStartsOn",
-    });
-  }
+  const ticked = authoredDateTicks(cats, options, warnings);
   // Line keys no running period, so its name says so where the note does not print.
   const row = categoryLabelsAndMarks(cats, { count: authoredFootnoteCount(options), warnings }, partialAxisWords(options.strings, options, lineToDateIds(env, domain, text).size > 0));
   ticked?.name(row);

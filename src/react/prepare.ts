@@ -6,7 +6,7 @@ import { interactionRecords } from '../core/a11y/records';
 import { overlayInputs } from './hover/placement';
 import { resolveSize } from '../core/normalize/shared';
 import { sceneThemeBindings } from '../core/repaintGeometry';
-import type { ChartRequest, RequestInputOptions, RequestOptions } from '../core/request';
+import type { ChartRequest, RequestInputOptions } from '../core/request';
 import type { TableData, TableOptions } from '../core/types/table';
 import type { ResolvedChartRequest } from '../core/request';
 import { loadChartTypes } from './loadChartTypes';
@@ -28,7 +28,7 @@ linkThemeShapeRules();
 linkAnnotateEngine();
 linkStoryLayer();
 
-export type PrepareChartRequest<D = unknown, O extends Omit<RequestOptions, 'annotations'> = RequestInputOptions> =
+export type PrepareChartRequest<D = unknown, O extends object = RequestInputOptions> =
   (| (Omit<ChartRequest<D, O>, 'size'> & { rows?: undefined; columns?: undefined })
    | (Omit<ChartRequest<D, O>, 'size' | 'data'> & { data?: Partial<D>; rows: NonNullable<RowsProps['rows']>; columns: RowsColumns }))
   & ContainerSizeOptions & { window?: LiveWindowOptions };

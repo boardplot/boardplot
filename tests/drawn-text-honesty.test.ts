@@ -4,6 +4,7 @@ import { render } from '../src/cli/render';
 import { getFixtures } from '../src/fixtures';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { defaultMeasurer } from '../src/core/text';
+import { emphasisWeight, resolveTheme } from '../src/core/theme';
 import { clippedTextWarnings } from '../src/core/textClip';
 import type { Geometry } from '../src/core/types/scene';
 // @ts-expect-error The census script is plain JavaScript.
@@ -44,14 +45,14 @@ describe('drawn text stays on the canvas', () => {
     };
     for (const variant of ['grouped', 'stacked', 'stacked100']) {
       const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'column', data,
-        options: { variant, highlight: 'c0', size: { width: 720, height: 700 } },
+        options: { variant, highlight: 'c0', size: { width: 520, height: 700 } },
       } as never)) as Geometry;
       const label = geometry.scene.find(node => node.id === 'label:category:c0');
       expect(label?.t).toBe('text');
       if (label?.t !== 'text') continue;
       expect(label.rotate).toBe(-45);
       expect(label.lines).toEqual([names[0]]);
-      expect(label.font.weight).toBe(700);
+      expect(label.font.weight).toBe(emphasisWeight(resolveTheme()));
       expect(clippedTextWarnings(geometry, defaultMeasurer)).toEqual([]);
     }
   });

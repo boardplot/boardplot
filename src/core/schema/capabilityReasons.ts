@@ -14,7 +14,7 @@ export const OPTION_REASONS: Readonly<Record<keyof typeof OPTION_CAPABILITY, str
   rowLabels:
     "only the horizontal row-label families read rowLabels (bar, bullet, box, dot, likert). A vertical category axis prints its labels under the bands, where they already share one baseline and there is nothing to align",
   categoryAxis:
-    "only 'line' accepts categoryAxis; crossesBetween selects bands or points and dateTicks picks a calendar interval for the tick labels. Banded category types cross between bands by construction",
+    "only 'line', 'column' and 'combo' accept categoryAxis; dateTicks picks a calendar interval for the tick labels of a dated row, and crossesBetween selects bands or points on a line. Other banded category types print their own category rows",
   categoryLabels:
     "staircase category names sit in the free space over columns sorted by height, and only the vertical column family reads categoryLabels (column, combo, pareto). A horizontal bar prints each name beside its row already; a waterfall or variance keeps its bridge order and its delta labels in that space; histogram bins and mekko widths have no free triangle over sorted columns",
   secondaryAxis:
@@ -103,7 +103,7 @@ export const LEGEND_REFUSED_REASONS: Readonly<Record<string, string>> = {
 };
 
 export const LEGEND_DRAWS_REASONS: Readonly<Record<string, string>> = {
-  slope: "a slope chart names every line at both ends, so 'none' and 'auto' draw what the chart draws without them; drop legend, or name 'top' or 'bottom' for a key",
+  slope: "a slope chart names every line at both ends, so 'none' and 'auto' draw what the chart draws without them; drop legend, or name 'top', 'bottom', 'right' or 'left' for a key",
 };
 
 /** The one key no type implements; the base schema refuses it on every type. */
@@ -153,7 +153,7 @@ const ALTERNATIVES: Readonly<Record<string, Readonly<Record<string, string>>>> =
   ribbons: { bar: "bar rows are items, not a sequence, and ribbons draw a rank flow from period to period; type 'column' with variant 'stacked' draws them" },
   rowLabels: { '*': "aligned row labels belong to horizontal rows such as type 'bar'; this type prints its category labels on one baseline already" },
   categoryLabels: { '*': "type 'column', 'combo' or 'pareto' over columns sorted by height takes categoryLabels 'staircase'", bar: 'a horizontal bar prints each name beside its row already' },
-  categoryAxis: { '*': "crossesBetween and dateTicks are type 'line' settings; a banded type crosses between its bands already" },
+  categoryAxis: { '*': "dateTicks is a setting of types 'line', 'column' and 'combo', and crossesBetween one of type 'line'; a banded type crosses between its bands already" },
   secondaryAxis: { '*': "a second value scale needs type 'combo'" },
   labels: {
     '*': "options.labelDensity 'minimal' keeps the totals and endpoints",

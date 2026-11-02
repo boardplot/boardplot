@@ -85,6 +85,7 @@ export function defaultNoteLines(target: RenderTarget = DEFAULT_TARGET, width: n
  * "Source: Source: …".
  */
 export function sourceLine(source: string, word: string): string {
+  if (word === '') return source;
   const opensWithWord = source.slice(0, word.length).toLowerCase() === word.toLowerCase() &&
     /^\p{L}*\s*:/u.test(source.slice(word.length));
   return opensWithWord ? source : `${word}: ${source}`;
@@ -192,10 +193,11 @@ type Noted = { [NOTE_META]?: EngineNoteMeta };
 // its own metadata, including consumers that run after the layout has ended.
 let current: { notes: Map<string, EngineNoteMeta> } | undefined;
 
-export function withEngineNotes<T>(run: () => T): T {
-  if (current) return run();
-  current = { notes: new Map() };
-  try { return run(); } finally { current = undefined; }
+export function withEngineNotes<T>(run: () => T, isolated = false): T {
+  if (current && !isolated) return run();
+  const previous = current;
+  current = { notes: new Map(isolated && previous ? [...previous.notes].map(([text, meta]) => [text, { ...meta }]) : []) };
+  try { return run(); } finally { current = previous; }
 }
 
 /** Each note owns metadata outside its public, enumerable fields. */

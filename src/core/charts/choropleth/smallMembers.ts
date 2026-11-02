@@ -60,11 +60,11 @@ interface MapKeysInput {
   compact?: boolean;
   plot: Rect;
   /**
-   * 'right' stacks the blocks in a column right of the map; 'bottom' and 'top'
+   * 'right' and 'left' stack the blocks in a column beside the map; 'bottom' and 'top'
    * set them side by side in a strip. 'auto' is the strip above the map, where
    * every exhibit keeps its key, and the map takes the full width.
    */
-  position: 'right' | 'bottom' | 'top' | 'auto';
+  position: 'right' | 'left' | 'bottom' | 'top' | 'auto';
   title: string | undefined;
   scale: ScaleModel;
   /** The class count when the map paints classes. */
@@ -296,9 +296,10 @@ function mapKeysOnce(input: MapKeysInput) {
   // beside the key unless that squeezes the key under its minimum; then the
   // small members go under the key.
   const position = input.position === 'auto' ? 'top' : input.position;
+  const column = position === 'right' || position === 'left';
   const besideCap = plot.w - (members.length ? BLOCK_GAP + oneColumnW : 0);
   const { keyW, at, plan, edgeFont, edgeRowPitch, midLines, midLeft, midAbove, titleWrap, titleLines, midLabelY, rampY, noDataY, keyH, caption, captionY } =
-    position === 'right'
+    column
       ? fitKey(Math.max(1, Math.min(input.keyWidth ?? natural, plot.w / 2)))
       : fitKey(Math.max(1, Math.min(input.keyWidth ?? natural, besideCap >= Math.min(natural, RAMP_MIN_W) ? besideCap : plot.w)));
 
@@ -307,9 +308,9 @@ function mapKeysOnce(input: MapKeysInput) {
   // makes the strip shorter: under it they can use the full plot width.
   const besideBlock = smallBlock(plot.w - keyW - BLOCK_GAP, Math.floor((keyH - headerH) / rowH));
   const underBlock = smallBlock(plot.w, 1);
-  const beside = position !== 'right' && members.length > 0 && keyW + BLOCK_GAP + oneColumnW <= plot.w &&
+  const beside = !column && members.length > 0 && keyW + BLOCK_GAP + oneColumnW <= plot.w &&
     Math.max(keyH, besideBlock.smallH) <= keyH + BLOCK_GAP + underBlock.smallH;
-  const { rows, smallW, smallH } = position === 'right' ? smallBlock(Infinity, columnRows(keyH)) : beside ? besideBlock : underBlock;
+  const { rows, smallW, smallH } = column ? smallBlock(Infinity, columnRows(keyH)) : beside ? besideBlock : underBlock;
   const stacked = !beside && members.length > 0;
   const blocksW = beside ? keyW + (members.length ? BLOCK_GAP + smallW : 0) : Math.max(keyW, smallW);
   const blocksH = beside ? Math.max(keyH, smallH) : keyH + (stacked ? BLOCK_GAP + smallH : 0);
@@ -322,10 +323,10 @@ function mapKeysOnce(input: MapKeysInput) {
   // right column already fills the plot height with as many rows as fit, so it
   // reports its height only when even one row per column does not fit.
   const mapGap = input.compact ? 4 : MAP_GAP;
-  const minPlotH = position === 'right' ? (blocksH > plot.h ? blocksH : 0) : blocksH + mapGap + MIN_MAP_H;
+  const minPlotH = column ? (blocksH > plot.h ? blocksH : 0) : blocksH + mapGap + MIN_MAP_H;
   if (input.dryRun) return { dry: { w: blocksW, h: blocksH } } as const;
-  const mapPlot: Rect = position === 'right'
-    ? { ...plot, w: Math.max(10, plot.w - blocksW - MAP_GAP) }
+  const mapPlot: Rect = column
+    ? { ...plot, x: position === 'left' ? plot.x + blocksW + MAP_GAP : plot.x, w: Math.max(10, plot.w - blocksW - MAP_GAP) }
     : { ...plot, y: position === 'top' ? plot.y + blocksH + mapGap : plot.y, h: Math.max(10, plot.h - blocksH - mapGap) };
 
   // ---- key block: marks, then its texts as fixed-cell label requests ----
@@ -437,14 +438,12 @@ export function shortestRegionName(
   font: FontSpec,
   measure: TextMeasurer,
 ): string {
-  const forms = [region.anchor.shortName, region.id];
-  return forms.reduce((best, candidate) => {
-    const width = measure(candidate, font).width;
-    const bestWidth = measure(best, font).width;
-    return width < bestWidth || (width === bestWidth && compareText(candidate, best) < 0)
-      ? candidate
-      : best;
-  });
+  const shortName = region.anchor.shortName;
+  if (shortName === region.id) return shortName;
+  const shortWidth = measure(shortName, font).width;
+  const idWidth = measure(region.id, font).width;
+  return idWidth < shortWidth || (idWidth === shortWidth && compareText(region.id, shortName) < 0)
+    ? region.id : shortName;
 }
 
 /** At most this many rows make the automatic value table (more is a list, not a glance). */

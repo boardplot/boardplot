@@ -27,7 +27,7 @@ import { linkAnnotateEngine } from './core/annotateEngine';
 import { registerCatalogue } from './core/charts';
 import { linkThemeShapeRules } from './core/themeShapeRules';
 import { canDraw as canDrawRegistered, measure as measureRegistered, resolveChartRequest as resolveRegisteredRequest } from './core/request';
-import type { ChartRequest, RequestContext, RequestOptions } from './core/request';
+import type { ChartRequest, RequestContext, RequestOptions, RequestInputOptions } from './core/request';
 import { validateChartInput } from './core/doc/chartValidation';
 import type { DocChart, DocumentEnvelope, BoardplotDoc } from './core/doc/document';
 import { NormalizeError } from './core/normalize/shared';
@@ -66,7 +66,7 @@ export function getChartSchemas(typeOrAlias: string): ChartSchemas<any, any> | u
   return getRegisteredChartSchemas(typeOrAlias);
 }
 
-export function resolveChartRequest<D, O extends object>(request: ChartRequest<D, O & RequestOptions>, context?: RequestContext) {
+export function resolveChartRequest<D, O extends object>(request: ChartRequest<D, O & RequestInputOptions>, context?: RequestContext) {
   ensureCatalogueRegistered();
   const validated = validatedRequest(request, context, 'schema');
   const resolved = resolveRegisteredRequest(validated.request, context);
@@ -76,7 +76,7 @@ export function resolveChartRequest<D, O extends object>(request: ChartRequest<D
 
 /** Validate public library input once, before request preparation or layout. */
 function validatedRequest<D, O extends object>(
-  request: ChartRequest<D, O & RequestOptions>, context?: RequestContext,
+  request: ChartRequest<D, O & RequestInputOptions>, context?: RequestContext,
   dataOwnership: 'document' | 'schema' = 'document',
 ) {
   if (!getRegisteredChart(request.type)) throw new NormalizeError('unknown-type', 'type', `unknown chart type '${request.type}'`);
@@ -111,17 +111,17 @@ function validatedRequest<D, O extends object>(
     throw new NormalizeError(error.code, error.path ?? 'options', error.message, error.suggest, error.fix, error.field);
   }
   const options = { ...valid.options, ...(measurer === undefined ? {} : { measure: measurer }) } as O & RequestOptions;
-  return { request: { ...request, data: valid.data as D, options }, warnings: envelope.warnings };
+  return { request: { ...request, data: valid.data as D, options, ...(request.annotations === undefined ? {} : { annotations: valid.chart.annotations as ChartRequest['annotations'] }) }, warnings: envelope.warnings };
 }
 
-export function measure<D, O extends object>(request: ChartRequest<D, O & RequestOptions>, context?: RequestContext) {
+export function measure<D, O extends object>(request: ChartRequest<D, O & RequestInputOptions>, context?: RequestContext) {
   ensureCatalogueRegistered();
   const validated = validatedRequest(request, context);
   const measured = measureRegistered(validated.request, context);
   return validated.warnings.length ? { ...measured, warnings: [...validated.warnings, ...measured.warnings] } : measured;
 }
 
-export function canDraw<D, O extends object>(request: ChartRequest<D, O & RequestOptions>, context?: RequestContext) {
+export function canDraw<D, O extends object>(request: ChartRequest<D, O & RequestInputOptions>, context?: RequestContext) {
   ensureCatalogueRegistered();
   try { return canDrawRegistered(validatedRequest(request, context, 'schema').request, context); }
   catch (error) {
@@ -134,14 +134,60 @@ export type { CanDraw } from './core/request';
 export { layoutResolvedRequest, measureResolvedRequest } from './core/request';
 export { isRefused } from './core/schema/refusals';
 export { InputError, specFromRows, type RowsColumns, type RowsReading, type SpecFromRowsInput } from './rows';
-export type { ChartRequest, ResolvedChartRequest, RequestOptions, RequestContext, ChartMeasurement } from './core/request';
+export type { ChartRequest, ResolvedChartRequest, RequestInputOptions as RequestOptions, RequestInputOptions, RequestContext, ChartMeasurement } from './core/request';
 export type { InteractionScope, InteractionTarget, InteractionRecord, InteractionValue, InteractionComparison } from './core/a11y/types';
-export type { ChartDefinition, ChartOptions, ChartSchemas, Fixture } from './core/registry';
+export type { ChartDefinition, ChartSchemas, Fixture } from './core/registry';
 
 // The data, option, scene and theme types every chart takes.
 export type * from './core/types';
+export type {
+  BaseOptions,
+  ColumnOptions,
+  BarOptions,
+  ButterflyOptions,
+  WaterfallOptions,
+  LineOptions,
+  ComboOptions,
+  ParetoOptions,
+  MekkoOptions,
+  PieOptions,
+  ScatterOptions,
+  VarianceOptions,
+  BulletOptions,
+  DotOptions,
+  SlopeOptions,
+  HeatmapOptions,
+  KpiOptions,
+  SparklineOptions,
+  FunnelOptions,
+  GridOptions,
+  ChartOptions,
+  DimSwitchOptions,
+  BoxOptions,
+  ChoroplethOptions,
+  CohortOptions,
+  BarTableOptions,
+  DiagramOptions,
+  GridLayoutOptions,
+  ScatterStrategyOptions,
+  GanttOptions,
+  HistogramOptions,
+  LikertOptions,
+  PvmOptions,
+  PyramidOptions,
+  TreemapOptions,
+  SankeyOptions,
+  WaffleOptions,
+  StatusOptions,
+  TilemapOptions,
+  TableOptions,
+  CreativeOptions,
+  MetricStackOptions,
+  BaseOptionsFor,
+} from './optionTypes';
+export type { OptionsInput } from './core/types/optionInput';
 export { dimswitchRowId } from './core/charts/dimswitch/compile';
-export type { DimSwitchData, DimSwitchOptions, DimSwitchExpression, DimSwitchMeasure, DimSwitchMember, DimSwitchPeriod, DimSwitchSums, DimSwitchVariant, CompiledDimSwitch } from './core/charts/dimswitch/types';
+export type { DimSwitchData, DimSwitchExpression, DimSwitchMeasure, DimSwitchMember, DimSwitchPeriod, DimSwitchSums, DimSwitchVariant, CompiledDimSwitch } from './core/charts/dimswitch/types';
 export { renderSvg, type RenderSvgOptions } from './core/svg/renderSvg';
 export { measureText, type FontSpec, type TextMeasurer } from './core/text';
 export type { Size } from './core/geometry';
@@ -154,16 +200,15 @@ export type { ChartNote, NoteKind, NotePlacement, ChartCredit, CreditLink } from
 // Every registered type must name its data and options in the published
 // declarations; a type whose interface stays module-private is a chart a
 // TypeScript consumer cannot describe. The public API check enumerates these types.
-export type { BoxData, BoxOptions } from './core/charts/box/types';
+export type { BoxData } from './core/charts/box/types';
 export type {
   ChoroplethData,
   ChoroplethDatum,
   ChoroplethLabelPolicy,
-  ChoroplethOptions,
   ChoroplethScale,
 } from './core/charts/choropleth/types';
-export type { CohortData, CohortOptions } from './core/charts/cohort/types';
-export type { BarTableData, BarTableOptions } from './core/charts/bartable/types';
+export type { CohortData } from './core/charts/cohort/types';
+export type { BarTableData } from './core/charts/bartable/types';
 export type {
   DiagramData,
   DiagramDerived,
@@ -172,7 +217,6 @@ export type {
   DiagramLane,
   DiagramMarks,
   DiagramNode,
-  DiagramOptions,
   DiagramVariant,
 } from './core/types/diagram';
 export type {
@@ -184,8 +228,6 @@ export type {
 export type {
   ExplicitGridData,
   GridInput,
-  GridLayoutOptions as GridOptions,
-  GridLayoutOptions,
   GridPanelPlacement,
   GridPanelSpec,
   GridRepeatFacet,
@@ -194,8 +236,6 @@ export type {
   RepeatGridData,
 } from './core/charts/grid/schema';
 export type {
-  ScatterStrategyOptions as ScatterOptions,
-  ScatterStrategyOptions,
   StrategyZoneCell,
   StrategyZoneGrid,
   StrategyZoneRegion,
@@ -203,25 +243,23 @@ export type {
   StrategyZones,
 } from './core/charts/scatter/types';
 export type { AnnotationGlyphSlot } from './core/types/annotations';
-export type { GanttOptions } from './core/charts/gantt/layout';
-export type { HistogramData, HistogramOptions } from './core/charts/histogram/types';
+
+export type { HistogramData } from './core/charts/histogram/types';
 export type {
   LikertData,
   LikertDerived,
   LikertItem,
   LikertNeutralMode,
-  LikertOptions,
   LikertResponse,
   LikertScaleOption,
 } from './core/charts/likert/layout';
-export type { PvmData, PvmOptions } from './core/charts/pvm/types';
+export type { PvmData } from './core/charts/pvm/types';
 export type {
   PyramidBand,
   PyramidData,
   PyramidDerived,
   PyramidGroup,
   PyramidGroupValue,
-  PyramidOptions,
 } from './core/charts/pyramid/types';
 export type {
   TreemapData,
@@ -229,7 +267,6 @@ export type {
   TreemapGroup,
   TreemapItem,
   TreemapMarks,
-  TreemapOptions,
 } from './core/charts/treemap/types';
 export type {
   SankeyData,
@@ -239,20 +276,17 @@ export type {
   SankeyMarks,
   SankeyNode,
   SankeyNodeDerived,
-  SankeyOptions,
   SankeyStage,
 } from './core/charts/sankey/types';
 export type {
   WaffleDerived,
   WaffleGrid,
   WaffleMarks,
-  WaffleOptions,
 } from './core/charts/waffle/types';
 export type {
   StatusCell,
   StatusColumn,
   StatusData,
-  StatusOptions,
   StatusRow,
   StatusState,
   StatusTone,
@@ -260,7 +294,6 @@ export type {
 export type {
   TilemapData,
   TilemapDatum,
-  TilemapOptions,
   TilemapScale,
 } from './core/charts/tilemap/types';
 /**
@@ -279,7 +312,6 @@ export type {
   TableCellObject,
   TableColumn,
   TableData,
-  TableOptions,
   TableVariant,
   TableRow,
 } from './core/types/table';
@@ -287,7 +319,7 @@ export type {
 export { collapsedForDepth, depthToExpansion, sortRows } from './core/charts/table/view';
 export type { TableSort } from './core/charts/table/view';
 
-export type { CreativeData, CreativeOptions, CreativeMedia, CreativeMetric, CreativeFatigueRule } from './core/charts/creative/types';
+export type { CreativeData, CreativeMedia, CreativeMetric, CreativeFatigueRule } from './core/charts/creative/types';
 
 /** Build a per-chart measurer from a generated font table document. */
 export {
@@ -301,6 +333,6 @@ export { createMetricTablesMeasurer, measurableFamilies, metricTablesFamilies } 
 
 export type { ChartReading, StructureCount } from './core/reading';
 
-export type { MetricStackData, MetricStackPanel, MetricStackOptions, StackReadout } from './core/charts/grid/metricStack';
+export type { MetricStackData, MetricStackPanel, StackReadout } from './core/charts/grid/metricStack';
 
 export { tableLooks } from './tableLooks';

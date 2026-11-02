@@ -157,6 +157,26 @@ describe('categoryAxis.dateTicks', () => {
     expect(texts(layout('column', { data: data(b) }))).toBe(alone);
   });
 
+  // Column and combo refused categoryAxis, so quarter ticks under 24 monthly columns were impossible.
+  it.each(['column', 'combo'])('ticks a %s row at each calendar quarter, and says when crossesBetween is ignored', (type) => {
+    const months = Array.from({ length: 24 }, (_, i) => `${2024 + Math.floor(i / 12)}-${String(i % 12 + 1).padStart(2, '0')}-01`);
+    const monthly = { categories: months.map((date) => ({ id: date, date })), series: [{ id: 'orders', label: 'Orders', values: months.map((_, i) => 100 + i) }] };
+    const ticks = (extra: Record<string, unknown>) => layout(type, { data: monthly }, extra).scene.filter((node) => node.id.startsWith('axis:x:tick:'));
+    expect(ticks({ categoryAxis: { dateTicks: 'quarters' } })).toHaveLength(8);
+    expect(ticks({})).toHaveLength(0);
+    const geo = layout(type, { data: monthly }, { categoryAxis: { crossesBetween: false } });
+    expect(geo.warnings.map((warning) => warning.code)).toContain('cross-between-ignored');
+  });
+
+  // A value-sorted row drew a quarter tick under almost every column and dropped a column name, with no warning.
+  it('ignores dateTicks and warns on a column row that is not in date order', () => {
+    const months = Array.from({ length: 24 }, (_, i) => `${2024 + Math.floor(i / 12)}-${String(i % 12 + 1).padStart(2, '0')}-01`);
+    const monthly = { categories: months.map((date) => ({ id: date, date })), series: [{ id: 'orders', label: 'Orders', values: months.map((_, i) => (i * 7) % 24) }] };
+    const geo = layout('column', { data: monthly }, { categoryAxis: { dateTicks: 'quarters' }, sort: { categories: 'desc' } });
+    expect(geo.scene.filter((node) => node.id.startsWith('axis:x:tick:'))).toHaveLength(0);
+    expect(geo.warnings.map((warning) => warning.code)).toContain('date-ticks-unsupported');
+  });
+
   it('refuses the combination when a category carries no ISO date', () => {
     const undated = { ...data, categories: data.categories.map((category, index) => index === 1
       ? { id: category.id, label: category.label }

@@ -64,11 +64,7 @@ export function sourceSchemaDiagnostic(
   const original = readJsonPointer(source.input, path);
   const actual = readJsonPointer(localInput, toJsonPointer(issue.path.map(String)));
   const same = sameSourceValue(original, actual);
-  // Moving a side key changes the frame. A schema cannot know whether its new height fits.
-  const sideKey = actual.found && expandedPath.includes('options') && issue.path[0] === 'legend'
-    && (actual.value === 'right' || (typeof actual.value === 'object' && actual.value !== null
-      && (actual.value as { position?: unknown }).position === 'right'));
-  return schemaDiagnostic(issue, localInput, { ...context, path, allowFix: same && !sideKey });
+  return schemaDiagnostic(issue, localInput, { ...context, path, allowFix: same });
 }
 
 export function chartSchemaDiagnostic(

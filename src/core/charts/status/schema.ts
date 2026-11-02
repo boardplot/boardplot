@@ -1,7 +1,7 @@
 /** Status data and options schemas, without the chart engine. */
 
 import * as z from 'zod';
-import { addDuplicateIdIssues, baseOptionsSchema, cellSchema as valueCellSchema, idSchema, keyPositionSchema, refusedBaseOptions, sideKeyError } from '../../schema/shared';
+import { addDuplicateIdIssues, baseOptionsSchema, cellSchema as valueCellSchema, idSchema, keyPositionSchema, refusedBaseOptions } from '../../schema/shared';
 import type { StatusData, StatusOptions } from './layout';
 
 const rowSchema = z.strictObject({
@@ -84,11 +84,10 @@ const stateSchema = z.strictObject({
   pattern: z.literal('hatch45').optional().describe("Optional 45-degree hatching to distinguish this state beyond color."),
 });
 
-// 'right' is refused as on every type: a key beside the plot takes its width.
 const legendSchema = z.union([
-  z.enum(['top', 'bottom', 'none']),
-  z.strictObject({ position: keyPositionSchema.describe("Place the categorical state legend at the top or bottom.") }),
-], { error: sideKeyError });
+  z.enum(['top', 'bottom', 'right', 'left', 'none']),
+  z.strictObject({ position: keyPositionSchema.describe("Place the categorical state legend at the top or bottom, or in a column beside the matrix.") }),
+]);
 
 export const statusOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions('status'))
   .safeExtend({

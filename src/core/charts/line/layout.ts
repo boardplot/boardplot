@@ -454,6 +454,7 @@ function annotateLine(
     locale: options.locale?.language,
     strings: options.strings,
     percentLevels: !rebased && percentLevels(dataSeries),
+    sharesFormat: domain.variant === 'stacked100-area',
     valueLinePercentLevels: !rebased && (domain.variant === 'stacked100-area' || domain.options.unit === '%' || percentLevels(dataSeries)),
     solveCtx,
     yScale: y,
@@ -1113,6 +1114,8 @@ function layoutLinePass(
     ...(domain.labelModes.values === 'all' && !domain.isStacked ? { valueRows: domain.drawnSeries.map(series => ({
       ids: domain.cats.flatMap((category, ci) => typeof series.vals[ci]?.labelOverride === 'string' ? [] : [`point:${series.id}:${category.id}`]),
       alternate: true,
+      // A rank chart folds a value that finds no seat into the name instead (below).
+      keepEnds: !env.isBump,
     })) } : {}),
     // A value reads as its own point's (label/ownership.ts); stacked values sit in their bands.
     ...(domain.isStacked ? {} : {
@@ -1142,7 +1145,7 @@ function layoutLinePass(
   }
   // An inline name with no seat, chosen by the engine or by the author: the key row names the lines after all.
   // The key pass draws no inline names, so none is left hidden. A visible legend already names every line: it stays as set.
-  const legendShown = ['top', 'right', 'bottom'].includes((typeof options.legend === 'object' ? options.legend.position : options.legend) ?? 'none');
+  const legendShown = ['top', 'right', 'left', 'bottom'].includes((typeof options.legend === 'object' ? options.legend.position : options.legend) ?? 'none');
   if (((options as { [INLINE_FALLBACK]?: boolean })[INLINE_FALLBACK] === true || (options.seriesLabels === 'inline' && !legendShown)) &&
     solved.placed.some(label => label.kind === 'series' && label.hidden !== undefined)) {
     const { seriesLabels: _names, ...keyed } = withoutInlineFallback(options);
