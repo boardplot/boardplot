@@ -962,6 +962,16 @@ export function signedFormatterFromExample(example: string, locale: string | und
 }
 
 /**
+ * The level face of an example: the same, without the forced '+'. A bridge writes "+$1.2M"
+ * for its steps; its totals are levels and print "$1.2M".
+ */
+export function levelFormatterFromExample(example: string, locale: string | undefined, unit?: string, values?: Iterable<number | null | undefined>): (value: number) => string {
+  const spec = exampleSpec(example, locale, unit, values);
+  const level = spec.signed ? { ...spec, signed: false } : spec;
+  return (value: number) => formatWithSpec(value, level);
+}
+
+/**
  * The example a difference of two values prints with: the same, except that
  * the difference of two percent levels is in percentage points.
  */

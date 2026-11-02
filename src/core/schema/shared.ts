@@ -1217,7 +1217,7 @@ export const baseOptionsSchema = z.object({
         .refine((tag) => canonicalLanguage(tag) !== null, { message: 'not a BCP 47 language tag; use a tag such as "de" or "de-DE"' })
         .optional().describe('BCP 47 language tag. Changes words only, such as notes and month names. It never changes the decimal or grouping marks; they come only from locale.decimal and locale.thousands. E.g. "de"; "de_DE" is read as "de-DE"; "en-US" puts the month first (Sep 4).'),
       decimal: z.enum(['.', ',']).optional().describe("Decimal mark of every number the chart prints. Default '.'. The language does not change it."),
-      thousands: z.enum([',', '.', '’', ' ']).optional().describe("Grouping mark of every number the chart prints. Default ',', or '.' with decimal ','. The language does not change it. A value equal to the decimal mark uses that fallback."),
+      thousands: z.enum([',', '.', '’', "'", ' ', '\u202f']).optional().describe("Grouping mark of every number the chart prints. The apostrophe ' is the same as ’, and the narrow no-break space is the same as the space. Default ',', or '.' with decimal ','. The language does not change it. A value equal to the decimal mark uses that fallback."),
       minusGlyph: z.enum(['−', '-']).optional().describe('Minus glyph for locale-derived table formats; default Unicode minus.'),
       weekStartsOn: z.union([
         z.literal(0).describe('Sunday as the requested first weekday.'),
