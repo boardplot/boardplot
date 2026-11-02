@@ -538,7 +538,7 @@ describe('render and measure on the command line', () => {
 
   it('refuses a column below its size floor with the pixels it needs', () => {
     const dir = tdir();
-    const small = { ...SPEC, options: { ...SPEC.options, size: { width: 240, height: 140 } } };
+    const small = { ...SPEC, options: { ...SPEC.options, size: { width: 100, height: 140 } } };
     const doc = writeDoc(dir, 'small.json', small);
     const result = runCli(['render', doc, '--out', join(dir, 'out')]);
     expect(result.code).toBe(1);
@@ -546,7 +546,7 @@ describe('render and measure on the command line', () => {
     expect(existsSync(join(dir, 'out'))).toBe(false);
     const measured = JSON.parse(runCli(['measure', doc]).log[0]!);
     // Below the full floor the column falls back to compact, so measure names the size compact draws at.
-    expect(measured.refused).toMatchObject({ code: 'size-below-floor', required: { width: 280, height: 240 } });
+    expect(measured.refused).toMatchObject({ code: 'size-below-floor', required: { width: 120 } });
   });
 
   it('refuses in measure what render refuses for a reason other than size', () => {

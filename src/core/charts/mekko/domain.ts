@@ -9,7 +9,7 @@ import { mekkoAmount, mekkoStackingMode, poolMekkoCell, restDetailsWarning, rest
 import { cellFields, normalizeCategorySeries } from '../categorySeries';
 import { breakUnsupported, chartPalette, chartTheme } from '../chartEnv';
 import { defaultMeasurer } from '../../text';
-import { formatAuthoredPercent, formatAutomaticNumber, formatShare, shareSetFormatter } from '../../format';
+import { formatAuthoredPercent, formatAutomaticNumber, formatAutomaticPercent, formatShare, shareSetFormatter } from '../../format';
 import { exampleSpec, normalizedSeriesNumbers, formatNonzeroWithSpec, formatterFromExample, parseFormatExample, specUnitKind } from '../../formatSpec';
 import { cleanFloat, cleanSum } from '../../geometry';
 import { isIncomplete } from '../../dataGaps';
@@ -28,6 +28,7 @@ import type { LintWarning } from '../../types/scene';
 import { valueLineExtent } from '../../valueLineDomain';
 import type { MekkoDomain, MekkoEnv, NormSer } from './model';
 import { maxOf, minOf, pushAll } from '../../arrays';
+import { isPercentUnit } from '../../frame';
 import { emptyIdRecord } from '../../idRecords';
 
 /** Resolve the options once: theme, palette, size, measurer and the number formats. */
@@ -57,6 +58,7 @@ export function resolveMekkoEnv(options: MekkoOptions, warnings: LintWarning[], 
     totalFmt: totalSpec ? (v: number) => formatNonzeroWithSpec(v, totalSpec) : plainFmt,
     widthFmt: plainFmt,
     pctFmt: percentExample ? formatterFromExample(options.format!, lang) : (p: number) => formatShare(p, lang),
+    cellPctFmt: percentExample ? formatterFromExample(options.format!, lang) : (p: number) => formatAutomaticPercent(p, autoDecimals(p), false, lang),
     authoredPctFmt: percentExample ? formatterFromExample(options.format!, lang) : (p: number) => formatAuthoredPercent(p, lang),
     highlights: new Set(resolveHighlight(options.highlight)),
     density: options.labelDensity ?? 'smart',
@@ -118,6 +120,20 @@ function mekkoSeriesRoles(options: MekkoOptions, seriesNorm: NormSer[], warnings
       code: 'bar-mekko-no-width-series',
       severity: 'info',
       message: 'bar-mekko without widthSeriesId — columns get equal widths',
+    });
+  }
+  // The engine does not know the amount unit, so it warns and leaves the authored text alone. Series that
+  // each declare a non-percent unit are the sign that a percent unit sits over amounts.
+  const unit = options.unit?.trim();
+  const amountUnits = [...new Set(series.map((s) => s.unit?.trim() || ''))];
+  if (mode !== 'percent' && unit && isPercentUnit(unit) && amountUnits.every((u) => u !== '' && !isPercentUnit(u))) {
+    warnings.push({
+      code: 'percent-unit-over-amounts',
+      severity: 'warn',
+      message: `options.unit '${unit}' names percent, but variant '${options.variant}' plots the amounts of the data series (${amountUnits.join(', ')})`,
+      suggest: `set options.unit to the amount unit${amountUnits.length === 1 ? ` ('${amountUnits[0]}')` : ''}, retitle an axisTitles.primary that says %, or use variant 'stacked100' for shares`,
+      field: ['options', 'unit'],
+      ...(amountUnits.length === 1 ? { fix: [{ op: 'replace' as const, path: '/options/unit', value: amountUnits[0] }] } : {}),
     });
   }
   // The bar variant keeps equal widths without a width series, also once several series stack.

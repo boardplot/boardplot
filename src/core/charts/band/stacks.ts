@@ -1,6 +1,7 @@
 import type { StringsSpec } from '../../types/options';
 import { localeStrings } from '../../strings';
 import { cleanSum } from '../../geometry';
+import { periodSpanName } from '../../viewport';
 /**
  * Data-unit stack accumulation shared by column and bar charts.
  *
@@ -141,6 +142,21 @@ export function grandTotalRequested(authored: boolean | undefined, variant: Stac
 }
 
 /**
+ * A 100 % stack prints shares. A format without a % sign belongs to the values,
+ * so it changes nothing unless an absolute figure prints too.
+ */
+export function warnShareFormatIgnored(variant: StackVariant, format: string | undefined, shareExample: string | undefined, valuesPrint: boolean, warnings: LintWarning[]): void {
+  if (variant !== 'stacked100' || !format || shareExample || valuesPrint) return;
+  warnings.push({
+    code: 'format-ignored',
+    severity: 'warn',
+    message: `format '${format}' has no % sign, and a 100% stack prints shares only — the format changes no label`,
+    suggest: "give the shares a percent format such as '0.0%', or drop the format",
+    field: ['options', 'format'],
+  });
+}
+
+/**
  * a stack whose parts do not add has no sums to average, so an
  * average marker over it is skipped with a warning. True when skipped.
  */
@@ -195,9 +211,63 @@ function averageMarkerText(value: number, statFmt: (v: number) => string, span?:
 }
 
 /** The series an average marker takes in, or undefined when it is off. */
-export function averageMarkerScope(option: boolean | { scope: 'all' | Id[] } | undefined): 'all' | Id[] | undefined {
+export function averageMarkerScope(option: boolean | { scope?: 'all' | Id[] } | undefined): 'all' | Id[] | undefined {
   if (option === undefined || option === false) return undefined;
-  return typeof option === 'object' ? option.scope : 'all';
+  return typeof option === 'object' ? option.scope ?? 'all' : 'all';
+}
+
+/** The most runs of kept periods an average marker names. */
+const MAX_SPAN_RUNS = 3;
+
+/**
+ * The average marker's mean. Categories marked partial (a period still
+ * running) are left out unless `includePartial` is true, because a running
+ * total sits below a finished one. When every plotted category is partial,
+ * none is left out. `span` names the periods a mean that left some out
+ * covers, in the order the sheet gave them (`sourceIds`, default the order of
+ * `cats`), so a category sort does not change it. Each unbroken run of kept
+ * periods is "first–last", and runs are joined by a comma: a partial period
+ * between two finished ones is never inside a run. `cover` is the one run's
+ * first and last category, set only when the mean covers a single run.
+ * More than MAX_SPAN_RUNS runs name nothing: a list that long is not a span,
+ * and the hatched partial categories already show what the mean leaves out.
+ */
+export function averageMarkerMean<S extends { id: Id }>(
+  option: boolean | { includePartial?: boolean } | undefined,
+  scope: 'all' | Id[],
+  cats: readonly { id: Id; label?: string; partial?: boolean }[],
+  stackedLike: boolean,
+  dataSeries: readonly S[],
+  plotted: (s: S, si: number, ci: number) => number | null,
+  sourceIds: readonly Id[] = cats.map((c) => c.id),
+): { mean: number | undefined; cover?: { from: Id; to: Id }; span?: string } {
+  const inScope = (series: S) => scope === 'all' || scope.includes(series.id);
+  const leftOut = new Set(typeof option === 'object' && option.includePartial === true ? [] : cats.flatMap((c, ci) => (
+    c.partial === true && dataSeries.some((series, si) => inScope(series) && plotted(series, si, ci) !== null) ? [ci] : []
+  )));
+  const mean = (skip: ReadonlySet<number>) => plottedMean(scope, stackedLike, cats.length, dataSeries, (series, si, ci) => (skip.has(ci) ? null : plotted(series, si, ci)));
+  const kept = mean(leftOut);
+  if (leftOut.size === 0) return { mean: kept };
+  if (kept === undefined) return { mean: mean(new Set()) };
+  const rank = (ci: number) => { const at = sourceIds.indexOf(cats[ci]!.id); return at < 0 ? sourceIds.length + ci : at; };
+  const inSheetOrder = cats.map((_, ci) => ci).sort((a, b) => rank(a) - rank(b));
+  const runs = inSheetOrder.reduce<number[][]>((all, ci) => {
+    if (leftOut.has(ci)) all.push([]);
+    else if (all.length === 0) all.push([ci]);
+    else all[all.length - 1]!.push(ci);
+    return all;
+  }, []).filter((run) => run.length > 0);
+  const named = runs.map((run) => periodSpanName(cats, run[0]!, run[run.length - 1]!));
+  const only = runs.length === 1 ? { cover: { from: cats[runs[0]![0]!]!.id, to: cats[runs[0]![runs[0]!.length - 1]!]!.id } } : {};
+  return { mean: kept, ...only, ...(runs.length <= MAX_SPAN_RUNS ? { span: named.join(', ') } : {}) };
+}
+
+/** The span an average marker names: the window's span where it covers a drawn gap, else the periods left out. */
+export function averageMarkerSpan(
+  run: { cover?: { from: Id; to: Id }; span?: string } | undefined,
+  meanSpan: (scope?: { from?: string; to?: string }) => string | undefined,
+): string | undefined {
+  return run?.span !== undefined && run.cover === undefined ? run.span : meanSpan(run?.cover) ?? run?.span;
 }
 
 /** Whether a stack draws exactly one part (no null, no zero): its segment value and its total are one number. */

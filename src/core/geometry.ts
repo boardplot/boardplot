@@ -184,10 +184,17 @@ export function prepareConvexPolygon(polygon: readonly Point[]): (rect: Rect, pa
     const q = polygon[(i + 1) % polygon.length]!;
     return [q.y - p.y, p.x - q.x];
   })];
-  const projected = axes.filter(([x, y]) => x || y).map(([x, y]) => {
-    const values = polygon.map(point => point.x * x + point.y * y);
-    return [x, y, minOf(values), maxOf(values)] as const;
-  });
+  const projected: [number, number, number, number][] = [];
+  for (const [x, y] of axes) {
+    if (!x && !y) continue;
+    let min = Infinity, max = -Infinity;
+    for (const point of polygon) {
+      const value = point.x * x + point.y * y;
+      min = Math.min(min, value);
+      max = Math.max(max, value);
+    }
+    projected.push([x, y, min, max]);
+  }
   return (rect, pad) => {
     const x0 = rect.x - pad, y0 = rect.y - pad;
     const x1 = rect.x + rect.w + pad, y1 = rect.y + rect.h + pad;

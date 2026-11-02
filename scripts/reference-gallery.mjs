@@ -47,7 +47,7 @@ export const README_EXAMPLES = [['bar', 'margin-by-brand'], ['line', 'multiline-
 /** The README hero: one chart of the most common type at about the width GitHub shows a README, drawn light and dark. */
 export const HERO = ['column', 'integrated-stacked-variance'];
 const HERO_WIDTH = 840;
-const DARK_THEME = 'standard-dark';
+const DARK_THEME = 'bridge-dark';
 
 /**
  * The fixture, drawn with the preset font family: a reader's browser draws these

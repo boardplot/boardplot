@@ -1493,6 +1493,45 @@ it('keys the rest rows, keeps the Total off the group colours and names compact 
   expect(Math.abs(name.y - (track.rect.y + track.rect.h / 2))).toBeLessThan(track.rect.h);
 });
 
+// A compact cascade's growth head hid number and Share heads, and a long number head was cut.
+it('keeps the number, Share and growth heads in a compact cascade', () => {
+  const spec = {
+    type: 'bartable',
+    data: {
+      categories: [
+        { id: 'b1', label: 'Cold Chain Pharma Logistics' }, { id: 'b2', label: 'Contract Warehousing Benelux' },
+        { id: 'b3', label: 'Fresh Food Linehaul DACH' }, { id: 'b4', label: 'Last-Mile Urban Delivery' },
+        { id: 'b5', label: 'Customs and Brokerage' }, { id: 'b6', label: 'Reefer Container Leasing' },
+        { id: 'b7', label: 'Digital Freight Marketplace' }, { id: 'b8', label: 'Specialty Chemicals Haulage' },
+      ],
+      series: [{ id: 's', label: 'EUR m' }],
+      columns: [
+        { id: 'pre', label: 'EBITDA before central costs', values: [190, 100, 60, 15, 48, 74, -30, 36], format: '1,234' },
+        { id: 'e', label: 'EBITDA', values: [180, 88, 49, 9, 44, 71, -37, 33], format: '1,234' },
+      ],
+      panels: [
+        { id: 'rev', label: 'Revenue', unit: 'EUR m', format: '1,234', values: { s: [960, 670, 575, 440, 235, 225, 135, 280] } },
+        { id: 'gp', label: 'Gross profit', unit: 'EUR m', format: '1,234', values: { s: [330, 210, 160, 120, 95, 120, 70, 100] } },
+        { id: 'co', label: 'Contribution', unit: 'EUR m', format: '1,234', values: { s: [250, 140, 95, 45, 62, 88, 10, 52] } },
+      ],
+    },
+    options: {
+      variant: 'cascade', cascade: { growth: { measure: 'share-change' } },
+      title: 'Where revenue turns into EBITDA', subtitle: { measure: 'Eight businesses, five stages' },
+      source: 'Group controlling (invented data)', size: { width: 928 }, target: 'dashboard',
+    },
+  };
+  const body = render({ spec, return: ['svg', 'reading'] }).body as {
+    ok: boolean; svg: string; reading: { omissions: { labelId: string }[] }; warnings: { code: string }[];
+  };
+  expect(body.ok).toBe(true);
+  expect(body.reading.omissions.filter((item) => item.labelId.startsWith('head:'))).toEqual([]);
+  expect(body.warnings.some((warning) => warning.code === 'label-hidden')).toBe(false);
+  const pre = body.svg.match(/<text data-id="label:head:pre"[\s\S]*?<\/text>/)?.[0] ?? '';
+  expect(pre.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()).toBe('EBITDA BEFORE CENTRAL COSTS');
+  for (const id of ['e', 'share:rev', 'growth']) expect(body.svg).toContain(`data-id="label:head:${id}"`);
+});
+
 // A compact cascade names each period beside its bars. A very long period name must be cut, so it does not squeeze the bars of every period to nothing.
 it('cuts a long period name of a compact cascade so the bars keep their width', () => {
   const years = getFixtures('bartable').find((f) => f.id === 'cascade-four-years')!;

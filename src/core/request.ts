@@ -9,7 +9,7 @@ import { EMPTY_DATA, hasNoDataRows } from './emptyData';
 import { NormalizeError, canonicalLanguage } from './normalize/shared';
 import { withNumberMarks } from './numberMarks';
 import { chartRefusals, isRefused } from './schema/refusals';
-import { REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, resolveTheme } from './theme';
+import { DEFAULT_PRESET, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, resolveTheme } from './theme';
 import { DEFAULT_TARGET, floorTextScale, resolveTargetSize } from './target';
 import { textScaleOf, textSizeOf } from './typeFloors';
 import { defaultMeasurer, type TextMeasurer } from './text';
@@ -26,6 +26,8 @@ import type { InteractionScope } from './a11y/types';
 import { addWhereAbsent } from './diagnostics/jsonPatch';
 import { timeAnnotationAnchors } from './timeAxis';
 import { retireChartSettings } from './retired';
+import type { OptionsInput } from './types/optionInput';
+import { normalizeOptionShapes } from './normalize/optionShapes';
 
 /** Chart-specific options can replace these three shared fields. */
 export type RequestOptions = Omit<BaseOptions, 'labels' | 'legend' | 'mode'> & {
@@ -35,7 +37,7 @@ export type RequestOptions = Omit<BaseOptions, 'labels' | 'legend' | 'mode'> & {
 };
 
 /** Authored x anchors can be epoch milliseconds; chart layouts resolve them to category ids. */
-export type RequestInputOptions = Omit<RequestOptions, 'annotations'> & { annotations?: Annotation<string | number>[] };
+export type RequestInputOptions = OptionsInput<Omit<RequestOptions, 'annotations'>> & { annotations?: Annotation<string | number>[] };
 
 export interface RequestContext {
   target?: RenderTarget;
@@ -146,7 +148,7 @@ function layoutStrings(...sources: (StringsSpec | undefined)[]): StringsSpec | u
   return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
-export interface ChartRequest<D = unknown, O extends Omit<RequestOptions, 'annotations'> = RequestInputOptions> extends RequestContext {
+export interface ChartRequest<D = unknown, O extends object = RequestInputOptions> extends RequestContext {
   type: string;
   /** Stable host identity for headless interaction records. Defaults to the canonical type. */
   scope?: InteractionScope;
@@ -188,6 +190,8 @@ export function resolveChartRequest<D, O extends object>(
   const def = getChart(input.type);
   if (!def) throw new NormalizeError('unknown-type', 'type', `unknown chart type '${input.type}'`);
   // A caller that skipped validation (a per-type React entry) still draws a retired setting as validation does.
+  const shaped = normalizeOptionShapes(def.type, input, name => getChart(name)?.type);
+  input = shaped.chart;
   const retired = retireChartSettings(def.type, input, (name) => getChart(name)?.type);
   input = retired.chart;
   const inheritedLocale = typeof context.locale === 'string' ? { language: context.locale } : context.locale;
@@ -246,7 +250,7 @@ export function resolveChartRequest<D, O extends object>(
   const fontMetrics = options.measure ?? defaultMeasurer;
   options.measure = fontMetrics;
   const data = prepared(def, read.data, options) as D;
-  const inputWarnings = [...retired.warnings, ...read.warnings, ...requestInputWarnings(def.type, def.type === 'grid' ? data : input.data, { ...options, annotations: authoredAnnotations },
+  const inputWarnings = [...shaped.warnings, ...retired.warnings, ...read.warnings, ...requestInputWarnings(def.type, def.type === 'grid' ? data : input.data, { ...options, annotations: authoredAnnotations },
     input.annotations === undefined ? '/options/annotations' : '/annotations'),
     ...colorVariableWarnings(input.data, options.theme)];
   return {
@@ -442,7 +446,7 @@ function preparedLayout(request: ResolvedChartRequest, verifyAdvice = false): La
   const ref = request.options.theme;
   const options = {
     ...request.options,
-    theme: { preset: typeof ref === 'string' ? ref : ref?.preset ?? 'boardroom', overrides: request.theme },
+    theme: { preset: typeof ref === 'string' ? ref : ref?.preset ?? DEFAULT_PRESET, overrides: request.theme },
     [REMOVED_NAMES]: removedNameWarnings(request.options),
     ...(verifyAdvice ? { [VERIFY_ADVICE]: true } : {}),
   };

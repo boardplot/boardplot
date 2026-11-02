@@ -32,7 +32,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 
 | Path | Type | Required | Meaning |
 |---|---|---|---|
-| label | string | yes | Name of the metric displayed above the main value. |
+| label | string | yes | Name of the metric displayed above the main value. An empty string omits the label and its space. |
 | value | number | yes | Main metric value in its original units. |
 | format | string |  | Format-by-example for the main metric and absolute comparison values (a % example expects percent units: 3.53 for 3.53%). |
 | delta | object |  | Single scenario comparison; cannot be combined with compare. |
@@ -75,7 +75,8 @@ This type takes no annotations.
 
 ## Sizing
 
-Floor 280 × 28 px; fit `content`.
+Floor 120 × 28 px; fit `content`.
+Narrower than 280 px a card draws while its figure fits.
 
 Below the floor a render is refused with `size-below-floor` and the pixels it needs. `measure` returns the natural and comfortable size for a given spec; see [Sizing in the manual](../manual.md#sizing).
 
