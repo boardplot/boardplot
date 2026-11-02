@@ -64,10 +64,8 @@ function pointRectDistance(p: Point, rect: Rect): number {
 }
 
 /** Distance from a point to the segment a-b. */
-function pointSegmentDistance(x: number, y: number, a: Point, b: Point): number {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const t = dx === 0 && dy === 0 ? 0 : Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy)));
+function pointSegmentDistance(x: number, y: number, a: Point, dx: number, dy: number, squared: number): number {
+  const t = dx === 0 && dy === 0 ? 0 : Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / squared));
   return Math.hypot(x - a.x - t * dx, y - a.y - t * dy);
 }
 
@@ -81,12 +79,29 @@ export function rectLineDistance(rect: Rect, line: readonly Point[]): number {
   for (let i = 1; i < line.length; i++) {
     const a = line[i - 1]!;
     const b = line[i]!;
-    if (segmentHitsRect(a, b, rect)) return 0;
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const squared = dx * dx + dy * dy;
+    const minX = Math.min(a.x, b.x), maxX = Math.max(a.x, b.x);
+    const minY = Math.min(a.y, b.y), maxY = Math.max(a.y, b.y);
+    const scale = Math.max(1, Math.abs(rect.x), Math.abs(rect.y), Math.abs(right), Math.abs(bottom),
+      Math.abs(a.x), Math.abs(a.y), Math.abs(b.x), Math.abs(b.y));
+    const safe = scale <= 2 ** 40 && (dx === 0 || Math.abs(dx) >= 2 ** -256) && (dy === 0 || Math.abs(dy) >= 2 ** -256);
+    const error = safe ? 64 * Number.EPSILON * scale : Infinity;
+    const apart = rect.w >= 0 && rect.h >= 0 && (maxX < rect.x - error || minX > right + error || maxY < rect.y - error || minY > bottom + error);
+    if (!apart && segmentHitsRect(a, b, rect)) return 0;
     if (i === 1) previousDistance = pointRectDistance(a, rect);
     const nextDistance = pointRectDistance(b, rect);
-    best = Math.min(best, previousDistance, nextDistance,
-      pointSegmentDistance(rect.x, rect.y, a, b), pointSegmentDistance(right, rect.y, a, b),
-      pointSegmentDistance(rect.x, bottom, a, b), pointSegmentDistance(right, bottom, a, b));
+    best = Math.min(best, previousDistance, nextDistance);
+    // A corner outside the segment's box by more than the current best cannot improve it.
+    // The allowance covers rounding in the projection; unusual coordinates keep every corner.
+    const limit = best + error;
+    const leftGap = Math.max(0, minX - rect.x, rect.x - maxX), rightGap = Math.max(0, minX - right, right - maxX);
+    const topGap = Math.max(0, minY - rect.y, rect.y - maxY), bottomGap = Math.max(0, minY - bottom, bottom - maxY);
+    best = Math.min(best,
+      leftGap > limit || topGap > limit ? Infinity : pointSegmentDistance(rect.x, rect.y, a, dx, dy, squared),
+      rightGap > limit || topGap > limit ? Infinity : pointSegmentDistance(right, rect.y, a, dx, dy, squared),
+      leftGap > limit || bottomGap > limit ? Infinity : pointSegmentDistance(rect.x, bottom, a, dx, dy, squared),
+      rightGap > limit || bottomGap > limit ? Infinity : pointSegmentDistance(right, bottom, a, dx, dy, squared));
     previousDistance = nextDistance;
   }
   return best;
