@@ -6,7 +6,9 @@
 
 import { chosenValueIndices } from '../band/valueSelection';
 import { rowLabelX, unionRect, type Rect } from '../../geometry';
-import { fittedLabel } from '../../label/rowFit';
+import { fittedLabel, stepDownFont } from '../../label/rowFit';
+import { readerFloorPx, textScaleOf } from '../../typeFloors';
+import { DEFAULT_TARGET } from '../../target';
 import { namesOnly } from '../../markVisibility';
 import { PRIORITY, type LabelRequest, type SlotCandidate } from '../../label/solver';
 import type { DataRange } from '../../rangeRules';
@@ -14,7 +16,7 @@ import type { Id } from '../../types/cell';
 import type { LintWarning, Paint } from '../../types/scene';
 import type { FontSpec, TextMeasurer } from '../../text';
 import { SWATCH_RESERVE } from '../../label/emit';
-import { compactValueTextSize, acrossValueLines, fitsInside, overValueLines, segmentLabelCandidates, segmentTooShort, warnSliverLabels } from '../band/labels';
+import { compactValueTextSize, acrossValueLines, fitsInside, overValueLines, segmentLabelCandidates, segmentTooShort, steppedInsideSeat, warnSliverLabels } from '../band/labels';
 import { totalLabelCandidates } from '../band/totals';
 import { rankValueLabels } from '../band/valueDensity';
 import { REFERENCE_MARKER_R } from '../band/ticks';
@@ -90,6 +92,21 @@ function endCandidates(
   // halo either: outside, or dropped.
   if (outsideOnly || !fits) return [{ ...outside, penalty: 0 }];
   return [inside, outside];
+}
+
+/**
+ * The sizes below `font` a segment value may step to: the theme's smaller
+ * roles down to the reader floor, then the floor itself where the roles stop
+ * above it (12 px footnote, 11 px floor on a report).
+ */
+function stepsBelow(domain: BarDomain, font: FontSpec): FontSpec[] {
+  const { options, theme } = domain;
+  const scale = textScaleOf(options);
+  const steps: FontSpec[] = [];
+  for (let next = stepDownFont(theme, font, 'label', options.target, scale); next; next = stepDownFont(theme, next, 'label', options.target, scale)) steps.push(next);
+  const floor = readerFloorPx(options.target ?? DEFAULT_TARGET, 'label', scale);
+  if ((steps.at(-1) ?? font).size > floor + 0.01) steps.push({ ...font, size: floor });
+  return steps;
 }
 
 /**
@@ -190,15 +207,15 @@ export function planBarLabels(domain: BarDomain, paints: BarPaints, area: BarAre
       const text = textFor(domain, v, cell, variant === 'stacked100' ? val : undefined, s, cat.id);
       if (!text) continue;
       // The highlighted series' values print bold, as its fill stands out.
-      const segmentFont = emphasizedSeries(domain, s) ? strongFont : labelFont;
-      const tsize = measure(text, segmentFont);
+      let segmentFont = emphasizedSeries(domain, s) ? strongFont : labelFont;
+      let tsize = measure(text, segmentFont);
       // A value prints in every segment it fits in: a label the tight inside
       // slot holds (as wide as its segment, over the 28 x 14 px inside floor)
       // passes the gate, so a 30 px likert segment holds a 28 px label.
       // A Rest series prints no value by default on the dashboard target (labels.restSeries); the note line owes it.
       const plain = bonus(cat.id, s.id) === 0;
       const restHidden = typeof cell.meta?.label !== 'string' && plain && restValuesHidden(options, s.colorRole);
-      const sliver = !restHidden && plain && !fitsInside(rect, tsize, 0) && segmentTooShort(options.labelDensity ?? 'smart', rect.w, tsize.width, options.labelPlacements?.[`segment:${s.id}:${cat.id}`]);
+      let sliver = !restHidden && plain && !fitsInside(rect, tsize, 0) && segmentTooShort(options.labelDensity ?? 'smart', rect.w, tsize.width, options.labelPlacements?.[`segment:${s.id}:${cat.id}`]);
       // A stack of one drawn part prints its number once, as the total, where the total prints.
       // An authored text with the value prints once too: the total carries that text. A zero cell beside the part is not it.
       const onePart = variant === 'stacked' && (typeof cell.meta?.label !== 'string' || printsValue(cell.meta.label)) && v !== 0 && onePartDrawn(dataSeries.map((x) => x.cells[ci]!.v));
@@ -227,6 +244,19 @@ export function planBarLabels(domain: BarDomain, paints: BarPaints, area: BarAre
           candidates: [endSeat],
         });
         continue;
+      }
+      // A value too wide for its segment at the label size, with no seat past the
+      // stack's end and no 100 % bar share row, steps down toward the reader
+      // floor (11 px on a report) and prints inside at the first step that fits:
+      // a readable value draws rather than hides.
+      const paintCss = paints.css(paint, pattern);
+      let stepped: SlotCandidate | undefined;
+      if (!restHidden && variant !== 'stacked100' && options.labelDensity !== 'minimal' && !options.labelPlacements?.[`segment:${s.id}:${cat.id}`] && !fitsInside(rect, tsize, 0)) {
+        for (const font of stepsBelow(domain, segmentFont)) {
+          const size = measure(text, font);
+          stepped = steppedInsideSeat(rect, size, paintCss, { insidePaint: paint, insidePattern: pattern });
+          if (stepped) { segmentFont = font; tsize = size; sliver = false; break; }
+        }
       }
       // On a 100 % bar a share too short for its segment prints
       // in a share row past the bar's end, keyed by a swatch of its colour.
@@ -267,7 +297,7 @@ export function planBarLabels(domain: BarDomain, paints: BarPaints, area: BarAre
         ...(restHidden ? restValueHiding(`${s.label} ${text} (${noteName(cat)})`) : {}),
         // Inside the segment only: past the bar end a value reads as the row's
         // total, and on a 100 % bar it repeats one segment's share unnamed.
-        candidates: acrossValueLines(segmentLabelCandidates('horizontal', rect, tsize, paints.css(paint, pattern), { insidePaint: paint, insidePattern: pattern })),
+        candidates: acrossValueLines(stepped ? [stepped] : segmentLabelCandidates('horizontal', rect, tsize, paintCss, { insidePaint: paint, insidePattern: pattern })),
       });
     }
     // A stack with a missing part prints the sum of its drawn parts, as on column; a 100% bar has no known whole.
