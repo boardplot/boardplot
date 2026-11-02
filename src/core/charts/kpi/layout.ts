@@ -200,7 +200,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
   const measure = options.measure ?? defaultMeasurer;
 
   // ---- normalize ----
-  if (!data || typeof data.label !== 'string' || data.label.length === 0) {
+  if (!data || typeof data.label !== 'string') {
     throw new NormalizeError('missing-label', 'label', 'kpi requires a label');
   }
   if (typeof data.value !== 'number' || !Number.isFinite(data.value)) {
@@ -435,7 +435,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
   // spend 21% of its width on air.
   const margin = { top: 12, right: 12, bottom: 12, left: 12, ...options.margin };
   const subtitle = options.title
-    ? (resolveSubtitle(options.subtitle) ?? { measure: data.label })
+    ? (resolveSubtitle(options.subtitle) ?? (data.label ? { measure: data.label } : undefined))
     : resolveSubtitle(options.subtitle);
   const frameTheme = options.title && subtitle?.measure === data.label
     ? { ...theme, type: { ...theme.type, subtitle: { ...theme.type.subtitle, size: Math.max(scaleTextPx(13, textScaleOf(options)), theme.type.subtitle.size) } } }
@@ -516,7 +516,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
 
   // card label (top-left, muted) — replaced by the subtitle when title is set
   let valueY = plot.y;
-  if (!options.title && kindOn('category')) {
+  if (!options.title && data.label && kindOn('category')) {
     // Wrap to two lines, one type step down, then cut with a <title>.
     const eyebrow = data.label;
     const fitted = fitText(eyebrow, labelFont, plot.w, 2, measure, { shrink: stepDownFont(theme, labelFont, 'label', target, textScale), target, textScale, typeRole: 'label' });
@@ -1126,9 +1126,9 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
     marks,
     derived,
     a11y: {
-      title: accessibleTitle(options.title, chartString(options, 'kpiTitle', { v1: data.label })),
+      title: accessibleTitle(options.title, data.label ? chartString(options, 'kpiTitle', { v1: data.label }) : 'KPI'),
       counts: [...(sparkDrawable ? [structureCount('periods', sparkVals.length, undefined, options)] : [])],
-      desc: `${data.label} ${valueText}${derived.band?.label ? `, ${derived.band.label}` : ''}${a11yDelta}${attainmentPhrase}${sparkPhrase}${noteLines.length === 0 ? '' : `. ${data.note!.trim()}`}.`,
+      desc: `${data.label ? `${data.label} ` : ''}${valueText}${derived.band?.label ? `, ${derived.band.label}` : ''}${a11yDelta}${attainmentPhrase}${sparkPhrase}${noteLines.length === 0 ? '' : `. ${data.note!.trim()}`}.`,
     },
     warnings,
     debug: { occupied: occupied.snapshot(), decisions: solved.decisions },

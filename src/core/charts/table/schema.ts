@@ -108,7 +108,7 @@ const columnSchema = z
       kind: z.literal('value').describe('Kind.'),
       format: formatExample.optional().describe(COLUMN_FORMAT_DOC),
       scenario: z.enum(['AC', 'PY', 'PL', 'FC']).optional()
-        .describe('Header scenario.'),
+        .describe('Header scenario: AC, PY, PL or FC. LY means PY (last year); codes accept any case.'),
       polarity: z.enum(['higherIsBetter', 'lowerIsBetter']).optional().describe('Which sign is favorable. Judgment tones and directional encodings read it.'),
       materiality: materialitySchema.optional().describe('Mute tones below this threshold; keep values visible.'),
       aggregate: z.enum(['sum', 'none', 'source']).optional()
@@ -133,7 +133,7 @@ const columnSchema = z
     }),
     z.strictObject({
       ...columnBase,
-      kind: z.literal('status').describe(`Status cell: ${STATUS_VALUES.join(' | ')} or { v: key } (other text refuses: status-value-invalid; numbers draw the missing dash and warn: status-value-number; a later release refuses numbers). Each key has a fixed tone. For free status text, use a text column with a cell tone.`),
+      kind: z.literal('status').describe(`Status cell: ${STATUS_VALUES.join(' | ')} or { v: key }. Green means on-track, amber or yellow means at-risk, and red means off-track; keys and traffic-light words accept any case and conversions warn input-converted. Other text refuses: status-value-invalid. Numbers draw the missing dash and warn: status-value-number; a later release refuses numbers. Each key has a fixed tone. For free status text, use a text column with a cell tone.`),
       labels: z.partialRecord(z.enum(STATUS_VALUES), z.string().min(1)).optional()
         .describe("Display text per status key, e.g. { pending: 'Learning' }. The key keeps its tone; an unlisted key prints as itself."),
       mark: z.enum(['chip', 'square']).optional()

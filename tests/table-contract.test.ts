@@ -11,6 +11,29 @@ import type { TableData } from '../src/core/types/table';
 import { getChart } from '../src/core/registry';
 import { requireGeometry } from '../src/core/sizing';
 import { measureText } from '../src/core/text';
+import { patchApplies } from '../src/core/diagnostics/jsonPatch';
+
+// Traffic-light status words must carry their stated tone and fix the authored cell, including nested rows.
+it('draws traffic-light words and mixed-case status keys with conversion fixes', () => {
+  const words = ['Green', 'AMBER', 'yellow', 'red', 'On-Track', 'AT-RISK', 'Off-Track', 'Done', 'Pending'];
+  const data: TableData = { columns: [{ id: 'label', kind: 'rowLabel', label: 'Item' }, { id: 'status', kind: 'status', label: 'Status', labels: { 'on-track': 'Ready' } }],
+    rows: [{ id: 'group', label: 'Group', children: words.map((word, index) => ({ id: `r${index}`, label: word, cells: { status: index % 2 ? { v: word } : word } })) }] };
+  const resolved = resolveTable(data);
+  expect(resolved.table.rows.slice(1).map(row => row.cells.status?.tone)).toEqual(['good', 'warn', 'warn', 'bad', 'good', 'warn', 'bad', 'good', 'neutral']);
+  expect(resolved.table.rows[1]?.cells.status?.displayed).toBe('Ready');
+  const warnings = resolved.warnings.filter(warning => warning.code === 'input-converted');
+  expect(warnings).toHaveLength(words.length);
+  for (const [index, warning] of warnings.entries()) {
+    expect(warning.field).toEqual(['data', 'rows', 0, 'children', index, 'cells', 'status', ...(index % 2 ? ['v'] : [])]);
+    expect(patchApplies({ data }, warning.fix!)).toBe(true);
+  }
+  const invalid = structuredClone(data);
+  invalid.rows[0]!.children![0]!.cells = { status: 'blocked' };
+  expect(() => resolveTable(invalid)).toThrow(expect.objectContaining({ code: 'status-value-invalid' }));
+  const canonical = structuredClone(data);
+  canonical.rows[0]!.children = [{ id: 'r', label: 'Ready', cells: { status: 'on-track' } }];
+  expect(resolveTable(canonical).warnings.some(warning => warning.code === 'input-converted')).toBe(false);
+});
 
 const steering = () =>
   (getFixtures('table').find((f) => f.id === 'steering-monthly')!).data as TableData;
@@ -307,6 +330,7 @@ describe('validation errors teach the vocabulary', () => {
       }),
     ).toThrow(/value columns only/);
   });
+  // Unknown status words must still refuse rather than receive a guessed traffic-light tone.
   it('rejects unknown status values naming the closed set', () => {
     expect(() =>
       resolveTable({
@@ -314,7 +338,7 @@ describe('validation errors teach the vocabulary', () => {
           { id: 'label', kind: 'rowLabel' },
           { id: 's', kind: 'status' },
         ],
-        rows: [{ id: 'r', cells: { s: 'red' } }],
+        rows: [{ id: 'r', cells: { s: 'blocked' } }],
       }),
     ).toThrow(/on-track/);
   });

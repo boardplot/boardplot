@@ -138,9 +138,9 @@ it.each([148, undefined])('reports a renderable stacked100-area floor with heigh
 
 it('names the measured refusal for content fit despite its fixed fallback seed', async () => {
   const data = { categories: [{ id: 'a', label: 'A' }], series: [{ id: 's', values: [1] }] };
-  const expected = measure({ type: 'column', data, options: { size: { width: 279 } } }).refused!;
+  const expected = measure({ type: 'column', data, options: { size: { width: 119 } } }).refused!;
   let actual: RefusedLayout | undefined;
-  act(() => root.render(<ColumnChart data={data} size="container" fit="content" fallbackSize={{ width: 279, height: 180 }}
+  act(() => root.render(<ColumnChart data={data} size="container" fit="content" fallbackSize={{ width: 119, height: 180 }}
     onRefused={result => { actual = result; }} />));
   await settle();
   expect(actual?.sizing.minWidth).toBe(expected.sizing.minWidth);
@@ -285,20 +285,20 @@ it('keeps a framed sparkline at the content-fit container width', async () => {
 
 it('uses the report floor for an open-height fill container when target is omitted', async () => {
   const data = { categories: [{ id: 'a', label: 'A' }], series: [{ id: 's', values: [1] }] };
-  const expected = measure({ type: 'column', data, options: { size: { width: 279 } } }).refused!;
+  const expected = measure({ type: 'column', data, options: { size: { width: 119 } } }).refused!;
   for (const target of [undefined, 'report'] as const) {
     let actual: RefusedLayout | undefined;
     act(() => root.render(<ColumnChart data={data} target={target} size="container" fit="fill"
-      fallbackSize={{ width: 279, height: 180 }} onRefused={result => { actual = result; }} />));
-    resize(279, 0);
+      fallbackSize={{ width: 119, height: 180 }} onRefused={result => { actual = result; }} />));
+    resize(119, 0);
     flush();
     await settle();
     expect(host.querySelector('[data-bp-refused]')).not.toBeNull();
     expect(actual?.warnings).toEqual(expected.warnings);
     expect(actual?.sizing).toEqual(expected.sizing);
     const minimum = actual?.warnings[0]?.expected?.minimum as { width: number; height: number };
-    // The column falls back to compact at its 280 px floor and does not start at 16:9 there.
-    expect(minimum).toEqual({ width: 280, height: 270 });
+    // The column falls back to compact at its 120 px floor and does not start at 16:9 there.
+    expect(minimum).toEqual({ width: 120, height: 270 });
     act(() => root.render(<ColumnChart data={data} target={target} size={minimum} />));
     expect(host.querySelector('[data-bp-refused]')).toBeNull();
     expect(host.querySelector('svg')).not.toBeNull();
@@ -874,13 +874,13 @@ it('restarts the settle after a drawable size and a refusal change', async () =>
     expect(refused).toHaveBeenCalledTimes(reports + 1);
   };
   act(() => root.render(chart()));
-  resize(120, 0);
+  resize(100, 0);
   flush();
   await expectWaiting(0);
   resize(720, 0);
   flush();
   expect(host.querySelector('svg[data-bp-chart]')).not.toBeNull();
-  resize(120, 0);
+  resize(100, 0);
   flush();
   await expectWaiting(1);
   act(() => root.render(chart('Changed title')));
@@ -892,7 +892,7 @@ it('shows the busy box while a refused container size is still moving', async ()
   const data = { categories: [{ id: 'a', label: 'A' }], series: [{ id: 's', values: [1] }] };
   const refused = vi.fn();
   act(() => root.render(<ColumnChart data={data} size="container" onRefused={refused} />));
-  resize(120, 0);
+  resize(100, 0);
   flush();
   const busy = host.querySelector<HTMLElement>('[data-bp-loading]');
   expect(busy).not.toBeNull();
@@ -908,7 +908,7 @@ it('shows the busy box while a refused container size is still moving', async ()
 // A server refusal must include the reader card and full diagnostics, without a container settle timer.
 it('renders the full fallback-size refusal on the server', async () => {
   const data = { categories: [{ id: 'a', label: 'A' }], series: [{ id: 's', values: [1] }] };
-  const fallbackSize = { width: 279, height: 180 };
+  const fallbackSize = { width: 119, height: 180 };
   const chart = <ColumnChart data={data} size="container" fallbackSize={fallbackSize}
     renderRefused={result => <span>{result.warnings[0]!.message}</span>} />;
   const html = await serverMarkup(chart);
@@ -917,12 +917,12 @@ it('renders the full fallback-size refusal on the server', async () => {
   const card = server.querySelector('[data-bp-refused="size-below-floor"]');
   expect(card).not.toBeNull();
   expect(JSON.parse(card!.getAttribute('data-bp-diagnostics')!)).toMatchObject([{
-    code: 'size-below-floor', expected: { minimum: { width: 280, height: 180 } },
-    fix: [{ op: 'replace', path: '/options/size', value: { width: 280, height: 180 } }],
+    code: 'size-below-floor', expected: { minimum: { width: 120, height: 180 } },
+    fix: [{ op: 'replace', path: '/options/size', value: { width: 120, height: 180 } }],
   }]);
   expect(card!.querySelector('[data-bp-error-code="size-below-floor"]')).not.toBeNull();
   expect(card!.textContent).toContain('This chart needs more room.');
-  expect(card!.textContent).toContain('Column needs at least 280 × 180px; received 279 × 180px');
+  expect(card!.textContent).toContain('Column needs at least 120 × 180px; received 119 × 180px');
   expect(server.querySelector('[data-bp-loading]')).toBeNull();
   act(() => root.render(chart));
   expect(host.querySelector('[data-bp-refused]')).toBeNull();
@@ -936,7 +936,7 @@ it('renders the full fallback-size refusal on the server', async () => {
 it('keeps a server refusal held throughout hydration', async () => {
   const data = { categories: [{ id: 'a', label: 'A' }], series: [{ id: 's', values: [1] }] };
   const refused = vi.fn();
-  const chart = <ColumnChart data={data} size="container" fallbackSize={{ width: 279, height: 180 }} onRefused={refused} />;
+  const chart = <ColumnChart data={data} size="container" fallbackSize={{ width: 119, height: 180 }} onRefused={refused} />;
   const html = await serverMarkup(chart);
   act(() => root.unmount());
   host.innerHTML = html;

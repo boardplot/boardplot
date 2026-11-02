@@ -178,7 +178,7 @@ describe('OPTION_CAPABILITY census', () => {
 describe('OPTION_CAPABILITY census, behaviour: an accepted key changes the drawing', () => {
   const PROBES: Partial<Record<keyof typeof OPTION_CAPABILITY, readonly unknown[]>> = {
     rowLabels: [{ align: 'right' }, { align: 'left' }],
-    categoryAxis: [{ crossesBetween: false }],
+    categoryAxis: [{ crossesBetween: false }, { dateTicks: 'quarters' }],
     categoryLabels: ['staircase'],
     labels: [false],
     colorblindSafe: [true],

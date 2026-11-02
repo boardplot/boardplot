@@ -2,7 +2,7 @@ import { chartString } from '../../strings/choropleth';
 import { chartTheme } from '../chartEnv';
 import { structureCount } from '../../structureCounts';
 import { levenshtein } from '../../spelling';
-import { authoredNotes, frameTextOptions, legendRequired, solveFrame, unitPrinted } from '../../frame';
+import { authoredNotes, frameTextOptions, legendRequired, solveFrame, SIDE_KEY_PLOT_SHARE, unitPrinted } from '../../frame';
 import { formatAutomaticNumber } from '../../format';
 import { formatterFromExample } from '../../formatSpec';
 import { boxGap, rectContains, rectHitsConvexPolygon, rectsOverlap, round2, type Rect, type Size } from '../../geometry';
@@ -355,7 +355,8 @@ export function layoutChoropleth(
         ...authoredNotes(options),
       ],
       // The colour key is drawn by layoutMapKeys beside the small members; the frame keeps the overlay key.
-      legend: { options: legendOptions, items: overlayLegend.items },
+      // The map draws its own key beside itself; the overlay entries keep the row above the plot.
+      legend: { options: legendOptions.position === 'right' || legendOptions.position === 'left' ? { ...legendOptions, position: 'top' } : legendOptions, items: overlayLegend.items },
       theme,
       measure,
     },
@@ -433,7 +434,7 @@ export function layoutChoropleth(
   // An unnamed key stands in a column beside the map, instead of a row above it, when the map
   // comes out clearly larger that way: a wide slot of a set height, which the key row would eat. The
   // choice counts the small regions only, so a later pass that lists more labels keeps it.
-  let position: 'right' | 'bottom' | 'top' | 'auto' = named ? legendOptions.position : 'auto';
+  let position: 'right' | 'left' | 'bottom' | 'top' | 'auto' = named ? legendOptions.position : 'auto';
   const widthFloor = PLOT_W_FLOOR_DEMOTED * size.width;
   if (!named && !table && pinnedHeight && plot0.w >= WIDE_SLOT * plot0.h) try {
     const decide = { ...keyBase, smallIds: new Set([...baseSmallIds].filter((id) => valuesById.has(id))) };
@@ -446,6 +447,24 @@ export function layoutChoropleth(
   } catch (error) {
     // A key that does not fit the column keeps its row.
     if (!(error instanceof NormalizeError) || error.code !== 'geo-key-overflow') throw error;
+  }
+  // A key the spec put beside the map stays there while the map keeps its share of the width; else it stands in the row above.
+  if (named && (position === 'right' || position === 'left')) {
+    let columnW = Infinity;
+    try {
+      columnW = mapKeysSize({ ...keyBase, smallIds: new Set([...baseSmallIds].filter((id) => valuesById.has(id))), position, plot: plot0 }).w;
+    } catch (error) {
+      if (!(error instanceof NormalizeError) || error.code !== 'geo-key-overflow') throw error;
+    }
+    const share = (plot0.w - columnW - MAP_GAP) / size.width;
+    if (!(share >= SIDE_KEY_PLOT_SHARE)) {
+      warnings.push({
+        code: 'legend-side-fallback', severity: 'warn', field: ['options', 'legend'],
+        message: `the key stays in the row above the map: a column beside it would leave the map ${Math.round(Math.max(0, share) * 100)}% of the width, under ${Math.round(SIDE_KEY_PLOT_SHARE * 100)}%`,
+        suggest: 'Give the chart more width to keep the key beside the map.',
+      });
+      position = 'top';
+    }
   }
   const keyInput = { ...keyBase, position } as const;
   let sideKeyH = 0;
@@ -566,7 +585,7 @@ export function layoutChoropleth(
   // leaves the right edge free, the lanes may run the full plot height, so a
   // long lane stack does not spill into the footer.
   const plot = frameResult.plot;
-  const laneSpan = !tableDrawn && small.position !== 'right' && small.blocks.x + small.blocks.w <= plot.x + plot.w - LEADER_GUTTER
+  const laneSpan = !tableDrawn && small.position !== 'right' && small.position !== 'left' && small.blocks.x + small.blocks.w <= plot.x + plot.w - LEADER_GUTTER
     ? { y: plot.y, h: mapArea.y + mapArea.h - plot.y } : { y: mapArea.y, h: mapArea.h };
   // The key row may stand over the map's empty corner. The map rises into
   // the row as far as no region or dot of it lies under the key.
@@ -809,7 +828,7 @@ export function layoutChoropleth(
     // published; the width only grows for a small-members block.
     sizing: resolveSizing(chartSizing('choropleth'), size, {
       ...(smallIds.size ? { minWidth: size.width - frameResult.plot.w +
-        (small.position === 'right' ? small.blocks.w + 200 : Math.max(200, small.blocks.w)) } : {}),
+        (small.position === 'right' || small.position === 'left' ? small.blocks.w + 200 : Math.max(200, small.blocks.w)) } : {}),
       minHeight: Math.max(size.height - frameResult.plot.h + small.minPlotH,
         size.height - area.h + (table && tablePlace ? sideForm ? Math.max(minMapHeight, sideBlockH)
           : tablePlace.y === area.y ? Math.max(minMapHeight, table.size(tablePlace.perColumn).h)
@@ -905,7 +924,7 @@ export function layoutChoropleth(
     passes.set(key, next);
     const fits = !next.labels.some((label) => label.hidden && label.slot === 'smallMember') &&
       // A longer list must not widen a side key past the width floor.
-      (position !== 'right' || next.plot.w >= widthFloor) &&
+      ((position !== 'right' && position !== 'left') || next.plot.w >= widthFloor) &&
       (next.sizing?.minHeight ?? 0) <= next.size.height && hidden(next) <= hidden(geometry);
     if (fits) return next;
   }

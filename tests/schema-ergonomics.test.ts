@@ -26,6 +26,14 @@ import { adaptNamedColumns } from '../src/core/schema/namedColumns';
 import { unitConflict } from '../src/core/schema/units';
 import { flattenIssues } from '../src/core/schema/flattenIssues';
 import { ganttDataSchema } from '../src/core/charts/gantt/schema';
+import { render } from '../src/cli/render';
+import { resolveChartRequest, layoutResolvedRequest } from '../src/index';
+import type { ColumnOptions, KpiOptions } from '../src/index';
+import { requireGeometry } from '../src/core/sizing';
+import { canvasMargin, resolveTheme } from '../src/core/theme';
+import { splitNumberMarks } from '../src/core/numberMarks';
+import { sourceLine } from '../src/core/notes';
+import { parseChartSpec } from '../src/react/parseChartSpec';
 import { getChartSchemas } from '../src/core/registry';
 
 function acceptance(input: unknown): boolean {
@@ -171,4 +179,91 @@ describe('tagged union issues', () => {
     expect(issues('gantt')).toEqual(["annotations.0.label: a badge holds at most 3 characters; use labelPlacement 'top' for a longer label"]);
     expect(issues('column')).toEqual(['annotations.0.labelPlacement: badge is a gantt event placement']);
   });
+});
+
+// A plain option shape was refused, and its fix patch deleted the author's note.
+it('accepts short option shapes and preserves their content', async () => {
+  const spec = JSON.parse(readFileSync(join(import.meta.dirname, 'fixtures/option-shapes.json'), 'utf8'));
+  const data = spec.data;
+  const options: ColumnOptions = { footnotes: 'Keep this note.', source: ['Example ledger', 'Example plan'], locale: 'de', sort: 'desc', topN: 2 };
+  const request = (options: object = {}, type = 'column', chartData = data) => resolveChartRequest({ type, data: chartData, options });
+  expect(getChartSchemas('column')!.optionsSchema.parse(options)).toMatchObject({ footnotes: ['Keep this note.'],
+    source: 'Example ledger; Example plan', locale: { language: 'de' }, sort: { categories: 'desc' }, topN: { n: 2 } });
+  expect(getChartSchemas('choropleth')!.optionsSchema.parse({ topN: 3 })).toMatchObject({ topN: { n: 3 } });
+  const result = request(options);
+  expect(result.options).toMatchObject({ footnotes: ['Keep this note.'], source: 'Example ledger; Example plan',
+    sort: { categories: 'desc' }, topN: { n: 2 } });
+  expect(splitNumberMarks(result.options.locale!.language!)).toEqual({ language: 'de', marks: { decimal: '.', thousands: ',' } });
+  expect(result.inputWarnings ?? []).toEqual([]);
+  expect(request({ source: [] }).options.source).toBe('');
+  expect(() => request({ source: ['Example ledger', 7] })).toThrow();
+  expect(sourceLine('Example ledger', '')).toBe('Example ledger');
+
+  const cardOptions: KpiOptions = { source: ['Example ledger'], locale: 'en' };
+  const card = requireGeometry(layoutResolvedRequest(request(cardOptions, 'kpi', { label: '', value: 1234.5, format: '0,000.0' })));
+  expect(card.labels.some(label => label.id === 'category:label')).toBe(false);
+  expect(card.scene.some(node => node.t === 'text' && node.lines.join('') === '')).toBe(false);
+  expect(card.a11y.title).toBe('KPI');
+  expect(card.a11y.desc).toContain('1,234.5');
+  expect(card.labels.find(label => label.id === 'total:value')!.rect.y).toBe(card.plot.y);
+
+  const base = resolveTheme();
+  const themed = request({ theme: { overrides: { space: { canvas: { base: { top: 16 } } } } } });
+  expect(canvasMargin(themed.theme, 960)).toEqual({ ...canvasMargin(base, 960), top: 16 });
+  expect(canvasMargin(themed.theme, 1200)).toEqual(canvasMargin(base, 1200));
+  expect(() => request({ theme: { overrides: { space: { canvas: { base: 16 } } } } })).toThrow(/space.canvas.base/);
+  expect(() => request({ theme: { overrides: { space: { canvas: { wide: { left: 97 } } } } } })).toThrow();
+  expect(() => request({ theme: { overrides: {}, extra: true } })).toThrow();
+
+  for (const type of ['bar', 'column', 'pie']) {
+    for (const order of ['sheet', 'asc', 'desc', 'reverse']) expect(request({ sort: order }, type).options.sort).toEqual({ categories: order });
+    expect(request({ sort: true, topN: 2 }, type).options).toMatchObject({ sort: { categories: 'desc' }, topN: { n: 2 } });
+  }
+  for (const sort of [false, 'largest']) expect(() => request({ sort })).toThrow();
+  for (const topN of [0, -1, 1.5]) expect(() => request({ topN })).toThrow();
+  expect(() => request({ locale: 'bad tag!' })).toThrow(/BCP 47/);
+  const refusedSort = (sort: unknown) => refusal(() => request({ sort }, 'kpi', { label: 'Revenue', value: 12 }));
+  expect(refusedSort('desc')).toEqual(refusedSort({ categories: 'desc' }));
+
+  const rendered = render({ spec, return: ['svg'] });
+  expect(rendered.exit).toBe(0);
+  const body = rendered.body as { svg: string; warnings: { code: string; path?: string; fix?: unknown }[] };
+  expect(body.svg).toContain('Invented amounts.');
+  expect(body.svg).toContain('Example ledger; Example plan');
+  expect(body.svg).not.toContain('Source:');
+  expect(body.warnings).toContainEqual(expect.objectContaining({ code: 'name-slugified', path: '/name',
+    fix: [{ op: 'replace', path: '/name', value: 'revenue-q3-2024' }] }));
+  expect(body.warnings).toContainEqual(expect.objectContaining({ code: 'annotation-text-as-label', path: '/annotations/0/text' }));
+  const { createElement } = await import('react');
+  const { renderToStaticMarkup } = await import('react-dom/server');
+  const { ColumnChart } = await import('../src/react/charts/column');
+  const { ComboChart } = await import('../src/react/charts/combo');
+  expect(renderToStaticMarkup(createElement(ColumnChart, { data, ...options, fixedSize: true, deferLayout: false }))).toContain('Keep this note.');
+  expect(renderToStaticMarkup(createElement(ComboChart, { data, source: ['Example ledger', 'Example plan'], footnotes: 'Keep this note.', locale: 'en', fixedSize: true, deferLayout: false }))).toContain('Example ledger; Example plan');
+  const parsed = await parseChartSpec(spec);
+  expect(parsed.warnings).toContainEqual(expect.objectContaining({ code: 'name-slugified' }));
+  expect(parseDocumentInput({ ...spec, name: 'Keep.UP_A-1' }).doc.charts[0]!.name).toBe('Keep.UP_A-1');
+  expect(parseDocumentInput({ ...spec, name: '... Révenue / Q3 ...' }).doc.charts[0]!.name).toBe('revenue-q3');
+  expect(parseDocumentInput({ ...spec, name: 'A'.repeat(101) }).doc.charts[0]!.name).toHaveLength(100);
+  for (const name of [' / .. ', 12]) expect(() => parseDocumentInput({ ...spec, name })).toThrow();
+  expect(parseDocumentInput({ version: 1, charts: [{ name: 'Revenue Q3 2024', type: 'column', data }] }).doc.charts[0]!.name).toBe('Revenue Q3 2024');
+
+  // The overrides-only theme gets the same contrast refusal as { preset, overrides }.
+  const unreadable = render({ spec: { type: 'column', data, options: { theme: { overrides: { color: { ink: '#fdfdfd' } } } } }, return: ['svg'] }).body as { errors: { code: string }[] };
+  expect(unreadable.errors[0]!.code).toBe('contrast-ink');
+
+  const stray = render({ spec: { type: 'column', data, locale: 'de' }, return: ['svg'] }).body as { errors: { fix: unknown }[] };
+  expect(stray.errors[0]!.fix).toEqual([{ op: 'add', path: '/options', value: { locale: 'de' } }, { op: 'remove', path: '/locale' }]);
+  const annotation = { kind: 'valueLine', value: 1500, text: 'Target' };
+  for (const item of [annotation, { ...annotation, label: 'Target' }]) {
+    const line = resolveChartRequest({ type: 'column', data, annotations: [item] as never });
+    expect(line.options.annotations).toEqual([{ kind: 'valueLine', value: 1500, label: 'Target' }]);
+    expect(line.inputWarnings?.filter(warning => warning.code === 'annotation-text-as-label')).toHaveLength(1);
+    expect(line.inputWarnings).toContainEqual(expect.objectContaining({ severity: 'info', fix: [
+      { op: 'test', path: '/charts/0/annotations/0', value: item },
+      { op: 'replace', path: '/charts/0/annotations/0', value: { kind: 'valueLine', value: 1500, label: 'Target' } },
+    ] }));
+  }
+  expect(() => resolveChartRequest({ type: 'column', data, annotations: [{ ...annotation, label: 'Plan' }] as never })).toThrow();
+  expect(() => resolveChartRequest({ type: 'column', data, annotations: [{ kind: 'indicator100', text: 'Full' }] as never })).toThrow();
 });
