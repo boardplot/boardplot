@@ -9,6 +9,8 @@ import { noteTexts } from './helpers/notes';
 import { render } from '../src/cli/render';
 import { fixtures } from '../src/cli/fixtures';
 import { cachedCategoryRowPlans } from '../src/core/label/categoryRow';
+import { leaderPieces } from '../src/core/label/solver';
+import { segmentHitsRect } from '../src/core/geometry';
 import type { ChartReading } from '../src/core/reading';
 import type { LintWarning } from '../src/core/types/scene';
 
@@ -123,6 +125,41 @@ describe('note rules', () => {
     expect(label.hidden).toBeUndefined();
     expect(label.lines!.length).toBeGreaterThan(1);
     expect(label.lines!.join(' ')).toBe(text);
+  });
+
+  // A wrapped callout seated over another column had no leader and read as that column's callout.
+  it('keeps a wrapped slide callout visibly tied to its own column', () => {
+    const text = 'New pricing launched in March lifted the average deal size by a fifth, and two large renewals closed early in the fourth quarter';
+    const geo = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'column',
+      data: { categories: ['2022', '2023', '2024'], series: [{ id: 'a', label: 'Revenue', values: [10, 12, 15] }] },
+      options: { title: 'Revenue grows', unit: '$m', target: 'slide' },
+      annotations: [{ kind: 'callout', id: 'c1', at: { categoryId: '2023', seriesId: 'a' }, text }] } as never)));
+    const label = geo.labels.find((entry) => entry.id === 'annotation:c1')!;
+    expect(label).toBeDefined();
+    expect(label.hidden).toBeUndefined();
+    expect(label.lines.length).toBeGreaterThan(1);
+    const columns = geo.scene.flatMap((node) => node.t === 'rect' && node.part === 'bar' && node.owner.seriesId === 'a' ? [node] : []);
+    const own = columns.find((column) => column.owner.categoryId === '2023')!.rect;
+    const { rect } = label;
+    const coversOwnX = rect.x <= own.x + own.w / 2 && rect.x + rect.w >= own.x + own.w / 2;
+    const besideOwn = (rect.x + rect.w <= own.x || rect.x >= own.x + own.w) && rect.y < own.y + own.h && rect.y + rect.h > own.y;
+    const clearOfOthers = columns.every((column) => column.owner.categoryId === '2023' || rect.x + rect.w <= column.rect.x || rect.x >= column.rect.x + column.rect.w);
+    expect(Boolean(label.leader) || ((coversOwnX || besideOwn) && clearOfOthers)).toBe(true);
+  });
+
+  // The leader of a wrapped callout ran through the value printed over its own column.
+  it('draws no wrapped callout leader through a value label', () => {
+    const text = 'New pricing launched in March lifted the average deal size by a fifth, and two large renewals closed early in the fourth quarter';
+    const geo = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'column',
+      data: { categories: ['2022', '2023', '2024'], series: [{ id: 'a', label: 'Revenue', values: [10, 12, 15] }] },
+      options: { title: 'Revenue grows', unit: '$m' },
+      annotations: [{ kind: 'callout', id: 'c1', at: { categoryId: '2023', seriesId: 'a' }, text }] } as never)));
+    const label = geo.labels.find((entry) => entry.id === 'annotation:c1')!;
+    expect(label.hidden).toBeUndefined();
+    const values = geo.labels.filter((entry) => entry.kind !== 'annotation' && !entry.hidden);
+    expect(values.map((value) => value.text)).toContain('12');
+    const crossed = label.leader ? values.filter((value) => leaderPieces(label.leader!.d, 32).some(([a, b]) => segmentHitsRect(a, b, value.rect))) : [];
+    expect(crossed.map((value) => value.text)).toEqual([]);
   });
 
   // A wide callout on a stacked100 column segment could disappear into a note that the image does not show.
