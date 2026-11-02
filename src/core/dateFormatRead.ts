@@ -1,18 +1,19 @@
 import { dateNames } from './dateNames';
 
 export interface DateFormatNote {
-  kind: 'unknown' | 'ambiguous' | 'fiscal';
-  message: string;
-  suggest?: string;
+  readonly kind: 'unknown' | 'ambiguous' | 'fiscal';
+  readonly message: string;
+  readonly suggest?: string;
 }
 
 export interface DateFormatRead {
   /** Undefined on a time axis means the automatic text for the tick step. */
-  pattern: string | undefined;
-  notes: DateFormatNote[];
+  readonly pattern: string | undefined;
+  readonly notes: readonly DateFormatNote[];
 }
 
 type Context = 'table' | 'time';
+const readCache = new Map<string, DateFormatRead>();
 const TABLE_DEFAULT = 'd MMM yyyy';
 const DATE_TOKENS = /yyyy|YYYY|yy|YY|MMMMM|MMMM|mmmm|MMM|mmm|MM|mm|M|m|dddd|ddd|dd|DD|d|D|QQQ|QQ|Q|ww|w/g;
 const TIME_TOKENS = /yyyy|YYYY|yy|YY|MMMM|mmmm|MMM|mmm|MM|mm|M|m|dddd|ddd|dd|DD|d|D|QQQ|QQ|Q|HH|H|hh|h|ss|SSS|a/g;
@@ -21,14 +22,14 @@ const ALIASES: Record<string, string> = { YYYY: 'yyyy', YY: 'yy', D: 'd', DD: 'd
 
 /** Read tokens before examples, keeping quoted words out of token classification. */
 function readPattern(text: string, context: Context): string | undefined {
-  // A lone apostrophe is a literal, as in "MMM 'yy" (Jan '26).
-  const parts = text.match(/'[^']*'|[\p{L}]+|'|[^'\p{L}]+/gu) ?? [];
+  // A lone apostrophe is a literal, as in "MMM 'yy" (Jan '26). Letters outside A-Z are literals too, as in "yyyy年MM月".
+  const parts = text.match(/'[^']*'|[A-Za-z]+|'|[^'A-Za-z]+/g) ?? [];
   if (!parts.length || parts.join('') !== text) return undefined;
   const tokens: string[] = [];
   for (const part of parts) {
     if (part.startsWith("'")) { tokens.push(part); continue; }
     if (/\d/.test(part)) return undefined;
-    if (!/\p{L}/u.test(part)) { tokens.push(part); continue; }
+    if (!/[A-Za-z]/.test(part)) { tokens.push(part); continue; }
     const run = part.match(context === 'table' ? DATE_TOKENS : TIME_TOKENS) ?? [];
     if (run.join('') !== part) return undefined;
     tokens.push(...run);
@@ -54,9 +55,12 @@ const fiscalNote = (): DateFormatNote => ({
 });
 
 interface Name { token: string; month?: number; weekday?: number }
+const exampleNamesCache = new Map<string | undefined, Map<string, Name>>();
 
 /** English examples work in every language; the selected language adds its own names. */
 function exampleNames(language?: string): Map<string, Name> {
+  const cached = exampleNamesCache.get(language);
+  if (cached) return cached;
   const names = new Map<string, Name>();
   const add = (word: string, name: Name) => {
     // Keep English month examples such as 'Mar-26' when a weekday abbreviation shares the word.
@@ -81,6 +85,8 @@ function exampleNames(language?: string): Map<string, Name> {
       }));
     }
   }
+  if (exampleNamesCache.size >= 200) exampleNamesCache.clear();
+  exampleNamesCache.set(language, names);
   return names;
 }
 
@@ -182,8 +188,7 @@ function readExample(text: string, language?: string): DateFormatRead | undefine
   return { pattern: pattern.join(''), notes };
 }
 
-/** One small reader for authored table dates and time ticks, without the date formatter. */
-export function readDateFormat(text: string | undefined, context: Context, language?: string): DateFormatRead {
+function parseDateFormat(text: string | undefined, context: Context, language?: string): DateFormatRead {
   const fallback = context === 'table' ? TABLE_DEFAULT : undefined;
   if (text === undefined) return { pattern: fallback, notes: [] };
   const pattern = readPattern(text, context);
@@ -198,4 +203,15 @@ export function readDateFormat(text: string | undefined, context: Context, langu
       suggest: "Write an example such as '30 Sep 2026' or a pattern such as 'dd.MM.yyyy'. Quote literal words with single quotes.",
     }],
   };
+}
+
+/** One small reader for authored table dates and time ticks, without the date formatter. */
+export function readDateFormat(text: string | undefined, context: Context, language?: string): DateFormatRead {
+  const key = `${context}|${language ?? ''}|${text}`;
+  const cached = readCache.get(key);
+  if (cached) return cached;
+  const result = parseDateFormat(text, context, language);
+  if (readCache.size >= 200) readCache.clear();
+  readCache.set(key, result);
+  return result;
 }

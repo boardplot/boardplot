@@ -90,6 +90,9 @@ describe('continuous axis layout', () => {
     const apostrophe = lay(data, { xAxis: { type: 'time', format: "MMM 'yy", tickStep: { unit: 'month', step: 6 } } });
     expect(ticks(apostrophe.geometry)).toEqual(["Jan '26", "Jul '26", "Jan '27"]);
     expect(apostrophe.geometry.warnings.filter(warning => warning.code === 'date-format-unknown')).toEqual([]);
+    // Letters outside A-Z are literal text on main, so a CJK pattern keeps drawing.
+    const cjk = lay(data, { xAxis: { type: 'time', format: 'yyyy年M月', tickStep: { unit: 'month', step: 6 } } });
+    expect(ticks(cjk.geometry)).toEqual(['2026年1月', '2026年7月', '2027年1月']);
     const defaults = lay(data, { xAxis: { type: 'time' } });
     const unknown = lay(data, { xAxis: { type: 'time', format: 'unreadable' } });
     expect(ticks(unknown.geometry)).toEqual(ticks(defaults.geometry));
