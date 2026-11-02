@@ -1,3 +1,4 @@
+import type { OptionsInput } from '../core/types/optionInput';
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { LintWarning } from '../core/types/scene';
@@ -9,6 +10,7 @@ import { TableFloorRequestContext } from './TableChart';
 import { linkedBinding, rebindable } from './linkedBinding';
 import type { DeferredName } from '../core/deferred';
 import { optionRefusals } from '../core/schema/refusals';
+import { normalizeOptionShapes } from '../core/normalize/optionShapes';
 import { retireChartSettings } from '../core/retired';
 import { LayoutRefusal } from './SizePlaceholder';
 import { asSize, frameSize, RefusalBoundary } from './RefusalBoundary';
@@ -18,7 +20,7 @@ import type { ContainerSizeOptions } from './useContainerSize';
 
 export interface DimSwitchView { variant: DimSwitchVariant; depth: number; splits: boolean; collapsed: string[] }
 export type DimSwitchViewReason = 'variant' | 'depth' | 'splits' | 'collapsed';
-export type DimSwitchChartProps = Omit<TableChartProps, 'data' | 'collapsed' | 'defaultCollapsed' | 'onCollapsedChange' | 'onExpansionChange' | 'expansion' | 'variant' | 'prepared'> & Omit<DimSwitchOptions, 'size'> & {
+export type DimSwitchChartProps = Omit<TableChartProps, 'data' | 'collapsed' | 'defaultCollapsed' | 'onCollapsedChange' | 'onExpansionChange' | 'expansion' | 'variant' | 'prepared'> & OptionsInput<Omit<DimSwitchOptions, 'size'>> & {
  data: DimSwitchData;
  variant?: DimSwitchVariant;
  defaultVariant?: DimSwitchVariant;
@@ -61,7 +63,7 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
   const stableData=useStableValue(data);
   const authoredOptions=useStableValue(options);
   // A retired setting is compiled as its successor (or dropped) and reported with the compile warnings.
-  const retired=useMemo(()=>retireChartSettings('dimswitch',{options:authoredOptions}),[authoredOptions]);
+  const retired=useMemo(()=>{const shaped=normalizeOptionShapes('dimswitch',{options:authoredOptions});const retired=retireChartSettings('dimswitch',{options:shaped.chart.options as DimSwitchOptions});return {...retired,warnings:[...shaped.warnings,...retired.warnings]};},[authoredOptions]);
   const stableOptions=retired.chart.options;
   const floorRequest=useStableValue({type:'dimswitch',data:stableData,options:{...stableOptions,variant,depth,splits,inlineVisibility}});
   // The grid reads values, not the computed-cell records the static audit trail carries.

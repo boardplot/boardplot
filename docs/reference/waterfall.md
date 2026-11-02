@@ -86,9 +86,9 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | items[].segments[].label | string |  | Displayed segment name; defaults to its id. |
 | items[].segments[].value | cell | yes | Signed contribution of this segment to its item. |
 | items[].segments[].colorRole | string |  | Theme color role for this segment. One of good, bad, warn, neutral, neutralLight, highlight, total, others; series-N for step N of the theme ramp, 1-based (series-2 is color.series[1]); or status-<key> for a theme status colour. A hex colour goes in fill. |
-| items[].segments[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). Scenario controlling this segment paint convention. |
+| items[].segments[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. Scenario controlling this segment paint convention. |
 | items[].date | string |  | ISO 8601 date associated with this bridge item. |
-| items[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). Scenario for this bridge item and its default segment styling. |
+| items[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. Scenario for this bridge item and its default segment styling. |
 | items[].direction | string |  | Under 'lowerIsBetter' a rise paints bad and a fall good (options.signColor). One of `'higherIsBetter'`, `'lowerIsBetter'`. |
 | items[].toBaseline | boolean |  | Start this delta at zero and reset the accumulated contribution list. A subtotal draws the sum of the deltas since the last total or baseline subtotal, from zero; the running level carries on. |
 | items[].values | cell[] |  | With data.cases: one value per case, in case order, in place of value — the signed delta of each case, or a total's opening or check value. |
@@ -105,7 +105,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
-| legend | string \| object | `'top'`, `'bottom'`, `'none'`, `'auto'` (or another value of its type) |  | Key position. Segment, case and scenario encodings keep their key because numeric bar labels do not name them. With these encodings, 'none' retains the key and reports waterfall-legend-required. A plain bridge keys its sign colours only when a lowerIsBetter step inverts them. |
+| legend | string \| object | `'top'`, `'bottom'`, `'right'`, `'left'`, `'none'`, `'auto'` (or another value of its type) |  | Key position. Segment, case and scenario encodings keep their key because numeric bar labels do not name them. With these encodings, 'none' retains the key and reports waterfall-legend-required. A plain bridge keys its sign colours only when a lowerIsBetter step inverts them. |
 | axisTitles | object |  |  | Authored primary value-axis title above the vertical plot, using column title styling. Waterfall draws no value ticks. Horizontal mode accepts this key but does not print it. |
 | axisTitles.primary | string |  |  | 'Measure, unit' title of the value axis, e.g. 'Margin, %'. |
 | variant | string | `'vertical'`, `'horizontal'` |  | Left out: vertical columns, turned into a horizontal bridge when the step names would rotate, shorten or drop, the horizontal bridge draws without a new finding, and the spec has no cases and no annotations. 'vertical' always keeps columns. A horizontal bridge draws no annotations: it suppresses them and warns horizontal-annotations-unsupported, so use vertical for annotations. |

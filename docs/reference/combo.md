@@ -69,7 +69,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | series[].id | string | yes | Series identity used by keyed options, annotations and legend entries. |
 | series[].label | string |  | Displayed series name; defaults to the series id. |
 | series[].values | (cell \| { categoryId, value: cell })[] | yes | Values in category order, or keyed entries pairing a categoryId with its value. |
-| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). Controls scenario labels and paint conventions. |
+| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. Controls scenario labels and paint conventions. |
 | series[].role | string |  | Data series or comparison-only reference series; references are excluded from the main plotted data. One of `'data'`, `'reference'`. |
 | series[].colorRole | string |  | Theme color role used for this series when no explicit fill takes precedence. One of good, bad, warn, neutral, neutralLight, highlight, total, others; series-N for step N of the theme ramp, 1-based (series-2 is color.series[1]); or status-<key> for a theme status colour. A hex colour goes in fill. |
 | series[].fill | string |  | Explicit CSS fill color for this series; remains authored across theme changes. |
@@ -88,7 +88,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 |---|---|---|---|---|
 | labelDensity | string | `'full'`, `'smart'`, `'minimal'` |  | Default 'smart': every column total stays eligible. A chart with more than 12 categories, or with most totals wider than the band, ranks the first, last, highest and lowest (ties: the first) first. The other totals then use only their natural seat above the column; with none free they are drawn nowhere and left out of the note. Those four may take one step, and the note names any that finds no seat. A smaller chart keeps every total on the bounded one-step rule and names any that finds no seat. 'full' treats all totals alike and names every one that finds no seat. Seats stay inside the plot band and one step from the natural seat. Reading records keep every value. |
 | labels | false \| object | `false` (or another value of its type) |  | Line end labels default to the value alone at both ends; point: ['series', 'absolute'] adds the series name. Authored point content applies to both ends. On stacked columns, segment: ['absolute', 'percent'] prints value and share in each segment, and a value its segment cannot hold is named in the note line; grandTotal: false hides stack totals. A single column series prints its values as grandTotal labels, so grandTotal: false hides them and keeps the line values; point governs line values only. Combo has no labels.growth: the growth statements of the dual-axis anatomy are dualAxis.growth. |
-| legend | string \| object | `'top'`, `'bottom'`, `'none'`, `'auto'` (or another value of its type) |  | Key position. Multiple series get a key unless direct labels name them. 'none' hides the key; render warns when names are missing. A series key also explains its scenario styling. |
+| legend | string \| object | `'top'`, `'bottom'`, `'right'`, `'left'`, `'none'`, `'auto'` (or another value of its type) |  | Key position. Multiple series get a key unless direct labels name them. 'none' hides the key; render warns when names are missing. A series key also explains its scenario styling. |
 | secondaryAxis | object |  |  | Independent acknowledged secondary scale, or a percentage relabeling of the primary scale. An independent secondary scale returns the warning dual-axis. |
 | secondaryAxis.acknowledge (secondaryAxis branch 1) | true | `true` |  | Explicit acknowledgement that the right axis uses an independent scale. |
 | secondaryAxis.domain (secondaryAxis branch 1) | array |  |  | Pin the secondary domain (data may only widen it, never be clipped). |
@@ -122,6 +122,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | latestPoint | string | `'ring'`, `'none'` |  | Ring the last observed point of the lead line in the highlight colour, r 4.5 with a dot inside it, as on the line chart. 'ring' picks the first line series that is not a prior year, plan or forecast, and a forecast or plan point is never the one ringed. 'none' rings nothing, including the ring a theme with an ink lead line draws by default; omitted, the theme decides. |
 | averageMarker | boolean \| object |  |  | Computed dashed average rule with a solver-placed Ø label on the primary axis, as on column: the mean over every category of the column stack, the columns in scope summed ('all' by default). A line named in the scope is left out with the warning average-marker-scope. |
 | averageMarker.scope | string \| array | `'all'` (or another value of its type) |  | Series included in the computed average; defaults to 'all'. |
+| averageMarker.includePartial | boolean |  |  | true averages the categories marked partial too. By default they are left out, and the label names the periods the average covers. Column, bar and combo. |
 | referenceStyle | string | `'tick'`, `'line'`, `'marker'` | `'tick'` | How reference series draw, as on bar and column: 'tick' (default) a solid plan tick across the column, 'line' the same span dashed at 1.25px, 'marker' a dot at the column centre. |
 | referenceTick | object |  |  | Weight and ink of the reference tick, as on bar, read under referenceStyle 'tick' only: the dashed 'line' keeps its 1.25px and the 'marker' its dot. |
 | referenceTick.width | number |  | `2.2` | Stroke width of the tick in px; default 2.2. |
@@ -136,7 +137,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | events.groups[].glyph | string | `'dot'`, `'triangle'`, `'diamond'`, `'square'` |  | Shape that marks the kind without colour; default by group order: dot, triangle, diamond, square. |
 | events.keyTitle | string |  |  | Heading printed over the event key. |
 
-Plus the [shared options](options.md). This type does not accept `valueAxis.tickStep`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `categoryAxis`, `rowLabels`, `sort`, `topN`, `colorblindSafe`.
+Plus the [shared options](options.md). This type does not accept `valueAxis.tickStep`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `rowLabels`, `sort`, `topN`, `colorblindSafe`.
 
 ## Annotations
 

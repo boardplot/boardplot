@@ -48,7 +48,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | series[].id | string | yes | Series identity used by keyed options, annotations and legend entries. |
 | series[].label | string |  | Displayed series name; defaults to the series id. |
 | series[].values | (cell \| { categoryId, value: cell })[] | yes | Values in category order, or keyed entries pairing a categoryId with its value. |
-| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). |
+| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. |
 | series[].direction | string |  | Declared preference for higher or lower values in directional comparisons. One of `'higherIsBetter'`, `'lowerIsBetter'`. |
 | series[].role | string |  | Declares a plotted data series or a comparison reference series. One of `'data'`, `'reference'`. |
 | series[].colorRole | string |  | Theme color role used for this series when no explicit fill takes precedence. One of good, bad, warn, neutral, neutralLight, highlight, total, others; series-N for step N of the theme ramp, 1-based (series-2 is color.series[1]); or status-<key> for a theme status colour. A hex colour goes in fill. |
@@ -60,12 +60,13 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
-| legend | string \| object | `'top'`, `'bottom'`, `'none'`, `'auto'` (or another value of its type) |  | Key position. Multiple series get a key by default unless visible direct labels name them. 'none' hides the key; unnamed series warn. |
+| legend | string \| object | `'top'`, `'bottom'`, `'right'`, `'left'`, `'none'`, `'auto'` (or another value of its type) |  | Key position. Multiple series get a key by default unless visible direct labels name them. 'none' hides the key; unnamed series warn. |
 | axisTitles | object |  |  | Title of the value axis when it is drawn: under the value-axis tick row, ending at the right edge of the plot. Drawn only when authored. |
 | axisTitles.primary | string |  |  | 'Measure, unit' title of the value axis, e.g. 'Margin, %'. |
 | variant | string | `'dot'`, `'dumbbell'`, `'lollipop'` | `'dot'` | Dot by default; dumbbell joins paired values and lollipop joins values to the baseline. |
 | averageMarker | boolean \| object |  |  | Computed dashed average rule with a solver-placed Ø label, as on bar and column: the mean of every dot of the series in scope ('all' by default, or the listed series). |
 | averageMarker.scope | string \| array | `'all'` (or another value of its type) |  | Series included in the computed average; defaults to 'all'. |
+| averageMarker.includePartial | boolean |  |  | true averages the categories marked partial too. By default they are left out, and the label names the periods the average covers. Column, bar and combo. |
 | arrow | boolean |  |  | Dumbbell only (warning arrow-dumbbell-only otherwise): an arrowhead at the second series' dot shows the direction of change. The connector is painted good or bad by the sign of the change when the second series declares direction, neutral otherwise; a pair whose dots nearly touch keeps a plain connector. |
 | gapColumn | boolean |  |  | Dumbbell only: prints the gap, second series minus first, signed in a column right of the plot under a head such as 'Gap, pp' (pp for percent values). A highlighted row prints bold. Default false. The column stays off below 576 px canvas width. |
 | methodNote | boolean |  |  | Default false. true adds the method footnote that names the marker inside a range as its supplied mid-point. A supplied range.mid is drawn and keyed either way. |

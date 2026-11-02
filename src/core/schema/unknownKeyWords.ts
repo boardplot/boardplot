@@ -20,6 +20,13 @@ export const WORDING_KEYS: ReadonlySet<string> = new Set(['strings']);
 
 /** Words an author reaches for where the schema has a different key. */
 const KEY_SYNONYMS = new Map([['type', 'kind'], ['formula', 'calc']]);
+const DATA_KEY_SYNONYMS = new Map([...KEY_SYNONYMS, ['values', 'observations'], ['color', 'fill'], ['colour', 'fill'], ['name', 'label']]);
+
+/** A data synonym is useful only where the target is a known key. */
+export function dataKeySynonym(key: string, known: readonly string[]): string | undefined {
+  const synonym = DATA_KEY_SYNONYMS.get(key);
+  return synonym !== undefined && known.includes(synonym) ? synonym : undefined;
+}
 
 function normalizeOptionTerm(term: string): string {
   let words = term
@@ -53,12 +60,13 @@ function termDistance(a: string, b: string): number {
 }
 
 /** The key of `known` closest to `key`, and whether it is close enough to be a typo of it. */
-export function closestKey(key: string, known: readonly string[]): { key: string; near: boolean } | undefined {
-  const synonym = KEY_SYNONYMS.get(key);
+export function closestKey(key: string, known: readonly string[], mode: 'option' | 'data' = 'option'): { key: string; near: boolean } | undefined {
+  const synonym = mode === 'data' ? dataKeySynonym(key, known) : KEY_SYNONYMS.get(key);
   if (synonym !== undefined && known.includes(synonym)) return { key: synonym, near: true };
   const best = known
     .filter(candidate => candidate !== key)
-    .map((candidate) => ({ candidate, distance: termDistance(key, candidate) }))
+    .map((candidate) => ({ candidate, distance: mode === 'data'
+      ? normalizedDistance(key.toLowerCase(), candidate.toLowerCase()) : termDistance(key, candidate) }))
     .sort((a, b) => a.distance - b.distance || (a.candidate < b.candidate ? -1 : 1))[0];
   return best && { key: best.candidate, near: best.distance <= OPTION_MATCH_MAX_DISTANCE };
 }

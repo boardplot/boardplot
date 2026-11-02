@@ -1,3 +1,4 @@
+import type { OptionsInput } from '../core/types/optionInput';
 import { hasPolarityBadge, isFigureCell, polarityBadgeInk } from '../core/charts/table/chips';
 import { belowTableViewportFloor, tableWidths } from '../core/charts/table/widths';
 import {
@@ -128,7 +129,7 @@ export type { TableScrollState } from './scrollState';
  * one question: in which order do the rows come out. The shapes say which is
  * meant — a column sort names a column, an authored order names `categories`.
  */
-type TableSortProp = TableSort | TableOptions['sort'] | null;
+type TableSortProp = TableSort | OptionsInput<TableOptions>['sort'] | null;
 
 /** From this many columns on, the grid builds only the columns near its scroll viewport, so a table of hundreds of day columns stays responsive. */
 const WINDOW_COLUMNS = 40;
@@ -181,7 +182,7 @@ export interface TableRowLabelLead {
   render: (row: ResolvedRow) => ReactNode;
 }
 
-export type TableChartProps = Omit<TableOptions, 'columnVisibility' | 'inlineVisibility' | 'size' | 'sort'> & PerTypeSizeOptions & RefusalProps & RowsProps & {
+export type TableChartProps = OptionsInput<Omit<TableOptions, 'columnVisibility' | 'inlineVisibility' | 'size' | 'sort'>> & PerTypeSizeOptions & RefusalProps & RowsProps & {
   data: TableData;
   /** Applied to a wrapper around the table. */
   className?: string;
@@ -585,7 +586,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   const [scrollWidth, setScrollWidth] = useState<number>();
   const resolvedSize = size === 'container' ? container.size : size;
   const stableSize = useStableValue(typeof resolvedSize === 'object' ? resolvedSize : {});
-  const authoredTableOptions: TableOptions = {
+  const authoredTableOptions: OptionsInput<TableOptions> = {
     ...options,
     // An authored sibling order goes back into the options the core resolves;
     // a column sort is reader state and never reaches resolveTable.

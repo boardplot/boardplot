@@ -173,7 +173,7 @@ describe('React adapter boundary', () => {
     const resized: ResizeObserverCallback[] = [];
     vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} constructor(callback: ResizeObserverCallback) { resized.push(callback); } });
     const onGeometry = vi.fn();
-    const chart = <ColumnChart data={DATA} size={{ width: 279, height: 180 }} onGeometry={onGeometry} />;
+    const chart = <ColumnChart data={DATA} size={{ width: 119, height: 180 }} onGeometry={onGeometry} />;
     const server = renderToStaticMarkup(chart);
     expect(server).toContain('data-bp-refused="size-below-floor"');
     expect(server).not.toContain('<svg');
@@ -183,8 +183,8 @@ describe('React adapter boundary', () => {
     const placeholder = container.querySelector('[role="status"]');
     // the lazy reader box says the chart needs more room; the exact sizes sit in its details and title.
     expect(placeholder?.textContent).toContain('This chart needs more room.');
-    expect(placeholder?.textContent).toContain('Column needs at least 280 × 180px; received 279 × 180px');
-    expect(placeholder?.getAttribute('data-bp-diagnostics')).toContain('needs at least 280 × 180px; received 279 × 180px');
+    expect(placeholder?.textContent).toContain('Column needs at least 120 × 180px; received 119 × 180px');
+    expect(placeholder?.getAttribute('data-bp-diagnostics')).toContain('needs at least 120 × 180px; received 119 × 180px');
     expect(container.querySelector('svg')).toBeNull();
     expect(onGeometry).not.toHaveBeenCalled();
 

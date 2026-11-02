@@ -269,7 +269,7 @@ export interface Theme {
      * two card types (kpi, bullet) are exempt from the width classes and
      * keep their compact card margins.
      */
-    canvas?: { base: Margin; wide: Margin };
+    canvas?: { base?: Partial<Margin>; wide?: Partial<Margin> };
     /** Frame gap tokens; `*Wide` variants apply at W-L. */
     gap?: {
       titleSubtitle?: number;
@@ -304,7 +304,7 @@ export interface Theme {
      * Where a key the chart cannot drop goes when the spec hides or leaves
      * the legend: the value key of a tilemap or choropleth. Absent
      * keeps 'top', one row above the plot; a position the spec names wins.
-     * 'right' is refused: a key beside the plot takes the plot's width.
+     * A theme names only 'top' or 'bottom': a key beside the plot is the spec's choice.
      */
     required?: 'bottom' | 'top';
   };
@@ -763,4 +763,4 @@ export interface ThemeTablePad {
  * Preset names plus any theme registered at runtime via `registerTheme`
  * (the design-interface path: brand themes load as validated JSON).
  */
-export type ThemeRef = string | { preset: string; overrides?: DeepPartial<Theme> };
+export type ThemeRef = string | { preset: string; overrides?: DeepPartial<Theme> } | { preset?: never; overrides: DeepPartial<Theme> };
