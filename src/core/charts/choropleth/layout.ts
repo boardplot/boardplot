@@ -1925,16 +1925,18 @@ function labelPlanForRegion(
   const compactText = regionLabelText(region, compactFont, measure, valueTexts);
   // Labels claim room in value order, so the highest values keep theirs.
   const priority = PRIORITY.interior + Math.max(0, 300 - rank);
+  const inlineCandidates = inlineRegionCandidates(region, compactText, compactFont, effectiveFill(paintColor(theme, insidePaint), pattern, theme), measure, insidePaint, pattern);
   const compact = regionLabelRequest(
     region,
     compactText,
     compactFont,
     priority,
-    inlineRegionCandidates(region, compactText, compactFont, effectiveFill(paintColor(theme, insidePaint), pattern, theme), measure, insidePaint, pattern)
+    valueTexts.has(region.id)
       // A value label is wide enough to reach a coastline from inside its region. A seat whose
       // box meets the region's outline puts a line through the figures, so the label takes a
       // callout or the list, which carries the value.
-      .filter(candidate => !valueTexts.has(region.id) || !rectMeetsOutline(candidate.rect, region.polygons)),
+      ? candidatesOffOutline(inlineCandidates, region)
+      : inlineCandidates,
   );
   const markerNeedsLeader = region.marker !== undefined && region.polygons.length === 0;
   // Marker records stay visible as marks; their labels must not cover the marker.
@@ -2542,45 +2544,78 @@ function claimLeader(
   }
 }
 
-/** True when an edge of the polygons' rings passes through or touches the rect. */
-function rectMeetsOutline(rect: Rect, polygons: GeoPoint[][][]): boolean {
-  const [minX, minY, maxX, maxY] = boundsOfPolygons(polygons);
-  const x0 = rect.x;
-  const y0 = rect.y;
-  const x1 = rect.x + rect.w;
-  const y1 = rect.y + rect.h;
-  if (x1 < minX || x0 > maxX || y1 < minY || y0 > maxY) return false;
-  for (const polygon of polygons) {
+/**
+ * The candidates whose box meets no edge of the region's outline. A box that lies inside the
+ * anchor's clearance disc cannot meet the outline, so it needs no edge test. One pass over the
+ * edges collects those that reach the boxes still in question; each box is tested against them.
+ */
+function candidatesOffOutline(
+  candidates: LabelRequest['candidates'],
+  region: Pick<FittedGeoRegion, 'anchor' | 'polygons'>,
+): LabelRequest['candidates'] {
+  const { x: ax, y: ay, clearance } = region.anchor;
+  const reach = clearance * clearance;
+  const open = candidates.filter(({ rect }) => {
+    const dx = Math.max(Math.abs(rect.x - ax), Math.abs(rect.x + rect.w - ax));
+    const dy = Math.max(Math.abs(rect.y - ay), Math.abs(rect.y + rect.h - ay));
+    return dx * dx + dy * dy >= reach;
+  });
+  if (open.length === 0) return candidates;
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (const { rect } of open) {
+    x0 = Math.min(x0, rect.x);
+    y0 = Math.min(y0, rect.y);
+    x1 = Math.max(x1, rect.x + rect.w);
+    y1 = Math.max(y1, rect.y + rect.h);
+  }
+  const [minX, minY, maxX, maxY] = boundsOfPolygons(region.polygons);
+  if (x1 < minX || x0 > maxX || y1 < minY || y0 > maxY) return candidates;
+  const edges: number[] = [];
+  for (const polygon of region.polygons) {
     for (const ring of polygon) {
       let previous = ring[ring.length - 1];
       for (const point of ring) {
-        if (previous !== undefined && segmentMeetsRect(previous, point, x0, y0, x1, y1)) return true;
+        if (
+          previous !== undefined
+          && Math.max(previous[0], point[0]) >= x0 && Math.min(previous[0], point[0]) <= x1
+          && Math.max(previous[1], point[1]) >= y0 && Math.min(previous[1], point[1]) <= y1
+        ) edges.push(previous[0], previous[1], point[0], point[1]);
         previous = point;
       }
     }
   }
-  return false;
+  if (edges.length === 0) return candidates;
+  return candidates.filter(({ rect }) => {
+    for (let i = 0; i < edges.length; i += 4) {
+      if (segmentMeetsRect(edges[i]!, edges[i + 1]!, edges[i + 2]!, edges[i + 3]!, rect.x, rect.y, rect.x + rect.w, rect.y + rect.h)) return false;
+    }
+    return true;
+  });
 }
 
-/** Liang-Barsky clip of the segment a-b against the box. */
-function segmentMeetsRect(a: GeoPoint, b: GeoPoint, x0: number, y0: number, x1: number, y1: number): boolean {
-  const dx = b[0] - a[0];
-  const dy = b[1] - a[1];
+/** Liang-Barsky clip of the segment (ax, ay)-(bx, by) against the box. */
+function segmentMeetsRect(ax: number, ay: number, bx: number, by: number, x0: number, y0: number, x1: number, y1: number): boolean {
+  const dx = bx - ax;
+  const dy = by - ay;
   let t0 = 0;
   let t1 = 1;
-  const edges: [number, number][] = [[-dx, a[0] - x0], [dx, x1 - a[0]], [-dy, a[1] - y0], [dy, y1 - a[1]]];
-  for (const [p, q] of edges) {
+  for (let side = 0; side < 4; side++) {
+    const p = side === 0 ? -dx : side === 1 ? dx : side === 2 ? -dy : dy;
+    const q = side === 0 ? ax - x0 : side === 1 ? x1 - ax : side === 2 ? ay - y0 : y1 - ay;
     if (p === 0) {
       if (q < 0) return false;
+      continue;
+    }
+    const t = q / p;
+    if (p < 0) {
+      if (t > t1) return false;
+      if (t > t0) t0 = t;
     } else {
-      const t = q / p;
-      if (p < 0) {
-        if (t > t1) return false;
-        if (t > t0) t0 = t;
-      } else {
-        if (t < t0) return false;
-        if (t < t1) t1 = t;
-      }
+      if (t < t0) return false;
+      if (t < t1) t1 = t;
     }
   }
   return true;
