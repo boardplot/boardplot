@@ -27,6 +27,18 @@ export function applyAxisBounds(
   }) as [number, number];
 }
 
+/** The authored step when the value axis is drawn; a hidden axis has no ticks, so the step is dropped with a warning. */
+export function shownTickStep(step: number | undefined, shown: boolean, warnings: LintWarning[]): number | undefined {
+  if (step === undefined || shown) return step;
+  warnings.push({
+    code: 'tick-step-ignored', severity: 'warn',
+    message: `valueAxis.tickStep ${step} has no effect because the value axis is hidden`,
+    suggest: 'set valueAxis.show to true, or drop valueAxis.tickStep',
+    field: ['options', 'valueAxis', 'tickStep'],
+  });
+  return undefined;
+}
+
 /** Authored linear ticks, with outward bounds unless at least two multiples fit inside. */
 export function applyTickStep(
   domain: [number, number], step: number | undefined, warnings: LintWarning[], inside = false,

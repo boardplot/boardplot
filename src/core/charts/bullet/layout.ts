@@ -42,7 +42,7 @@ import {
   type SolveCtx,
 } from '../../label/solver';
 import { accessibleTitle, MAGNITUDE_CEILING, NormalizeError, resolveHighlight, resolveSize, resolveSubtitle } from '../../normalize/shared';
-import { applyAxisBounds, applyTickStep, bandScale, linearScale, niceDomain, type BandScale, type LinearScale } from '../../scale';
+import { applyAxisBounds, applyTickStep, shownTickStep, bandScale, linearScale, niceDomain, type BandScale, type LinearScale } from '../../scale';
 import { readerFloorPx, textScaleOf } from '../../typeFloors';
 import { cardFrameTheme, cardSize } from '../sparkline/layout';
 import { frameTextOptions, normalizeLegendOption, solveFrame, type FrameInput, type LegendItemInput, plotHeightAfter, authoredFootnoteCount, authoredNotes } from '../../frame';
@@ -984,7 +984,7 @@ export function layoutBullet(
       dataExtent: [loExt, hiExt || 1],
       maxWasteFraction: 0.15,
     });
-    const stepped = applyTickStep(nice, options.valueAxis?.show ? options.valueAxis.tickStep : undefined, warnings);
+    const stepped = applyTickStep(nice, shownTickStep(options.valueAxis?.tickStep, options.valueAxis?.show === true, warnings), warnings);
     const [dLo, dHi] = stepped.domain;
     stepTicks = stepped.ticks;
     const x = linearScale([dLo, dHi], [plot.x, plot.x + plot.w]);

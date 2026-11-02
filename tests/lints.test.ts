@@ -489,6 +489,26 @@ describe('mechanical lints', () => {
     expect(scatter.warnings).toContainEqual(expect.objectContaining({ code: 'tick-step-ignored', message: expect.stringContaining('linear axis only') }));
   });
 
+  // A zoomed scatter whose window holds no step multiple crashed with an unserializable NaN tick instead of drawing nice ticks.
+  it('draws nice ticks when no tick step multiple falls inside a scatter view window', () => {
+    const body = render({ spec: { type: 'scatter', data: { points: [{ id: 'a', x: 1, y: 30 }, { id: 'b', x: 2, y: 40 }, { id: 'c', x: 3, y: 95 }] },
+      options: { title: 'Readings', viewDomain: { y: [28, 52] }, valueAxis: { show: true, tickStep: 60 } } }, return: ['svg'] }).body as { ok: boolean; svg: string; warnings: { code: string }[] };
+    expect(body.ok).toBe(true);
+    expect(body.warnings).toContainEqual(expect.objectContaining({ code: 'tick-step-ignored' }));
+  });
+
+  // A hidden value axis has no ticks, so the step used to vanish without a word.
+  it('warns when tickStep is set on a hidden value axis', () => {
+    const data = { categories: ['North', 'South'], series: [{ id: 'orders', values: [11, 23] }] };
+    const bulletRows = { rows: [{ id: 'north', label: 'North', value: 11, target: 14 }, { id: 'south', label: 'South', value: 23, target: 20 }] };
+    const varianceData = { categories: ['North', 'South'], series: [{ id: 'orders', label: 'Orders', values: [11, 23] }, { id: 'py', label: 'Prior year', role: 'reference', values: [9, 25] }] };
+    for (const type of ['bar', 'dot', 'bullet', 'variance']) {
+      const body = render({ spec: { type, data: type === 'bullet' ? bulletRows : type === 'variance' ? varianceData : data, options: { title: 'Orders', ...(type === 'variance' ? { variant: 'absolute', variance: { vs: 'py' } } : {}), valueAxis: { show: false, tickStep: 5 } } }, return: ['svg'] }).body as { ok: boolean; warnings?: { code: string }[] };
+      expect(body.ok, type).toBe(true);
+      expect(body.warnings, type).toContainEqual(expect.objectContaining({ code: 'tick-step-ignored' }));
+    }
+  });
+
   // A share chart kept "in $m" over its percent labels, and a mekko kept "in %" over amounts or dropped a percent cell's sign.
   it('names the percent in the unit line of a share chart and keeps a mekko percent cell as a percent', () => {
     const categories = [{ id: 'east', label: 'East' }, { id: 'west', label: 'West' }];

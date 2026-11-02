@@ -495,7 +495,16 @@ function scatterAxisDomain(
   if (clamp?.edges.y.max !== undefined) dyHi = clamp.edges.y.max;
   if (stepTicks) {
     stepTicks = stepTicks.filter((v) => v >= dyLo && v <= dyHi);
-    if (ticks) ticks = { ...ticks, y: stepTicks };
+    if (stepTicks.length < 2) {
+      // The window or clamp holds no step multiples; the nice ticks are drawn.
+      warnings.push({
+        code: 'tick-step-ignored', severity: 'warn',
+        message: `valueAxis.tickStep ${va.tickStep} puts fewer than two ticks inside the visible Y range; the nice ticks are drawn instead`,
+        suggest: 'pick a smaller step, or widen options.viewDomain.y',
+        field: ['options', 'valueAxis', 'tickStep'],
+      });
+      stepTicks = undefined;
+    } else if (ticks) ticks = { ...ticks, y: stepTicks };
   }
   const viewY = options.viewDomain?.y ? ([dyLo, dyHi] as [number, number]) : undefined;
   refuseValueLinesOutsideAxis(valueLines, [dyLo, dyHi], viewY ? {} : { min: va.min, max: va.max }, fmt);

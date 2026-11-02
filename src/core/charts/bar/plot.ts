@@ -18,7 +18,7 @@ import { partialAxisWords, partialFootnotes, partialLegendKeys, partialPattern, 
 import { axisBreakInvalid } from '../../axisBreakInvalid';
 import { axisBreakHeightOrderWarning } from '../../axisBreakOrder';
 import { breakStyleRefusal, stackBreakReversesOrder } from '../band/breakOrder';
-import { applyTickStep, bandScale, brokenLinearScale, invalidLinearBreakReason, linearScale, niceDomain, type LinearBreak } from '../../scale';
+import { applyTickStep, shownTickStep, bandScale, brokenLinearScale, invalidLinearBreakReason, linearScale, niceDomain, type LinearBreak } from '../../scale';
 import { resolveSize } from '../../normalize/shared';
 import { COLLECT_IDENTITIES } from '../../seriesIdentity';
 import { defaultMeasurer, type FontSpec } from '../../text';
@@ -416,7 +416,7 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
     dataExtent: [loExt, hiExt || 1],
     maxWasteFraction: 0.15,
   });
-  const stepped = applyTickStep(nice, options.valueAxis?.show ? options.valueAxis.tickStep : undefined, warnings);
+  const stepped = applyTickStep(nice, shownTickStep(options.valueAxis?.tickStep, options.valueAxis?.show === true, warnings), warnings);
   let [dLo, dHi] = stepped.domain;
   let stepTicks = stepped.ticks;
   let activeBreak = barAxisBreak(domain, dLo, dHi, warnings);

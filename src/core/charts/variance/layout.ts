@@ -65,7 +65,7 @@ import { accessibleTitle,
   resolveHighlight,
   resolveSize,
 } from '../../normalize/shared';
-import { applyAxisBounds, applyTickStep, bandScale, linearScale, niceDomain } from '../../scale';
+import { applyAxisBounds, applyTickStep, shownTickStep, bandScale, linearScale, niceDomain } from '../../scale';
 import { valueLineExtent } from '../../valueLineDomain';
 import { applyValueAxisTitleInk, layoutValueAxis, measureValueAxisWidth, planValueAxisTitle, valueAxisTitleBand, valueAxisTitleRequest } from '../../axis';
 import { PLOT_FLOOR_RECT } from '../../sizing';
@@ -653,7 +653,7 @@ export function layoutVariance(
     })
     : lo === 0 && hi === 0 ? [0, 1] : [lo, hi];
   [dLo, dHi] = applyAxisBounds([dLo, dHi], [Math.min(lo, 0), Math.max(hi, 0)], va, warnings);
-  const stepped = applyTickStep([dLo, dHi], va.show ? va.tickStep : undefined, warnings);
+  const stepped = applyTickStep([dLo, dHi], shownTickStep(va.tickStep, va.show === true, warnings), warnings);
   [dLo, dHi] = stepped.domain;
 
   const axisFmt = mode === 'relative' ? (v: number) => formatAutomaticPercent(v, 0, false, options.locale?.language)

@@ -47,7 +47,7 @@ import { accessibleTitle,
   resolveSize,
 } from '../../normalize/shared';
 import { rangeMidUndrawn, resolveCellRange, type RangeMark } from '../../rangeRules';
-import { applyAxisBounds, applyTickStep, bandScale, linearScale, niceDomain, type BandScale } from '../../scale';
+import { applyAxisBounds, applyTickStep, shownTickStep, bandScale, linearScale, niceDomain, type BandScale } from '../../scale';
 import { authoredNotes, frameTextOptions, normalizeLegendOption, solveFrame, type LegendItemInput, plotHeightAfter, authoredFootnoteCount } from '../../frame';
 import { HARD_MINIMUM, rowSizing, SIZE_TOLERANCE } from '../../sizing';
 import { rowDrivenHeight } from '../../rowCanvas';
@@ -1127,7 +1127,7 @@ function layoutRowIntervals(
     maxWasteFraction: 0.15,
     preserveDataSideOfZero: true,
   });
-  const stepped = applyTickStep(nice, axisShown ? options.valueAxis?.tickStep : undefined, warnings);
+  const stepped = applyTickStep(nice, shownTickStep(options.valueAxis?.tickStep, axisShown, warnings), warnings);
   const [dLo, dHi] = stepped.domain;
   const planRows = (noNameColumn: boolean, out: LintWarning[]) => {
     const sharedWarnings: LintWarning[] = [];
