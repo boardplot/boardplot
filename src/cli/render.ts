@@ -44,7 +44,10 @@ function renderOptions(input: RenderInput) {
   const format = (input.format ?? 'svg') as 'svg' | 'png';
   if (format !== 'svg' && format !== 'png') {
     throw new InputError('invalid-argument', 'format must be svg or png', {
-      path: '/format', expected: { values: ['svg', 'png'] }, suggest: 'Pass format svg, or png for an image.',
+      path: '/format', expected: { values: ['svg', 'png'] },
+      suggest: typeof input.format === 'string' && input.format.toLowerCase() === 'pdf'
+        ? 'PDF is not drawn; pass svg or png and place the image in the document tool, or print from the browser.'
+        : 'Pass format svg, or png for an image.',
       fix: [{ op: 'replace', path: '/format', value: 'svg' }],
     });
   }
@@ -118,6 +121,9 @@ interface Drawing { name: string; chart: DrawnChart; svg: string; fontFamily: st
 
 function outDirectory(outDir: string | undefined): string | undefined {
   if (outDir === undefined) return undefined;
+  if (outDir === '-') {
+    throw new InputError('invalid-argument', 'outDir cannot be -', { path: '/outDir', suggest: 'Pass an absolute folder, or return svg in the answer.' });
+  }
   if (typeof outDir !== 'string' || outDir === '') {
     throw new InputError('invalid-argument', 'outDir must be a directory path', { path: '/outDir', suggest: 'Pass an absolute directory path.' });
   }
@@ -131,8 +137,17 @@ function outDirectory(outDir: string | undefined): string | undefined {
  */
 function outFileExtension(outDir: string | undefined, out: string | undefined): string | undefined {
   if (outDir === undefined || out === undefined || /[\\/]$/.test(outDir) || isFolder(out)) return undefined;
-  const extension = extname(out).toLowerCase();
-  return extension === '.png' || extension === '.svg' ? extension : undefined;
+  const extension = extname(out);
+  const lower = extension.toLowerCase();
+  if (lower === '.png' || lower === '.svg') return lower;
+  if (/^\.[a-z]+$/i.test(extension)) {
+    throw new InputError('invalid-argument', `--out ends in ${extension}; Boardplot writes svg and png`, {
+      path: '/outDir', suggest: lower === '.pdf'
+        ? 'PDF is not drawn; use .svg or .png for --out and place the image in the document tool, or print from the browser. End --out with / to make a folder of that name.'
+        : 'End --out with / to make a folder of that name, or use .svg or .png.',
+    });
+  }
+  return undefined;
 }
 
 /** A path under a folder without search permission cannot be read here; the write step names that cause. */

@@ -4,6 +4,10 @@ export function printOut(...values: unknown[]): void {
   console.log(...values);
 }
 
+export function writeRaw(value: string | Buffer): void {
+  process.stdout.write(value);
+}
+
 export function printError(...values: unknown[]): void {
   console.error(...values);
 }

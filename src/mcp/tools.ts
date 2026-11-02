@@ -98,7 +98,7 @@ const absolutePath = (description: string) =>
 const rowArguments = {
   rows: z.array(z.looseObject({})).optional()
     .describe('A flat table that fills a bare spec. One row per category/series pair, waterfall item, scatter point, sankey link, map region, table row or histogram or box observation. Keep data.pack for maps and data.columns for tables. Needs columns, except for a table.'),
-  rowsFile: absolutePath('Absolute path of a local .json (an array of row objects) or .csv file (a header row) of at most 2 MB, read in place of rows so the numbers never pass through you. It must sit under a client root, the server working directory, the temp folder or a folder in BOARDPLOT_ROWS_ROOTS. A CSV separated by semicolons is detected from its header, and its values read a decimal comma as a decimal. Needs columns, except for a table.').optional(),
+  rowsFile: absolutePath('Absolute path of a local .json (an array of row objects) or .csv, .tsv or .txt file (a header row) of at most 10 MB, read in place of rows so the numbers never pass through you. It must sit under a client root, the server working directory, the temp folder or a folder in BOARDPLOT_ROWS_ROOTS. A file separated by semicolons is detected from its header, and its values read a decimal comma as a decimal. Needs columns, except for a table.').optional(),
   columns: z.strictObject({
     category: z.string().optional(), series: z.string().optional(), value: z.string().optional(),
     categoryLabel: z.string().optional(), seriesLabel: z.string().optional(), unit: z.string().optional(),

@@ -11,7 +11,7 @@ import { sanitizeObjectPrototype } from '../core/doc/docExpand';
 import { BOARDPLOT_VERSION } from '../version';
 import { FlagError, parseFlags, type Flags } from './flags';
 import { HELP_VERBS, POSITIONALS, USAGE, VERBS } from './grammar';
-import { printError, printOut } from './output';
+import { printError, printOut, writeRaw } from './output';
 import { InputError, ok, rejectedInput, runVerb, type VerbResult } from './result';
 import { readSpecFile } from './spec';
 import { list } from './list';
@@ -85,6 +85,21 @@ function writtenPaths(result: VerbResult): VerbResult {
   return result;
 }
 
+function stdoutRender(result: VerbResult): VerbResult {
+  if (result.exit !== 0) return result;
+  const charts = result.body.charts;
+  if (Array.isArray(charts) && charts.length !== 1) {
+    throw new InputError('invalid-argument', `--out - writes one chart; the spec draws ${charts.length}`, {
+      path: '/outDir', suggest: 'Pass --out with a folder.',
+    });
+  }
+  const { svg, ...chart } = (Array.isArray(charts) ? charts[0] : result.body) as Record<string, unknown>;
+  const drawing = result.images?.[0] ?? svg;
+  if (typeof drawing !== 'string' && !Buffer.isBuffer(drawing)) throw new Error('render produced no drawing');
+  const body = Array.isArray(charts) ? { ...result.body, charts: [chart] } : chart;
+  return { ...result, body, drawing };
+}
+
 /** What a call's usage event may read: the spec and the type it named (docs/TELEMETRY.md). */
 interface UsageSeen {
   spec?: unknown;
@@ -104,15 +119,17 @@ function dispatch(verb: string, flags: Flags, seen: UsageSeen): VerbResult {
     case 'fixtures':
       seen.type = text(flags, 'type');
       return fixtures({ type: text(flags, 'type'), id: text(flags, 'id'), kind: text(flags, 'kind') }, Infinity);
-    case 'render':
-      // The CLI answers with one JSON object; a PNG has to go to a file.
+    case 'render': {
+      const stdout = text(flags, 'out') === '-';
       if (text(flags, 'format') === 'png' && text(flags, 'out') === undefined) {
         throw new InputError('png-needs-out', 'render --format png writes files; pass --out <dir>', {
           suggest: 'Add --out with a directory, or render svg.',
         });
       }
       seen.spec = readSpecFile(first);
-      return quietRender(flags, writtenPaths(render({
+      const requested = text(flags, 'return');
+      const returned = (requested ?? 'reading').split(',').map((entry) => entry.trim());
+      const result = render({
         spec: seen.spec,
         format: text(flags, 'format'),
         target: text(flags, 'target'),
@@ -120,12 +137,14 @@ function dispatch(verb: string, flags: Flags, seen: UsageSeen): VerbResult {
         height: text(flags, 'height'),
         scale: text(flags, 'scale'),
         background: text(flags, 'background'),
-        outDir: text(flags, 'out'),
+        outDir: stdout ? undefined : text(flags, 'out'),
         overwrite: flags.overwrite === true,
         fontTables: text(flags, 'font-tables'),
-        ...(text(flags, 'return') === undefined ? {} : { return: text(flags, 'return')!.split(',').map((entry) => entry.trim()) }),
+        ...(stdout ? { return: [...returned, 'svg'] } : requested === undefined ? {} : { return: returned }),
         ...rowFlags(flags),
-      })));
+      });
+      return quietRender(flags, stdout ? stdoutRender(result) : writtenPaths(result));
+    }
     case 'measure':
       seen.spec = readSpecFile(first);
       return measure({ spec: seen.spec, target: text(flags, 'target'), width: text(flags, 'width'), fontTables: text(flags, 'font-tables'), ...rowFlags(flags) });
@@ -162,6 +181,9 @@ export function main(argv: string[]): number {
   }
   const [rawVerb, ...rest] = argv;
   const verb = rawVerb === undefined || (HELP_VERBS as readonly string[]).includes(rawVerb) ? 'help' : rawVerb;
+  const end = rest.indexOf('--');
+  const flagArgs = end < 0 ? rest : rest.slice(0, end);
+  const stdout = verb === 'render' && flagArgs.some((arg, index) => arg === '--out=-' || ((arg === '--out' || arg === '-o') && flagArgs[index + 1] === '-'));
   const seen: UsageSeen = {};
   let format: string | undefined;
   const result = runVerb(() => {
@@ -177,13 +199,18 @@ export function main(argv: string[]): number {
     format = text(flags, 'format');
     return dispatch(verb, flags, seen);
   });
-  printOut(JSON.stringify(result.body));
+  if (stdout) {
+    if (result.drawing !== undefined) writeRaw(result.drawing);
+    printError(JSON.stringify(result.body));
+  } else {
+    printOut(JSON.stringify(result.body));
+  }
   // Usage counts only when the user turned them on and the build has a collector; telemetryState() decides.
   if (verb !== 'telemetry' && verb !== 'feedback' && verb !== 'help') {
     try {
       const state = telemetryState();
       recordCliUsage({ command: verb, ...seen, format, body: result.body, host: hostFromEnv() }, state);
-      cliNotice(state);
+      if (!stdout) cliNotice(state);
     } catch {
       // Usage counts never change a command's answer or exit code.
     }
