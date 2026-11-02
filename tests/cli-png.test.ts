@@ -101,7 +101,8 @@ describe('render --format png', () => {
       render() { return { asPng: () => new resvg!.Resvg(prepared, { font }).render().asPng() }; }
     } };
     const document = (body: string) => `<svg xmlns="http://www.w3.org/2000/svg" width="500" height="120" font-family="Helvetica Neue"><defs><clipPath id="prefix"><rect width="38" height="120"/></clipPath></defs>${body}</svg>`;
-    for (const weight of [400, 700]) {
+    // Bridge asks for 500 and 600, which Helvetica Neue and Arial match by CSS weight rules, not by an exact face.
+    for (const weight of [400, 500, 600, 700]) {
       const text = (body: string) => `<text x="10" y="45" font-size="30" font-weight="${weight}" clip-path="url(#prefix)">${body}</text>`;
       const expected = new resvg!.Resvg(document(text('III')), { font }).render().asPng();
       for (const symbol of ['→', '↗', '↘']) {

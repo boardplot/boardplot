@@ -3,6 +3,8 @@ import { chartStrings } from '../strings';
 const EN = {
   // reader-facing wording linked only by its consumers.
   "notInData": "Not in data",
+  "unknownRegionLeftOut": "Region '{v1}' is not in tile pack '{v2}' and was left out.",
+  "regionsLeftOutNote": "Not on this map",
   "regionCountPrefix": "{v1}-region",
   "listedRegions": "{v1} listed regions",
   "noNumericValues": "No numeric values are available. ",
@@ -28,6 +30,8 @@ const EN = {
 const DE: { [K in keyof typeof EN]: string } = {
   // reader-facing wording linked only by its consumers.
   "notInData": "Nicht in den Daten",
+  "unknownRegionLeftOut": "Region '{v1}' ist nicht im Kachelpaket '{v2}' enthalten und wurde weggelassen.",
+  "regionsLeftOutNote": "Nicht auf dieser Karte",
   "regionCountPrefix": "{v1} {v1|Region|Regionen}",
   "listedRegions": "{v1} {v1|aufgeführte Region|aufgeführte Regionen}",
   "noNumericValues": "Keine Zahlenwerte verfügbar. ",

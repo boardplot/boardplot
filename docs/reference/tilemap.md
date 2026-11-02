@@ -38,15 +38,15 @@ One form; its chart ID is `tilemap`.
 
 | Path | Type | Required | Meaning |
 |---|---|---|---|
-| pack | string | yes | Built-in equal-area tile layout; region ids must belong to this pack. One of `'eu27'`, `'europe'`, `'world'`, `'us-states'`. |
+| pack | string | yes | Built-in equal-area tile layout. Unknown data region ids are left out with a warning and a note; all-unknown data is refused. One of `'eu27'`, `'europe'`, `'world'`, `'us-states'`. |
 | regions | array | yes | Observed regions keyed by pack id; omitted pack members are not in the data and draw plain background. Zero regions is empty-data. |
-| regions[].id | string | yes | Region identifier from the selected geographic pack. |
+| regions[].id | string | yes | Region identifier from the selected geographic pack. Exact spellings win, then ids and aliases match without regard to case. Unknown data ids are left out with a warning and a note; all-unknown data is refused. |
 | regions[].value | number \| null | yes | Region measure; null without a state means missing data. |
 | regions[].state | string |  | Named null state: suppressed, not meaningful (nm), or not applicable (na). Each has a distinct pattern and key. Requires value null. One of `'na'`, `'nm'`, `'suppressed'`. |
 | overlays | array |  | Named glyphs and labels placed at geographic anchors. |
 | overlays[].id | string | yes | Stable overlay identifier, unique within the exhibit. |
 | overlays[].at | object | yes | Region or longitude/latitude anchor for the overlay. |
-| overlays[].at.region (overlays[].at branch 1) | string | yes | Region id whose pack anchor positions the overlay. |
+| overlays[].at.region (overlays[].at branch 1) | string | yes | Region id whose pack anchor positions the overlay. Exact spellings win, then ids and aliases match without regard to case. |
 | overlays[].at.lon (overlays[].at branch 2) | number | yes | Longitude in degrees, west negative and east positive. |
 | overlays[].at.lat (overlays[].at branch 2) | number | yes | Latitude in degrees, south negative and north positive. |
 | overlays[].glyph | object | yes | Overlay mark and its semantic data. |

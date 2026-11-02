@@ -6,9 +6,9 @@ import { chartString } from '../../strings/mekko';
  * because the plot rect comes out of it.
  */
 
-import { axisTitleAllowed, measureValueAxisWidth, planValueAxisTitle, valueAxisTitleBand } from '../../axis';
+import { axisTitleAllowed, measureValueAxisWidth, planValueAxisTitle, tickFormatter, valueAxisTitleBand } from '../../axis';
 import { formatAutomaticPercent } from '../../format';
-import { defaultFormatSpec, parseFormatExample, specUnitKind } from '../../formatSpec';
+import { defaultFormatSpec, exampleSpec, parseFormatExample, specUnitKind } from '../../formatSpec';
 import { frameTextOptions, normalizeLegendOption, plotHeightAfter, solveFrame, fixedPlotChrome, plotChromeFloor, type FrameInput, type FrameResult, type LegendItemInput, authoredFootnoteCount } from '../../frame';
 import { PLOT_FLOOR_PX, plotFloorShare } from '../../sizing';
 import { categoryRowTop, hangingLabelReserve, planCategoryRow } from '../../label/categoryRow';
@@ -195,8 +195,11 @@ export function mekkoPlotArea(env: MekkoEnv, domain: MekkoDomain, frame: FrameRe
   const showTotals = kindSetting(env, 'total') !== false && domain.cats.some((c) => !domain.wholeUnknown.has(c.id));
   // A stack of percent cells keeps its percent sign on the axis, as on its labels.
   const percentCells = mode === 'unit' && domain.series.every((s) => s.vals.every((cell) => cell.v === null || cell.isPct));
-  const axisFmt = mode === 'percent' ? (v: number) => formatAutomaticPercent(v, 0, false, options.locale?.language) : percentCells ? env.cellPctFmt : env.fmt;
   const axisSpec = percentCells && !(options.format && specUnitKind(parseFormatExample(options.format)) === 'percent') ? { ...defaultFormatSpec(options.locale?.language), suffix: '%' } : undefined;
+  const stepSpec = mode === 'percent' ? { ...defaultFormatSpec(options.locale?.language), suffix: '%' }
+    : axisSpec ?? (options.format ? exampleSpec(options.format, options.locale?.language) : defaultFormatSpec(options.locale?.language));
+  const axisFmt = domain.stepTicks ? tickFormatter(stepSpec, domain.stepTicks)
+    : mode === 'percent' ? (v: number) => formatAutomaticPercent(v, 0, false, options.locale?.language) : percentCells ? env.cellPctFmt : env.fmt;
   // A percent or unit mekko on a small canvas prints every value on its
   // segment (and a unit stack its total above it), so the value axis repeats
   // them and costs the plot its left gutter. A percent chart keeps the axis
@@ -215,7 +218,7 @@ export function mekkoPlotArea(env: MekkoEnv, domain: MekkoDomain, frame: FrameRe
   // Percent mode: the name and total rows stand between the title and the
   // 100% tick, so the title needs no room of its own for half the tick.
   const axisTitleBand = valueAxisTitleBand(axisTitle, theme, measure, catsOnTop ? measure('0', tickFont).height : 0);
-  const axisReserve = showAxis ? measureValueAxisWidth([dLo, dHi], axisFmt, theme, measure, 5, axisSpec) : 0;
+  const axisReserve = showAxis ? measureValueAxisWidth([dLo, dHi], axisFmt, theme, measure, 5, axisSpec, domain.stepTicks) : 0;
   const plotX0 = frame.plot.x + axisReserve;
   const plotWFull = showAxis ? Math.max(10, frame.plot.w - axisReserve) : frame.plot.w;
   // x positions: cumulative widths, no gaps

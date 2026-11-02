@@ -1,8 +1,9 @@
 import { chartString } from '../../strings/choropleth';
+import { disclosureNote } from '../../notes';
 import { chartTheme } from '../chartEnv';
 import { structureCount } from '../../structureCounts';
 import { levenshtein } from '../../spelling';
-import { authoredNotes, frameTextOptions, legendRequired, solveFrame, SIDE_KEY_PLOT_SHARE, unitPrinted } from '../../frame';
+import { authoredNotes, frameTextOptions, legendRequired, noteLine, solveFrame, SIDE_KEY_PLOT_SHARE, unitPrinted } from '../../frame';
 import { formatAutomaticNumber } from '../../format';
 import { formatterFromExample } from '../../formatSpec';
 import { boxGap, rectContains, rectHitsConvexPolygon, rectsOverlap, round2, type Rect, type Size } from '../../geometry';
@@ -206,15 +207,16 @@ export function layoutChoropleth(
   const pack = getGeoPack(data.pack);
   const idIndex = geoRegionIdIndex(pack.regions);
   const canonicalIds = idIndex.canonical;
-  const { valuesById, statesById } = ingestGeoRegions(data.regions, idIndex, { where: `pack '${pack.id}'`, regionWord: 'pack region' }, warnings, (id, index) => {
+  const { valuesById, statesById, leftOut } = ingestGeoRegions(data.regions, idIndex, { where: `pack '${pack.id}'`, regionWord: 'pack region' }, warnings, (id, index) => {
     const suggestion = nearestRegionId(id, [...canonicalIds.keys()], canonicalIds);
-    throw new NormalizeError(
-      'choropleth-unknown-region',
-      `regions[${index}].id`,
-      `region '${id}' is not present in pack '${pack.id}'`,
-      suggestion ? `did you mean '${suggestion}'?` : undefined,
-    );
+    return {
+      code: 'choropleth-unknown-region', severity: 'warn',
+      message: chartString(options, 'unknownRegionLeftOut', { v1: id, v2: pack.id }),
+      ...(suggestion ? { suggest: chartString(options, 'regionIdSuggestion', { v1: suggestion }) } : {}),
+      owner: { categoryId: id }, field: ['data', 'regions', index, 'id'],
+    };
   });
+  if (leftOut.length) options = { ...options, notes: { ...options.notes, show: [...new Set([...(options.notes?.show ?? ['note']), 'disclosure' as const])] } };
   const explicitLabelIds = resolveLabelRegionIds(
     options.labelRegions ?? [],
     idIndex,
@@ -347,6 +349,7 @@ export function layoutChoropleth(
       source: options.source,
       ...(pack.meta.credit ? { credit: pack.meta.credit } : { source: `${pack.meta.attribution}${userSource}` }),
       footnotes: [
+        ...noteLine(chartString(options, 'regionsLeftOutNote'), leftOut, options).map(disclosureNote),
         // The pack credit may already hold the disclaimer; the method note
         // does not print it a second time.
         ...(methodNote && pack.meta.chartNote && !(pack.meta.credit?.text ?? pack.meta.attribution).includes(pack.meta.chartNote) ? [pack.meta.chartNote] : []),

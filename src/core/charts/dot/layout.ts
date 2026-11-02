@@ -60,7 +60,7 @@ import { accessibleTitle,
   resolveSubtitle,
 } from '../../normalize/shared';
 import { resolveCellRange, type DataRange, type RangeMark } from '../../rangeRules';
-import { applyAxisBounds, bandScale, linearScale, niceDomain } from '../../scale';
+import { applyAxisBounds, applyTickStep, shownTickStep, bandScale, linearScale, niceDomain } from '../../scale';
 import { unitPrinted, frameTextOptions, normalizeLegendOption, solveFrame, fixedPlotChrome, type LegendItemInput, plotHeightAfter, authoredFootnoteCount, authoredNotes } from '../../frame';
 import { defaultMeasurer, type FontSpec } from '../../text';
 import {
@@ -659,6 +659,8 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   ];
   if (extentValues.length > 0 && extentValues.every((value) => value >= 0)) dLo = Math.max(0, dLo);
   if (extentValues.length > 0 && extentValues.every((value) => value <= 0)) dHi = Math.min(0, dHi);
+  const stepped = applyTickStep([dLo, dHi], shownTickStep(options.valueAxis?.tickStep, axisShown, warnings), warnings, true);
+  [dLo, dHi] = stepped.domain;
   if (dLo > 0) {
     warnings.push({
       code: 'nonzero-baseline',
@@ -713,6 +715,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     const axisResult = layoutValueAxis(
       {
         scale: x,
+        ticks: stepped.ticks,
         plot,
         orient: 'x',
         gridlines: gridOn,

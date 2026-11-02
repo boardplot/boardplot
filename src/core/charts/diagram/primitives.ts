@@ -12,6 +12,8 @@ import type { Theme } from '../../types/theme';
 import { diagramSceneId } from './ids';
 
 export const q = (value: number): number => Math.round(value * 2) / 2;
+/** The room a boxed diagram label leaves beside its text, in all on the two sides. A box sized for a text adds it. */
+export const BOX_LABEL_INSET = 8;
 /**
  * How much to grow the gaps between levels when the host sets a height the
  * diagram does not need, only when the host fixed the height: up to 2.6 times, using 80 percent of the spare

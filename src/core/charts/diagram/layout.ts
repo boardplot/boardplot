@@ -45,6 +45,7 @@ import {
   nodeShapeScene,
   q,
   qRect,
+  BOX_LABEL_INSET,
 } from './primitives';
 import { circularLabelBand, circularRing, layoutPreset, strategyHouseBands } from './presets';
 import { layoutOrgChart, orgChartEligible } from './orgChart';
@@ -214,7 +215,7 @@ function layoutDiagramPass(
   // heightFill 'none' keeps the org chart and journey gaps at their natural size.
   const spreadGaps = (options as { heightFill?: string }).heightFill !== 'none';
   // The compact org chart and issue tree lay out and route themselves.
-  const org = architectureEligible(options) ? layoutArchitecture(data, options, plot, { name: stepFont, text: labelFont, title: laneFont }, measure, u, diagramPalette, theme, badgeSizes,
+  const org = architectureEligible(options) ? layoutArchitecture(data, options, plot, { name: stepFont, text: labelFont, title: laneFont, badge: badgeFont }, measure, u, diagramPalette, theme, badgeSizes,
       (rawOptions as { [ARCHITECTURE_PLANS]?: ArchitecturePlans })[ARCHITECTURE_PLANS])
     : orgChartEligible(data, options) ? layoutOrgChart(data, plot, labelFont, measure, u, fixedHeight && spreadGaps)
     : issueTreeEligible(data, options) ? layoutIssueTreeCompact(data, plot, labelFont, measure, u, headingWeight(theme))
@@ -592,7 +593,19 @@ function layoutDiagramPass(
   const edgeLabelSizes = new Map(
     preset.edges.flatMap((edge) =>
       edge.label
-        ? [[edge.id, { width: measure(edge.label, edgeLabelFont).width, height: measure(edge.label, edgeLabelFont).height }] as const]
+        ? [[edge.id, {
+          width: measure(edge.label, edgeLabelFont).width,
+          height: measure(edge.label, edgeLabelFont).height,
+          ...(options.variant === 'circular-process' ? {
+            wrapped: [0.5, 0.65, 0.8].flatMap(share => {
+              const wrapped = wrapText(edge.label!, edgeLabelFont, measure(edge.label!, edgeLabelFont).width * share, 2, measure);
+              return !wrapped.truncated && wrapped.lines.length === 2 ? [{
+                width: Math.max(...wrapped.lines.map(line => measure(line, edgeLabelFont).width)),
+                height: 2 * edgeLabelFont.size * (edgeLabelFont.lineHeight ?? 1.2),
+              }] : [];
+            }),
+          } : {}),
+        }] as const]
         : [],
     ),
   );
@@ -627,7 +640,15 @@ function layoutDiagramPass(
   const edgeLabelKinds = new Map<string, DiagramLabelKind>();
   preset.edges.forEach((edge) => {
     const rect = routed.labelBoxes.get(edge.id);
-    if (!edge.label || !rect) return;
+    if (!edge.label) return;
+    if (!rect) {
+      if (options.variant === 'circular-process') {
+        edgeLabelKinds.set(`edge-label:${edge.id}`, 'diagramEdge');
+        edgeLabelRequests.push({ id: `edge-label:${edge.id}`, kind: 'annotation', typeRole: 'label', owner: { segmentId: edge.id },
+          text: edge.label, lines: [edge.label], font: edgeLabelFont, priority: PRIORITY.interior, candidates: [] });
+      }
+      return;
+    }
     addBoxLabelRequest(
       edgeLabelRequests,
       edgeLabelKinds,
@@ -1102,7 +1123,7 @@ function addBoxLabelRequest(
 ): void {
   // An edge label takes the lines its box was seated for.
   const maxLines = kind === 'diagramEdge' ? Math.max(2, Math.round(box.h / (font.size * (font.lineHeight ?? 1.2)))) : 2;
-  const wrapped = fitText(text, font, Math.max(1, box.w - (kind === 'diagramEdge' ? 0 : 8)), maxLines, measure, { target, typeRole: kind === 'diagramBadge' || kind === 'diagramEdge' ? 'label' : 'axis' });
+  const wrapped = fitText(text, font, Math.max(1, box.w - (kind === 'diagramEdge' ? 0 : BOX_LABEL_INSET)), maxLines, measure, { target, typeRole: kind === 'diagramBadge' || kind === 'diagramEdge' ? 'label' : 'axis' });
   const lineH = font.size * (font.lineHeight ?? 1.2);
   const width = Math.max(1, ...wrapped.lines.map((line) => measure(line, font).width));
   const height = wrapped.lines.length * lineH;
@@ -1474,7 +1495,7 @@ function addNodeCaption(
 
 /** Frame-filling presets need an intrinsic height independent of their current lane bounds. */
 function naturalDiagramSizing(
-  options: DiagramOptions, data: Pick<NormalizedDiagram, 'nodes' | 'groups'>, sizes: ReadonlyMap<string, { width: number; height: number }>,
+  options: DiagramOptions, data: Pick<NormalizedDiagram, 'nodes' | 'groups' | 'edges'>, sizes: ReadonlyMap<string, { width: number; height: number }>,
   font: FontSpec, measure: typeof defaultMeasurer, u: number, measured: ReturnType<typeof contentSizing>, size: { height: number }, plot: Rect,
   headFont: FontSpec = font,
 ) {
@@ -1494,7 +1515,7 @@ function naturalDiagramSizing(
   else if (authored) plotHeight = authoredPlotHeight(nodes, sizes, plot.w, u);
   else if (options.variant === 'circular-process') {
     // The ring with a name-and-detail band above and below it.
-    const { diameter, radius } = circularRing(nodes, { w: plot.w, h: Infinity }, u, { font, measure });
+    const { diameter, radius } = circularRing(nodes, { w: plot.w, h: Infinity }, u, { font, measure }, data.edges);
     plotHeight = 2 * radius + diameter + 2 * circularLabelBand(font, u);
   }
   else if (options.variant === 'roadmap') {

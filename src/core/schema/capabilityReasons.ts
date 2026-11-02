@@ -41,7 +41,7 @@ export const OPTION_REASONS: Readonly<Record<keyof typeof OPTION_CAPABILITY, str
 
 const VALUE_AXIS_REASONS: Readonly<Record<keyof typeof VALUE_AXIS_CAPABILITY, string>> = {
   tickStep:
-    'only line and column draw their ticks at an authored step; this type picks a readable step from the data. Drop tickStep, or set valueAxis.min/max where the domain must widen',
+    'this type has no independent linear value-axis ticks; pareto keeps its count and cumulative-percent scales tied to the total. Drop tickStep',
   reverse:
     'only line and scatter reverse the value axis; bars, columns and bridge steps grow from their baseline, and a reversed axis would read gains as losses. Drop reverse',
   break:
@@ -208,7 +208,10 @@ const ALTERNATIVES: Readonly<Record<string, Readonly<Record<string, string>>>> =
     pvm: 'options.valueAxis.break is the one value-axis setting a pvm bridge reads',
     slope: 'options.valueAxis.min and options.valueAxis.max widen the domain',
   },
-  'valueAxis.tickStep': { '*': 'this type picks a readable step; options.valueAxis.min and options.valueAxis.max widen the domain' },
+  'valueAxis.tickStep': {
+    '*': 'this type has no independent linear value-axis ticks',
+    pareto: 'the count and cumulative-percent scales stay tied to the total; options.valueAxis.min and options.valueAxis.max widen the count domain',
+  },
   'valueAxis.reverse': {
     '*': "this type grows its marks from a baseline, where a reversed axis reads gains as losses; type 'line' and type 'scatter' reverse",
     slope: "for ranks with 1 on top, draw type 'line' with options.variant 'bump' and options.bump.direction 'lowerIsBetter'; to flip a numeric scale, draw type 'line' with options.valueAxis.reverse",

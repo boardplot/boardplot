@@ -117,23 +117,48 @@ export function glyphFallbackFamily(codePoint: number, installed: Set<string> | 
   return null;
 }
 
+/**
+ * The face CSS font matching picks for `weight` among upright faces, as resvg's
+ * font database and browsers do: the width nearest normal first, then weight.
+ * From 400 to 500 the request tries up to 500, then lighter, then heavier;
+ * below 400 lighter first; above 500 heavier first. Bridge asks for 600 and
+ * Helvetica has 400 and 700, so 600 draws Bold.
+ */
+function cssWeightMatch(faces: readonly FontkitFont[], weight: number): FontkitFont | undefined {
+  const width = (font: FontkitFont) => font['OS/2']?.usWidthClass ?? 5;
+  const nearest = Math.min(...faces.map(font => Math.abs(width(font) - 5)));
+  const candidates = faces.filter(font => Math.abs(width(font) - 5) === nearest);
+  const weightOf = (font: FontkitFont) => font['OS/2']?.usWeightClass ?? 400;
+  const rank = (w: number): number => {
+    if (w === weight) return 0;
+    const upTo500 = weight >= 400 && weight <= 500 && w > weight && w <= 500;
+    if (upTo500) return 1 + (w - weight);
+    const heavierFirst = weight > 500;
+    if (heavierFirst ? w > weight : w < weight) return 1_000 + Math.abs(w - weight);
+    return 2_000 + Math.abs(w - weight);
+  };
+  return candidates.reduce<FontkitFont | undefined>((best, font) =>
+    !best || rank(weightOf(font)) < rank(weightOf(best)) ? font : best, undefined);
+}
+
 /** Read the actual raster face; an unverified family keeps the old fallback path. */
 function rasterFont(family: string, weight: number): FontkitFont | undefined {
-  // STIX has 400/700 only; CSS weights above 500 select its bold face.
-  if (family === 'STIXGeneral') weight = weight > 500 ? 700 : 400;
+  // Arial and STIX ship 400 and 700 in separate files; CSS weights above 500 select bold.
+  const bold = weight > 500;
   let file: string | undefined;
   try {
     if (process.platform === 'darwin') {
       file = ({
         'Helvetica Neue': '/System/Library/Fonts/HelveticaNeue.ttc',
         Helvetica: '/System/Library/Fonts/Helvetica.ttc',
-        Arial: `/System/Library/Fonts/Supplemental/Arial${weight >= 700 ? ' Bold' : ''}.ttf`,
-        STIXGeneral: `/System/Library/Fonts/Supplemental/STIXGeneral${weight >= 700 ? 'Bol' : ''}.otf`,
+        Arial: `/System/Library/Fonts/Supplemental/Arial${bold ? ' Bold' : ''}.ttf`,
+        STIXGeneral: `/System/Library/Fonts/Supplemental/STIXGeneral${bold ? 'Bol' : ''}.otf`,
       } as Record<string, string>)[family];
     } else if (process.platform === 'win32' && family === 'Arial') {
-      file = join(process.env.WINDIR ?? 'C:\\Windows', 'Fonts', weight >= 700 ? 'arialbd.ttf' : 'arial.ttf');
+      file = join(process.env.WINDIR ?? 'C:\\Windows', 'Fonts', bold ? 'arialbd.ttf' : 'arial.ttf');
     } else if (process.platform === 'linux') {
-      file = execFileSync('fc-match', ['-f', '%{file}', `${family}:weight=${weight >= 700 ? 'bold' : weight >= 500 ? 'medium' : 'regular'}`],
+      const named = ({ 100: 'thin', 200: 'extralight', 300: 'light', 400: 'regular', 500: 'medium', 600: 'semibold', 700: 'bold', 800: 'extrabold', 900: 'black' } as Record<number, string>)[Math.min(900, Math.max(100, Math.round(weight / 100) * 100))];
+      file = execFileSync('fc-match', ['-f', '%{file}', `${family}:weight=${named}`],
         { encoding: 'utf8', timeout: 10_000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
     }
     if (!file || !existsSync(file)) return undefined;
@@ -142,7 +167,7 @@ function rasterFont(family: string, weight: number): FontkitFont | undefined {
     const opened = reader.openSync(file);
     const faces = ('fonts' in opened ? opened.fonts : [opened]).filter(font =>
       font.familyName.toLowerCase() === family.toLowerCase() && !/italic|oblique/i.test(font.subfamilyName));
-    return faces.find(font => font['OS/2']?.usWeightClass === weight);
+    return cssWeightMatch(faces, weight);
   } catch {
     return undefined;
   }

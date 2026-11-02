@@ -98,7 +98,7 @@ const absolutePath = (description: string) =>
 const rowArguments = {
   rows: z.array(z.looseObject({})).optional()
     .describe('A flat table that fills a bare spec. One row per category/series pair, waterfall item, scatter point, sankey link, map region, table row or histogram or box observation. Keep data.pack for maps and data.columns for tables. Needs columns, except for a table.'),
-  rowsFile: absolutePath('Absolute path of a local .json (an array of row objects) or .csv file (a header row) of at most 2 MB, read in place of rows so the numbers never pass through you. It must sit under a client root, the server working directory, the temp folder or a folder in BOARDPLOT_ROWS_ROOTS. A CSV separated by semicolons is detected from its header, and its values read a decimal comma as a decimal. Needs columns, except for a table.').optional(),
+  rowsFile: absolutePath('Absolute path of a local .json (an array of row objects) or .csv, .tsv or .txt file (a header row) of at most 10 MB, read in place of rows so the numbers never pass through you. It must sit under a client root, the server working directory, the temp folder or a folder in BOARDPLOT_ROWS_ROOTS. A file separated by semicolons is detected from its header, and its values read a decimal comma as a decimal. Needs columns, except for a table.').optional(),
   columns: z.strictObject({
     category: z.string().optional(), series: z.string().optional(), value: z.string().optional(),
     categoryLabel: z.string().optional(), seriesLabel: z.string().optional(), unit: z.string().optional(),
@@ -221,7 +221,7 @@ export function toolInputs() {
       scale: z.number().positive().max(8).default(2).describe('PNG device pixels per layout unit.'),
       background: z.enum(['theme', 'transparent']).default('theme').describe("theme (default) draws the theme's canvas; transparent leaves it out. Halos keep the theme background colour, so place the result on a surface of that colour."),
       overwrite: z.boolean().optional().describe('Replace existing output files when true. Default false. Chart names within one call still get distinct files.'),
-      outDir: absolutePath('Absolute directory for the files, each named after its chart (a bare spec\'s name, default chart), or for a spec with one chart an absolute file path ending in .png or .svg; without format, that extension sets it. It must sit under a client root, the server working directory, the temp folder or a folder in BOARDPLOT_ROWS_ROOTS. By default an existing file is not replaced: a taken name gets a -N suffix, outputs lists the paths written, and an out-name-taken warning names the requested and the written path.').optional(),
+      outDir: absolutePath('Absolute directory for the files, each named after its chart (a bare spec\'s name, default chart), or for a spec with one chart an absolute file path ending in .png or .svg; without format, that extension sets it. A new path that ends in any other letters-only extension, such as .jpg or .pdf, is refused; end it with / to make a folder of that name. It must sit under a client root, the server working directory, the temp folder or a folder in BOARDPLOT_ROWS_ROOTS. By default an existing file is not replaced: a taken name gets a -N suffix, outputs lists the paths written, and an out-name-taken warning names the requested and the written path.').optional(),
       return: z.array(z.enum(['svg', 'reading'])).default(['reading']).describe('What the response carries.'),
       ...rowArguments,
     }),

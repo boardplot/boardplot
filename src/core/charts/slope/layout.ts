@@ -11,8 +11,8 @@ import { distinguishSeries } from '../../seriesIdentity';
  * within plot bounds) with a leader dot at the rail point. Highlighted
  * series get the accent stroke, bold labels, and label-drop immunity; all
  * others de-emphasize to a light tint. Scenario is ignored except FC, which
- * renders dashed. More than two categories is a lint ERROR
- * ('slope-too-many-points'): layout proceeds on first + last only.
+ * renders dashed. More than two categories warns 'slope-too-many-points':
+ * layout draws the first and last and names the omitted categories in a note.
  * `options.foldBelowShare` merges the series that stay under that share of the
  * endpoint total at both ends into one summed 'Other' line (see ./fold.ts).
  */
@@ -45,7 +45,8 @@ import { accessibleTitle,
   resolveSize,
 } from '../../normalize/shared';
 import { applyAxisBounds, linearScale, niceDomain } from '../../scale';
-import { authoredNotes, frameTextOptions, normalizeLegendOption, solveFrame, type FrameInput, type LegendItemInput, plotHeightAfter, authoredFootnoteCount } from '../../frame';
+import { authoredNotes, frameTextOptions, normalizeLegendOption, noteLine, solveFrame, type FrameInput, type LegendItemInput, plotHeightAfter, authoredFootnoteCount } from '../../frame';
+import { disclosureNote } from '../../notes';
 import { DEFAULT_TARGET, TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { defaultMeasurer, type FontSpec, type TextMeasurer } from '../../text';
 import {
@@ -188,18 +189,21 @@ export function layoutSlope(
     throw new NormalizeError(
       'empty-data',
       'categories',
-      'slope requires exactly two categories (time points)',
+      chartString(options, 'slopeNeedsTwoCategories'),
     );
   }
   if (!Array.isArray(data.series) || data.series.length === 0) {
     throw new NormalizeError('empty-data', 'series', 'slope requires at least one series');
   }
   const allCats: Category[] = data.categories.map((c, i) => normalizeCategory(c as never, i));
+  const omittedCategories = allCats.slice(1, -1).map(category => category.label ?? category.id);
+  const omittedNotes = noteLine(chartString(options, 'categoriesNotShown'), omittedCategories, options).map(disclosureNote);
   if (allCats.length > 2) {
+    options = { ...options, notes: { ...options.notes, show: [...new Set([...(options.notes?.show ?? ['note']), 'disclosure' as const])] } };
     warnings.push({
       code: 'slope-too-many-points',
-      severity: 'error',
-      message: `slope requires exactly 2 categories, got ${allCats.length} — layout uses first and last only`,
+      severity: 'warn',
+      message: chartString(options, 'slopeEndpointsOnly', { v1: allCats[0]!.label ?? allCats[0]!.id, v2: allCats[allCats.length - 1]!.label ?? allCats[allCats.length - 1]!.id, v3: omittedNotes[0]! }),
       suggest: "use chart type 'line' for more than two time points",
     });
   }
@@ -456,7 +460,7 @@ export function layoutSlope(
       size,
       margin,
       ...frameTextOptions(options),
-      footnotes: [...authoredNotes(options), ...(fold ? [fold.record.note] : [])],
+      footnotes: [...authoredNotes(options), ...omittedNotes, ...(fold ? [fold.record.note] : [])],
       legend: legendInput,
       theme,
       measure,

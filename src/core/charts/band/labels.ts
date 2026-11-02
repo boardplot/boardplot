@@ -95,6 +95,20 @@ export function fitsInside(rect: Rect, text: TextSize, room = INSIDE_ROOM): bool
   return rect.w >= Math.max(floor, text.width + room) && rect.h >= Math.max(INSIDE_MIN_H, text.height + room);
 }
 
+/** Air each side of a value stepped down into a bar segment, as a column's digit seat keeps. */
+const STEPPED_AIR = 2;
+
+/**
+ * The inside seat of a bar segment's value at a step below the label size, or
+ * undefined where the segment cannot hold it. The 28 px floor of `fitsInside`
+ * is the label size's; a smaller step needs its glyphs and 2 px each side,
+ * and a segment as thick as its line box.
+ */
+export function steppedInsideSeat(rect: Rect, text: TextSize, fillCss: string, options: Pick<SegmentLabelOptions, 'insidePaint' | 'insidePattern'>): SlotCandidate | undefined {
+  if (rect.w < text.width + 2 * STEPPED_AIR || rect.h < Math.max(INSIDE_MIN_H, text.height)) return undefined;
+  return { ...insideCandidate('horizontal', rect, text, fillCss), slot: 'insideStepped', insidePaint: options.insidePaint, insidePattern: options.insidePattern };
+}
+
 /**
  * labelDensity 'smart' (the default) and 'minimal' drop a segment value
  * when the segment is shorter than the label plus the inside room, measured

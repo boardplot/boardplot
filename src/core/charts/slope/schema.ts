@@ -44,9 +44,7 @@ const seriesSchema = z.strictObject({
 export const slopeDataSchema = z
   .strictObject({
     valueKind: dataValueKindSchema,
-    // exactly 2 is the contract; >2 passes schema so layout can emit the
-    // 'slope-too-many-points' lint error and still render first/last
-    categories: z.array(categorySchema).min(2).describe("Endpoint categories; exactly two are intended. Extra categories are warned about and only first and last are shown."),
+    categories: z.array(categorySchema).min(2).describe("Endpoint categories. With more than two, the line variant draws first versus last, warns slope-too-many-points and names the omitted categories in a note. The diverging variant requires exactly two."),
     series: z.array(seriesSchema).min(1).describe("Series whose first and last category values are joined by a slope."),
   })
   .superRefine((data, ctx) => {

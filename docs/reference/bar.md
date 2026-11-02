@@ -85,7 +85,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | series[].valueKind | string |  | Multiply numbers by 100 into pct cells; explicit pct cells stay in percent units. One of `'fraction'`. |
 | series[].id | string | yes | Series identity used by keyed options, annotations and legend entries. |
 | series[].label | string |  | Displayed series name; defaults to the series id. |
-| series[].values | (cell \| { categoryId, value: cell })[] | yes | Values in category order, or keyed entries pairing a categoryId with its value. |
+| series[].values | (cell \| { categoryId, value: cell })[] | yes | Values in category order, or keyed entries pairing a categoryId with its value. In a football field, null cells and cells without a range are left out with a warning and a note, provided at least one method has a range. |
 | series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. Controls scenario labels and paint conventions. |
 | series[].direction | string |  | Whether increases are favorable; defaults to higherIsBetter for directional comparisons. One of `'higherIsBetter'`, `'lowerIsBetter'`. |
 | series[].role | string |  | Data series or comparison-only reference series; references are excluded from the main plotted data. One of `'data'`, `'reference'`. |
@@ -104,7 +104,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | axisTitles | object |  |  | Title of the value axis when valueAxis.show draws it: in the tick-label row, ending at the right end of the axis past the last tick label or short of the first tick label, and in a row of its own under the ticks only when neither side has room. A theme with valueAxis.titles derives 'Measure, unit' from subtitle.measure and a unit the drawn subtitle does not print, when none is authored. |
 | axisTitles.primary | string |  |  | 'Measure, unit' title of the value axis, e.g. 'Margin, %'. |
 | valueLabels | string | `'none'`, `'last'`, `'ends'`, `'extremes'`, `'all'` |  | Which values print, with line's choices: 'none', 'last', 'ends' (first and last), 'extremes' (first, last, highest and lowest; a tie takes the first) or 'all', chosen per series over the categories in their drawn order. Unset (default): every value is eligible and labelDensity decides. When set, valueLabels wins over labelDensity: each chosen value takes the one-step rule of 'full', and one with no seat is named in the note. A value not chosen is unlabelled by choice: the note does not name it, and the value axis is drawn so it stays readable (all modes but 'all'; valueAxis.show false turns it off). Authored cell labels print in every mode. Grouped only: a stack has no single value per category, so stacked, stacked100, football-field and tornado ignore every mode but 'all' with an option-ignored warning and keep their normal labels and value axis. Example: a ranking of 12 bars with 'extremes' prints the top, bottom, highest and lowest value. |
-| variant | string | `'grouped'`, `'stacked'`, `'stacked100'`, `'football-field'`, `'tornado'` | `'grouped'` | Horizontal arrangement; grouped by default. Stacked100 normalizes category totals; football-field shows ranges and tornado compares low/high driver cases. Every football-field method needs a range: one without is refused with football-field-range-required, and the fix removes the row. |
+| variant | string | `'grouped'`, `'stacked'`, `'stacked100'`, `'football-field'`, `'tornado'` | `'grouped'` | Horizontal arrangement; grouped by default. Stacked100 normalizes category totals; football-field shows ranges and tornado compares low/high driver cases. A football-field method without a range is left out with football-field-method-without-range and a note. At least one method must have a range; otherwise the chart refuses with football-field-range-required. |
 | sharesOfOneWhole | boolean |  |  | true declares every stacked series a share of the same whole, such as channel shares of all orders: the stack then has a total, and percent series warn non-additive-stack only where a category adds to more than 100. Stacked and stacked100 only; refused on other variants. |
 | baseValue | number \| object |  |  | Tornado base-case output metric; the vertical spine every swing is measured against. Required for variant 'tornado'. |
 | baseValue.value | number |  |  | Base-case output value used as the tornado comparison spine. |
@@ -132,7 +132,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | connectors.style | string | `'line'`, `'dashed'` |  | Connector stroke: solid 'line' (default) or 'dashed', matching the waterfall bridge's dash. |
 | connectors.scope | string \| array | `'all'` (or another value of its type) |  | Series boundaries to connect; defaults to 'all'. |
 
-Plus the [shared options](options.md). This type does not accept `valueAxis.tickStep`, `valueAxis.log`, `valueAxis.reverse`, `ribbons`. This type ignores `animate`, `debug`, `categoryAxis`, `categoryLabels`, `secondaryAxis` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `valueAxis.log`, `valueAxis.reverse`, `ribbons`. This type ignores `animate`, `debug`, `categoryAxis`, `categoryLabels`, `secondaryAxis` with an `option-ignored` warning.
 
 ## Annotations
 
@@ -187,6 +187,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | tornado-degenerate | torture | Torture: 14 drivers, a base the model does not reproduce, a dead driver and a gap |
 | tornado-two-drivers | example | Sensitivity tornado: the two-driver case, direct labels only |
 | tornado-theme-cases | example | Sensitivity cases using an authored theme pair |
+| tick-step | example | Horizontal value axis with ticks every five units |
 | usd-k-precision | example | Unit-aware precision: $k values from 100 up print whole, smaller values keep one decimal |
 | option-reference-line | example | Actual orders against plan with line references |
 | option-reference-marker | example | Actual orders against plan with marker references |

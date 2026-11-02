@@ -12,6 +12,7 @@ export interface VerbResult {
   exit: 0 | 1 | 2;
   body: Record<string, unknown>;
   images?: Buffer[];
+  drawing?: string | Buffer;
 }
 
 /** Errors per response; the rest are counted in one closing entry. */

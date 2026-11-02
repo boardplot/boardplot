@@ -15,7 +15,7 @@ import type { GeoOverlay } from './overlayTypes';
 
 const overlayToneSchema = z.enum(['good', 'bad', 'warn', 'neutral', 'info']).describe('Semantic glyph tone resolved through the theme.');
 const overlayAtSchema = z.union([
-  z.strictObject({ region: idSchema.describe('Region id whose pack anchor positions the overlay.') }).describe('Anchor at a named region.'),
+  z.strictObject({ region: idSchema.describe('Region id whose pack anchor positions the overlay. Exact spellings win, then ids and aliases match without regard to case.') }).describe('Anchor at a named region.'),
   z.strictObject({
     lon: z.number().finite().min(-180).max(180).describe('Longitude in degrees, west negative and east positive.'),
     lat: z.number().finite().min(-90).max(90).describe('Latitude in degrees, south negative and north positive.'),
@@ -161,7 +161,7 @@ export const choroplethOptionsSchema = z
     steps: geoStepsSchema,
     labels: z.union([z.enum(['auto', 'all', 'none']).describe('Automatic selection, all regions, or no region labels.'), z.literal(false).describe("The same as 'none', kept for the shared labels: false.")]).optional().describe("Region-label selection policy; placement still respects available space. false is the same as 'none'."),
     regionValues: z.boolean().optional().describe("Print each labelled region's value after its code, e.g. 'DE 2.2%', through the same placement and fit tiers as the code. Default true when no value table is drawn and the map labels at most 10 regions, or, off the world map, when the canvas is at least 560 px wide and gives each label at least 8000 square pixels; else false. A region whose label no longer fits is listed with its value. Needs region labels, so labels 'none' or false refuse it."),
-    labelRegions: z.array(idSchema.describe('Pack region id requested for labeling.')).optional().describe('Explicit region ids to label, retained by the small-region filter.'),
+    labelRegions: z.array(idSchema.describe('Pack region id requested for labeling. Exact spellings win, then ids and aliases match without regard to case.')).optional().describe('Explicit region ids to label, retained by the small-region filter.'),
     microStateMarkers: z.boolean().optional().describe("Draw a dot for a micro-state the data lists without a value (null); one with a value is always drawn. Default off on the world pack, the only pack whose micro-states have no outline; on the other packs it would change nothing and is refused."),
     smallRegionArea: z.number().min(0).max(1).optional().describe('Area fraction below which automatic labels move to Small members. Default 0.001; 0 disables. Explicit label requests are retained.'),
     overlayTones: overlayTonesSchema,

@@ -197,6 +197,8 @@ export interface ScatterDomain {
   dy: [number, number];
   /** The ticks of a plain dot scatter, whose axes end on them. */
   ticks?: { x: number[]; y: number[] };
+  /** Authored Y ticks, independent of the X-axis grid. */
+  stepTicks?: number[];
   /** The strategy grid axes cut evenly, drawn as equal cells (scatter.matrix). */
   evenGrid?: { x: boolean; y: boolean };
   /** The annotations left after the vertical view window. */

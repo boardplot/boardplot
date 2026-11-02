@@ -19,6 +19,7 @@ import {
   qPoint,
   qRect,
   segmentBounds,
+  BOX_LABEL_INSET,
   type DiagramPalette,
 } from './primitives';
 import { automaticEdgeId, compareDiagramIds, diagramSceneId } from './ids';
@@ -896,6 +897,7 @@ function layoutJourney(theme: Theme, context: PresetContext): PresetLayout {
 export function circularRing(
   steps: readonly DiagramNode[], plot: { w: number; h: number }, u: number,
   text: { font: FontSpec; measure: TextMeasurer },
+  edges: readonly DiagramEdge[] = [],
 ): { diameter: number; radius: number } {
   const cap = Math.min(plot.w, plot.h) / 3.5;
   const lineHeight = text.font.size * (text.font.lineHeight ?? 1.2);
@@ -914,7 +916,11 @@ export function circularRing(
   const minRadius = steps.length > 2 ? (diameter + captionHeight + 2 * u) / (2 * Math.sin(Math.PI / steps.length)) : diameter + captionHeight;
   const labelWidth = Math.min(18 * u, plot.w / 5);
   const maxRadius = Math.min((plot.h - 2 * circularLabelBand(text.font, u) - diameter) / 2, (plot.w - diameter) / 2 - labelWidth - 2 * u);
-  return { diameter, radius: Math.max(minRadius, Math.min(20 + 0.128 * plot.w, maxRadius)) };
+  // Labelled arrows need a wider gap than the unlabelled cycle's 2u node clearance.
+  const edgeWidth = maxOf(edges.map(edge => edge.label ? text.measure(edge.label, text.font).width : 0));
+  const edgeGap = edgeWidth > 0 ? Math.max(2 * lineHeight, Math.min(24 * u, edgeWidth)) + 4 * u : 0;
+  const labelledRadius = edgeGap > 0 ? (diameter + captionHeight + edgeGap) / (2 * s) : 0;
+  return { diameter, radius: Math.max(minRadius, Math.min(Math.max(20 + 0.128 * plot.w, labelledRadius), maxRadius)) };
 }
 
 /** The band above and below a ring: a step's name and one detail line, and the 2u gap to its node. */
@@ -925,7 +931,7 @@ export function circularLabelBand(font: FontSpec, u: number): number {
 function layoutCircular(context: PresetContext): PresetLayout {
   const result = emptyResult(context.data);
   const steps = [...context.data.nodes].sort(nodeOrder);
-  const { diameter: ringDiameter, radius } = circularRing(steps, context.plot, context.u, context);
+  const { diameter: ringDiameter, radius } = circularRing(steps, context.plot, context.u, context, context.data.edges);
   const centre = { x: context.plot.x + context.plot.w / 2, y: context.plot.y + context.plot.h / 2 };
   steps.forEach((node, index) => {
     const angle = -Math.PI / 2 + (index * Math.PI * 2) / steps.length;
@@ -1310,6 +1316,11 @@ function groupsFromMembers(context: PresetContext, result: PresetLayout): Preset
         if (split.length > 0 && place(Math.min(...split) + 2 * context.u, true)) header = Math.max(header, 2 * line + context.u / 2);
         else title = stretches.reduce((best, stretch) => (stretch.w > best.w ? stretch : best));
       }
+    } else if (width(group.title) + BOX_LABEL_INSET > title.w) {
+      // No tree edge crosses the title row: a title wider than its members
+      // takes the frame's whole row, and one wider than the frame a second line.
+      title = { x: left, w: right - left };
+      if (width(group.title) + BOX_LABEL_INSET > title.w) header = Math.max(header, 2 * line + context.u / 2);
     }
     frames[index] = { x: left, y: memberBounds.y - header, w: right - left, h: memberBounds.h + header + pad };
     return {

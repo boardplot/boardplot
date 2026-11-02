@@ -5,15 +5,19 @@
  * is an error, never a silent default.
  */
 
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import '../src/core/charts';
 import { FLAG_GRAMMAR, VERBS, main } from '../src/cli/main';
 import { availableRasterizer } from '../src/cli/raster';
+import * as raster from '../src/cli/raster';
+import * as cliOutput from '../src/cli/output';
 import { BOARDPLOT_VERSION } from '../src/version';
 import { render } from '../src/cli/render';
+import { runVerb } from '../src/cli/result';
+import { applyRows } from '../src/cli/rows';
 import { measure } from '../src/cli/measure';
 import * as chartRequest from '../src/core/request';
 import { resolveTheme } from '../src/core/theme';
@@ -647,6 +651,83 @@ describe('render and measure on the command line', () => {
     expect(envelope(runCli(['render', bare, '--format', 'svg', '--out', many])).errors[0]!.message).toBe('--out many.png ends in .png, but the format is svg');
   });
 
+  // An unsupported output extension created a folder when the caller expected an image file.
+  it('refuses unknown output extensions and keeps explicit or existing folders', () => {
+    const dir = tdir();
+    const doc = writeDoc(dir, 'bare.json', SPEC);
+    const jpg = join(dir, 'chart.jpg');
+    const refused = runCli(['render', doc, '--out', jpg]);
+    expect(refused.code).toBe(1);
+    expect(envelope(refused).errors[0]).toMatchObject({ code: 'invalid-argument', path: '/outDir', message: expect.stringContaining('.jpg'), suggest: expect.stringContaining('.svg or .png') });
+    expect(existsSync(jpg)).toBe(false);
+    mkdirSync(jpg);
+    expect(envelope(runCli(['render', doc, '--out', jpg])).outputs).toEqual([join(jpg, 'chart.svg')]);
+    const dotted = join(dir, 'out.v2');
+    expect(envelope(runCli(['render', doc, '--out', dotted])).outputs).toEqual([join(dotted, 'chart.svg')]);
+    const explicit = join(dir, 'new.jpg');
+    expect(envelope(runCli(['render', doc, '--out', `${explicit}/`])).outputs).toEqual([join(explicit, 'chart.svg')]);
+    const pdf = envelope(runCli(['render', doc, '--out', join(dir, 'chart.PDF')]));
+    expect(pdf.errors[0]).toMatchObject({ code: 'invalid-argument', path: '/outDir', suggest: expect.stringContaining('PDF is not drawn') });
+    const pdfFormat = envelope(runCli(['render', doc, '--format', 'PDF']));
+    expect(pdfFormat.errors[0]).toMatchObject({ code: 'invalid-argument', path: '/format', suggest: expect.stringContaining('PDF is not drawn'), fix: [{ op: 'replace', path: '/format', value: 'svg' }] });
+  });
+
+  // Writing a drawing to stdout must leave the JSON on stderr and reject multiple charts.
+  it('writes one SVG, PNG or fallback SVG to stdout with a JSON response on stderr', () => {
+    const dir = tdir();
+    const doc = writeDoc(dir, 'bare.json', SPEC);
+    const drawings: (string | Buffer)[] = [];
+    const logs: string[] = [];
+    const errors: string[] = [];
+    vi.spyOn(cliOutput, 'writeRaw').mockImplementation((value) => { drawings.push(value); });
+    vi.spyOn(console, 'log').mockImplementation((...values) => { logs.push(values.join(' ')); });
+    vi.spyOn(console, 'error').mockImplementation((...values) => { errors.push(values.join(' ')); });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const run = (args: string[]) => {
+      drawings.length = 0;
+      logs.length = 0;
+      errors.length = 0;
+      const code = main(args);
+      expect(logs).toEqual([]);
+      expect(errors).toHaveLength(1);
+      return { code, body: JSON.parse(errors[0]!) };
+    };
+    const svg = run(['render', doc, '--out', '-', '--return', 'svg,reading']);
+    expect(svg.code).toBe(0);
+    expect(drawings).toEqual([render({ spec: SPEC, return: ['svg'] }).body.svg]);
+    expect(svg.body).toMatchObject({ ok: true, reading: expect.any(Object), size: expect.any(Object) });
+    expect(svg.body.svg).toBeUndefined();
+
+    const quiet = run(['render', doc, '--out=-', '--quiet', '--return', 'svg,reading']);
+    expect(quiet.body).toMatchObject({ ok: true, reading: expect.any(Object) });
+    expect(quiet.body.svg).toBeUndefined();
+    expect(drawings[0]).toMatch(/^<svg/);
+
+    const png = Buffer.from([137, 80, 78, 71]);
+    const rasterize = vi.spyOn(raster, 'rasterize').mockReturnValueOnce({ pngs: [png], warnings: [] });
+    const pngResult = run(['render', doc, '--format', 'png', '-o', '-']);
+    expect(pngResult.code).toBe(0);
+    expect(drawings).toEqual([png]);
+    expect(pngResult.body.svg).toBeUndefined();
+    rasterize.mockReturnValueOnce({ pngs: null, warnings: [{ code: 'no-rasterizer', severity: 'warn', message: 'SVG only', path: '/format' }] });
+    const fallback = run(['render', doc, '--format', 'png', '--out', '-']);
+    expect(fallback.code).toBe(0);
+    expect(drawings[0]).toMatch(/^<svg/);
+    expect(fallback.body.warnings).toContainEqual(expect.objectContaining({ code: 'no-rasterizer' }));
+    expect(fallback.body.svg).toBeUndefined();
+
+    const two = writeDoc(dir, 'two.json', { version: 1, charts: [{ name: 'a', ...SPEC }, { name: 'b', ...SPEC }] });
+    const refused = run(['render', two, '--out', '-']);
+    expect(refused.code).toBe(1);
+    expect(drawings).toEqual([]);
+    expect(refused.body.errors[0]).toMatchObject({ code: 'invalid-argument', path: '/outDir', message: expect.stringContaining('draws 2') });
+    const invalid = run(['render', doc, '--out', '-', '--unknown']);
+    expect(invalid.code).toBe(1);
+    expect(drawings).toEqual([]);
+    expect(invalid.body.errors[0].code).toBe('unknown-flag');
+    expect(runVerb(() => render({ spec: SPEC, outDir: '-' })).body.errors).toMatchObject([{ code: 'invalid-argument', path: '/outDir', suggest: 'Pass an absolute folder, or return svg in the answer.' }]);
+  });
+
   it('refuses an --out that cannot be a folder with out-unwritable and exit 1', () => {
     const dir = tdir();
     const bare = writeDoc(dir, 'bare.json', SPEC);
@@ -720,6 +801,52 @@ describe('render and measure on the command line', () => {
     writeFileSync(join(dir, 'rows.csv'), 'Month;Segment;Revenue\nJan;"B2B, direct";10,5\nFeb;"B2B, direct";12,25\n');
     const result = runCli(['render', writeDoc(dir, 'spec.json', { type: 'column' }), '--rows', join(dir, 'rows.csv'), '--columns', 'category=Month,series=Segment,value=Revenue', '--return', 'svg']);
     expect((envelope(result) as { svg?: string }).svg?.match(/>(10\.50|12\.25)</g)?.sort()).toEqual([">10.50<", ">12.25<"]);
+  });
+
+  // Tab-separated rows were refused or read as one column, which prevented the chart from drawing the numbers.
+  it('draws tab-separated TSV, CSV and text files with the same exact numbers as CSV', () => {
+    const dir = tdir();
+    const spec = { type: 'column' };
+    const columns = { category: 'month', series: 'segment', value: 'revenue' };
+    const csv = join(dir, 'comma.csv');
+    const tab = '\uFEFFmonth\tsegment\trevenue\nJan\t"Direct, online"\t10.5\nFeb\t"Direct, online"\t12.25\n';
+    writeFileSync(csv, 'month,segment,revenue\nJan,"Direct, online",10.5\nFeb,"Direct, online",12.25\n');
+    const expected = render({ spec, rowsFile: csv, columns, return: ['svg'] });
+    expect(expected.body.ok).toBe(true);
+    for (const name of ['rows.tsv', 'rows.csv', 'rows.txt']) {
+      const file = join(dir, name);
+      writeFileSync(file, tab);
+      const actual = render({ spec, rowsFile: file, columns, return: ['svg'] });
+      expect(actual.body.ok).toBe(true);
+      expect(actual.body.svg).toBe(expected.body.svg);
+      const mapped = applyRows(spec, { rowsFile: file, columns }).spec as { data: { series: { values: { number: number }[] }[] } };
+      expect(mapped.data.series[0]!.values).toEqual([{ number: 10.5 }, { number: 12.25 }]);
+    }
+    const wideHeader = join(dir, 'header.tsv');
+    writeFileSync(wideHeader, 'month\tsegment\trevenue, in $m, total\nJan\t"Direct, online"\t10.5\nFeb\t"Direct, online"\t12.25\n');
+    expect(render({ spec, rowsFile: wideHeader, columns: { ...columns, value: 'revenue, in $m, total' }, return: ['svg'] }).body.svg).toBe(expected.body.svg);
+    const repeated = join(dir, 'repeated.tsv');
+    writeFileSync(repeated, 'month\tsegment\trevenue\trevenue\nJan\tNorth\t10.5\t99\n');
+    expect(render({ spec, rowsFile: repeated, columns }).body.warnings).toContainEqual(expect.objectContaining({ code: 'rows-header-repeated' }));
+    const invalid = join(dir, 'invalid.tsv');
+    writeFileSync(invalid, 'month\tsegment\trevenue\nJan\tNorth\t1,5\n');
+    expect(runVerb(() => render({ spec, rowsFile: invalid, columns })).body.errors).toMatchObject([{ code: 'invalid-value', path: '/rowsFile', message: expect.stringContaining('rows[0].revenue') }]);
+    const unknown = join(dir, 'rows.xml');
+    writeFileSync(unknown, tab);
+    expect(runVerb(() => render({ spec, rowsFile: unknown, columns })).body.errors).toMatchObject([{ code: 'rows-unreadable', path: '/rowsFile' }]);
+  });
+
+  // A valid rows file larger than 2 MiB was refused before the chart could read it.
+  it('reads rows files above 2 MiB and refuses files above 10 MiB', () => {
+    const dir = tdir();
+    const file = join(dir, 'rows.csv');
+    const columns = { category: 'month', series: 'segment', value: 'revenue' };
+    writeFileSync(file, `month,segment,revenue\nJan,North,2.5\n${'\n'.repeat(2_621_440)}`);
+    const result = render({ spec: { type: 'column' }, rowsFile: file, columns, return: ['svg', 'reading'] });
+    expect(result.body.ok).toBe(true);
+    expect(result.body.reading).toMatchObject({ data: { rows: 1 } });
+    truncateSync(file, 10 * 1024 * 1024 + 1);
+    expect(runVerb(() => render({ spec: { type: 'column' }, rowsFile: file, columns })).body.errors).toMatchObject([{ code: 'rows-too-large', path: '/rowsFile' }]);
   });
 
   it('refuses 1.234 in a semicolon CSV, which is 1234 or 1.234, instead of reading it as 1.234', () => {
