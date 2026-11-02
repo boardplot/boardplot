@@ -640,7 +640,7 @@ function layoutPiePass(
   const frameResult = solveFrame(
     {
       size,
-      ...(automatic && legendInput?.options.position !== 'right' ? { autoHeight: (plot: Rect) => {
+      ...(automatic && legendInput?.options.position !== 'right' && legendInput?.options.position !== 'left' ? { autoHeight: (plot: Rect) => {
         if (labelled) return labelled.size.height;
         if (columns) {
           const diameter = diameterFor(plot.w);

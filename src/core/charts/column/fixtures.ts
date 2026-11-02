@@ -2725,4 +2725,30 @@ fixtures.push({
   },
 });
 
+// A named key in a column right of the plot, on a wide slide chart that has the width to spare.
+fixtures.push({
+  id: 'key-right-slide',
+  title: 'Clustered columns on a slide with the key in a column right of the plot',
+  kind: 'example',
+  tags: ['feature:options'],
+  data: {
+    categories: ['FY23', 'FY24', 'FY25', 'FY26'].map((label) => ({ id: label.toLowerCase(), label })),
+    series: [
+      { id: 'subscriptions', label: 'Subscriptions', values: [310, 355, 402, 448] },
+      { id: 'services', label: 'Professional services', values: [190, 204, 211, 226] },
+      { id: 'hardware', label: 'Hardware', values: [120, 112, 98, 91] },
+    ],
+  },
+  options: {
+    variant: 'grouped',
+    title: 'Subscriptions grow every year while hardware shrinks',
+    subtitle: { measure: 'Revenue', period: 'FY23 to FY26' },
+    unit: '$m',
+    legend: 'right',
+    source: 'Illustrative revenue model',
+    target: 'slide',
+    size: { width: 1184, height: 528 },
+  },
+});
+
 registerFixtures('column', fixtures);

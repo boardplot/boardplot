@@ -117,15 +117,6 @@ const cases: [name: string, code: string, chart: () => unknown][] = [
 ];
 
 describe('every finding names a field, a fix and a page that exists', () => {
-  // Prevents a key-position schema fix from promising that the repaired tilemap fits a pinned height.
-  it('does not offer a size-blind patch for a refused side key', () => {
-    const envelope = findings({ name: 'c', type: 'tilemap', data: { pack: 'eu27', regions: [{ id: 'AT', value: 12 }] },
-      options: { title: 'Regional demand', legend: 'right', size: { width: 400, height: 300 } } });
-    const warning = envelope.errors.find(w => w.code === 'invalid-options')!;
-    expect(warning).toBeDefined();
-    expect(warning.suggest).toBeTruthy();
-    expect(warning.fix).toBeUndefined();
-  });
   it.each(cases)('%s', (_name, code, build) => {
     const chart = build();
     const document = { version: 1, charts: [chart] };

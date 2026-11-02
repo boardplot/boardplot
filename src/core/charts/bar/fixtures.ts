@@ -1314,4 +1314,30 @@ for (const [mode, title] of [['bound', 'Turku prints its bound (smallValues boun
   });
 }
 
+// A named key in a column left of the plot.
+fixtures.push({
+  id: 'key-left',
+  title: 'Stacked bars with the key in a column left of the plot',
+  kind: 'example',
+  tags: ['feature:options'],
+  data: {
+    categories: ['North', 'South', 'East', 'West'].map((label) => ({ id: label.toLowerCase(), label })),
+    series: [
+      { id: 'core', label: 'Core products', values: [42, 38, 46, 40] },
+      { id: 'growth', label: 'Growth products', values: [18, 24, 16, 28] },
+      { id: 'other', label: 'Other', values: [10, 8, 14, 9] },
+    ],
+  },
+  options: {
+    variant: 'stacked',
+    title: 'Core products carry every region',
+    subtitle: { measure: 'Revenue', period: 'FY26' },
+    unit: '$m',
+    legend: 'left',
+    source: 'Illustrative regional revenue model',
+    target: 'slide',
+    size: { width: 1184, height: 528 },
+  },
+});
+
 registerFixtures('bar', fixtures);
