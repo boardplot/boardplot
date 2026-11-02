@@ -47,6 +47,14 @@
         "#A898FF",
         "#78A020",
         "#EC4473"
+      ],
+      "atlantic": [
+        "#55BEFB",
+        "#087397",
+        "#25AAA2",
+        "#828BD9",
+        "#1E9240",
+        "#A054C4"
       ]
     },
     "status": {
@@ -139,7 +147,6 @@
       "weight": 600
     },
     "eyebrow": {
-      "tracking": 0.08,
       "weight": 500,
       "ink": "inkMuted"
     }
