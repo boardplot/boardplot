@@ -21,7 +21,6 @@ import {
 } from '../normalize/shared';
 import { parseFormatExample, specUnitKind } from '../formatSpec';
 import { isIconName, listIcons } from '../icons';
-import { SIDE_KEY_REFUSED } from './refusals';
 import { LEGEND_DRAWS, LEGEND_REFUSED, OPTION_CAPABILITY, legendDrawsNothing, valueAxisOnly, valueAxisRefusal } from './capability';
 import {
   LEGEND_DRAWS_REASONS, LEGEND_REFUSED_REASONS, OPTION_REASONS, TRANSPOSE_REFUSED, VALUE_AXIS_ONLY_REASONS, notImplemented, valueAxisReason,
@@ -1142,23 +1141,10 @@ export const valueAxisSchema = z
       .optional(),
   });
 
-/**
- * A key beside the plot takes the plot's width, so 'right' is
- * refused wherever a spec places a key. 'top' comes first in each enum: the
- * schema diagnostic patches a refused value to the nearest allowed one, and
- * on a tie that is the first.
- */
-export function sideKeyError(issue: { input?: unknown }): string | undefined {
-  const input = issue.input as { position?: unknown } | string | undefined;
-  // The union hands in the whole option, the position enum the position alone.
-  const side = input === 'right' || (typeof input === 'object' && input !== null && input.position === 'right');
-  return side ? SIDE_KEY_REFUSED : undefined;
-}
+/** Where a key sits: one row above the plot, one below it, or in a column beside it. */
+export const keyPositionSchema = z.enum(['top', 'bottom', 'right', 'left']).describe("Key position: 'top', one row above the plot, 'bottom', one row under it, or 'right' or 'left', a column beside the plot. A column beside the plot takes the plot's width: where the plot block would keep under 68% of the chart width, or the column does not fit the height, the key goes to the row above the plot with a legend-side-fallback warning.");
 
-/** Where a key sits: one row above the plot, or one below it. */
-export const keyPositionSchema = z.enum(['top', 'bottom'], { error: sideKeyError }).describe("Key position: 'top', one row above the plot, or 'bottom'. A key beside the plot ('right') is refused.");
-
-/** A legend option in the shape every type shares, with the side key refused by name. */
+/** A legend option in the shape every type shares. */
 function keyOptionSchema<const V extends readonly [string, ...string[]]>(values: V) {
   return z.union([
     z.enum(values).describe('Suppress keys, select explicit placement, or let visible series names determine whether automatic keys are needed.'),
@@ -1166,7 +1152,7 @@ function keyOptionSchema<const V extends readonly [string, ...string[]]>(values:
       position: keyPositionSchema,
       order: z.array(idSchema).optional().describe('Legend item ids in the requested order; unspecified items follow.'),
     }).describe('Explicit legend placement and optional item order.'),
-  ], { error: sideKeyError });
+  ]);
 }
 
 /** BaseOptions minus `measure` (excluded from JSON Schema per spec). */
@@ -1374,19 +1360,19 @@ export const baseOptionsSchema = z.object({
   ]).optional().describe("Label visibility and content overrides; omission uses the selected chart policy. Unsupported chart types refuse this shared option. false turns optional labels off. An object maps a label kind (category, series, segment, point, total, grandTotal, insidePie, outsidePie, percentIndicator, restSeries, tick, axisTitle, valueLine, annotation, growth, activity, item; each chart reads its own, and a kind it does not read is refused) to true, false or content parts from absolute, percent, category and series. Another part is dropped with a warning; value draws as absolute. On a stacked column with one PY reference series, { growth: false } drops the growth arrows over the totals (↑ 6.1%) and keeps the PY ticks and their labels; { percentIndicator: false } drops the 100% marker of a 100% chart. On bar, box, column, combo, dot, line, Mekko, slope and variance, false keeps category names; { category: false } hides them. On bullet, butterfly, funnel, heatmap, pyramid and status, false keeps the row, column and stage names; on kpi it keeps the main number and the card name. Grid panels can leave category names to the grid. On a line, series false turns the series names off and point sets what each printed value shows, so { point: ['category', 'absolute'] } prints 08-16 44.7 at the point. On a stacked column or combo, { segment: ['absolute', 'percent'] } prints each segment value over its share of the stack; a stack with a negative or missing part prints the value alone and warns. restSeries sets the values of a stacked column, bar or area series whose colorRole is others: absent, they print everywhere except the dashboard target, where the hover card and the note line carry them; true prints them, false hides and notes them on every target."),
   categoryLabels: categoryLabelsSchema,
   labelPlacements: z.record(z.string(), z.string().describe('Requested solver slot id, such as insideCenter.')).optional().describe('Authored placement pins keyed by label id; the solver checks each requested slot. On a line, a pinned end label removes the legend step of the end-label ladder. The slots a label can take depend on the chart and its data; a wrong slot warns unknown-slot and lists the valid and free slots of that render.'),
-  legend: keyOptionSchema(['top', 'bottom', 'none', 'auto'])
+  legend: keyOptionSchema(['top', 'bottom', 'right', 'left', 'none', 'auto'])
     .optional()
     .describe(
-      "A key without a named position sits in one row above the plot, flush with it, under the subtitle; more items wrap to further rows and move the plot down. 'bottom' puts the row under the plot. 'right' is refused: a key beside the plot takes the plot's width. 'auto' adds keys when visible labels do not name every drawn series. A displayed subtitle measure or unit can name one primary series, matching the complete phrase without case sensitivity. Required explanatory keys remain, except the keys of a table, heatmap, cohort and variance, which 'none' drops for a host that draws its own. Automatic keys use footnote type in the top row. Explicit settings override theme.legend.auto, which defaults to false. Multi-series column, bar, combo, dot and scatter charts add a key when direct names are missing. A series key explains its scenario styling. Grids keep a required key under 'none' when direct names are incomplete.",
+      "A key without a named position sits in one row above the plot, flush with it, under the subtitle; more items wrap to further rows and move the plot down. 'bottom' puts the row under the plot. 'right' and 'left' put the key in a column beside the plot where the plot block keeps at least 68% of the chart width and the column fits the height; otherwise the key stays in the row above the plot and a legend-side-fallback warning says so. 'auto' adds keys when visible labels do not name every drawn series. A displayed subtitle measure or unit can name one primary series, matching the complete phrase without case sensitivity. Required explanatory keys remain, except the keys of a table, heatmap, cohort and variance, which 'none' drops for a host that draws its own. Automatic keys use footnote type in the top row. Explicit settings override theme.legend.auto, which defaults to false. Multi-series column, bar, combo, dot and scatter charts add a key when direct names are missing. A series key explains its scenario styling. Grids keep a required key under 'none' when direct names are incomplete.",
     ),
   valueAxis: valueAxisSchema
     .optional().describe('Value-axis display and domain settings; each chart schema narrows the supported fields.'),
   categoryAxis: z
     .object({
-      crossesBetween: z.boolean().optional().describe('Line-chart category placement: default true centres categories in bands; false places the end categories at the plot edges.'),
-      dateTicks: z.enum(['years', 'quarters', 'months', 'weeks', 'days']).optional().describe("Line-chart date tick interval. A short tick under the plot marks the first category of each calendar interval. 'years', 'quarters' and 'months' name those ticks on the calendar: quarters read Jan, Apr, Jul, Oct. A row too narrow for every name keeps a larger round step counted from January (years 2, 5, 10, 20, 25, 50 or 100, so every tenth year from 1980; quarters 2, 4, 8, 20 or 40; months 2, 3, 6, 12, 24, 60 or 120), at most eight names. The latest period is always named; if it collides with the tick before it, that tick drops. 'weeks' and 'days' count equal steps back from the latest period (weeks 2, 4, 13, 26 or 52; days 2, 7, 14 or 28) and name it too. 'years' names the year alone ('Jan 1980' reads 1980) where the label carries it. 'months' over day dates the engine labels names the month ('1 Apr 2025' reads Apr 2025, then May, Jun). A monthly series through July 2026 with 'years' reads 1980, 1990, 2000, 2010, 2020, Jul 2026. Without dateTicks, column, stacked column, line, area and combo pick tick months by the same calendar rule for rows of months and quarters (step 3: Jan, Apr, Jul, Oct; step 6: Jan, Jul; step 12: Jan; plus the latest period) and count back from the latest period for days and weeks, so side-by-side panels with the same categories show the same months. A line or area day row that would step past 28 days names months as 'months' does. Categories without an ISO date leave the option unused and report date-ticks-unsupported."),
+      crossesBetween: z.boolean().optional().describe('Line-chart category placement: default true centres categories in bands; false places the end categories at the plot edges. Column and combo always centre their categories in bands: false is ignored there and reports cross-between-ignored.'),
+      dateTicks: z.enum(['years', 'quarters', 'months', 'weeks', 'days']).optional().describe("Date tick interval on line, column and combo. A short tick under the plot marks the first category of each calendar interval; on column and combo it stands at the middle of the band, and every column keeps its place. 'years', 'quarters' and 'months' name those ticks on the calendar: quarters read Jan, Apr, Jul, Oct. A row too narrow for every name keeps a larger round step counted from January (years 2, 5, 10, 20, 25, 50 or 100, so every tenth year from 1980; quarters 2, 4, 8, 20 or 40; months 2, 3, 6, 12, 24, 60 or 120), at most eight names. The latest period is always named; if it collides with the tick before it, that tick drops. 'weeks' and 'days' count equal steps back from the latest period (weeks 2, 4, 13, 26 or 52; days 2, 7, 14 or 28) and name it too. 'years' names the year alone ('Jan 1980' reads 1980) where the label carries it. 'months' over day dates the engine labels names the month ('1 Apr 2025' reads Apr 2025, then May, Jun). A monthly series through July 2026 with 'years' reads 1980, 1990, 2000, 2010, 2020, Jul 2026. Without dateTicks, column, stacked column, line, area and combo pick tick months by the same calendar rule for rows of months and quarters (step 3: Jan, Apr, Jul, Oct; step 6: Jan, Jul; step 12: Jan; plus the latest period) and count back from the latest period for days and weeks, so side-by-side panels with the same categories show the same months. A line or area day row that would step past 28 days names months as 'months' does. Categories without an ISO date, or not in date order (sorted by value), leave the option unused and report date-ticks-unsupported."),
     })
-    .optional().describe('Category-axis settings implemented by line charts; other shared-base charts refuse this option.'),
+    .optional().describe('Category-axis settings: dateTicks on line, column and combo, crossesBetween on line; other shared-base charts refuse this option.'),
   secondaryAxis: z.object({ acknowledge: z.literal(true).describe('Explicitly acknowledge that the chart uses an independent second value scale.') }).optional().describe('Opt in to a second value scale on supported charts; combo adds chart-specific secondary-axis options.'),
   scaleGroup: z.object({
     // x shares nothing: no type reads back or pins its x domain, so it is refused.

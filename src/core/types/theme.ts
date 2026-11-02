@@ -304,7 +304,7 @@ export interface Theme {
      * Where a key the chart cannot drop goes when the spec hides or leaves
      * the legend: the value key of a tilemap or choropleth. Absent
      * keeps 'top', one row above the plot; a position the spec names wins.
-     * 'right' is refused: a key beside the plot takes the plot's width.
+     * A theme names only 'top' or 'bottom': a key beside the plot is the spec's choice.
      */
     required?: 'bottom' | 'top';
   };
