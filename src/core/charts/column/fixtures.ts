@@ -2536,11 +2536,11 @@ fixtures.push({
   annotations: [{ kind: 'valueLine', value: 100, label: 'Benchmark' }],
 });
 
-// a valueLine prints its label, so text on it is refused with the
-// patch that renames it (column/stacked-benchmark-line shows the fix).
+// a valueLine prints its label; text alone is read as the label, but text that
+// differs from label names two captions and is refused.
 fixtures.push({
   id: 'value-line-text-refused',
-  title: 'Refusal example: a valueLine named with text instead of label',
+  title: 'Refusal example: a valueLine with a text that differs from its label',
   kind: 'torture',
   refuses: { code: 'invalid-annotation', path: 'annotations.0.text' },
   data: {
@@ -2552,7 +2552,7 @@ fixtures.push({
     subtitle: { measure: 'Orders', period: 'Q1' },
   },
   // The type refuses text on a valueLine too; the cast keeps the authored mistake.
-  annotations: [{ kind: 'valueLine', value: 100, text: 'Benchmark' } as unknown as Annotation],
+  annotations: [{ kind: 'valueLine', value: 100, text: 'Benchmark', label: 'Plan' } as unknown as Annotation],
 });
 
 // one demo per render target, physical unit and print preset.
