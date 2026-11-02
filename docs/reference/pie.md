@@ -47,7 +47,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | series[].id | string | yes | Series identity used by keyed options, annotations and legend entries. |
 | series[].label | string |  | Displayed series name; defaults to the series id. |
 | series[].values | (cell \| { categoryId, value: cell })[] | yes | Values in category order, or keyed entries pairing a categoryId with its value. |
-| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). Controls scenario labels and paint conventions. |
+| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. Controls scenario labels and paint conventions. |
 | series[].role | string |  | Data series or comparison-only reference series; references are excluded from the main plotted data. One of `'data'`, `'reference'`. |
 | series[].colorRole | string |  | Theme color role used for a single displayed slice; multi-slice charts use the selected slice ramp. One of good, bad, warn, neutral, neutralLight, highlight, total, others; series-N for step N of the theme ramp, 1-based (series-2 is color.series[1]); or status-<key> for a theme status colour. A hex colour goes in fill. |
 | series[].unit | string |  | Unit shown with this series values and used to check shared-scale compatibility. |

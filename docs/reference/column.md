@@ -56,7 +56,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | series[].id | string | yes | Series identity used by keyed options, annotations and legend entries. |
 | series[].label | string |  | Displayed series name; defaults to the series id. |
 | series[].values | (cell \| { categoryId, value: cell })[] | yes | Values in category order, or keyed entries pairing a categoryId with its value. |
-| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). Controls scenario labels and paint conventions. |
+| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. Controls scenario labels and paint conventions. |
 | series[].direction | string |  | Whether increases are favorable; defaults to higherIsBetter for directional comparisons. One of `'higherIsBetter'`, `'lowerIsBetter'`. |
 | series[].role | string |  | Data series or comparison-only reference series; references are excluded from the main plotted data. One of `'data'`, `'reference'`. |
 | series[].colorRole | string |  | Theme color role used for this series when no explicit fill takes precedence. One of good, bad, warn, neutral, neutralLight, highlight, total, others; series-N for step N of the theme ramp, 1-based (series-2 is color.series[1]); or status-<key> for a theme status colour. A hex colour goes in fill. |
