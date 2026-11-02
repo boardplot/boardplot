@@ -111,7 +111,8 @@ function validatedRequest<D, O extends object>(
     throw new NormalizeError(error.code, error.path ?? 'options', error.message, error.suggest, error.fix, error.field);
   }
   const options = { ...valid.options, ...(measurer === undefined ? {} : { measure: measurer }) } as O & RequestOptions;
-  return { request: { ...request, data: valid.data as D, options }, warnings: envelope.warnings };
+  const annotations = request.annotations === undefined ? {} : { annotations: valid.chart.annotations as typeof request.annotations };
+  return { request: { ...request, data: valid.data as D, options, ...annotations }, warnings: envelope.warnings };
 }
 
 export function measure<D, O extends object>(request: ChartRequest<D, O & RequestOptions>, context?: RequestContext) {

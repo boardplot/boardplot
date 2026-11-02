@@ -11,7 +11,7 @@ import { layoutDiagram } from '../src/core/charts/diagram/layout';
 import { diagramSceneId } from '../src/core/charts/diagram/ids';
 import { rectLineDistance, type Rect } from '../src/core/geometry';
 import type { DiagramData, DiagramMarks, DiagramOptions, DiagramPolylineRoute } from '../src/core/types/diagram';
-import { canDraw, getChartDefinition, measure, resolveChartRequest } from '../src/index';
+import { canDraw, getChartDefinition, layoutResolvedRequest, measure, renderSvg, resolveChartRequest } from '../src/index';
 import { getFixtures } from '../src/fixtures';
 import { checkedColor } from '../src/core/svg/paint';
 import { compositeColor, contrastRatio } from '../src/core/color';
@@ -58,6 +58,18 @@ describe('converted inputs', () => {
     expect(parsed.request.type).toBe('column');
     expect(parsed.request.data).toEqual(canonical.data);
     expect(parsed.warnings.filter(warning => warning.code === 'input-converted')).toHaveLength(11);
+  });
+
+  // The library path warned that "ValueLine" is drawn as "valueLine" but kept the original text, so the line vanished.
+  it('draws a library annotation whose kind spelling was converted', () => {
+    const request = { type: 'column', data: { categories: ['a', 'b'], series: [{ id: 's', values: [10, 30] }] },
+      annotations: [{ kind: 'ValueLine', value: 20, label: 'Target' }] };
+    const resolved = resolveChartRequest(request as never);
+    expect(resolved.inputWarnings?.some(warning => warning.code === 'input-converted')).toBe(true);
+    expect(resolved.annotations[0]).toMatchObject({ kind: 'valueLine', value: 20 });
+    const laid = layoutResolvedRequest(resolved);
+    expect(laid.refused).toBeFalsy();
+    expect(renderSvg(laid as never, resolved.theme)).toContain('Target');
   });
 
   // Separators, units, excess digits and underflow must never produce a guessed or rounded value.
