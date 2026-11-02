@@ -222,6 +222,7 @@ function layoutDiagramPass(
     : linearEligible(data, options) ? layoutLinearCompact(data, plot, stepFont, badgeFont, captionFont, measure, u, badgeText,
       size.width >= 720 ? 2 * stepFont.size : 0, fixedHeight)
     : roadmapEligible(data, options) ? layoutRoadmapCompact(data, options, plot, labelFont, laneFont, measure, u, diagramPalette, theme) : undefined;
+  const edgeLabelFont = options.variant === 'architecture' ? org?.secondaryFont ?? labelFont : labelFont;
   // Refuse-less: every layout draws on a card under 480 px when it reads
   // there: no card or group text cut, no group frame over another. Otherwise it keeps the
   // 480 px floor. The ring, the house and the compact layouts scale to the width.
@@ -591,7 +592,7 @@ function layoutDiagramPass(
   const edgeLabelSizes = new Map(
     preset.edges.flatMap((edge) =>
       edge.label
-        ? [[edge.id, { width: measure(edge.label, labelFont).width, height: measure(edge.label, labelFont).height }] as const]
+        ? [[edge.id, { width: measure(edge.label, edgeLabelFont).width, height: measure(edge.label, edgeLabelFont).height }] as const]
         : [],
     ),
   );
@@ -635,14 +636,14 @@ function layoutDiagramPass(
       { segmentId: edge.id },
       edge.label,
       rect,
-      labelFont,
+      edgeLabelFont,
       measure,
       PRIORITY.interior,
       options.target,
     );
   });
   org?.channelLabels?.forEach((label) => addBoxLabelRequest(edgeLabelRequests, edgeLabelKinds, label.id, 'diagramEdge', label.owner, label.text,
-    label.rect, label.font ?? labelFont, measure, PRIORITY.interior, options.target));
+    label.rect, label.font ?? edgeLabelFont, measure, PRIORITY.interior, options.target));
   const solvedEdges = solveLabels(edgeLabelRequests, occupied, labelCtx(theme, size, {}, {
     density: 'full',
     measure,
@@ -650,9 +651,12 @@ function layoutDiagramPass(
     labelPad: 1,
   }));
   remapLabelKinds(solvedEdges.placed, edgeLabelKinds);
+  if (options.variant === 'architecture') {
+    for (const label of solvedEdges.placed) if (label.owner.segmentId !== undefined) label.ink = { token: 'inkMuted' };
+  }
   pushAll(warnings, solvedEdges.warnings);
-  const edgeLabelFonts = new Map(org?.channelLabels?.map((label) => [label.id, label.font ?? labelFont]));
-  const edgeLabelNodes = labelsToNodes(theme, solvedEdges.placed, (label) => edgeLabelFonts.get(label.id) ?? labelFont);
+  const edgeLabelFonts = new Map(org?.channelLabels?.map((label) => [label.id, label.font ?? edgeLabelFont]));
+  const edgeLabelNodes = labelsToNodes(theme, solvedEdges.placed, (label) => edgeLabelFonts.get(label.id) ?? edgeLabelFont);
 
   const { laneGroupLabels, nodeLabels, accessoryLabels } = groupStructuralLabels(structuralLabelNodes);
   const scene = [
@@ -825,10 +829,13 @@ function addNodeLabels(
   const lineH = font.size * (font.lineHeight ?? 1.2);
   const secondaryFont = caption?.secondaryFont ?? font;
   const secondary = node.secondaryLabel ? fitText(node.secondaryLabel, secondaryFont, resolved.contentRect.w, 2, measure, { target: options.target, typeRole: 'label' }) : undefined;
-  const secondaryHeight = (secondary?.lines.length ?? 0) * lineH;
+  const architecture = options.variant === 'architecture';
+  const secondaryHeight = (secondary?.lines.length ?? 0) * (architecture ? secondaryFont.size * (secondaryFont.lineHeight ?? 1.2) : lineH);
+  const secondaryGap = architecture ? 0.5 * u : u;
   const height = primary.lines.length * lineH;
-  const secondaryFits = secondary && !secondary.title && height + secondaryHeight + u <= resolved.contentRect.h;
-  const primaryHeight = resolved.contentRect.h - (!external && secondaryFits ? secondaryHeight + u : 0);
+  const secondaryFits = secondary && !secondary.title && height + secondaryHeight + secondaryGap <= resolved.contentRect.h;
+  const primaryHeight = resolved.contentRect.h - (!external && secondaryFits ? secondaryHeight + secondaryGap : 0);
+  const blockTop = resolved.contentRect.y + (resolved.contentRect.h - height - secondaryHeight - secondaryGap) / 2;
   kinds.set(id, 'diagramNode');
   const labelRequest = (block: { lines: string[]; title?: string | undefined }, text: string): LabelRequest => {
     const width = Math.max(1, ...block.lines.map((line, index) => measure(line, index < (lead?.lines.length ?? 0) ? bold : font).width));
@@ -849,7 +856,7 @@ function addNodeLabels(
             slot: 'inside',
             rect: qRect({
               x: start ? resolved.contentRect.x : resolved.contentRect.x + (resolved.contentRect.w - width) / 2,
-              y: resolved.contentRect.y + (primaryHeight - blockHeight) / 2,
+              y: architecture && secondaryFits ? blockTop : resolved.contentRect.y + (primaryHeight - blockHeight) / 2,
               w: width,
               h: blockHeight,
             }),
@@ -915,7 +922,7 @@ function addNodeLabels(
           slot: 'inside-secondary',
           rect: qRect({
             x: caption?.secondaryFont ? resolved.contentRect.x : resolved.contentRect.x + (resolved.contentRect.w - secondaryWidth) / 2,
-            y: resolved.contentRect.y + resolved.contentRect.h - secondaryHeight,
+            y: architecture ? blockTop + height + secondaryGap : resolved.contentRect.y + resolved.contentRect.h - secondaryHeight,
             w: secondaryWidth,
             h: secondaryHeight,
           }),
