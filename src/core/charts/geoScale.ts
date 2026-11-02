@@ -140,6 +140,8 @@ function printedEdge(value: number, format: string | undefined, decimals?: numbe
   }
   const spec = parseFormatExample(format);
   if (spec.exponent) return roundedNumber(value, { ...spec, decimals: decimals ?? spec.decimals });
+  // Explicit thresholds use the figure count rather than its fallback decimal count.
+  if (spec.significantDigits !== undefined && decimals === undefined) return roundedNumber(value, spec);
   const unit = MAGNITUDE_DIVISOR[spec.magnitude];
   const places = decimals ?? spec.decimals;
   // Integer times unit, then one division: dividing first leaves 8300000.000000001 for $8.3M.
