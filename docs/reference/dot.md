@@ -60,7 +60,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
-| legend | string \| object | `'top'`, `'bottom'`, `'none'`, `'auto'` (or another value of its type) |  | Key position. Multiple series get a key by default unless visible direct labels name them. 'none' hides the key; unnamed series warn. |
+| legend | string \| object | `'top'`, `'bottom'`, `'right'`, `'left'`, `'none'`, `'auto'` (or another value of its type) |  | Key position. Multiple series get a key by default unless visible direct labels name them. 'none' hides the key; unnamed series warn. |
 | axisTitles | object |  |  | Title of the value axis when it is drawn: under the value-axis tick row, ending at the right edge of the plot. Drawn only when authored. |
 | axisTitles.primary | string |  |  | 'Measure, unit' title of the value axis, e.g. 'Margin, %'. |
 | variant | string | `'dot'`, `'dumbbell'`, `'lollipop'` | `'dot'` | Dot by default; dumbbell joins paired values and lollipop joins values to the baseline. |

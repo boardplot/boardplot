@@ -442,6 +442,8 @@ export function solveLineFrame(
         ...timeZoneNote(domain, options),
       ],
       legend,
+      // The end-name key the engine puts beside the plot keeps its place whatever the room.
+      ...(usesEndLabelKey(options) ? { sideKeyFixed: true } : {}),
       ...(eventKey ? { eventKey } : {}),
       theme,
       measure,

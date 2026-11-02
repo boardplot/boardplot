@@ -354,7 +354,7 @@ export function prepareEndpointLabels(input: {
   const shortWrapped = hasShort ? wrappedLabels(seeds, (seed) => seed.shortText ?? seed.fullText, labelFont, labelH, textBudget, measure) : null;
   const legendPosition = typeof options.legend === 'object' ? options.legend.position : options.legend;
   const gridLegend = (options as LineOptions & { gridEndpointIdentity?: unknown }).gridEndpointIdentity === 'legend';
-  const legendAllowed = !isBump && endContent !== null && legendPosition !== 'none' && legendPosition !== 'right' && !seeds.some((seed) => options.labelPlacements?.[seed.id] !== undefined);
+  const legendAllowed = !isBump && endContent !== null && legendPosition !== 'none' && legendPosition !== 'right' && legendPosition !== 'left' && !seeds.some((seed) => options.labelPlacements?.[seed.id] !== undefined);
   // The key row names the series instead, so the ends carry nothing.
   const legend: EndLabel[] | null = legendAllowed || gridLegend ? [] : null;
   const candidates: { strategy: EndpointLabelStrategy; labels: EndLabel[] }[] = [

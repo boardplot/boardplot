@@ -47,11 +47,7 @@ export function sourceSchemaDiagnostic(
   // The parse reads an owned copy, so an object value is equal, not identical.
   const same = original.found && actual.found && (Object.is(original.value, actual.value)
     || (typeof original.value === 'object' && original.value !== null && JSON.stringify(original.value) === JSON.stringify(actual.value)));
-  // Moving a side key changes the frame. A schema cannot know whether its new height fits.
-  const sideKey = actual.found && expandedPath.includes('options') && issue.path[0] === 'legend'
-    && (actual.value === 'right' || (typeof actual.value === 'object' && actual.value !== null
-      && (actual.value as { position?: unknown }).position === 'right'));
-  return schemaDiagnostic(issue, localInput, { ...context, path, allowFix: same && !sideKey });
+  return schemaDiagnostic(issue, localInput, { ...context, path, allowFix: same });
 }
 
 export function chartSchemaDiagnostic(

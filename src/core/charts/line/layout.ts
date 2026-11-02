@@ -1142,7 +1142,7 @@ function layoutLinePass(
   }
   // An inline name with no seat, chosen by the engine or by the author: the key row names the lines after all.
   // The key pass draws no inline names, so none is left hidden. A visible legend already names every line: it stays as set.
-  const legendShown = ['top', 'right', 'bottom'].includes((typeof options.legend === 'object' ? options.legend.position : options.legend) ?? 'none');
+  const legendShown = ['top', 'right', 'left', 'bottom'].includes((typeof options.legend === 'object' ? options.legend.position : options.legend) ?? 'none');
   if (((options as { [INLINE_FALLBACK]?: boolean })[INLINE_FALLBACK] === true || (options.seriesLabels === 'inline' && !legendShown)) &&
     solved.placed.some(label => label.kind === 'series' && label.hidden !== undefined)) {
     const { seriesLabels: _names, ...keyed } = withoutInlineFallback(options);

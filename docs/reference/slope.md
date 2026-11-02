@@ -65,7 +65,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
-| legend | string \| object | `'top'`, `'bottom'`, `'none'`, `'auto'` (or another value of its type) |  | On 'slope' only 'top' and 'bottom' or a position object draw a key: a slope chart names every line at both ends, so 'none' and 'auto' draw what the chart draws without them; drop legend, or name 'top' or 'bottom' for a key. |
+| legend | string \| object | `'top'`, `'bottom'`, `'right'`, `'left'`, `'none'`, `'auto'` (or another value of its type) |  | On 'slope' only 'top' and 'bottom' and 'right' and 'left' or a position object draw a key: a slope chart names every line at both ends, so 'none' and 'auto' draw what the chart draws without them; drop legend, or name 'top', 'bottom', 'right' or 'left' for a key. |
 | foldBelowShare | number |  |  | Share of the endpoint total below which series fold into one 'Other' line, measured at both ends: 0.05 is five percent. A value at or above 1 is refused. Highlighted series keep their own name. |
 | change | string | `'none'`, `'absolute'`, `'relative'` |  | A column of each line's change between the two periods, right of the second rail's labels under a head such as 'Change, pp': 'absolute' prints second minus first (pp for percent values), 'relative' prints the percent change. The highlighted line prints bold. Default 'none'. The column stays off below 576 px canvas width. |
 | variant | string | `'lines'`, `'diverging'` |  | 'diverging': one panel per series, values as the positive share up from zero and negative as the negative share down, on one scale; two categories, at most 12 series. Default 'lines'. |

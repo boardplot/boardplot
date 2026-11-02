@@ -105,7 +105,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
-| legend | string \| object | `'top'`, `'bottom'`, `'none'`, `'auto'` (or another value of its type) |  | Key position. Segment, case and scenario encodings keep their key because numeric bar labels do not name them. With these encodings, 'none' retains the key and reports waterfall-legend-required. A plain bridge keys its sign colours only when a lowerIsBetter step inverts them. |
+| legend | string \| object | `'top'`, `'bottom'`, `'right'`, `'left'`, `'none'`, `'auto'` (or another value of its type) |  | Key position. Segment, case and scenario encodings keep their key because numeric bar labels do not name them. With these encodings, 'none' retains the key and reports waterfall-legend-required. A plain bridge keys its sign colours only when a lowerIsBetter step inverts them. |
 | axisTitles | object |  |  | Authored primary value-axis title above the vertical plot, using column title styling. Waterfall draws no value ticks. Horizontal mode accepts this key but does not print it. |
 | axisTitles.primary | string |  |  | 'Measure, unit' title of the value axis, e.g. 'Margin, %'. |
 | variant | string | `'vertical'`, `'horizontal'` |  | Left out: vertical columns, turned into a horizontal bridge when the step names would rotate, shorten or drop, the horizontal bridge draws without a new finding, and the spec has no cases and no annotations. 'vertical' always keeps columns. A horizontal bridge draws no annotations: it suppresses them and warns horizontal-annotations-unsupported, so use vertical for annotations. |
