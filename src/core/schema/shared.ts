@@ -1210,7 +1210,7 @@ export const baseOptionsSchema = z.object({
         overrides: z.record(z.string(), z.unknown().describe('Theme token override value; validated by theme resolution.')).optional().describe('Partial theme token tree merged with the named preset.'),
       }).describe('Named theme with explicit token overrides.'),
     ])
-    .optional().describe('Theme preset or preset with overrides; request context may supply it, otherwise resolution uses boardroom.'),
+    .optional().describe('Theme preset or preset with overrides; request context may supply it, otherwise resolution uses bridge.'),
   locale: z
     .object({
       language: z.string().min(2).max(35)
@@ -1503,7 +1503,12 @@ export const averageMarkerSchema = z
     z.object({
       scope: z
         .union([z.literal('all'), z.array(idSchema).min(1)])
+        .optional()
         .describe("Series included in the computed average; defaults to 'all'."),
+      includePartial: z
+        .boolean()
+        .optional()
+        .describe('true averages the categories marked partial too. By default they are left out, and the label names the periods the average covers. Column, bar and combo.'),
     }),
   ])
   .optional();

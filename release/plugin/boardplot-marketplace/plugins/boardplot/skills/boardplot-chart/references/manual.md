@@ -30,7 +30,7 @@ Every chart is one JSON object, the spec.
     "subtitle": { "measure": "Revenue by line" },
     "unit": "$m"
   },
-  "theme": "boardroom"
+  "theme": "bridge"
 }
 ```
 
@@ -788,7 +788,9 @@ The fixtures `x-time-daily`, `x-time-berlin-dst`, `x-time-uneven-sensors` and `x
 
 ## Themes
 
-A theme sets colours, type sizes, spacing and the scenario patterns. The presets are `boardroom` (the default), `standard`, `standard-dark`, `notation`, `notation-dark`, `capital`, `studio` and `glass`.
+A theme sets colours, type sizes, spacing and the scenario patterns. The presets are `bridge` (the default), `bridge-dark` (its dark pair), `boardroom`, `standard`, `standard-dark`, `notation`, `notation-dark`, `capital`, `studio` and `glass`. Use `theme: "boardroom"` for the old light look and `theme: "standard-dark"` for the old dark look. The host passes `bridge-dark` when it needs a dark chart. Presets do not switch automatically.
+
+Bridge keeps the engine's measured default font stack: `'Helvetica Neue', Helvetica, Arial, Roboto, sans-serif`. Bridge keeps the engine's role type sizes, which the render target replaces for a preset. A host with width tables for its own licensed brand font can set `type.family` and pass its own measurer, as described in [FONTS.md](../../../runtime/docs/FONTS.md).
 
 The `notation` preset follows the IBCS® Standards; IBCS is a registered trademark of the IBCS Institute, and the standards are published under CC BY-SA 4.0 at [www.ibcs.com](https://www.ibcs.com).
 
@@ -798,7 +800,7 @@ A brand theme is a preset plus overrides:
 {
   "type": "column",
   "data": { "categories": ["2024", "2025"], "series": [{ "id": "revenue", "values": [120, 135] }] },
-  "theme": { "preset": "standard", "overrides": { "color": { "highlight": "#0B5CAD", "series": ["#0B5CAD", "#5B8DB8", "#A9C1D9"] } } }
+  "theme": { "preset": "bridge", "overrides": { "color": { "highlight": "#0B5CAD", "series": ["#0B5CAD", "#5B8DB8", "#A9C1D9"] } } }
 }
 ```
 
@@ -824,7 +826,7 @@ import { ColumnChart } from 'boardplot/react/column';
 
 export function BrandChart({ dark = false }) {
   const theme = {
-    preset: dark ? 'standard-dark' : 'boardroom',
+    preset: dark ? 'bridge-dark' : 'bridge',
     overrides: { color: { series: [dark ? '#8cbcff' : '#1f4e79'] } },
   };
   return <BoardplotTheme theme={theme}>
@@ -852,7 +854,7 @@ const visibleSeries = colouredSeries.filter(s => selectedIds.has(s.id));
 
 Map every id whose colour must stay fixed. Unmapped series keep the automatic order-based colours. The map is application data; no provider state or new Boardplot option is needed. Roles follow the active theme, so a light-to-dark theme change keeps the series' rank while the theme chooses its colour. Use a shared map to `fill` instead when each id must keep an exact literal colour, and check that colour on both page themes.
 
-If the ramp runs out, Boardplot keeps its repeat policy and warns. `series-colour-repeated` names each group that shares a colour. `series-indistinguishable` names keys with the same colour and shape. Group the tail into an “Other” series only when the values add. Otherwise use small multiples, or supply more distinct colours and assign them with `colorRole` or `fill`. Changing `seriesOverflow` to `cycle` still repeats colours. Boardroom's eight colours and their order stay unchanged.
+If the ramp runs out, Boardplot keeps its repeat policy and warns. `series-colour-repeated` names each group that shares a colour. `series-indistinguishable` names keys with the same colour and shape. Group the tail into an “Other” series only when the values add. Otherwise use small multiples, or supply more distinct colours and assign them with `colorRole` or `fill`. Changing `seriesOverflow` to `cycle` still repeats colours. The `boardroom` preset keeps its old eight colours and their order.
 
 Render checks colour roles present in the chart layout. `validateTheme(theme)` from `boardplot/validate` checks the full theme. Colour findings name the measured colours, vision mode and floor; contrast ratios round down to two decimals.
 
