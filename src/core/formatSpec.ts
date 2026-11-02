@@ -206,7 +206,8 @@ function parseExample(example: string, keepWord: boolean): NumberFormatSpec {
   if (figures) {
     // The "1,234" is a stand-in: grouped, no decimals. The grouped digits before a magnitude lock the scale; a figure count rolls up at 1000.
     const spec = parseFormatExample(figures.standIn, keepWord);
-    delete spec.rollMagnitude;
+    // A magnitude inside a currency affix ("USDm @@@") fixes the scale: the affix cannot name another one.
+    if (!spec.magnitudeInAffix) delete spec.rollMagnitude;
     spec.significantDigits = figures.figures;
     spec.decimals = Math.min(MAX_FORMAT_DECIMALS, figures.figures - 1);
     return spec;
@@ -655,7 +656,14 @@ export function readFormatExamples<D, O>(data: D, options: O): { data: D; option
     const numbers = numbersOf(owner);
     if (!numbers?.length) return standIn;
     const spec = parseFormatExample(standIn);
-    const decimals = rasterDecimals(numbers, spec);
+    // The smallest nonzero value below 1 keeps two significant digits, so no value of the field prints as 0.
+    let smallest = Infinity;
+    for (const value of numbers) {
+      const scaled = Math.abs(value / MAGNITUDE_DIVISOR[spec.magnitude]);
+      if (scaled > 0 && scaled < smallest) smallest = scaled;
+    }
+    const figures = smallest < 1 ? Math.min(MAX_FORMAT_DECIMALS, 1 - Math.floor(Math.log10(smallest))) : 0;
+    const decimals = Math.max(rasterDecimals(numbers, spec), figures);
     const body = numericBody(standIn)!;
     const whole = spec.thousandsSep ? '1,234' : decimals === 3 ? '0' : '1';
     return standIn.slice(0, body.index) + whole + (decimals ? `.${'5'.repeat(decimals)}` : '') + standIn.slice(body.index + body.text.trimEnd().length);
@@ -703,7 +711,6 @@ function numericBody(s: string): { index: number; text: string } | null {
   const first = NUMBER_RUN.exec(s);
   if (!first) return null;
   const body = { index: first.index, text: first[0] };
-  if (/^[Ee][+-]?[0-9]+/.test(s.slice(first.index + first[0].trimEnd().length))) return body;
   if (!/\p{L}$/u.test(s.slice(0, first.index))) return body;
   // A unit name keeps its digits up to the next space ("2.5" of "PM2.5 1.2"); the run may run on over the space into the number.
   const unitEnd = first.index + /^[^\s\u00a0\u202f]+/u.exec(first[0])![0].length;

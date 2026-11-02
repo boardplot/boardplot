@@ -128,6 +128,22 @@ describe('ordinary number examples', () => {
     for (const example of ['Revenue', 'm', 'M', 'abc']) expect(() => parseFormatExample(example)).toThrow(/at least one digit/);
   });
 
+  // Prevents a currency-affix scale with significant figures from rolling to billions while the affix still says millions.
+  it('keeps the currency-affix scale under significant figures', () => {
+    expect(column('USDm @@@', [1.25e9, 9.8e8, 4.5e8]).texts.sort()).toEqual(['USDm 1,250', 'USDm 450', 'USDm 980']);
+    expect(formatterFromExample('@@@ €m', undefined)(1e9)).toBe('1,000 €m');
+  });
+
+  // Prevents an exponent example from swallowing the digit of a unit name before the number.
+  it('keeps unit-name digits before a scientific example', () => {
+    expect(formatterFromExample('CO2 1.2E+06', undefined)(2_500_000)).toBe('CO2 2.5E+06');
+  });
+
+  // Prevents a unit-only format from printing a small nonzero value as 0.
+  it('gives unit-only formats two significant digits for the smallest value', () => {
+    expect(column('x', [0.00123, 2.5]).texts).toEqual(['0.0012x', '2.5000x']);
+  });
+
   // Prevents literal direction signs and trailing minuses from giving positive or zero values a negative label.
   it('prints direction signs, plus-minus and trailing minus by value', () => {
     for (const example of ['▲1.2%', '▼1.2%']) expect([1.2, -0.5, 0].map(formatterFromExample(example, undefined))).toEqual(['▲1.2%', '▼0.5%', '0.0%']);
