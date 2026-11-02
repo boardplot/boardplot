@@ -298,6 +298,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | x-number-trail | line.line | example | Elevation by distance on a plain-number x (continuous number axis) |
 | x-time-partial-week | line.line | example | Weekly orders with the running week marked by data.partial (continuous time axis) |
 | x-time-range-edges | line.line | example | A daily line continues to both range edges between readings |
+| log-axis-users | line.line | example | Users grow across orders of magnitude |
 
 ## dimswitch
 

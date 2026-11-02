@@ -3249,4 +3249,19 @@ const lateStartFixture: LineFixture = {
   options: { title: 'Online grew one order a month from its start in July', unit: 'orders', valueLabels: 'ends', source: 'Illustrative data' },
 };
 
-registerFixtures('line', [...fixtures, smallDrawerFixture, anomalyLineFixture, weeklyEventsLineFixture, eventsKeyLineFixture, focusFixture, nearZeroTailsFixture, partialWeekFixture, hostCardFixture, hostCardUnitShownFixture, markInkFixture, cellLabelFixture, ...cohortLineFixtures, briefLineFixture, themeConventionsFixture, areaFromOriginFixture, ...coverageLineFixtures, cycleBandsFixture, gapBracketFixture, stackedAreaBenchmarkFixture, stackedAreaRestFixture, strokeSamplerFixture, ratioPlainFormatRefusal, rebaseMissingNoteFixture, rebaseZeroNoteFixture, bandHeadroomFixture, lateStartFixture, trendFixture, ...continuousLineFixtures]);
+const logAxisFixture: LineFixture = {
+  id: 'log-axis-users',
+  title: 'Users grow across orders of magnitude',
+  kind: 'example',
+  tags: ['coverage'],
+  data: {
+    categories: ['Year 1', 'Year 2', 'Year 3', 'Year 4', 'Year 5'].map((label, i) => ({ id: `year-${i + 1}`, label })),
+    series: [
+      { id: 'active', label: 'Active users', values: [10, 60, 420, 2900, 10200] },
+      { id: 'trial', label: 'Trial users', values: [40, 150, 800, 2100, 3500] },
+    ],
+  },
+  options: { title: 'Active users grow over five years', unit: 'users', source: 'Illustrative data', valueAxis: { log: true, show: true } },
+};
+
+registerFixtures('line', [...fixtures, smallDrawerFixture, anomalyLineFixture, weeklyEventsLineFixture, eventsKeyLineFixture, focusFixture, nearZeroTailsFixture, partialWeekFixture, hostCardFixture, hostCardUnitShownFixture, markInkFixture, cellLabelFixture, ...cohortLineFixtures, briefLineFixture, themeConventionsFixture, areaFromOriginFixture, ...coverageLineFixtures, cycleBandsFixture, gapBracketFixture, stackedAreaBenchmarkFixture, stackedAreaRestFixture, strokeSamplerFixture, ratioPlainFormatRefusal, rebaseMissingNoteFixture, rebaseZeroNoteFixture, bandHeadroomFixture, lateStartFixture, trendFixture, ...continuousLineFixtures, logAxisFixture]);

@@ -546,6 +546,7 @@ function lineA11yDesc(env: LineEnv, domain: LineDomain, area: LineArea, marks: L
     (mode) => mode !== 'linear',
   );
   return chartString(domain.options, 'lineDescStart', { v1: variantName, v2: drawnSeries.length, v3: cats.length }) +
+    (options.valueAxis?.log ? chartString(domain.options, 'lineLogScaleClause') : '') +
     fanDesc +
     (refSeries.length ? chartString(domain.options, 'referenceSeriesClause', { v1: refSeries.length }) : '') +
     (effectiveInterpolationDesc.length === 0

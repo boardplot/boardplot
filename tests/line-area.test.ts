@@ -8,6 +8,20 @@ import { requireGeometry } from '../src/core/sizing';
 import type { LineMarks } from '../src/core/charts/line/layout';
 import type { Geometry } from '../src/core/types/scene';
 
+// A linear value axis misplaces values by orders of magnitude when a log axis is requested.
+it('draws decade ticks evenly on a log axis and refuses zero', () => {
+  const request = (values: number[]) => resolveChartRequest({
+    type: 'line',
+    data: { categories: ['a', 'b', 'c'], series: [{ id: 'users', values }] },
+    options: { valueAxis: { log: true, show: true }, size: { width: 720, height: 540 } },
+  } as never);
+  const geometry = requireGeometry(layoutResolvedRequest(request([4, 100, 4000])));
+  const ticks = geometry.axes.find((axis) => axis.axis === 'y')!.ticks;
+  const positions = [10, 100, 1000].map((value) => ticks.find((tick) => tick.at === value)!.pos);
+  expect(positions[0]! - positions[1]!).toBeCloseTo(positions[1]! - positions[2]!, 5);
+  expect(() => layoutResolvedRequest(request([4, 0, 4000]))).toThrowError(expect.objectContaining({ code: 'log-nonpositive' }));
+});
+
 // Opaque fills down to the baseline hid a crossing series' area and showed the
 // next one as a band that read as a stacked segment (124 over 96 read as 28).
 it('fills only the lead series when an unstacked area draws crossing series', () => {

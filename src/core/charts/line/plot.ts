@@ -22,6 +22,7 @@ import { PRIORITY } from '../../label/solver';
 import { prepareRatioTier, ratioTierCanRender, ratioTierMetrics } from '../../ratioTier';
 import { round2 } from '../../geometry';
 import { linearScale, seatRoom } from '../../scale';
+import { logScale, logSpecFormat, logTickTiers } from '../logAxis';
 import type { FontSpec, TextMeasurer } from '../../text';
 import { strokeToken, dashToken, canvasMargin, emphasisWeight, secondaryFont } from '../../theme';
 import { X_PARTIAL_ROW, planXTicks, timeZoneNote, xTickRowPlan } from './xTicks';
@@ -464,19 +465,22 @@ function valueAxisTicks(env: LineEnv, domain: LineDomain, frame: FrameResult) {
   const { theme, measure, isBump } = env;
   const { options, variant, dLo, dHi, bumpDerived } = domain;
   const va = options.valueAxis ?? {};
+  const log = va.log === true || va.log === 'y';
   const baselineTolerance = Math.max(1, Math.abs(dHi - dLo)) * 1e-12;
-  const discloseNonzeroBaseline = !isBump && variant === 'line' && dLo > baselineTolerance;
+  const discloseNonzeroBaseline = !log && !isBump && variant === 'line' && dLo > baselineTolerance;
   // Where not every point prints its value, a value scale
   // reads the rest, unless the author turns it off.
   const axisShown = bumpDerived ? true : va.show ?? domain.labelModes.values !== 'all';
   // Percent cells print '%' on the ticks as on the point labels (fmtPercent).
   const percentAxis = !bumpDerived && variant !== 'stacked100-area' && !domain.rebased && percentCellsOnly(domain.dataSeries);
-  const axisFmt = bumpDerived
+  const logSpec = percentAxis ? domain.valueSpec.percentSpec : domain.valueSpec.spec;
+  const logTicks = log ? logSpecFormat(logSpec, [dLo, dHi]) : undefined;
+  const axisFmt = log ? logTicks! : bumpDerived
     ? (v: number): string => String(Math.round(v))
     : variant === 'stacked100-area'
       ? (v: number) => formatAutomaticPercent(v, 0, false, options.locale?.language)
       : percentAxis ? domain.valueSpec.fmtPercent : domain.fmt;
-  const axisTickSpec = bumpDerived || variant === 'stacked100-area' ? undefined : percentAxis ? domain.valueSpec.percentSpec : domain.valueSpec.spec;
+  const axisTickSpec = log || bumpDerived || variant === 'stacked100-area' ? undefined : percentAxis ? domain.valueSpec.percentSpec : domain.valueSpec.spec;
   let bumpTicks: number[] | undefined;
   if (bumpDerived) {
     const max = domain.bumpLadderMax;
@@ -491,7 +495,7 @@ function valueAxisTicks(env: LineEnv, domain: LineDomain, frame: FrameResult) {
     .filter((value): value is number => value !== null && Number.isFinite(value));
   let disclosedTicks: number[] | undefined;
   const stepTicks = axisShown && !bumpDerived ? domain.stepTicks : undefined;
-  if (!bumpDerived && (discloseNonzeroBaseline || valueLineTicks.length > 0)) {
+  if (!log && !bumpDerived && (discloseNonzeroBaseline || valueLineTicks.length > 0)) {
     const ticks = axisShown ? [...(stepTicks ?? linearScale([dLo, dHi], [0, 1]).ticks(5))] : [];
     const addTick = (value: number): void => {
       const tolerance = Math.max(1, Math.abs(value)) * 1e-12;
@@ -504,7 +508,7 @@ function valueAxisTicks(env: LineEnv, domain: LineDomain, frame: FrameResult) {
   const fullValueAxisReserve = axisShown
     ? bumpTicks
       ? measureValueAxisWidth([bumpTicks[0]!, bumpTicks[bumpTicks.length - 1]!], axisFmt, theme, measure)
-      : measureValueAxisWidth([dLo, dHi], axisFmt, theme, measure, 5, axisTickSpec, disclosedTicks ?? stepTicks)
+      : measureValueAxisWidth([dLo, dHi], axisFmt, theme, measure, 5, axisTickSpec, log ? stepTicks ?? logTickTiers(dLo, dHi)[0] : disclosedTicks ?? stepTicks)
     : 0;
   const disclosureReserve = !axisShown && disclosedTicks
     ? Math.max(0, measureValueAxisWidth([dLo, dHi], axisFmt, theme, measure, 5, axisTickSpec, disclosedTicks) - frame.plot.x)
@@ -706,7 +710,10 @@ function forecastHeaderClear(domain: LineDomain, forecast: readonly ForecastBoun
 
 function gridTopRoom(domain: LineDomain, reserves: LineReserves, text: LineText, plotH: number): number {
   if (domain.gridDataHi === undefined) return 0;
-  const room = (value: number, seat: number): number => seatRoom(value, [domain.dLo, domain.dHi], seat, plotH);
+  const log = domain.options.valueAxis?.log === true || domain.options.valueAxis?.log === 'y';
+  const room = (value: number, seat: number): number => log
+    ? seatRoom(Math.log10(value), [Math.log10(domain.dLo), Math.log10(domain.dHi)], seat, plotH)
+    : seatRoom(value, [domain.dLo, domain.dHi], seat, plotH);
   let top = 0;
   for (const label of reserves.endpoint.endLabels) {
     const di = domain.dataSeries.indexOf(label.s);
@@ -801,6 +808,15 @@ export function linePlotArea(
     ? planValueAxisTitle(valueAxisTitleText(theme, options.axisTitles?.primary, options,
       valueAxisUnit(options.unit, domain.dataSeries, domain.variant === 'stacked100-area')), theme, measure, frame.plot.w)
     : undefined;
+  const logTitle = axisTitle?.text;
+  if (axis.axisShown && options.valueAxis?.log && logTitle && !/\blog/i.test(logTitle)) {
+    warnings.push({
+      code: 'log-axis-unnamed', severity: 'info',
+      message: 'the vertical axis is on a log scale and its title does not say so',
+      suggest: `add it to the title, e.g. axisTitles.primary: '${logTitle}, log scale'`,
+      field: ['options', 'axisTitles', 'primary'],
+    });
+  }
   // The plot's x extent is known before its head band: the header rows only move it down.
   const plotX = frame.plot.x + (axis.axisShown || axis.disclosedTicks ? axis.valueAxisReserve : 0) + categoryOverhang;
   const plotW = Math.max(10, frame.plot.w - (axis.axisShown || axis.disclosedTicks ? axis.valueAxisReserve : 0) - categoryOverhang - categoryRightOverhang);
@@ -909,7 +925,7 @@ export function linePlotArea(
     axisTitleY,
     topPad,
     plot,
-    y: linearScale([dLo, dHi], yRange),
+    y: (options.valueAxis?.log ? logScale : linearScale)([dLo, dHi], yRange),
     // Proportional positions land on 0.01 px, as the path coordinates drawn from them do.
     xOf,
     ...(domain.x && xTicks ? { xTicks, xOfValue: (value: number) => span.x + (value - domain.x!.lo) / (domain.x!.hi - domain.x!.lo) * span.w } : {}),
