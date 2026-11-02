@@ -114,16 +114,11 @@ export type LikertNeutralMode = 'split' | 'positive' | 'negative' | 'exclude';
 /**
  * Statement names and ordinary legend keys use the resolved label size.
  * Automatic keys keep the shared footnote size; methodology remains visible in compact mode.
- * `sort` and `topN` are OMITTED, and the omission is real: the schema
- * (`likert/index.ts`) rejects both, so the declaration follows the runtime
- * rather than the reverse (the react-surface check enforces this).
- * Statement order is `sortBy`, and a Likert has no meaningful "other
- * statement" to aggregate a tail into. The layout still lints both codes for
- * callers who reach `layoutLikert` directly, past the schema.
+ * Categories order statements by net score without changing the response scale.
+ * A Likert has no meaningful rest statement to aggregate a tail into.
  */
 export interface LikertOptions extends Omit<BaseOptionsFor<'likert'>, 'sort' | 'topN'> {
-  /** `never`, not absent: an omitted key is STRIPPED by the schema, not refused. */
-  sort?: never;
+  sort?: { categories?: NonNullable<BaseOptions['sort']>['categories']; segments?: never };
   topN?: never;
   /** REQUIRED. Counts-vs-percent is declared, never inferred from a row sum. */
   values: 'counts' | 'percent';
@@ -605,13 +600,6 @@ export function layoutLikert(
     });
   }
 
-  if ((opts as BaseOptions).sort !== undefined) {
-    warnings.push({
-      code: 'likert-sort-ignored',
-      severity: 'info',
-      message: "options.sort is ignored on a likert — statement order is decided by options.sortBy ('sheet' or 'net')",
-    });
-  }
   if ((opts as BaseOptions).topN !== undefined) {
     warnings.push({
       code: 'likert-topn-unsupported',
@@ -624,10 +612,17 @@ export function layoutLikert(
 
   // ---- order --------------------------------------------------------------
   const sortBy = opts.sortBy ?? 'sheet';
+  const categorySort = opts.sort?.categories ?? (sortBy === 'net' ? 'desc' : 'sheet');
+  if (sortBy === 'net' && (categorySort === 'sheet' || categorySort === 'reverse')) warnings.push({
+    code: 'likert-sort-conflict', severity: 'warn',
+    message: `sortBy 'net' was not applied because sort.categories '${categorySort}' sets the statement order`,
+    suggest: 'remove sortBy',
+    fix: [{ op: 'remove', path: '/options/sortBy' }],
+  });
   const ordered =
-    sortBy === 'net'
-      ? [...items].sort((a, b) => net[b.id]! - net[a.id]! || a.index - b.index)
-      : items;
+    categorySort === 'asc' || categorySort === 'desc'
+      ? [...items].sort((a, b) => (categorySort === 'asc' ? net[a.id]! - net[b.id]! : net[b.id]! - net[a.id]!) || a.index - b.index)
+      : categorySort === 'reverse' ? [...items].reverse() : items;
   const order: Id[] = ordered.map((item) => item.id);
 
   // ---- constructed bar input: derived numbers only, no geometry -----------
@@ -1059,7 +1054,7 @@ export function layoutLikert(
         isAgreementScale ? chartString(opts, 'likertNetBrief') : chartString(opts, 'likertNetNamedBrief', { v1: short(sideWords.positiveSide), v2: short(sideWords.negativeSide) }),
       ));
     }
-    if (sortBy === 'net' && opts.methodNote === true) notes.push(methodNote(chartString(opts, 'sortedNetFull'), chartString(opts, 'sortedNetBrief')));
+    if (categorySort === 'desc' && opts.methodNote === true) notes.push(methodNote(chartString(opts, 'sortedNetFull'), chartString(opts, 'sortedNetBrief')));
     return notes;
   }
 
@@ -1493,10 +1488,6 @@ function resolveLegend(
 /** Keep Likert's reading order and typography when delegating to the bar engine. */
 function likertBarOptions(options: LikertOptions, labelSize: number): BaseOptions {
   const {
-    // `sort`/`topN` are not on LikertOptions, but a direct caller can still
-    // hand them over past the schema — they are lint-and-drop here rather than
-    // silently forwarded to a bar engine that would honour them and fight
-    // `sortBy`.
     values: _values,
     neutral: _neutral,
     summary: _summary,

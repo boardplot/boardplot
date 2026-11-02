@@ -24,9 +24,9 @@ export const OPTION_REASONS: Readonly<Record<keyof typeof OPTION_CAPABILITY, str
   hatchStrength:
     "this type draws no forecast, partial-period or no-data hatch, so there is nothing to strengthen or soften. Drop hatchStrength",
   sort:
-    "sort reorders categories on bar, box, column, dot, heatmap, mekko, pie and table, and cohort takes sort.segments. Here the order is the data's own: a time axis, a bridge, a funnel or a histogram's bins keep their sequence, and butterfly ranks rows with its own sortBy. Send the categories in the order to draw",
+    "sort reorders categories on bar, box, bullet, butterfly, column, dimswitch, dot, heatmap, likert, mekko, pie, table and variance, and cohort takes sort.segments. A time sequence, funnel stages, bridge steps and histogram bins keep their meaningful order. Maps keep geographic positions, and a Pareto ranks contributions itself. Send the data in the order to draw",
   topN:
-    "topN keeps the n largest categories and folds the rest on bar, butterfly, column, mekko, pareto, pie and table, and picks the labelled regions on a choropleth world map. Here the categories are a sequence, a grid or a sample (time, stages, bridge steps, matrix cells, histogram bins, box groups), and dropping some would misstate the rest. Filter the data before sending it",
+    "topN keeps the n largest categories and folds the rest on bar, butterfly, column, mekko, pareto, pie and table. Dot and variance keep the n largest by size without a rest bucket, and a choropleth world map picks labelled regions. Time sequences, stages, bridge steps, matrix axes/cells, histogram bins and box groups keep their full structure because dropping entries would change its meaning. Filter the data before sending it",
   rounding:
     "rounding changes how computed shares of one whole print, on a bar, column or combo stack, a bartable cascade, a stacked100 area, a mekko and a pie. This type prints no share of a whole, or prints them through its own rules. Drop rounding",
   bandFraction:
@@ -117,6 +117,15 @@ export const TYPE_REFUSED_REASONS: Readonly<Record<string, Readonly<Record<strin
 
 /** The sentence a refused key answers with in the schema. */
 export function notImplemented(key: string, type: string, suggest: string): string {
+  if (key === 'sort' || key === 'topN') {
+    const structure: Record<string, string> = {
+      line: 'a time sequence', sparkline: 'a time sequence',
+      waterfall: 'bridge steps', pvm: 'bridge steps', funnel: 'stages',
+      heatmap: 'matrix axes/cells', status: 'matrix axes/cells',
+      histogram: 'histogram bins', box: 'box groups',
+    };
+    if (structure[type]) suggest = `order carries meaning in ${structure[type]}. ${key === 'sort' ? 'Reordering' : 'Dropping'} entries would change that meaning. ${key === 'sort' ? 'Send the data in the order to draw' : 'Filter the data before sending it'}`;
+  }
   return `'${key}' is not implemented by '${type}' — ${suggest}`;
 }
 
@@ -167,13 +176,12 @@ const ALTERNATIVES: Readonly<Record<string, Readonly<Record<string, string>>>> =
   },
   sort: {
     '*': 'send the categories in the order to draw',
-    butterfly: 'options.sortBy ranks the rows',
-    likert: 'order the questions in the data',
     pyramid: 'send the bands in their age order',
     pareto: 'a Pareto sorts by contribution itself',
     choropleth: 'a map places its regions by geography',
     tilemap: 'a map places its regions by geography',
   },
+  'sort.segments': { likert: 'keep the response scale in its ordered axis; sort.categories orders statements' },
   topN: {
     '*': 'filter the data before sending it',
     likert: "options.neutral 'exclude' drops the midpoint; filter the questions in the data",

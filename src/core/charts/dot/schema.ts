@@ -50,6 +50,7 @@ export const dotDataSchema = z
   }) as unknown as z.ZodType<ChartData>;
 
 export const dotOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions('dot')).safeExtend({
+  topN: baseOptionsSchema.shape.topN.describe("Keep the n largest categories by absolute first-series value, or absolute gap for dumbbell, before sorting. Kept categories retain authored order unless sort.categories reorders them. No Others row is drawn; omitted category names are disclosed. Authored rest: true, restLabel, showRestCount or threshold warns that it is ignored when categories are omitted."),
   axisTitles: primaryAxisTitleSchema('under the value-axis tick row, ending at the right edge of the plot'),
   legend: baseOptionsSchema.shape.legend.describe("Key position. Multiple series get a key by default unless visible direct labels name them. 'none' hides the key; unnamed series warn."),
   variant: z.enum(['dot', 'dumbbell', 'lollipop']).optional().describe("Dot by default; dumbbell joins paired values and lollipop joins values to the baseline."),

@@ -66,15 +66,16 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
+| sort | object \| string \| true | `'sheet'`, `'asc'`, `'desc'`, `'reverse'`, `true` (or another value of its type) |  | Category ranking value: the sortBy measure (a, b, sum or diff), default sum. categories sets sheet, reverse, asc or desc with stable ties and missing values last. A rest row stays last. Dated rows keep authored order when a growth or difference annotation spans periods. sort.segments is ignored with an info warning unless sheet. |
 | a | string |  |  | Series id displayed in the left pane. |
 | b | string |  |  | Series id displayed in the right pane. |
 | centerColumnWidth | number |  |  | Width in pixels reserved between the panes for category labels; omission uses their measured width. |
-| sortBy | string | `'sheet'`, `'a'`, `'b'`, `'sum'`, `'diff'` | `'sheet'` | Row order: sheet by default, or descending a, b, sum a+b, or difference b-a. |
+| sortBy | string | `'sheet'`, `'a'`, `'b'`, `'sum'`, `'diff'` | `'sheet'` | Row ranking measure: a, b, sum a+b, or difference b-a. Default sheet keeps authored order. A measure sorts descending unless sort.categories supplies the direction or mode. |
 | diffColumn | boolean |  |  | A right-aligned column of each row's difference, second series minus first, signed, under a bold delta head. Default true with sortBy 'diff', else false. A highlighted row prints bold. The panes give the column its width at one scale; it stays off below 576 px canvas width. |
 | sharedScale | boolean |  | `true` | Use the same value scale on both sides by default. False gives independent scales and warns that lengths are not comparable. |
 | negatives | string | `'direction'`, `'magnitude'` | `'direction'` | A negative value: direction (default) runs its bar from the pane's zero line toward the category names, and positive bars run outward; magnitude draws the bar length of the absolute value outward in a lighter tint. |
 
-Plus the [shared options](options.md). This type does not accept `valueAxis`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `valueAxis`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 

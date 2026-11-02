@@ -159,6 +159,11 @@ export function layoutButterfly(
   const measure = opts.measure ?? defaultMeasurer;
   const highlights = new Set(resolveHighlight(opts.highlight));
   const sortBy = opts.sortBy ?? 'sheet';
+  const categorySort = opts.sort?.categories;
+  const measureSort = categorySort === 'asc' || categorySort === 'desc';
+  const combinedSort = categorySort === undefined
+    ? sortBy === 'diff' || sortBy === 'sum'
+    : measureSort && (sortBy === 'sheet' || sortBy === 'diff' || sortBy === 'sum');
   const sharedScale = opts.sharedScale ?? true;
   // The butterfly's own rows draw a negative value toward the names from the pane's zero line;
   // `negatives: 'magnitude'` and the pyramid keep the bar length of |value|, a lighter bar and a sign.
@@ -200,9 +205,10 @@ export function layoutButterfly(
   const conflict = unitConflict([sA, sB], opts.unit);
   const unitFix = [
     ...(sharedScale ? [{ op: 'replace' as const, path: '/options/sharedScale', value: false }] : []),
-    ...(sortBy === 'diff' || sortBy === 'sum' ? [{ op: 'replace' as const, path: '/options/sortBy', value: 'sheet' }] : []),
+    ...(combinedSort ? [{ op: 'replace' as const, path: '/options/sortBy', value: 'sheet' }] : []),
+    ...(combinedSort && categorySort !== undefined ? [{ op: 'remove' as const, path: '/options/sort/categories' }] : []),
   ];
-  const unitSuggest = `set ${sharedScale ? 'sharedScale: false' : ''}${sharedScale && (sortBy === 'diff' || sortBy === 'sum') ? ' and ' : ''}${sortBy === 'diff' || sortBy === 'sum' ? "sortBy: 'sheet'" : ''} so each pane keeps its own unit`;
+  const unitSuggest = `set ${sharedScale ? 'sharedScale: false' : ''}${sharedScale && combinedSort ? ' and ' : ''}${combinedSort ? "sortBy: 'sheet'" : ''}${combinedSort && categorySort !== undefined ? ' and remove sort.categories' : ''} so each pane keeps its own unit`;
   if (conflict && sharedScale) {
     const refused = conflict.index === 0 ? sA : sB;
     warnings.push({
@@ -212,15 +218,15 @@ export function layoutButterfly(
     });
   }
   // A sum adds unlike units as a difference subtracts them.
-  if (conflict && (sortBy === 'diff' || sortBy === 'sum')) {
+  if (conflict && combinedSort) {
     warnings.push({
       code: 'unit-conflict',
       severity: 'error',
       message: sortBy === 'diff'
         ? `sortBy 'diff' subtracts ${aLabel} from ${bLabel}, but they are declared in ${conflict.against} and ${conflict.unit}; a difference across two units means nothing`
-        : `sortBy 'sum' adds ${aLabel} and ${bLabel}, but they are declared in ${conflict.against} and ${conflict.unit}; a sum across two units means nothing`,
+        : `${categorySort !== undefined ? 'sort.categories ranks by sum and' : "sortBy 'sum'"} adds ${aLabel} and ${bLabel}, but they are declared in ${conflict.against} and ${conflict.unit}; a sum across two units means nothing`,
       suggest: unitSuggest,
-      field: ['options', 'sortBy'],
+      field: categorySort !== undefined ? ['options', 'sort', 'categories'] : ['options', 'sortBy'],
       fix: unitFix,
     });
   }
@@ -267,6 +273,17 @@ export function layoutButterfly(
     }
   };
   const originalIndex = new Map(rows.map((row, index) => [row.id, index]));
+  if (categorySort !== undefined && (categorySort === 'sheet' || categorySort === 'reverse') && sortBy !== 'sheet') warnings.push({
+    code: 'butterfly-sort-conflict', severity: 'warn',
+    message: `sortBy '${sortBy}' was not applied because sort.categories '${categorySort}' sets the row order`,
+    suggest: 'remove sortBy',
+    fix: [{ op: 'remove', path: '/options/sortBy' }],
+  });
+  if (opts.sort?.segments && opts.sort.segments !== 'sheet') warnings.push({
+    code: 'sort-segments-ignored', severity: 'info',
+    message: `butterfly has no stacked segments; sort.segments '${opts.sort.segments}' was ignored`,
+    suggest: 'remove sort.segments',
+  });
 
   if (opts.topN && rows.length > opts.topN.n) {
     const cut = topNCut(rows.map(key), opts.topN.n);
@@ -293,18 +310,30 @@ export function layoutButterfly(
   const refCategory = (ref: AnchorRef): unknown => (typeof ref === 'object' && 'categoryId' in ref ? ref.categoryId : ref);
   const spansPeriods = (opts.annotations ?? []).some((ann) =>
     ann.kind === 'cagr' || (ann.kind === 'diff' && refCategory(ann.from) !== refCategory(ann.to)));
-  const keepDateOrder = sortBy !== 'sheet' && spansPeriods && categories.every((c) => c.date !== undefined);
+  const keepDateOrder = (categorySort === undefined ? sortBy !== 'sheet' : categorySort !== 'sheet') && spansPeriods && categories.every((c) => c.date !== undefined);
   if (keepDateOrder) {
     warnings.push({
       code: 'butterfly-sort-ignored',
       severity: 'warn',
-      message: `sortBy '${sortBy}' was ignored — the rows are dated and a growth or difference annotation spans periods, so a sort by value would run it backwards`,
-      suggest: 'remove options.sortBy, or remove the annotation that spans periods',
-      fix: [{ op: 'replace', path: '/options/sortBy', value: 'sheet' }],
+      message: `${categorySort === undefined ? `sortBy '${sortBy}'` : `sort.categories '${categorySort}'`} was ignored — the rows are dated and a growth or difference annotation spans periods, so a sort by value would run it backwards`,
+      suggest: `remove ${categorySort === undefined ? 'options.sortBy' : 'sort.categories'}, or remove the annotation that spans periods`,
+      fix: categorySort === undefined ? [{ op: 'replace', path: '/options/sortBy', value: 'sheet' }]
+        : [{ op: 'replace', path: '/options/sort/categories', value: 'sheet' }, ...(sortBy !== 'sheet' ? [{ op: 'remove' as const, path: '/options/sortBy' }] : [])],
     });
   }
 
-  if (sortBy !== 'sheet' && !keepDateOrder) {
+  if (categorySort !== undefined && categorySort !== 'sheet' && !keepDateOrder) {
+    const rank = (row: Row): number | null => sortBy === 'a' ? row.a : sortBy === 'b' ? row.b
+      : row.a === null || row.b === null ? null : key(row);
+    rows.sort((x, y) => {
+      if (x.rest !== y.rest) return x.rest ? 1 : -1;
+      const tie = originalIndex.get(x.id)! - originalIndex.get(y.id)!;
+      if (categorySort === 'reverse') return -tie;
+      const a = rank(x), b = rank(y);
+      if (a === null || b === null) return Number(a === null) - Number(b === null) || tie;
+      return (categorySort === 'asc' ? a - b : b - a) || tie;
+    });
+  } else if (categorySort === undefined && sortBy !== 'sheet' && !keepDateOrder) {
     // desc by chosen key; rest row pinned last; stable ties by sheet order
     rows = [...rows].sort((x, y) => {
       if (x.rest !== y.rest) return x.rest ? 1 : -1;
