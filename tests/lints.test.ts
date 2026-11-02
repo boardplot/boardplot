@@ -438,7 +438,7 @@ describe('mechanical lints', () => {
     }, return: ['svg'] }).body as { warnings: { code: string }[]; svg: string };
     const codes = (options: Record<string, unknown>) => rendered(options).warnings.map((warning) => warning.code);
     expect(codes({})).not.toContain('unit-not-shown');
-    expect(rendered({}).svg).toMatch(/<tspan font-weight="700">Revenue<\/tspan><tspan>.in \$m<\/tspan>/);
+    expect(rendered({}).svg).toMatch(/<tspan font-weight="600">Revenue<\/tspan><tspan>.in \$m<\/tspan>/);
     expect(codes({ subtitle: { measure: 'Revenue' } })).not.toContain('unit-not-shown');
     expect(codes({ unitShown: true })).not.toContain('unit-not-shown');
     // A relative variance prints its differences in % on purpose.
