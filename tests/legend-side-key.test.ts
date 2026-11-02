@@ -24,3 +24,23 @@ it('draws a named side key beside the plot, and keeps the row above the plot on 
   expect(codes('right', 360)).toContain('legend-side-fallback');
   expect(keyX(drawn('left', 900).svg)).toBeLessThan(keyX(drawn('right', 900).svg));
 });
+
+// A line chart whose end names do not fit draws the engine's end-name key beside the plot: an authored
+// 'left' must keep that key on the left, not move it to the right.
+it('keeps an authored left key on the left of a line chart whose end names do not fit', () => {
+  const cats = ['2020', '2021', '2022', '2023'].map(id => ({ id, label: id }));
+  const names = ['Recurring subscription revenue', 'Professional services revenue', 'Hardware and licence revenue'];
+  const lineSpec = (legend: string) => ({
+    type: 'line',
+    data: { categories: cats, series: names.map((label, i) => ({ id: `s${i}`, label, values: [10 + i, 14 + i, 13 + 2 * i, 18 + i] })) },
+    options: { title: 'Subscriptions lead', seriesLabels: 'end', legend, size: { width: 720, height: 420 } },
+  });
+  const at = (legend: string) => {
+    const result = render({ spec: lineSpec(legend), return: ['svg'] }) as unknown as { body: { ok: boolean; warnings: { code: string }[]; svg: string } };
+    expect(result.body.ok).toBe(true);
+    return { codes: result.body.warnings.map(w => w.code), x: keyX(result.body.svg) };
+  };
+  const left = at('left');
+  expect(left.codes).toContain('line-end-label-key');
+  expect(left.x).toBeLessThan(at('right').x);
+});
