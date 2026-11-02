@@ -132,7 +132,7 @@ export const THEME_SHAPE: ShapeNode = object({
   space: object({
     tierGap: num(4, 64), facetGap: num(4, 64), labelPad: num(1, 16),
     canvas: opt(object(each(['base', 'wide'] as const, () =>
-      object(each(['top', 'right', 'bottom', 'left'] as const, () => named(num(0, 96), 'space.canvas.<class>.<side>')))))),
+      opt(object(each(['top', 'right', 'bottom', 'left'] as const, () => optNum(0, 96, 'space.canvas.<class>.<side>'))))))),
     gap: opt(object(each(['titleSubtitle', 'subtitlePlot', 'subtitlePlotWide', 'axisFootnote', 'axisFootnoteWide', 'footnoteSource', 'legend'] as const, () => optNum(0, 32)))),
     legendRowH: optNum(12, 28),
     barRow: opt(object({ thickness: num(2, 96), pitch: num(4, 120) })),

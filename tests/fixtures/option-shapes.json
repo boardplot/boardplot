@@ -1,0 +1,52 @@
+{
+  "type": "column",
+  "name": "Revenue Q3 2024",
+  "data": {
+    "categories": [
+      "Oak",
+      "Cedar",
+      "Elm"
+    ],
+    "series": [
+      {
+        "id": "revenue",
+        "values": [
+          1200.5,
+          2300.25,
+          900
+        ]
+      }
+    ]
+  },
+  "theme": {
+    "overrides": {
+      "space": {
+        "canvas": {
+          "base": {
+            "top": 16
+          }
+        }
+      }
+    }
+  },
+  "options": {
+    "footnotes": "Invented amounts.",
+    "source": [
+      "Example ledger",
+      "Example plan"
+    ],
+    "strings": {
+      "source": ""
+    },
+    "locale": "de",
+    "sort": "desc",
+    "topN": 2
+  },
+  "annotations": [
+    {
+      "kind": "valueLine",
+      "value": 1500,
+      "text": "Target"
+    }
+  ]
+}

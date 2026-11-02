@@ -581,6 +581,7 @@ function renderModule(type, binding, keys, keyTrees) {
   addTypeImport(...binding.options);
   if (binding.loose) {
     addTypeImport('BaseOptions', OPTION_TYPES);
+    addTypeImport('OptionsInput', '../../core/types/optionInput');
     addTypeImport('ChartComponentProps', '../createChartComponent');
   }
   if (binding.loose) lines.push("import type { ReactElement } from 'react';");
@@ -603,7 +604,7 @@ function renderModule(type, binding, keys, keyTrees) {
       `// ${optionsName} narrows a BaseOptions field, so it does not satisfy`,
       "// createChartComponent's BaseOptions constraint. The registry carries the same",
       `// cast (src/core/charts/${type}/index.ts); the props type below is the accurate one.`,
-      `export type ${binding.component}Props = Omit<${optionsName}, 'annotations' | 'size'> & ChartComponentProps<${dataName}>;`,
+      `export type ${binding.component}Props = OptionsInput<Omit<${optionsName}, 'annotations' | 'size'>> & ChartComponentProps<${dataName}>;`,
       '',
       `export const ${binding.component}: (props: ${binding.component}Props) => ReactElement =`,
       `  createChartComponent<${dataName}, BaseOptions>(${registered}, checkOptionKeys${linkedArg}) as unknown as (`,
