@@ -60,7 +60,7 @@
       "advanced": "#25365C",
       "open": "#8493AC",
       "lost": "#D6453F",
-      "pending": "#9C7216",
+      "pending": "#A47A10",
       "won": "#1E4FD8",
       "gantt-workstream": "#0B1B3A",
       "gantt-detail": "#8493AC",
@@ -68,7 +68,7 @@
       "gantt-cadence": "#27396A"
     },
     "colorblind": {
-      "good": "#5AA0F0",
+      "good": "#5590F2",
       "bad": "#E16D08",
       "badFill": "#A0431A"
     },
