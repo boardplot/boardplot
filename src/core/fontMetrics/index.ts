@@ -28,7 +28,7 @@ export interface Face {
   borrowed?: ReadonlySet<number>;
 }
 
-/** The family a font spec without `family` is measured as: the boardroom default. */
+/** The family a font spec without `family` is measured as: the default stack of the bridge and boardroom presets. */
 export const DEFAULT_FAMILY = 'Helvetica Neue';
 
 /** Position of each code point inside a width table, in table order. */
