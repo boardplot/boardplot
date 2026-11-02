@@ -149,7 +149,10 @@ const CALLOUT_STEP = 4;
 const LABEL_MAX_COVER = 0.3;
 /** Up to this many regions labelled on the map, each label prints its value by default. */
 const REGION_VALUES_DEFAULT_MAX = 10;
+/** Canvas area per label (px squared) from which a map prints values by default. */
 const REGION_VALUES_MIN_AREA_PER_LABEL = 8000;
+/** A canvas narrower than this keeps codes: value labels would spill over their regions and crowd the card. */
+const REGION_VALUES_MIN_WIDTH = 560;
 /** A leader longer than this share of the map width sends its region to the table. */
 const LISTED_LEADER_FRACTION = 0.2;
 const LISTED_PASSES = 4;
@@ -183,7 +186,7 @@ const WORLD_LARGE_REGION_CLEARANCE = 14.5;
 function defaultRegionValues(pack: GeoPack, size: Size, autoLabelled: number, tableDrawn: boolean): boolean {
   return !tableDrawn && autoLabelled > 0 && (
     autoLabelled <= REGION_VALUES_DEFAULT_MAX ||
-    (pack.id !== 'world' && size.width * size.height / autoLabelled >= REGION_VALUES_MIN_AREA_PER_LABEL)
+    (pack.id !== 'world' && size.width >= REGION_VALUES_MIN_WIDTH && size.width * size.height / autoLabelled >= REGION_VALUES_MIN_AREA_PER_LABEL)
   );
 }
 
