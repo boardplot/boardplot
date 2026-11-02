@@ -7,7 +7,7 @@ import { logSpecFormat } from '../src/core/charts/scatter/logAxis';
 import { formatAutomaticNumber as formatAutomaticNumberSync, formatNumber } from '../src/core/format';
 import { shareSetDecimals } from '../src/core/formatPrecision';
 import { shareSetFormatter } from '../src/core/format';
-import { defaultFormatSpec, formatWithSpec, parseFormatExample, sameUnit, seriesRasterFormatter, unscaledFormatLint } from '../src/core/formatSpec';
+import { defaultFormatSpec, formatExampleProblem, formatterFromExample, formatWithSpec, parseFormatExample, sameUnit, seriesRasterFormatter, unscaledFormatLint } from '../src/core/formatSpec';
 import { niceDomain } from '../src/core/scale';
 import type { SceneNode } from '../src/core/types/scene';
 import { createElement } from 'react';
@@ -406,6 +406,21 @@ describe('an example is read as its author wrote it', () => {
     expect(valued.scene.some((node) => node.t === 'text' && node.lines.join(' ') === 'b 2M')).toBe(true);
     const engine = seriesRasterFormatter(undefined, [1e-6, 1, 2e6], 'en', undefined, 'slide').spec;
     expect([5e-5, 1e-4].map(logSpecFormat(engine, [1e-6, 2e6]))).toEqual(['0.00005', '0.0001']);
+  });
+
+  // "$1.2M" fixes one decimal, so $4.27M printed $4.3M and no example gave 42.7, 4.27 and 0.430 together: one @ per figure fixes the figures, not the decimals.
+  it('prints a fixed count of significant figures for an @ example, rolls up at 1000 and keeps ticks plain', () => {
+    const print = formatterFromExample('$@@@M', undefined);
+    expect([42_700_000, 4_270_000, 430_000, 999_600, 999_960_000, 0, -4_270_000].map(print))
+      .toEqual(['$42.7M', '$4.27M', '$0.430M', '$1.00M', '$1.00B', '$0.00M', '\u2212$4.27M']);
+    expect(formatterFromExample('@@@%', undefined)(9.996)).toBe('10.0%');
+    expect(formatterFromExample('+@@k', 'de')(1234)).toBe('+1,2k');
+    expect(formatterFromExample('$1.2M', undefined)(4_270_000)).toBe('$4.3M');
+    const ticks = tickFormatter(parseFormatExample('$@@@M'), [0, 1e7, 2e7]);
+    expect([0, 1e7, 2e7].map(ticks)).toEqual(['$0M', '$10M', '$20M']);
+    expect(formatExampleProblem('@@.@%')).toMatchObject({ replacement: '@@@%' });
+    expect(formatExampleProblem('@@@@@@@@@@@@@@@@')?.replacement).toBe('@'.repeat(15));
+    expect(formatExampleProblem('$@@@M')).toBeUndefined();
   });
 
   it('distinguishes thousands grouping from three decimal places', () => {
