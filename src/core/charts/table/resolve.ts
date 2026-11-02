@@ -25,7 +25,6 @@ import {
   specUnitKind,
   unitOfSpec,
   MAGNITUDE_DIVISOR,
-  magnitudeLabel,
   MAGNITUDE_LABEL,
   sameUnit as sameUnitText,
   type NumberFormatSpec,
@@ -212,6 +211,7 @@ function forceScale(
   magnitude: 'k' | 'm',
   thousands: NumberFormatSpec['thousandsSep'],
 ): void {
+  if (spec.magnitudeInAffix || spec.exponent || spec.ordinal) return;
   if (spec.magnitude === 'none' && magnitude === 'm') spec.decimals = Math.max(spec.decimals, 1);
   spec.magnitude = magnitude;
   spec.lockMagnitude = true;
@@ -226,15 +226,10 @@ function forceScale(
 /** Whether two specs print the same unit and differ at most in their decimals. */
 function sameUnit(a: NumberFormatSpec, b: NumberFormatSpec): boolean {
   return a.prefix === b.prefix && a.suffix === b.suffix && a.magnitude === b.magnitude && a.signed === b.signed
-    && a.negative === b.negative && a.thousandsSep === b.thousandsSep && a.decimalSep === b.decimalSep;
-}
-
-function stripMagnitude(text: string, spec: NumberFormatSpec): string {
-  const label = magnitudeLabel(spec, spec.magnitude);
-  if (!label) return text;
-  return text.endsWith(')')
-    ? text.replace(`${label})`, ')')
-    : text.endsWith(label) ? text.slice(0, -label.length) : text;
+    && a.negative === b.negative && a.thousandsSep === b.thousandsSep && a.decimalSep === b.decimalSep
+    && a.trailingMinus === b.trailingMinus && a.ordinal === b.ordinal && a.magnitudeInAffix === b.magnitudeInAffix
+    && JSON.stringify(a.glyphs) === JSON.stringify(b.glyphs) && JSON.stringify(a.exponent) === JSON.stringify(b.exponent)
+    && JSON.stringify(a.magnitudeWord) === JSON.stringify(b.magnitudeWord);
 }
 
 /** Float noise from magnitude math (bn-scale): a gap this small between two figures is no disagreement. */
@@ -950,7 +945,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
         // A count climbs only with no format of its own: an authored '1,234' keeps its digits. A money row's
         // scale owns its precision and climbs either way, over an authored format too.
         const authoredFormat = sourceRows.get(row.id)?.format !== undefined;
-        if (rowScale) {
+        if (rowScale && !spec.magnitudeInAffix && !spec.exponent && !spec.ordinal) {
           // An authored options.magnitude wins for a money row: 'thousand' and 'million' hold k and M; a thousand figure of 100,000 or more prints whole.
           // 'auto' or no magnitude keeps the climb.
           const heldMoney = row.scale === 'money' && forcedMagnitude !== undefined;
@@ -975,14 +970,14 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
           spec.decimals = 1;
           spec.lockMagnitude = false; spec.rollMagnitude = false;
         }
-        const smallMoney = !rowScale && forcedMagnitude && scales(example) && values.every(v => Math.abs(v) < 1000);
+        const smallMoney = !spec.magnitudeInAffix && !spec.exponent && !spec.ordinal && !rowScale && forcedMagnitude && scales(example) && values.every(v => Math.abs(v) < 1000);
         // A change line prints its authored format as authored: +0.01k under '+1.2k' rounds to +0.0k and never adds decimals.
         // A level row keeps "nonzero stays nonzero", so a small money or count figure never prints as 0.
         // A row of a measure group keeps the group's precision instead: its small member prints the bound (<0.01M).
         const changeLine = row.inline === true || spec.signed;
         if (smallMoney || (!changeLine && group === undefined && values.some(v => v !== 0 && roundedNumber(v, spec) === 0))) {
           // A k row that would print a nonzero value as 0.0k reads in whole units, not in 0.04k.
-          if (smallMoney || (!rowScale && spec.lockMagnitude && spec.magnitude === 'k') || (row.scale === 'money' && spec.magnitude === 'k')) {
+          if (!spec.magnitudeInAffix && (smallMoney || (!rowScale && spec.lockMagnitude && spec.magnitude === 'k') || (row.scale === 'money' && spec.magnitude === 'k'))) {
             // In whole units the row prints the decimals its example names: '$1.23' keeps "12.93" under a forced thousand.
             const authored = parseFormatExample(example);
             spec.decimals = !rowScale && authored.magnitude === 'none' ? authored.decimals : 0;
@@ -1237,19 +1232,18 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
       const hoisted = rowId !== undefined && hoistedRowUnits.has(rowId);
       const automatic = lift && (cellSpec ? cellSpec.automatic : rowSpec!.automatic);
       if (!hoisted) return formatWithSpec(raw, { ...rowSpec!, decimals, automatic });
-      return stripMagnitude(formatWithSpec(raw, { ...rowSpec!, decimals, automatic, prefix: '', suffix: '' }), rowSpec!);
+      return formatWithSpec(raw, { ...rowSpec!, decimals, automatic, prefix: '', suffix: '', magnitudeInAffix: true });
     }
     const spec = { ...specs.get(colId)!, decimals, ...(cellSpec ? { currencyWhole: undefined, automatic: cellSpec.automatic } : {}), ...(lift ? {} : { automatic: false }) };
     const rendered =
       unitByCol.get(colId) == null
         ? formatWithSpec(raw, spec)
-        : formatWithSpec(raw, { ...spec, prefix: '', suffix: '' });
+        : formatWithSpec(raw, { ...spec, prefix: '', suffix: '', magnitudeInAffix: true });
     const localized =
       localeDerivedColumns.has(colId) && locale.minusGlyph === '-' && rendered.startsWith(MINUS)
         ? `-${rendered.slice(MINUS.length)}`
         : rendered;
-    if (unitByCol.get(colId) == null) return localized;
-    return stripMagnitude(localized, spec);
+    return localized;
   };
 
   // A percent change off a base the table prints as 0 ("0", "0.0") is n.m. with the

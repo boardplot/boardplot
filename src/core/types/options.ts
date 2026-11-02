@@ -68,8 +68,8 @@ export interface LocaleSpec {
   language?: string;
   /** Decimal mark of every number the chart prints. Default '.'. The language does not change it. */
   decimal?: '.' | ',';
-  /** Grouping mark of every number the chart prints. Default ',', or '.' with decimal ','. A value equal to the decimal mark uses that fallback. */
-  thousands?: ',' | '.' | '’' | ' ';
+  /** Grouping mark of every number the chart prints. The apostrophe `'` is the same as `’`, and the narrow no-break space `\u202f` is the same as the space. Default ',', or '.' with decimal ','. A value equal to the decimal mark uses that fallback. */
+  thousands?: ',' | '.' | '’' | "'" | ' ' | '\u202f';
   minusGlyph?: '−' | '-';
   weekStartsOn?: 0 | 1;
 }

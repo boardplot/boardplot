@@ -572,11 +572,11 @@ describe('actionable input refusals', () => {
     expect(wrongNumber[0]?.path).toBe('/data/series/0/values/0/number');
   });
 
-  // A dimswitch format without digits must refuse at its authored field before compile runs.
+  // An unrecognized dimswitch format must refuse at its authored field before compile runs.
   it('validates the dimswitch measure format before layout', () => {
     const [error] = errors({ type: 'dimswitch', data: {
       dimension: { label: 'Group', total: { id: 'total', label: 'Total' }, members: [], headline: ['n'] },
-      measures: [{ id: 'n', label: 'Count', value: { field: 'n' }, format: 'USD' }],
+      measures: [{ id: 'n', label: 'Count', value: { field: 'n' }, format: 'abc' }],
       periods: [{ id: 'range', label: 'Range', kind: 'range' }, { id: 'prior', label: 'Prior', kind: 'prior' }, { id: 'p', label: 'Period' }],
       facts: ['range', 'prior', 'p'].map(periodId => ({ memberId: 'total', periodId, sums: { n: 2 } })),
     } });

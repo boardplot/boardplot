@@ -14,7 +14,7 @@ import { highlightPaintWarnings } from '../../paintWarnings';
 import type { PaintWarningRule } from '../../types/scene';
 import type { AnchorResolution } from '../../annotate';
 import { runAnnotatePass } from '../../annotatePass';
-import { formatterFromExample, seriesRasterFormatter, signedFormatterFromExample } from '../../formatSpec';
+import { formatWithSpec, levelFormatSpec, levelFormatterFromExample, seriesRasterFormatter, signedFormatterFromExample } from '../../formatSpec';
 import { boxGap, cleanFloat, rectsOverlap, type Rect } from '../../geometry';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelsToNodes } from '../../label/emit';
@@ -807,7 +807,10 @@ function layoutWaterfallWithPad(
   // An authored example controls precision. Otherwise the bridge shares
   // one precision across its values and segments.
   const authoredValues = allItems.flatMap((it) => [it.checkValue, ...it.segments.map((seg) => seg.value)]);
-  const { fmt, fmtSigned } = seriesRasterFormatter(options.format, authoredValues, options.locale?.language, options.unit, options.target);
+  const raster = seriesRasterFormatter(options.format, authoredValues, options.locale?.language, options.unit, options.target);
+  const { fmtSigned } = raster;
+  // A signed example marks the steps; a total is a level and prints without a plus or direction glyph.
+  const fmt = raster.spec.signed ? (value: number) => formatWithSpec(value, levelFormatSpec(raster.spec)) : raster.fmt;
   // A check value is an authored number the bridge does not draw: the bar
   // draws the sum. Off by more than the summed numbers' own rounding allows
   // (half a unit of the finest decimal place THEY are written to, once per
@@ -1625,7 +1628,7 @@ function layoutWaterfallWithPad(
       const pattern = scenarioPattern(seg.scenario ?? it.scenario);
       const segOwner = caseId === undefined ? { categoryId: it.id, segmentId: segmentedMark ? seg.id : undefined } : stepOwner;
       // A segment cell's own format and label override are honoured.
-      const segFmt = seg.format ? { fmt: formatterFromExample(seg.format, options.locale?.language), fmtSigned: signedFormatterFromExample(seg.format, options.locale?.language) } : { fmt, fmtSigned };
+      const segFmt = seg.format ? { fmt: levelFormatterFromExample(seg.format, options.locale?.language), fmtSigned: signedFormatterFromExample(seg.format, options.locale?.language) } : { fmt, fmtSigned };
       const segBase = isTotal || stackedTotal ? segFmt.fmt(seg.value) : segFmt.fmtSigned(seg.value);
       const segText = typeof seg.valueLabel === 'string' ? seg.valueLabel.replace(/\$\{value\}/g, segBase) : segBase;
       const segDisplay = { value: segText };
@@ -1799,7 +1802,7 @@ function layoutWaterfallWithPad(
     // A mixed-sign step's own value is the net of its parts, and says so.
     // The item value cell's own format and label override are honoured.
     const valueMeta = { ...(drawSegments.length === 1 ? drawSegments[0] : {}), ...it.valueMeta };
-    const own = valueMeta?.format ? { fmt: formatterFromExample(valueMeta.format, options.locale?.language), fmtSigned: signedFormatterFromExample(valueMeta.format, options.locale?.language) } : { fmt, fmtSigned };
+    const own = valueMeta?.format ? { fmt: levelFormatterFromExample(valueMeta.format, options.locale?.language), fmtSigned: signedFormatterFromExample(valueMeta.format, options.locale?.language) } : { fmt, fmtSigned };
     const itemBase = isTotal ? own.fmt(itemValue) : mixed ? `net ${own.fmtSigned(itemValue)}` : own.fmtSigned(itemValue);
     const text = typeof valueMeta?.valueLabel === 'string' ? valueMeta.valueLabel.replace(/\$\{value\}/g, itemBase) : itemBase;
     if (!isTotal) stepTones.set(it.id, stepTone(itemValue, it.direction));

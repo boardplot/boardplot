@@ -1,6 +1,7 @@
 /** Likert comparisons use response shares, independently of their drawing direction. */
 import { marginBracketLayout } from '../../annotateLinks';
 import { unionRect } from '../../geometry';
+import { differenceExample } from '../../formatSpec';
 import type { BarAnnotationPass } from '../bar/layout';
 import type { LikertData, LikertDerived } from './layout';
 
@@ -22,7 +23,7 @@ export function likertAnnotationPass(
   return (input, marks) => {
     const brackets = marginBracketLayout(input.theme, { right: input.plot.x + input.plot.w + BRACKET_CLEAR }, { wrapLead: true });
     if (holder) holder.need = brackets.need;
-    return { ...input, format, differenceFormat: format.replace(/%/g, 'pp'),
+    return { ...input, format, differenceFormat: differenceExample(format),
       comparisonLayout: brackets,
       resolve(ref) {
         const norm = typeof ref === 'string' ? { categoryId: ref } : ref;

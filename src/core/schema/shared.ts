@@ -321,8 +321,8 @@ export function parseData<T>(schema: z.ZodType<T>, raw: unknown): T {
 }
 
 /**
- * A number format-by-example. A spreadsheet code ("#,##0") or a text without
- * a number is refused as invalid-format with the example to write.
+ * A number example, a recognized unit alone, or a translatable spreadsheet
+ * number code. An ambiguous or unrecognized format is refused as invalid-format.
  */
 const formatField = (withFix: boolean) => z.string().superRefine((value, ctx) => {
   const problem = formatExampleProblem(value);
@@ -347,7 +347,7 @@ export const dataValueKindSchema = valueKindSchema.describe('Default valueKind f
 const PERCENT_FORMAT_UNITS = 'A % example expects values in percent units: 3.53 prints 3.53%, a fraction 0.0353 prints 0.04%.';
 
 /** Every magnitude word parseFormatExample reads (formatSpec.ts MAGNITUDE_SUFFIXES). */
-export const MAGNITUDE_WORDS_DOC = "A magnitude after the number divides the raw value: k, thousand, Tsd., Tausend (10³); m, M, mn, mm, million(s), Mio., Million(en) (10⁶); b, B, bn, billion(s), Mrd., Milliarde(n), milliard(s) (10⁹); tn, trillion(s), Bio., Billionen (10¹²). The letters k, m, M, mm, b, B and T scale only glued to the number: '12 m/s' and '50 B' keep their unit. A value of 1000 or more in a scale rolls up and one that would print as 0 rolls down, in the example's spelling; a German or French chart prints its own words (Mrd., Bio.; Md, Bn). With no digit, one run of 1–15 @ fixes significant figures: '$@@@M' prints 4,270,000 as $4.27M.";
+export const MAGNITUDE_WORDS_DOC = "A magnitude after the number divides the raw value: k, thousand, Tsd., Tausend (10³); m, M, mn, mm, million(s), Mio., Million(en) (10⁶); b, B, bn, billion(s), Mrd., Milliarde(n), milliard(s) (10⁹); tn, trillion(s), Bio., Billionen (10¹²). The letters k, m, M, mm, b, B and T scale when glued to the number or spaced beside a currency ('$1.2 k'); '12 m/s' and '50 B' keep their unit. A scale inside a currency affix ('USDm 1.2', '1.2 €m') holds that divisor. A value of 1000 or more in a free scale rolls up and one that would print as 0 rolls down, in the example's spelling; a German or French chart prints its own words (Mrd., Bio.; Md, Bn). A unit alone ('$M', '€bn', '%', 'x') picks precision from the data. Spreadsheet number codes translate to examples with warning format-spreadsheet-code; percent values stay percent points. Direction glyphs (▲/▼, ↑/↓) at the start or end of the example carry a sign. A glyph inside the prefix or unit stays literal text. ± carries a sign. A trailing minus marks negatives, '1st' prints English ordinals, and '1.2E+06' prints scientific notation. With no digit, one run of 1–15 @ fixes significant figures: '$@@@M' prints 4,270,000 as $4.27M.";
 
 /**
  * A scenario field: the codes normalizeScenario accepts lead every field's
@@ -1214,7 +1214,7 @@ export const baseOptionsSchema = z.object({
       language: languageSchema
         .optional().describe('BCP 47 language tag. Changes words only, such as notes and month names. It never changes the decimal or grouping marks; they come only from locale.decimal and locale.thousands. E.g. "de"; "de_DE" is read as "de-DE"; "en-US" puts the month first (Sep 4).'),
       decimal: z.enum(['.', ',']).optional().describe("Decimal mark of every number the chart prints. Default '.'. The language does not change it."),
-      thousands: z.enum([',', '.', '’', ' ']).optional().describe("Grouping mark of every number the chart prints. Default ',', or '.' with decimal ','. The language does not change it. A value equal to the decimal mark uses that fallback."),
+      thousands: z.enum([',', '.', '’', "'", ' ', '\u202f']).optional().describe("Grouping mark of every number the chart prints. The apostrophe ' is the same as ’, and the narrow no-break space is the same as the space. Default ',', or '.' with decimal ','. The language does not change it. A value equal to the decimal mark uses that fallback."),
       minusGlyph: z.enum(['−', '-']).optional().describe('Minus glyph for locale-derived table formats; default Unicode minus.'),
       weekStartsOn: z.union([
         z.literal(0).describe('Sunday as the requested first weekday.'),
