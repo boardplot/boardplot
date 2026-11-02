@@ -78,8 +78,8 @@ function linkOnce(): void {
 
 type Rgba = [number, number, number, number];
 
-const LIGHT_PRESET = 'boardroom';
-const DARK_PRESET = 'standard-dark';
+const LIGHT_PRESET = 'bridge';
+const DARK_PRESET = 'bridge-dark';
 
 let probe: CanvasRenderingContext2D | null | undefined;
 

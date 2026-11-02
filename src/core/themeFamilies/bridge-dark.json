@@ -1,0 +1,218 @@
+{
+  "name": "bridge-dark",
+  "scheme": "dark",
+  "color": {
+    "good": "#3DBD88",
+    "goodFill": "#2EAE78",
+    "bad": "#F07A74",
+    "badFill": "#E0524E",
+    "neutral": "#7B8BA6",
+    "neutralMark": "#7B8BA6",
+    "neutralLight": "#566A94",
+    "highlight": "#8FA8F0",
+    "total": "#DCE4FA",
+    "others": "#122A55",
+    "othersMark": "#566A94",
+    "ink": "#FFFFFF",
+    "inkInverse": "#0B1B3A",
+    "inkMuted": "#A9BCF4",
+    "axis": "#DCE4FA",
+    "grid": "#1F3360",
+    "leader": "#5B6B86",
+    "background": "#0B1B3A",
+    "stack": [
+      "#DCE4FA",
+      "#8FA8F0",
+      "#5477F2",
+      "#4A6BD8"
+    ],
+    "series": [
+      "#DCE4FA",
+      "#5477F2",
+      "#8B8E94",
+      "#C69741",
+      "#C763C2",
+      "#0CBABF",
+      "#C35E1D",
+      "#A394FF"
+    ],
+    "seriesOverflow": "repeatLast",
+    "palettes": {
+      "spectrum": [
+        "#587CF3",
+        "#D7A853",
+        "#0CBABF",
+        "#C662C4",
+        "#BC5911",
+        "#A898FF",
+        "#78A020",
+        "#EC4473"
+      ]
+    },
+    "status": {
+      "advanced": "#DCE4FA",
+      "open": "#566A94",
+      "lost": "#F07A74",
+      "pending": "#A97C16",
+      "won": "#8FA8F0",
+      "gantt-workstream": "#DCE4FA",
+      "gantt-detail": "#566A94",
+      "gantt-special": "#8FA8F0",
+      "gantt-cadence": "#B9C7F0"
+    },
+    "colorblind": {
+      "good": "#3E86F0",
+      "bad": "#E8A33D",
+      "badFill": "#A85A1E"
+    },
+    "warn": "#F5A800",
+    "warnFill": "#F5A800"
+  },
+  "scenario": {
+    "AC": "solid",
+    "PY": "solidLight",
+    "PL": "outline",
+    "FC": "hatch45"
+  },
+  "pattern": {
+    "hatchAngle": 45,
+    "hatchColor": "segment",
+    "hatchGap": 6,
+    "hatchStrokeWidth": 0.75,
+    "outlineStrokeWidth": 1.5
+  },
+  "type": {
+    "family": "'Helvetica Neue', Helvetica, Arial, Roboto, sans-serif",
+    "title": {
+      "size": 18,
+      "weight": 600,
+      "lineHeight": 1.25
+    },
+    "subtitle": {
+      "size": 12,
+      "weight": 400,
+      "lineHeight": 1.3
+    },
+    "label": {
+      "size": 11.5,
+      "weight": 400,
+      "lineHeight": 1.2
+    },
+    "axis": {
+      "size": 10.5,
+      "weight": 400,
+      "lineHeight": 1.2
+    },
+    "footnote": {
+      "size": 9,
+      "weight": 400,
+      "lineHeight": 1.3
+    },
+    "micro": {
+      "size": 9,
+      "weight": 400,
+      "lineHeight": 1.2
+    },
+    "scale": {
+      "S": {
+        "title": 15,
+        "subtitle": 10.5,
+        "label": 10,
+        "axis": 9.5,
+        "footnote": 8.5,
+        "micro": 9
+      },
+      "L": {
+        "title": 22,
+        "subtitle": 14,
+        "label": 13,
+        "axis": 12,
+        "footnote": 10.5,
+        "micro": 9.5
+      }
+    },
+    "numeric": "tabular",
+    "emphasis": {
+      "weight": 600
+    },
+    "figure": {
+      "weight": 600
+    },
+    "eyebrow": {
+      "tracking": 0.08,
+      "weight": 500,
+      "ink": "inkMuted"
+    }
+  },
+  "space": {
+    "tierGap": 5,
+    "facetGap": 28,
+    "labelPad": 5
+  },
+  "surface": {
+    "chipTint": 0.9,
+    "rowTint": 0.94,
+    "elapsedTint": 0.95,
+    "anchorTint": 0.97,
+    "chipRadius": 2,
+    "panelShadow": "0 1px 2px rgba(0,0,0,0.35), 0 8px 24px rgba(0,0,0,0.45)"
+  },
+  "table": {
+    "head": {
+      "weight": 600,
+      "tracking": 0
+    },
+    "section": {
+      "weight": 500,
+      "tracking": 0.14,
+      "ink": "ink"
+    },
+    "headPad": {
+      "top": 10,
+      "bottom": 8
+    },
+    "groupPad": {
+      "top": 8,
+      "bottom": 4
+    },
+    "ruleWidths": {
+      "head": 1,
+      "row": 1
+    },
+    "weights": {
+      "emphasis": 600
+    },
+    "mark": "bare",
+    "endRule": "none",
+    "fixedType": true,
+    "noPrevious": "missing",
+    "ofWhich": "ink",
+    "glyphs": {
+      "missing": "–",
+      "suppressed": "–"
+    },
+    "groupGround": "none",
+    "grounds": {
+      "total": "transparent"
+    },
+    "blockRule": "rule",
+    "inks": {
+      "secondary": "#A9BCF4"
+    },
+    "ruleInk": "#2E4168",
+    "bar": {
+      "fill": "#24396A"
+    }
+  },
+  "interaction": {
+    "dim": 0.25,
+    "outlineWidth": 1
+  },
+  "motion": {
+    "easing": "ease-out",
+    "hoverIntent": 80,
+    "fade": 120,
+    "travel": 160,
+    "layout": 160
+  }
+}
