@@ -390,6 +390,31 @@ it('keeps the percent unit through column Others and the column average marker',
   expect(marker?.computedText).toMatch(/^Average 2\.33?%$/);
 });
 
+// The average marker mixed a running week into the mean of finished ones. It leaves partial categories out, names the periods it covers in sheet order, and includePartial brings the old mean back.
+it('leaves partial categories out of the average marker and names the periods it covers', () => {
+  const data = {
+    categories: [{ id: 'a', label: 'W1' }, { id: 'b', label: 'W2' }, { id: 'c', label: 'W3', partial: true }],
+    series: [{ id: 's', label: 'Series', values: [10, 20, 3] }],
+  };
+  const middle = {
+    categories: ['P1', 'P2', 'P3', 'P4', 'P5'].map((id) => ({ id, ...(id === 'P3' ? { partial: true } : {}) })),
+    series: [{ id: 's', values: [10, 20, 60, 40, 50] }],
+  };
+  // Four runs of kept periods are too many to name; the mean says nothing about its span.
+  const scattered = {
+    categories: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'].map((id, i) => ({ id, ...(i % 2 === 1 ? { partial: true } : {}) })),
+    series: [{ id: 's', values: [5, 99, 5, 99, 5, 99, 5, 99, 5] }],
+  };
+  const marker = (layout: typeof layoutColumn, input: object, options: object) => layout(input as never, { averageMarker: true, ...options })
+    .annotations.find(annotation => annotation.id.startsWith('averageMarker'))?.computedText;
+  for (const layout of [layoutColumn, layoutBar as never]) {
+    expect(marker(layout, data, {})).toBe('Average 15 (W1–W2)');
+    expect(marker(layout, data, { averageMarker: { includePartial: true } })).toBe('Average 11');
+    expect(marker(layout, middle, { sort: { categories: 'desc' } })).toBe('Average 30 (P1–P2, P4–P5)');
+    expect(marker(layout, scattered, {})).toBe('Average 5');
+  }
+});
+
 // An average of 1.25M must not print as "1M" because its raw number is whole: its decimals count at the printed scale.
 it('keeps the decimals an average needs at the magnitude of the format', () => {
   const data = { categories: [{ id: 'a' }, { id: 'b' }], series: [{ id: 's', label: 'Series', values: [1000000, 1500000] }] };

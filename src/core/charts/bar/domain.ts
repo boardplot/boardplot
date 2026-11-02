@@ -32,7 +32,7 @@ import { chosenValueIndices } from '../band/valueSelection';
 import { partialKeyForced, saysToDate } from '../../partialPeriod';
 import { chartString } from '../../strings';
 import type { LintWarning, Paint } from '../../types/scene';
-import { accumulateStack, averageMarkerLine, averageOfUnaddedSums, averageOfWholeShares, grandTotalRequested, compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning, plottedMean, sortSegments, stackTotalFormatter, warnIncompleteStacks } from '../band/stacks';
+import { accumulateStack, averageMarkerLine, averageMarkerMean, averageMarkerScope as averageMarkerScopeOf, averageOfUnaddedSums, averageOfWholeShares, grandTotalRequested, compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning, plottedMean, sortSegments, stackTotalFormatter, warnIncompleteStacks } from '../band/stacks';
 import { isIncomplete, warnShareRoundingDrift } from '../../dataGaps';
 import { roundingUnavailable, shareRoundingNotes, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
 import { NO_STACK_MEAN, stackAdds } from '../../stackAdds';
@@ -347,9 +347,10 @@ function barAnnotations(
   variant: BarDomain['variant'],
   averageMarkerValue: number | undefined,
   statFmt: (v: number) => string,
+  averageSpan: string | undefined,
 ): Pick<BarDomain, 'localAnns' | 'passAnns'> {
   const annotationInput: Annotation[] = [...(options.annotations ?? [])];
-  if (averageMarkerValue !== undefined) annotationInput.push(averageMarkerLine(annotationInput, averageMarkerValue, statFmt, undefined, options.strings?.average));
+  if (averageMarkerValue !== undefined) annotationInput.push(averageMarkerLine(annotationInput, averageMarkerValue, statFmt, averageSpan, options.strings?.average));
   const annotationsAll: Annotation[] = annotationInput.map((a, n) => ({ ...a, id: a.id ?? `${a.kind}-${n + 1}` }));
   const localAnns = annotationsAll.filter((a) => a.kind === 'indicator100' || (a.kind === 'valueLine' && !valueLineHasTargetExtras(a)));
   const passAnns = annotationsAll.filter((a) => !localAnns.includes(a));
@@ -525,14 +526,14 @@ export function resolveBarDomain(data: ChartData, options: BarOptions, warnings:
   const addsOver = (series: NormSeries[]) => (variant !== 'stacked' && variant !== 'stacked100') || stackAdds(series, options.unit, options.sharesOfOneWhole);
   const partsAdd = addsOver(dataSeries);
   const meanValue = partsAdd ? plottedMean('all', variant !== 'grouped', cats.length, dataSeries, (_, si, ci) => basis.plotVal(ci, si)) : undefined;
-  const averageMarkerScope =
-    typeof options.averageMarker === 'object' ? options.averageMarker.scope : 'all';
+  const averageMarkerScope = averageMarkerScopeOf(options.averageMarker) ?? 'all';
   const averageMarkerRequested = options.averageMarker !== undefined && options.averageMarker !== false &&
     !averageOfWholeShares(variant, averageMarkerScope, warnings) &&
     !averageOfUnaddedSums(addsOver(averageMarkerScope === 'all' ? dataSeries : dataSeries.filter((s) => averageMarkerScope.includes(s.id))), warnings);
-  const averageMarkerValue = averageMarkerRequested
-    ? plottedMean(averageMarkerScope, variant !== 'grouped', cats.length, dataSeries, (_, si, ci) => basis.plotVal(ci, si))
+  const averageRun = averageMarkerRequested
+    ? averageMarkerMean(options.averageMarker, averageMarkerScope, cats, variant !== 'grouped', dataSeries, (_, si, ci) => basis.plotVal(ci, si), rawCats.map((c) => c.id))
     : undefined;
+  const averageMarkerValue = averageRun?.mean;
   if (averageMarkerRequested && averageMarkerValue === undefined) {
     warnings.push({
       code: 'average-marker-empty',
@@ -612,7 +613,7 @@ export function resolveBarDomain(data: ChartData, options: BarOptions, warnings:
     restRecedes: dataSeries.length === 1 && cats.some((cat, ci) => highlights.has(cat.id) && (dataSeries[0]!.cells[ci]!.v ?? 0) !== 0),
     ...basis, meanValue,
     ...barNetLine(options, variant, dataSeries, warnings),
-    ...barAnnotations(options, variant, averageMarkerValue, statFmt),
+    ...barAnnotations(options, variant, averageMarkerValue, statFmt, averageRun?.span),
   };
   return { ...domain, ...barValueExtent(domain, warnings) };
 }
