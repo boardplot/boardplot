@@ -161,6 +161,22 @@ describe('actionable input refusals', () => {
     }
   });
 
+  // A policy strip box rounded down to the half pixel ended short of its own text, so the second line was dropped at 320 px.
+  it('keeps the second line of a policy strip item at 320 px', () => {
+    const data: DiagramData = {
+      nodes: [
+        architectureNode('audit', { label: 'Audit', secondaryLabel: 'Every request', groupId: 'pol' }),
+        architectureNode('gateway', { label: 'Gateway', secondaryLabel: 'Brevinth edge' }),
+        architectureNode('orders', { label: 'Orders', secondaryLabel: 'Brevinth core' }),
+      ],
+      edges: [{ id: 'send', source: { nodeId: 'gateway' }, target: { nodeId: 'orders' } }],
+      groups: [{ id: 'pol', title: 'Policy', kind: 'policy' }],
+    };
+    const result = render({ spec: { type: 'diagram', data, options: { variant: 'architecture', title: 'Every request passes the audit before it reaches an order', size: { width: 320 } } } });
+    expect(result.body.ok).toBe(true);
+    expect((result.body.warnings as { code: string }[]).map(w => w.code)).not.toContain('diagram-secondary-label-unplaced');
+  });
+
   // An unknown theme colour key must name the supported roles so the caller can repair it.
   it('lists the accepted theme colour keys', () => {
     const [error] = errors({ ...bar, options: { theme: { preset: 'boardroom', overrides: { color: { ink2: '#123456' } } } } });

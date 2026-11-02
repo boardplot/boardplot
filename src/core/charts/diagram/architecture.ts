@@ -852,7 +852,8 @@ function placePolicy(geometry: Geometry, env: Env): number | undefined {
     const row = items.slice(start, start + columnsWide);
     const texts = row.map((node) => nodeText(node, columnW + 4 * u, env));
     if (texts.some((text) => !text)) return undefined;
-    const height = Math.max(...texts.map((text) => text!.height));
+    // Round up to the drawing grid: a box rounded down to its nearest half pixel can end a hair short of its own text, and the second line is then dropped.
+    const height = Math.ceil(Math.max(...texts.map((text) => text!.height)) * 2) / 2;
     row.forEach((node, index) => {
       const rect = qRect({ x: plot.x + pad + index * (columnW + pad), y, w: columnW, h: height });
       const icon = node.icon ? 3.5 * u : 0;
