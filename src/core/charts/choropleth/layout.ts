@@ -5,7 +5,7 @@ import { levenshtein } from '../../spelling';
 import { authoredNotes, frameTextOptions, legendRequired, solveFrame, unitPrinted } from '../../frame';
 import { formatAutomaticNumber } from '../../format';
 import { formatterFromExample } from '../../formatSpec';
-import { boxGap, rectHitsConvexPolygon, rectsOverlap, round2, type Rect, type Size } from '../../geometry';
+import { boxGap, rectContains, rectHitsConvexPolygon, rectsOverlap, round2, type Rect, type Size } from '../../geometry';
 // The geo modules by name, not the '../../geo' barrel: the barrel re-exports
 // './packs', whose import registers every pack, and a choropleth must not
 // register the pack it draws.
@@ -75,7 +75,12 @@ interface RegionLabelVariant {
   font: FontSpec;
   leader: boolean;
   /** A callout off the map: its seats are built against what is placed when its turn comes. */
-  callout?: (occupied: OccupiedIndex, plot: Rect) => LabelRequest['candidates'];
+  callout?: (occupied: OccupiedIndex, plot: Rect, labels: OccupiedIndex, canvas?: Rect) => RegionCallout;
+}
+
+interface RegionCallout {
+  candidates: LabelRequest['candidates'];
+  hatchBlocked: boolean;
 }
 
 interface RegionLabelPlan {
@@ -107,7 +112,7 @@ interface CalloutPass {
   claims: OccupiedClaim[];
   plot: Rect;
   labels: CalloutLabel[];
-  calls: { id: string; text: string; font: FontSpec; candidates: LabelRequest['candidates'] }[];
+  calls: (RegionCallout & { id: string; text: string; font: FontSpec })[];
 }
 // A guard belongs to one fitted map. Probes and drawing can repeat the same callout search.
 const calloutPasses = new WeakMap<ReturnType<typeof outsideLabelGuard>, CalloutPass>();
@@ -1014,6 +1019,15 @@ function solveRegionLabels(
   /** A probe that reads only these regions' labels: the escalation stops after the last of them. */
   reads?: (regionId: string) => boolean,
 ): RegionLabelSolveResult {
+  const allOccupied = occupied;
+  let labelOccupied: OccupiedIndex | undefined;
+  occupied = {
+    ...allOccupied,
+    claim(rect, kind, owner, part, polygon) {
+      allOccupied.claim(rect, kind, owner, part, polygon);
+      if (kind === 'label' || part === 'regionLeader') labelOccupied?.claim(rect, kind, owner, part, polygon);
+    },
+  };
   const pinOf = (plan: RegionLabelPlan) => ctx.pins[`category:${plan.region.id}`];
   const ordered = [...plans].sort((a, b) => {
     const aPinned = pinOf(a) ? 1 : 0;
@@ -1106,7 +1120,31 @@ function solveRegionLabels(
   let samePass = calloutPass !== undefined && previous !== undefined && sameCalloutRect(previous.plot, ctx.plot)
     && previous.claims.length === calloutPass.claims.length
     && previous.claims.every((claim, i) => sameCalloutClaim(claim, calloutPass.claims[i]!));
+  let removedHatches = false;
+  if (!samePass && previous && calloutPass && sameCalloutRect(previous.plot, ctx.plot)
+    && !calloutPass.claims.some(claim => claim.kind === 'mark' && claim.part === 'noDataHatch')) {
+    let matched = 0;
+    let compatible = true;
+    for (const claim of previous.claims) {
+      if (claim.kind === 'mark' && claim.part === 'noDataHatch') continue;
+      const next = calloutPass.claims[matched];
+      if (!next || !sameCalloutClaim(claim, next)) { compatible = false; break; }
+      matched++;
+    }
+    // Removing hatches cannot change a search whose blocked seats all hit other claims.
+    removedHatches = samePass = compatible && matched === calloutPass.claims.length;
+  }
   const inlineCount = result.placed.length;
+  const calloutLabels = () => {
+    if (!labelOccupied) {
+      labelOccupied = createOccupiedIndex(ctx.canvas ?? ctx.plot);
+      const claims = calloutPass && result.placed.length === inlineCount ? calloutPass.claims : occupied.snapshot();
+      for (const claim of claims) if (claim.kind === 'label' || claim.part === 'regionLeader') {
+        labelOccupied.claim(claim.rect, claim.kind, claim.owner, claim.part, claim.polygon);
+      }
+    }
+    return labelOccupied;
+  };
   const solvedLeaders: { placed: ReturnType<typeof solveLabels>['placed'][number]; region: FittedGeoRegion }[] = [];
   for (const item of unresolved.slice(0, escalated)) {
     const callout = item.plan.variants.find((variant) => variant.callout);
@@ -1123,20 +1161,24 @@ function solveRegionLabels(
       samePass = samePass && cached !== undefined && cached.id === item.plan.region.id && cached.text === callout.request.text
         && Object.keys(callout.font).length === Object.keys(cached.font).length
         && (Object.keys(callout.font) as (keyof FontSpec)[]).every(key => Object.is(callout.font[key], cached.font[key]));
-      const candidates = samePass ? cached!.candidates : callout.callout!(occupied, ctx.plot);
-      calloutPass?.calls.push({ id: item.plan.region.id, text: callout.request.text, font: { ...callout.font }, candidates });
-      const next = solveLabels([{ ...callout.request, candidates }], occupied, solveCtx);
-      const placed = next.placed[0];
-      if (placed && !placed.hidden) {
+      const search = samePass && (!removedHatches || !cached!.hatchBlocked)
+        ? cached! : callout.callout!(occupied, ctx.plot, calloutLabels(), ctx.canvas);
+      const { candidates } = search;
+      calloutPass?.calls.push({ id: item.plan.region.id, text: callout.request.text, font: { ...callout.font }, candidates, hatchBlocked: search.hatchBlocked });
+      // An empty callout claims nothing and adds no tried slots; its hidden result is discarded.
+      if (candidates.length > 0) {
+        const next = solveLabels([{ ...callout.request, candidates }], occupied, solveCtx);
+        const placed = next.placed[0];
         item.tried.push(...(next.decisions[0]?.tried ?? []));
-        appendRegionSolve(result, next, callout.font, item.plan, item.tried);
-        const from: GeoPoint = [item.plan.region.anchor.x, item.plan.region.anchor.y];
-        const to = calloutTerminus(from, placed.rect);
-        placed.leader = { d: polylinePath([from, to]), curved: false };
-        claimLeaderRoute([from, to], occupied, item.plan.region.id);
-        continue;
+        if (placed && !placed.hidden) {
+          appendRegionSolve(result, next, callout.font, item.plan, item.tried);
+          const from: GeoPoint = [item.plan.region.anchor.x, item.plan.region.anchor.y];
+          const to = calloutTerminus(from, placed.rect);
+          placed.leader = { d: polylinePath([from, to]), curved: false };
+          claimLeaderRoute([from, to], occupied, item.plan.region.id);
+          continue;
+        }
       }
-      item.tried.push(...(next.decisions[0]?.tried ?? []));
     }
     const leaderVariant = item.plan.variants.find((variant) => variant.leader);
     if (!leaderVariant) {
@@ -1912,11 +1954,8 @@ function labelPlanForRegion(
           request: regionLabelRequest(region, compactText, compactFont, priority, []),
           font: compactFont,
           leader: false,
-          callout: (occupied: OccupiedIndex, plot: Rect) => {
-            const strict = calloutCandidates(region, compactText, compactFont, measure, occupied, plot, outsideFits);
-            return strict.length || !crossingCallouts ? strict
-              : calloutCandidates(region, compactText, compactFont, measure, occupied, plot, () => true);
-          },
+          callout: (occupied: OccupiedIndex, plot: Rect, labels: OccupiedIndex, canvas?: Rect) =>
+            calloutCandidates(region, compactText, compactFont, measure, occupied, plot, outsideFits, crossingCallouts, labels, canvas),
         },
       ];
   if (leaderLane) {
@@ -2594,19 +2633,33 @@ function calloutCandidates(
   occupied: OccupiedIndex,
   plot: Rect,
   outsideFits: ReturnType<typeof outsideLabelGuard>,
-): LabelRequest['candidates'] {
+  crossingCallouts: boolean,
+  labelOccupied: OccupiedIndex,
+  canvas: Rect | undefined,
+): RegionCallout {
   const w = measure(text, font).width;
   const h = font.size * (font.lineHeight ?? 1.2);
   const from: GeoPoint = [region.anchor.x, region.anchor.y];
   const candidates: LabelRequest['candidates'] = [];
+  const crossingCandidates: LabelRequest['candidates'] = [];
   const rect = { x: 0, y: 0, w, h };
   const right = plot.x + plot.w, bottom = plot.y + plot.h;
   const codeOnly = !text.includes(' ');
+  // A seat clear at pad 2 is clear at the solver's pad 0. When the plot fits the canvas,
+  // the first sorted callout always places, and the chart replaces its published slot list.
+  const bestOnly = (!canvas || rectContains(canvas, plot)) && w >= 0 && h >= 0
+    && Math.max(Math.abs(from[0]), Math.abs(from[1]), w, h, Math.abs(plot.x), Math.abs(plot.y), Math.abs(right), Math.abs(bottom)) <= 2 ** 40;
+  let best: LabelRequest['candidates'][number] | undefined;
   // The claim that blocked the last seat tried. The next seat out often meets
   // it again, and a box it meets is taken whatever else is near (a measure
   // runs this search some 15,000 times).
   let blocker: OccupiedClaim | undefined;
-  const taken = (claim: OccupiedClaim) => { blocker = claim; return true; };
+  let hatchBlocked = false;
+  const taken = (claim: OccupiedClaim) => {
+    blocker = claim;
+    if (claim.kind === 'mark' && claim.part === 'noDataHatch') hatchBlocked = true;
+    return true;
+  };
   const skip = (claim: OccupiedClaim) => !taken(claim);
   const crowdsCode = (claim: OccupiedClaim) => claim.kind === 'label' && boxGap(rect, claim.rect) < 8 &&
     Math.abs(rect.y + h / 2 - claim.rect.y - claim.rect.h / 2) < Math.min(h, claim.rect.h) / 2;
@@ -2616,21 +2669,26 @@ function calloutCandidates(
     const dy = Math.sin(angle);
     const reach = Math.abs(dx) * (w / 2) + Math.abs(dy) * (h / 2);
     for (let d = Math.max(2, region.anchor.clearance); d <= 2 * CALLOUT_MAX_LEADER; d += Math.max(CALLOUT_STEP, d / 8)) {
+      // Projection onto this direction puts the expanded label at least d - 2*sqrt(2)
+      // away. Using d - 4 and flooring leaves room for floating-point error.
+      const lower = d - 4;
+      if (bestOnly && best && Math.floor(lower + (lower > CALLOUT_MAX_LEADER ? 1000 : 0)) > best.penalty) break;
       rect.x = from[0] + dx * (d + reach) - w / 2;
       rect.y = from[1] + dy * (d + reach) - h / 2;
       if (rect.x < plot.x || rect.y < plot.y || rect.x + rect.w > right || rect.y + rect.h > bottom) break;
       if (blocker && !blocker.polygon && rectsOverlap(blocker.rect, rect, 2)) continue;
       if (occupied.some ? occupied.some(rect, 2, taken) : occupied.hits(rect, 2, skip)) continue;
-      if (codeOnly && (occupied.some ? occupied.some(rect, 8, crowdsCode) : occupied.hitsWhich(rect, 8).some(crowdsCode))) continue;
+      if (codeOnly && (labelOccupied.some ? labelOccupied.some(rect, 8, crowdsCode) : labelOccupied.hitsWhich(rect, 8).some(crowdsCode))) continue;
       const to = calloutTerminus(from, rect);
-      if (!outsideFits(region.id, rect, from, to)) break;
+      const fits = outsideFits(region.id, rect, from, to);
+      if (!fits && (!crossingCallouts || candidates.length > 0)) break;
       const length = Math.hypot(to[0] - from[0], to[1] - from[1]);
       let crossesLabel = false;
       const samples = Math.max(1, Math.ceil(length / 3));
       // The leader is sampled every 3 px. Its padded box contains every sample.
       // Only a label or leader ends the query; visiting the claims in cell order
       // avoids collecting and sorting them. The outline guard checked regions.
-      occupied.hits(
+      labelOccupied.hits(
         { x: Math.min(from[0], to[0]) - 0.5, y: Math.min(from[1], to[1]) - 0.5, w: Math.abs(to[0] - from[0]) + 1, h: Math.abs(to[1] - from[1]) + 1 },
         1,
         (claim) => {
@@ -2650,16 +2708,19 @@ function calloutCandidates(
         },
       );
       if (!crossesLabel) {
-        candidates.push({
+        const candidate = {
           slot: `callout${k}`,
           rect: { ...rect },
           penalty: Math.round(length + (length > CALLOUT_MAX_LEADER ? 1000 : 0)),
-        });
+        };
+        (fits ? candidates : crossingCandidates).push(candidate);
+        if (fits && (!best || candidate.penalty < best.penalty || (candidate.penalty === best.penalty && compareText(candidate.slot, best.slot) < 0))) best = candidate;
       }
       break;
     }
   }
-  return candidates.sort((a, b) => a.penalty - b.penalty || compareText(a.slot, b.slot));
+  const sorted = (candidates.length ? candidates : crossingCandidates).sort((a, b) => a.penalty - b.penalty || compareText(a.slot, b.slot));
+  return { candidates: bestOnly && sorted.length ? [sorted[0]!] : sorted, hatchBlocked };
 }
 
 /** The sample indices 0..samples whose 1 px box can meet [lo, hi] on one axis, widened by one sample each side. */
