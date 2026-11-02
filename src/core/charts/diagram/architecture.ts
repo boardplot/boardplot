@@ -94,6 +94,8 @@ interface Geometry {
   ys: Line[];
   gaps: Gap[];
   width: number;
+  /** Edge labels stay out of the column reserved for lane headings. */
+  labelLeft: number;
 }
 
 type Side = 'top' | 'right' | 'bottom' | 'left';
@@ -632,10 +634,10 @@ function place(arrangement: Arrangement, gaps: ReadonlyMap<string, number>, env:
   const innerGap = 2 * GAP_HALF;
   const unitGap = 2 * GAP_HALF;
   const gap = (key: string, base: number) => Math.max(base, gaps.get(key) ?? 0);
-  const geometry: Geometry = { rects: new Map(), textBoxes: new Map(), icons: new Map(), badges: new Map(), zones: [], loops: [], locks: new Map(), lanes: [], labelClaims: [], xs: [], ys: [], gaps: [], width: plot.w };
+  const laneLabel = lanesFlow && !arrangement.labelAbove ? laneLabelWidth(env) : 0;
+  const geometry: Geometry = { rects: new Map(), textBoxes: new Map(), icons: new Map(), badges: new Map(), zones: [], loops: [], locks: new Map(), lanes: [], labelClaims: [], xs: [], ys: [], gaps: [], width: plot.w, labelLeft: plot.x + laneLabel };
   const outerL = gap('oL', 0);
   const outerR = gap('oR', 0);
-  const laneLabel = lanesFlow && !arrangement.labelAbove ? laneLabelWidth(env) : 0;
   // A dashed zone's frame stands 1.5 u off its nodes and stays in the plot.
   const frameInset = lanesFlow && env.data.groups.some((group) => group.kind !== 'policy') ? 1.5 * u + 1 : 0;
   const left = plot.x + laneLabel + outerL + frameInset;
@@ -1462,6 +1464,39 @@ function labelClear(box: Rect, polylines: readonly Point[][], blockers: readonly
   return clear;
 }
 
+/** Labels on one line keep enough space to read as separate phrases. */
+function labelsApart(box: Rect, labels: Iterable<Rect>, u: number): boolean {
+  for (const other of labels) {
+    if (box.y < other.y + other.h && other.y < box.y + box.h
+      && box.x < other.x + other.w + 2 * u && other.x < box.x + box.w + 2 * u) return false;
+  }
+  return true;
+}
+
+/** Sliding to an obstacle's boundary finds the free stretches between fixed seats. */
+function slideLabel(box: Rect, axis: 'x' | 'y', from: number, to: number, claims: readonly Rect[]): Rect[] {
+  const size = axis === 'x' ? 'w' : 'h';
+  const cross = axis === 'x' ? 'y' : 'x';
+  const across = axis === 'x' ? 'h' : 'w';
+  const halo = grown(box, TEXT_CLEARANCE);
+  const positions = [box[axis], ...claims.filter((claim) => halo[cross] < claim[cross] + claim[across] && claim[cross] < halo[cross] + halo[across])
+    .flatMap((claim) => [Math.floor(2 * (claim[axis] - box[size] - TEXT_CLEARANCE)) / 2,
+      Math.ceil(2 * (claim[axis] + claim[size] + TEXT_CLEARANCE)) / 2])];
+  return [...new Set(positions)].filter((pos) => pos === box[axis] || (pos + box[size] / 2 >= from && pos + box[size] / 2 <= to))
+    .sort((a, b) => Math.abs(a - box[axis]) - Math.abs(b - box[axis]) || a - b)
+    .map((pos) => ({ ...box, [axis]: pos }));
+}
+
+function labelClaims(polylines: readonly Point[][], blockers: readonly Rect[], labels: Iterable<Rect>, u: number): Rect[] {
+  const claims = [...blockers];
+  for (const points of polylines) forSegments(points, (a, b) => claims.push({ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) }));
+  for (const box of labels) {
+    const extra = Math.max(0, 2 * u - TEXT_CLEARANCE);
+    claims.push({ ...box, x: box.x - extra, w: box.w + 2 * extra });
+  }
+  return claims;
+}
+
 /** A label sits by the longest free run of its edge, reserved in the routing passes. */
 function placeLabels(
   order: readonly DiagramEdge[], polylines: readonly Point[][], geometry: Geometry, env: Env,
@@ -1472,6 +1507,7 @@ function placeLabels(
   const rules = geometry.lanes.flatMap((lane) => (lane.rule === undefined ? [] : [{ x: env.plot.x, y: lane.rule, w: env.plot.w, h: 1 }]));
   const frames = geometry.zones.flatMap(({ bounds: { x, y, w, h } }) => [{ x, y, w, h: 1 }, { x, y: y + h, w, h: 1 }, { x, y, w: 1, h }, { x: x + w, y, w: 1, h }]);
   const blockers: Rect[] = [...geometry.rects.values(), ...geometry.labelClaims, ...rules, ...frames];
+  const plot = { ...env.plot, x: geometry.labelLeft, w: env.plot.x + env.plot.w - geometry.labelLeft };
   const lineH = text.size * (text.lineHeight ?? 1.2);
   order.forEach((edge, index) => {
     if (!edge.label) return;
@@ -1492,6 +1528,7 @@ function placeLabels(
       if (!wrapped.truncated && wrapped.lines.length > 1) blocks.push({ width: Math.ceil(Math.max(...wrapped.lines.map((line) => measure(line, text).width))) + 1 + disc, height: wrapped.lines.length * lineH });
     }
     const rows = geometry.gaps.filter((item) => item.axis === 'h');
+    const claims = labelClaims(polylines, blockers, out.values(), env.u);
     const seats = blocks.flatMap(({ width, height }) => [
       ...flat.flatMap(([a, b]) => {
         // A run near the plot edge keeps its label inside the plot.
@@ -1502,7 +1539,8 @@ function placeLabels(
         const walls = geometry.zones.flatMap(({ bounds }) => [bounds.x, bounds.x + bounds.w]).filter((x) => x > Math.min(a.x, b.x) && x < Math.max(a.x, b.x));
         const spots = [(a.x + b.x) / 2, ...columns.flatMap(({ rect }) => [rect.x + rect.w / 4, rect.x + (3 * rect.w) / 4]),
           ...walls.flatMap((x) => [(a.x + x) / 2, (b.x + x) / 2])];
-        return spots.flatMap((spot) => [{ x: inPlot(spot - width / 2), y: a.y - off - height, w: width, h: height }, { x: inPlot(spot - width / 2), y: a.y + off, w: width, h: height }]);
+        return spots.flatMap((spot) => [{ x: inPlot(spot - width / 2), y: a.y - off - height, w: width, h: height }, { x: inPlot(spot - width / 2), y: a.y + off, w: width, h: height }])
+          .flatMap((box) => slideLabel(qRect(box), 'x', Math.min(a.x, b.x), Math.max(a.x, b.x), claims));
       }),
       ...upright.flatMap(([a, b]) => {
         const y = (a.y + b.y) / 2 - height / 2;
@@ -1517,10 +1555,11 @@ function placeLabels(
         return [...beside(y), ...walls.flatMap((wall) => [...beside((a.y + wall) / 2 - height / 2), ...beside((b.y + wall) / 2 - height / 2)]), ...crossed.flatMap((row) => {
           const top = row.rect.y + (row.rect.h - height) / 2;
           return [...beside(top), ...inset(top)];
-        })];
+        })].flatMap((box) => slideLabel(qRect(box), 'y', Math.min(a.y, b.y), Math.max(a.y, b.y), claims));
       }),
     ]).map(qRect);
-    const clear = (box: Rect) => labelClear(box, polylines, blockers, env.plot);
+    seats.sort((a, b) => rectLineDistance(a, points) - rectLineDistance(b, points));
+    const clear = (box: Rect) => labelClear(box, polylines, blockers, plot) && labelsApart(box, out.values(), env.u);
     const seat = seats.find((box) => clear(box) && (!env.ownReturnLabels || edge.flow !== 'return'
       || polylines.every((line, i) => i === index || rectLineDistance(box, points) <= rectLineDistance(box, line))));
     if (seat) {
@@ -1547,12 +1586,21 @@ function placeLabels(
     const inside = geometry.gaps.find((item) => contains(item, middle(longest)));
     // A wide label does not fit a gutter beside the nodes: it takes a row gutter that the run crosses.
     // A line along a gutter runs down its middle, so a label beside it takes half the gutter.
-    const wide = beside(block.width, longest);
+    let wide = beside(block.width, longest);
     const row = inside?.axis === 'v' && wide > env.plot.w / 3
       ? rows.filter((item) => item.rect.y > Math.min(longest[0].y, longest[1].y) && item.rect.y + item.rect.h < Math.max(longest[0].y, longest[1].y))
         .sort((a, b) => Math.abs(a.rect.y - middle(longest).y) - Math.abs(b.rect.y - middle(longest).y))[0] : undefined;
     const gap = row ?? inside;
     if (!gap) return;
+    // Tracks across a short horizontal edge split its column gutter into smaller label seats.
+    if (gap.axis === 'v' && longest[0].y === longest[1].y) {
+      const tracks: number[] = [];
+      for (const line of polylines) forSegments(line, (a, b) => {
+        if (a.x === b.x && a.x > gap.rect.x && a.x < gap.rect.x + gap.rect.w
+          && Math.min(a.y, b.y) < longest[0].y - off && Math.max(a.y, b.y) > longest[0].y + off) tracks.push(a.x);
+      });
+      if (tracks.length > 0) wide = Math.max(wide, 2 * (block.width + 2 * off) + Math.max(...tracks) - Math.min(...tracks));
+    }
     needs.set(gap.key, Math.max(needs.get(gap.key) ?? 0, gap.axis === 'v' ? wide : tall));
     if (gap.axis === 'v' && block !== blocks[0]) needs.set(`want:${gap.key}`, beside(blocks[0]!.width, longest));
   });
@@ -1567,6 +1615,7 @@ function placeChannels(
   const { text, measure, data } = env;
   const out: Routed['channels'] = [];
   const blockers = [...geometry.rects.values(), ...geometry.labelClaims, ...labels.values()];
+  const plot = { ...env.plot, x: geometry.labelLeft, w: env.plot.x + env.plot.w - geometry.labelLeft };
   const lineH = text.size * (text.lineHeight ?? 1.2);
   for (const channel of data.channels) {
     const crossing = (gap: Gap, points: readonly Point[]): number[] => {
@@ -1595,8 +1644,10 @@ function placeChannels(
     const box = gap.axis === 'v'
       ? { x: gap.rect.x + (gap.rect.w - width) / 2, y: hits.length > 1 ? (hits[0]! + hits.at(-1)!) / 2 - height / 2 : hits[0]! + 2 * TEXT_CLEARANCE, w: width, h: height }
       : { x: hits.length > 1 ? (hits[0]! + hits.at(-1)!) / 2 - width / 2 : hits[0]! + 2 * TEXT_CLEARANCE, y: gap.rect.y + (gap.rect.h - height) / 2, w: width, h: height };
-    const rect = qRect(box);
-    if (wrapped.truncated || !labelClear(rect, polylines, blockers, env.plot)) {
+    const otherLabels = [...labels.values(), ...out.map((channel) => channel.rect)];
+    const candidates = slideLabel(qRect(box), gap.axis === 'v' ? 'y' : 'x', hits[0]!, hits.at(-1)!, labelClaims(polylines, blockers, otherLabels, env.u));
+    const rect = candidates.find((seat) => labelClear(seat, polylines, blockers, plot) && labelsApart(seat, otherLabels, env.u));
+    if (wrapped.truncated || !rect) {
       problems.push(`channel:${channel.id}`);
       needs.set(gap.key, Math.max(needs.get(gap.key) ?? 0, gap.axis === 'v' ? width + 2 * GAP_HALF : height + 2 * GAP_HALF));
       continue;

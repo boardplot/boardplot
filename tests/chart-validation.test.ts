@@ -161,6 +161,21 @@ describe('actionable input refusals', () => {
     }
   });
 
+  // A channel label beside an edge label must leave enough space that the labels do not read as one phrase.
+  it('keeps architecture channel and edge labels apart beside their edges', () => {
+    const fixture = getFixtures('diagram').find((item) => item.id === 'protected-request')!;
+    const options = { ...fixture.options, size: { width: 480 } };
+    const geometry = measure({ type: 'diagram', data: fixture.data, options }).geometry!;
+    const channel = geometry.labels.find((label) => label.id === 'channel-label:transit')!;
+    const response = geometry.labels.find((label) => label.id === 'edge-label:answer')!;
+    const theme = themeForWidth(resolveChartRequest({ type: 'diagram', data: fixture.data, options }).theme, 480);
+    expect(channel.hidden).toBeUndefined();
+    expect(response.hidden).toBeUndefined();
+    expect(response.rect.x - channel.rect.x - channel.rect.w).toBeGreaterThanOrEqual(2 * Math.max(4, theme.space.labelPad));
+    const edge = (geometry.marks.edges as DiagramMarks['edges']).find((edge) => edge.id === 'answer')!;
+    expect(rectLineDistance(response.rect, (edge.route as DiagramPolylineRoute).points)).toBeLessThanOrEqual(2 * Math.max(4, theme.space.labelPad));
+  });
+
   // A policy strip box rounded down to the half pixel ended short of its own text, so the second line was dropped at 320 px.
   it('keeps the second line of a policy strip item at 320 px', () => {
     const data: DiagramData = {
