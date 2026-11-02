@@ -72,8 +72,8 @@ export type Annotation<X extends string | number = Id> =
     } & AnnotationGlyphSlot)
   | (Omit<AnnotationBase, 'text'> & {
       kind: 'valueLine';
-      /** Refused: a valueLine prints `label`. */
-      text?: never;
+      /** Read as label with an info warning when label is absent or equal. */
+      text?: string;
       /** Numeric value and tolerance are fractions; multiply by 100 before layout. Independent of data.valueKind. */
       valueKind?: 'fraction';
       value?: number | 'mean'; // default 'mean'; weighted mean on mekko

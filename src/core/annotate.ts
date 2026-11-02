@@ -1647,6 +1647,38 @@ function calloutLabel(
       leaderVertical: true,
     });
   }
+  // A text wider than the room around its point wraps to 2 to 4 lines at a measured width,
+  // after every one-line seat and the free spot, so a callout that drew before draws the same.
+  if ((kind === 'callout' || kind === 'note') && !glyph && head.arrow !== true && head.headline === undefined && !input.gridCallouts) {
+    const wrappedSeats: SlotCandidate[] = [];
+    const widest = Math.min(w, input.plot.w);
+    const seen = new Set<string>();
+    for (const share of [1, 0.7, 0.5, 0.38, 0.3, 0.25]) {
+      const pieces = lines.map((line) => wrapText(line, font, Math.max(lineH, widest * share), 5, input.measure));
+      const wrapped = pieces.flatMap((piece) => piece.lines);
+      const key = wrapped.join('\n');
+      if (pieces.some((piece) => piece.truncated) || wrapped.length < 2 || wrapped.length > 4 || seen.has(key)) continue;
+      seen.add(key);
+      const ww = Math.max(...wrapped.map((line) => input.measure(line, font).width));
+      const hh = lineH * wrapped.length;
+      const cx = Math.min(Math.max(at.x - ww / 2, input.plot.x), Math.max(input.plot.x, input.plot.x + input.plot.w - ww));
+      const extra = 100 + (wrapped.length - 2) * 10;
+      const seat = (slot: string, x: number, y: number, penalty: number, leader = false) => {
+        const rect = { x, y, w: ww, h: hh };
+        wrappedSeats.push({ slot, rect, penalty: extra + penalty, lines: wrapped, ...(leader ? { leaderFrom: edgeToward(rect) } : {}) });
+      };
+      seat('aboveWrap', cx, top - hh - gap, prefer === 'above' ? -1 : 0);
+      seat('rightWrapAt', right + gap * 2, sideY - hh / 2, prefer === 'right' ? -1 : 1, true);
+      seat('leftWrapAt', left - ww - gap * 2, sideY - hh / 2, prefer === 'left' ? -1 : 2, true);
+      seat('belowWrap', cx, bottom + gap, prefer === 'below' ? -1 : 3);
+      // Diagonal seats clear of the value printed over the point.
+      seat('aboveLeftWrap', Math.max(input.plot.x, left - ww - gap * 2), top - hh - gap, 3.1, true);
+      seat('aboveRightWrap', Math.min(right + gap * 2, input.plot.x + input.plot.w - ww), top - hh - gap, 3.2, true);
+      seat('belowLeftWrap', Math.max(input.plot.x, left - ww - gap * 2), bottom + gap, 3.3, true);
+      seat('belowRightWrap', Math.min(right + gap * 2, input.plot.x + input.plot.w - ww), bottom + gap, 3.4, true);
+    }
+    all.push(...wrappedSeats.sort((a, b) => a.penalty - b.penalty));
+  }
   // On a row chart a seat farther than one row from the anchor reads as the text of another row.
   if (reach !== undefined) {
     const limit = Math.max(reach, gap * 3);
