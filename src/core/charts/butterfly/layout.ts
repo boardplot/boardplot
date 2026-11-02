@@ -469,10 +469,9 @@ export function layoutButterfly(
   // header band for series labels above each pane
   const headerH = labelFont.size * (labelFont.lineHeight ?? 1.2) + (paneFit ? 7 : 10);
   const rowsTop = plot.y + headerH;
-  // Panes on their own scales each draw a thin value axis under the rows. So does any pane pair whose values are
-  // off (`labels: false`, a pyramid): the axis is then the only scale, and `labels: false` takes values, not scales.
-  const tickOff = opts.labels !== false && labelsOff('tick');
-  const axisWanted = !tickOff && (!sharedScale || valuesOff);
+  // Panes on their own scales each draw a thin value axis under the rows. So does a pyramid whose values are off
+  // (`labels: false`): the axis is then its only scale, and `labels: false` takes values, not scales.
+  const axisWanted = redesign ? !sharedScale && !labelsOff('tick') : valuesOff;
   const ownAxis = axisWanted && comparison?.noAxis !== true;
   const axisFont = secondaryFont(theme);
   const axisH = ownAxis ? axisFont.size * (axisFont.lineHeight ?? 1.2) + AXIS_GAP + 4 : 0;
@@ -532,7 +531,6 @@ export function layoutButterfly(
   // report the height a value and a name need. The size gate then grows an
   // unsized pyramid to it and refuses a fixed frame with that size, instead
   // of hiding half the rows into a note that shrinks the plot further.
-  let rowsNeedH = rows.length * catLineH;
   if (!rowDriven) {
     // Only the text that is drawn is charged, and a tight row charges the ink of its text, not a line box.
     const stepped = (font: FontSpec, step: FontSpec | undefined) => inkBox(step ?? font) + 4;
@@ -543,18 +541,17 @@ export function layoutButterfly(
     const short = rows.length * rowNeed - (rowsBottom - rowsTop);
     // A pinned height that holds the rows but not the axis under them keeps its rows.
     if (ownAxis && pinnedRows && short > 1e-6) return layoutButterfly(data, options, { ...comparison, noAxis: true });
-    rowsNeedH = rows.length * rowNeed;
     frameResult.frame.plotMinHeight = Math.max(frameResult.frame.plotMinHeight ?? 0, size.height + (frameResult.deficit ?? 0) + short);
-  }
-  // Without its axis the chart has no number left where the values are off: say so, with the height that keeps the axis.
-  if (axisWanted && !ownAxis && valuesOff) {
-    const axisShort = rowsNeedH + axisFont.size * (axisFont.lineHeight ?? 1.2) + AXIS_GAP + 4 - (rowsBottom - rowsTop);
-    warnings.push({
-      code: 'value-axis-dropped',
-      severity: 'warn',
-      message: 'the value axis does not fit under the rows at this height, so the chart draws without a scale',
-      suggest: `use a height of at least ${Math.ceil(size.height + (frameResult.deficit ?? 0) + axisShort)}px to keep the value axis`,
-    });
+    // Without its axis the chart has no number left where the values are off: say so, with the height that keeps the axis.
+    if (axisWanted && !ownAxis) {
+      const axisShort = rows.length * rowNeed + axisFont.size * (axisFont.lineHeight ?? 1.2) + AXIS_GAP + 4 - (rowsBottom - rowsTop);
+      warnings.push({
+        code: 'value-axis-dropped',
+        severity: 'warn',
+        message: 'the value axis does not fit under the rows at this height, so the chart draws without a scale',
+        suggest: `use a height of at least ${Math.ceil(size.height + (frameResult.deficit ?? 0) + axisShort)}px to keep the value axis`,
+      });
+    }
   }
   const nameFont: FontSpec = nameStep ?? tickFont;
   const nameBold: FontSpec = { ...nameFont, weight: emphasisWeight(theme) };
