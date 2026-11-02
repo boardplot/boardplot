@@ -1,12 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 404" width="720" height="404" direction="ltr" style="max-width:100%;height:auto;text-transform:none;letter-spacing:normal;word-spacing:normal;font-style:normal;font-variant:normal" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Where the defects come from" aria-describedby="bp-desc-e6d0300e89" data-bp-sizing="{&quot;aspect&quot;:&quot;16:9&quot;,&quot;minWidth&quot;:280,&quot;minHeight&quot;:270,&quot;fit&quot;:&quot;fill&quot;,&quot;compactFloor&quot;:{&quot;width&quot;:280,&quot;height&quot;:180},&quot;measuredMinWidth&quot;:0,&quot;measuredMinHeight&quot;:269,&quot;naturalWidth&quot;:688,&quot;naturalHeight&quot;:405,&quot;comfortableWidth&quot;:350,&quot;comfortableHeight&quot;:338}" data-bp-mode="full" font-family="'Helvetica Neue', Helvetica, Arial, Roboto, sans-serif">
-<desc id="bp-desc-e6d0300e89">Pareto chart, 8 causes sorted descending, total 300. The first 3 of 8 (Alignment drift, Adhesive failure, Misprint) reach 82%, crossing the 80% reference at 'Misprint'. The cumulative curve is derived from the plotted values and ends at the grand total.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 404" width="720" height="404" direction="ltr" style="max-width:100%;height:auto;text-transform:none;letter-spacing:normal;word-spacing:normal;font-style:normal;font-variant:normal" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Where the defects come from" aria-describedby="bp-desc-27ff8289e8" data-bp-sizing="{&quot;aspect&quot;:&quot;16:9&quot;,&quot;minWidth&quot;:280,&quot;minHeight&quot;:270,&quot;fit&quot;:&quot;fill&quot;,&quot;compactFloor&quot;:{&quot;width&quot;:280,&quot;height&quot;:180},&quot;measuredMinWidth&quot;:0,&quot;measuredMinHeight&quot;:269,&quot;naturalWidth&quot;:688,&quot;naturalHeight&quot;:405,&quot;comfortableWidth&quot;:350,&quot;comfortableHeight&quot;:338}" data-bp-mode="full" font-family="'Helvetica Neue', Helvetica, Arial, Roboto, sans-serif">
+<desc id="bp-desc-27ff8289e8">Pareto chart, 8 causes sorted descending, total 300. The first 3 of 8 (Alignment drift, Adhesive failure, Misprint) reach 82%, crossing the 80% reference at 'Misprint'. The cumulative curve is derived from the plotted values and ends at the grand total.</desc>
 <rect x="0" y="0" width="720" height="404" fill="#FFFFFF"/>
 <text data-id="frame:title:0" data-part="title" data-bp-role="title" x="18" y="37.60" text-anchor="start" font-size="20" font-weight="600" fill="#0B1B3A"><tspan x="18" dy="0">Where the defects come from</tspan></text>
 <text data-id="frame:subtitle:1" data-part="subtitle" data-bp-role="subtitle" x="18" y="61.32" text-anchor="start" font-size="14" font-weight="400" fill="#0B1B3A"><tspan font-weight="600">Defects recorded</tspan><tspan> · FY25</tspan></text>
 <text data-id="frame:source:2" data-part="source" data-bp-role="source" x="18" y="389.38" text-anchor="start" font-size="11" font-weight="400" fill="#5B6B86"><tspan x="18" dy="0">Source: Quality log, plant 2</tspan></text>
 <rect data-id="frame:swatch:3" data-part="swatch" x="18" y="77.26" width="12" height="12" fill="#0B1B3A"/>
 <text data-id="frame:legendLabel:4" data-part="legendLabel" data-bp-role="category" x="35" y="87.56" text-anchor="start" font-size="12" font-weight="400" fill="#5B6B86"><tspan x="35" dy="0">Top three</tspan></text>
-<rect data-id="frame:swatch:5" data-part="swatch" x="101.50" y="77.26" width="12" height="12" fill="#8493AC"/>
+<rect data-id="frame:swatch:5" data-part="swatch" x="101.50" y="77.26" width="12" height="12" fill="#C9D2E0"/>
 <text data-id="frame:legendLabel:6" data-part="legendLabel" data-bp-role="category" x="118.50" y="87.56" text-anchor="start" font-size="12" font-weight="400" fill="#5B6B86"><tspan x="118.50" dy="0">Other causes</tspan></text>
 <line data-id="frame:swatch:7" data-part="swatch" x1="205" y1="83.26" x2="221" y2="83.26" stroke="#0B1B3A" stroke-width="2"/>
 <circle data-id="frame:swatch:7:marker" data-part="swatch" cx="213" cy="83.26" r="2.50" fill="#0B1B3A"/>
@@ -24,11 +24,11 @@
 <rect data-id="mark:pareto:value:alignment" data-part="segment" x="61.71" y="251.98" width="53.23" height="76.52" fill="#0B1B3A"/>
 <rect data-id="mark:pareto:value:adhesive" data-part="segment" x="137.76" y="277.49" width="53.23" height="51.01" fill="#0B1B3A"/>
 <rect data-id="mark:pareto:value:misprint" data-part="segment" x="213.81" y="299.81" width="53.23" height="28.69" fill="#0B1B3A"/>
-<rect data-id="mark:pareto:value:scratch" data-part="segment" x="289.86" y="312.56" width="53.23" height="15.94" fill="#8493AC"/>
-<rect data-id="mark:pareto:value:warp" data-part="segment" x="365.91" y="318.94" width="53.23" height="9.56" fill="#8493AC"/>
-<rect data-id="mark:pareto:value:labelling" data-part="segment" x="441.96" y="322.12" width="53.23" height="6.38" fill="#8493AC"/>
-<rect data-id="mark:pareto:value:packaging" data-part="segment" x="518.01" y="326.59" width="53.23" height="1.91" fill="#8493AC"/>
-<rect data-id="mark:pareto:value:other" data-part="segment" x="594.06" y="327.22" width="53.23" height="1.28" fill="#8493AC"/>
+<rect data-id="mark:pareto:value:scratch" data-part="segment" x="289.86" y="312.56" width="53.23" height="15.94" fill="#C9D2E0"/>
+<rect data-id="mark:pareto:value:warp" data-part="segment" x="365.91" y="318.94" width="53.23" height="9.56" fill="#C9D2E0"/>
+<rect data-id="mark:pareto:value:labelling" data-part="segment" x="441.96" y="322.12" width="53.23" height="6.38" fill="#C9D2E0"/>
+<rect data-id="mark:pareto:value:packaging" data-part="segment" x="518.01" y="326.59" width="53.23" height="1.91" fill="#C9D2E0"/>
+<rect data-id="mark:pareto:value:other" data-part="segment" x="594.06" y="327.22" width="53.23" height="1.28" fill="#C9D2E0"/>
 <line data-id="axis:baseline:over" data-part="baseline" x1="46.50" y1="328.50" x2="662.50" y2="328.50" stroke="#0B1B3A" stroke-width="1"/>
 <path data-id="casing:line:pareto:cumulative" data-part="lineCasing" d="M88.33 251.98L164.38 200.97L240.43 172.27L316.48 156.33L392.52 146.76L468.57 140.39L544.62 138.48L620.67 137.20" fill="none" stroke="#FFFFFF" stroke-width="5" stroke-linejoin="round"/>
 <path data-id="mark:line:pareto:cumulative" data-part="line" d="M88.33 251.98L164.38 200.97L240.43 172.27L316.48 156.33L392.52 146.76L468.57 140.39L544.62 138.48L620.67 137.20" fill="none" stroke="#0B1B3A" stroke-width="2" stroke-linecap="butt" stroke-linejoin="round"/>
