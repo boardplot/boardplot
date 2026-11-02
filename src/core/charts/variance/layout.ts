@@ -102,11 +102,12 @@ import type {
   SceneNode,
 } from '../../types/scene';
 import { autoDecimals, currentSmallValues, roundHalfUp, roundsToZero, valueSetDecimals } from '../../formatPrecision';
-import { isSingleVarianceTier, isVarianceTier } from '../../grid/varianceTiers';
+import { FIT_TIER_LABELS, isSingleVarianceTier, isVarianceTier } from '../../grid/varianceTiers';
 import { relativePointCandidates } from './pointLabels';
+import { nearestIsOwn } from '../../label/ownership';
 import { categoryLabelsAndMarks } from '../../footnoteMark';
 import { withUnit } from '../../unitJoin';
-import { textScaleOf } from '../../typeFloors';
+import { readerFloorPx, textScaleOf } from '../../typeFloors';
 import { disclosureNote } from '../../notes';
 import { maxOf, pushAll } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
@@ -168,6 +169,8 @@ const pinGeometry = (theme: Parameters<typeof strokeToken>[0], width: number): {
 
 /** Internal option: px of one more value row over (above) or under (below) the columns, set by the second pass. */
 const LIFT_ROW = Symbol('liftRow');
+/** Value type size tried only after a phone tier loses a name or value to a collision. */
+const TIER_LABEL_SIZE = Symbol('tierLabelSize');
 
 export function layoutVariance(
   data: ChartData,
@@ -578,7 +581,12 @@ export function layoutVariance(
   const tickFont: FontSpec = { family: theme.type.family, ...theme.type.axis };
   const labelFont: FontSpec = { family: theme.type.family, ...theme.type.label };
   const strongFont: FontSpec = { family: theme.type.family, ...theme.type.label, weight: emphasisWeight(theme) };
-  const labelH = measure('0', labelFont).height;
+  const tierLabelSize = (options as { [TIER_LABEL_SIZE]?: number })[TIER_LABEL_SIZE];
+  const basePointFont = mode === 'relative' ? strongFont : labelFont;
+  const pointFont: FontSpec = tierLabelSize === undefined ? basePointFont : { ...basePointFont, size: tierLabelSize };
+  const labelH = measure('0', tierLabelSize === undefined ? labelFont : pointFont).height;
+  const fitTierLabels = mode !== 'integrated' && size.width < 480 && (options as { [FIT_TIER_LABELS]?: boolean })[FIT_TIER_LABELS] === true;
+  const fittingTierLabels = fitTierLabels && tierLabelSize !== undefined;
   // The value-axis title in the head band, as on column; drawn only when authored.
   const axisTitle = options.valueAxis?.show && kindShown('axisTitle')
     ? planValueAxisTitle(options.axisTitles?.primary, theme, measure, frameResult.plot.w)
@@ -784,6 +792,8 @@ export function layoutVariance(
   const marks: VarianceMarks = { bars: [], pins: [] };
   const pinInk = new Map<string, Paint>();
   const pin = pinGeometry(theme, size.width);
+  const tierPinHeads = fitTierLabels && mode === 'relative' ? cats.flatMap((category, ci) => dPctArr[ci] === null ? []
+    : [{ id: category.id, cx: band.center(ci), cy: y(dPctArr[ci]!), r: pin.r }]) : [];
   const labelRequests: LabelRequest[] = axisTitle
     ? [valueAxisTitleRequest(axisTitle, { x: frameResult.plot.x, y: frameResult.plot.y + 4 }, 'start', 'axis:y:title')]
     : [];
@@ -940,8 +950,8 @@ export function layoutVariance(
       if (typeof mv.labelOverride === 'string') text = mv.labelOverride.replace(/\$\{value\}/g, text);
       if (mv.labelOverride === false) return;
       // The growth value prints bold in its pin's tone; a neutral pin keeps the ink.
-      const words = toDateIds.has(c.id) ? toDateLabel(text, strongFont, toDate, theme, measure) : undefined;
-      const tsize = words?.size ?? measure(text, strongFont);
+      const words = toDateIds.has(c.id) ? toDateLabel(text, pointFont, toDate, theme, measure) : undefined;
+      const tsize = words?.size ?? measure(text, pointFont);
       // seriesTextPaint darkens the tone only where it reads under 4.5:1 as text.
       if (tone !== 'neutral') pinInk.set(`point:${c.id}`, seriesTextPaint(paint));
       labelRequests.push({
@@ -954,11 +964,23 @@ export function layoutVariance(
         text,
         lines: words?.lines ?? [text],
         ...words?.request,
-        font: strongFont,
+        font: pointFont,
+        ...(tierLabelSize === undefined ? {} : { fontStep: pointFont }),
+        ...(fitTierLabels ? { anchor: { x: cx, y: yv }, leaderClear: true } : {}),
         priority:
           (mv.priority ?? PRIORITY.endpoint + Math.min(99, Math.abs(d))) +
           (hl ? PRIORITY.highlightBonus : 0),
-        candidates: relativePointCandidates(cx, yv, y0, tsize, d < 0, pin.r, isVarianceTier(options), !isVarianceTier(options) || isSingleVarianceTier(options)),
+        candidates: relativePointCandidates(cx, yv, y0, tsize, d < 0, pin.r,
+          isVarianceTier(options) && !fittingTierLabels,
+          !isVarianceTier(options) || isSingleVarianceTier(options) || fittingTierLabels)
+          .filter(candidate => !fitTierLabels || Math.abs(candidate.rect.x + candidate.rect.w / 2 - cx) <= 0.5
+            || nearestIsOwn(candidate.rect, { id: c.id, cx, cy: yv, r: pin.r }, tierPinHeads))
+          // The reserved row lies outside the pin plot, with its radius too.
+          // Canvas bounds and occupied text still reject a blocked seat.
+          .map(candidate => fittingTierLabels && /HeadShifted$/.test(candidate.slot)
+            ? { ...candidate, leaderFrom: { x: cx, y: yv }, leaderVertical: true,
+              ...((d < 0 ? liftRow?.below : liftRow?.above) ? { outsidePlot: true } : {}) }
+            : candidate),
       });
       return;
     }
@@ -997,8 +1019,8 @@ export function layoutVariance(
       let text = absolute(d, ci, true);
       if (typeof mv.labelOverride === 'string') text = mv.labelOverride.replace(/\$\{value\}/g, text);
       if (mv.labelOverride === false) return;
-      const words = toDateIds.has(c.id) ? toDateLabel(text, labelFont, toDate, theme, measure) : undefined;
-      const tsize = words?.size ?? measure(text, labelFont);
+      const words = toDateIds.has(c.id) ? toDateLabel(text, pointFont, toDate, theme, measure) : undefined;
+      const tsize = words?.size ?? measure(text, pointFont);
       labelRequests.push({
         id: `point:${c.id}`,
         claimId: `var:abs:${c.id}`,
@@ -1009,7 +1031,8 @@ export function layoutVariance(
         text,
         lines: words?.lines ?? [text],
         ...words?.request,
-        font: labelFont,
+        font: pointFont,
+        ...(tierLabelSize === undefined ? {} : { fontStep: pointFont, leaderClear: true }),
         // EVERY bar labeled: endpoint band keeps them through density=minimal
         priority:
           (mv.priority ?? PRIORITY.endpoint + Math.min(99, Math.abs(d))) +
@@ -1206,6 +1229,40 @@ export function layoutVariance(
     }
   });
 
+  // Two aligned rows keep neighbouring values apart even when their mark
+  // heights differ. Alternate crowded neighbours before the priority solve,
+  // so an earlier, larger value cannot block the only row of a smaller one.
+  if (fittingTierLabels) {
+    for (const above of [true, false]) {
+      const requests = labelRequests.filter(request => request.kind === 'point'
+        && /^(above|outsideTop)/.test(request.candidates[0]!.slot) === above);
+      if (requests.length === 0) continue;
+      const edge = above
+        ? Math.min(...requests.map(request => request.candidates[0]!.rect.y + request.candidates[0]!.rect.h))
+        : Math.max(...requests.map(request => request.candidates[0]!.rect.y));
+      const rowStep = Math.max(...requests.map(request => request.candidates[0]!.rect.h)) + 4;
+      const rowEnds = [-Infinity, -Infinity];
+      for (const request of requests) {
+        const natural = request.candidates[0]!;
+        const preferred = natural.rect.x < rowEnds[0]! + SERIES_VALUE_GAP ? 1 : 0;
+        rowEnds[preferred] = natural.rect.x + natural.rect.w;
+        const ci = cats.findIndex(category => category.id === request.owner.categoryId);
+        const anchor = { x: band.center(ci), y: anchorTopY[ci]! };
+        request.anchor = anchor;
+        request.leaderClear = true;
+        const rows = request.candidates.slice(0, 2).map((candidate, row) => ({
+          ...candidate,
+          rect: { ...candidate.rect, y: above ? edge - candidate.rect.h - row * rowStep : edge + row * rowStep },
+          penalty: row === preferred ? 0 : 1,
+          leaderFrom: anchor,
+          leaderVertical: true,
+          ...((above ? liftRow?.above : liftRow?.below) ? { outsidePlot: true } : {}),
+        }));
+        request.candidates = [rows[preferred]!, rows[1 - preferred]!, ...request.candidates.slice(2)];
+      }
+    }
+  }
+
   // A value wider than its column runs over its neighbours: their columns
   // and their values. Where those block both seats over the cap, a value may
   // rise clear of them (below them for a value under the baseline): clear of
@@ -1264,7 +1321,10 @@ export function layoutVariance(
     // Prose names read in one row too, under the lowest variance and
     // the label hanging under it (bottomPad reserves that label), and never
     // hop above the baseline beside a positive variance's label.
-    const proseRowY = maxOf(visBottomY.map((bottom) => (bottom > y0 ? bottom + labelH + 4 : y0))) + 6;
+    const proseRowY = maxOf(visBottomY.map((bottom) => (bottom > y0 ? bottom + labelH + 4 : y0))) + 6
+      + (mode === 'integrated' ? 0 : liftRow?.below ?? 0);
+    const categoryPriority = tierLabelSize === undefined ? PRIORITY.endpoint
+      : Math.max(PRIORITY.endpoint, maxOf([...pointRequests.values()].map(request => request.priority)) + 1);
     const keep = catPlan.keep;
     const rotated = catPlan.rotation !== 0;
     // Integrated names have one fixed row. Seat the running-period words in
@@ -1294,7 +1354,7 @@ export function layoutVariance(
         ...categoryLineAlign(catPlan, ci),
         ...(info.title !== undefined ? { title: info.title } : {}),
         font: catFont,
-        priority: PRIORITY.endpoint,
+        priority: categoryPriority,
         // A stride-hidden date label is the row's decision (one info lint), not a loss.
         redundant: !keep[ci],
         ...(rotated ? { rotate: -45, pad: 0 } : {}),
@@ -1331,6 +1391,43 @@ export function layoutVariance(
   const solved: SolveResult & { stranded?: LabelRequest[] } = mode === 'integrated'
     ? solveVarianceLabels(labelRequests, occupied, solveCtx, liftSeats)
     : solveLabels(labelRequests, occupied, solveCtx);
+  // A phone tier first reserves a second row at native type, then steps down
+  // only to the target floor with those rows. Names win a contested seat.
+  // Standalone, integrated and wider charts keep their original solve and bytes.
+  const crowded = fitTierLabels && tierLabelSize === undefined
+    ? solved.placed.filter(label => label.hidden === 'collision' && (label.kind === 'category' || label.kind === 'point')) : [];
+  if (crowded.length > 0) {
+    const counts = (labels: PlacedLabel[]) => [
+      labels.filter(label => label.kind === 'category' && label.hidden === undefined).length,
+      labels.filter(label => label.kind === 'point' && label.hidden === undefined).length,
+    ] as const;
+    let best = counts(solved.placed);
+    let fitted: Geometry<VarianceMarks, VarianceDerived> | undefined;
+    const wanted = counts(solved.placed.map(label => label.hidden === 'collision' ? { ...label, hidden: undefined } : label));
+    const deltas = crowded.filter(label => label.kind === 'point')
+      .map(label => deltaOf(cats.findIndex(category => category.id === label.owner.categoryId)));
+    const above = deltas.some(delta => delta !== null && delta >= 0);
+    const below = crowded.some(label => label.kind === 'category') || deltas.some(delta => delta !== null && delta < 0);
+    const trySize = (fontSize: number): boolean => {
+      const row = measure('0', { ...pointFont, size: fontSize }).height + 4;
+      const candidate = layoutVariance(data, { ...options, [TIER_LABEL_SIZE]: fontSize,
+        [LIFT_ROW]: { above: above ? row : 0, below: below ? row : 0 } } as VarianceOptions);
+      const fits = (candidate.frame.plotMinHeight ?? 0) <= size.height
+        && (candidate.sizing === undefined || candidate.sizing.minWidth <= size.width && candidate.sizing.minHeight <= size.height);
+      const seated = counts(candidate.labels);
+      if (fits && (seated[0] > best[0] || seated[0] === best[0] && seated[1] > best[1])) {
+        fitted = candidate;
+        best = seated;
+      }
+      return best[0] === wanted[0] && best[1] === wanted[1];
+    };
+    const floor = readerFloorPx(options.target ?? DEFAULT_TARGET, 'label', textScaleOf(options));
+    for (let fontSize = Math.max(pointFont.size, floor);; fontSize = Math.max(floor, fontSize - 1)) {
+      if (trySize(fontSize)) return fitted!;
+      if (fontSize === floor) break;
+    }
+    if (fitted) return fitted;
+  }
   // The plot holds one value row over the tallest column. When a larger
   // variance still finds no seat while a smaller one keeps its value (the seat
   // over its neighbours runs into the key or the subtitle), a fixed-height

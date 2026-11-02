@@ -5,7 +5,7 @@ import { getFixtures } from '../src/fixtures';
 import { measure } from '../src/index';
 import type { Geometry, Paint } from '../src/core/types/scene';
 import { paintColor, registerTheme, resolveTheme } from '../src/core/theme';
-import { layoutGrid } from '../src/core/charts/grid/layout';
+import { layoutGrid, type GridMarks } from '../src/core/charts/grid/layout';
 import { renderSvg } from '../src/core/svg/renderSvg';
 import { contrastRatio } from '../src/core/color';
 
@@ -69,6 +69,52 @@ describe('grid.tiers at 320 px, automatic height', () => {
     expect(keys).toContain('Better than PY');
     expect(keys).not.toContain('Worse than PY');
   });
+});
+
+// Prevents phone tiers from dropping names or values, shrinking below the target floor, or assigning a value to another pin.
+it('draws every category name and variance value on a phone-width tier grid', () => {
+  const categories = ['DACH', 'Benelux', 'Nordics', 'France', 'UK', 'Iberia', 'Italy', 'Poland', 'Gulf (new region)'].map((label, i) => ({ id: `r${i}`, label }));
+  const data = { categories, series: [
+    { id: 'ac', label: 'Actual', scenario: 'AC' as const, values: [10.9, 8.4, 6.3, 12.6, 14, 5.5, 7.1, 2.4, 0.9] },
+    { id: 'pl', label: 'Plan', scenario: 'PL' as const, role: 'reference' as const, values: [10, 8, 6, 12, 14.7, 6.25, 7.5, 2.5, 0] },
+    { id: 'py', label: 'Prior year', scenario: 'PY' as const, role: 'reference' as const, values: [9.8, 7.6, 5.5, 11.9, 13.1, 5.9, 7, 2.1, 0] },
+  ] };
+  const grid = measure({ type: 'grid', theme: 'notation-dark', data: { panels: [
+    { id: 'abs', type: 'variance', data, options: { variant: 'absolute', variance: { of: 'ac', vs: 'pl' } } },
+    { id: 'rel', type: 'variance', data, options: { variant: 'relative', variance: { of: 'ac', vs: 'pl' } } },
+  ] }, options: { target: 'dashboard', size: { width: 375 }, sharedAxis: 'category',
+    title: 'Revenue and variance in one chart per region', subtitle: { measure: 'Revenue versus plan', period: 'Q3' },
+    unit: 'EUR m', source: 'Invented example' } }).geometry as unknown as Geometry<GridMarks>;
+  expect(grid.refused).toBeFalsy();
+  const names = grid.labels.filter(label => label.id.startsWith('abs/category:'));
+  const values = grid.labels.filter(label => /^(abs|rel)\/point:/.test(label.id));
+  expect(names.map(label => label.text).sort()).toEqual(categories.map(category => category.label).sort());
+  expect(names.filter(label => label.hidden)).toEqual([]);
+  expect(values).toHaveLength(17);
+  expect(values.filter(label => label.hidden)).toEqual([]);
+  expect(grid.scene.some(node => node.id === 'rel/nm:r8')).toBe(true);
+  expect(grid.warnings.filter(warning => warning.code === 'label-hidden')).toEqual([]);
+  expect(grid.warnings.filter(warning => warning.code === 'type-below-native-min')).toEqual([]);
+  expect(values.filter(label => label.id.startsWith('abs/')).every(label => label.font?.size === 13)).toBe(true);
+  const { offset } = grid.marks.panels.find(panel => panel.id === 'rel')!.chart!;
+  for (const label of values.filter(label => label.id.startsWith('rel/'))) {
+    const pin = grid.scene.find(node => node.id === `rel/mark:head:${label.owner.categoryId}`)!;
+    if (pin.t !== 'circle') throw new Error(`Missing pin head for ${label.id}`);
+    const cx = pin.cx + offset.x;
+    const cy = pin.cy + offset.y;
+    const centred = Math.abs(label.rect.x + label.rect.w / 2 - cx) <= 0.5;
+    const dx = Math.max(label.rect.x - cx, 0, cx - label.rect.x - label.rect.w);
+    const dy = Math.max(label.rect.y - cy, 0, cy - label.rect.y - label.rect.h);
+    // Leaders use panel coordinates, while label boxes use grid coordinates.
+    const path = label.leader?.d.match(/-?\d+(?:\.\d+)?/g)?.map(Number) ?? [];
+    const joinsHead = [path.slice(0, 2), path.slice(-2)].some(([x, y]) =>
+      x !== undefined && y !== undefined && Math.hypot(x - pin.cx, y - pin.cy) <= 0.5);
+    expect(centred || Math.hypot(dx, dy) <= label.rect.h && joinsHead, label.id).toBe(true);
+    if (label.slot.endsWith('HeadShifted')) {
+      expect(joinsHead, label.id).toBe(true);
+      expect(path[0]).toBeCloseTo(path.at(-2)!, 1);
+    }
+  }
 });
 
 // On a dense card the outside PY tick reached into the next column's stack

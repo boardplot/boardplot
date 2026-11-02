@@ -2,6 +2,8 @@ import type { Rect } from '../geometry';
 import { maxOf } from '../arrays';
 
 export const VARIANCE_TIER = Symbol('varianceTier');
+/** Shared-category variance panels, including tiers without a column panel. */
+export const FIT_TIER_LABELS = Symbol('fitTierLabels');
 
 type TierPanel = { type?: string; options?: object };
 

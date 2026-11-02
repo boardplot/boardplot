@@ -11,7 +11,7 @@ import { fmtPathNumber as fmtN } from '../../curve';
 import { inferLinearYDomain } from '../../axis';
 import { frameTextOptions, normalizeLegendOption, solveFrame, type FrameInput, type LegendItemInput } from '../../frame';
 import { collectGridLegendItems, gridLegendInput, gridPanelsKeepEndNames, hatchStrengthFor } from '../../grid/gridKey';
-import { balanceVarianceTierPlots, VARIANCE_TIER, varianceTierWeights } from '../../grid/varianceTiers';
+import { balanceVarianceTierPlots, FIT_TIER_LABELS, VARIANCE_TIER, varianceTierWeights } from '../../grid/varianceTiers';
 import { scalePanelSemantics } from '../../grid/sharedScale';
 import {
   layoutGrid as composeGrid,
@@ -1568,6 +1568,7 @@ function layoutAuthoredChild(
       ...(hasKpiFigure(panel.type) && kpiValueSize !== undefined ? { [KPI_VALUE_SIZE]: kpiValueSize } : {}),
       ...(panel.type === 'kpi' ? { [KPI_HOST_TEXT]: stringsIn([panel.title, panel.caption, parentOptions.title, parentOptions.subtitle, parentOptions.footnotes, parentOptions.source]) } : {}),
       ...(panel.type === 'variance' && isAuthoredVarianceStack(panels, parentOptions) ? { [VARIANCE_TIER]: panels.length } : {}),
+      ...(compactTiers && panel.type === 'variance' ? { [FIT_TIER_LABELS]: true } : {}),
       ...(panel.annotations ? { annotations: panel.annotations } : {}),
       ...(parentOptions.palette !== undefined && panelOptions.palette === undefined
         ? { palette: parentOptions.palette }
