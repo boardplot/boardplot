@@ -179,6 +179,12 @@ interface CategoryRowInput {
   /** Try the upright spread before the 45° step (default true on the new targets). */
   spreadBeforeRotate?: boolean;
   /**
+   * Add the target's reader floor for the axis role as the last font step of a row of names,
+   * where the ladder stops above it. The names then wrap upright at the floor size
+   * (and break after a hyphen) before the row rotates.
+   */
+  stepToFloor?: boolean;
+  /**
    * The rotate step turns names -90° (vertical, reading up) instead of 45°
    * (pareto at 480–320 px). A vertical name needs a pitch of
    * one line only, and stands inside its own column. Absent, rows turn 45°.
@@ -741,7 +747,12 @@ function planRow(input: CategoryRowInput, bundled: boolean): CategoryRowPlan {
   // A period row keeps the muted secondary role but prints at the label step.
   const secondary = periodRow && input.secondary !== undefined && input.secondary.size < input.fonts[0]!.size ? { ...input.secondary, size: input.fonts[0]!.size } : undefined;
   const ladder = secondary ? [secondary, ...input.fonts.filter(font => font.size < secondary.size)] : input.fonts;
-  const fonts = ladder.filter((font, index) => index === 0 || font.size >= targetFloorsPx(input.target ?? DEFAULT_TARGET, input.textScale)[secondary ? 'secondary' : 'axis']);
+  const axisFloor = targetFloorsPx(input.target ?? DEFAULT_TARGET, input.textScale)[secondary ? 'secondary' : 'axis'];
+  const fonts = ladder.filter((font, index) => index === 0 || font.size >= axisFloor);
+  // A row of names (not periods or an ordered sequence) may step down to the reader floor before it rotates.
+  const smallest = fonts.at(-1)!;
+  const nameRow = input.stepToFloor === true && !periodRow && !(input.ordered || input.strideFromEnd || numberedSequence(labels));
+  if (nameRow && smallest.size > axisFloor + 0.01) fonts.push({ ...fonts[0]!, size: axisFloor });
   // 4 px between neighbouring names; the row thins only where names collide.
   const gap = input.gap ?? 4;
   const padding = input.padding ?? 6;
@@ -786,7 +797,7 @@ function planRow(input: CategoryRowInput, bundled: boolean): CategoryRowPlan {
       if (single !== undefined && measure(single, font).width <= width) {
         return withSuffix({ lines: [single], w: Math.max(measure(single, font).width, 1), h: font.size * (font.lineHeight ?? 1.2), truncated: false }, i, font);
       }
-      const wrap = fitText(label, font, width, maxLines, measure);
+      const wrap = fitText(label, font, width, maxLines, measure, nameRow ? { hyphenRetry: true } : {});
       const lines = wrap.lines.length ? wrap.lines : [''];
       return withSuffix({
         lines,
@@ -801,7 +812,8 @@ function planRow(input: CategoryRowInput, bundled: boolean): CategoryRowPlan {
   };
 
   // Breaks can remove whitespace; a ZWJ or Unicode tag can join a word to the preceding space.
-  const words = labels.map(label => /[\n\u200d\u{E0020}-\u{E007F}]/u.test(label) ? [] : label.split(/[^\S\u00a0\u202f]+/).filter(Boolean));
+  const words = labels.map(label => /[\n\u200d\u{E0020}-\u{E007F}]/u.test(label) ? [] : label.split(/[^\S\u00a0\u202f]+/).filter(Boolean)
+    .flatMap(word => nameRow ? word.split(/(?<=-)(?=[^-])/) : [word]));
   // A word wider than the slot must be cut at every line count; defer that work to the cut fallback.
   const wholeRows = (font: FontSpec, maxLines: number, pad = padding, kept?: readonly boolean[]) =>
     growingWidths(font) && words.some((parts, i) => (!kept || kept[i]) && parts.some(word => measure(word, font).width > Math.max(widthAt(i) - pad - (suffixAt(i) ? measure(suffixAt(i), font).width : 0), 1)))
