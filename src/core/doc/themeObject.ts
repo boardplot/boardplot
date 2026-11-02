@@ -23,6 +23,7 @@ import type { Theme, ThemeRef } from '../types/theme';
 import type { LintWarning } from '../types/scene';
 import { linkThemeShapeRules } from '../themeShapeRules';
 import { retiredThemeKeyWarning, withoutRetiredThemeKeys } from '../retired';
+import { themeShape } from '../normalize/optionShapes';
 
 // Links the theme checks `resolveTheme` runs over a patched theme, so a spec
 // with `theme.overrides` validates synchronously in every entry that holds
@@ -35,9 +36,10 @@ type AdoptedTheme =
   | { ok: true; name: string; ref: ThemeRef; warnings: LintWarning[] }
   | { ok: false; code: string; message: string; suggest: string; fix?: JsonPatchOperation[] };
 
-/** A theme object is any object that is not `{ preset, overrides }`. */
+/** A full theme object has no preset and has keys other than overrides. */
 export function isThemeObject(theme: unknown): theme is Record<string, unknown> {
-  return theme !== null && typeof theme === 'object' && !Array.isArray(theme) && !Object.hasOwn(theme, 'preset');
+  const ref = themeShape(theme);
+  return ref !== null && typeof ref === 'object' && !Array.isArray(ref) && !Object.hasOwn(ref, 'preset');
 }
 
 export function adoptThemeObject(

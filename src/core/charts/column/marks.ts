@@ -11,6 +11,7 @@ import { sk } from '../band/stacks';
 import { categoryBreakGlyph, layoutValueAxis } from '../../axis';
 import { type Rect } from '../../geometry';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
+import { bandedIntervalTicks } from '../../intervalTicks';
 import { strokeToken, dashToken, contrastInkPaint, effectiveFill, hatchGroundPaint, resolveSurface } from '../../theme';
 import { ribbonPath } from '../../svgPath';
 import type { Id } from '../../types/cell';
@@ -571,6 +572,8 @@ export function layoutColumnMarks(
   // The line is 1px of ink centred on y0; claiming more than the ink pushes
   // bottom-segment labels out by a fraction (see insideCenterY).
   claims.claim({ x: plot.x, y: y0 - 0.5, w: plot.w, h: 1 }, 'axis', {});
+  // categoryAxis.dateTicks: a short tick over the name row at every calendar interval.
+  if (area.intervalTicks && area.showCatRow) bandedIntervalTicks(theme, domain.cats, area.intervalTicks, (ci) => area.band.center(ci), area.catRowY, nodes, claims);
   const ribbons = domain.ribbonsOn ? columnRibbons(domain, paints, area, nodes) : [];
   if (domain.connectorsOn && domain.variant !== 'grouped') stackConnectors({ ...domain, axis: 'y', scale: area.y, band: area.band }, nodes, claims);
   const marks: ColumnMarks = { bars: [], referenceTicks: [], ...(ribbons.length > 0 ? { ribbons } : {}) };

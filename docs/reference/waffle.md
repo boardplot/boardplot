@@ -75,7 +75,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | subtotal.series | array |  |  | The summed segments: the first series and the ones right after it, in series order. |
 | subtotal.label | string |  |  | What the sum stands for, such as 'within a day'; printed after the sum. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `labels`, `categoryLabels`, `valueAxis.tickStep`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `topN`, `bandFraction`, `highlight`, `story`, `hatchStrength`, `rounding`.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `labels`, `valueAxis.tickStep`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `highlight`, `story`, `hatchStrength`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction` with an `option-ignored` warning.
 
 ## Annotations
 

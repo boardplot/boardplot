@@ -22,15 +22,15 @@
 <text data-id="header:label" data-part="tableHeader" data-bp-role="category" x="44" y="142.66" text-anchor="start" font-size="12" font-weight="600" fill="#0B1B3A"><tspan x="44" dy="0">SEGMENT</tspan></text>
 <text data-id="header:mtdLy" data-part="tableHeader" data-bp-role="category" x="380" y="142.66" text-anchor="end" font-size="12" font-weight="600" fill="#0B1B3A"><tspan x="380" dy="0">PRIOR YEAR</tspan></text>
 <text data-id="header:mtdAc" data-part="tableHeader" data-bp-role="category" x="456" y="142.66" text-anchor="end" font-size="12" font-weight="600" fill="#0B1B3A"><tspan x="456" dy="0">ACTUAL</tspan></text>
-<text data-id="header:mtdYoY" data-part="tableHeader" data-bp-role="category" x="522" y="142.66" text-anchor="end" font-size="12" font-weight="600" fill="#0B1B3A"><tspan x="522" dy="0">YOY</tspan></text>
+<text data-id="header:mtdYoY" data-part="tableHeader" data-bp-role="category" x="522" y="142.66" text-anchor="end" font-size="12" font-weight="600" fill="#0B1B3A"><tspan x="522" dy="0">YoY</tspan></text>
 <text data-id="header:laLy" data-part="tableHeader" data-bp-role="category" x="628" y="142.66" text-anchor="end" font-size="12" font-weight="600" fill="#0B1B3A"><tspan x="628" dy="0">PRIOR YEAR</tspan></text>
 <text data-id="header:laFc" data-part="tableHeader" data-bp-role="category" x="724" y="142.66" text-anchor="end" font-size="12" font-weight="600" fill="#0B1B3A"><tspan x="724" dy="0">FORECAST</tspan></text>
-<text data-id="header:laYoY" data-part="tableHeader" data-bp-role="category" x="790" y="142.66" text-anchor="end" font-size="12" font-weight="600" fill="#0B1B3A"><tspan x="790" dy="0">YOY</tspan></text>
+<text data-id="header:laYoY" data-part="tableHeader" data-bp-role="category" x="790" y="142.66" text-anchor="end" font-size="12" font-weight="600" fill="#0B1B3A"><tspan x="790" dy="0">YoY</tspan></text>
 <text data-id="header:laPlan" data-part="tableHeader" data-bp-role="category" x="866" y="142.66" text-anchor="end" font-size="12" font-weight="600" fill="#0B1B3A"><tspan x="866" dy="0">PLAN</tspan></text>
 <text data-id="header:laVsPlan" data-part="tableHeader" data-bp-role="category" x="946" y="142.66" text-anchor="end" font-size="12" font-weight="600" fill="#0B1B3A"><tspan x="946" dy="0">VS PLAN</tspan></text>
 <text data-id="header:ycLy" data-part="tableHeader" data-bp-role="category" x="1052" y="142.66" text-anchor="end" font-size="12" font-weight="600" fill="#0B1B3A"><tspan x="1052" dy="0">PRIOR YEAR</tspan></text>
 <text data-id="header:ycAc" data-part="tableHeader" data-bp-role="category" x="1128" y="142.66" text-anchor="end" font-size="12" font-weight="600" fill="#0B1B3A"><tspan x="1128" dy="0">ACTUAL</tspan></text>
-<text data-id="header:ycYoY" data-part="tableHeader" data-bp-role="category" x="1194" y="142.66" text-anchor="end" font-size="12" font-weight="600" fill="#0B1B3A"><tspan x="1194" dy="0">YOY</tspan></text>
+<text data-id="header:ycYoY" data-part="tableHeader" data-bp-role="category" x="1194" y="142.66" text-anchor="end" font-size="12" font-weight="600" fill="#0B1B3A"><tspan x="1194" dy="0">YoY</tspan></text>
 <text data-id="header:ycPlan" data-part="tableHeader" data-bp-role="category" x="1270" y="142.66" text-anchor="end" font-size="12" font-weight="600" fill="#0B1B3A"><tspan x="1270" dy="0">PLAN</tspan></text>
 <text data-id="header:ycVsPlan" data-part="tableHeader" data-bp-role="category" x="1350" y="142.66" text-anchor="end" font-size="12" font-weight="600" fill="#0B1B3A"><tspan x="1350" dy="0">VS PLAN</tspan></text>
 <text data-id="header:fpLy" data-part="tableHeader" data-bp-role="category" x="1456" y="142.66" text-anchor="end" font-size="12" font-weight="600" fill="#0B1B3A"><tspan x="1456" dy="0">PRIOR YEAR</tspan></text>

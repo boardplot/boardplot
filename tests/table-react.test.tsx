@@ -1886,18 +1886,28 @@ it('draws arrows, their key and sparklines from a prepared snapshot', async () =
   }
 });
 
-// A capitalised head printed "Power,mW" as "POWER,MW": milliwatts read as megawatts.
-it('keeps the unit after a head comma as written, on column and group heads, on both surfaces', async () => {
+// A capitalised head printed "Power,mW" as "POWER,MW" and "Memory (Mb)" as "MEMORY (MB)": milliwatts read as megawatts, megabits as megabytes.
+it('keeps a head unit as written, after a comma, in brackets or inside a word, on column and group heads, on both surfaces', async () => {
   const { render } = await import('../src/cli/render');
   const data = {
-    columns: [{ id: 'l', kind: 'rowLabel' as const, label: 'Site' }, { id: 'p', kind: 'value' as const, label: 'Power,mW' }],
+    columns: [
+      { id: 'l', kind: 'rowLabel' as const, label: 'Site' },
+      { id: 'p', kind: 'value' as const, label: 'Power,mW' },
+      { id: 's', kind: 'value' as const, label: 'Standby power (mW)' },
+      { id: 'm', kind: 'value' as const, label: 'Memory [Mb]' },
+      { id: 'e', kind: 'value' as const, label: 'eBay sales ($k)' },
+    ],
     columnGroups: [{ id: 'g', label: 'Load, kW', columns: ['p'] }],
-    rows: [{ id: 'a', label: 'North', cells: { p: 12 } }],
+    rows: [{ id: 'a', label: 'North', cells: { p: 12, s: 12, m: 12, e: 12 } }],
   };
-  const { svg } = render({ spec: { type: 'table', data }, return: ['svg'] }).body as { svg: string };
-  for (const markup of [svg, renderToString(<TableChart data={data} />)]) {
+  const size = { width: 1400 };
+  const { svg } = render({ spec: { type: 'table', data, options: { size } }, return: ['svg'] }).body as { svg: string };
+  for (const markup of [svg, renderToString(<TableChart data={data} size={size} />)]) {
     expect(markup).toContain('POWER,mW');
     expect(markup).toContain('LOAD, kW');
+    expect(markup).toContain('STANDBY POWER (mW)');
+    expect(markup).toContain('MEMORY [Mb]');
+    expect(markup).toContain('eBay SALES ($k)');
   }
   // The grid's capitals are in its text. A CSS capital rule on the group row would turn "kW" into "KW".
   expect(tableStylesheet(resolveTheme('boardroom'), 'report')).not.toMatch(/\.bp-groups>\*\{[^}]*text-transform/);

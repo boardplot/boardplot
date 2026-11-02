@@ -63,7 +63,7 @@ One form; its chart ID is `pyramid`.
 | basis | string | `'count'`, `'shareOfTotal'`, `'shareOfGroup'` | `'count'` | Default 'count'. 'shareOfTotal' divides by the grand total across BOTH groups and all bands — never per group, which would hide the group-size imbalance a pyramid is read for. 'shareOfGroup' divides each side by its own total, so each side sums to 100%; 'shareOfTotal' on two groups that both carry a date draws 'shareOfGroup', because two snapshots have no common whole. |
 | methodNote | boolean |  |  | Default false. true adds the method footnote stating the band convention: [from, to), youngest at the bottom, equal widths. An open-ended top band and the share base are required for interpretation and print regardless. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `categoryLabels`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `topN`, `hatchStrength`, `rounding`.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis`, `hatchStrength`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 

@@ -125,7 +125,7 @@ One form; its chart ID is `creative`.
 |---|---|---|---|---|
 | footnotes | false | `false` |  | false leaves the source line and the method lines (the account-median basis and the fatigue rule) off the card, for a host that shows them in its own frame; the texts stay in frame.source and frame.notes, and the fatigue status line stays on the card. No list of notes is taken. |
 
-Plus the [shared options](options.md). This type does not accept `a11y`, `belowMinimum`, `margin`, `canvas`, `unit`, `unitShown`, `strings`, `format`, `detailFields`, `smallValues`, `labelDensity`, `labels`, `categoryLabels`, `labelPlacements`, `legend`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `scaleGroup`, `rowLabels`, `sort`, `topN`, `bandFraction`, `highlight`, `story`, `focus`, `hatchStrength`, `rounding`, `annotations`.
+Plus the [shared options](options.md). This type does not accept `a11y`, `belowMinimum`, `margin`, `canvas`, `unit`, `unitShown`, `strings`, `format`, `detailFields`, `smallValues`, `labelDensity`, `labels`, `labelPlacements`, `legend`, `valueAxis`, `scaleGroup`, `highlight`, `story`, `focus`, `hatchStrength`, `rounding`, `annotations`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 

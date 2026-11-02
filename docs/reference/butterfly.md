@@ -56,7 +56,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | series[].id | string | yes | Series identity used by keyed options, annotations and legend entries. |
 | series[].label | string |  | Displayed series name; defaults to the series id. |
 | series[].values | (cell \| { categoryId, value: cell })[] | yes | Values in category order, or keyed entries pairing a categoryId with its value. |
-| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). |
+| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. |
 | series[].colorRole | string |  | Theme color role used for this series when no explicit fill takes precedence. One of good, bad, warn, neutral, neutralLight, highlight, total, others; series-N for step N of the theme ramp, 1-based (series-2 is color.series[1]); or status-<key> for a theme status colour. A hex colour goes in fill. |
 | series[].fill | string |  | Explicit CSS fill color for this series; remains authored across theme changes. |
 | series[].unit | string |  | Unit associated with the series values. |
@@ -74,7 +74,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | sharedScale | boolean |  | `true` | Use the same value scale on both sides by default. False gives independent scales and warns that lengths are not comparable. |
 | negatives | string | `'direction'`, `'magnitude'` | `'direction'` | A negative value: direction (default) runs its bar from the pane's zero line toward the category names, and positive bars run outward; magnitude draws the bar length of the absolute value outward in a lighter tint. |
 
-Plus the [shared options](options.md). This type does not accept `categoryLabels`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `rounding`.
+Plus the [shared options](options.md). This type does not accept `valueAxis`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 

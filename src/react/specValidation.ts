@@ -33,6 +33,7 @@ import { BoardplotSpecError } from '../core/doc/specError';
 import { publishSpecValidator } from './specHandover';
 import type { HoverOption } from './useHover';
 import { pushAll } from '../core/arrays';
+import { caseInsensitiveValue } from '../core/inputConversion';
 
 /** Serializable BoardplotChart props beside the spec itself. */
 export interface BoardplotSpecSettings extends ContainerSizeOptions {
@@ -80,7 +81,10 @@ const aliasOwners = new Map<string, string>();
 for (const [type, aliases] of Object.entries(chartTypeAliases)) {
   for (const alias of aliases) aliasOwners.set(alias, type);
 }
-const staticCanonical = (name: string): string | undefined => (Object.hasOwn(schemaLoaders, name) ? name : aliasOwners.get(name));
+const staticCanonical = (name: string): string | undefined => {
+  const matched = caseInsensitiveValue(name, [...Object.keys(schemaLoaders), ...aliasOwners.keys()]) ?? name;
+  return Object.hasOwn(schemaLoaders, matched) ? matched : aliasOwners.get(matched);
+};
 
 export function beginSpecParse(spec: unknown, chart?: string): SpecParse {
   // The document parser wraps a bare chart into a one-chart envelope under

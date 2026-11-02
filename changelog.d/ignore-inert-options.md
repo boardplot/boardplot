@@ -1,0 +1,4 @@
+### Changed / may need action
+
+- Options a chart type does not read now draw with an `option-ignored` warning and a remove patch. These settings previously refused the chart: `animate`, `debug`, `sort`, `topN`, `bandFraction`, `secondaryAxis`, `rowLabels`, `categoryAxis` and `categoryLabels` where unused; `valueAxis.show` and `valueAxis.gridlines` where there is no value axis; every `legend` value on box; and `legend: 'none'` or `'auto'` on slope. Settings that already match the drawing warn at `info` level. Other dropped settings warn at `warn` level. Unsupported number and scale settings keep their refusals.
+- `valueLabels` modes other than `'all'` on stacked, stacked100, football-field and tornado variants are ignored with an `option-ignored` warning. These variants keep their normal labels and value axis. Existing chart output stays unchanged.

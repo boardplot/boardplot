@@ -157,17 +157,17 @@ Defaults are the `bridge` preset.
 | space.tierGap | number | yes |  | `5` | Vertical gap in px between stacked tiers. |
 | space.facetGap | number | yes |  | `28` | Gap in px between facets of a small-multiple layout. |
 | space.labelPad | number | yes |  | `5` | Padding in px between a mark and its label. |
-| space.canvas | object |  |  |  | Canvas margin tokens by width class: `base` covers the small and middle widths, `wide` covers 1080 px and up. |
-| space.canvas.base | object | yes |  |  | Canvas margins for the small and middle width classes, in px. |
-| space.canvas.base.top | number | yes |  |  | One canvas margin side in px (top, right, bottom, left). |
-| space.canvas.base.right | number | yes |  |  | One canvas margin side in px (top, right, bottom, left). |
-| space.canvas.base.bottom | number | yes |  |  | One canvas margin side in px (top, right, bottom, left). |
-| space.canvas.base.left | number | yes |  |  | One canvas margin side in px (top, right, bottom, left). |
-| space.canvas.wide | object | yes |  |  | Canvas margins at canvas widths of 1080 px and up, in px. |
-| space.canvas.wide.top | number | yes |  |  | One canvas margin side in px (top, right, bottom, left). |
-| space.canvas.wide.right | number | yes |  |  | One canvas margin side in px (top, right, bottom, left). |
-| space.canvas.wide.bottom | number | yes |  |  | One canvas margin side in px (top, right, bottom, left). |
-| space.canvas.wide.left | number | yes |  |  | One canvas margin side in px (top, right, bottom, left). |
+| space.canvas | object |  |  |  | Canvas margin tokens by width class: `base` covers the small and middle widths, `wide` covers 1080 px and up. Each class and side is optional. Missing values keep the preset or built-in margin. A class takes a side object, not a bare number. |
+| space.canvas.base | object |  |  |  | Canvas margins for the small and middle width classes, in px. Each side is optional and stays within 0 to 96. |
+| space.canvas.base.top | number |  |  |  | One canvas margin side in px (top, right, bottom, left). |
+| space.canvas.base.right | number |  |  |  | One canvas margin side in px (top, right, bottom, left). |
+| space.canvas.base.bottom | number |  |  |  | One canvas margin side in px (top, right, bottom, left). |
+| space.canvas.base.left | number |  |  |  | One canvas margin side in px (top, right, bottom, left). |
+| space.canvas.wide | object |  |  |  | Canvas margins at canvas widths of 1080 px and up, in px. Each side is optional and stays within 0 to 96. |
+| space.canvas.wide.top | number |  |  |  | One canvas margin side in px (top, right, bottom, left). |
+| space.canvas.wide.right | number |  |  |  | One canvas margin side in px (top, right, bottom, left). |
+| space.canvas.wide.bottom | number |  |  |  | One canvas margin side in px (top, right, bottom, left). |
+| space.canvas.wide.left | number |  |  |  | One canvas margin side in px (top, right, bottom, left). |
 | space.gap | object |  |  |  | Named vertical gaps of the fixed frame order; the `*Wide` variants apply at canvas widths of 1080 px and up. |
 | space.gap.titleSubtitle | number |  |  |  | Gap in px between title and subtitle. |
 | space.gap.subtitlePlot | number |  |  |  | Gap in px between subtitle and plot area below 1080 px canvas width. |
@@ -258,7 +258,7 @@ Defaults are the `bridge` preset.
 | table.head.weight | number |  |  | `600` | Font weight (100 to 1000). |
 | table.head.lineHeight | number |  |  |  | Line height as a ratio of the size. Both surfaces reserve a whole-pixel line box, ceil(size x ratio): 10.5 x 1.33 gives 14. |
 | table.head.tracking | number |  |  | `0` | Letter-spacing in em of the size (0 to 0.3). |
-| table.head.case | string |  | `'upper'`, `'asis'` |  | 'upper' sets the column heads in capitals, on the SVG and in the grid; 'asis' prints each label as authored ("Apr 25", "L10W avg"), and the tracks measure that text. Absent means 'upper'. Column-group headings and section rows keep their capitals. |
+| table.head.case | string |  | `'upper'`, `'asis'` |  | 'upper' (the default) capitalizes column heads on the SVG and in the grid, but keeps text after the last comma, text in parentheses or square brackets, and tokens with an inner capital such as mW or kWh as authored. 'asis' keeps each field head as authored, while column-group headings always use the default rule and section rows use capitals. |
 | table.section | object |  |  | `{"weight":500,"tracking":0.14,"ink":"ink"}` | Section row face, on the SVG and in the grid. Absent keys give the column-head size, the emphasis weight, line height 1.33 and tracking 0.14 em. |
 | table.section.size | number |  |  |  | Font size in px at every density and width class. |
 | table.section.weight | number |  |  | `500` | Font weight (100 to 1000). |

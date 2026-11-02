@@ -84,7 +84,7 @@ export interface StatusOptions extends Omit<BaseOptionsFor<'status'>, 'legend'> 
    * is a strictObject with `position` only, so `legend: { position, order }` —
    * which the inherited declaration promised — is HARD-rejected at runtime.
    */
-  legend?: 'none' | 'right' | 'bottom' | 'top' | { position: 'right' | 'bottom' | 'top' };
+  legend?: 'none' | 'right' | 'left' | 'bottom' | 'top' | { position: 'right' | 'left' | 'bottom' | 'top' };
 }
 
 interface StatusCellMark {
@@ -162,7 +162,7 @@ export function lintStatus(data: StatusData, options: StatusOptions): LintWarnin
       code: 'status-states-unexplained',
       severity: 'warn',
       message: `${used.size} status states are drawn but the state legend is suppressed`,
-      suggest: "remove legend: 'none' or choose legend: 'top', 'bottom', or 'right'",
+      suggest: "remove legend: 'none' or choose legend: 'top', 'bottom', 'right' or 'left'",
     });
   }
   if (used.size === 1) {

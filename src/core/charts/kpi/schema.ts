@@ -9,7 +9,7 @@ import { sparkLabelsProblem } from './sparkLabels';
 import type { KpiOptions } from '../../types/options';
 
 export const kpiDataSchema = z.strictObject({
-  label: z.string().min(1).describe("Name of the metric displayed above the main value."),
+  label: z.string().describe("Name of the metric displayed above the main value. An empty string omits the label and its space."),
   value: z.number().finite().describe("Main metric value in its original units."),
   format: formatExample.optional().describe("Format-by-example for the main metric and absolute comparison values (a % example expects percent units: 3.53 for 3.53%)."),
   delta: z

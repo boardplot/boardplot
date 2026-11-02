@@ -229,11 +229,9 @@ for (const legend of ['none', 'right', 'bottom', 'top'] as const) {
   fixtures.push({
     id: `review-status-legend-${legend}`,
     title: legend === 'right'
-      ? 'Refusal example: a state legend beside the grid, refused for the width it takes'
+      ? 'Review status with a state legend in a column beside the grid'
       : `Review status with ${legend === 'none' ? 'one explained state and no legend' : `a ${legend} legend`}`,
     kind: legend === 'right' ? 'example' : 'torture',
-    // A key beside the plot is refused; this spec stays as the refusal example.
-    ...(legend === 'right' ? { refuses: { code: 'invalid-options', path: 'options.legend' } } : {}),
     data: {
       rows: [{ id: 'pricing', label: 'Pricing' }, { id: 'service', label: 'Service' }],
       columns: [{ id: 'draft', label: 'Draft' }, { id: 'review', label: 'Review' }],
