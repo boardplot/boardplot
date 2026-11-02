@@ -2544,6 +2544,10 @@ function claimLeader(
   }
 }
 
+// Which seats of a label cross the outline is a function of the polygons, the anchor and the
+// label's size. A layout asks again for the same label in every pass, so the answer is kept.
+const outlineMasks = new WeakMap<GeoPoint[][][], Map<string, boolean[]>>();
+
 /**
  * The candidates whose box meets no edge of the region's outline. A box that lies inside the
  * anchor's clearance disc cannot meet the outline, so it needs no edge test. One pass over the
@@ -2553,14 +2557,33 @@ function candidatesOffOutline(
   candidates: LabelRequest['candidates'],
   region: Pick<FittedGeoRegion, 'anchor' | 'polygons'>,
 ): LabelRequest['candidates'] {
+  if (candidates.length === 0) return candidates;
+  const first = candidates[0]!.rect;
+  const key = `${first.w}|${first.h}|${region.anchor.x}|${region.anchor.y}`;
+  let masks = outlineMasks.get(region.polygons);
+  if (masks === undefined) outlineMasks.set(region.polygons, masks = new Map());
+  let meets = masks.get(key);
+  if (meets === undefined || meets.length !== candidates.length) {
+    meets = candidatesMeetingOutline(candidates, region);
+    masks.set(key, meets);
+  }
+  const mask = meets;
+  return mask.some(Boolean) ? candidates.filter((_, index) => !mask[index]) : candidates;
+}
+
+function candidatesMeetingOutline(
+  candidates: LabelRequest['candidates'],
+  region: Pick<FittedGeoRegion, 'anchor' | 'polygons'>,
+): boolean[] {
   const { x: ax, y: ay, clearance } = region.anchor;
   const reach = clearance * clearance;
+  const none = candidates.map(() => false);
   const open = candidates.filter(({ rect }) => {
     const dx = Math.max(Math.abs(rect.x - ax), Math.abs(rect.x + rect.w - ax));
     const dy = Math.max(Math.abs(rect.y - ay), Math.abs(rect.y + rect.h - ay));
     return dx * dx + dy * dy >= reach;
   });
-  if (open.length === 0) return candidates;
+  if (open.length === 0) return none;
   let x0 = Infinity;
   let y0 = Infinity;
   let x1 = -Infinity;
@@ -2572,7 +2595,7 @@ function candidatesOffOutline(
     y1 = Math.max(y1, rect.y + rect.h);
   }
   const [minX, minY, maxX, maxY] = boundsOfPolygons(region.polygons);
-  if (x1 < minX || x0 > maxX || y1 < minY || y0 > maxY) return candidates;
+  if (x1 < minX || x0 > maxX || y1 < minY || y0 > maxY) return none;
   const edges: number[] = [];
   for (const polygon of region.polygons) {
     for (const ring of polygon) {
@@ -2587,12 +2610,12 @@ function candidatesOffOutline(
       }
     }
   }
-  if (edges.length === 0) return candidates;
-  return candidates.filter(({ rect }) => {
+  if (edges.length === 0) return none;
+  return candidates.map(({ rect }) => {
     for (let i = 0; i < edges.length; i += 4) {
-      if (segmentMeetsRect(edges[i]!, edges[i + 1]!, edges[i + 2]!, edges[i + 3]!, rect.x, rect.y, rect.x + rect.w, rect.y + rect.h)) return false;
+      if (segmentMeetsRect(edges[i]!, edges[i + 1]!, edges[i + 2]!, edges[i + 3]!, rect.x, rect.y, rect.x + rect.w, rect.y + rect.h)) return true;
     }
-    return true;
+    return false;
   });
 }
 
