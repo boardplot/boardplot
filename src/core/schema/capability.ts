@@ -104,18 +104,12 @@ export const OPTION_CAPABILITY = {
       'mekko', 'slope', 'status', 'tilemap', 'waterfall',
     ],
   },
-  // sort, topN and bandFraction pass on every
-  // type and draw byte-identical SVG on the ones below that are not named.
-  // likert, pareto (sort) and pyramid refuse in their own schemas. likert,
-  // pareto, pvm and pyramid forward bandFraction to the host layout that draws
-  // their bands. Histogram sort and topN, and box
-  // topN and bandFraction are read only to warn that they do nothing; they
-  // are refused here like every other ignored option.
+  // Category selection and ordering apply only where the chart can preserve their meaning.
   sort: {
-    implementedBy: ['bar', 'box', 'cohort', 'column', 'dot', 'heatmap', 'mekko', 'pie', 'table', 'dimswitch'],
+    implementedBy: ['bar', 'box', 'bullet', 'butterfly', 'cohort', 'column', 'dot', 'heatmap', 'likert', 'mekko', 'pie', 'table', 'dimswitch', 'variance'],
   },
   topN: {
-    implementedBy: ['bar', 'butterfly', 'choropleth', 'column', 'mekko', 'pareto', 'pie', 'table'],
+    implementedBy: ['bar', 'butterfly', 'choropleth', 'column', 'dot', 'mekko', 'pareto', 'pie', 'table', 'variance'],
   },
   // A printed whole adds up: these types print computed shares of one whole on their marks
   // (a 100% stack on bar and column).

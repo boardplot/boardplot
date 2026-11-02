@@ -61,6 +61,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
 | legend | string \| object | `'top'`, `'bottom'`, `'none'`, `'auto'` (or another value of its type) |  | Key position. Multiple series get a key by default unless visible direct labels name them. 'none' hides the key; unnamed series warn. |
+| topN | object |  |  | Keep the n largest categories by absolute first-series value, or absolute gap for dumbbell, before sorting. Kept categories retain authored order unless sort.categories reorders them. No Others row is drawn; omitted category names are disclosed. Authored rest: true, restLabel, showRestCount or threshold warns that it is ignored when categories are omitted. |
 | axisTitles | object |  |  | Title of the value axis when it is drawn: under the value-axis tick row, ending at the right edge of the plot. Drawn only when authored. |
 | axisTitles.primary | string |  |  | 'Measure, unit' title of the value axis, e.g. 'Margin, %'. |
 | variant | string | `'dot'`, `'dumbbell'`, `'lollipop'` | `'dot'` | Dot by default; dumbbell joins paired values and lollipop joins values to the baseline. |
@@ -75,7 +76,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | range.values | boolean |  |  | Default false. true prints each range's low and high value beside its caps. |
 | range.midLabel | string |  |  | The key entry for the open marker that draws each supplied range.mid, for example 'Peer midpoint'. Default 'Midpoint'. When only some rows carry a mid, a note names the others. |
 
-Plus the [shared options](options.md). This type does not accept `categoryLabels`, `valueAxis.tickStep`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `categoryAxis`, `secondaryAxis`, `topN`, `hatchStrength`, `colorblindSafe`, `rounding`.
+Plus the [shared options](options.md). This type does not accept `categoryLabels`, `valueAxis.tickStep`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `categoryAxis`, `secondaryAxis`, `hatchStrength`, `colorblindSafe`, `rounding`.
 
 ## Annotations
 

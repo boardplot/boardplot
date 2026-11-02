@@ -53,6 +53,7 @@ export const bulletDataSchema = z
 export const bulletOptionsSchema = baseOptionsSchema
   .safeExtend(refusedBaseOptions('bullet'))
   .safeExtend({
+    sort: baseOptionsSchema.shape.sort.describe("Category ranking value: value divided by target when every row has a positive target, otherwise raw value. desc puts the highest ranking value first even on lower-is-better rows. Ties keep authored order and null values sort last. sheet keeps authored order and reverse reverses it. Dated rows keep authored order when a growth or difference annotation spans periods."),
     labels: baseOptionsSchema.shape.labels.describe("False hides value, target-value and delta labels. Row names, band names and band-edge numbers remain. category: false hides row names. density: compact draws no labels."),
     axisTitles: primaryAxisTitleSchema('under the tick row of the shared-scale axis valueAxis.show draws, ending at its right end'),
     sharedScale: z

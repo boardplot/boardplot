@@ -1568,7 +1568,7 @@ type RefusedBaseOptions<T extends string> = {
  *
  * `z.never().optional()` rather than `.omit()`: a zod object STRIPS unknown
  * keys, so omitting a key accepts it silently and drops it (as it would on
- * `pareto.sort`, `likert.sort`, `likert.topN`, `pyramid.topN` and
+ * `pareto.sort`, `likert.topN`, `pyramid.topN` and
  * `status.legend`). That is worse than the defect this table exists to remove
  * because the key then leaves the published schema and no census can see it.
  * `never` keeps the key visible, publishes it as `{ "not": {} }`, and answers

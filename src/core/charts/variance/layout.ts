@@ -2,6 +2,7 @@ import { chartString } from '../../strings/variance';
 import { breakUnsupported, chartTheme } from '../chartEnv';
 import { bandFloorSizing } from '../waterfall/bandFloor';
 import { structureCount } from '../../structureCounts';
+import { topNCut, topNOmitted, topNRestUnsupported } from '../topN';
 /**
  * Variance / deviation chart — the variance tier computed
  * from a ChartData that carries a reference-role series. The LIBRARY derives
@@ -272,6 +273,53 @@ export function layoutVariance(
         `variance.of '${of}' is not a data-role series`,
         ['total', ...dataSeries.map((s) => s.id)].join(', '),
       );
+    }
+  }
+
+  const categorySort = options.sort?.categories ?? 'sheet';
+  const cutTopN = options.topN && cats.length > options.topN.n;
+  if (cutTopN || categorySort !== 'sheet') {
+    const keys = cats.map((_, ci): number | null => {
+      const ac = ofSeries ? ofSeries.vals[ci]!.v
+        : dataSeries.some((s) => s.vals[ci]!.v === null) ? null : cleanSum(dataSeries.map((s) => s.vals[ci]!.v!));
+      const ref = refSeries.vals[ci]!.v;
+      if (ac === null || ref === null) return null;
+      const delta = cleanDiff(ac, ref);
+      return mode === 'relative' ? ref <= 0 ? null : cleanFloat(100 * delta / Math.abs(ref)) : delta;
+    });
+    let order = cats.map((_, i) => i);
+    if (cutTopN) {
+      const cut = topNCut(keys.map((key) => Math.abs(key ?? 0)), options.topN!.n);
+      const unsupported = topNRestUnsupported('variance', options.topN!);
+      if (unsupported) warnings.push(unsupported);
+      warnings.push(topNOmitted(cut.kept.length, cats.length, cut.dropped.map((i) => cats[i]!.label ?? cats[i]!.id)));
+      order = cut.kept;
+    }
+    const refCategory = (ref: AnchorRef): unknown => typeof ref === 'object' && 'categoryId' in ref ? ref.categoryId : ref;
+    const spansPeriods = (options.annotations ?? []).some((ann) =>
+      ann.kind === 'cagr' || ann.kind === 'diff' && refCategory(ann.from) !== refCategory(ann.to));
+    const keepDateOrder = categorySort !== 'sheet' && spansPeriods && cats.every((cat) => cat.date !== undefined);
+    if (keepDateOrder) warnings.push({
+      code: 'variance-sort-ignored', severity: 'warn',
+      message: `sort.categories '${categorySort}' was ignored because the categories are dated and a growth or difference annotation spans periods; authored order was kept`,
+      suggest: 'remove sort.categories, or remove the annotation that spans periods',
+      fix: [{ op: 'remove', path: '/options/sort/categories' }],
+    });
+    if (!keepDateOrder) {
+      if (categorySort === 'reverse') order.reverse();
+      else if (categorySort === 'asc' || categorySort === 'desc') order.sort((a, b) => {
+        const x = keys[a]!, y = keys[b]!;
+        if (x === null || y === null) return Number(x === null) - Number(y === null) || a - b;
+        return (categorySort === 'asc' ? x - y : y - x) || a - b;
+      });
+    }
+    const orderedCats = order.map((i) => cats[i]!);
+    cats.length = 0;
+    pushAll(cats, orderedCats);
+    for (const series of seriesNorm) {
+      const vals = order.map((i) => series.vals[i]!);
+      series.vals.length = 0;
+      pushAll(series.vals, vals);
     }
   }
 
@@ -555,8 +603,9 @@ export function layoutVariance(
   const nmShown = mode === 'relative' && nmCats.size > 0 && options.footnotes !== false;
   const nmNote = disclosureNote(chartString(options, 'varianceNmNote', { v1: refWord, v2: options.unit ? chartString(options, 'inUnitClause2', { v1: options.unit }) : '' }));
   const partialNotes = partialFootnotes(partialCats, options.strings, partialNamed);
-  const frameOptions = partialNotes.length || nmShown
-    ? withAuthoredFootnotes(options, [...partialNotes, ...authoredNotes(options), ...(nmShown ? [nmNote] : [])], options.footnotes)
+  const topNNotes = warnings.filter((warning) => warning.code === 'topn-omitted').map((warning) => disclosureNote(warning.message));
+  const frameOptions = partialNotes.length || nmShown || topNNotes.length
+    ? withAuthoredFootnotes(options, [...partialNotes, ...authoredNotes(options), ...topNNotes, ...(nmShown ? [nmNote] : [])], options.footnotes)
     : options;
   const frameResult = solveFrame(
     {
