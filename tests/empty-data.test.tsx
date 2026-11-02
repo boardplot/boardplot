@@ -38,8 +38,8 @@ describe('canDraw', () => {
   const data = { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: 's', values: [1, 2] }] };
   it('answers without drawing: empty data, a canvas below its floor, or fine', () => {
     expect(canDraw({ type: 'column', data: none })).toMatchObject({ ok: false, code: 'empty-data' });
-    expect(canDraw({ type: 'column', data, options: { size: { width: 260, height: 100 } } }))
-      .toMatchObject({ ok: false, code: 'size-below-floor', minimum: { width: 280, height: 180 } });
+    expect(canDraw({ type: 'column', data, options: { size: { width: 100, height: 100 } } }))
+      .toMatchObject({ ok: false, code: 'size-below-floor', minimum: { width: 120, height: 180 } });
     expect(canDraw({ type: 'column', data, options: { belowMinimum: 'refuse', size: { width: 400, height: 200 } } }))
       .toMatchObject({ ok: false, code: 'size-below-floor', minimum: { width: 480, height: 270 } });
     expect(canDraw({ type: 'column', data })).toEqual({ ok: true });

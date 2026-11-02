@@ -108,7 +108,7 @@ const columnSchema = z
       kind: z.literal('value').describe('Kind.'),
       format: formatExample.optional().describe(COLUMN_FORMAT_DOC),
       scenario: z.enum(['AC', 'PY', 'PL', 'FC']).optional()
-        .describe('Header scenario.'),
+        .describe('Header scenario: AC, PY, PL or FC. LY means PY (last year); codes accept any case.'),
       polarity: z.enum(['higherIsBetter', 'lowerIsBetter']).optional().describe('Which sign is favorable. Judgment tones and directional encodings read it.'),
       materiality: materialitySchema.optional().describe('Mute tones below this threshold; keep values visible.'),
       aggregate: z.enum(['sum', 'none', 'source']).optional()
@@ -133,7 +133,7 @@ const columnSchema = z
     }),
     z.strictObject({
       ...columnBase,
-      kind: z.literal('status').describe(`Status cell: ${STATUS_VALUES.join(' | ')} or { v: key } (other text refuses: status-value-invalid; numbers draw the missing dash and warn: status-value-number; a later release refuses numbers). Each key has a fixed tone. For free status text, use a text column with a cell tone.`),
+      kind: z.literal('status').describe(`Status cell: ${STATUS_VALUES.join(' | ')} or { v: key }. Green means on-track, amber or yellow means at-risk, and red means off-track; keys and traffic-light words accept any case and conversions warn input-converted. Other text refuses: status-value-invalid. Numbers draw the missing dash and warn: status-value-number; a later release refuses numbers. Each key has a fixed tone. For free status text, use a text column with a cell tone.`),
       labels: z.partialRecord(z.enum(STATUS_VALUES), z.string().min(1)).optional()
         .describe("Display text per status key, e.g. { pending: 'Learning' }. The key keeps its tone; an unlisted key prints as itself."),
       mark: z.enum(['chip', 'square']).optional()
@@ -143,7 +143,7 @@ const columnSchema = z
       ...columnBase,
       kind: z.literal('date').describe('Date cell: an ISO date (YYYY-MM-DD) or { v: date } (other text refuses: date-invalid; numbers draw the missing dash and warn: date-value-number).'),
       format: z.string().optional()
-        .describe("Date format example. Examples: '30 Sep 2026', 'Sep-26', '2026-09-30'."),
+        .describe("Date pattern or example: '30 Sep 2026', 'Sep-26', '2026-09-30', '30.09.2026', '09/30/2026', 'September 2026' or '2026'. Tokens: d, dd, ddd, dddd, M, MM, MMM, MMMM, MMMMM, Q (1), QQ (Q1), QQQ (Quarter 1), w, ww, yy, yyyy and 'quoted literals'. Excel mmm/mmmm name months and 'dd/mm/yyyy' uses lowercase months. YYYY/YY mean year and D/DD mean day. Numeric dates use a day above 12 to choose the order. Otherwise they read day first and warn date-format-ambiguous. A year in front keeps year/month/day. A short year beside a month name with a space or comma also warns when it could be a day. 'FY26' reads the calendar year and gives date-format-fiscal-year (info). Unreadable text warns date-format-unknown and uses 'd MMM yyyy'."),
     }),
     z.strictObject({
       ...columnBase,

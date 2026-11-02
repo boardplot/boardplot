@@ -14,7 +14,7 @@ import { highlightPaintWarnings } from '../../paintWarnings';
 import type { PaintWarningRule } from '../../types/scene';
 import type { AnchorResolution } from '../../annotate';
 import { runAnnotatePass } from '../../annotatePass';
-import { formatterFromExample, seriesRasterFormatter, signedFormatterFromExample } from '../../formatSpec';
+import { formatWithSpec, levelFormatSpec, levelFormatterFromExample, seriesRasterFormatter, signedFormatterFromExample } from '../../formatSpec';
 import { boxGap, cleanFloat, rectsOverlap, type Rect } from '../../geometry';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelsToNodes } from '../../label/emit';
@@ -53,6 +53,7 @@ import { defaultMeasurer, type FontSpec } from '../../text';
 import { CROWDED_NAMES, categoryLineAlign, categoryRowTop, hangingLabelReserve, planCategoryRow, rotatedClaimRect, rotatedLeftOverhang } from '../../label/categoryRow';
 import {
   canvasMargin,
+  colorblindPaint,
   effectiveFill,
   markRolePaint,
   paintColor,
@@ -611,7 +612,7 @@ function layoutHorizontalWaterfall(
       const id = label.id.startsWith('sum:') ? label.id.slice('sum:'.length) : undefined;
       const level = id === undefined ? undefined : source.derived.levels[id];
       const tone = level ? stepTone(level.end - level.start, data.items.find((it) => it.id === label.owner.categoryId)?.direction) : 'neutral';
-      if (tone !== 'neutral' && label.slot !== 'insideCenter') label.ink = { token: tone };
+      if (tone !== 'neutral' && label.slot !== 'insideCenter') label.ink = options.colorblindSafe === true ? colorblindPaint(tone) : { token: tone };
     }
   }
   pushAll(scene, labelsToNodes(theme, labels, fontForLabel, scene));
@@ -807,7 +808,10 @@ function layoutWaterfallWithPad(
   // An authored example controls precision. Otherwise the bridge shares
   // one precision across its values and segments.
   const authoredValues = allItems.flatMap((it) => [it.checkValue, ...it.segments.map((seg) => seg.value)]);
-  const { fmt, fmtSigned } = seriesRasterFormatter(options.format, authoredValues, options.locale?.language, options.unit, options.target);
+  const raster = seriesRasterFormatter(options.format, authoredValues, options.locale?.language, options.unit, options.target);
+  const { fmtSigned } = raster;
+  // A signed example marks the steps; a total is a level and prints without a plus or direction glyph.
+  const fmt = raster.spec.signed ? (value: number) => formatWithSpec(value, levelFormatSpec(raster.spec)) : raster.fmt;
   // A check value is an authored number the bridge does not draw: the bar
   // draws the sum. Off by more than the summed numbers' own rounding allows
   // (half a unit of the finest decimal place THEY are written to, once per
@@ -1241,7 +1245,7 @@ function layoutWaterfallWithPad(
           const tone = stepTone(value, it.direction);
           if (tone === 'neutral' || (value > 0) !== increase) continue;
           const meaning = tone === 'good' ? options.strings?.better ?? words.better : options.strings?.worse ?? words.worse;
-          keys.set(`${word}:${tone}`, { id: `__key${word}:${tone}`, label: `${chartString(options, increase ? 'increase' : 'decrease')} (${meaning})`, paint: tonePaint(tone) });
+          keys.set(`${word}:${tone}`, { id: `__key${word}:${tone}`, label: `${chartString(options, increase ? 'increase' : 'decrease')} (${meaning})`, paint: tonePaint(tone, options.colorblindSafe === true) });
         }
       }
       legendItems.push(...keys.values());
@@ -1625,7 +1629,7 @@ function layoutWaterfallWithPad(
       const pattern = scenarioPattern(seg.scenario ?? it.scenario);
       const segOwner = caseId === undefined ? { categoryId: it.id, segmentId: segmentedMark ? seg.id : undefined } : stepOwner;
       // A segment cell's own format and label override are honoured.
-      const segFmt = seg.format ? { fmt: formatterFromExample(seg.format, options.locale?.language), fmtSigned: signedFormatterFromExample(seg.format, options.locale?.language) } : { fmt, fmtSigned };
+      const segFmt = seg.format ? { fmt: levelFormatterFromExample(seg.format, options.locale?.language), fmtSigned: signedFormatterFromExample(seg.format, options.locale?.language) } : { fmt, fmtSigned };
       const segBase = isTotal || stackedTotal ? segFmt.fmt(seg.value) : segFmt.fmtSigned(seg.value);
       const segText = typeof seg.valueLabel === 'string' ? seg.valueLabel.replace(/\$\{value\}/g, segBase) : segBase;
       const segDisplay = { value: segText };
@@ -1799,7 +1803,7 @@ function layoutWaterfallWithPad(
     // A mixed-sign step's own value is the net of its parts, and says so.
     // The item value cell's own format and label override are honoured.
     const valueMeta = { ...(drawSegments.length === 1 ? drawSegments[0] : {}), ...it.valueMeta };
-    const own = valueMeta?.format ? { fmt: formatterFromExample(valueMeta.format, options.locale?.language), fmtSigned: signedFormatterFromExample(valueMeta.format, options.locale?.language) } : { fmt, fmtSigned };
+    const own = valueMeta?.format ? { fmt: levelFormatterFromExample(valueMeta.format, options.locale?.language), fmtSigned: signedFormatterFromExample(valueMeta.format, options.locale?.language) } : { fmt, fmtSigned };
     const itemBase = isTotal ? own.fmt(itemValue) : mixed ? `net ${own.fmtSigned(itemValue)}` : own.fmtSigned(itemValue);
     const text = typeof valueMeta?.valueLabel === 'string' ? valueMeta.valueLabel.replace(/\$\{value\}/g, itemBase) : itemBase;
     if (!isTotal) stepTones.set(it.id, stepTone(itemValue, it.direction));
@@ -2024,11 +2028,11 @@ function layoutWaterfallWithPad(
   if (signBridge) {
     for (const label of solved.placed) {
       const tone = label.id.startsWith('sum:') ? stepTones.get(label.id.slice('sum:'.length)) : undefined;
-      if (tone && tone !== 'neutral' && label.slot !== 'insideEnd') label.ink = { token: tone };
+      if (tone && tone !== 'neutral' && label.slot !== 'insideEnd') label.ink = options.colorblindSafe === true ? colorblindPaint(tone) : { token: tone };
     }
     if (closingNet !== undefined) {
       const net = solved.placed.find((label) => label.id.startsWith('net:'));
-      if (net && closingNet.tone !== 'neutral') net.ink = { token: closingNet.tone };
+      if (net && closingNet.tone !== 'neutral') net.ink = options.colorblindSafe === true ? colorblindPaint(closingNet.tone) : { token: closingNet.tone };
     }
   }
 
@@ -2288,13 +2292,13 @@ function layoutWaterfallWithPad(
     if (seg.fill) return { css: seg.fill };
     const identity = segmentCatalog.get(seg.id);
     if (identity) return identityPaint(identity);
-    if (signBridge && it.type === 'delta') return tonePaint(stepTone(seg.value, it.direction));
+    if (signBridge && it.type === 'delta') return tonePaint(stepTone(seg.value, it.direction), options.colorblindSafe === true);
     if (highlights.has(it.id)) return { token: 'focus' };
     // Totals keep color.total under 'sign' too: a dark theme caps its large
     // fills there, and ink is its light text colour. The token falls
     // back to ink when a theme leaves total unset.
     if (it.type !== 'delta') return { token: 'total' };
-    if (signSteps) return tonePaint(stepTone(seg.value, it.direction));
+    if (signSteps) return tonePaint(stepTone(seg.value, it.direction), options.colorblindSafe === true);
     return paletteRamp ? themeSeriesPaint(0, options.palette) : { token: 'neutralMark' };
   }
 
@@ -2339,8 +2343,8 @@ function stepTone(value: number, direction?: Direction): 'good' | 'bad' | 'neutr
   return value === 0 ? 'neutral' : (value > 0) === (direction !== 'lowerIsBetter') ? 'good' : 'bad';
 }
 
-function tonePaint(tone: 'good' | 'bad' | 'neutral'): Paint {
-  return tone === 'neutral' ? { token: 'neutralMark' } : signedFillPaint(tone);
+function tonePaint(tone: 'good' | 'bad' | 'neutral', colorblind: boolean): Paint {
+  return tone === 'neutral' ? { token: 'neutralMark' } : colorblind ? colorblindPaint(tone, true) : signedFillPaint(tone);
 }
 
 /** The thin strip a bridge connector's ink occupies, for label dodging.

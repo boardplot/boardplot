@@ -166,7 +166,7 @@ Facets, variance tiers and metric stacks with shared categories and computed rea
 | panelOrder | string | `'sheet'`, `'lastDesc'`, `'lastAsc'`, `'totalDesc'`, `'totalAsc'` |  | Facet panel order: 'sheet' keeps the authored array (default), 'last*' ranks by each panel's final value, 'total*' by its sum. Panels with no measurable value stay last in both directions. |
 | reflow | boolean |  |  | Facets only: a grid of more panels than a numeric columns count, on a card under 480 px, takes columns as a maximum. Where a panel drops category names for room, it draws with fewer columns, down to two, at the largest count that prints every name and that an authored height seats. Default true; false keeps the authored count. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `labels`, `categoryLabels`, `valueAxis.tickStep`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `topN`, `bandFraction`, `story`, `colorblindSafe`, `rounding`.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `labels`, `valueAxis.tickStep`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `story`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction` with an `option-ignored` warning.
 
 ## Annotations
 

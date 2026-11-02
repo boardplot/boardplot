@@ -1,4 +1,4 @@
-/** The topN cut of bar, column, butterfly, pie and mekko: one ranking, one rest name, one rest sum. */
+/** Shared topN selection, rest aggregation and omission warnings. */
 
 import { cleanSum } from '../geometry';
 import { normalizeCategory, normalizeSeriesValues } from '../normalize/shared';
@@ -27,6 +27,28 @@ export function topNCut(sizes: readonly number[], n: number, threshold?: number)
   }
   const all = sizes.map((_, i) => i);
   return { kept: all.filter((i) => keep.has(i)), dropped: all.filter((i) => !keep.has(i)) };
+}
+
+/** A score or difference cannot form an additive rest bucket. */
+export function topNRestUnsupported(type: 'dot' | 'variance', topN: TopNOptions): LintWarning | undefined {
+  const ignored = (['restLabel', 'showRestCount', 'threshold'] as const).filter((key) => topN[key] !== undefined);
+  if (topN.rest !== true && ignored.length === 0) return undefined;
+  return {
+    code: 'topn-rest-unsupported', severity: 'warn',
+    message: (type === 'dot'
+      ? 'topN.rest is not drawn on a dot chart because a sum of scores is not a score; the other categories are left out'
+      : 'topN.rest is not drawn on a variance chart because a sum of differences or ratios is not the drawn comparison; the other categories are left out')
+      + (ignored.length ? `. topN.${ignored.join(', topN.')} ${ignored.length === 1 ? 'was' : 'were'} ignored` : ''),
+    suggest: 'remove topN.rest and any rest-only settings',
+  };
+}
+
+/** Name every category removed by a topN cut without a rest bucket. */
+export function topNOmitted(kept: number, total: number, labels: readonly string[]): LintWarning {
+  return {
+    code: 'topn-omitted', severity: 'info',
+    message: `topN kept ${kept} of ${total} categories; omitted: ${labels.join(', ')}`,
+  };
 }
 
 /**

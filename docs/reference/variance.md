@@ -59,7 +59,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | series[].id | string | yes | Series identity used by keyed options, annotations and legend entries. |
 | series[].label | string |  | Displayed series name; defaults to the series id. |
 | series[].values | (cell \| { categoryId, value: cell })[] | yes | Values in category order, or keyed entries pairing a categoryId with its value. |
-| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). Read only on the variance.vs series, where it names the tier (ΔPL). Every data value draws as the actual, so name a forecast or plan value in its category label or a footnote. In a grid tier, a category whose values are all FC draws hatched, like a partial one. |
+| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. Read only on the variance.vs series, where it names the tier (ΔPL). Every data value draws as the actual, so name a forecast or plan value in its category label or a footnote. In a grid tier, a category whose values are all FC draws hatched, like a partial one. |
 | series[].direction | string |  | Whether increases are favorable; defaults to higherIsBetter for directional comparisons. One of `'higherIsBetter'`, `'lowerIsBetter'`. |
 | series[].role | string |  | Data series or comparison-only reference series; references are excluded from the main plotted data. One of `'data'`, `'reference'`. |
 | series[].colorRole | string |  | Theme color role of the integrated actual columns and their key when this series is the actual and sets no fill; no effect in the other modes or on a reference series. One of good, bad, warn, neutral, neutralLight, highlight, total, others; series-N for step N of the theme ramp, 1-based (series-2 is color.series[1]); or status-<key> for a theme status colour. A hex colour goes in fill. |
@@ -71,6 +71,8 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
+| sort | object \| string \| true | `'sheet'`, `'asc'`, `'desc'`, `'reverse'`, `true` (or another value of its type) |  | Category ranking value: the signed drawn difference, delta percent in relative mode and absolute difference otherwise. desc puts the largest positive difference first, asc the smallest; stable ties and missing values last. sheet keeps authored order and reverse reverses it. Dated categories keep authored order when a growth or difference annotation spans periods. |
+| topN | object \| integer |  |  | Keep the n largest drawn differences by absolute size, delta percent in relative mode and absolute difference otherwise, before sorting. Missing differences count as zero. No Others row is drawn; omitted category names are disclosed. Authored rest: true, restLabel, showRestCount or threshold warns that it is ignored when categories are omitted. |
 | axisTitles | object |  |  | Title of the value axis when it is drawn: over the value axis, in the top row left of the plot, when valueAxis.show draws it. Drawn only when authored. |
 | axisTitles.primary | string |  |  | 'Measure, unit' title of the value axis, e.g. 'Margin, %'. |
 | variant | string | `'absolute'`, `'relative'`, `'integrated'` |  | Show raw differences, relative percentage differences, or an integrated comparison with the absolute values. The key builds its entries from the scenario code of the variance.vs series (AC, PY, PL or FC), or from its label when it has no scenario, here PY. absolute and relative: 'Better than PY' and 'Worse than PY', with (lower) and (higher) for a lowerIsBetter series. integrated: the compared series, then 'Above PY' and 'Below PY' for the caps, the same wording at every width, and 'Within rounding of PY' for a muted cap that prints as zero. On report, dashboard, slide and print, the actual value label sits inside the column at its foot; a column too short for it uses the actual edge, then a side position at the same height. |
@@ -79,7 +81,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | variance.vs | string |  |  | Reference-series id; its scenario names the comparison tier. |
 | missingMark | string | `'dash'`, `'none'` |  | What a category with no prior value leaves behind. 'dash' prints an en dash in the muted ink, at the baseline or, over an integrated actual column, where the cap would sit, so a missing reference reads as missing and not as no difference; 'none' (the default) draws nothing. A reference that exists and is not positive keeps its own 'n.m.' glyph. A category with a blank part in its actual total leaves the same mark and the info warning missing-value. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `categoryLabels`, `valueAxis.tickStep`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `topN`, `hatchStrength`, `rounding`.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis.tickStep`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `hatchStrength`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis` with an `option-ignored` warning.
 
 ## Annotations
 

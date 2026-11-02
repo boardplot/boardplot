@@ -5,6 +5,7 @@
  */
 
 import { prepareFractionAnnotations } from './normalize/fraction';
+import { caseInsensitiveValue } from './inputConversion';
 import type { z } from 'zod';
 import { withChartDefaultStrings, withLocaleStrings } from './strings';
 import { withNumberMarks } from './numberMarks';
@@ -14,7 +15,7 @@ import type { BaseOptions, RenderTarget } from './types/options';
 import { withSmallValues } from './formatPrecision';
 import type { Geometry, LayoutResult, LintWarning, RefusedLayout } from './types/scene';
 import type { ChartSizing } from './types/sizing';
-import { chartSizing, declaredSizing, fitsSize, compactFallbackApplies, FORCE_COMPACT, LAYOUT_CALL, FULL_LAYOUT_PROBE, type LayoutCall, plotRepairHeight, WIDTH_PROBE, FIXED_SIZE_PROBE, ACCEPTANCE_PROBE, CARD_HEIGHT_MEMO, type CardHeightMemo, type FitLayout, isWidthProbe, compactReplacesRefusal, sizeRefusal, withoutForcedCompact, hiddenForSpace, narrowShareApplies, PLOT_SHARE, PLOT_FLOOR_SHARE, withLayoutMemo, SIZE_TOLERANCE, lostCategoryNames } from './sizing';
+import { CARD_MIN_WIDTH, chartSizing, declaredSizing, fitsSize, compactFallbackApplies, FORCE_COMPACT, LAYOUT_CALL, FULL_LAYOUT_PROBE, type LayoutCall, plotRepairHeight, WIDTH_PROBE, FIXED_SIZE_PROBE, ACCEPTANCE_PROBE, CARD_HEIGHT_MEMO, type CardHeightMemo, type FitLayout, isWidthProbe, compactReplacesRefusal, sizeRefusal, withoutForcedCompact, hiddenForSpace, narrowShareApplies, PLOT_SHARE, PLOT_FLOOR_SHARE, withLayoutMemo, SIZE_TOLERANCE, lostCategoryNames } from './sizing';
 import { NormalizeError, resolveCanvasOptions, resolveSize } from './normalize/shared';
 import { checkItemBudget } from './itemBudget';
 import { DENSITY_VALUES, UNVERIFIED_DENSITY_REFUSALS, authoredNotes, dataOrder, densityNoteInList, hiddenNoteLine, withDensityNotes, withCutLabelNotes, finishCutLabelNotes, footnoteSwitch, markNotedLabels, owedHiddenLabels, withHiddenLabelNote, withNoteInA11y } from './frame';
@@ -24,7 +25,7 @@ import { markLostOnBandWarnings } from './paintWarnings';
 import { casingUnderFills, labelsOnFills, fillEdges, marksOnBands, referenceLineClearance, withoutOrphanAnnotationMarks } from './markVisibility';
 import { groundEdges } from './label/emit';
 import { withoutRepeatedAxisBreaks } from './axis';
-import { DEFAULT_PRESET, panelTypeClass, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, stampHatchLook } from './theme';
+import { colorblindRoles, DEFAULT_PRESET, panelTypeClass, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, stampHatchLook } from './theme';
 import { textScaleOf, textSizeOf } from './typeFloors';
 import { DEFAULT_TARGET, resolveTargetSize, TARGET_SIZE, withDefaultTarget } from './target';
 import type { Category } from './types/data';
@@ -208,6 +209,9 @@ export function onChartRegistered(redraw: () => void): () => void {
 export function chartRegistryRevision(): number {
   return registryRevision;
 }
+
+/** Types whose layout paints every good/bad pair from theme.color.colorblind under colorblindSafe. */
+const COLORBLIND_IN_LAYOUT: ReadonlySet<string> = new Set(['bar', 'dimswitch', 'heatmap', 'kpi', 'status', 'table', 'variance']);
 
 /**
  * The engine-free index beside the chart registry. `BoardplotChart` fills it
@@ -438,7 +442,10 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     const sClassMinimum = <S extends NonNullable<typeof geo.sizing>>(minimum: S, size: { width: number; height: number }): S => {
       if (nested || isWidthProbe(def.type, options) || minimum.aspect !== 'content'
         || size.width < 720 || minimum.minWidth >= 720) return minimum;
-      const at = Math.ceil(minimum.minWidth);
+      // A type whose floor is under the card width (a KPI, a pie, a map) probes at the card width: a layout at a floor
+      // of 160 px that refuses costs several times a layout at 280 px. A probe that draws there still reports the width
+      // its own content needs (a map lists its small regions beside it).
+      const at = Math.max(Math.ceil(minimum.minWidth), CARD_MIN_WIDTH);
       let probe: ReturnType<typeof named>['geo'];
       // A chart whose text cannot wrap at the probe width throws (creative-text-overflow in German).
       // The probe only refines the reported minimum, so the chart that drew keeps it.
@@ -448,7 +455,7 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
         ...(def.type === 'gantt' && !resolved.fixed.height ? { [ACCEPTANCE_PROBE]: true } : {}),
         size: resolved.fixed.height ? { width: at, height: Math.max(size.height, minimum.minHeight) } : { width: at } } as O)); }
       catch (error) { if (error instanceof NormalizeError) return minimum; throw error; }
-      return probe.refused && probe.warnings[0]?.code === 'size-below-floor' && probe.sizing && probe.sizing.minWidth > minimum.minWidth
+      return (probe.refused ? probe.warnings[0]?.code === 'size-below-floor' : at > minimum.minWidth) && probe.sizing && probe.sizing.minWidth > minimum.minWidth
         ? { ...minimum, minWidth: Math.min(720, probe.sizing.minWidth) } : minimum;
     };
     const geo = named(layoutOptions).geo;
@@ -741,6 +748,15 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
         && !(options as { [ACCEPTANCE_PROBE]?: boolean })[ACCEPTANCE_PROBE]) {
         estimatedPlotAdvice(geo, options);
       }
+      // colorblindSafe swaps every good/bad paint the chart drew, whichever type drew it; a paint a layout already
+      // swapped carries its colorblind recipe and stays as it is. These types paint every good/bad pair from the
+      // colorblind recipe themselves, so they skip the walk.
+      if (!geo.refused && (options as { colorblindSafe?: boolean }).colorblindSafe === true && !COLORBLIND_IN_LAYOUT.has(def.type)) {
+        geo.scene = colorblindRoles(geo.scene).value;
+        geo.labels = colorblindRoles(geo.labels).value;
+        if (geo.legend) geo.legend = colorblindRoles(geo.legend).value;
+        geo.annotations = colorblindRoles(geo.annotations).value;
+      }
       if (geo.warnings.some(warning => warning.fix)) {
         geo.warnings = geo.warnings.map(warning => warning.fix
           ? { ...warning, fix: addWhereAbsent({ data, options: authored }, warning.fix) } : warning);
@@ -928,7 +944,14 @@ function noPlottedValuesWarning(data: unknown): LintWarning | null {
   };
 }
 
+/** Resolve an unknown spelling only when one registered type or alias matches its case. */
+export function chartInputName(name: string): string | undefined {
+  if (registry.has(name) || aliasIndex.has(name) || schemaIndex.has(name) || schemaAliasIndex.has(name)) return name;
+  return caseInsensitiveValue(name, [...registry.keys(), ...aliasIndex.keys(), ...schemaIndex.keys(), ...schemaAliasIndex.keys()]);
+}
+
 export function getChart(typeOrAlias: string): RegisteredChart<any, any, any, any> | undefined {
+  typeOrAlias = chartInputName(typeOrAlias) ?? typeOrAlias;
   const chart = registry.get(typeOrAlias) ?? registry.get(aliasIndex.get(typeOrAlias) ?? '');
   const defaults = chart?.aliasDefaults?.[typeOrAlias];
   if (!chart || !defaults) return chart;
@@ -967,6 +990,7 @@ export function registerChartSchemas(schemas: ChartSchemas<any, any>, aliases: r
  * registered core-only with no schema chunk beside it.
  */
 export function getChartSchemas(typeOrAlias: string): ChartSchemas<any, any> | undefined {
+  typeOrAlias = chartInputName(typeOrAlias) ?? typeOrAlias;
   const chart = getChart(typeOrAlias);
   if (chart && isDefinition(chart)) return chart;
   return schemaIndex.get(typeOrAlias) ?? schemaIndex.get(schemaAliasIndex.get(typeOrAlias) ?? '');

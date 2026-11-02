@@ -10,6 +10,7 @@
  */
 
 import { dateNames } from './dateNames';
+import { readDateFormat } from './dateFormatRead';
 import { parseISODate, utcDate } from './isoDate';
 
 // parseISODate lives in its own module so that a chart whose layout only
@@ -196,12 +197,6 @@ export function dateTickKeepCalendar(
 }
 
 /** Date format-by-example → formatDate pattern (tokens in this file). */
-export function datePatternFromExample(example?: string): string {
-  if (!example) return 'd MMM yyyy';
-  if (/^\d{4}-\d{2}-\d{2}$/.test(example)) return 'yyyy-MM-dd';
-  if (/^[A-Za-z]{3}-\d{2}$/.test(example)) return 'MMM-yy';
-  if (/^\d{1,2} [A-Za-z]{3} \d{4}$/.test(example)) return 'd MMM yyyy';
-  if (/^[A-Za-z]{3} \d{4}$/.test(example)) return 'MMM yyyy';
-  if (/^Q\d \d{4}$/.test(example)) return 'QQ yyyy';
-  return 'd MMM yyyy';
+export function datePatternFromExample(example?: string, language?: string): string {
+  return readDateFormat(example, 'table', language).pattern!;
 }

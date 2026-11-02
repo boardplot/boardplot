@@ -71,13 +71,13 @@ export function normalizeScenario(s: string | undefined, path: string, namedBase
   if (s === undefined) return undefined;
   const map: Record<string, Scenario> = {
     AC: 'AC', PY: 'PY', PL: 'PL', FC: 'FC',
-    ACT: 'AC', BUD: 'PL', FCST: 'FC',
+    ACT: 'AC', BUD: 'PL', FCST: 'FC', LY: 'PY',
   };
   const norm = map[s.toUpperCase()];
   if (!norm) {
     throw new NormalizeError(
       'invalid-scenario', path,
-      `unknown scenario '${s}'`, `one of AC, PY, PL, FC (aliases ACT, BUD, FCST)${namedBaseline ? `; a baseline with its own name, such as a month, goes in ${namedBaseline}` : ''}`,
+      `unknown scenario '${s}'`, `one of AC, PY, PL, FC (aliases ACT, BUD, FCST, LY)${namedBaseline ? `; a baseline with its own name, such as a month, goes in ${namedBaseline}` : ''}`,
     );
   }
   return norm;

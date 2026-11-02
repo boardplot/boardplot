@@ -15,14 +15,17 @@ import { join } from 'node:path';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { main } from '../src/cli/main';
+import { render } from '../src/cli/render';
 import { callTool } from '../src/mcp/server';
 import { beginSpecParse } from '../src/react/specValidation';
+import { parseDocumentInput } from '../src/core/doc/document';
+import { validateChartInput } from '../src/core/doc/chartValidation';
 import { getFixtures } from '../src/fixtures';
 import { getChartDefinition, listCharts } from '../src/core/registry';
 import { LABEL_KINDS } from '../src/core/schema/capability';
 import { wordUnknownKeys } from '../src/core/schema/unknownKeyWords';
 import type { OptionKeyTree } from '../src/core/schema/unknownKeys';
-import { patchApplies, type JsonPatchOperation } from '../src/core/diagnostics/jsonPatch';
+import { parseJsonPointer, patchApplies, readJsonPointer, type JsonPatchOperation } from '../src/core/diagnostics/jsonPatch';
 
 const INVENTED = 'zzInvented';
 const NAMES_A_KEY = /^(Rename '[^']+' to '[^']+'\.|Remove '[^']+'; this key is not supported here\.)$/;
@@ -50,6 +53,20 @@ function cliErrors(spec: object): { code: number; errors: Finding[] } {
   const code = main(['render', path]);
   log.mockRestore();
   return { code, errors: (JSON.parse(output.join('\n')) as { errors: Finding[] }).errors };
+}
+
+function applyFix<T>(input: T, fix: JsonPatchOperation[]): T {
+  expect(patchApplies(input, fix)).toBe(true);
+  const result = structuredClone(input);
+  for (const operation of fix) {
+    const segments = parseJsonPointer(operation.path);
+    const parent = segments.slice(0, -1).reduce<unknown>((value, key) => (value as Record<string, unknown>)[key], result) as Record<string, unknown>;
+    const key = segments.at(-1)!;
+    if (operation.op === 'remove') delete parent[key];
+    else if (operation.op === 'add') parent[key] = structuredClone(operation.value);
+    else throw new Error(`Unexpected patch operation: ${operation.op}`);
+  }
+  return result;
 }
 
 const types = listCharts().map((chart) => chart.type);
@@ -242,6 +259,92 @@ describe('unknown option keys are refused on every type', () => {
     const suggestFor = (showValues: boolean) => cliErrors({ type: 'column', data: fixture.data, options: { ...fixture.options, showValues } }).errors[0]!.suggest;
     expect(suggestFor(false)).toBe("Rename 'showValues' to 'labels'.");
     expect(suggestFor(true)).toMatch(/^Remove 'showValues': without it the chart prints its default labels\. Set labels to false/);
+  });
+});
+
+describe('unknown data keys', () => {
+  // An agent that applies the old advice deletes the observations or the labels.
+  it('renames data keys only when their values fit and keeps the data in the rendered chart', () => {
+    const cases: { spec: object; renames: [string, string, unknown][] }[] = [
+      { spec: { type: 'box', data: { groups: [{ id: 'n', label: 'North', values: [4, 5, 6, 7, 8, 10] }] } },
+        renames: [['/data/groups/0/values', '/data/groups/0/observations', [4, 5, 6, 7, 8, 10]]] },
+      { spec: { type: 'histogram', data: { values: [1, 2, 2, 3, 3, 4] } },
+        renames: [['/data/values', '/data/observations', [1, 2, 2, 3, 3, 4]]] },
+      { spec: { type: 'bar', data: { categories: ['North'], series: [{ id: 'r', values: [90], color: '#1F77B4' }] } },
+        renames: [['/data/series/0/color', '/data/series/0/fill', '#1F77B4']] },
+      { spec: { version: 1, charts: [{ name: 'revenue', type: 'bar', data: {
+        categories: [{ id: 'n', name: 'North' }, { id: 's', name: 'South' }],
+        series: [{ id: 'r', name: 'Revenue', values: [90, 120] }],
+      } }] }, renames: [
+        ['/charts/0/data/categories/0/name', '/charts/0/data/categories/0/label', 'North'],
+        ['/charts/0/data/categories/1/name', '/charts/0/data/categories/1/label', 'South'],
+        ['/charts/0/data/series/0/name', '/charts/0/data/series/0/label', 'Revenue'],
+      ] },
+      { spec: { type: 'bar', data: { categories: ['North'], series: [{ id: 'r', labell: 'Revenue', values: [90] }] } },
+        renames: [['/data/series/0/labell', '/data/series/0/label', 'Revenue']] },
+    ];
+    const findings = (spec: object) => (render({ spec }).body.errors ?? []) as (Finding & { fix?: JsonPatchOperation[] })[];
+    for (const { spec, renames } of cases) {
+      let repaired = spec;
+      for (const [oldPath, newPath, value] of renames) {
+        const finding = findings(repaired).find(entry => entry.path === oldPath)!;
+        const target = parseJsonPointer(newPath).at(-1)!;
+        expect(finding.suggest, oldPath).toContain(`to '${target}'`);
+        expect(finding.message, oldPath).toContain(`try: ${target}`);
+        expect(finding.fix, oldPath).toBeDefined();
+        repaired = applyFix(repaired, finding.fix!);
+        expect(readJsonPointer(repaired, newPath)).toEqual({ found: true, value });
+        expect(readJsonPointer(repaired, oldPath)).toEqual({ found: false });
+      }
+      expect(render({ spec: repaired, return: ['svg'] }).body.ok, JSON.stringify(repaired)).toBe(true);
+      if ('type' in spec && spec.type === 'box') {
+        expect(readJsonPointer(repaired, '/data/groups/0/label')).toEqual({ found: true, value: 'North' });
+      }
+    }
+
+    const bar = (series: object) => ({ type: 'bar', data: { categories: ['a'], series: [{ id: 's', values: [1], ...series }] } });
+    const existing = findings(bar({ name: 'Old', label: 'New' })).find(entry => entry.path === '/data/series/0/name')!;
+    expect(existing.suggest).toBe("'name' is not read; 'label' is already set. Remove 'name' only if it repeats the value.");
+    expect(existing.fix).toBeUndefined();
+    const incompatible = findings(bar({ name: ['North'] })).find(entry => entry.path === '/data/series/0/name')!;
+    expect(incompatible.suggest).not.toContain("to 'label'");
+    expect(incompatible.suggest).not.toContain('Remove');
+    expect(incompatible.fix).toBeUndefined();
+    const competing = findings(bar({ color: '#123456', colour: '#654321' }));
+    expect(competing.filter(entry => /\/colou?r$/.test(entry.path ?? '')).map(entry => entry.fix)).toEqual([undefined, undefined]);
+
+    const input = { type: 'box', data: { groups: [{ id: 'n', values: [1, 2, 3, 4] }] } };
+    const { doc, envelope } = parseDocumentInput(input);
+    const chart = doc.charts[0]!;
+    (chart.data as { groups: { values: number[] }[] }).groups[0]!.values = [5, 6, 7, 8];
+    validateChartInput(doc, chart, envelope);
+    expect(envelope.errors.find(entry => entry.path?.endsWith('/groups/0/values'))?.fix).toBeUndefined();
+  });
+
+  // A flat item list must become chart data without losing item labels or values.
+  it('moves a flat item list into categories and series only when the result is valid', () => {
+    const spec = { type: 'pie', data: { items: [{ id: 'a', label: 'A', value: 60 }, { id: 'b', label: 'B', value: 40 }] } };
+    const finding = ((render({ spec }).body.errors ?? []) as (Finding & { fix?: JsonPatchOperation[] })[])
+      .find(entry => entry.path === '/data/items')!;
+    expect(finding.suggest).toBe("This chart's data takes categories and series. Move each item's id and label to data.categories[] and its value to data.series[0].values.");
+    expect(finding.fix).toBeDefined();
+    const repaired = applyFix(spec, finding.fix!);
+    expect(readJsonPointer(repaired, '/data/categories')).toEqual({ found: true, value: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] });
+    expect(readJsonPointer(repaired, '/data/series')).toEqual({ found: true, value: [{ id: 'value', values: [60, 40] }] });
+    const drawing = render({ spec: repaired, return: ['svg'] }).body;
+    expect(drawing.ok).toBe(true);
+    expect(drawing.svg).toMatch(/>[^<]*60(?:\D|<)/);
+    expect(drawing.svg).toMatch(/>[^<]*40(?:\D|<)/);
+
+    const duplicate = { type: 'pie', data: { items: [{ id: 'a', value: 60 }, { id: 'a', value: 40 }] } };
+    const duplicateFinding = ((render({ spec: duplicate }).body.errors ?? []) as (Finding & { fix?: JsonPatchOperation[] })[])
+      .find(entry => entry.path === '/data/items')!;
+    expect(duplicateFinding.fix).toBeUndefined();
+    const extra = { type: 'pie', data: { items: [{ id: 'a', value: 60, extra: 1 }] } };
+    const extraFinding = ((render({ spec: extra }).body.errors ?? []) as (Finding & { fix?: JsonPatchOperation[] })[])
+      .find(entry => entry.path === '/data/items')!;
+    expect(extraFinding.suggest).not.toContain('Remove');
+    expect(extraFinding.fix).toBeUndefined();
   });
 });
 

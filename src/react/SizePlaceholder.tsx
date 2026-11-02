@@ -1,6 +1,8 @@
 import { lazy, Suspense, useContext, useRef, useEffect, type ReactElement, type ReactNode } from 'react';
 import { chartString } from '../core/strings/ui';
 import { resolveSize } from '../core/normalize/shared';
+import { normalizeOptionShapes } from '../core/normalize/optionShapes';
+import type { OptionsInput } from '../core/types/optionInput';
 import type { BaseOptions } from '../core/types/options';
 import type { Size } from '../core/geometry';
 import type { RefusedLayout } from '../core/types/scene';
@@ -24,7 +26,7 @@ export interface EmptyProps {
   onEmpty?: () => void;
 }
 export interface PlaceholderFrame {
-  options?: Pick<BaseOptions, 'title' | 'source' | 'size' | 'margin' | 'canvas' | 'locale' | 'target' | 'strings'>;
+  options?: OptionsInput<Pick<BaseOptions, 'title' | 'source' | 'size' | 'margin' | 'canvas' | 'locale' | 'target' | 'strings'>>;
   size?: Size;
   fixedSize?: boolean;
 }
@@ -51,15 +53,16 @@ export function LayoutRefusal(props: PlaceholderFrame & { refusals: readonly Ref
 /** Busy state does not report a refusal. A failed chunk uses the reader failure state. */
 export function LoadingPlaceholder({ failure, failed, kind, findings, children, ...frame }: PlaceholderFrame & { theme?: ThemeRef | Theme; failure?: string; failed?: boolean; kind?: string; findings?: readonly DocumentFinding[]; children?: ReactNode }): ReactElement {
   const settings = useContext(BoardplotThemeContext);
-  const wording = { locale: frame.options?.locale ?? settings?.locale, strings: settings?.strings };
+  const options = normalizeOptionShapes('', { options: frame.options }).chart.options as Pick<BaseOptions, 'title' | 'source' | 'size' | 'locale' | 'target'> | undefined;
+  const wording = { locale: options?.locale ?? settings?.locale, strings: settings?.strings };
   if (failure !== undefined) return <ReaderBox {...frame} kind="spec-error" findings={[{ code: 'chunk-load-failed', message: failure }]} />;
-  const target = frame.options?.target ?? settings?.target;
-  const size = frame.size ?? resolveSize(frame.options?.size, target);
+  const target = options?.target ?? settings?.target;
+  const size = frame.size ?? resolveSize(options?.size, target);
   return <div role="status" dir={settings?.direction ?? 'ltr'} {...{
     [`data-bp-${failed ? 'load-failed' : 'loading'}`]: '',
     [`data-bp-${kind}`]: kind === 'refused' ? findings?.[0]?.code : kind ? '' : undefined,
   }}
-    data-bp-diagnostics={JSON.stringify(findings)} style={placeholderStyle(size, frame.fixedSize)}>{frame.options?.title}<div>{failed ? chartString(wording, 'loadingFailed') : children ?? chartString(wording, 'loading')}</div>{frame.options?.source}</div>;
+    data-bp-diagnostics={JSON.stringify(findings)} style={placeholderStyle(size, frame.fixedSize)}>{options?.title}<div>{failed ? chartString(wording, 'loadingFailed') : children ?? chartString(wording, 'loading')}</div>{options?.source}</div>;
 }
 
 /** Empty specs use the same reader frame and the same once-per-entry callback. */

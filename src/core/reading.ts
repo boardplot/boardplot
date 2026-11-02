@@ -367,7 +367,8 @@ function unrequestedLabelOmissions(input: ChartReadingInput, records: readonly I
     }
   }
   // Without an Others mark there is no aggregate record, so use the final kept identities.
-  for (const [prefix, context] of contexts) if (context.topNCut && (context.options.topN as { rest?: boolean } | undefined)?.rest === false) {
+  for (const [prefix, context] of contexts) if (context.topNCut && (context.geometry.type === 'dot' || context.geometry.type === 'variance'
+    || (context.options.topN as { rest?: boolean } | undefined)?.rest === false)) {
     for (const category of context.categories) if (!context.keptCategories.has(category.id)) {
       add(`${prefix}category:${category.id}`, category.label ?? category.id, 'topN', { categoryId: category.id }, 'category');
     }

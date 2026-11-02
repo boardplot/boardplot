@@ -7,8 +7,9 @@
  * owed to the note, as every value is under labelDensity 'full'.
  */
 
-import { NormalizeError } from '../../normalize/shared';
+import { valueLabelsIgnoredWarning } from '../../retired';
 import type { ValueLabelMode } from '../../types/options';
+import type { LintWarning } from '../../types/scene';
 
 /**
  * The indices a mode labels in one series, in category order: 'last', 'ends'
@@ -41,22 +42,18 @@ type BandLabelOptions = {
  * one-step rule, as under 'full', and no density gate drops it. Unless
  * valueAxis.show says otherwise, the value axis is drawn for every mode but
  * 'all', as on line: values left unlabelled stay readable. A stack has no
- * single value per category, so a stacked variant refuses every mode but
+ * single value per category, so a stacked variant ignores every mode but
  * 'all', which asks for what it prints anyway.
  * Without valueLabels the options come back unchanged.
  */
-export function withValueLabelDefaults<O extends BandLabelOptions>(options: O, type: 'column' | 'bar', variant: string | undefined): O {
+export function withValueLabelDefaults<O extends BandLabelOptions>(options: O, type: 'column' | 'bar', variant: string | undefined, warnings: LintWarning[]): O {
   if (options.valueLabels === undefined) return options;
   if (variant !== undefined && variant !== 'grouped') {
     // 'all' asks for what every variant already prints, so it changes nothing there.
     if (options.valueLabels === 'all') return options;
-    throw new NormalizeError(
-      'value-labels-variant',
-      'options.valueLabels',
-      `valueLabels picks single values and applies to grouped ${type === 'column' ? 'columns' : 'bars'} only; variant '${variant}' has no single value per category`,
-      `remove valueLabels and use labelDensity, or set variant 'grouped'`,
-      [{ op: 'remove', path: '/options/valueLabels' }],
-    );
+    const { valueLabels: _valueLabels, ...kept } = options;
+    warnings.push(valueLabelsIgnoredWarning(type, variant));
+    return kept as O;
   }
   return {
     ...options,

@@ -1572,6 +1572,9 @@ function layoutAuthoredChild(
       ...(parentOptions.palette !== undefined && panelOptions.palette === undefined
         ? { palette: parentOptions.palette }
         : {}),
+      ...(parentOptions.colorblindSafe !== undefined && panelOptions.colorblindSafe === undefined
+        ? { colorblindSafe: parentOptions.colorblindSafe }
+        : {}),
       // A status panel resolves its hatch strength in its own layout.
       ...hatchStrengthFor(panelOptions, parentOptions),
       theme: panelOptions.theme ?? parentOptions.theme,

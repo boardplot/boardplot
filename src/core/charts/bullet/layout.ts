@@ -495,6 +495,34 @@ export function layoutBullet(
   const bandsOf = (row: NormRow): string => row.bands.map((band) => band.to).join('|');
   const alike = rows.every((row) => unitOf(row) === unitOf(rows[0]!) && bandsOf(row) === bandsOf(rows[0]!));
   const sharedScale = targetScale || (typeof options.sharedScale === 'boolean' ? options.sharedScale : !allBanded || alike);
+  const categorySort = options.sort?.categories ?? 'sheet';
+  if (categorySort !== 'sheet') {
+    const refCategory = (ref: AnchorRef): unknown => typeof ref === 'object' && 'categoryId' in ref ? ref.categoryId : ref;
+    const spansPeriods = (options.annotations ?? []).some((ann) =>
+      ann.kind === 'cagr' || ann.kind === 'diff' && refCategory(ann.from) !== refCategory(ann.to));
+    if (spansPeriods && rows.every((row) => row.date !== undefined)) warnings.push({
+      code: 'bullet-sort-ignored', severity: 'warn',
+      message: `sort.categories '${categorySort}' was ignored because the rows are dated and a growth or difference annotation spans periods; authored order was kept`,
+      suggest: 'remove sort.categories, or remove the annotation that spans periods',
+      fix: [{ op: 'remove', path: '/options/sort/categories' }],
+    });
+    else if (categorySort === 'reverse') rows.reverse();
+    else {
+      const attainment = rows.every((row) => row.target !== null && row.target > 0);
+      if (!attainment && !sharedScale) warnings.push({
+        code: 'bullet-sort-by-value', severity: 'info',
+        message: 'rows on their own scales are ranked by their raw value because not every row has a positive target',
+      });
+      const indices = new Map(rows.map((row, i) => [row.id, i]));
+      const rank = (row: NormRow): number | null => row.value === null ? null : attainment ? row.value / row.target! : row.value;
+      rows.sort((a, b) => {
+        const x = rank(a), y = rank(b);
+        const tie = indices.get(a.id)! - indices.get(b.id)!;
+        if (x === null || y === null) return Number(x === null) - Number(y === null) || tie;
+        return (categorySort === 'asc' ? x - y : y - x) || tie;
+      });
+    }
+  }
   if (options.sharedScale === undefined && allBanded && !alike && rows.length > 1) {
     warnings.push({
       code: 'bullet-row-scales',

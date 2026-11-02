@@ -441,7 +441,7 @@ export function changeMoment(change: { at: number; from: number }, language?: st
   return `${weekdayDayMonth(wall, language)}, ${clockText(wall, false)}`;
 }
 
-const PATTERN_TOKEN = /('[^']*')|yyyy|yy|MMMM|MMM|MM|M|dddd|ddd|dd|d|HH|H|hh|h|mm|ss|SSS|a/g;
+const PATTERN_TOKEN = /('[^']*')|yyyy|yy|MMMM|MMM|MM|M|dddd|ddd|dd|d|QQQ|QQ|Q|HH|H|hh|h|mm|ss|SSS|a/g;
 
 /** An authored tick pattern ('HH:mm', 'd MMM', 'h a'): each token reads the instant's wall clock in the zone. */
 export function formatTimePattern(ms: number, clock: ZoneClock, pattern: string, language?: string): string {
@@ -461,6 +461,9 @@ export function formatTimePattern(ms: number, clock: ZoneClock, pattern: string,
       case 'ddd': return names.daysShort[wall.getUTCDay()]!;
       case 'dd': return pad2(wall.getUTCDate());
       case 'd': return String(wall.getUTCDate());
+      case 'Q': return String(Math.floor(wall.getUTCMonth() / 3) + 1);
+      case 'QQ': return `Q${Math.floor(wall.getUTCMonth() / 3) + 1}`;
+      case 'QQQ': return `Quarter ${Math.floor(wall.getUTCMonth() / 3) + 1}`;
       case 'HH': return pad2(hour);
       case 'H': return String(hour);
       case 'hh': return pad2(hour % 12 || 12);

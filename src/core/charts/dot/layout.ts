@@ -2,6 +2,7 @@ import { chartString } from '../../strings/dot';
 import { breakUnsupported, chartPalette, chartTheme } from '../chartEnv';
 import { labelOn as chartLabelOn } from '../labelOn';
 import { structureCount } from '../../structureCounts';
+import { topNCut, topNOmitted, topNRestUnsupported } from '../topN';
 import { distinguishSeries } from '../../seriesIdentity';
 /**
  * Dot family — one layout engine, three
@@ -300,8 +301,6 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     ...(c.date === undefined ? {} : { date: c.date }),
     ...(c.footnote === undefined ? {} : { footnote: c.footnote }),
   }));
-  // The bar rule (bar/layout.ts restRecedes): one series, a category highlight, the rest recede.
-  const restRecedes = dataSeries.length === 1 && cats.some((cat, ci) => highlights.has(cat.id) && dataSeries[0]!.cells[ci]!.v !== null);
   const receding = recedingSeriesId(dataSeries, highlights);
   const applyOrder = (order: number[]) => {
     cats = order.map((i) => cats[i]!);
@@ -313,6 +312,13 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     variant === 'dumbbell'
       ? (dataSeries[1]!.cells[ci]!.v ?? 0) - (dataSeries[0]!.cells[ci]!.v ?? 0)
       : (dataSeries[0]!.cells[ci]!.v ?? 0);
+  if (options.topN && cats.length > options.topN.n) {
+    const cut = topNCut(cats.map((_, i) => Math.abs(sortKey(i))), options.topN.n);
+    const unsupported = topNRestUnsupported('dot', options.topN);
+    if (unsupported) warnings.push(unsupported);
+    warnings.push(topNOmitted(cut.kept.length, cats.length, cut.dropped.map((i) => cats[i]!.label)));
+    applyOrder(cut.kept);
+  }
   const catSort = options.sort?.categories ?? 'sheet';
   if (catSort !== 'sheet') {
     const idx = cats.map((_, i) => i);
@@ -322,6 +328,8 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     else idx.reverse();
     applyOrder(idx);
   }
+  // One series with a drawn category highlight makes the other rows recede.
+  const restRecedes = dataSeries.length === 1 && cats.some((cat, ci) => highlights.has(cat.id) && dataSeries[0]!.cells[ci]!.v !== null);
 
   // ---- derive: dumbbell gaps ----
   let gaps: Record<Id, number> | undefined;
@@ -528,6 +536,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
       // on rows without a mid-point prints whenever some rows have one.
       footnotes: [
         ...authoredNotes(options),
+        ...warnings.filter((warning) => warning.code === 'topn-omitted').map((warning) => disclosureNote(warning.message)),
         ...(midNote ? [disclosureNote(midNote)] : []),
         ...(options.methodNote === true && midsDrawn ? [disclosureNote(chartString(options, 'rangeMidNote'))] : []),
       ],
