@@ -21,7 +21,8 @@ const ALIASES: Record<string, string> = { YYYY: 'yyyy', YY: 'yy', D: 'd', DD: 'd
 
 /** Read tokens before examples, keeping quoted words out of token classification. */
 function readPattern(text: string, context: Context): string | undefined {
-  const parts = text.match(/'[^']*'|[\p{L}]+|[^'\p{L}]+/gu) ?? [];
+  // A lone apostrophe is a literal, as in "MMM 'yy" (Jan '26).
+  const parts = text.match(/'[^']*'|[\p{L}]+|'|[^'\p{L}]+/gu) ?? [];
   if (!parts.length || parts.join('') !== text) return undefined;
   const tokens: string[] = [];
   for (const part of parts) {

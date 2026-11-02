@@ -86,6 +86,10 @@ describe('continuous axis layout', () => {
     const ticks = (geometry: Geometry) => geometry.labels.filter(label => label.id.startsWith('xtick:') && !label.hidden).map(label => label.text);
     const quarters = lay(data, { xAxis: { type: 'time', format: 'Q1 2026', tickStep: { unit: 'quarter', step: 2 } } });
     expect(ticks(quarters.geometry)).toEqual(['Q1 2026', 'Q3 2026', 'Q1 2027']);
+    // An apostrophe year such as Jan '26 is a pattern main already draws.
+    const apostrophe = lay(data, { xAxis: { type: 'time', format: "MMM 'yy", tickStep: { unit: 'month', step: 6 } } });
+    expect(ticks(apostrophe.geometry)).toEqual(["Jan '26", "Jul '26", "Jan '27"]);
+    expect(apostrophe.geometry.warnings.filter(warning => warning.code === 'date-format-unknown')).toEqual([]);
     const defaults = lay(data, { xAxis: { type: 'time' } });
     const unknown = lay(data, { xAxis: { type: 'time', format: 'unreadable' } });
     expect(ticks(unknown.geometry)).toEqual(ticks(defaults.geometry));
