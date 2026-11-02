@@ -1,8 +1,11 @@
 import * as z from 'zod';
 import { EMPTY_DATA, isEmptyDataIssue } from '../emptyData';
 import { isRecord } from '../lint/shared';
-import { canonicalChartType, getChartSchemas, unsupported } from '../registry';
-import { annotationSchema, diagnosedSafeParse } from '../schema/shared';
+import { canonicalChartType, chartInputName, getChartSchemas, unsupported } from '../registry';
+import { caseInsensitiveValue, inputConversion, replaceInputValue } from '../inputConversion';
+import { parseWithInputConversions } from '../schema/inputConversions';
+import { schemaNodeAtPath, type JsonSchemaNode } from '../schema/nodes';
+import { annotationSchema } from '../schema/shared';
 import { flattenIssues } from '../schema/flattenIssues';
 import { allowedValues, expectedTypes } from '../diagnostics/describe';
 import { refusalSuggest } from '../schema/capabilityReasons';
@@ -16,6 +19,7 @@ import type { DiagramData, DiagramOptions } from '../types/diagram';
 import { pushAll } from '../arrays';
 import { timeAnnotationAnchors } from '../timeAxis';
 import { retireChartSettings } from '../retired';
+import { normalizeOptionShapes } from '../normalize/optionShapes';
 
 type Definition = NonNullable<ReturnType<typeof getChartSchemas>>;
 
@@ -81,6 +85,16 @@ function parseChartInput(doc: BoardplotDoc, chart: DocChart, envelope: DocumentE
   // Library data is a JavaScript model, as in a registered normalizer. Keep
   // its schema output; document transports retain their JSON ownership guard.
   if (dataOwnership === 'document') chart = ownedDocumentCopy(chart);
+  // Unknown case spellings are refused names; exact names keep their alias defaults.
+  for (const [field, authored] of [
+    [['type'], chart.type],
+    ...gridPanelOptionTargets(chart.type, chart.data, '').map(target => [[...target.segments.slice(0, -1), 'type'], target.type]),
+  ] as [((string | number)[]), string][]) {
+    const name = chartInputName(authored) ?? (field.length > 1 ? caseInsensitiveValue(authored, ['text', 'legend']) : undefined);
+    if (name === undefined || name === authored) continue;
+    chart = replaceInputValue(chart, field, name);
+    envelope.warnings.push(inputConversion(field, authored, name));
+  }
   const def = getChartSchemas(chart.type);
   if (!def) {
     envelope.errors.push({
@@ -94,22 +108,32 @@ function parseChartInput(doc: BoardplotDoc, chart: DocChart, envelope: DocumentE
     return null;
   }
   // A retired setting draws as its successor or is dropped, and warns; only a key that never existed is refused below.
+  const shaped = normalizeOptionShapes(def.type, chart, canonicalChartType);
+  chart = shaped.chart;
+  pushAll(envelope.warnings, shaped.warnings);
   const retired = retireChartSettings(def.type, chart, canonicalChartType);
   chart = retired.chart;
   pushAll(envelope.warnings, retired.warnings);
   // Options are validated against the chart's schema; unknown keys are refused
-  const optResult = diagnosedSafeParse(
+  const optParse = parseWithInputConversions(
     def.optionsSchema as z.ZodType,
     // Apply alias values while its authored type is still available. The
     // owned copy keeps inherited optional keys out of the schema parse.
     ownedDocumentCopy({ ...def.aliasDefaults?.[chart.type], ...chart.options }),
+    ['options'],
   );
+  const optResult = optParse.result;
+  if (optParse.warnings.length) chart = { ...chart, options: optParse.input as Record<string, unknown> };
+  pushAll(envelope.warnings, optParse.warnings);
   // An explicit mode selects its data branch from the already-loaded schemas.
   const selectedMode = Object.entries(def.dataSchemaByOption ?? {})
     .find(([option]) => chart.options && Object.hasOwn(chart.options, option));
   const selectedSchema = selectedMode?.[1];
   const dataSchema = selectedSchema ?? def.dataSchema as z.ZodType;
-  const dataResult = diagnosedSafeParse(dataSchema, chart.data);
+  const dataParse = parseWithInputConversions(dataSchema, chart.data, ['data']);
+  const dataResult = dataParse.result;
+  if (dataParse.warnings.length) chart = { ...chart, data: dataParse.input };
+  pushAll(envelope.warnings, dataParse.warnings);
   // A mode option on data of another form (options.stack on a panel grid) is
   // one finding about the option, not the mode schema's errors about data it
   // was never meant to read; an invalid option still reports first. The
@@ -175,7 +199,9 @@ function parseChartInput(doc: BoardplotDoc, chart: DocChart, envelope: DocumentE
   // Annotations validated (kind enum rejects garbage)
   if (chart.annotations !== undefined) {
     const time = def.type === 'line' && (parsedOptions.xAxis as { type?: string } | undefined)?.type === 'time';
-    const annResult = diagnosedSafeParse(z.array(annotationSchema), time ? chart.annotations.map(timeAnnotationAnchors) : chart.annotations);
+    const annParse = parseWithInputConversions(z.array(annotationSchema), time ? chart.annotations.map(timeAnnotationAnchors) : chart.annotations, ['annotations']);
+    const annResult = annParse.result;
+    pushAll(envelope.warnings, annParse.warnings);
     if (!annResult.success) {
       for (const i of flattenIssues(annResult.error.issues)) {
         envelope.errors.push(chartSchemaDiagnostic(doc, chart, 'annotations', i, chart.annotations, 'invalid-annotation', i.message,
@@ -183,7 +209,7 @@ function parseChartInput(doc: BoardplotDoc, chart: DocChart, envelope: DocumentE
       }
       return null;
     }
-    if (time) chart = { ...chart, annotations: ownedDocumentCopy(annResult.data) };
+    if (time || annParse.warnings.length) chart = { ...chart, annotations: ownedDocumentCopy(annResult.data) };
   }
 
   if (def.type !== 'line') {
@@ -278,26 +304,7 @@ function validateOptionKeys(
   return hasInvalidOption;
 }
 
-interface JsonSchemaNode {
-  type?: string | string[];
-  properties?: Record<string, JsonSchemaNode>;
-  required?: string[];
-  not?: object;
-  const?: unknown;
-  minimum?: number;
-  exclusiveMinimum?: number;
-  minItems?: number;
-  enum?: unknown[];
-  anyOf?: JsonSchemaNode[];
-  oneOf?: JsonSchemaNode[];
-  allOf?: JsonSchemaNode[];
-  items?: JsonSchemaNode;
-  description?: string;
-  $ref?: string;
-  $defs?: Record<string, JsonSchemaNode>;
-  propertyNames?: JsonSchemaNode;
-  additionalProperties?: JsonSchemaNode | boolean;
-}
+
 
 interface PanelOptionTarget {
   type: string;
@@ -715,38 +722,7 @@ function schemaTerms(schema: JsonSchemaNode): string[] {
   return terms;
 }
 
-/**
- * The schema nodes at `path`, with every `$ref` resolved (a lazy schema such
- * as a recursive calc or row sits behind one) and a record's value node
- * under each of its keys.
- */
-function schemaNodeAtPath(schema: z.ZodType, path: readonly (string | number)[]): JsonSchemaNode[] {
-  const root = z.toJSONSchema(schema, { io: 'input' }) as JsonSchemaNode;
-  const resolve = (node: JsonSchemaNode): JsonSchemaNode => {
-    const resolved = node.$ref?.startsWith('#/$defs/') ? root.$defs?.[node.$ref.slice('#/$defs/'.length)] : undefined;
-    if (!resolved) return node;
-    const branches = (list?: JsonSchemaNode[]) => list?.map(resolve);
-    return { ...resolved, anyOf: branches(resolved.anyOf), oneOf: branches(resolved.oneOf), allOf: branches(resolved.allOf) };
-  };
-  let nodes = [root];
-  for (const segment of path) {
-    const next: JsonSchemaNode[] = [];
-    for (const node of nodes) {
-      const branches = [node, ...(node.anyOf ?? []), ...(node.oneOf ?? []), ...(node.allOf ?? [])];
-      for (const branch of branches) {
-        if (typeof segment === 'number') {
-          if (branch.items) next.push(resolve(branch.items));
-        } else if (branch.properties?.[segment]) {
-          next.push(resolve(branch.properties[segment]));
-        } else if (typeof branch.additionalProperties === 'object' && (branch.propertyNames?.enum ?? [segment]).includes(segment)) {
-          next.push(resolve(branch.additionalProperties));
-        }
-      }
-    }
-    nodes = next;
-  }
-  return nodes;
-}
+
 
 /** The option keys of each chart type, read once: building the JSON schema for them takes tens of milliseconds. */
 const optionKeysByType = new Map<string, ReadonlySet<string>>();

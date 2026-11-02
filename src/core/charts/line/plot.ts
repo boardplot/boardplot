@@ -246,7 +246,7 @@ function lineLegend(theme: Theme, domain: LineDomain, paints: LinePaints, _text:
     omittedKey(s.id, stringFields(s.zero ? options.strings!.rebaseZero! : options.strings!.rebaseMissing!, { series: s.series, period: s.period })));
   const narrow = width <= SIDE_KEY_MIN_WIDTH;
   // Overriding legend: 'none' (legend-none-overridden) the key goes into a row: a side key would starve the plot again.
-  const legendOption = boundedKey ? narrow || legendPosition === 'none' || domain.x?.range && (isArea || fan) ? 'top' as const : 'right' as const : reserves.endpoint.endpointLegendFallback
+  const legendOption = boundedKey ? narrow || legendPosition === 'none' || domain.x?.range && (isArea || fan) ? 'top' as const : legendPosition === 'left' ? 'left' as const : 'right' as const : reserves.endpoint.endpointLegendFallback
     ? legendPosition === 'top' || legendPosition === 'bottom' ? legendPosition : ('top' as const)
     : labelModes.series === 'key' && (legendPosition === undefined || legendPosition === 'none')
       ? ('top' as const)
@@ -442,6 +442,8 @@ export function solveLineFrame(
         ...timeZoneNote(domain, options),
       ],
       legend,
+      // The end-name key the engine puts beside the plot keeps its place whatever the room.
+      ...(usesEndLabelKey(options) ? { sideKeyFixed: true } : {}),
       ...(eventKey ? { eventKey } : {}),
       theme,
       measure,

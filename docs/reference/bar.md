@@ -86,7 +86,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | series[].id | string | yes | Series identity used by keyed options, annotations and legend entries. |
 | series[].label | string |  | Displayed series name; defaults to the series id. |
 | series[].values | (cell \| { categoryId, value: cell })[] | yes | Values in category order, or keyed entries pairing a categoryId with its value. |
-| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). Controls scenario labels and paint conventions. |
+| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. Controls scenario labels and paint conventions. |
 | series[].direction | string |  | Whether increases are favorable; defaults to higherIsBetter for directional comparisons. One of `'higherIsBetter'`, `'lowerIsBetter'`. |
 | series[].role | string |  | Data series or comparison-only reference series; references are excluded from the main plotted data. One of `'data'`, `'reference'`. |
 | series[].colorRole | string |  | Theme color role used for this series when no explicit fill takes precedence. One of good, bad, warn, neutral, neutralLight, highlight, total, others; series-N for step N of the theme ramp, 1-based (series-2 is color.series[1]); or status-<key> for a theme status colour. A hex colour goes in fill. |
@@ -99,7 +99,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
 | labelDensity | string | `'full'`, `'smart'`, `'minimal'` |  | Value-label density. Default 'smart': every value stays eligible. A chart with more than 12 categories, or with most labels wider than the band, ranks the first, last, highest and lowest value (ties: the first) first. The other values then use only their natural seat beside the mark; with none free they are drawn nowhere and left out of the note. Those four may take one step, and the note names any that finds no seat. A smaller chart keeps every value on the bounded one-step rule and names any that finds no seat. 'full' treats all values alike and names every one that finds no seat. 'minimal' also applies the shared priority gate. Seats stay inside the plot band and one step from the natural seat. All values remain in reading records. When valueLabels is set, it wins: labelDensity is not read for the value labels. |
-| legend | string \| object | `'top'`, `'bottom'`, `'none'`, `'auto'` (or another value of its type) |  | Key position. Multiple series get a key by default unless visible direct labels name them all. 'none' hides the key and warns if names are missing. Subtitle and footnote mentions do not replace the key. |
+| legend | string \| object | `'top'`, `'bottom'`, `'right'`, `'left'`, `'none'`, `'auto'` (or another value of its type) |  | Key position. Multiple series get a key by default unless visible direct labels name them all. 'none' hides the key and warns if names are missing. Subtitle and footnote mentions do not replace the key. |
 | valueAxis.break | false \| object | `false` (or another value of its type) |  | No break by default or with false. Set { from, to, style? } for a straight value-axis break; the omitted span collapses to a fixed 12px gap when valid. Automatic placement is supported only by waterfall and pvm. |
 | axisTitles | object |  |  | Title of the value axis when valueAxis.show draws it: in the tick-label row, ending at the right end of the axis past the last tick label or short of the first tick label, and in a row of its own under the ticks only when neither side has room. A theme with valueAxis.titles derives 'Measure, unit' from subtitle.measure and a unit the drawn subtitle does not print, when none is authored. |
 | axisTitles.primary | string |  |  | 'Measure, unit' title of the value axis, e.g. 'Margin, %'. |
@@ -221,3 +221,4 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | option-small-values-zero | torture | Turku prints the series format (smallValues zero) |
 | option-small-values-scientific | torture | Turku prints a power of ten (smallValues scientific) |
 | option-small-values-p-value | torture | Every rate prints as an APA p-value (smallValues p-value) |
+| key-left | example | Stacked bars with the key in a column left of the plot |

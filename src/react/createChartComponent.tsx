@@ -13,6 +13,7 @@ import type { ChartRequest, RequestOptions } from '../core/request';
 import type { Annotation } from '../core/types/annotations';
 import type { Id } from '../core/types/cell';
 import type { Geometry, LintWarning } from '../core/types/scene';
+import type { OptionsInput } from '../core/types/optionInput';
 import type { RenderTarget } from '../core/types/options';
 import type { ThemeRef } from '../core/types/theme';
 import { useDeferredModule } from './deferredCore';
@@ -156,7 +157,7 @@ export type ChartDataProps<D> =
 
 /** Grid's own `rows` and `columns` options lay out its panels; a grid takes no rows mapping. */
 export type ChartProps<D, O extends ChartOptionsLike> = O extends unknown
-  ? Omit<O, 'annotations' | 'size'> & ChartHostProps & ('rows' extends keyof O ? { data: D } : ChartDataProps<D>)
+  ? OptionsInput<Omit<O, 'annotations' | 'size'>> & ChartHostProps & ('rows' extends keyof O ? { data: D } : ChartDataProps<D>)
   : never;
 
 /** The props every chart component takes besides its chart options. */
@@ -179,7 +180,7 @@ const OWN_ROWS_OPTIONS = new Set(['grid']);
  * value (likert the theme checks, pareto the annotation engine). Only those
  * count in the server's first frame and the hydrating one (`asFirstFrame`).
  */
-export function createChartComponent<D, O extends ChartOptionsLike>(type: string, checkKeys?: OptionKeyCheck, linked?: readonly DeferredName[]) {
+export function createChartComponent<D, O extends ChartOptionsLike>(type: string, checkKeys?: OptionKeyCheck, linked?: readonly DeferredName[]): (props: ChartProps<D, O>) => ReactElement {
   function Drawn(props: ChartProps<D, O>): ReactElement {
     const { data: authored, annotations, fixedSize, onGeometry, onWarnings, onRefused, renderRefused, onEmpty, target, size, fit, fallbackSize, prepared, hover, onSeriesClick, onRecordClick, renderHoverContent, zoom, styleNonce, idPrefix,
       storyLink, onNotes, renderNotes, onScrollChange, deferLayout = true, exporter, rows: rowsProp, columns: columnsProp, onRowsReading, ...rest } = props;

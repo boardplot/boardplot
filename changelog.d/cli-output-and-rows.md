@@ -6,7 +6,7 @@
 ### Changed / may need action
 
 - A rows file may now hold up to 10 MB (was 2 MB), the size of a request the MCP server accepts. A histogram or box chart of several hundred thousand observations can come from a file.
-- A new `--out` path that ends in a file extension other than `.png` or `.svg`, such as `chart.jpg` or `chart.pdf`, is refused with `invalid-argument`. It used to become a folder with that name. End the path with `/` to keep making a folder of that name.
+- A new `--out` path that ends in a file extension other than `.png` or `.svg`, such as `chart.jpg` or `chart.pdf`, is refused with `invalid-argument`. It used to become a folder with that name. End the path with `/` to keep making a folder of that name. The MCP `outDir` argument follows the same rule.
 
 ### Fixed
 

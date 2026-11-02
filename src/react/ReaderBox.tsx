@@ -1,4 +1,6 @@
 import { lazy, Suspense, useContext, useEffect, useRef, type ReactNode, type ReactElement } from 'react';
+import { normalizeOptionShapes } from '../core/normalize/optionShapes';
+import type { BaseOptions } from '../core/types/options';
 import { NormalizeError, resolveSize } from '../core/normalize/shared';
 import { canvasMargin, resolveTheme, themeForWidth } from '../core/theme';
 import type { DocumentFinding } from '../core/doc/diagnostics';
@@ -18,10 +20,11 @@ const DiagnosticDetails = lazy(() => import('./DiagnosticDetails').catch(() => (
 linkThemeShapeRules();
 
 /** The reader frame is shared by empty, refused and invalid charts. */
-export default function ReaderBox({ theme: ref, options = {}, size: explicitSize, fixedSize, kind, findings = [], children: suppliedChildren, result, onRefused, renderRefused, spec }: PlaceholderFrame & RefusalProps & {
+export default function ReaderBox({ theme: ref, options: authored = {}, size: explicitSize, fixedSize, kind, findings = [], children: suppliedChildren, result, onRefused, renderRefused, spec }: PlaceholderFrame & RefusalProps & {
   result?: RefusedLayout;
   theme?: Theme | ThemeRef; kind: 'refused' | 'empty' | 'spec-error'; findings?: readonly DocumentFinding[]; children?: ReactNode; spec?: boolean;
 }): ReactElement {
+  const options = normalizeOptionShapes('', { options: authored }).chart.options as BaseOptions;
   const children = kind === 'refused' && result && renderRefused ? renderRefused(result) : suppliedChildren;
   const settings = useContext(BoardplotThemeContext);
   const full = fullDiagnostics(settings?.diagnostics);
@@ -110,9 +113,9 @@ export default function ReaderBox({ theme: ref, options = {}, size: explicitSize
 /** Invalid specs still keep valid theme tokens; references go through the normal resolver. */
 function placeholderTheme(ref?: Theme | ThemeRef): Theme {
   try {
-    if (ref && typeof ref === 'object' && !('preset' in ref)) {
-      if (!checkThemeShape(ref).length) return ref;
-    } else return resolveTheme(ref);
+    if (ref && typeof ref === 'object' && !('preset' in ref) && !(Object.keys(ref).length === 1 && 'overrides' in ref)) {
+      if (!checkThemeShape(ref).length) return ref as Theme;
+    } else return resolveTheme(ref as ThemeRef);
   }
   catch (error) {
     if (!(error instanceof NormalizeError)) throw error;

@@ -106,16 +106,16 @@ describe('render target on the CLI and MCP', () => {
   });
 
   it('keeps pt in a size refusal fix and never patches px into a size marked pt', () => {
-    const spec = { ...SPEC, options: { ...SPEC.options, size: { width: 150, height: 100, unit: 'pt' } } };
+    const spec = { ...SPEC, options: { ...SPEC.options, size: { width: 80, height: 100, unit: 'pt' } } };
     const refused = mcp('boardplot_render', { spec });
     expect(refused.errors[0]).toMatchObject({
       code: 'size-below-floor', path: '/options/size',
-      fix: [{ op: 'replace', path: '/options/size', value: { width: 210, height: 135, unit: 'pt' } }],
+      fix: [{ op: 'replace', path: '/options/size', value: { width: 90, height: 135, unit: 'pt' } }],
     });
     const fixed = mcp('boardplot_render', { spec: { ...spec, options: { ...spec.options, size: refused.errors[0].fix[0].value } } });
     expect(fixed.ok).toBe(true);
     // A pt argument is repaired in pt.
-    expect(cli(['render', specFile(SPEC), '--width', '100pt']).errors[0]).toMatchObject({ path: '/width', fix: [{ op: 'replace', path: '/width', value: '210pt' }] });
+    expect(cli(['render', specFile(SPEC), '--width', '80pt']).errors[0]).toMatchObject({ path: '/width', fix: [{ op: 'replace', path: '/width', value: '90pt' }] });
     // A px argument over a pt size writes the whole size in px; a pt one keeps the authored pt side.
     const chart = { name: 'chart', ...spec } as DocChart;
     expect(withSize(chart, { value: 800, unit: 'px' }, undefined).options!.size).toEqual({ width: 800, height: toLayoutPx(100, 'pt') });
@@ -134,9 +134,9 @@ describe('render target on the CLI and MCP', () => {
     // A refusal fix for the width argument also names the height the preset's shape lacks there.
     const small = { type: 'column', data: { categories: ['Q1', 'Q2'], series: [{ id: 'revenue', label: 'Revenue', values: [84, 91] }] },
       options: { title: 'Revenue rose in Q2', size: 'slide-16x9' } };
-    const refused = mcp('boardplot_render', { spec: small, width: 240 });
+    const refused = mcp('boardplot_render', { spec: small, width: 100 });
     const fix = Object.fromEntries(refused.errors[0].fix.map((operation: { path: string; value: number }) => [operation.path.slice(1), operation.value]));
-    expect(fix).toMatchObject({ width: 280 });
+    expect(fix).toMatchObject({ width: 120 });
     expect(mcp('boardplot_render', { spec: small, ...fix }).ok).toBe(true);
   });
 
