@@ -324,7 +324,7 @@ export interface ValueAxisOptions {
   show?: boolean; // default false — direct labels are the default
   min?: number;
   max?: number;
-  tickStep?: number; // snapped to nice; may NEVER clip data
+  tickStep?: number; // ticks at step multiples, 1–20 intervals; extends outward, dot keeps data ends when two ticks fit
   includeZero?: boolean;
   percent?: boolean;
   /** Log10 scale on scatter ('x', 'y', 'both' or true) and line ('y' or true); every value on it must be above zero. */

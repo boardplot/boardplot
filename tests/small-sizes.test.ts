@@ -12,7 +12,8 @@ import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request'
 import { interactionRecords } from '../src/core/a11y/records';
 import { BoardplotTheme } from '../src/react/BoardplotTheme';
 import { layoutDiagram } from '../src/core/charts/diagram/layout';
-import type { DiagramData } from '../src/core/types/diagram';
+import type { DiagramData, DiagramMarks } from '../src/core/types/diagram';
+import { boundsOf, rectLineDistance, rectsOverlap } from '../src/core/geometry';
 import type { SlopeChartData } from '../src/core/types/data';
 import type { Geometry } from '../src/core/types/scene';
 import { cutLabels } from '../src/core/label/omissions';
@@ -1115,6 +1116,41 @@ it('prints a circular-process arrow label in full', () => {
   expect(body.reading.labelsTruncated).toEqual([]);
 });
 
+// Prevents a six-step circular process from dropping arrow labels or drawing them against arrows, arrowheads, nodes or text when space is available.
+it('seats all six circular-process arrow labels clear of the whole diagram', () => {
+  const names = ['Customers share results', 'New leads arrive from referrals', 'Sales converts leads faster',
+    'Revenue funds more product work', 'Product adds visible features', 'Customers see more value'];
+  const edgeNames = ['Proof points', 'Referral invites', 'Shorter cycles', 'Investment', 'Releases', 'Advocacy'];
+  const nodes = names.map((label, i) => ({ id: `s${i + 1}`, kind: 'step', shape: { kind: 'circle' }, label,
+    badge: { text: String(i + 1), role: 'accent' }, role: 'primary', order: i + 1 }));
+  const edges = edgeNames.map((label, i) => ({ id: `e${i + 1}`, source: { nodeId: `s${i + 1}` },
+    target: { nodeId: `s${(i + 1) % 6 + 1}` }, arrowEnd: true, label }));
+  const spec = { type: 'diagram', data: { nodes, edges }, options: { variant: 'circular-process', target: 'dashboard' as const,
+    title: 'Circular process: the growth loop', subtitle: 'Growth loop', source: 'Illustrative growth model', size: { width: 920 } } };
+  const body = render({ spec }).body as any;
+  expect(body.ok).toBe(true);
+  expect(body.reading.omissions).toEqual([]);
+  const geometry = layoutResolvedRequest(resolveChartRequest(spec));
+  if (geometry.refused) throw new Error('refused');
+  const marks = geometry.marks as unknown as DiagramMarks;
+  const labels = geometry.labels.filter(label => label.id.startsWith('edge-label:') && !label.hidden);
+  expect(labels.map(label => label.text).sort()).toEqual([...edgeNames].sort());
+  const arrowBoxes = geometry.scene.filter(node => node.t === 'path' && node.part === 'diagramArrow').map(node => {
+    const values = (node.t === 'path' ? node.d : '').match(/-?\d+(?:\.\d+)?/g)!.map(Number);
+    return boundsOf([0, 2, 4].map(i => ({ x: values[i]!, y: values[i + 1]!, w: 0, h: 0 })));
+  });
+  for (const label of labels) {
+    for (const edge of marks.edges) {
+      if (edge.route.kind !== 'polyline') throw new Error('expected orthogonal arrow');
+      expect(rectLineDistance(label.rect, edge.route.points), `${label.text} touches ${edge.id}`).toBeGreaterThan(2);
+    }
+    for (const box of [...arrowBoxes, ...marks.nodes.map(node => node.rect),
+      ...geometry.labels.filter(other => other !== label && !other.hidden).map(other => other.rect)]) {
+      expect(rectsOverlap(label.rect, box, 2), `${label.text} crowds another part of the diagram`).toBe(false);
+    }
+  }
+});
+
 // A 13-row bar on the default slide canvas was refused, while the same canvas written out as a size drew in compact mode.
 it('draws compact on the default slide canvas as it does on the same size written out', () => {
   const categories = Array.from({ length: 13 }, (_, i) => `Region ${i + 1}`);
@@ -1196,15 +1232,6 @@ it('measures a column that stepped to bars with the natural sizes of the chart d
   const wide = measure(spec(narrow.naturalWidth));
   expect((wide.geometry as Geometry).type).toBe('column');
   expect([narrow.naturalHeight, narrow.comfortableWidth, narrow.comfortableHeight, narrow.fit]).toEqual([wide.naturalHeight, wide.comfortableWidth, wide.comfortableHeight, wide.fit]);
-});
-
-// tickStep is read by column and refused by bar, so a column that stepped to bars dropped it with no word.
-it('keeps the column when a column-only value axis key is set', () => {
-  const names = Array.from({ length: 20 }, (_, i) => `Sector number ${i + 1} of the survey`);
-  const data = { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [{ id: 's', label: 'Margin', values: names.map((_, i) => 8 + ((i * 7) % 23)) }] };
-  const draw = (valueAxis: object) => layoutResolvedRequest(resolveChartRequest({ type: 'column', data, options: { title: 'Margin by sector', unit: '%', size: { width: 320 }, valueAxis } } as never)) as Geometry;
-  expect(draw({ show: true }).type).toBe('bar');
-  expect(draw({ tickStep: 5 }).type).toBe('column');
 });
 
 // A 100% share column, and a stacked column with a PY reference, stepped to bars that drew absolute values and no growth labels, with no warning.

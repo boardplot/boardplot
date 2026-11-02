@@ -14,6 +14,7 @@ import type { GeoOverlay } from '../src/core/charts/choropleth/overlayTypes';
 import { render } from '../src/cli/render';
 import { runVerb } from '../src/cli/result';
 import { callTool } from '../src/mcp/server';
+import { withEngineNotes } from '../src/core/notes';
 
 const layoutTilemap = (...args: Parameters<typeof rawTilemapLayout>) => requireGeometry(rawTilemapLayout(...args));
 
@@ -27,6 +28,36 @@ const layoutTilemap = (...args: Parameters<typeof rawTilemapLayout>) => requireG
  */
 
 const theme = resolveTheme(undefined);
+
+// An unknown data id must not discard known regions, and case variants must identify the same region on every input surface.
+test('draws known regions beside unknown ids and resolves case variants consistently', () => {
+  const index = buildGeoRegionIdIndex([{ id: 'Alpha', aliases: ['First'] }, { id: 'ALPHA', aliases: [] }]);
+  expect(resolveGeoRegionId(index, 'Alpha')).toEqual({ kind: 'resolved', id: 'Alpha' });
+  expect(resolveGeoRegionId(index, 'FIRST')).toEqual({ kind: 'resolved', id: 'Alpha' });
+  expect(resolveGeoRegionId(index, 'alpha')).toEqual({ kind: 'ambiguous', candidates: ['ALPHA', 'Alpha'] });
+  const data = { pack: 'eu27' as const, regions: [{ id: 'at', value: 23 }, { id: 'GB', value: 99 }],
+    overlays: [{ id: 'marker', label: 'North', at: { region: 'at' }, glyph: { kind: 'harvey' as const, value: 0.5 } }] };
+  const tilemap = withEngineNotes(() => layoutTilemap(data));
+  const choropleth = withEngineNotes(() => layoutChoropleth(data, { labelRegions: ['at'], valueTable: false }));
+  expect(tilemap.marks.regions.find(region => region.id === 'AT')).toMatchObject({ value: 23, state: 'value' });
+  expect(choropleth.marks.regions.find(region => region.id === 'AT')).toMatchObject({ value: 23, state: 'value' });
+  expect(tilemap.marks.overlays).toHaveLength(1);
+  expect(choropleth.marks.overlays).toHaveLength(1);
+  expect(tilemap.warnings).toContainEqual(expect.objectContaining({ code: 'tilemap-unknown-region', severity: 'warn' }));
+  expect(choropleth.warnings).toContainEqual(expect.objectContaining({ code: 'choropleth-unknown-region', severity: 'warn' }));
+  expect(tilemap.frame?.noteList).toContainEqual(expect.objectContaining({ kind: 'disclosure', inFrame: true, text: expect.stringContaining('GB') }));
+  expect(choropleth.frame?.noteList).toContainEqual(expect.objectContaining({ kind: 'disclosure', inFrame: true, text: expect.stringContaining('GB') }));
+  const rows = [{ area: 'at', score: 23 }, { area: 'GB', score: 99 }];
+  const columns = { category: 'area', value: 'score' };
+  const tileRows = render({ spec: { type: 'tilemap', data: { pack: 'eu27' } }, rows, columns }).body as any;
+  const mapRows = render({ spec: { type: 'choropleth', data: { pack: 'eu27' } }, rows, columns }).body as any;
+  expect(tileRows.ok).toBe(true);
+  expect(mapRows.ok).toBe(true);
+  const duplicate = runVerb(() => render({ spec: { type: 'tilemap', data: { pack: 'eu27' } }, rows: [{ area: 'at', score: 23 }, { area: 'AT', score: 42 }], columns })).body as any;
+  expect(duplicate.errors).toContainEqual(expect.objectContaining({ code: 'duplicate-id' }));
+  expect(() => layoutTilemap({ pack: 'eu27', regions: [{ id: 'GB', value: 99 }] })).toThrow(expect.objectContaining({ code: 'tilemap-unknown-region' }));
+  expect(() => layoutChoropleth({ pack: 'eu27', regions: [{ id: 'GB', value: 99 }] })).toThrow(expect.objectContaining({ code: 'choropleth-unknown-region' }));
+});
 
 // Reordering a pie must not swap category paints while its shared key keeps the first pie's mapping.
 test('overlay pies and their key share one paint per label and reject tone conflicts', () => {

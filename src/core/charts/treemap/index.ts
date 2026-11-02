@@ -11,7 +11,7 @@ export { treemapDataSchema, treemapOptionsSchema };
 export const treemapDefinition: ChartDefinition<TreemapData, TreemapOptions, TreemapMarks, TreemapDerived> = {
   ...treemapCore,
   discovery: {
-    notFor: 'Zero or negative values, or values that do not add up to one whole; use bar for a ranking and waterfall for signed changes.',
+    notFor: 'Negative values, or values that do not add up to one whole; use bar for a ranking and waterfall for signed changes. Zero and null items are left out with a warning and a note.',
     example: {
       data: {
         groups: [{ id: 'core', label: 'Core' }, { id: 'new', label: 'New' }],

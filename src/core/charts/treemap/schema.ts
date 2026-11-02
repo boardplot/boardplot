@@ -16,7 +16,7 @@ const itemSchema = z.strictObject({
   id: idSchema.describe('Item identity, one cell.'),
   label: z.string().optional().describe('Name printed on the cell, or beside it with a leader when the cell is too small; defaults to the id.'),
   group: idSchema.optional().describe('Id of the group this item belongs to. Leave it out on every item for a one-level treemap.'),
-  value: z.number().describe('Value of the item, above 0. The cell area is proportional to it. Zero, negative and missing values are refused.'),
+  value: z.number().nullable().describe('Value of the item. The cell area is proportional to a value above 0. Zero and null items are left out with a warning and a note. Negative values are refused.'),
 });
 
 export const treemapDataSchema = z

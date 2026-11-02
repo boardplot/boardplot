@@ -18,15 +18,4 @@ export const slopeCore: ChartCore<ChartData, SlopeOptions, SlopeMarks, SlopeDeri
   prepare: prepareFractionData,
   defaults: {},
   annotationKinds: ['cagr', 'diff', 'delta', 'abs', 'note', 'callout', 'valueLine'],
-  lint: (data) =>
-    Array.isArray(data?.categories) && data.categories.length > 2
-      ? [
-        {
-          code: 'slope-too-many-points',
-          severity: 'error',
-          message: `slope requires exactly 2 categories, got ${data.categories.length} — layout uses first and last only`,
-          suggest: "use chart type 'line' for more than two time points",
-        },
-      ]
-      : []
 };

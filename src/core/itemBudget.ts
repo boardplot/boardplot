@@ -107,6 +107,10 @@ function barTotalsAtLeast(data: unknown, threshold: number): number {
 /** How many entries of `list` the chart draws after the reductions its layout applies. */
 function drawnCount(type: string, key: string, list: unknown[], data: unknown, options: BudgetOptions | undefined): number {
   let count = list.length;
+  if (type === 'treemap') return list.filter((item) => {
+    const value = (item as { value?: unknown })?.value;
+    return value !== 0 && value !== null;
+  }).length;
   // A column ignores topN when an anomaly rule needs every period.
   const topN = options?.topN;
   if (TOP_N_TYPES.has(type) && topN?.n !== undefined && topN.n > 0 && !(type === 'column' && options?.anomaly)) {

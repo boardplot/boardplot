@@ -47,8 +47,8 @@ import { accessibleTitle,
   resolveSize,
 } from '../../normalize/shared';
 import { rangeMidUndrawn, resolveCellRange, type RangeMark } from '../../rangeRules';
-import { applyAxisBounds, bandScale, linearScale, niceDomain, type BandScale } from '../../scale';
-import { authoredNotes, frameTextOptions, normalizeLegendOption, solveFrame, type LegendItemInput, plotHeightAfter, authoredFootnoteCount } from '../../frame';
+import { applyAxisBounds, applyTickStep, shownTickStep, bandScale, linearScale, niceDomain, type BandScale } from '../../scale';
+import { authoredNotes, frameTextOptions, normalizeLegendOption, noteLine, solveFrame, type LegendItemInput, plotHeightAfter, authoredFootnoteCount } from '../../frame';
 import { HARD_MINIMUM, rowSizing, SIZE_TOLERANCE } from '../../sizing';
 import { rowDrivenHeight } from '../../rowCanvas';
 import { defaultMeasurer, wrapText, type FontSpec, type TextMeasurer } from '../../text';
@@ -864,7 +864,7 @@ function rowIntervalValues(data: ChartData, options: BarOptions): (number | null
         const range = typeof cell === 'object' && cell !== null && 'range' in cell
           ? (cell as { range?: { low?: number; high?: number; mid?: number } }).range
           : undefined;
-        return range ? [range.low, range.high, ...(options.methodNote === true ? [range.mid] : [])] : [cellValue(cell)];
+        return range ? [range.low, range.high, ...(options.methodNote === true ? [range.mid] : [])] : options.variant === 'football-field' ? [] : [cellValue(cell)];
       }),
     ),
     typeof spine === 'number' ? spine : spine?.value,
@@ -993,6 +993,7 @@ function layoutRowIntervals(
       ? planFootballField(data, options as FootballFieldBarOptions, ctx)
       : planTornado(data, options as TornadoBarOptions, ctx);
   const cats = plan.cats;
+  if (mode === 'football-field' && cats.length < data.categories.length) options = { ...options, notes: { ...options.notes, show: [...new Set([...(options.notes?.show ?? ['note']), 'disclosure' as const])] } };
   const rows = plan.rows;
   const spine = plan.spine;
   // The plan's texts (and their measured widths) may come from a
@@ -1114,7 +1115,7 @@ function layoutRowIntervals(
     };
     const x = linearScale([dLo, dHi], [plot.x, plot.x + plot.w]);
     const titleEnd = axisTitle && !titleRow
-      ? tickRowTitleEnd(axisTitle, { scale: x, plot, orient: 'x', gridlines: false, format: fmt, formatSpec: valueSpec.spec, theme, measure, canvasWidth: size.width }, plot0.x)
+      ? tickRowTitleEnd(axisTitle, { scale: x, ticks: stepped.ticks, plot, orient: 'x', gridlines: false, format: fmt, formatSpec: valueSpec.spec, theme, measure, canvasWidth: size.width }, plot0.x)
       : undefined;
     const minWidth = size.width - plot0.w + nameW + leftReserve + rightReserve + 10;
     return { availH, minWidth, catCap, catLines, catBandW, fixedRow, fixedRowsH, valueBody, plot, x, titleEnd, titleRow };
@@ -1122,11 +1123,13 @@ function layoutRowIntervals(
   // With no tick row nothing reads the round ends, so the bars span the plot.
   // A football field reads its ranges against the current value, not against
   // zero or a round end, so its ticks stand inside the data extent too.
-  const [dLo, dHi] = !axisShown || mode === 'football-field' ? [rawLo, rawHi] : niceDomain(rawLo, rawHi, 5, {
+  const nice: [number, number] = !axisShown || mode === 'football-field' ? [rawLo, rawHi] : niceDomain(rawLo, rawHi, 5, {
     dataExtent: [rawLo, rawHi],
     maxWasteFraction: 0.15,
     preserveDataSideOfZero: true,
   });
+  const stepped = applyTickStep(nice, shownTickStep(options.valueAxis?.tickStep, axisShown, warnings), warnings);
+  const [dLo, dHi] = stepped.domain;
   const planRows = (noNameColumn: boolean, out: LintWarning[]) => {
     const sharedWarnings: LintWarning[] = [];
     const first = rowsFor(false, sharedWarnings, noNameColumn);
@@ -1160,6 +1163,7 @@ function layoutRowIntervals(
     const axis = layoutValueAxis(
       {
         scale: x,
+        ticks: stepped.ticks,
         plot,
         orient: 'x',
         gridlines: options.valueAxis?.gridlines ?? false,
@@ -1666,34 +1670,25 @@ function planFootballField(
     if (!range) missingRange.push(ci);
     return { value: cellValue(cell), meta: cellMeta(cell), range: range! };
   });
-  if (missingRange.length > 0) {
-    // A method with no range has no bar and no text the engine could compose
-    // for it, so it is refused. The fix removes every such method from every
-    // series, reference series included (they share the categories), highest
-    // index first so earlier indices stay valid.
+  if (missingRange.length === cats.length) {
     const first = missingRange[0]!;
-    const seriesOps = data.series.flatMap((entry, seriesIndex) => {
-      const values = Array.isArray(entry.values) ? entry.values as unknown[] : [];
-      return missingRange
-        .map((ci) => values.findIndex((cell, index) => (
-          typeof cell === 'object' && cell !== null && 'categoryId' in cell
-            ? (cell as { categoryId: unknown }).categoryId === cats[ci]!.id
-            : index === ci
-        )))
-        .filter((index) => index >= 0)
-        .sort((a, b) => b - a)
-        .map((index) => ({ op: 'remove' as const, path: `/data/series/${seriesIndex}/values/${index}` }));
-    });
-    const categoryOps = [...missingRange].reverse()
-      .map((ci) => ({ op: 'remove' as const, path: `/data/categories/${ci}` }));
     throw new NormalizeError(
       'football-field-range-required',
       `series[${series.id}].values[${first}].range`,
-      `football-field method '${cats[first]!.id}' requires a range`,
-      'Remove the method from data.categories and from the series values, or give it a range.',
-      missingRange.length < cats.length ? [...seriesOps, ...categoryOps] : undefined,
+      chartString(options, 'footballRangeRequired'),
+      chartString(options, 'footballRangeSuggest'),
     );
   }
+  const missing = new Set(missingRange);
+  const leftOut = missingRange.map(index => cats[index]!.label ?? cats[index]!.id);
+  for (const index of missingRange) warnings.push({
+    code: 'football-field-method-without-range', severity: 'warn',
+    message: chartString(options, 'footballMethodWithoutRange', { v1: cats[index]!.label ?? cats[index]!.id }),
+    owner: { seriesId: series.id, categoryId: cats[index]!.id },
+    field: ['data', 'series', data.series.indexOf(series), 'values', index],
+  });
+  cats = cats.filter((_, index) => !missing.has(index));
+  cells = cells.filter((_, index) => !missing.has(index));
 
   const order = cats.map((_, index) => index);
   const sort = options.sort?.categories ?? 'sheet';
@@ -1831,6 +1826,10 @@ function planFootballField(
       0,
     ) / cells.length;
   if (options.methodNote !== true && ranges.some((range) => range.mid !== undefined)) warnings.push(rangeMidUndrawn());
+  const methodNotes = [
+    ...noteLine(chartString(options, 'footballMethodsLeftOutNote'), leftOut, options).map(disclosureNote),
+    ...(options.methodNote === true && ranges.some((range) => range.mid !== undefined) ? [disclosureNote(options.strings!.rangeMidNote!)] : []),
+  ];
 
   return {
     cats,
@@ -1847,10 +1846,7 @@ function planFootballField(
       : {}),
     ranges,
     valueFmt: fmt,
-    // A tick inside a range: a method note, printed on request.
-    ...(options.methodNote === true && ranges.some((range) => range.mid !== undefined)
-      ? { methodNotes: [disclosureNote(options.strings!.rangeMidNote!)] }
-      : {}),
+    ...(methodNotes.length ? { methodNotes } : {}),
     derived: {
       totals,
       order: cats.map((cat) => cat.id),

@@ -1,6 +1,6 @@
 /**
  * Rows as data from the CLI and MCP: a flat table, inline or read from a
- * local JSON or CSV file, becomes a bare chart's data through its column
+ * local JSON or delimited file, becomes a bare chart's data through its column
  * mapping (src/core/rows.ts). Read from a file, the numbers reach the chart
  * without passing through the caller.
  */
@@ -16,7 +16,7 @@ import { InputError } from './result';
 export { rewriteRowsDiagnostics } from '../core/rows';
 
 /** A rows file larger than this is refused before it is read. */
-const MAX_ROWS_FILE_BYTES = 2 * 1024 * 1024;
+const MAX_ROWS_FILE_BYTES = 10 * 1024 * 1024;
 
 export interface RowsInput {
   rows?: unknown;
@@ -37,21 +37,23 @@ interface RowsReading {
 type Row = Record<string, unknown>;
 
 /**
- * The field separator, read from the header line: a semicolon when it holds
- * more semicolons than commas outside quotes (a German-locale export), else
- * a comma.
+ * The field separator comes from the header outside quotes. A TSV header
+ * with a tab uses tabs; otherwise the most frequent separator wins.
  */
-function csvDelimiter(body: string): ',' | ';' {
+function csvDelimiter(body: string, tsv: boolean): ',' | ';' | '\t' {
   let commas = 0;
   let semicolons = 0;
+  let tabs = 0;
   let quoted = false;
   for (const char of body) {
     if (char === '"') quoted = !quoted;
     else if (!quoted && (char === '\n' || char === '\r')) break;
     else if (!quoted && char === ',') commas++;
     else if (!quoted && char === ';') semicolons++;
+    else if (!quoted && char === '\t') tabs++;
   }
-  return semicolons > commas ? ';' : ',';
+  if (tabs > 0 && (tsv || (tabs > commas && tabs > semicolons))) return '\t';
+  return semicolons > commas && semicolons > tabs ? ';' : ',';
 }
 
 /**
@@ -80,16 +82,16 @@ function uniqueHeaders(header: string[]): { names: string[]; repeats: { name: st
 
 /**
  * RFC 4180 CSV: a header row, quoted fields with "" for a quote, CRLF or LF.
- * The separator is a comma or, detected from the header, a semicolon.
+ * The separator is a comma, semicolon or tab, detected from the header.
  */
-function parseCsv(text: string): { rows: Row[]; delimiter: ',' | ';'; repeats: { name: string; renamed: string }[] } {
+function parseCsv(text: string, tsv: boolean): { rows: Row[]; delimiter: ',' | ';' | '\t'; repeats: { name: string; renamed: string }[] } {
   const records: string[][] = [];
   let record: string[] = [];
   let field = '';
   let quoted = false;
   let started = false;
   const body = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
-  const delimiter = csvDelimiter(body);
+  const delimiter = csvDelimiter(body, tsv);
   for (let index = 0; index < body.length; index++) {
     const char = body[index]!;
     if (quoted) {
@@ -187,7 +189,7 @@ function decodeRows(bytes: Buffer): { text: string; warnings: RowsWarning[] } {
 function readRowsFile(path: unknown): LoadedRows {
   if (typeof path !== 'string' || !isAbsolute(path)) {
     throw new InputError('invalid-argument', 'rowsFile must be an absolute path', {
-      path: '/rowsFile', expected: { condition: 'an absolute path to a .json or .csv file' }, suggest: 'Pass the absolute path of the file.',
+      path: '/rowsFile', expected: { condition: 'an absolute path to a .json, .csv, .tsv or .txt file' }, suggest: 'Pass the absolute path of the file.',
     });
   }
   let real: string;
@@ -201,8 +203,8 @@ function readRowsFile(path: unknown): LoadedRows {
     throw new InputError('rows-unreadable', `cannot read ${path}: ${error instanceof Error ? error.message : error}`, { path: '/rowsFile' });
   }
   const kind = extname(real).toLowerCase();
-  if (kind !== '.json' && kind !== '.csv') {
-    throw new InputError('rows-unreadable', `rowsFile must be a .json or .csv file, not '${kind || 'no extension'}'`, { path: '/rowsFile' });
+  if (!['.json', '.csv', '.tsv', '.txt'].includes(kind)) {
+    throw new InputError('rows-unreadable', `rowsFile must be a .json, .csv, .tsv or .txt file, not '${kind || 'no extension'}'`, { path: '/rowsFile' });
   }
   if (size > MAX_ROWS_FILE_BYTES) {
     throw new InputError('rows-too-large', `${path} has ${size} bytes; a rows file holds at most ${MAX_ROWS_FILE_BYTES}`, {
@@ -211,8 +213,8 @@ function readRowsFile(path: unknown): LoadedRows {
   }
   const bytes = readFileSync(real);
   const { text, warnings } = decodeRows(bytes);
-  if (kind === '.csv') {
-    const { rows, delimiter, repeats } = parseCsv(text);
+  if (kind !== '.json') {
+    const { rows, delimiter, repeats } = parseCsv(text, kind === '.tsv');
     return { rows, bytes, source: path, decimalComma: delimiter === ';', warnings: [...warnings, ...repeats.map(repeatedHeaderWarning)] };
   }
   try {
@@ -230,7 +232,7 @@ export function applyRows(spec: unknown, input: RowsInput): { spec: unknown; dat
     throw new InputError('invalid-argument', 'pass rows or rowsFile, not both', { path: '/rowsFile', fix: [{ op: 'remove', path: '/rowsFile' }] });
   }
   if (input.rows === undefined && input.rowsFile === undefined) {
-    throw new InputError('invalid-argument', 'columns maps rows, and no rows or rowsFile was given', { path: '/columns', suggest: 'Pass rows inline or rowsFile with the path of a .json or .csv file.' });
+    throw new InputError('invalid-argument', 'columns maps rows, and no rows or rowsFile was given', { path: '/columns', suggest: 'Pass rows inline or rowsFile with the path of a .json, .csv, .tsv or .txt file.' });
   }
   let loaded: LoadedRows | undefined;
   const adapted = adaptRows(spec, input.columns, {

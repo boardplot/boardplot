@@ -110,11 +110,11 @@ export const fixtures: Fixture<TreemapData, TreemapOptions>[] = [
     },
   },
   {
-    id: 'zero-value',
-    title: 'Refusal example: a zero value has no area',
+    id: 'negative-value',
+    title: 'Refusal example: a negative value has no area',
     kind: 'torture',
     refuses: { code: 'treemap-value-not-positive' },
-    data: { items: [{ id: 'a', value: 10 }, { id: 'b', value: 0 }] },
+    data: { items: [{ id: 'a', value: 10 }, { id: 'b', value: -1 }] },
   },
 ];
 

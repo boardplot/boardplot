@@ -505,11 +505,13 @@ export function ingestGeoRegions(
   idIndex: GeoRegionIdIndex,
   pack: { where: string; regionWord: string },
   warnings: LintWarning[],
-  unknown: (id: string, index: number) => never,
-): { valuesById: Map<string, number | null>; statesById: Map<string, NamedColumnState> } {
+  unknown: (id: string, index: number) => LintWarning,
+): { valuesById: Map<string, number | null>; statesById: Map<string, NamedColumnState>; leftOut: string[] } {
   const valuesById = new Map<string, number | null>();
   const statesById = new Map<string, NamedColumnState>();
   const claimedBy = new Map<string, string>();
+  const leftOut: string[] = [];
+  let firstUnknown: { warning: LintWarning; index: number } | undefined;
   regions.forEach((datum, index) => {
     const resolution = resolveGeoRegionId(idIndex, datum.id);
     const claims = claimedRegionIds(resolution);
@@ -538,12 +540,22 @@ export function ingestGeoRegions(
       });
       return;
     }
-    if (resolution.kind === 'unknown') return unknown(datum.id, index);
+    if (resolution.kind === 'unknown') {
+      const warning = unknown(datum.id, index);
+      firstUnknown ??= { warning, index };
+      warnings.push(warning);
+      leftOut.push(datum.id);
+      return;
+    }
     const state = normalizeGeoRegionState(datum.value, datum.state, index);
     if (state) statesById.set(resolution.id, state);
     valuesById.set(resolution.id, datum.value);
   });
-  return { valuesById, statesById };
+  if (leftOut.length === regions.length && firstUnknown) {
+    const { warning, index } = firstUnknown;
+    throw new NormalizeError(warning.code, `regions[${index}].id`, warning.message, warning.suggest);
+  }
+  return { valuesById, statesById, leftOut };
 }
 
 function normalizeGeoRegionState(value: number | null, state: unknown, index: number): NamedColumnState | undefined {

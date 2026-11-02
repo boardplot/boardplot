@@ -456,6 +456,59 @@ describe('mechanical lints', () => {
     }
   });
 
+  // Bar and dot refused authored tick spacing, so a caller could not set readable linear ticks without cutting values.
+  it('renders authored bar and dot tick multiples without cutting the values', () => {
+    const data = { categories: ['North', 'South', 'West'], series: [{ id: 'orders', values: [11, 23, 31] }] };
+    const draw = (type: string, step: number, values = data.series[0]!.values) => {
+      const body = render({ spec: { type, data: { ...data, series: [{ id: 'orders', values }] },
+        options: { title: 'Orders by region', size: { width: 960 }, valueAxis: { show: true, tickStep: step } } }, return: ['svg'] }).body as { ok: boolean; svg: string };
+      expect(body.ok).toBe(true);
+      const ticks = [...body.svg.matchAll(/<text[^>]*data-id="axis:x:tick:[^"]*"[^>]*>([\s\S]*?)<\/text>/g)]
+        .map((match) => Number(match[1]!.replace(/<[^>]*>/g, '')));
+      expect(body.svg).toContain('>31<');
+      return ticks;
+    };
+    const bar = draw('bar', 5);
+    expect(bar).toEqual(Array.from({ length: 8 }, (_, i) => i * 5));
+    expect(bar.at(-1)).toBeGreaterThanOrEqual(31);
+    // Dot ticks stay inside the data extent when at least two step multiples fit.
+    expect(draw('dot', 5)).toEqual([15, 20, 25, 30]);
+    // A coarse step falls back to outward bounds so the dot axis still has two ticks.
+    expect(draw('dot', 50)).toEqual([0, 50]);
+  });
+
+  // A step with too many intervals or a logarithmic Y scale cannot draw its authored linear spacing.
+  it('warns when bar or scatter cannot use the authored tick step', () => {
+    const bar = render({ spec: { type: 'bar', data: { categories: ['North'], series: [{ id: 'orders', values: [1000] }] },
+      options: { title: 'Orders', valueAxis: { show: true, tickStep: 1 } } }, return: ['svg'] }).body as { ok: boolean; svg: string; warnings: { code: string; message: string }[] };
+    expect(bar.ok).toBe(true);
+    expect(bar.warnings).toContainEqual(expect.objectContaining({ code: 'tick-step-ignored', message: expect.stringContaining('intervals') }));
+    const scatter = render({ spec: { type: 'scatter', data: { points: [{ id: 'a', x: 1, y: 10 }, { id: 'b', x: 2, y: 100 }] },
+      options: { title: 'Readings', valueAxis: { show: true, log: true, tickStep: 5 } } }, return: ['svg'] }).body as typeof bar;
+    expect(scatter.ok).toBe(true);
+    expect(scatter.warnings).toContainEqual(expect.objectContaining({ code: 'tick-step-ignored', message: expect.stringContaining('linear axis only') }));
+  });
+
+  // A zoomed scatter whose window holds no step multiple crashed with an unserializable NaN tick instead of drawing nice ticks.
+  it('draws nice ticks when no tick step multiple falls inside a scatter view window', () => {
+    const body = render({ spec: { type: 'scatter', data: { points: [{ id: 'a', x: 1, y: 30 }, { id: 'b', x: 2, y: 40 }, { id: 'c', x: 3, y: 95 }] },
+      options: { title: 'Readings', viewDomain: { y: [28, 52] }, valueAxis: { show: true, tickStep: 60 } } }, return: ['svg'] }).body as { ok: boolean; svg: string; warnings: { code: string }[] };
+    expect(body.ok).toBe(true);
+    expect(body.warnings).toContainEqual(expect.objectContaining({ code: 'tick-step-ignored' }));
+  });
+
+  // A hidden value axis has no ticks, so the step used to vanish without a word.
+  it('warns when tickStep is set on a hidden value axis', () => {
+    const data = { categories: ['North', 'South'], series: [{ id: 'orders', values: [11, 23] }] };
+    const bulletRows = { rows: [{ id: 'north', label: 'North', value: 11, target: 14 }, { id: 'south', label: 'South', value: 23, target: 20 }] };
+    const varianceData = { categories: ['North', 'South'], series: [{ id: 'orders', label: 'Orders', values: [11, 23] }, { id: 'py', label: 'Prior year', role: 'reference', values: [9, 25] }] };
+    for (const type of ['bar', 'dot', 'bullet', 'variance']) {
+      const body = render({ spec: { type, data: type === 'bullet' ? bulletRows : type === 'variance' ? varianceData : data, options: { title: 'Orders', ...(type === 'variance' ? { variant: 'absolute', variance: { vs: 'py' } } : {}), valueAxis: { show: false, tickStep: 5 } } }, return: ['svg'] }).body as { ok: boolean; warnings?: { code: string }[] };
+      expect(body.ok, type).toBe(true);
+      expect(body.warnings, type).toContainEqual(expect.objectContaining({ code: 'tick-step-ignored' }));
+    }
+  });
+
   // A share chart kept "in $m" over its percent labels, and a mekko kept "in %" over amounts or dropped a percent cell's sign.
   it('names the percent in the unit line of a share chart and keeps a mekko percent cell as a percent', () => {
     const categories = [{ id: 'east', label: 'East' }, { id: 'west', label: 'West' }];

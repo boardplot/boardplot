@@ -47,7 +47,7 @@ const seriesSchema = z.strictObject({
   label: z.string().optional().describe("Displayed series name; defaults to the series id."),
   values: z.array(
     z.union([rangeCellSchema, z.strictObject({ categoryId: idSchema.describe("Category id identifying this value independently of array position."), value: rangeCellSchema.describe("Cell assigned to the named category in this series.") })]),
-  ).describe("Values in category order, or keyed entries pairing a categoryId with its value."),
+  ).describe("Values in category order, or keyed entries pairing a categoryId with its value. In a football field, null cells and cells without a range are left out with a warning and a note, provided at least one method has a range."),
   scenario: scenarioField('Controls scenario labels and paint conventions.'),
   direction: z.enum(['higherIsBetter', 'lowerIsBetter']).optional().describe("Whether increases are favorable; defaults to higherIsBetter for directional comparisons."),
   role: z.enum(['data', 'reference']).optional().describe("Data series or comparison-only reference series; references are excluded from the main plotted data."),
@@ -79,7 +79,7 @@ export const barOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions(
     .enum(['none', 'last', 'ends', 'extremes', 'all'])
     .optional()
     .describe("Which values print, with line's choices: 'none', 'last', 'ends' (first and last), 'extremes' (first, last, highest and lowest; a tie takes the first) or 'all', chosen per series over the categories in their drawn order. Unset (default): every value is eligible and labelDensity decides. When set, valueLabels wins over labelDensity: each chosen value takes the one-step rule of 'full', and one with no seat is named in the note. A value not chosen is unlabelled by choice: the note does not name it, and the value axis is drawn so it stays readable (all modes but 'all'; valueAxis.show false turns it off). Authored cell labels print in every mode. Grouped only: a stack has no single value per category, so stacked, stacked100, football-field and tornado ignore every mode but 'all' with an option-ignored warning and keep their normal labels and value axis. Example: a ranking of 12 bars with 'extremes' prints the top, bottom, highest and lowest value."),
-  variant: z.enum(['grouped', 'stacked', 'stacked100', 'football-field', 'tornado']).optional().describe("Horizontal arrangement; grouped by default. Stacked100 normalizes category totals; football-field shows ranges and tornado compares low/high driver cases. Every football-field method needs a range: one without is refused with football-field-range-required, and the fix removes the row."),
+  variant: z.enum(['grouped', 'stacked', 'stacked100', 'football-field', 'tornado']).optional().describe("Horizontal arrangement; grouped by default. Stacked100 normalizes category totals; football-field shows ranges and tornado compares low/high driver cases. A football-field method without a range is left out with football-field-method-without-range and a note. At least one method must have a range; otherwise the chart refuses with football-field-range-required."),
   sharesOfOneWhole: z.boolean().optional().describe("true declares every stacked series a share of the same whole, such as channel shares of all orders: the stack then has a total, and percent series warn non-additive-stack only where a category adds to more than 100. Stacked and stacked100 only; refused on other variants."),
   baseValue: z
     .union([

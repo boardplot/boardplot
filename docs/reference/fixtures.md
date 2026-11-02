@@ -150,6 +150,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | tornado-degenerate | bar.tornado | torture | Torture: 14 drivers, a base the model does not reproduce, a dead driver and a gap |
 | tornado-two-drivers | bar.tornado | example | Sensitivity tornado: the two-driver case, direct labels only |
 | tornado-theme-cases | bar.tornado | example | Sensitivity cases using an authored theme pair |
+| tick-step | bar.grouped | example | Horizontal value axis with ticks every five units |
 | usd-k-precision | bar.grouped | example | Unit-aware precision: $k values from 100 up print whole, smaller values keep one decimal |
 | option-reference-line | bar.grouped | example | Actual orders against plan with line references |
 | option-reference-marker | bar.grouped | example | Actual orders against plan with marker references |
