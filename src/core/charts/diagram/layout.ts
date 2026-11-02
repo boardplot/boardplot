@@ -592,7 +592,19 @@ function layoutDiagramPass(
   const edgeLabelSizes = new Map(
     preset.edges.flatMap((edge) =>
       edge.label
-        ? [[edge.id, { width: measure(edge.label, edgeLabelFont).width, height: measure(edge.label, edgeLabelFont).height }] as const]
+        ? [[edge.id, {
+          width: measure(edge.label, edgeLabelFont).width,
+          height: measure(edge.label, edgeLabelFont).height,
+          ...(options.variant === 'circular-process' ? {
+            wrapped: [0.5, 0.65, 0.8].flatMap(share => {
+              const wrapped = wrapText(edge.label!, edgeLabelFont, measure(edge.label!, edgeLabelFont).width * share, 2, measure);
+              return !wrapped.truncated && wrapped.lines.length === 2 ? [{
+                width: Math.max(...wrapped.lines.map(line => measure(line, edgeLabelFont).width)),
+                height: 2 * edgeLabelFont.size * (edgeLabelFont.lineHeight ?? 1.2),
+              }] : [];
+            }),
+          } : {}),
+        }] as const]
         : [],
     ),
   );
@@ -627,7 +639,15 @@ function layoutDiagramPass(
   const edgeLabelKinds = new Map<string, DiagramLabelKind>();
   preset.edges.forEach((edge) => {
     const rect = routed.labelBoxes.get(edge.id);
-    if (!edge.label || !rect) return;
+    if (!edge.label) return;
+    if (!rect) {
+      if (options.variant === 'circular-process') {
+        edgeLabelKinds.set(`edge-label:${edge.id}`, 'diagramEdge');
+        edgeLabelRequests.push({ id: `edge-label:${edge.id}`, kind: 'annotation', typeRole: 'label', owner: { segmentId: edge.id },
+          text: edge.label, lines: [edge.label], font: edgeLabelFont, priority: PRIORITY.interior, candidates: [] });
+      }
+      return;
+    }
     addBoxLabelRequest(
       edgeLabelRequests,
       edgeLabelKinds,
@@ -1474,7 +1494,7 @@ function addNodeCaption(
 
 /** Frame-filling presets need an intrinsic height independent of their current lane bounds. */
 function naturalDiagramSizing(
-  options: DiagramOptions, data: Pick<NormalizedDiagram, 'nodes' | 'groups'>, sizes: ReadonlyMap<string, { width: number; height: number }>,
+  options: DiagramOptions, data: Pick<NormalizedDiagram, 'nodes' | 'groups' | 'edges'>, sizes: ReadonlyMap<string, { width: number; height: number }>,
   font: FontSpec, measure: typeof defaultMeasurer, u: number, measured: ReturnType<typeof contentSizing>, size: { height: number }, plot: Rect,
   headFont: FontSpec = font,
 ) {
@@ -1494,7 +1514,7 @@ function naturalDiagramSizing(
   else if (authored) plotHeight = authoredPlotHeight(nodes, sizes, plot.w, u);
   else if (options.variant === 'circular-process') {
     // The ring with a name-and-detail band above and below it.
-    const { diameter, radius } = circularRing(nodes, { w: plot.w, h: Infinity }, u, { font, measure });
+    const { diameter, radius } = circularRing(nodes, { w: plot.w, h: Infinity }, u, { font, measure }, data.edges);
     plotHeight = 2 * radius + diameter + 2 * circularLabelBand(font, u);
   }
   else if (options.variant === 'roadmap') {

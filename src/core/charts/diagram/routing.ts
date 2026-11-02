@@ -30,7 +30,7 @@ interface RouteDiagramInput {
   edges: readonly DiagramEdge[];
   plot: Rect;
   clearance: number;
-  labelSizes: ReadonlyMap<string, { width: number; height: number }>;
+  labelSizes: ReadonlyMap<string, { width: number; height: number; wrapped?: Array<{ width: number; height: number }> }>;
   reserved: readonly Rect[];
   palette: DiagramPalette;
   /** Routes a preset drew itself (the compact org chart): used as given. */
@@ -147,7 +147,7 @@ export function routeDiagramEdges(theme: Theme, input: RouteDiagramInput): Route
         ...(fixed.labelBox ? { labelBox: fixed.labelBox } : {}),
       };
       if (fixed.labelBox) labelBoxes.set(edge.id, fixed.labelBox);
-      edgeResult.sceneNodeIds = emitRouteScene(theme, edge, edgeResult, scene, claims, input.clearance, warnings, input.palette, input.edgePaint);
+      edgeResult.sceneNodeIds = emitRouteScene(theme, edge, edgeResult, scene, claims, input.clearance, warnings, input.palette, input.edgePaint, input.preset === 'circular-process');
       resolved.push(edgeResult);
       recordPorts({ ...sourcePort, point: start }, { ...targetPort, point: end }, portsByNode, used);
       continue;
@@ -174,6 +174,7 @@ export function routeDiagramEdges(theme: Theme, input: RouteDiagramInput): Route
         warnings,
         input.palette,
         input.edgePaint,
+        true,
       );
       resolved.push({ ...circular, sceneNodeIds: arrowIds });
       recordPorts(sourceCandidates[0]!.port, targetCandidates[0]!.port, portsByNode, used);
@@ -334,7 +335,7 @@ export function routeDiagramEdges(theme: Theme, input: RouteDiagramInput): Route
       sceneNodeIds: [],
     };
     const labelSize = edge.label ? input.labelSizes.get(edge.id) : undefined;
-    if (edge.label && labelSize) {
+    if (edge.label && labelSize && input.preset !== 'circular-process') {
       const labelBox = chooseEdgeLabelBox(points, labelSize, hard, reserved, input.plot, input.clearance);
       if (labelBox) {
         edgeResult.labelBox = labelBox;
@@ -358,6 +359,8 @@ export function routeDiagramEdges(theme: Theme, input: RouteDiagramInput): Route
       input.clearance,
       warnings,
       input.palette,
+      undefined,
+      input.preset === 'circular-process',
     );
     resolved.push(edgeResult);
     if (edgeResult.route.kind === 'polyline') {
@@ -366,6 +369,31 @@ export function routeDiagramEdges(theme: Theme, input: RouteDiagramInput): Route
       );
     }
     recordPorts(best.source.port, best.target.port, portsByNode, used);
+  }
+
+  // A cycle's labels see every route and arrowhead, including arrows routed later.
+  if (input.preset === 'circular-process') {
+    const hard = [...input.nodeRects.values(), ...input.reserved, ...claims.map(claim => claim.rect)]
+      .map(rect => inflate(rect, input.clearance));
+    for (const edge of resolved) {
+      const size = input.labelSizes.get(edge.id);
+      if (!size) continue;
+      const points = edge.route.kind === 'polyline' ? edge.route.points : sampleQuadratic(edge.route.controlPoints);
+      for (const candidate of [size, ...size.wrapped ?? []]) {
+        const box = chooseEdgeLabelBox(points, candidate, hard, reserved, input.plot, 2 * input.clearance, true);
+        if (!box) continue;
+        edge.labelBox = box;
+        labelBoxes.set(edge.id, box);
+        reserved.push(inflate(box, input.clearance));
+        break;
+      }
+      if (!edge.labelBox) warnings.push({
+        code: 'diagram-edge-label-unplaced',
+        severity: 'warn',
+        message: `edge label '${input.edges.find(candidate => candidate.id === edge.id)!.label}' on '${edge.id}' has no collision-free candidate`,
+        owner: edgeOwner(edge.id),
+      });
+    }
   }
 
   for (const ports of portsByNode.values()) {
@@ -818,6 +846,7 @@ function emitRouteScene(
   warnings: LintWarning[],
   palette: DiagramPalette,
   plainPaint: Paint = { token: 'leader' },
+  claimArrowheads = false,
 ): string[] {
   const ids: string[] = [];
   const shaftId = diagramSceneId('edge', edge.id);
@@ -868,7 +897,7 @@ function emitRouteScene(
   }
   ids.push(shaftId);
   if (edge.arrowEnd) {
-    const arrow = arrowScene(edge, resolved, false, clearance, paint);
+    const arrow = arrowScene(edge, resolved, false, clearance, paint, claimArrowheads ? claims : undefined);
     if (arrow) {
       scene.push(arrow);
       ids.push(arrow.id);
@@ -882,7 +911,7 @@ function emitRouteScene(
     }
   }
   if (edge.arrowStart) {
-    const arrow = arrowScene(edge, resolved, true, clearance, paint);
+    const arrow = arrowScene(edge, resolved, true, clearance, paint, claimArrowheads ? claims : undefined);
     if (arrow) {
       scene.push(arrow);
       ids.push(arrow.id);
@@ -917,6 +946,7 @@ function arrowScene(
   atStart: boolean,
   clearance: number,
   fill: Paint,
+  claims?: RouteDiagramResult['claims'],
 ): SceneNode | undefined {
   const points =
     resolved.route.kind === 'polyline'
@@ -937,6 +967,12 @@ function arrowScene(
   const by = tip.y - uy * arrowLength;
   const px = -uy * arrowWidth / 2;
   const py = ux * arrowWidth / 2;
+  claims?.push({
+    rect: boundsOf([tip, { x: bx + px, y: by + py }, { x: bx - px, y: by - py }]
+      .map(point => ({ ...qPoint(point), w: 0, h: 0 }))),
+    edgeId: edge.id,
+    part: 'diagramArrow',
+  });
   return {
     t: 'path',
     id: diagramSceneId('arrow', edge.id, atStart ? 'start' : 'end'),
@@ -957,7 +993,9 @@ function chooseEdgeLabelBox(
   reserved: readonly Rect[],
   plot: Rect,
   clearance: number,
+  extraSeats = false,
 ): Rect | undefined {
+  if (extraSeats) size = { width: Math.ceil(size.width * 2) / 2, height: Math.ceil(size.height * 2) / 2 };
   const segments = points
     .slice(0, -1)
     .map((from, index) => ({ from, to: points[index + 1]! }))
@@ -974,8 +1012,24 @@ function chooseEdgeLabelBox(
     const candidates = [
       { x: centre.x - size.width / 2, y: centre.y - size.height - clearance, w: size.width, h: size.height },
       { x: centre.x - size.width / 2, y: centre.y + clearance, w: size.width, h: size.height },
-    ].map((rect) => ({ x: q(rect.x), y: q(rect.y), w: q(rect.w), h: q(rect.h) }));
-    const accepted = candidates.find(
+    ];
+    if (extraSeats) {
+      const dx = segment.to.x - segment.from.x;
+      const dy = segment.to.y - segment.from.y;
+      const length = Math.hypot(dx, dy);
+      if (length === 0) continue;
+      const nx = -dy / length;
+      const ny = dx / length;
+      const offset = Math.abs(nx) * size.width / 2 + Math.abs(ny) * size.height / 2 + clearance;
+      for (const t of [0.5, 0.25, 0.75]) for (const side of [-1, 1]) {
+        candidates.push({
+          x: segment.from.x + t * dx + side * nx * offset - size.width / 2,
+          y: segment.from.y + t * dy + side * ny * offset - size.height / 2,
+          w: size.width, h: size.height,
+        });
+      }
+    }
+    const accepted = candidates.map(rect => ({ x: q(rect.x), y: q(rect.y), w: q(rect.w), h: q(rect.h) })).find(
       (rect) =>
         rect.x >= plot.x &&
         rect.y >= plot.y &&
