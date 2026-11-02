@@ -44,6 +44,14 @@ describe('ordinary number examples', () => {
     for (const [example, expected] of [['12 m/s', '1200 m/s'], ['50 B', '1200 B'], ['$5 m/s', '$1200 m/s']]) {
       expect(formatWithSpec(1200, parseFormatExample(example!))).toBe(expected);
     }
+    // Prevents currency rates and units with extra text from being divided by a magnitude.
+    for (const unit of ['USD/m', 'USD/m²', 'USD m²', 'USD (m)', 'USDm2']) {
+      expect(formatterFromExample(`1.2 ${unit}`, undefined)(2_500_000)).toBe(`2,500,000.0 ${unit}`);
+    }
+    // Keeps a standalone magnitude after a tail currency consistent across currency codes.
+    for (const currency of ['EUR', 'SEK']) {
+      expect(formatterFromExample(`1.2 ${currency} m`, undefined)(2_500_000)).toBe(`2.5 ${currency} m`);
+    }
     const table = (format: string) => {
       const request = resolveChartRequest({ type: 'table', data: { columns: [{ id: 'name', kind: 'rowLabel', label: 'Region' },
         { id: 'v', kind: 'value', label: 'Value', format }], rows: [1234, -567, 89].map((v, index) => ({ id: String(index), label: String(index), cells: { v } })) },
@@ -76,6 +84,12 @@ describe('ordinary number examples', () => {
     for (const example of ['1.2 "kg"', '1.2 [kg]', '12 "b"', '#1', 'Rank #1']) expect(() => parseFormatExample(example)).not.toThrow();
     const rewritten = readFormatExamples({ series: [{ format: '#,##0', values: [{ number: 12, format: '#,##0' }] }] }, { format: '#,##0' });
     expect(rewritten.warnings.filter(warning => warning.code === 'format-spreadsheet-code')).toHaveLength(1);
+    // Prevents zero-only decimal examples from being mistaken for spreadsheet comma scales.
+    for (const [example, small, grouped] of [['0,00', '1,20', '1.234,50'], ['0,0 €', '1,2 €', '1.234,5 €'],
+      ['0,000', '1,200', '1.234,500'], ['0.0', '1.2', '1,234.5'], ['0.00', '1.20', '1,234.50'],
+      ['00', '1', '1,235'], ['000', '1', '1,235'], ['0,0%', '1,2%', '1.234,5%'], ['0,00 %', '1,20 %', '1.234,50 %']]) {
+      expect([1.2, 1234.5].map(formatterFromExample(example!, undefined)), example).toEqual([small, grouped]);
+    }
   });
 
   // Prevents a unit-only format from forcing the stand-in's decimals onto data at another precision.
@@ -110,6 +124,18 @@ describe('ordinary number examples', () => {
     expect(formatterFromExample('+1,234 EUR−', undefined)(12)).toBe('+12 EUR');
     expect(formatterFromExample('1,234 EUR−', undefined)(-12)).toBe('12 EUR−');
     expect(formatterFromExample('(1,234)-', undefined)(-12)).toBe('(12)');
+    // Keeps direction glyphs inside a unit or prefix in their authored position as literal text.
+    expect([0, 1.2, 1234.5, -50].map(formatterFromExample('1.2 ↑ pts', undefined)))
+      .toEqual(['0.0 ↑ pts', '1.2 ↑ pts', '1,234.5 ↑ pts', '−50.0 ↑ pts']);
+    expect([1.2, -0.5].map(formatterFromExample('Gain ↑ 1.2', undefined))).toEqual(['Gain ↑ 1.2', '−Gain ↑ 0.5']);
+    expect([1.2, -0.5].map(formatterFromExample('(▲1.2)', undefined))).toEqual(['▲1.2', '(▲0.5)']);
+    // Prevents an end glyph from removing an identical literal glyph inside the unit.
+    expect([1.2, -0.5, 0].map(formatterFromExample('1.2 ↑ pts ↑', undefined))).toEqual(['1.2 ↑ pts ↑', '0.5 ↑ pts ↓', '0.0 ↑ pts']);
+    // Keeps direction glyphs at the ends of an example tied to the value's sign.
+    for (const [example, expected] of [['1.2% ▲', ['1.2% ▲', '0.5% ▼', '0.0%']],
+      ['▲ 1.2', ['▲ 1.2', '▼ 0.5', '0.0']], ['1.2 ▲', ['1.2 ▲', '0.5 ▼', '0.0']]] as const) {
+      expect([1.2, -0.5, 0].map(formatterFromExample(example, undefined))).toEqual(expected);
+    }
     const request = resolveChartRequest({ type: 'table', data: { columns: [{ id: 'n', kind: 'rowLabel', label: 'Item' },
       { id: 'v', kind: 'value', label: 'Value', format: '$1.2k-' }], rows: [{ id: 'a', label: 'A', cells: { v: -1200 } }] }, options: {} } as never);
     const svg = renderSvg(requireGeometry(layoutResolvedRequest(request)), request.theme);

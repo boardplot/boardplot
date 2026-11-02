@@ -231,7 +231,7 @@ A `k`, `M` or `B` after the digits scales the value: `"$1.2M"` prints 2,456,000 
 
 - A unit-only format (`"$M"`, `"€bn"`, `"%"`, `"x"`) picks precision from the field's data. A computed field whose values do not exist yet keeps the stand-in precision.
 - Spreadsheet number codes translate to examples with warning `format-spreadsheet-code`. Percent values stay percent points: 12.5 prints `12.5%`.
-- Direction glyphs such as ▲/▼ and ↑/↓ print the sign by value and disappear on zero. `±` means a plus on positives and a minus on negatives. A trailing minus (`"1,234-"`) prints only on negatives.
+- Direction glyphs such as ▲/▼ and ↑/↓ at the start or end of the example print the sign by value and disappear on zero. A glyph inside the prefix or unit stays literal text. `±` means a plus on positives and a minus on negatives. A trailing minus (`"1,234-"`) prints only on negatives.
 - `"1st"` prints English ordinal suffixes, and `"1.2E+06"` prints scientific notation.
 - `options.locale.thousands` also accepts the typed apostrophe (`"'"`) and the narrow no-break space (`"\u202f"`). Grouping and decimal marks come from `options.locale`.
 

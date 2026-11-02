@@ -204,7 +204,7 @@ export function parseFormatExample(example: string, keepWord = false): NumberFor
 
   // Sign markers in the leading part.
   let lead;
-  [lead, after] = exampleSigns(spec, before, after);
+  [lead, after] = exampleSigns(spec, before, after, s);
   if (/[+]/.test(lead)) {
     spec.signed = true;
     lead = lead.replace(/\+/g, '');
@@ -246,7 +246,7 @@ export function parseFormatExample(example: string, keepWord = false): NumberFor
 const SPREADSHEET_CODE = /[#?][#?,.]|[,.][#?]|;/;
 
 function isSpreadsheetCode(text: string): boolean {
-  return SPREADSHEET_CODE.test(text) || (!/[1-9]/.test(text) && /"|\\|\[|[_*].|[0#?],|[Ee][+-]0+/.test(text));
+  return SPREADSHEET_CODE.test(text) || (!/[1-9]/.test(text) && /"|\\|\[|[_*].|[0#?],(?![0-9#?])|[Ee][+-]0+/.test(text));
 }
 
 type CodeToken = { text: string; literal: boolean };
@@ -345,9 +345,10 @@ function isCurrency(text: string): boolean {
 }
 
 function currencyAffixMagnitude(text: string): NumberFormatSpec['magnitude'] | undefined {
-  const magnitude = unitMagnitude(text.trim());
-  if (!magnitude) return undefined;
   const trimmed = text.trim();
+  if (!/^[\p{Sc}\p{L}. ]+$/u.test(trimmed)) return undefined;
+  const magnitude = unitMagnitude(trimmed);
+  if (!magnitude) return undefined;
   return /\p{Sc}/u.test(trimmed) || CURRENCY_CODES.has(trimmed.slice(0, 3).toUpperCase()) || CURRENCY_CODES.has(trimmed.slice(-3).toUpperCase()) ? magnitude : undefined;
 }
 
@@ -375,7 +376,7 @@ export function formatExampleText(example: string): string {
 
 const DIRECTION_GLYPHS = [['▲', '▼'], ['△', '▽'], ['↑', '↓'], ['⬆', '⬇'], ['▴', '▾']] as const;
 
-function exampleSigns(spec: NumberFormatSpec, before: string, after: string): [string, string] {
+function exampleSigns(spec: NumberFormatSpec, before: string, after: string, example: string): [string, string] {
   before = before.replace(/±/g, '+');
   const trailing = /([^\s])([-−])$/.exec(before + '0' + after);
   if (trailing && !/[-−]/.test((before + after).slice(0, -1))) {
@@ -386,13 +387,13 @@ function exampleSigns(spec: NumberFormatSpec, before: string, after: string): [s
     }
   }
   for (const [up, down] of DIRECTION_GLYPHS) {
-    const start = new RegExp(`[${up}${down}](\\s?)`).exec(before);
-    const end = new RegExp(`(\\s?)[${up}${down}]`).exec(after);
+    const start = new RegExp(`^[${up}${down}](\\s?)`).exec(example);
+    const end = new RegExp(`(\\s?)[${up}${down}]$`).exec(example);
     if (!start && !end) continue;
     spec.glyphs = { up, down, at: start ? 'start' : 'end', space: (start ?? end)![1]! };
     spec.signed = true;
     if (start) before = before.replace(start[0], '');
-    else after = after.replace(end![0], '');
+    else after = after.slice(0, -end![0].length);
     break;
   }
   return [before, after];
