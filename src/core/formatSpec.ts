@@ -299,8 +299,23 @@ const SPREADSHEET_CODE = /[#?][#?,.]|[,.][#?]|;/;
 const SPREADSHEET_BRACKET = /^\[(?:Black|Blue|Cyan|Green|Magenta|Red|White|Yellow|Color(?:[1-9]|[1-4][0-9]|5[0-6])|[<>=][^\]]*|\$[^\]]*)\]$/i;
 const SPREADSHEET_SCALE_COMMAS = /[0#?](,+)(?=\s*(?:$|["\\_[;]))/;
 
+/** Remove Excel colour, condition and locale brackets in one pass; other bracket text stays. */
+function withoutSpreadsheetBrackets(text: string): string {
+  let out = '';
+  let at = 0;
+  for (let open = text.indexOf('['); open >= 0; open = text.indexOf('[', at)) {
+    const close = text.indexOf(']', open + 1);
+    if (close < 0) break;
+    out += text.slice(at, open);
+    const bracket = text.slice(open, close + 1);
+    if (!SPREADSHEET_BRACKET.test(bracket)) out += bracket;
+    at = close + 1;
+  }
+  return out + text.slice(at);
+}
+
 function isSpreadsheetCode(text: string): boolean {
-  const withoutInstructions = text.replace(/\[[^\]]*\]/g, bracket => SPREADSHEET_BRACKET.test(bracket) ? '' : bracket);
+  const withoutInstructions = withoutSpreadsheetBrackets(text);
   return SPREADSHEET_CODE.test(text) || (!/[1-9]/.test(withoutInstructions)
     && (withoutInstructions !== text || /"|\\|_[()]|\* |[Ee][+-]0+/.test(text) || SPREADSHEET_SCALE_COMMAS.test(text)));
 }
