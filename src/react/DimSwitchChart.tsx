@@ -1,5 +1,5 @@
-import type { OptionsInput } from '../core/types/optionInput';
 'use client';
+import type { OptionsInput } from '../core/types/optionInput';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { LintWarning } from '../core/types/scene';
 import { compileDimSwitch, dimSwitchTableWarnings, foreignRowId } from '../core/charts/dimswitch/compile';

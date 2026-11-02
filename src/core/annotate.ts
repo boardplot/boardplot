@@ -939,7 +939,7 @@ function placeNote(s: AnnotationScope, ann: Extract<Annotation, { kind: 'callout
       severity: 'info',
       message: `${ann.kind} '${s.id}': the mark already prints ${value}, so \${value} and the words that led into it are left out of the text`,
       owner: { annotationId: s.id },
-      suggest: 'keep it, as the number stands at the mark, or drop ${value} from the text to set the wording yourself',
+      suggest: `keep it, as the number stands at the mark, or drop \${value} from the text to set the wording yourself`,
     });
   }
   if (repeats && !text && !glyph) return;
