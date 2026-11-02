@@ -659,6 +659,8 @@ The KPI hero figure prefers 1.5 × the M title size, rounded in the table unit, 
 
 A callout that uses a side other than `preferSide` reports `callout-side-changed` at info level. The warning names the callout and the side used. It does not change placement.
 
+A callout or note text wider than any free seat wraps to two to four lines at the width that fits, next to its point. A line break written as `\n` stays where the author put it. Text that still finds no seat is named in the "Not labelled on the chart" note, as before.
+
 `story-text-truncated` reports a story title cut at four lines or a body cut at ten lines. Its severity is `warn`. It names the step id, the line limit and `options.story.steps[index].title` or `.body`. It reports only the chosen panel layout. The suggested fix is to shorten that field or give the panel more width.
 
 Every error and warning has one shape:
