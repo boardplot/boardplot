@@ -1652,8 +1652,8 @@ function calloutLabel(
   if ((kind === 'callout' || kind === 'note') && !glyph && head.arrow !== true && head.headline === undefined && !input.gridCallouts) {
     const wrappedSeats: SlotCandidate[] = [];
     // The value printed over the point (the number on its column): the wrapped seats ring it too, and their
-    // leaders start at its edge, so no line crosses the number.
-    const value = anchorValueBox(input.occupied, box, at.owner, lineH * 2);
+    // leaders start at its edge, so no line crosses the number. A row chart keeps its seats on the row instead.
+    const value = reach === undefined ? anchorValueBox(input.occupied, box, at.owner, lineH * 2) : undefined;
     const [wLeft, wTop, wRight, wBottom] = value
       ? [Math.min(left, value.x), Math.min(top, value.y), Math.max(right, value.x + value.w), Math.max(bottom, value.y + value.h)]
       : [left, top, right, bottom];
