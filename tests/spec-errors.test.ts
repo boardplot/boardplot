@@ -29,12 +29,13 @@ function cliValidate(document: unknown) {
   return { code, envelope: JSON.parse(output.join('\n')) as { errors: unknown[] } };
 }
 
+// A text such as "1.234" can be a thousands mark, so it stays refused; "12" is read as a number.
 const invalidData = {
   version: 1,
   charts: [{
     name: 'volume',
     type: 'column',
-    data: { categories: ['A'], series: [{ id: 's', values: ['12'] }] },
+    data: { categories: ['A'], series: [{ id: 's', values: ['1.234'] }] },
   }],
 };
 
@@ -61,7 +62,7 @@ describe('structured spec errors', () => {
     expect(error.errors).toEqual(cli.envelope.errors);
     expect(error.message).toContain('/charts/0/data/series/0/values/0');
     expect(error.message).toContain('Expected:');
-    expect(error.message).toContain('Fix: Replace /charts/0/data/series/0/values/0 with 12.');
+    expect(error.message).toContain('Fix: Replace /charts/0/data/series/0/values/0 with 1.234.');
     expect(error.message).not.toContain('alternatives');
     expect(error.errors[0]).toMatchObject({
       code: 'invalid-data',

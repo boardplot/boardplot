@@ -37,7 +37,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | format | string |  | Format-by-example for the main metric and absolute comparison values (a % example expects percent units: 3.53 for 3.53%). |
 | delta | object |  | Single scenario comparison; cannot be combined with compare. |
 | delta.vs | number | yes | Reference value subtracted from the main metric. |
-| delta.scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). Code of the comparison baseline; a baseline with its own name, such as a month, goes in compare[].label instead. |
+| delta.scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. Code of the comparison baseline; a baseline with its own name, such as a month, goes in compare[].label instead. |
 | delta.direction | string |  | Whether an increase from the reference is favorable. neutral prints ordinary ink without a judgment; omission keeps higherIsBetter. One of `'higherIsBetter'`, `'lowerIsBetter'`, `'neutral'`. |
 | delta.mode | string |  | Display absolute change, relative change, or both. Defaults to relative; under a percent format it defaults to absolute, which prints in pp. A zero or negative vs shows the absolute change with a ref-nonpositive warning, and a value on the other side of zero from vs shows it with a sign-change warning. One of `'absolute'`, `'relative'`, `'both'`. |
 | compare | array |  | One or two named comparisons below the metric; cannot be combined with delta. An empty compare list is the same as none. |
