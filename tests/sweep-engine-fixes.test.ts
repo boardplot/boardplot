@@ -10,15 +10,36 @@ import { resolveTheme } from '../src/core/theme';
 import { measureText } from '../src/core/text';
 
 /** Lay out a catalog fixture through the request path the CLI and React use. */
-function layoutFixture(type: string, id: string) {
+function layoutFixture(type: string, id: string, options: Record<string, unknown> = {}) {
   const fixture = getFixtures(type).find((f) => f.id === id);
   if (!fixture) throw new Error(`no fixture ${type}/${id}`);
-  const request = { type, data: structuredClone(fixture.data), options: structuredClone(fixture.options ?? {}), ...(fixture.annotations ? { annotations: structuredClone(fixture.annotations) } : {}) };
+  const request = { type, data: structuredClone(fixture.data), options: { ...structuredClone(fixture.options ?? {}), ...options }, ...(fixture.annotations ? { annotations: structuredClone(fixture.annotations) } : {}) };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
 }
 
 describe('chart layout edge cases', () => {
+  // On a long line, valueLabels 'all' gave the whole row up and printed no end value, where 'last' prints both.
+  it('a line with valueLabels all that cannot print every value keeps its end values (gap-bracket)', () => {
+    const geometry = layoutFixture('line', 'gap-bracket', { valueLabels: 'all' });
+    const shown = geometry.labels.filter((l: { id: string; hidden?: unknown }) => String(l.id).startsWith('point:') && !l.hidden).map((l: { text: string }) => l.text);
+    expect(shown).toEqual(expect.arrayContaining(['25.0', '18.6']));
+  });
+
+  // The highest value shared a row with the lowest in the thinning sweep, so a wide high label took the room of the low and the low went missing.
+  it('a line with valueLabels extremes prints its low (cycle-bands)', () => {
+    const geometry = layoutFixture('line', 'cycle-bands', { valueLabels: 'extremes' });
+    const shown = geometry.labels.filter((l: { id: string; hidden?: unknown }) => String(l.id).startsWith('point:') && !l.hidden).map((l: { text: string }) => l.text);
+    expect(shown).toContain('−42');
+  });
+
+  // A narrow peak flagged down left the flag seat under the point on the line's way back, so the value 1,502 printed on the line.
+  it('a flagged peak whose flag seat lies on its line keeps its value off the line (orders-strict-k at 320)', () => {
+    const geometry = layoutFixture('line', 'orders-strict-k', { size: { width: 320, height: 386 } });
+    const label = geometry.labels.find((l: { id: string }) => l.id === 'point:orders:w8');
+    expect(!label || label.hidden).toBeTruthy();
+  });
+
   // A dot scatter lost two names with free room: a seat across the 2x2 divider was dropped
   // before its copy slid to the point's side, and a name ranked first kept the seat a later name needed.
   it('scatter keeps every point name where room is free (log-both-stores-revenue)', () => {
@@ -725,5 +746,29 @@ describe('chart layout edge cases', () => {
     const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
     const caps = geometry.scene.filter((node: { part?: string }) => node.part === 'cap').map((node: { id: string; pattern?: string }) => [node.id, node.pattern]);
     expect(caps).toEqual([['mark:cap:up', 'hollow'], ['mark:cap:down', 'hollow']]);
+  });
+
+  // `labels: false` took the only scale with the value labels: histogram bin edges, bullet band names
+  // and edge numbers, and every number of a pyramid. A pinned pyramid height that holds the rows but not
+  // the axis under them still draws, without the axis and with a warning that names the height that keeps it.
+  it('labels false keeps histogram bin edges, bullet band names and a pyramid value axis', () => {
+    const draw = (type: string, id: string, size?: { width: number; height: number }) => {
+      const fixture = getFixtures(type).find((f) => f.id === id)!;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const geometry = layoutResolvedRequest(resolveChartRequest({ type, data: structuredClone(fixture.data), options: { ...structuredClone(fixture.options ?? {}), labels: false, ...(size ? { size } : {}) } } as any) as any) as any;
+      const texts: string[] = geometry.scene.flatMap((node: { t: string; lines?: string[] }) => (node.t === 'text' ? node.lines ?? [] : []));
+      return { geometry, texts, shown: geometry.labels.filter((l: { hidden?: unknown }) => !l.hidden).map((l: { text: string }) => l.text) };
+    };
+    expect(draw('histogram', 'cycle-time-days').shown).toEqual(expect.arrayContaining(['1', '7', '13']));
+    expect(draw('bullet', 'four-band-neutral-ladder').shown).toEqual(expect.arrayContaining(['Poor', 'Leading', '$0', '$50']));
+    const pyramid = draw('pyramid', 'workforce-tenure-gender');
+    expect(pyramid.geometry.axes.filter((axis: { axis: string }) => axis.axis === 'x')).toHaveLength(2);
+    expect(pyramid.texts).toContain('10%');
+    const tight = draw('pyramid', 'workforce-tenure-gender', { width: 900, height: 240 });
+    expect(tight.geometry.warnings.map((w: { code: string }) => w.code)).toContain('value-axis-dropped');
+    expect(tight.geometry.axes.filter((axis: { axis: string }) => axis.axis === 'x')).toHaveLength(0);
+    expect(tight.geometry.scene.length).toBeGreaterThan(0);
+    const keep = Number(/at least (\d+)px/.exec(tight.geometry.warnings.find((w: { code: string }) => w.code === 'value-axis-dropped').suggest)![1]);
+    expect(draw('pyramid', 'workforce-tenure-gender', { width: 900, height: keep }).geometry.axes.filter((axis: { axis: string }) => axis.axis === 'x')).toHaveLength(2);
   });
 });

@@ -633,20 +633,28 @@ describe('a stacked100 SEGMENT annotation reports the value, not the share', () 
   ];
   // All FOUR composition surfaces, each in its own 100% mode. Whatever the
   // geometry is drawn in, the ANNOTATION must speak absolutes.
-  const surfaces: [string, (annotations: unknown) => unknown][] = [
-    ['column.stacked100', (a) => layoutColumn(data as never, { variant: 'stacked100', annotations: a } as never)],
-    ['bar.stacked100', (a) => layoutBar(data as never, { variant: 'stacked100', annotations: a } as never)],
-    ['mekko.stacked100', (a) => layoutMekko(data as never, { variant: 'stacked100', annotations: a } as never)],
+  const surfaces: [string, (annotations: unknown, format?: string) => unknown][] = [
+    ['column.stacked100', (a, format) => layoutColumn(data as never, { variant: 'stacked100', annotations: a, format } as never)],
+    ['bar.stacked100', (a, format) => layoutBar(data as never, { variant: 'stacked100', annotations: a, format } as never)],
+    ['mekko.stacked100', (a, format) => layoutMekko(data as never, { variant: 'stacked100', annotations: a, format } as never)],
     [
       'line.stacked100-area',
-      (a) =>
+      (a, format) =>
         layoutLine(data as never, {
           variant: 'area',
           valueAxis: { percent: true },
           annotations: a,
+          format,
         } as never),
     ],
   ];
+
+  // A percent format sets the shares of a 100% axis. abs and delta state source values, and printed "10.0%" and "+10.0pp" under it.
+  it.each(surfaces)('%s keeps the percent format of the shares off abs and delta', (_name, layout) => {
+    const delta = [{ kind: 'delta', at: { categoryId: 'q2', seriesId: 'a' }, vs: { categoryId: 'q1', seriesId: 'a' } }];
+    expect(annOf(layout(segmentAbs, '1.0%') as never, 'abs')?.computedText).toBe('10');
+    expect(annOf(layout(delta, '1.0%') as never, 'delta')?.computedText).toBe('+10');
+  });
 
   it.each(surfaces)('%s reports 10, not the plotted 67', (_name, layout) => {
     expect(annOf(layout(segmentAbs) as never, 'abs')?.computedText).toBe('10');
