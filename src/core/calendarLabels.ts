@@ -228,8 +228,8 @@ export function dateTickRow(cats: readonly Category[], dateTicks: DateTickInterv
 
 /**
  * The category row an author's categoryAxis.dateTicks asks for, or undefined
- * when none is set. A row without an ISO date on every category keeps its own
- * ticks and says so; a week start the interval cannot use says so too.
+ * when none is set. A row without an ISO date on every category, or with dates
+ * out of time order, keeps its own ticks and says so; a week start the interval cannot use says so too.
  */
 export function authoredDateTicks(
   cats: readonly Category[],
@@ -246,6 +246,15 @@ export function authoredDateTicks(
       message: `categoryAxis.dateTicks '${dateTicks}' was ignored: not every category carries an ISO date, so no calendar interval can be resolved`,
       suggest: "give each category an ISO 'date' or drop categoryAxis.dateTicks",
     });
+  } else if (cats.some((category, i) => i > 0 && category.date! < cats[i - 1]!.date!)) {
+    // A sorted row (sort.categories) is not in time order, and a calendar interval means nothing on it.
+    warnings.push({
+      code: 'date-ticks-unsupported',
+      severity: 'info',
+      message: `categoryAxis.dateTicks '${dateTicks}' was ignored: the categories are not in date order (for example sorted by value), so no calendar interval can be resolved`,
+      suggest: 'keep the categories in date order or drop categoryAxis.dateTicks',
+    });
+    return undefined;
   } else if (dateTicks !== 'weeks' && options.locale?.weekStartsOn !== undefined) {
     warnings.push({
       code: 'week-start-ignored',

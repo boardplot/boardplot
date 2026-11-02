@@ -786,7 +786,7 @@ The fixtures `x-time-daily`, `x-time-berlin-dst`, `x-time-uneven-sensors` and `x
 
 ## Calendar ticks on dated categories
 
-A line, column or combo chart takes `options.categoryAxis.dateTicks` (`years`, `quarters`, `months`, `weeks` or `days`) when every category has an ISO `date`. A short tick under the row marks the first category of each interval, and the labels name those intervals. On column and combo the tick stands at the middle of its band, and every column keeps its place. A category without a date leaves the option unused and warns `date-ticks-unsupported`. `categoryAxis.crossesBetween` is a line setting: column and combo ignore `false` and warn `cross-between-ignored`.
+A line, column or combo chart takes `options.categoryAxis.dateTicks` (`years`, `quarters`, `months`, `weeks` or `days`) when every category has an ISO `date`. A short tick under the row marks the first category of each interval, and the labels name those intervals. On column and combo the tick stands at the middle of its band, and every column keeps its place. A category without a date, or categories not in date order (for example sorted by value), leave the option unused and warn `date-ticks-unsupported`. `categoryAxis.crossesBetween` is a line setting: column and combo ignore `false` and warn `cross-between-ignored`.
 
 ## Themes
 
