@@ -10,7 +10,7 @@ import type { Theme } from '../../types/theme';
 import { diagramSceneId } from './ids';
 import { groupWithin, type NormalizedDiagram } from './model';
 import { snap, type FixedRoute, type OrgChartLayout } from './orgChart';
-import { edgeOwner, laneOwner, nodeOwner, q, qRect, storePath, type DiagramPalette } from './primitives';
+import { BOX_LABEL_INSET, edgeOwner, laneOwner, nodeOwner, q, qRect, storePath, type DiagramPalette } from './primitives';
 
 /**
  * The architecture diagram: zones side by side or labelled lanes, with every
@@ -62,6 +62,7 @@ interface Env {
   name: FontSpec;
   text: FontSpec;
   title: FontSpec;
+  badge: FontSpec;
   measure: TextMeasurer;
   u: number;
   badges: ReadonlyMap<string, Size>;
@@ -106,7 +107,8 @@ export function architectureEligible(options: DiagramOptions): options is Diagra
   return options.variant === 'architecture';
 }
 
-type ArchitectureFonts = { name: FontSpec; text: FontSpec; title: FontSpec };
+/** `badge` sets the callout numbers; `text` the secondary lines. */
+type ArchitectureFonts = { name: FontSpec; text: FontSpec; title: FontSpec; badge: FontSpec };
 type Plan = { geometry: Geometry; routed: Routed; arrangement: Arrangement; order?: Env['order']; neighbours?: Env['neighbours'] };
 
 /**
@@ -206,7 +208,7 @@ function planArchitecture(
   plans?: ArchitecturePlans,
 ): OrgChartLayout {
   // Height never shapes a plan: labels may run past the plot, and emit reports a shortfall.
-  const key = [plot.x, plot.y, plot.w, u, fonts.name.size, fonts.text.size, fonts.title.size].join();
+  const key = [plot.x, plot.y, plot.w, u, fonts.name.size, fonts.text.size, fonts.title.size, fonts.badge.size].join();
   const planned = plans?.get(key);
   const env: Env = { data, options, plot: { ...plot, h: Infinity }, ...fonts, measure, u, badges,
     order: planned?.order ?? rankNodes(data), neighbours: planned?.neighbours ?? neighboursOf(data) };
@@ -649,8 +651,8 @@ function place(arrangement: Arrangement, gaps: ReadonlyMap<string, number>, env:
   const lanesFlow = arrangement.lanes !== undefined;
   const pad = 2.5 * u;
   const titleH = title.size * (title.lineHeight ?? 1.2);
-  const narrowLaneGrid = !!arrangement.labelAbove && arrangement.bands.some((band) => band.cols > 1);
-  const laneZoneGap = narrowLaneGrid ? Math.max(0, titleH / 2 + 2 - 2 * u) : 0;
+  // A zone title centred on its frame keeps 2 px above the nodes, also where the unit is small.
+  const laneZoneGap = Math.max(0, titleH / 2 + 2 - 2 * u);
   const innerGap = 2 * GAP_HALF;
   const unitGap = 2 * GAP_HALF;
   const gap = (key: string, base: number) => Math.max(base, gaps.get(key) ?? 0);
@@ -890,6 +892,12 @@ function placePolicy(geometry: Geometry, env: Env): number | undefined {
   geometry.labelClaims.push(titleBox);
   geometry.zones.push({ id: group.id, bounds: qRect({ x: plot.x, y: y0, w: plot.w, h: y1 - y0 }), titleBox, memberNodeIds: items.map((node) => node.id), dashed: true, depth: 0, policy: true });
   return y1 + 3 * u - plot.y;
+}
+
+/** A callout disc holds its widest number with the boxed label inset, so a small unit cannot blank the digit. */
+function discSize(env: Env): number {
+  const widest = env.measure(String(env.data.callouts.length), env.badge).width;
+  return q(Math.max(DISC_UNITS * env.u, Math.ceil(widest) + BOX_LABEL_INSET));
 }
 
 function laneLabelWidth(env: Env): number {
@@ -1634,7 +1642,7 @@ function edgeLabelBlocks(edge: DiagramEdge, env: Env): LabelBlock[] {
   const one = Math.ceil(measure(edge.label!, text).width) + 1;
   const two = wrapText(edge.label!, text, Math.ceil(one * 0.6), 2, measure);
   // A callout on this edge sits at the end of its label, inside the same seat.
-  const disc = env.data.callouts.some((callout) => 'edgeId' in callout.target && callout.target.edgeId === edge.id) ? DISC_UNITS * env.u + 2 : 0;
+  const disc = env.data.callouts.some((callout) => 'edgeId' in callout.target && callout.target.edgeId === edge.id) ? discSize(env) + 2 : 0;
   const blocks = [{ width: one + disc, height: Math.max(lineH, disc) }];
   const three = wrapText(edge.label!, text, Math.ceil(one * 0.42), 3, measure);
   for (const wrapped of [two, three]) {
@@ -2020,7 +2028,7 @@ function emit(arrangement: Arrangement, geometry: Geometry, routed: Routed, env:
   for (const [id, label] of routed.labels) {
     const route = routed.routes.get(id);
     // A callout's disc takes the end of the seat, and the label keeps the rest.
-    if (route) route.labelBox = calloutEdges.has(id) ? { ...label, w: label.w - DISC_UNITS * env.u - 2 } : label;
+    if (route) route.labelBox = calloutEdges.has(id) ? { ...label, w: label.w - discSize(env) - 2 } : label;
   }
   const scene: SceneNode[] = [];
   const claims: OrgChartLayout['preset']['decorationClaims'] = [];
@@ -2071,7 +2079,7 @@ function emit(arrangement: Arrangement, geometry: Geometry, routed: Routed, env:
     const hit = marked.get(key)!;
     overlay.push({ t: 'circle', id: diagramSceneId('boundary', String(index)), cx: hit.x, cy: hit.y, r: 2.5, fill: { token: 'background' }, stroke: { token: 'axis' }, strokeWidth: hair, owner: {}, part: 'diagramJunction' } as SceneNode);
   });
-  const disc = DISC_UNITS * env.u;
+  const disc = discSize(env);
   const discs = data.callouts.map((callout, index) => {
     const target = callout.target;
     const seat = (point: Point) => qRect({ x: point.x - disc / 2, y: point.y - disc / 2, w: disc, h: disc });
