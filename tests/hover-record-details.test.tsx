@@ -19,6 +19,7 @@ import { LineChart } from '../src/react/charts/line';
 import { labelCardContent, sharedLabelCardContent, layoutLabelCardContent } from '../src/react/hover/labelCard';
 import { categorySiblings, hoverModel, hoverTargets, hoverView } from '../src/react/hover/engine';
 import { highlightScene } from '../src/react/hover/highlight';
+import { getFixtures } from '../src/fixtures';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -307,4 +308,20 @@ it('seats a column card clear of the filled columns of the other categories', ()
   const covered = view.cardInput!.occupied.filter(item => item.kind === 'mark' && item.filled !== false
     && item.rect.x < rect.x + rect.w && rect.x < item.rect.x + item.rect.w && item.rect.y < rect.y + rect.h && rect.y < item.rect.y + item.rect.h);
   expect(covered).toEqual([]);
+});
+
+// The card seat beside the mark won before cost was compared when it covered only text, so the card hid other series' end labels and values.
+it('seats a card clear of the chart text when the chart has a clear seat', () => {
+  const fixture = getFixtures('slope').find(candidate => candidate.id === 'market-share-shift')!;
+  const { request, geometry } = build({ type: 'slope', data: fixture.data, options: fixture.options, annotations: fixture.annotations });
+  const model = hoverModel(request, geometry);
+  const { owner } = fixture.hover!;
+  const hit = model.records.find(record => record.target.owner.seriesId === owner.seriesId && record.target.owner.categoryId === owner.categoryId)!;
+  const view = hoverView(model, request, geometry, [hit.id], { card: true, highlight: false, keyboard: false });
+  const { rect } = view.card!;
+  const covered = view.cardInput!.occupied.filter(item => item.kind !== 'mark' && Math.min(item.rect.w, item.rect.h) > 2
+    && item.rect.x < rect.x + rect.w && rect.x < item.rect.x + item.rect.w && item.rect.y < rect.y + rect.h && rect.y < item.rect.y + item.rect.h);
+  expect(covered).toEqual([]);
+  expect(rect.x).toBeGreaterThanOrEqual(8);
+  expect(rect.x + rect.w).toBeLessThanOrEqual(geometry.size.width - 8);
 });
