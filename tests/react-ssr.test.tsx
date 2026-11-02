@@ -44,6 +44,10 @@ it('renders refusal diagnostics for invalid sizes and themes on the server', () 
   expect(theme).toContain('standard-dark');
   expect(renderToStaticMarkup(<ColumnChart data={data} size={'huge' as never} />)).toContain('invalid-size');
   expect(renderToStaticMarkup(<ColumnChart data={data} size={{ width: '480' } as never} />)).toContain('invalid-size');
+  // A width measured minus padding can reach zero or below; the card must draw, not throw.
+  for (const size of [0, -5, { width: 0 }, { width: 600, height: -1 }]) expect(renderToStaticMarkup(<ColumnChart data={data} size={size} />)).toContain('invalid-size');
+  expect(renderToStaticMarkup(<ColumnChart data={data} size="container" fallbackSize={0} />)).toContain('invalid-size');
+  expect(renderToStaticMarkup(<TableChart data={fixture.data} size={0} />)).toContain('invalid-size');
   expect(renderToStaticMarkup(<ColumnChart data={data} size="container" fallbackSize={'huge' as never} />)).toContain('invalid-size');
   expect(renderToStaticMarkup(<TableChart data={fixture.data} theme="nope" />)).toContain('unknown-theme');
   expect(renderToStaticMarkup(<TableChart data={fixture.data} size={'huge' as never} />)).toContain('invalid-size');

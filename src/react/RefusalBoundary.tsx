@@ -1,6 +1,7 @@
 import { Component, useContext, useMemo, type ReactNode } from 'react';
 import type { Size } from '../core/geometry';
-import { NormalizeError, resolveSize } from '../core/normalize/shared';
+import { NormalizeError } from '../core/normalize/shared';
+import { DEFAULT_TARGET, resolveTargetSize } from '../core/target';
 import { resolveTheme } from '../core/theme';
 import type { RenderTarget } from '../core/types/options';
 import type { ThemeRef } from '../core/types/theme';
@@ -27,8 +28,8 @@ function findingOf(error: NormalizeError): RefusalFinding {
 }
 
 /** The frame a refusal card takes when a chart prop broke the layout: the asked size, or the default when the size itself is the bad prop. */
-export function frameSize(size: Parameters<typeof resolveSize>[0], target: RenderTarget | undefined): Size | undefined {
-  try { return resolveSize(size, target); } catch { return undefined; }
+export function frameSize(size: Parameters<typeof resolveTargetSize>[1], target: RenderTarget | undefined): Size | undefined {
+  try { return resolveTargetSize(target ?? DEFAULT_TARGET, size).sizePx; } catch { return undefined; }
 }
 
 /**
@@ -75,7 +76,8 @@ export function RefusalBoundary({ watch, fallback, children, size, fallbackSize,
   const inherited = useContext(BoardplotThemeContext);
   const finding = useMemo(() => {
     try {
-      resolveSize(size === 'container' ? fallbackSize : size, target ?? inherited?.target);
+      // The strict check the public boundary runs: width and height must be finite and above zero.
+      resolveTargetSize(target ?? inherited?.target ?? DEFAULT_TARGET, size === 'container' ? fallbackSize : size);
     } catch (error) {
       if (error instanceof NormalizeError) return findingOf(error);
     }
