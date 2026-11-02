@@ -159,6 +159,7 @@ function annotateMekko(
     format: env.options.format,
     locale: env.options.locale?.language,
     strings: env.options.strings,
+    sharesFormat: domain.mode === 'percent',
     valueLinePercentLevels: env.options.unit === '%' || domain.mode === 'percent',
     solveCtx,
     yScale: y,

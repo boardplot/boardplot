@@ -454,6 +454,7 @@ function annotateLine(
     locale: options.locale?.language,
     strings: options.strings,
     percentLevels: !rebased && percentLevels(dataSeries),
+    sharesFormat: domain.variant === 'stacked100-area',
     valueLinePercentLevels: !rebased && (domain.variant === 'stacked100-area' || domain.options.unit === '%' || percentLevels(dataSeries)),
     solveCtx,
     yScale: y,
