@@ -241,6 +241,16 @@ Without an authored format, each table column and each chart series gets one pre
 
 A `k`, `M` or `B` after the digits of a format example scales the value: `"$1.2M"` prints 2,456,000 as `$2.5M`, and `"1.2k"` prints 1,250 as `1.3k`. The letter must touch the digits. After a space it is a unit: `"12 m/s"` and `"50 B"` print the value as it is. The words `mn`, `bn`, `Mio.`, `Mrd.`, `thousand`, `million` and `billion` scale with or without a space.
 
+A plain example fixes decimals: `"$1.2M"` prints 4,270,000 as `$4.3M`. With no digit, one `@` per figure fixes significant figures:
+
+| Value | `"$@@@M"` | `"$1.2M"` |
+| --- | --- | --- |
+| 42,700,000 | $42.7M | $42.7M |
+| 4,270,000 | $4.27M | $4.3M |
+| 430,000 | $0.430M | $0.4M |
+
+Trailing zeros stay. The value rolls up at 1000: 999,600 prints `$1.00M`, and 999,960,000 prints `$1.00B`. A scale word holds the authored scale for a value far below it. Axis ticks keep the example's style and take their digits from their spacing: `$10M`, not `$10.0M`. Write every `@` in one run. A split run such as `"@@.@%"` is refused with the fix `"@@@%"`. More than 15 figures are refused. A digit anywhere makes an ordinary example, where `@` stays literal text.
+
 An example with one dot before three digits, such as `"1.234"`, can be a thousands group or three decimals. The chart's numbers decide. Where every number is below 1000 and one has a fraction, it means three decimals: 0.512 prints `0.512`. Otherwise it is a group: 1,200 prints `1,200`, and where a small number loses its fraction beside large ones, the warning `format-reads-as-group` names it. `"0.000"` always means three decimals, and `"1,234"` always means a group.
 
 ### Shares that add up

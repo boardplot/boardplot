@@ -15,7 +15,9 @@ import { canDraw, getChartDefinition, layoutResolvedRequest, measure, renderSvg,
 import { getFixtures } from '../src/fixtures';
 import { checkedColor } from '../src/core/svg/paint';
 import { compositeColor, contrastRatio } from '../src/core/color';
-import { registerTheme, resolveTheme } from '../src/core/theme';
+import { emphasisWeight, paintColor, registerTheme, resolveTheme, secondaryFont, themeForWidth } from '../src/core/theme';
+import { repaintScene } from '../src/core/repaintGeometry';
+import type { SceneNode } from '../src/core/types/scene';
 import { tableStylesheet } from '../src/react/tablePresentation';
 import { parseJsonPointer, patchApplies, type JsonPatchOperation } from '../src/core/diagnostics/jsonPatch';
 import { parseChartSpec } from '../src/react/parseChartSpec';
@@ -219,6 +221,71 @@ describe('actionable input refusals', () => {
   const architectureNode = (id: string, fields: Partial<DiagramData['nodes'][number]> = {}): DiagramData['nodes'][number] => ({ id, kind: 'step', shape: { kind: 'rectangle' }, label: id, ...fields });
   const architectureLane = { id: 'l', label: 'Layer', orientation: 'horizontal' as const };
   const architectureLanes = { variant: 'architecture', flow: 'lanes' } as const;
+
+  // Architecture metadata and edge labels must stay quieter than node names without losing contrast on solid fills.
+  it('sets Brevinth metadata and edge labels in muted secondary type and centres the node text block', () => {
+    const data: DiagramData = {
+      nodes: [
+        architectureNode('gateway', { label: 'Brevinth gateway', secondaryLabel: 'Event intake' }),
+        architectureNode('store', { label: 'Event store', secondaryLabel: 'Retained events' }),
+      ],
+      edges: [{ id: 'send', source: { nodeId: 'gateway' }, target: { nodeId: 'store' }, label: 'Sends events' }],
+    };
+    const options: DiagramOptions = { variant: 'architecture', highlight: 'gateway', size: { width: 720, height: 300 } };
+    const themeRef = { preset: 'standard', overrides: { type: { secondary: { family: 'Geist', size: 11, weight: 600 } } } };
+    const input = { type: 'diagram', data, options, theme: themeRef };
+    const theme = themeForWidth(resolveChartRequest(input).theme, 720);
+    const geometry = measure(input).geometry!;
+    const text = (id: string, scene = geometry.scene) => scene.find(node => node.t === 'text' && node.id === `label:${id}`) as Extract<SceneNode, { t: 'text' }>;
+    const name = text('node-label:store');
+    const metadata = text('secondary-label:store');
+    const edge = text('edge-label:send');
+    expect(name.font).toEqual({ family: theme.type.family, ...theme.type.label, weight: emphasisWeight(theme) });
+    expect(metadata.font).toEqual({ ...secondaryFont(theme), weight: 400 });
+    expect(edge.font).toEqual(metadata.font);
+    expect(metadata.ink).toMatchObject({ token: 'inkMuted' });
+    expect(edge.ink).toEqual({ token: 'inkMuted' });
+    expect(edge.lines.join(' ')).toBe('Sends events');
+    const primary = geometry.labels.find(label => label.id === 'node-label:store')!;
+    const second = geometry.labels.find(label => label.id === 'secondary-label:store')!;
+    const node = (geometry.marks.nodes as DiagramMarks['nodes']).find(node => node.id === 'store')!;
+    expect(second.hidden).toBeUndefined();
+    expect(second.rect.h).toBeCloseTo(metadata.font.size * (metadata.font.lineHeight ?? 1.2), 0);
+    expect(second.rect.y - primary.rect.y - primary.rect.h).toBeCloseTo(0.5 * Math.max(4, theme.space.labelPad), 2);
+    expect((primary.rect.y + second.rect.y + second.rect.h) / 2).toBeCloseTo(node.rect.y + node.rect.h / 2, 2);
+    const rendered = render({ spec: input, return: ['svg'] });
+    expect(rendered.body.ok, JSON.stringify(rendered.body.errors)).toBe(true);
+    const drawnLabel = (rendered.body.svg as string).match(/<text\b[^>]*id="[^"]*label:secondary-label:store"[^>]*>/)?.[0];
+    expect(drawnLabel).toContain(`font-size="${metadata.font.size}"`);
+    expect(drawnLabel).toContain('font-weight="400"');
+    expect(drawnLabel).toContain(`fill="${paintColor(theme, metadata.ink)}"`);
+    for (const preset of ['standard', 'standard-dark']) {
+      const active = themeForWidth(resolveChartRequest({ ...input, theme: { ...themeRef, preset } }).theme, 720);
+      const repainted = repaintScene(geometry.scene, active);
+      const fresh = measure({ ...input, theme: { ...themeRef, preset } }).geometry!;
+      expect(paintColor(active, text('secondary-label:store', repainted).ink)).toBe(active.color.inkMuted);
+      expect(paintColor(active, text('edge-label:send', repainted).ink)).toBe(active.color.inkMuted);
+      const inverse = paintColor(active, text('node-label:gateway', fresh.scene).ink);
+      expect(paintColor(active, text('secondary-label:gateway', fresh.scene).ink)).toBe(inverse);
+      expect(paintColor(active, text('secondary-label:gateway', repainted).ink)).toBe(inverse);
+    }
+  });
+
+  // A policy strip box rounded down to the half pixel ended short of its own text, so the second line was dropped at 320 px.
+  it('keeps the second line of a policy strip item at 320 px', () => {
+    const data: DiagramData = {
+      nodes: [
+        architectureNode('audit', { label: 'Audit', secondaryLabel: 'Every request', groupId: 'pol' }),
+        architectureNode('gateway', { label: 'Gateway', secondaryLabel: 'Brevinth edge' }),
+        architectureNode('orders', { label: 'Orders', secondaryLabel: 'Brevinth core' }),
+      ],
+      edges: [{ id: 'send', source: { nodeId: 'gateway' }, target: { nodeId: 'orders' } }],
+      groups: [{ id: 'pol', title: 'Policy', kind: 'policy' }],
+    };
+    const result = render({ spec: { type: 'diagram', data, options: { variant: 'architecture', title: 'Every request passes the audit before it reaches an order', size: { width: 320 } } } });
+    expect(result.body.ok).toBe(true);
+    expect((result.body.warnings as { code: string }[]).map(w => w.code)).not.toContain('diagram-secondary-label-unplaced');
+  });
 
   // An unknown theme colour key must name the supported roles so the caller can repair it.
   it('lists the accepted theme colour keys', () => {

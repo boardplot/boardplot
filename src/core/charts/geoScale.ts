@@ -18,7 +18,7 @@ import type { Direction } from '../types/cell';
 import type { LintWarning, Paint } from '../types/scene';
 import type { Theme } from '../types/theme';
 import { intervalText } from '../format';
-import { exampleSpec, formatWithSpec, MAGNITUDE_DIVISOR, parseFormatExample } from '../formatSpec';
+import { exampleSpec, formatWithSpec, MAGNITUDE_DIVISOR, parseFormatExample, roundedNumber } from '../formatSpec';
 import { autoDecimals, MAX_FORMAT_DECIMALS } from '../formatPrecision';
 import { NormalizeError } from '../normalize/shared';
 import { claimedRegionIds, resolveGeoRegionId, type GeoRegionIdIndex } from '../geo/resolveRegionId';
@@ -139,6 +139,8 @@ function printedEdge(value: number, format: string | undefined, decimals?: numbe
     return Math.round(value * 10 ** decimals) / 10 ** decimals;
   }
   const spec = parseFormatExample(format);
+  // Explicit thresholds use the figure count rather than its fallback decimal count.
+  if (spec.significantDigits !== undefined && decimals === undefined) return roundedNumber(value, spec);
   const unit = MAGNITUDE_DIVISOR[spec.magnitude];
   const places = decimals ?? spec.decimals;
   // Integer times unit, then one division: dividing first leaves 8300000.000000001 for $8.3M.
