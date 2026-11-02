@@ -17,6 +17,7 @@ import { NOT_AVAILABLE } from '../src/core/format.ts';
 import { cubicPoint } from '../src/core/curve.ts';
 import { formatScenarios, resolveSubtitle } from '../src/core/normalize/shared.ts';
 import { liveWindowOptions } from '../src/core/viewport.ts';
+import { printsOnlyShares } from '../src/core/frame.ts';
 import { themeForWidth, strokeToken, paintColor, solidMutedPlan } from '../src/core/theme.ts';
 import { isHatchPattern } from '../src/core/svgPath.ts';
 import { chartReading } from '../src/core/reading.ts';
@@ -304,7 +305,7 @@ export function auditGeometry(item, request, geometry, skipped = []) {
     // The frame adds a unit after the measure. A wrapped separator becomes a line break.
     const sub = resolveSubtitle(options.subtitle);
     const units = [options.unit, geometry.derived.table?.unit,
-      options.variant === 'relative' ? '%' : undefined,
+      options.variant === 'relative' || printsOnlyShares(request.type, options, geometry.derived) ? '%' : undefined,
       geometry.derived.basis === 'shareOfTotal' ? '% of the grand total' : undefined,
       geometry.derived.basis === 'shareOfGroup' ? '% of each snapshot' : undefined,
       geometry.derived.basis === 'shareOfGroup' ? '% of each group' : undefined].filter(Boolean);

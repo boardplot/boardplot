@@ -34,7 +34,7 @@ import type { LintWarning, PlacedAnnotation } from '../../types/scene';
 import { valueLineExtent, type ValueLineExtent } from '../../valueLineDomain';
 import { applyCategoryViewport, liveWindowOptions, viewportMeanSpan } from '../../viewport';
 import { VALUE_LINE_RESERVE } from '../../annotateParts';
-import { accumulateStack, averageMarkerLine, averageMarkerMean, averageMarkerSpan, averageMarkerScope as averageMarkerScopeOf, averageOfUnaddedSums, averageOfWholeShares, grandTotalRequested, compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning, plottedMean, sortSegments, stackTotalFormatter, warnIncompleteStacks, withoutShareMean } from '../band/stacks';
+import { accumulateStack, averageMarkerLine, averageMarkerMean, averageMarkerSpan, averageMarkerScope as averageMarkerScopeOf, averageOfUnaddedSums, averageOfWholeShares, grandTotalRequested, compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning, plottedMean, sortSegments, stackTotalFormatter, warnIncompleteStacks, warnShareFormatIgnored, withoutShareMean } from '../band/stacks';
 import { NO_STACK_MEAN, stackAdds } from '../../stackAdds';
 import { isIncomplete, warnShareRoundingDrift } from '../../dataGaps';
 import { roundingUnavailable, shareRoundingNotes, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
@@ -47,7 +47,7 @@ import { PANEL_KEYED } from './model';
 import type { AnomalyColumnOptions } from './types';
 import { currentSmallValues } from '../../formatPrecision';
 import { disclosuresShown } from '../../notes';
-import { cappedItems } from '../../frame';
+import { cappedItems, columnSegmentsPrintAbsolute } from '../../frame';
 import { maxOf } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
 
@@ -1021,6 +1021,7 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
   }
   const sharesOn = variant === 'stacked100' && contentOf(options, 'segment', ['percent'])?.includes('percent') === true;
   warnIncompleteStacks(variant, cats, basis.incompleteCats, gtContent !== null, sharesOn, 'columns', warnings, disclosuresShown(options));
+  warnShareFormatIgnored(variant, options.format, shareFormatExample(options), gtContent?.includes('absolute') === true || columnSegmentsPrintAbsolute(options), warnings);
   // Every computed share the chart prints takes one precision.
   const shareSet = shareSetFormatter(cats.flatMap((_, ci) => dataSeries.flatMap((s) => basis.shareOf(s, ci) ?? [])), options.locale?.language);
   // An authored total100 is the author's whole. Percent cells take part, as on bar:
