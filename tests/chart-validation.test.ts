@@ -15,7 +15,9 @@ import { canDraw, getChartDefinition, measure, resolveChartRequest } from '../sr
 import { getFixtures } from '../src/fixtures';
 import { checkedColor } from '../src/core/svg/paint';
 import { compositeColor, contrastRatio } from '../src/core/color';
-import { registerTheme, resolveTheme } from '../src/core/theme';
+import { emphasisWeight, paintColor, registerTheme, resolveTheme, secondaryFont, themeForWidth } from '../src/core/theme';
+import { repaintScene } from '../src/core/repaintGeometry';
+import type { SceneNode } from '../src/core/types/scene';
 import { tableStylesheet } from '../src/react/tablePresentation';
 
 describe('design system colours', () => {
@@ -110,6 +112,71 @@ describe('actionable input refusals', () => {
   const architectureLane = { id: 'l', label: 'Layer', orientation: 'horizontal' as const };
   const architectureLanes = { variant: 'architecture', flow: 'lanes' } as const;
 
+  // Architecture metadata and edge labels must stay quieter than node names without losing contrast on solid fills.
+  it('sets Brevinth metadata and edge labels in muted secondary type and centres the node text block', () => {
+    const data: DiagramData = {
+      nodes: [
+        architectureNode('gateway', { label: 'Brevinth gateway', secondaryLabel: 'Event intake' }),
+        architectureNode('store', { label: 'Event store', secondaryLabel: 'Retained events' }),
+      ],
+      edges: [{ id: 'send', source: { nodeId: 'gateway' }, target: { nodeId: 'store' }, label: 'Sends events' }],
+    };
+    const options: DiagramOptions = { variant: 'architecture', highlight: 'gateway', size: { width: 720, height: 300 } };
+    const themeRef = { preset: 'standard', overrides: { type: { secondary: { family: 'Geist', size: 11, weight: 600 } } } };
+    const input = { type: 'diagram', data, options, theme: themeRef };
+    const theme = themeForWidth(resolveChartRequest(input).theme, 720);
+    const geometry = measure(input).geometry!;
+    const text = (id: string, scene = geometry.scene) => scene.find(node => node.t === 'text' && node.id === `label:${id}`) as Extract<SceneNode, { t: 'text' }>;
+    const name = text('node-label:store');
+    const metadata = text('secondary-label:store');
+    const edge = text('edge-label:send');
+    expect(name.font).toEqual({ family: theme.type.family, ...theme.type.label, weight: emphasisWeight(theme) });
+    expect(metadata.font).toEqual({ ...secondaryFont(theme), weight: 400 });
+    expect(edge.font).toEqual(metadata.font);
+    expect(metadata.ink).toMatchObject({ token: 'inkMuted' });
+    expect(edge.ink).toEqual({ token: 'inkMuted' });
+    expect(edge.lines.join(' ')).toBe('Sends events');
+    const primary = geometry.labels.find(label => label.id === 'node-label:store')!;
+    const second = geometry.labels.find(label => label.id === 'secondary-label:store')!;
+    const node = (geometry.marks.nodes as DiagramMarks['nodes']).find(node => node.id === 'store')!;
+    expect(second.hidden).toBeUndefined();
+    expect(second.rect.h).toBeCloseTo(metadata.font.size * (metadata.font.lineHeight ?? 1.2), 0);
+    expect(second.rect.y - primary.rect.y - primary.rect.h).toBeCloseTo(0.5 * Math.max(4, theme.space.labelPad), 2);
+    expect((primary.rect.y + second.rect.y + second.rect.h) / 2).toBeCloseTo(node.rect.y + node.rect.h / 2, 2);
+    const rendered = render({ spec: input, return: ['svg'] });
+    expect(rendered.body.ok, JSON.stringify(rendered.body.errors)).toBe(true);
+    const drawnLabel = (rendered.body.svg as string).match(/<text\b[^>]*id="[^"]*label:secondary-label:store"[^>]*>/)?.[0];
+    expect(drawnLabel).toContain(`font-size="${metadata.font.size}"`);
+    expect(drawnLabel).toContain('font-weight="400"');
+    expect(drawnLabel).toContain(`fill="${paintColor(theme, metadata.ink)}"`);
+    for (const preset of ['standard', 'standard-dark']) {
+      const active = themeForWidth(resolveChartRequest({ ...input, theme: { ...themeRef, preset } }).theme, 720);
+      const repainted = repaintScene(geometry.scene, active);
+      const fresh = measure({ ...input, theme: { ...themeRef, preset } }).geometry!;
+      expect(paintColor(active, text('secondary-label:store', repainted).ink)).toBe(active.color.inkMuted);
+      expect(paintColor(active, text('edge-label:send', repainted).ink)).toBe(active.color.inkMuted);
+      const inverse = paintColor(active, text('node-label:gateway', fresh.scene).ink);
+      expect(paintColor(active, text('secondary-label:gateway', fresh.scene).ink)).toBe(inverse);
+      expect(paintColor(active, text('secondary-label:gateway', repainted).ink)).toBe(inverse);
+    }
+  });
+
+  // A policy strip box rounded down to the half pixel ended short of its own text, so the second line was dropped at 320 px.
+  it('keeps the second line of a policy strip item at 320 px', () => {
+    const data: DiagramData = {
+      nodes: [
+        architectureNode('audit', { label: 'Audit', secondaryLabel: 'Every request', groupId: 'pol' }),
+        architectureNode('gateway', { label: 'Gateway', secondaryLabel: 'Brevinth edge' }),
+        architectureNode('orders', { label: 'Orders', secondaryLabel: 'Brevinth core' }),
+      ],
+      edges: [{ id: 'send', source: { nodeId: 'gateway' }, target: { nodeId: 'orders' } }],
+      groups: [{ id: 'pol', title: 'Policy', kind: 'policy' }],
+    };
+    const result = render({ spec: { type: 'diagram', data, options: { variant: 'architecture', title: 'Every request passes the audit before it reaches an order', size: { width: 320 } } } });
+    expect(result.body.ok).toBe(true);
+    expect((result.body.warnings as { code: string }[]).map(w => w.code)).not.toContain('diagram-secondary-label-unplaced');
+  });
+
   // An unknown theme colour key must name the supported roles so the caller can repair it.
   it('lists the accepted theme colour keys', () => {
     const [error] = errors({ ...bar, options: { theme: { preset: 'boardroom', overrides: { color: { ink2: '#123456' } } } } });
@@ -127,6 +194,50 @@ describe('actionable input refusals', () => {
     ] }, options: { unit: 'EUR', secondaryAxis: { acknowledge: true }, axisTitles: { secondary: 'Other units' } } });
     expect(secondary).toMatchObject({ code: 'unit-conflict', path: '/data/series/2/unit', suggest: expect.stringContaining('secondary series one unit') });
     expect(secondary?.suggest).not.toContain('options.unit');
+  });
+
+  // Unlike units on one value axis make grouped and stacked bars or columns unreadable.
+  it('refuses conflicting units on bar and column value axes', () => {
+    const series = [
+      { id: 'reference', role: 'reference', unit: 'USD', values: [9] },
+      { id: 'first', unit: 'EUR k', values: [100] },
+      { id: 'implicit', values: [20] },
+      { id: 'same', unit: 'EURk', values: [10] },
+      { id: 'conflict', unit: 'x', values: [2] },
+      { id: 'later', unit: '%', values: [3] },
+    ];
+    const data = { categories: ['a'], series };
+    for (const type of ['bar', 'column']) {
+      for (const variant of ['grouped', 'stacked']) {
+        const options = { variant, sort: { segments: 'reverse' } };
+        const result = render({ spec: { type, data, options } }).body;
+        expect(result.ok).toBe(false);
+        expect(result.errors).toEqual(expect.arrayContaining([expect.objectContaining({
+          code: 'unit-conflict', path: '/data/series/4/unit',
+          message: expect.stringContaining("series 'conflict'"),
+          suggest: expect.stringMatching(/give the series one unit.*own charts/),
+        })]));
+        const layout = getChartDefinition(type)!.layout(data, options);
+        expect(layout.warnings).toEqual(expect.arrayContaining([expect.objectContaining({
+          code: 'unit-conflict', severity: 'error', field: ['data', 'series', 4, 'unit'],
+        })]));
+        const accepted = render({ spec: { type, data: { ...data, series: series.slice(0, 4) }, options: { ...options, unit: 'EURk' } } }).body;
+        expect(accepted.ok).toBe(true);
+        const chartUnit = render({ spec: { type, data, options: { ...options, unit: 'x' } } }).body;
+        expect(chartUnit.ok).toBe(false);
+        expect(chartUnit.errors).toEqual(expect.arrayContaining([expect.objectContaining({
+          code: 'unit-conflict', path: '/data/series/1/unit', suggest: expect.stringContaining('options.unit'),
+        })]));
+      }
+      expect(render({ spec: { type, data, options: { variant: 'stacked100' } } }).body.ok).toBe(true);
+    }
+    expect(render({ spec: { type: 'column', data, options: { valueAxis: { percent: true } } } }).body.ok).toBe(true);
+    expect(render({ spec: { type: 'bar', data: { categories: ['a'], series: [
+      { id: 'range', unit: 'EUR', values: [{ number: 2, range: { low: 1, high: 3 } }] },
+    ] }, options: { variant: 'football-field', unit: '%' } } }).body.ok).toBe(true);
+    expect(render({ spec: { type: 'bar', data: { categories: ['a'], series: [
+      { id: 'low', unit: 'EUR', values: [1] }, { id: 'high', unit: '%', values: [3] },
+    ] }, options: { variant: 'tornado', baseValue: 2, tornado: { low: 'low', high: 'high' } } } }).body.ok).toBe(true);
   });
 
   // Two nodes in one architecture cell have no drawing, so the refusal must name both and the fix.

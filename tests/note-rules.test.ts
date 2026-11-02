@@ -456,16 +456,17 @@ describe('requested line values', () => {
     options: { valueLabels: 'all', size: { width } },
   });
   const drawn = (body: { svg: string }) => body.svg.match(/data-part="point"/g)?.length ?? 0;
-  // A requested row that loses every seat must name all its values and their destinations.
+  // A requested row that loses its seats must name every value it does not draw and its destination.
   it('draws every value of a steep line, and warns when a row truly has no room', () => {
     const fits = render({ spec: spec([12.4, 13.1, 12.8, 14.2, 15.0, 14.6], 640), return: ['svg'] }).body as { svg: string; warnings: { code: string }[] };
     expect(drawn(fits)).toBe(6);
     expect(fits.warnings.map((w) => w.code)).not.toContain('label-hidden');
     const crowded = render({ spec: spec(Array.from({ length: 24 }, (_, i) => (i * 7) % 11 + 100.5), 320), return: ['svg', 'reading'] }).body as { svg: string; warnings: LintWarning[]; reading: ChartReading };
-    expect(drawn(crowded)).toBe(0);
+    // The row gives up its interior values and keeps the end value that has a seat.
+    expect(drawn(crowded)).toBe(1);
     expect(crowded.warnings.filter((w) => w.code === 'label-hidden')).toHaveLength(1);
     expect(crowded.warnings.find((w) => w.code === 'label-hidden')).toMatchObject({ severity: 'warn' });
-    expect(crowded.reading.omissions.filter(o => o.labelId.startsWith('point:'))).toHaveLength(24);
+    expect(crowded.reading.omissions.filter(o => o.labelId.startsWith('point:'))).toHaveLength(23);
     expect(crowded.reading.omissions.every(o => o.destination !== undefined)).toBe(true);
   });
 

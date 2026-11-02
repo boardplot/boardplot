@@ -62,6 +62,7 @@ import type { Annotation } from '../../types/annotations';
 import type { ColumnOptions } from '../../types/options';
 import type { Geometry, LintWarning } from '../../types/scene';
 import { layoutColumn } from '../column/layout';
+import { labelOn } from '../labelOn';
 import { TILED_BANDS } from '../column/plot';
 import { axisTitleAllowed } from '../../axis';
 import { localeStrings, stringFields } from '../../strings';
@@ -709,7 +710,7 @@ export function layoutHistogram(
   let stride = 1;
   // Edge numbers keep a word space and more between them.
   const EDGE_GAP = 16;
-  const labelsOn = options.labels !== false && options.labels?.category !== false;
+  const labelsOn = labelOn(options, 'category');
   // The open bin's name ends at the plot's right edge and carries the largest observation.
   const openLabel = ((): LabelRequest | undefined => {
     if (openValue === undefined || !labelsOn) return undefined;

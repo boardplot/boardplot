@@ -454,6 +454,7 @@ function annotateLine(
     locale: options.locale?.language,
     strings: options.strings,
     percentLevels: !rebased && percentLevels(dataSeries),
+    sharesFormat: domain.variant === 'stacked100-area',
     valueLinePercentLevels: !rebased && (domain.variant === 'stacked100-area' || domain.options.unit === '%' || percentLevels(dataSeries)),
     solveCtx,
     yScale: y,
@@ -1113,6 +1114,8 @@ function layoutLinePass(
     ...(domain.labelModes.values === 'all' && !domain.isStacked ? { valueRows: domain.drawnSeries.map(series => ({
       ids: domain.cats.flatMap((category, ci) => typeof series.vals[ci]?.labelOverride === 'string' ? [] : [`point:${series.id}:${category.id}`]),
       alternate: true,
+      // A rank chart folds a value that finds no seat into the name instead (below).
+      keepEnds: !env.isBump,
     })) } : {}),
     // A value reads as its own point's (label/ownership.ts); stacked values sit in their bands.
     ...(domain.isStacked ? {} : {

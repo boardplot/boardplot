@@ -13,6 +13,8 @@ export const INTERACTIVE_LAYOUT = Symbol();
  * and does not set it.
  */
 export const STORY_NAVIGATION = Symbol('storyNavigation');
+/** Check a story reserve from frame geometry without placing chart marks or labels. */
+export const storyFrameFit = new WeakMap<FrameGeometry, (bottom: number, plotWidth: number) => boolean>();
 /**
  * The author notes compact mode left off the canvas (compact.ts). They reach
  * React's notes panel (`a11y.compactNotes`), so a React layout counts them in
@@ -80,6 +82,8 @@ export function partNeedOf(frame: FrameGeometry | undefined): number {
 /** Keep the static footer plan, the freed room and the part need when layout copies its frame. */
 export function copyFrame(frame: FrameGeometry, patch?: Partial<FrameGeometry>): FrameGeometry {
   const copy = { ...frame, ...patch };
+  const storyFit = storyFrameFit.get(frame);
+  if (storyFit) storyFrameFit.set(copy, storyFit);
   const plan = footerPlans.get(frame);
   if (plan) footerPlans.set(copy, plan);
   const freed = freedChrome.get(frame);
