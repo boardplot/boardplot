@@ -62,6 +62,7 @@ import type {
   TotalPolicy,
 } from '../../types/table';
 import { previousColumnInGroup, readCalcInput, resolveCalcRef } from './calcRef';
+import { cleanDiff, cleanSum } from '../../geometry';
 import { calcFlipsWithInputs, calcIsLinear, calcPreservesScale, calcYieldsPoints, columnOwnsFormat } from '../../tableCalc';
 import {
   additiveRankKey,
@@ -636,14 +637,12 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     // in fact stated a reason — and printed the parent as '—' when the truth
     // was "withheld" or "not meaningful".
     const blockers: { id: Id; state: Exclude<CellState, 'value'> }[] = [];
-    let sum = 0;
     let partialKid = false;
     const skippedKids: string[] = [];
     for (const kid of kids) {
       const ks = rawState.get(kid.id)!.get(col.id)!;
       if (ks.state === 'value' && typeof ks.raw === 'number') {
         const contribution = signTo(kid, row.id) * ks.raw;
-        sum += contribution;
         if (ks.partial) { partialKid = true; pushAll(skippedKids, skippedRows(ks)); }
         inputs.push({ rowId: kid.id, colId: col.id, value: contribution });
       } else {
@@ -733,7 +732,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
         partialColumnIds.add(col.id);
       }
       // A sum that skipped a child, or adds a partial one, prints marked on the cell.
-      derived = { raw: sum, state: 'value', ...(blockers.length > 0 || partialKid ? { partial: true as const, skipped: skippedKey([...blockers.map((b) => b.id), ...skippedKids]) } : {}) };
+      derived = { raw: cleanSum(inputs.map((input) => input.value)), state: 'value', ...(blockers.length > 0 || partialKid ? { partial: true as const, skipped: skippedKey([...blockers.map((b) => b.id), ...skippedKids]) } : {}) };
     }
 
     const policy: TotalPolicy = row.totalPolicy ?? (authored.raw !== null ? 'validate' : 'derive');
@@ -811,15 +810,15 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
   // Rows that topN.rest false omits still belong to the partition, so hiding a row leaves the other shares as they were.
   const hiddenLeaves = [...folded.hidden].filter(([, h]) => h.leaf);
   const leafTotal = (colId: Id): number | null => {
-    let t = 0;
+    const terms: number[] = [];
     for (const [s, sign] of [
       ...leafRows.map((r) => [rawState.get(r.id)!.get(colId), signTo(r, null)] as const),
       ...hiddenLeaves.map(([, h]) => [h.states.get(colId), h.sign] as const),
     ]) {
       if (!s || s.state !== 'value' || typeof s.raw !== 'number') return null;
-      t += sign * s.raw;
+      terms.push(sign * s.raw);
     }
-    return t;
+    return cleanSum(terms);
   };
 
   // ---- computed columns then row-level calcs (RAW inputs) ----
@@ -2860,8 +2859,8 @@ function evalCalc(
         if (isState(a) && isState(b)) return worse(a, b);
         if (isState(a)) return a;
         if (isState(b)) return b;
-        if (node.op === 'add') return a + b;
-        if (node.op === 'sub') return a - b;
+        if (node.op === 'add') return cleanSum([a, b]);
+        if (node.op === 'sub') return cleanDiff(a, b);
         if (node.op === 'mul') return a * b;
         if (b === 0) return a === 0 ? 'na' : 'nm';
         // A literal divisor is the author's own constant, not a base that went negative.

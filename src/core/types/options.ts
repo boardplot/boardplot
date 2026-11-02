@@ -767,8 +767,8 @@ export interface ColumnOptions extends BaseOptionsFor<'column'> {
   referenceStyle?: 'tick' | 'line' | 'marker'; // default 'tick'
   /** Per-category cumulative-boundary ticks; ordered column axes connect them by default. */
   netLine?: boolean | { seriesId?: Id; connectors?: boolean };
-  /** Computed arithmetic-average rule; Id[] limits the contributing series. */
-  averageMarker?: boolean | { scope: 'all' | Id[] };
+  /** Computed arithmetic-average rule; Id[] limits the contributing series. Categories marked partial are left out unless includePartial is true. */
+  averageMarker?: boolean | { scope?: 'all' | Id[]; includePartial?: boolean };
   /**
    * `style` is 'line' (default) or 'dashed'; dashed matches the waterfall
    * bridge's dash.reference token. There is no 'dot' or 'line-dot' variant:
