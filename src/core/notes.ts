@@ -85,6 +85,7 @@ export function defaultNoteLines(target: RenderTarget = DEFAULT_TARGET, width: n
  * "Source: Source: …".
  */
 export function sourceLine(source: string, word: string): string {
+  if (word === '') return source;
   const opensWithWord = source.slice(0, word.length).toLowerCase() === word.toLowerCase() &&
     /^\p{L}*\s*:/u.test(source.slice(word.length));
   return opensWithWord ? source : `${word}: ${source}`;

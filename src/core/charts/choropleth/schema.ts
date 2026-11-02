@@ -1,3 +1,4 @@
+import { optionShapeSchema } from '../../schema/shared';
 import { geoRegionSchema } from '../../schema/geoRegion';
 import * as z from 'zod';
 import {
@@ -161,12 +162,12 @@ export const choroplethOptionsSchema = z
     ...baseOptionsSchema.shape,
     ...refusedBaseOptions('choropleth'),
     highlight: geoHighlightRefused('choropleth'),
-    topN: z
+    topN: optionShapeSchema('topN', z
       .strictObject({
         n: z.number().int().positive().describe('How many regions with the largest absolute values the automatic labels name.'),
-      })
+      }), z.number().int().positive())
       .optional()
-      .describe("On the world pack, the automatic labels name the n regions with the largest absolute values, plus the large countries (default 12). The other packs label every region, and labels 'all' or 'none' decide for themselves, so there topN changes nothing."),
+      .describe("On the world pack, the automatic labels name the n regions with the largest absolute values, plus the large countries (default 12). The other packs label every region, and labels 'all' or 'none' decide for themselves, so there topN changes nothing. A positive integer n means { n }."),
     scale: geoScaleSchema(true).optional().describe('Sequential magnitude or diverging midpoint color scale.'),
     classes: z.number().int().min(3).max(7).optional().describe('Number of equal-interval color classes, from 3 through 7. Explicit steps define five classes instead.'),
     steps: geoStepsSchema,

@@ -11,6 +11,7 @@ import { createChartComponent } from '../createChartComponent';
 import { optionKeyCheck } from '../../core/schema/unknownKeys';
 import type { ReactElement } from 'react';
 import type { ChartData } from '../../core/types/data';
+import type { OptionsInput } from '../../core/types/optionInput';
 import type { BaseOptions, ComboOptions } from '../../core/types/options';
 import type { ChartComponentProps } from '../createChartComponent';
 
@@ -22,7 +23,7 @@ const checkOptionKeys = optionKeyCheck({"tree":{"target":0,"textScale":0,"textSi
 // ComboOptions narrows a BaseOptions field, so it does not satisfy
 // createChartComponent's BaseOptions constraint. The registry carries the same
 // cast (src/core/charts/combo/index.ts); the props type below is the accurate one.
-export type ComboChartProps = Omit<ComboOptions, 'annotations' | 'size'> & ChartComponentProps<ChartData>;
+export type ComboChartProps = OptionsInput<Omit<ComboOptions, 'annotations' | 'size'>> & ChartComponentProps<ChartData>;
 
 export const ComboChart: (props: ComboChartProps) => ReactElement =
   createChartComponent<ChartData, BaseOptions>(registeredType(comboCore), checkOptionKeys) as unknown as (

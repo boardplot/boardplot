@@ -157,17 +157,17 @@ Defaults are the `standard` preset.
 | space.tierGap | number | yes |  | `5` | Vertical gap in px between stacked tiers. |
 | space.facetGap | number | yes |  | `28` | Gap in px between facets of a small-multiple layout. |
 | space.labelPad | number | yes |  | `5` | Padding in px between a mark and its label. |
-| space.canvas | object |  |  |  | Canvas margin tokens by width class: `base` covers the small and middle widths, `wide` covers 1080 px and up. |
-| space.canvas.base | object | yes |  |  | Canvas margins for the small and middle width classes, in px. |
-| space.canvas.base.top | number | yes |  |  | One canvas margin side in px (top, right, bottom, left). |
-| space.canvas.base.right | number | yes |  |  | One canvas margin side in px (top, right, bottom, left). |
-| space.canvas.base.bottom | number | yes |  |  | One canvas margin side in px (top, right, bottom, left). |
-| space.canvas.base.left | number | yes |  |  | One canvas margin side in px (top, right, bottom, left). |
-| space.canvas.wide | object | yes |  |  | Canvas margins at canvas widths of 1080 px and up, in px. |
-| space.canvas.wide.top | number | yes |  |  | One canvas margin side in px (top, right, bottom, left). |
-| space.canvas.wide.right | number | yes |  |  | One canvas margin side in px (top, right, bottom, left). |
-| space.canvas.wide.bottom | number | yes |  |  | One canvas margin side in px (top, right, bottom, left). |
-| space.canvas.wide.left | number | yes |  |  | One canvas margin side in px (top, right, bottom, left). |
+| space.canvas | object |  |  |  | Canvas margin tokens by width class: `base` covers the small and middle widths, `wide` covers 1080 px and up. Each class and side is optional. Missing values keep the preset or built-in margin. A class takes a side object, not a bare number. |
+| space.canvas.base | object |  |  |  | Canvas margins for the small and middle width classes, in px. Each side is optional and stays within 0 to 96. |
+| space.canvas.base.top | number |  |  |  | One canvas margin side in px (top, right, bottom, left). |
+| space.canvas.base.right | number |  |  |  | One canvas margin side in px (top, right, bottom, left). |
+| space.canvas.base.bottom | number |  |  |  | One canvas margin side in px (top, right, bottom, left). |
+| space.canvas.base.left | number |  |  |  | One canvas margin side in px (top, right, bottom, left). |
+| space.canvas.wide | object |  |  |  | Canvas margins at canvas widths of 1080 px and up, in px. Each side is optional and stays within 0 to 96. |
+| space.canvas.wide.top | number |  |  |  | One canvas margin side in px (top, right, bottom, left). |
+| space.canvas.wide.right | number |  |  |  | One canvas margin side in px (top, right, bottom, left). |
+| space.canvas.wide.bottom | number |  |  |  | One canvas margin side in px (top, right, bottom, left). |
+| space.canvas.wide.left | number |  |  |  | One canvas margin side in px (top, right, bottom, left). |
 | space.gap | object |  |  |  | Named vertical gaps of the fixed frame order; the `*Wide` variants apply at canvas widths of 1080 px and up. |
 | space.gap.titleSubtitle | number |  |  |  | Gap in px between title and subtitle. |
 | space.gap.subtitlePlot | number |  |  |  | Gap in px between subtitle and plot area below 1080 px canvas width. |

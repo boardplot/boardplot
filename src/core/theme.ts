@@ -29,6 +29,8 @@ import type { DashRole, StrokeRole, Theme, ThemeRef, ThemeTable, TypeRoleName } 
 import { adoptedTheme } from './themeStore';
 import { RETIRED_PALETTES, RETIRED_PRESETS, RETIRED_THEME_KEYS, retiredThemeKeyWarning, withoutRetiredThemeKeys } from './retired';
 import { themeColors } from './themeColors';
+import { DEFAULT_THEME } from './themeDefault';
+import { themeShape } from './normalize/optionShapes';
 
 /**
  * The structural theme checks below run only over a theme a caller PATCHED,
@@ -783,7 +785,7 @@ function currentPreset(name: string): string {
 }
 
 function targetTheme(ref: ThemeRef | undefined, target: RenderTarget): Theme {
-  const preset = currentPreset(typeof ref === 'string' ? ref : ref?.preset ?? 'boardroom');
+  const preset = currentPreset(typeof ref === 'string' ? ref : ref?.preset ?? DEFAULT_THEME);
   // A registered/uploaded complete theme owns its sizes. Internal resolved themes
   // also travel as full overrides and must not receive the target table twice.
   if (!PRESET_NAMES.has(preset) || (typeof ref === 'object' && ref.overrides && ownThemes.has(ref.overrides))) {
@@ -844,8 +846,9 @@ export function removedNameWarnings(options: { theme?: unknown; palette?: unknow
 export function resolveTheme(ref?: ThemeRef): Theme {
   // The shipped default is the boardroom design family. A document that wants
   // the standard family pins `theme: 'standard'` explicitly.
-  if (!ref) return own(roadshowFamilyThemes.boardroom);
-  const presetName = typeof ref === 'string' ? currentPreset(ref) : typeof ref.preset === 'string' ? currentPreset(ref.preset) : ref.preset;
+  if (!ref) return own(roadshowFamilyThemes[DEFAULT_THEME]);
+  ref = themeShape(ref);
+  const presetName = currentPreset(typeof ref === 'string' ? ref : ref.preset ?? DEFAULT_THEME);
   // A registered theme, else one a spec brought along (core/themeStore). Own
   // keys only: a name is data, never a path to Object.prototype; a non-string
   // name matches neither.
@@ -1539,9 +1542,14 @@ function defaultCanvasMargin(width: number): Margin {
 export function spaceTokens(theme: Theme, width: number): SpaceTokens {
   const wide = width >= WIDE_CANVAS_MIN_WIDTH;
   const canvas = theme.space.canvas;
+  const margin = wide ? canvas?.wide : canvas?.base;
+  const fallback = defaultCanvasMargin(width);
   const gap = theme.space.gap;
   return {
-    margin: { ...defaultCanvasMargin(width), ...(wide ? canvas?.wide : canvas?.base) },
+    margin: {
+      top: margin?.top ?? fallback.top, right: margin?.right ?? fallback.right,
+      bottom: margin?.bottom ?? fallback.bottom, left: margin?.left ?? fallback.left,
+    },
     gapTitleSubtitle: gap?.titleSubtitle ?? 4,
     // 8 below W-L: the first plot element sits about 16-18 px under the last
     // header baseline; 12 would leave charts about 5 px lower.

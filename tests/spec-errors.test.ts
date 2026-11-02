@@ -95,20 +95,19 @@ describe('structured spec errors', () => {
     expect(missing.errors[0]).toMatchObject({ code: 'chart-not-found', path: '/chart' });
   });
 
-  it('refuses text on a valueLine with the patch that renames it to label', async () => {
+  it('reads valueLine text as label with a rename patch', async () => {
     const chart = (annotation: Record<string, unknown>) => ({
       type: 'column',
       data: { categories: ['A', 'B'], series: [{ id: 's', values: [12, 14] }] },
       annotations: [annotation],
     });
-    const valueLine = await captured(() => parseChartSpec(chart({ kind: 'valueLine', value: 13, text: 'Target' })));
-    expect(valueLine.errors[0]).toMatchObject({
-      code: 'invalid-annotation',
-      path: '/annotations/0/text',
-      message: expect.stringContaining("'label'"),
+    const valueLine = await parseChartSpec(chart({ kind: 'valueLine', value: 13, text: 'Target' }));
+    expect(valueLine.warnings.find(warning => warning.code === 'annotation-text-as-label')).toMatchObject({
+      code: 'annotation-text-as-label',
+      path: '/charts/0/annotations/0/text',
       fix: [
-        { op: 'test', path: '/annotations/0', value: { kind: 'valueLine', value: 13, text: 'Target' } },
-        { op: 'replace', path: '/annotations/0', value: { kind: 'valueLine', value: 13, label: 'Target' } },
+        { op: 'test', path: '/charts/0/annotations/0', value: { kind: 'valueLine', value: 13, text: 'Target' } },
+        { op: 'replace', path: '/charts/0/annotations/0', value: { kind: 'valueLine', value: 13, label: 'Target' } },
       ],
     });
     const both = await captured(() => parseChartSpec(chart({ kind: 'valueLine', value: 13, text: 'Target', label: 'Plan' })));

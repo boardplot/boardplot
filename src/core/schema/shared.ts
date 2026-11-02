@@ -33,6 +33,15 @@ import { parseTimeText } from '../isoTime';
 import { levenshtein } from '../spelling';
 import type { BaseOptions } from '../types/options';
 import { emptyIdRecord } from '../idRecords';
+import { optionShape } from '../normalize/optionShapes';
+
+/** Publish the short input and return the canonical object to chart code. */
+export function optionShapeSchema<S extends z.ZodType>(key: string, canonical: S, short: z.ZodType) {
+  return z.union([canonical, short]).transform(value => optionShape(key, value) as z.output<S>);
+}
+
+const languageSchema = z.string().min(2).max(35)
+  .refine(tag => canonicalLanguage(tag) !== null, { message: 'not a BCP 47 language tag; use a tag such as "de" or "de-DE"' });
 
 const annotationIconNames = listIcons();
 const annotationIconSchema = z
@@ -722,7 +731,7 @@ const existingAnnotationSchema = (timeX = false) => z
   .object({
     kind: z.enum(['diff', 'cagr', 'delta', 'bracket', 'abs', 'note', 'callout', 'valueLine', 'indicator100', 'event']).describe('Annotation operation; its anchors and additional fields are checked by the chart annotation pass.'),
     id: z.string().optional().describe('Stable annotation identity; omission generates an id from kind and authored order.'),
-    text: z.string().optional().describe("Authored annotation text; refused on valueLine, which prints label, and on indicator100. ${value} prints the computed number in it: a cagr's rate with its suffix, a diff's change, a delta's difference, the anchored value of an abs, note or callout; a note or callout on a mark that prints the same number leaves it to the mark and reports annotation-value-on-mark. Without ${value}, text on a cagr, diff, delta or abs replaces the number, warns annotation-authored-override and the claim record marks the override."),
+    text: z.string().optional().describe("Authored annotation text; on valueLine, text is read as label with an info warning when label is absent or equal. Refused on indicator100. ${value} prints the computed number in it: a cagr's rate with its suffix, a diff's change, a delta's difference, the anchored value of an abs, note or callout; a note or callout on a mark that prints the same number leaves it to the mark and reports annotation-value-on-mark. Without ${value}, text on a cagr, diff, delta or abs replaces the number, warns annotation-authored-override and the claim record marks the override."),
     format: z.string().optional().describe("Number format: annotation > anchored series > chart. Diff uses to, then from. CAGR and relative/reversed diff need a percent example; value differences use pp for percent levels. Refused on event and indicator100."),
     priority: z.number().optional().describe('Annotation label priority during collision resolution.'),
     icon: annotationIconSchema.optional().describe('Registered icon for note or callout annotations; cannot be combined with status.'),
@@ -785,16 +794,15 @@ const existingAnnotationSchema = (timeX = false) => z
         ctx.addIssue({ code: 'custom', path: ['caption'], message: `${annotation.kind} caption is a non-empty string` });
       }
     }
-    // A valueLine prints its label and an indicator100 a fixed 100%; text on either is refused.
-    if ((annotation.kind === 'valueLine' || annotation.kind === 'indicator100') && Object.hasOwn(annotation, 'text')) {
-      const rename = annotation.kind === 'valueLine' && !Object.hasOwn(annotation, 'label');
+    // Conflicting valueLine captions remain ambiguous. indicator100 has fixed text.
+    if ((annotation.kind === 'indicator100' || (annotation.kind === 'valueLine' && Object.hasOwn(annotation, 'label') && annotation.label !== annotation.text)) && Object.hasOwn(annotation, 'text')) {
       ctx.addIssue({
         code: 'custom',
         path: ['text'],
         message: annotation.kind === 'valueLine'
-          ? `a valueLine prints label, not text; ${rename ? "rename 'text' to 'label'" : "drop 'text', label is set"}`
+          ? "a valueLine prints label, not text; drop 'text', label is set"
           : "an indicator100 prints a fixed '100%' and no authored text; drop 'text'",
-        params: rename ? { renameTo: 'label' } : { refused: true },
+        params: { refused: true },
       });
     }
     addCalloutHeadIssues(annotation as Record<string, unknown>, ctx);
@@ -1185,11 +1193,11 @@ export const baseOptionsSchema = z.object({
   subtitle: subtitleSchema.optional().describe('Measure subtitle below the title; strings expand to the measure field.'),
   unit: z.string().optional().describe("Chart unit, composed into the subtitle where supported; individual series may declare their own units. A unit prints as text after the number, so unit 'USD' reads 2,456 USD. For a currency sign, set format instead, such as '$1,234'; a unit the format already prints warns unit-in-format, and a unit that names another currency than the format's sign warns unit-format-conflict."),
   unitShown: z.boolean().optional().describe('True when the host prints the unit beside the chart: no unit line, no unit beside a kpi value; line end labels, a table head and the legend check treat the unit as shown. Number formatting does not change. Default false.'),
-  source: z.string().optional().describe('Source credit rendered in the chart frame.'),
-  footnotes: z.union([
+  source: optionShapeSchema('source', z.string(), z.array(z.string())).optional().describe("Source credit rendered in the chart frame. An array of strings joins with '; ' in one source line. An empty array prints no source."),
+  footnotes: optionShapeSchema('footnotes', z.union([
     z.array(z.string().describe('Authored footnote text.')).describe('Footnotes in authored order; compact framing leaves optional notes off the canvas, keeps them in the accessible description and lists them in the info lint compact-notes-omitted.'),
     z.literal(false).describe('No notes in the frame: authored notes, method notes, event keys and the "+N notes" pointer are left off. Disclosures that notes.show prints (rounding, partial periods, unlabelled values), the source line and a required map credit stay; leave source out for no source line. For a host that carries the notes in its own frame; the info lint footnotes-off lists what was left off and the render result lists every note in notes.'),
-  ]).optional().describe('Footnotes in authored order; the frame prints them within notes.maxLines and the rest go to the notes list. false leaves notes and the pointer off the frame; disclosures that notes.show prints, the source line and a required map credit stay.'),
+  ]), z.string()).optional().describe('A string is one footnote. Footnotes in authored order; the frame prints them within notes.maxLines and the rest go to the notes list. false leaves notes and the pointer off the frame; disclosures that notes.show prints, the source line and a required map credit stay.'),
   notes: z.object({
     maxListed: z.union([
       z.number().int().min(0).describe('Most items a note line names; the rest are counted. 0 names none and only counts them.'),
@@ -1202,19 +1210,20 @@ export const baseOptionsSchema = z.object({
   }).strict().optional().describe('Notes; the footer rule: where the notes under the chart go, how many lines they take, and the note lines for what the drawing leaves out.'),
   // any registered theme name (presets + registerTheme customs); existence
   // is checked at resolve time with a helpful error
-  theme: z
+  theme: optionShapeSchema('theme', z
     .union([
       z.string().min(1).describe('Registered theme name; existence is checked when resolving the theme.'),
       z.object({
         preset: z.string().min(1).describe('Registered base theme whose tokens are overridden.'),
         overrides: z.record(z.string(), z.unknown().describe('Theme token override value; validated by theme resolution.')).optional().describe('Partial theme token tree merged with the named preset.'),
       }).describe('Named theme with explicit token overrides.'),
-    ])
-    .optional().describe('Theme preset or preset with overrides; request context may supply it, otherwise resolution uses boardroom.'),
-  locale: z
+    ]), z.strictObject({
+      overrides: z.record(z.string(), z.unknown()).describe('Partial token tree applied to the default preset.'),
+    }))
+    .optional().describe('Theme preset or preset with overrides. An object with only overrides uses the default preset. Request context may supply a theme, otherwise resolution uses boardroom.'),
+  locale: optionShapeSchema('locale', z
     .object({
-      language: z.string().min(2).max(35)
-        .refine((tag) => canonicalLanguage(tag) !== null, { message: 'not a BCP 47 language tag; use a tag such as "de" or "de-DE"' })
+      language: languageSchema
         .optional().describe('BCP 47 language tag. Changes words only, such as notes and month names. It never changes the decimal or grouping marks; they come only from locale.decimal and locale.thousands. E.g. "de"; "de_DE" is read as "de-DE"; "en-US" puts the month first (Sep 4).'),
       decimal: z.enum(['.', ',']).optional().describe("Decimal mark of every number the chart prints. Default '.'. The language does not change it."),
       thousands: z.enum([',', '.', '’', ' ']).optional().describe("Grouping mark of every number the chart prints. Default ',', or '.' with decimal ','. The language does not change it. A value equal to the decimal mark uses that fallback."),
@@ -1223,8 +1232,8 @@ export const baseOptionsSchema = z.object({
         z.literal(0).describe('Sunday as the requested first weekday.'),
         z.literal(1).describe('Monday as the requested first weekday.'),
       ]).optional().describe('First weekday for week-granularity date ticks; default Monday. Line date ticks read this field, other layouts ignore it and report it.'),
-    })
-    .optional().describe('Language and number marks. decimal and thousands set the marks of every number, as in a spreadsheet (default 1,234.5); a format example gives only the shape. language changes words only, never the marks.'),
+    }), languageSchema)
+    .optional().describe('A string sets language only. Language and number marks. decimal and thousands set the marks of every number, as in a spreadsheet (default 1,234.5); a format example gives only the shape. language changes words only, never the marks.'),
   strings: z
     .object({
       newItems: z.string().min(1).optional().describe('PVM entry-bar name; default New items.'),
@@ -1233,7 +1242,7 @@ export const baseOptionsSchema = z.object({
       cohortFormula: z.string().trim().min(1).optional().describe('Complete cohort formula sentence for method notes and accessible descriptions. Wording only: rates still use the count and denominator selected by basis.'),
       others: z.string().min(1).optional().describe('Name of the aggregated rest bucket; default Others, and an explicit topN.restLabel still wins.'),
       total: z.string().min(1).optional().describe('Label of a computed total row; default Total.'),
-      source: z.string().min(1).optional().describe('Word introducing the authored source credit; default Source.'),
+      source: z.string().optional().describe('Word introducing the authored source credit; default Source. An empty string prints the source without a prefix or colon.'),
       notApplicable: z.string().optional().describe('Not applicable text; n/a, German k. A.'),
       legendCount: z.string().optional().describe("Legend disclosure wording; '{count}' becomes \"2 of 4\". Default depends on the legend subject."),
       partial: z.string().min(1).optional().describe('Word after the labels of partial categories in the column, bar, line and combo footnote, also the hatch key label; default Partial; a named key uses toDate.'),
@@ -1397,21 +1406,21 @@ export const baseOptionsSchema = z.object({
     })
     .optional()
     .describe('Row-label alignment for the horizontal families (bar, bullet, box, dot, likert).'),
-  sort: z
+  sort: optionShapeSchema('sort', z
     .object({
       categories: z.enum(['sheet', 'asc', 'desc', 'reverse']).optional().describe('Category order: sheet preserves authored order, reverse reverses it, asc and desc use the chart category ranking value.'),
       segments: z.enum(['sheet', 'asc', 'desc', 'reverse']).optional().describe('Segment order: sheet preserves authored order, reverse reverses it, asc and desc use the chart segment ranking value.'),
-    })
-    .optional().describe('Sorting requests for charts that support them; omitted settings preserve the chart default ordering.'),
-  topN: z
+    }), z.union([z.enum(['sheet', 'asc', 'desc', 'reverse']), z.literal(true)]))
+    .optional().describe("A string sets categories to sheet, asc, desc or reverse. true means categories: 'desc'. Sorting requests for charts that support them; omitted settings preserve the chart default ordering."),
+  topN: optionShapeSchema('topN', z
     .object({
       n: z.number().int().positive().describe('Maximum number of individually retained categories after chart-specific ranking.'),
       rest: z.boolean().optional().describe('Aggregate remaining categories into a rest bucket by default; false omits them where supported. On a bar mekko the rest bucket is the width-weighted mean of its rates. Pareto retains the bucket to preserve its population.'),
       restLabel: z.string().optional().describe('Authored rest-bucket name; ordinary charts default to Others and Pareto to Rest.'),
       showRestCount: z.boolean().optional().describe('Append the number of aggregated categories; ordinary charts default to false, while Pareto always discloses the count.'),
       threshold: z.number().optional().describe('Bar-chart minimum absolute category total after the rank cut; not a universal Top-N threshold. Pareto warns that it ignores this field.'),
-    })
-    .optional().describe('Chart-specific Top-N selection and rest aggregation; omission retains all categories. On a choropleth world map, topN.n picks the n regions it labels, largest absolute value first; other maps label every region.'),
+    }), z.number().int().positive())
+    .optional().describe('A positive integer n means { n }. Chart-specific Top-N selection and rest aggregation; omission retains all categories. On a choropleth world map, topN.n picks the n regions it labels, largest absolute value first; other maps label every region.'),
   // No registered layout implements this. Accepting it on the shared base
   // would let every type answer `ok:true` to `transpose: true` and draw the
   // identical chart.

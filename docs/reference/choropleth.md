@@ -75,7 +75,7 @@ One form; its chart ID is `choropleth`.
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
 | labels | string \| false | `'auto'`, `'all'`, `'none'`, `false` | `'auto'` | Region-label selection policy; placement still respects available space. false is the same as 'none'. |
-| topN | object |  |  | On the world pack, the automatic labels name the n regions with the largest absolute values, plus the large countries (default 12). The other packs label every region, and labels 'all' or 'none' decide for themselves, so there topN changes nothing. |
+| topN | object \| integer |  |  | On the world pack, the automatic labels name the n regions with the largest absolute values, plus the large countries (default 12). The other packs label every region, and labels 'all' or 'none' decide for themselves, so there topN changes nothing. A positive integer n means { n }. |
 | topN.n | integer |  |  | How many regions with the largest absolute values the automatic labels name. |
 | scale | object |  | `{"kind":"sequential"}` | Sequential magnitude or diverging midpoint color scale. |
 | scale.kind (scale branch 1) | string | `'sequential'` | `'sequential'` | Encode ordered magnitudes with one color ramp. |

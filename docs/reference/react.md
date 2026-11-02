@@ -76,9 +76,10 @@ The serializable settings `BoardplotChart` validates beside the spec.
 | fallbackSize.height | number |  |  | Canvas height in the stated unit; at least 24 layout px after conversion. Omitted, height stays automatic. |
 | fallbackSize.unit | string | `'px'`, `'pt'`, `'mm'` |  | Dimension unit. Default px. One pt is 96/72 layout px; one mm is 96/25.4 layout px. |
 | target | string | `'report'`, `'dashboard'`, `'slide'`, `'print'` |  | Reading context. Default report. |
-| theme | string \| object |  |  | Explicit host theme overriding the spec theme. |
+| theme | string \| object \| object |  |  | Explicit host theme overriding the spec theme. |
 | theme.preset | string |  |  | Registered base theme whose tokens are overridden. |
 | theme.overrides | object |  |  | Partial theme token tree merged with the named preset. |
+| theme.overrides | object |  |  | Partial token tree applied to the default preset. |
 | hover | boolean \| object |  |  | Pointer hover: a label card and a highlight of the hovered series. Nothing else is interactive. The server render is the static chart. |
 | hover.card | false \| string | `false`, `'label'`, `'sparkline'` |  | Label card with the hovered record's own facts, placed beside the mark by the label solver, inside the browser viewport. It may extend beyond the chart frame and never changes the page layout. Default 'label'. On a table, 'sparkline' draws the row across its column group instead and no card where the group holds fewer than three numbers. |
 | hover.highlight | boolean |  |  | Dim the other series and outline the hovered marks; on a table, wash the row of the hovered cell instead. Default true. |
@@ -298,10 +299,11 @@ export function Dashboard() {
 | textSize | number |  |  | Inherited primary label size in px, equal on every chart under the provider. A chart option wins. |
 | diagnostics | string | `'auto'`, `'full'`, `'reader'` |  | Default auto: full unless NODE_ENV is production, else reader. Reader cards keep diagnostics in console and data attributes. Full adds a collapsed Details disclosure. |
 | direction | string | `'ltr'`, `'rtl'` |  | Reading direction of HTML controls and cards; default ltr. Chart geometry, axes and data order are unchanged. |
-| theme | string \| object |  |  | Inherited chart theme. Direct chart props take precedence. |
+| theme | string \| object \| object |  |  | Inherited chart theme. Direct chart props take precedence. |
 | theme.preset | string |  |  | Registered base theme whose tokens are overridden. |
 | theme.overrides | object |  |  | Partial theme token tree merged with the named preset. |
-| locale | string \| object |  |  | Inherited locale. Locale support follows each chart formatter. |
+| theme.overrides | object |  |  | Partial token tree applied to the default preset. |
+| locale | string \| object \| string |  |  | Inherited locale. Locale support follows each chart formatter. |
 | locale.language | string |  |  | BCP 47 language tag. Changes words only, such as notes and month names. It never changes the decimal or grouping marks; they come only from locale.decimal and locale.thousands. E.g. "de"; "de_DE" is read as "de-DE"; "en-US" puts the month first (Sep 4). |
 | locale.decimal | string | `'.'`, `','` |  | Decimal mark of every number the chart prints. Default '.'. The language does not change it. |
 | locale.thousands | string | `','`, `'.'`, `'’'`, `' '` |  | Grouping mark of every number the chart prints. Default ',', or '.' with decimal ','. The language does not change it. A value equal to the decimal mark uses that fallback. |
