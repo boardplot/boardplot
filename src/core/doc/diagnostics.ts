@@ -34,6 +34,25 @@ function sourceSegments(source: DiagnosticSource, expanded: readonly (string | n
     ? ['data', 'bySlice', origin.slice, ...rest.slice(1)] : rest)];
 }
 
+function sameSourceValue(original: ReturnType<typeof readJsonPointer>, actual: ReturnType<typeof readJsonPointer>): boolean {
+  // The parse reads an owned copy, so an object value is equal, not identical.
+  return original.found && actual.found && (Object.is(original.value, actual.value)
+    || (typeof original.value === 'object' && original.value !== null && JSON.stringify(original.value) === JSON.stringify(actual.value)));
+}
+
+/** The authored field and its parent at the same pointer a chart diagnostic will report. */
+export function chartSchemaSource(
+  document: NamedDocument, chart: { name: string }, base: string, path: readonly PropertyKey[], input: unknown,
+) {
+  const source = documentSource(document);
+  const expanded = ['charts', document.charts.findIndex(candidate => candidate.name === chart.name), base, ...path.map(String)];
+  const pointer = toJsonPointer(sourceSegments(source, expanded));
+  const original = readJsonPointer(source.input, pointer);
+  const actual = readJsonPointer(input, toJsonPointer(path.map(String)));
+  const parent = readJsonPointer(source.input, pointer.slice(0, pointer.lastIndexOf('/')));
+  return { path: pointer, same: sameSourceValue(original, actual), parent: parent.found ? parent.value : undefined };
+}
+
 /** Native schema paths stay structured until their final JSON Pointer encoding. */
 export function sourceSchemaDiagnostic(
   source: DiagnosticSource, expandedPath: readonly (string | number)[],
@@ -44,9 +63,7 @@ export function sourceSchemaDiagnostic(
   const path = toJsonPointer(segments);
   const original = readJsonPointer(source.input, path);
   const actual = readJsonPointer(localInput, toJsonPointer(issue.path.map(String)));
-  // The parse reads an owned copy, so an object value is equal, not identical.
-  const same = original.found && actual.found && (Object.is(original.value, actual.value)
-    || (typeof original.value === 'object' && original.value !== null && JSON.stringify(original.value) === JSON.stringify(actual.value)));
+  const same = sameSourceValue(original, actual);
   // Moving a side key changes the frame. A schema cannot know whether its new height fits.
   const sideKey = actual.found && expandedPath.includes('options') && issue.path[0] === 'legend'
     && (actual.value === 'right' || (typeof actual.value === 'object' && actual.value !== null
