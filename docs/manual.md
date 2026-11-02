@@ -475,6 +475,8 @@ The panel shows up to four title lines and ten body lines. A cut title or body r
 
 ## Notes under the chart
 
+`**bold**` in the title, subtitle (company, measure and period), notes and source draws bold and wraps at the bold weight. A single `*` stays literal.
+
 `options.footnotes` accepts one string as a one-item array. `options.source` accepts an array of strings, joined with `; ` into one source line. An empty array prints no source. Set `options.strings.source: ""` to print the credit without a prefix or colon.
 
 Boardplot sorts every note under a chart by kind. In the live React chart, the render target decides how much of it the frame prints. A React chart with `fit="content"` takes its height from its content and prints the footer of the static image: every note of the kinds `notes.show` lists, in full, with no line budget, so it is as tall as `boardplot render` at the same width. Under `notes.placement: 'info'` a "Notes and sources (N)" button opens the notes the image does not print; it sits in the space the image leaves free for it.

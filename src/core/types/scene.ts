@@ -513,6 +513,8 @@ export type SceneNode = (
        * claim; they position nothing visible.
        */
       runs?: { text: string; weight?: number }[];
+      /** Per-line styled runs, joined equal to each plain lines[i]. Cannot be combined with runs. */
+      lineRuns?: { text: string; weight?: number }[][];
       /**
        * Accessible full text for lines an ellipsis cut. Renderers emit it as
        * the text element's `<title>`; absent when nothing was cut. An event's

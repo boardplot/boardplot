@@ -10,6 +10,7 @@ import { chartString } from './strings/frame';
  */
 
 import { currencySign } from './format';
+import { boldMeasurer, boldRuns, hasBold, markBold, plainText, splitBoldLines } from './inlineBold';
 import { furnitureBudget } from './aspect';
 import { COLLECT_IDENTITIES, identityCollector, type IdentityCollectionOptions, identityAppearance, identityCollisionWarnings, type SeriesIdentity as LegendItemInput } from './seriesIdentity';
 import { dedupeLegendKeys } from './label/legendFidelity';
@@ -428,7 +429,7 @@ const NOTE_HIT_PX = 24;
  */
 function htmlFooterHeight(input: FrameInput, parts: ReturnType<typeof footerParts>, sourceText: string | undefined,
   font: FontSpec, width: number, lineH: number, measure: TextMeasurer): number {
-  const height = (text: string) => wrapFootnote(text, font, width, measure).length * lineH;
+  const height = (text: string) => wrapFootnote(markBold(text), font, width, measure).length * lineH;
   let total = 0;
   for (const note of parts.shown) {
     total += height(`${note.ref ? `${footnoteMark(note.ref)} ` : ''}${note.kind === 'method' || note.kind === 'disclosure' ? note.short ?? note.text : note.text}`);
@@ -437,7 +438,7 @@ function htmlFooterHeight(input: FrameInput, parts: ReturnType<typeof footerPart
   const label = parts.panel.length === 0 ? undefined
     : parts.info ? `${wordingString(input, 'notesAndSources')} (${parts.panel.length})` : notesPointer(parts.panel.length, input.strings);
   const items = [
-    ...(parts.source && sourceText ? [{ w: measure(sourceText, font).width, text: sourceText }] : []),
+    ...(parts.source && sourceText ? [{ w: measure(markBold(sourceText), font).width, text: sourceText }] : []),
     ...(credit && parts.info ? [{ w: measure(credit, font).width, text: credit }] : []),
     ...(label ? [{ w: Math.max(NOTE_HIT_PX, measure(label, font).width), h: Math.max(NOTE_HIT_PX, lineH) }] : []),
   ];
@@ -455,7 +456,7 @@ function htmlFooterHeight(input: FrameInput, parts: ReturnType<typeof footerPart
     line = h;
   }
   if (items.length > 0) total += line + (parts.shown.length > 0 ? 4 : 0);
-  if (credit && !parts.info) total += height(credit);
+  if (credit && !parts.info) total += wrapFootnote(credit, font, width, measure).length * lineH;
   return total;
 }
 const frameChrome = new WeakMap<FrameGeometry, number>();
@@ -771,6 +772,7 @@ function shiftLegendKeyY(node: SceneNode, dy: number): void {
 }
 
 function measureNamesUnit(unit: string, measure: string): boolean {
+  measure = plainText(measure);
   const escaped = unit.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
   return escaped.length > 0 && new RegExp(`(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`, 'iu').test(measure);
 }
@@ -1009,7 +1011,7 @@ export function withCutLabelNotes<O extends Pick<BaseOptions, 'notes' | 'footnot
   const existing = chartNotes(first).map(note => note.text.replace(/\s+/g, ' ').trim());
   // A count or a repeated number in another note does not identify a cut value.
   const unlisted = cuts.filter(cut => isNumberAlone(cut.text)
-    || !existing.some(note => containsText(note, cut.text.replace(/\s+/g, ' ').trim())));
+    || !existing.some(note => containsText(plainText(note), cut.text.replace(/\s+/g, ' ').trim())));
   if (!unlisted.length) return warn(first);
   const items = [...new Set(unlisted.map(cut => {
     const node = first.scene.find(node => node.t === 'text' && (node.id === cut.labelId || node.id === `label:${cut.labelId}`));
@@ -1767,8 +1769,8 @@ function measureUnitTail(measure: string, unit: string | undefined): string {
   const at = measure.lastIndexOf(', ');
   if (at <= 0) return '';
   const tail = measure.slice(at + 2);
-  const reads = /^(%|in\s|per\s|[$€£¥]|(?:EUR|USD|CHF|GBP|JPY|US\$)(?![\p{L}])|index\b|score\b|share of\b|# )/iu.test(tail)
-    || (unit !== undefined && unit.trim() !== '' && tail.trim().toLowerCase() === unit.trim().toLowerCase());
+  const reads = /^(%|in\s|per\s|[$€£¥]|(?:EUR|USD|CHF|GBP|JPY|US\$)(?![\p{L}])|index\b|score\b|share of\b|# )/iu.test(plainText(tail))
+    || (unit !== undefined && unit.trim() !== '' && plainText(tail).trim().toLowerCase() === unit.trim().toLowerCase());
   // The comma stays with the bold part, so a wrapped line never starts with it.
   return reads ? measure.slice(at + 1) : '';
 }
@@ -1776,7 +1778,11 @@ function measureUnitTail(measure: string, unit: string | undefined): string {
 function measureSubtitle(
   input: FrameInput, x: number, y: number, id: Id, nextId: () => Id, contentW: number,
 ): { nodes: TextNode[]; rect: Rect } {
-  const sub = input.subtitle!;
+  const authored = input.subtitle!;
+  const sub = hasBold(authored.measure) || hasBold(authored.company ?? '') || hasBold(authored.period ?? '')
+    ? { ...authored, measure: markBold(authored.measure),
+      ...(authored.company ? { company: markBold(authored.company) } : {}),
+      ...(authored.period ? { period: markBold(authored.period) } : {}) } : authored;
   const font = { family: input.theme.type.family, ...input.theme.type.subtitle };
   const boldFont: FontSpec = { ...font, weight: emphasisWeight(input.theme) };
   // Three runs max: everything before the measure, the bold measure, and
@@ -1807,10 +1813,10 @@ function measureSubtitle(
   // same way they are inside any multi-word label. Boundary spaces stay
   // non-breaking (xml:space default trims text-content edges), and U+00A0
   // measures in the SPACE class (see estimateTextWidth).
-  const runs = segments.map((seg) => ({
+  const runs = subtitleRuns(segments.map((seg) => ({
     text: seg.text.replace(/^ /, '\u00A0').replace(/ $/, '\u00A0'),
     ...(seg.bold ? { weight: boldFont.weight } : {}),
-  }));
+  })), boldFont.weight, font.weight);
   const width = runsWidth(runs, font, boldFont, input.measure);
   // A composed line wider than the frame wraps to a second line, and
   // a second line that still overflows ends with an ellipsis and carries the
@@ -1818,7 +1824,7 @@ function measureSubtitle(
   // The subtitle wraps until every word shows.
   const maxLines = Infinity;
   const scenarios = sub.scenarios && sub.scenarios.length > 0 ? formatScenarios(sub.scenarios) : undefined;
-  if (width > contentW) return wrapSubtitle(segments, { x, y, id, nextId, contentW, lineH, font, boldFont, measure: input.measure, maxLines, scenarios, period: sub.period });
+  if (width > contentW) return wrapSubtitle(segments, { x, y, id, nextId, contentW, lineH, font, boldFont, measure: input.measure, maxLines, scenarios, period: sub.period && plainText(sub.period) });
   const node: TextNode = {
     t: 'text',
     id,
@@ -1838,6 +1844,13 @@ function measureSubtitle(
 
 type SubtitleRun = { text: string; weight?: number };
 
+function subtitleRuns(runs: SubtitleRun[], boldWeight: number, baseWeight: number): SubtitleRun[] {
+  if (!runs.some(run => run.text.includes('\uE000') || run.text.includes('\uE001'))) return runs;
+  return runs.flatMap(run => {
+    return run.weight === boldWeight ? [{ ...run, text: plainText(run.text) }] : boldRuns(run.text, boldWeight, baseWeight);
+  });
+}
+
 function runsWidth(runs: readonly SubtitleRun[], font: FontSpec, boldFont: FontSpec, measure: TextMeasurer): number {
   return (
     runs.reduce((w, run) => w + measure(run.text, run.weight ? boldFont : font).width, 0) +
@@ -1850,13 +1863,13 @@ function runsWidth(runs: readonly SubtitleRun[], font: FontSpec, boldFont: FontS
 }
 
 /** Words with their weight, rejoined into styled runs; the space before a new run stays U+00A0. */
-function runsOf(words: readonly { text: string; bold: boolean }[], boldWeight: number): SubtitleRun[] {
+function runsOf(words: readonly { text: string; bold: boolean }[], boldWeight: number, baseWeight: number): SubtitleRun[] {
   const runs: SubtitleRun[] = [];
   words.forEach((word, i) => {
     if (i > 0 && words[i - 1]!.bold === word.bold) runs[runs.length - 1]!.text += ` ${word.text}`;
     else runs.push({ text: i > 0 ? `\u00A0${word.text}` : word.text, ...(word.bold ? { weight: boldWeight } : {}) });
   });
-  return runs;
+  return subtitleRuns(runs, boldWeight, baseWeight);
 }
 
 /**
@@ -1876,7 +1889,7 @@ function balancedLines(text: string, font: FontSpec, maxWidth: number, lines: re
     || lines.join(' ').split(/[^\S\u00a0\u202f]+/).filter(Boolean).join(' ') !== text.split(/[^\S\u00a0\u202f]+/).filter(Boolean).join(' ');
   if (own || filled.length < 2 || filled.length > 3) return filled;
   const units = filled.join(' ').split(' ').reduce<string[]>((out, word) => {
-    if (out.length > 0 && /^p\.a\.[,;:]?$/i.test(word)) out[out.length - 1] += ` ${word}`; else out.push(word);
+    if (out.length > 0 && /^p\.a\.[,;:]?$/i.test(plainText(word))) out[out.length - 1] += ` ${word}`; else out.push(word);
     return out;
   }, []);
   if (units.length > 40) return filled;
@@ -1907,13 +1920,13 @@ function filledLines(text: string, font: FontSpec, maxWidth: number, lines: read
   if (lines.flatMap(split).join(' ') !== words.join(' ')) return [...lines];
   // 'p.a.' is one unit with its rate.
   const units = (line: string) => split(line).reduce<string[]>((out, word) => {
-    if (out.length > 0 && /^p\.a\.[,;:]?$/i.test(word)) out[out.length - 1] += ` ${word}`; else out.push(word);
+    if (out.length > 0 && /^p\.a\.[,;:]?$/i.test(plainText(word))) out[out.length - 1] += ` ${word}`; else out.push(word);
     return out;
   }, []);
   const out = lines.map(units);
   // A 'p.a.' greedy-wrapped away from its rate rejoins it on the line below.
   for (let i = 1; i < out.length; i++) {
-    if (/^p\.a\.[,;:]?$/i.test(out[i]![0] ?? '') && out[i - 1]!.length > 1) {
+    if (/^p\.a\.[,;:]?$/i.test(plainText(out[i]![0] ?? '')) && out[i - 1]!.length > 1) {
       const rate = out[i - 1]!.pop()!;
       out[i]![0] = `${rate} ${out[i]![0]}`;
     }
@@ -1952,7 +1965,7 @@ function keepLastLineCompany<W extends { text: string; bold: boolean }>(
   // lone word too.
   const periodWord = period !== undefined && period.trim().split(/\s+/).length <= 3 ? period.trim().split(/\s+/).join(' ') : undefined;
   const lone = (line: W[]) => {
-    const text = line.filter((word) => word.text !== '·').map((word) => word.text).join(' ');
+    const text = line.filter((word) => word.text !== '·').map((word) => plainText(word.text)).join(' ');
     return line.filter((word) => word.text !== '·').length < 2 || text === pairWord || text === periodWord;
   };
   if (!lone(broken[broken.length - 1]!)) return;
@@ -1969,7 +1982,7 @@ function keepLastLineCompany<W extends { text: string; bold: boolean }>(
     return line.slice(from, to);
   };
   const boundary = (cut: number) => pair[cut]!.text === '·' || pair[cut - 1]!.text === '·' || pair[cut]!.bold !== pair[cut - 1]!.bold;
-  const binds = (cut: number) => /^(in|of|by|vs\.?|per|to|and|or|the|a|an|for|from|at|on|[$€£¥]|US\$|Q[1-4]|H[12])$/i.test(pair[cut - 1]!.text);
+  const binds = (cut: number) => /^(in|of|by|vs\.?|per|to|and|or|the|a|an|for|from|at|on|[$€£¥]|US\$|Q[1-4]|H[12])$/i.test(plainText(pair[cut - 1]!.text));
   const tiers = [boundary, (cut: number) => !binds(cut), () => true];
   for (const allowed of tiers) {
     for (let cut = broken[broken.length - 2]!.length - 1; cut >= 1; cut--) {
@@ -1992,7 +2005,7 @@ function wrapSubtitle(
 ): { nodes: TextNode[]; rect: Rect } {
   type Word = { text: string; bold: boolean };
   const words: Word[] = segments.flatMap((seg) => seg.text.split(' ').filter(Boolean).map((text) => ({ text, bold: seg.bold })));
-  const widthOf = (list: Word[]) => runsWidth(runsOf(list, ctx.boldFont.weight), ctx.font, ctx.boldFont, ctx.measure);
+  const widthOf = (list: Word[]) => runsWidth(runsOf(list, ctx.boldFont.weight, ctx.font.weight), ctx.font, ctx.boldFont, ctx.measure);
   // Each line takes the words that fit; it breaks at the last composed '·' when
   // the line keeps half the width, so a period stays on one line; the break
   // then replaces the separator. The last allowed line takes the rest.
@@ -2018,12 +2031,12 @@ function wrapSubtitle(
     }
     return withEllipsis(line);
   };
-  const title = words.map((word) => word.text).join(' ');
+  const title = words.map((word) => plainText(word.text)).join(' ');
   // A first word wider than the frame (a URL, an identifier) is cut too, never left to run off the edge.
   const lines = broken
     .map((line) => (widthOf(line) > ctx.contentW ? { line: cutLine(line), cut: true } : { line, cut: false }));
   const nodes = lines.map(({ line, cut }, index): TextNode => {
-    const runs = runsOf(line, ctx.boldFont.weight);
+    const runs = runsOf(line, ctx.boldFont.weight, ctx.font.weight);
     return {
       t: 'text', id: index === 0 ? ctx.id : ctx.nextId(), x: ctx.x, y: ctx.y + index * ctx.lineH,
       lines: [runs.map((run) => run.text).join('')], runs,
@@ -2155,14 +2168,16 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
       target: input.target, textScale: input.textScale, typeRole: 'title' as const,
       shrink: { ...baseFont, size: Math.max(targetFloorsPx(input.target ?? DEFAULT_TARGET, input.textScale).title, compactSize) },
     };
-    let wrapped = fitText(input.title, baseFont, headerW, TITLE_LINES, measure, fitOptions);
+    const title = markBold(input.title);
+    const titleMeasure = title === input.title ? measure : boldMeasurer(measure, emphasisWeight(theme));
+    let wrapped = fitText(title, baseFont, headerW, TITLE_LINES, titleMeasure, fitOptions);
     if (wrapped.title !== undefined) {
-      wrapped = fitText(input.title, wrapped.font, headerW, Number.MAX_SAFE_INTEGER, measure, { ...fitOptions, shrink: undefined });
+      wrapped = fitText(title, wrapped.font, headerW, Number.MAX_SAFE_INTEGER, titleMeasure, { ...fitOptions, shrink: undefined });
     }
     const font = wrapped.font;
     // A wrapped title fills each line; no single word sits alone on the last line.
     const lines = wrapped.title === undefined && wrapped.lines.length >= 2
-      ? balancedLines(input.title, font, headerW, wrapped.lines, measure) : wrapped.lines;
+      ? balancedLines(title, font, headerW, wrapped.lines, titleMeasure) : wrapped.lines;
     if (wrapped.title !== undefined) {
       warnings.push({
         code: 'frame-title-truncated',
@@ -2178,9 +2193,9 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
       id,
       x: contentX,
       y: topY,
-      lines,
+      ...splitBoldLines(lines, emphasisWeight(theme), font.weight),
       // A cut title keeps its full text for the reader.
-      ...(wrapped.title !== undefined ? { title: wrapped.title } : {}),
+      ...(wrapped.title !== undefined ? { title: plainText(wrapped.title) } : {}),
       align: 'start',
       font,
       ink: { token: 'ink' },
@@ -2219,6 +2234,8 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
   // "+N notes". The small role, inkMuted, regular weight. A host that scales
   // text reads the size from this role only.
   const footFont = withFamily(footerType(theme.type.footnote, input.target, input.textScale));
+  const footMeasure = (input.source && hasBold(input.source)) || input.footnotes?.some(hasBold)
+    ? boldMeasurer(measure, emphasisWeight(theme)) : measure;
   let liveFooterH = 0;
   const footLineH = footFont.size * (footFont.lineHeight ?? 1.3);
   const footInset = Math.max(0, Math.min(input.footerInset ?? 0, (contentW - 1) / 2));
@@ -2260,14 +2277,14 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
       if (fullStatic && meta?.list) staticFrame.countable = true;
       // a capped list note names what fits two footer lines at this width.
       if (meta?.list) {
-        const fitted = fittedNote(meta.list, (text) => wrapFootnote(text, footFont, footW, measure).length <= 2);
+        const fitted = fittedNote(meta.list, (text) => wrapFootnote(markBold(text), footFont, footW, footMeasure).length <= 2);
         f = meta.short ? engineNote(f, 'disclosure', fitted, meta.values, meta.list) : engineNote(fitted, 'disclosure', undefined, meta.values, meta.list);
       }
       const kind: NoteKind = numberedDisclosure ? 'disclosure' : numberedHere ? 'note' : meta?.kind ?? 'method';
       // A disclosure draws its short form only where it is narrower than the full note;
       // an author-set notes.maxListed keeps its form.
       const fittedShort = engineNoteMeta(f)?.short ?? meta?.short;
-      const short = fittedShort && (kind !== 'disclosure' || input.notes?.maxListed !== undefined || measure(fittedShort, footFont).width < measure(f, footFont).width) ? fittedShort : undefined;
+      const short = fittedShort && (kind !== 'disclosure' || input.notes?.maxListed !== undefined || footMeasure(markBold(fittedShort), footFont).width < footMeasure(markBold(f), footFont).width) ? fittedShort : undefined;
       const storedMeta = meta ? { ...meta, ...engineNoteMeta(f), ...(meta.ranks ? { ranks: true as const } : {}) } : undefined;
       entries.push(keepNoteMeta({ kind, text: f, ...(short ? { short } : {}), drawn: `${marker}${kind === 'disclosure' || (kind === 'method' && !fullStatic) ? short ?? f : f}`, ...(marker ? { ref: next } : {}), ...(meta?.ranks ? { ranks: true as const } : {}) }, storedMeta));
     }
@@ -2322,9 +2339,9 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
     if (source === undefined) return pointer;
     return pointer === undefined ? source : `${source}${/[.!?]$/.test(source) ? '' : '.'} ${pointer}`;
   };
-  const sourceFit = (text: string) => !fullStatic && input[COMPACT_SOURCE_LINES] === 1 ? fitText(text, footFont, footW, 1, measure) : undefined;
-  const sourceLines = (text: string): string[] => sourceFit(text)?.lines ?? wrapFootnote(text, footFont, footW, measure);
-  const noteLines = candidates.map((entry) => wrapFootnote(entry.drawn, footFont, footW, measure));
+  const sourceFit = (text: string) => !fullStatic && input[COMPACT_SOURCE_LINES] === 1 ? fitText(markBold(text), footFont, footW, 1, footMeasure) : undefined;
+  const sourceLines = (text: string): string[] => sourceFit(text)?.lines ?? wrapFootnote(markBold(text), footFont, footW, footMeasure);
+  const noteLines = candidates.map((entry) => wrapFootnote(markBold(entry.drawn), footFont, footW, footMeasure));
   // The most notes, in order, that fit the budget with the source line (and
   // its pointer); the source line itself is never cut.
   let k = candidates.length;
@@ -2356,7 +2373,7 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
   const footParts: { text: string; kind: 'source' | 'footnote' | 'credit'; lines?: string[] }[] = [
     ...entries.filter((entry) => visible.has(entry)).map((entry) => {
       const at = candidates.indexOf(entry);
-      return { text: entry.drawn, kind: 'footnote' as const, lines: at >= 0 ? noteLines[at] : wrapFootnote(entry.drawn, footFont, footW, measure) };
+      return { text: entry.drawn, kind: 'footnote' as const, lines: at >= 0 ? noteLines[at] : wrapFootnote(markBold(entry.drawn), footFont, footW, footMeasure) };
     }),
     ...(sourceBlock ? [{ text: sourceBlock, kind: 'source' as const }] : []),
     ...(credit && creditInFrame ? [{ text: `${chartString(input, 'mapCredit')}: ${credit.text}`, kind: 'credit' as const }] : []),
@@ -2368,7 +2385,7 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
   const omitted = Array.from({ length: input[COMPACT_OMITTED_NOTES] ?? 0 }, (): ChartNote => ({ n: 0, kind: 'note', text: '', inFrame: false }));
   // The 'info' button row reaches into the bottom margin, as hitRoom rules.
   const liveParts = (pointer: boolean) => footerParts([...noteList, ...omitted], placement, input[LIVE_NOTE_SHOW] ?? input.notes?.show, pointer);
-  const liveHeight = (parts: ReturnType<typeof footerParts>) => Math.max(0, htmlFooterHeight(input, parts, sourceText, footFont, contentW, footLineH, measure) - (placement === 'info' ? margin.bottom : 0));
+  const liveHeight = (parts: ReturnType<typeof footerParts>) => Math.max(0, htmlFooterHeight(input, parts, sourceText, footFont, contentW, footLineH, footMeasure) - (placement === 'info' ? margin.bottom : 0));
   const withPointer = staticFrame.live && !fullStatic ? liveParts(pointerOn) : undefined;
   liveFooterH = withPointer ? liveHeight(withPointer) : 0;
   // A quiet method note alone never makes the footer taller: without its button row the footer keeps its height.
@@ -2387,7 +2404,7 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
       // A footnote is the sentence that makes an exhibit auditable. It wraps to
       // the content width and keeps every word on the canvas.
       const fitted = p.kind === 'source' ? sourceFit(p.text) : undefined;
-      const lines = p.lines ?? (p.kind === 'source' ? sourceLines(p.text) : wrapFootnote(p.text, footFont, footW, measure));
+      const lines = p.lines ?? (p.kind === 'source' ? sourceLines(p.text) : wrapFootnote(p.kind === 'credit' ? p.text : markBold(p.text), footFont, footW, footMeasure));
       bottomY -= footLineH * lines.length;
       footLines += lines.length;
       const id = nid(p.kind);
@@ -2396,8 +2413,8 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
         id,
         x: footX,
         y: bottomY,
-        lines,
-        ...(fitted?.title ? { title: fitted.title } : {}),
+        ...splitBoldLines(lines, emphasisWeight(theme), footFont.weight),
+        ...(fitted?.title ? { title: plainText(fitted.title) } : {}),
         align: 'start',
         font: footFont,
         ink: { token: p.kind === 'footnote' ? input.footnoteInk ?? 'inkMuted' : 'inkMuted' },

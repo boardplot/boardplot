@@ -56,8 +56,9 @@ function lineBoxes(node: TextNode, measure: TextMeasurer): { x0: number; y0: num
   });
   return node.lines.flatMap((line, i) => {
     if (line.trim() === '') return [];
-    const w = node.runs && node.lines.length === 1
-      ? node.runs.reduce((sum, run) => sum + measure(run.text, runFont(font, run.weight)).width, 0)
+    const runs = node.lineRuns?.[i] ?? (node.lines.length === 1 ? node.runs : undefined);
+    const w = runs
+      ? runs.reduce((sum, run) => sum + measure(run.text, runFont(font, run.weight)).width, 0) + (node.lineRuns ? (font.letterSpacing ?? 0) * (runs.length - 1) : 0)
       : measure(line, font).width;
     const x0 = node.x - (node.align === 'end' ? w : node.align === 'middle' ? w / 2 : 0);
     const lineBase = baseline + i * lineH;

@@ -1,10 +1,11 @@
 /** Static footer layout, linked by static entry points before layout. */
+import { boldMeasurer, hasBold, markBold, splitBoldLines } from './inlineBold';
 import { footnoteMark } from './footnoteMark';
 import { INTERACTIVE_LAYOUT, footerPlans, footerType, staticFrame, wrapFootnote } from './footer';
 import { publishDeferred } from './deferred';
 import { allQuiet, isQuiet, chartNotes, copyNote, engineNoteMeta, keepNoteMeta, printsNote, shownNoteKinds, sourceLine, unprintedNotes, type ChartNote } from './notes';
 import { fittedNote } from './frame';
-import { panelTypeClass, spaceTokens } from './theme';
+import { emphasisWeight, panelTypeClass, spaceTokens } from './theme';
 import { chartString, localeStrings } from './strings/frame';
 import { CARD_CLASS_WIDTH, heightOmitted } from './sizing';
 import { TEXT_ASCENT } from './svg/renderSvg';
@@ -31,7 +32,7 @@ export function hiddenValueNoteHeight(geo: Geometry<object, object>): number {
   const lines = (geo.frame.noteList ?? []).filter(note => !note.inFrame && note.kind === 'disclosure').reduce((sum, note) => {
     const meta = engineNoteMeta(note);
     if (!meta?.values && !meta?.list) return sum;
-    const wrapped = wrapFootnote(note.short ?? note.text, plan.font, plan.width, plan.measure).length;
+    const wrapped = wrapFootnote(markBold(note.short ?? note.text), plan.font, plan.width, plan.measure).length;
     return sum + (meta.list ? Math.min(2, wrapped) : wrapped);
   }, 0);
   return lines === 0 ? 0 : lines * lineH + plan.tokens.gapFootnoteSource;
@@ -125,6 +126,9 @@ function footerPlan(frame: FrameGeometry) {
   const input = footerPlans.get(frame);
   if (!input) return;
   const tokens = spaceTokens(input.theme, input.size.width);
+  const boldWeight = emphasisWeight(input.theme);
+  const measure = (input.source && hasBold(input.source)) || frame.noteList?.some(note => hasBold(note.text) || !!note.short && hasBold(note.short)) || input.numberedFootnotes?.some(hasBold)
+    ? boldMeasurer(input.measure, boldWeight) : input.measure;
   return { input, tokens: input.cardGaps ? { ...tokens, gapAxisFootnote: 8, gapFootnoteSource: 0 } : tokens,
     source: input.source ? sourceLine(input.source, input.strings?.source ?? localeStrings().source) : undefined,
     notes: frame.noteList ?? [],
@@ -132,7 +136,7 @@ function footerPlan(frame: FrameGeometry) {
       .map((note, i) => ({ note, id: frame.footnoteNodeIds?.[i] })),
     font: { family: input.theme.type.family, ...footerType(input.theme.type.footnote, input.target, input.textScale) },
     // A table's footer keeps its cell air in (footerInset), as the frame draws it.
-    measure: input.measure, x: input.margin.left + (input.footerInset ?? 0),
+    measure, boldWeight, x: input.margin.left + (input.footerInset ?? 0),
     width: input.size.width - input.margin.left - input.margin.right - 2 * (input.footerInset ?? 0), bottom: input.margin.bottom };
 }
 type StaticFooterPlan = NonNullable<ReturnType<typeof footerPlan>>;
@@ -142,7 +146,7 @@ function allNotes(plan: StaticFooterPlan): ChartNote[] {
   const fit = (note: ChartNote): ChartNote => {
     const meta = engineNoteMeta(note);
     if (!meta?.list) return note;
-    const fitted = fittedNote(meta.list, text => wrapFootnote(text, plan.font, plan.width, plan.measure).length <= 2);
+    const fitted = fittedNote(meta.list, text => wrapFootnote(markBold(text), plan.font, plan.width, plan.measure).length <= 2);
     return keepNoteMeta(meta.short ? { ...note, short: fitted } : { ...note, text: fitted }, { ...meta, ...(meta.short ? { short: fitted } : {}) });
   };
   if (!plan.input.numberedFootnotes?.some(text => !plan.notes.some(note => note.text === text))) return plan.notes.map(fit);
@@ -246,7 +250,11 @@ function withStaticFooter<G extends Geometry<object, object>>(geometry: G, minim
     const drawn = geometry.scene.filter((node): node is Extract<SceneNode, { t: 'text' }> => node.t === 'text' && footerIds(geometry.frame).includes(node.id))
       .sort((a, b) => a.y - b.y);
     const last = drawn.at(-1);
-    const host = [drawn.find(node => node.id === geometry.frame.sourceNodeId), last].find(node => node && buttonFits(node.lines, button, plan));
+    const host = [drawn.find(node => node.id === geometry.frame.sourceNodeId), last].find(node => {
+      if (!node) return false;
+      const lines = node.lineRuns?.map(runs => runs.map(run => run.weight === plan.boldWeight ? `\uE000${run.text}\uE001` : run.text).join('')) ?? node.lines;
+      return buttonFits(lines, button, plan);
+    });
     if (host) return { ...geometry, frame: { ...geometry.frame, notesButton: { nodeId: host.id } } };
     if (quiet) return geometry;
     if (last) return withNotesRow(geometry, last.y + last.font.size * (last.font.lineHeight ?? 1.3) * last.lines.length, button, plan);
@@ -264,7 +272,11 @@ function withStaticFooter<G extends Geometry<object, object>>(geometry: G, minim
       text: note.kind === 'source' ? group.plan.source! : note.kind === 'credit' ? `${chartString(group.plan.input, 'mapCredit')}: ${note.text}`
         : `${note.ref ? `${footnoteMark(note.ref)} ` : ''}${note.kind === 'disclosure' ? note.short ?? note.text : note.text}`,
     })),
-  ]).map(part => ({ ...part, lines: wrapFootnote(part.text, plan.font, plan.width, plan.measure) }));
+  ]).map(part => {
+    const text = part.kind === 'credit' ? part.text : markBold(part.text);
+    const measure = text === part.text ? plan.measure : boldMeasurer(plan.input.measure, plan.boldWeight);
+    return { ...part, lines: wrapFootnote(text, plan.font, plan.width, measure) };
+  });
   const lineH = plan.font.size * (plan.font.lineHeight ?? 1.3);
   const nodes: SceneNode[] = [];
   const moved = new Map<string, string>();
@@ -285,7 +297,7 @@ function withStaticFooter<G extends Geometry<object, object>>(geometry: G, minim
     const id = `static-footer:${part.kind}:${nodes.length}`;
     if (i === hostAt && inline) hostId = id;
     if (part.oldId) moved.set(`${part.panel ? `${part.panel}/` : ''}${part.oldId}`, id);
-    nodes.push({ t: 'text', id, x: plan.x, y, lines: part.lines, align: 'start', font: plan.font,
+    nodes.push({ t: 'text', id, x: plan.x, y, ...splitBoldLines(part.lines, plan.boldWeight, plan.font.weight), align: 'start', font: plan.font,
       ink: { token: part.kind === 'footnote' ? plan.input.footnoteInk ?? 'inkMuted' : 'inkMuted' }, owner: {}, part: part.kind, typeRole: 'footnote',
       ...(part.panel ? { origin: { owner: {}, panels: part.panel.split('/') } } : {}) });
     if (part.kind === 'source' && !part.panel) frame.sourceNodeId = id;

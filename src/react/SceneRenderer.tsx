@@ -1,4 +1,5 @@
 import { assertEmbeddedImage } from '../core/image';
+import { plainText } from '../core/inlineBold';
 import { ENGINE_REV } from '../core/engine';
 import { NormalizeError } from '../core/normalize/shared';
 /**
@@ -141,23 +142,26 @@ function assertRenderableGeometry(geometry: RenderGeometry): void {
         if (!Array.isArray(node.lines) || node.lines.some((line) => typeof line !== 'string')) {
           invalidGeometry(`text lines ${node.id}`);
         }
-        if (node.runs !== undefined) {
-          // Mirror of the canonical SVG path's runtime guard: run values are
-          // untyped at this public boundary and weight lands in an attribute.
-          if (!Array.isArray(node.runs) || node.runs.length === 0) {
-            invalidGeometry(`text runs ${node.id}`);
+        if (node.runs !== undefined || node.lineRuns !== undefined) {
+          if (node.lineRuns !== undefined && (node.runs !== undefined || !Array.isArray(node.lineRuns) || node.lineRuns.length !== node.lines.length)) {
+            invalidGeometry(`text lineRuns ${node.id}`);
           }
-          // Iteration visits sparse holes as undefined, so they fail the text check.
-          for (const candidate of node.runs as unknown[]) {
-            const { text, weight } = typeof candidate === 'object' && candidate !== null
-              ? candidate as { text?: unknown; weight?: unknown } : {};
-            if (typeof text !== 'string' || (weight !== undefined &&
-                (typeof weight !== 'number' || !Number.isFinite(weight) || weight < 1 || weight > 1000))) {
-              invalidGeometry(`text runs ${node.id}`);
+          const lists = node.lineRuns ?? [node.runs!];
+          // Iteration visits sparse holes as undefined at this public boundary.
+          for (let line = 0; line < lists.length; line++) {
+            const runs = lists[line];
+            if (!Array.isArray(runs) || runs.length === 0) invalidGeometry(`text runs ${node.id}`);
+            for (const candidate of runs as unknown[]) {
+              const { text, weight } = typeof candidate === 'object' && candidate !== null
+                ? candidate as { text?: unknown; weight?: unknown } : {};
+              if (typeof text !== 'string' || (weight !== undefined &&
+                  (typeof weight !== 'number' || !Number.isFinite(weight) || weight < 1 || weight > 1000))) {
+                invalidGeometry(`text runs ${node.id}`);
+              }
             }
-          }
-          if (node.lines.length !== 1 || node.lines[0] !== node.runs.map((run) => run.text).join('')) {
-            invalidGeometry(`text runs ${node.id} — single line, lines[0] = concatenated runs`);
+            if ((!node.lineRuns && node.lines.length !== 1) || node.lines[line] !== runs.map(run => run.text).join('')) {
+              invalidGeometry(`text runs ${node.id} — lines = concatenated runs`);
+            }
           }
         }
         assertNumber(`${node.id}.font.size`, node.font?.size, 0);
@@ -257,7 +261,7 @@ export function SceneRenderer({
       data-bp-card={geometry.type === 'kpi' || geometry.type === 'bullet' ? geometry.type : undefined}
       data-bp-sizing={geometry.sizing ? JSON.stringify(geometry.sizing) : undefined}
       data-bp-mode={geometry.mode}
-      aria-label={geometry.a11y.title}
+      aria-label={plainText(geometry.a11y.title)}
       aria-describedby={`${patternScope}-desc`}
       width={width}
       height={height}
@@ -267,8 +271,8 @@ export function SceneRenderer({
         : { display: 'block', ...TEXT_RESETS, ...variables, ...style }}
       fontFamily={theme.type.family}
     >
-      {geometry.a11y.includeTitle === true && <title>{geometry.a11y.title}</title>}
-      <desc id={`${patternScope}-desc`}>{geometry.a11y.desc}</desc>
+      {geometry.a11y.includeTitle === true && <title>{plainText(geometry.a11y.title)}</title>}
+      <desc id={`${patternScope}-desc`}>{plainText(geometry.a11y.desc)}</desc>
       <ScenePatternDefs geometry={geometry} theme={theme} scope={patternScope} paint={paint} />
       {canvasBackground !== 'transparent' && <rect x={0} y={0} width={size.width} height={size.height} fill={background} />}
       {geometry.scene.map((node) =>
@@ -414,7 +418,9 @@ function Node({
           ))
         : node.lines.map((line, i) => (
             <tspan key={i} x={x} dy={i === 0 ? 0 : lineH}>
-              {line}
+              {node.lineRuns ? node.lineRuns[i]!.map((run, j) => (
+                <tspan key={j} fontWeight={run.weight !== undefined && run.weight !== node.font.weight ? run.weight : undefined}>{run.text}</tspan>
+              )) : line}
             </tspan>
           ));
       // The halo is a stroked copy under the label, as in the SVG serializer
