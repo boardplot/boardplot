@@ -525,9 +525,9 @@ describe('boardplot MCP server', () => {
   }, 60_000);
 
   it('names a width argument, not /options/size, when that argument makes the chart too small', () => {
-    const [error] = body(callTool('boardplot_render', { spec: SPEC, width: 200 })).errors;
-    expect(error).toMatchObject({ code: 'size-below-floor', path: '/width', fix: [{ op: 'replace', path: '/width', value: 280 }] });
-    expect(body(callTool('boardplot_render', { spec: SPEC, width: 280 })).ok).toBe(true);
+    const [error] = body(callTool('boardplot_render', { spec: SPEC, width: 100 })).errors;
+    expect(error).toMatchObject({ code: 'size-below-floor', path: '/width', fix: [{ op: 'replace', path: '/width', value: 120 }] });
+    expect(body(callTool('boardplot_render', { spec: SPEC, width: 120 })).ok).toBe(true);
   });
 
   it('carries the warnings of a full theme object into the render result', () => {
@@ -582,7 +582,7 @@ describe('boardplot MCP server', () => {
     const measured = body(callTool('boardplot_measure', { spec: SPEC, width: 800 }));
     expect(measured).toMatchObject({ ok: true, fit: 'fill', refused: null, titleLines: 1 });
     expect(measured.naturalWidth).toBeGreaterThanOrEqual(measured.minWidth);
-    const small = body(callTool('boardplot_measure', { spec: { ...SPEC, options: { ...SPEC.options, size: { width: 200, height: 120 } } } }));
+    const small = body(callTool('boardplot_measure', { spec: { ...SPEC, options: { ...SPEC.options, size: { width: 100, height: 120 } } } }));
     // Below the full floor the chart falls back to compact, so the refusal names the compact size, at the compact floor's width.
     expect(small.refused).toMatchObject({ code: 'size-below-floor', required: { width: small.compactFloor.width } });
   });

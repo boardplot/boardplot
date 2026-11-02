@@ -108,7 +108,7 @@ This type takes no annotations.
 
 ## Sizing
 
-Floor 280 × 270 px; fit `content`.
+Floor 160 × 270 px; fit `content`.
 
 Below the floor a render is refused with `size-below-floor` and the pixels it needs. `measure` returns the natural and comfortable size for a given spec; see [Sizing in the manual](../manual.md#sizing).
 
