@@ -1,3 +1,4 @@
 ### Fixed
 
 - A callout or note wrapped to several lines keeps a drawn leader to its own mark when it sits diagonally from it. The minimum drawn leader length now uses one text line instead of the full wrapped height, and a diagonal seat without a drawable leader comes after every seat that has one, so the text no longer sits over a neighbouring bar with no leader. One-line callouts and wrapped callouts that already had a leader are unchanged.
+- The wrapped seats of a callout or note (above, below, beside and diagonal) keep clear of the value printed at their own mark, such as the number over a column. Their leaders start at the edge of that value, and a wrapped seat whose leader would still cross a label is not used. A wrapped callout on a column with a value label now sits straight above the column and its value, where its leader crossed the value before.

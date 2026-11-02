@@ -29,7 +29,7 @@ import { compileIcon, type IconName } from './icons';
 import type { OccupiedIndex } from './label/occupied';
 import { leaderFor, leaderHeightOf, leaderTerminus, PRIORITY, solveLabels, type LabelRequest, type SlotCandidate, type SolveCtx } from './label/solver';
 import { leaderPath } from './svgPath';
-import { arrowSeats, finishCalloutHeads, leadersOffAnchorValues, type CalloutHeadPlan } from './annotateCallout';
+import { anchorValueBox, arrowSeats, finishCalloutHeads, leaderCrossesLabel, leadersOffAnchorValues, valueEdgeToward, type CalloutHeadPlan } from './annotateCallout';
 import { composedTextRole, computedTextRole } from './textRole';
 import { drawCagrArm, drawDiffArm, trimAnnotationGuides, type ArmDrawPass } from './annotateArms';
 import type { ComparisonLayout } from './annotateLinks';
@@ -1651,6 +1651,12 @@ function calloutLabel(
   // after every one-line seat and the free spot, so a callout that drew before draws the same.
   if ((kind === 'callout' || kind === 'note') && !glyph && head.arrow !== true && head.headline === undefined && !input.gridCallouts) {
     const wrappedSeats: SlotCandidate[] = [];
+    // The value printed over the point (the number on its column): the wrapped seats ring it too, and their
+    // leaders start at its edge, so no line crosses the number.
+    const value = anchorValueBox(input.occupied, box, at.owner, lineH * 2);
+    const [wLeft, wTop, wRight, wBottom] = value
+      ? [Math.min(left, value.x), Math.min(top, value.y), Math.max(right, value.x + value.w), Math.max(bottom, value.y + value.h)]
+      : [left, top, right, bottom];
     const widest = Math.min(w, input.plot.w);
     const seen = new Set<string>();
     for (const share of [1, 0.7, 0.5, 0.38, 0.3, 0.25]) {
@@ -1665,21 +1671,25 @@ function calloutLabel(
       const extra = 100 + (wrapped.length - 2) * 10;
       const seat = (slot: string, x: number, y: number, penalty: number, leader = false) => {
         const rect = { x, y, w: ww, h: hh };
-        const candidate = { slot, rect, penalty: extra + penalty, lines: wrapped, ...(leader ? { leaderFrom: edgeToward(rect), leaderLineHeight: lineH } : {}) };
+        const from = value ? valueEdgeToward(value, rect) : edgeToward(rect);
+        const candidate = { slot, rect, penalty: extra + penalty, lines: wrapped, ...(leader ? { leaderFrom: from, leaderLineHeight: lineH } : {}) };
+        const drawn = leader ? leaderFor(candidate) : undefined;
+        // No line crosses text: a seat whose leader runs through a label on the page is no seat.
+        if (drawn && leaderCrossesLabel(drawn.d, input.occupied)) return;
         // A diagonal seat without a drawn leader can read as a neighbour's callout: it comes after every seat with one,
         // and still draws when nothing else fits.
-        if (leader && /^(above|below)/.test(slot) && !leaderFor(candidate)) candidate.penalty += 1000;
+        if (leader && /^(above|below)/.test(slot) && !drawn) candidate.penalty += 1000;
         wrappedSeats.push(candidate);
       };
-      seat('aboveWrap', cx, top - hh - gap, prefer === 'above' ? -1 : 0);
-      seat('rightWrapAt', right + gap * 2, sideY - hh / 2, prefer === 'right' ? -1 : 1, true);
-      seat('leftWrapAt', left - ww - gap * 2, sideY - hh / 2, prefer === 'left' ? -1 : 2, true);
-      seat('belowWrap', cx, bottom + gap, prefer === 'below' ? -1 : 3);
+      seat('aboveWrap', cx, wTop - hh - gap, prefer === 'above' ? -1 : 0);
+      seat('rightWrapAt', wRight + gap * 2, sideY - hh / 2, prefer === 'right' ? -1 : 1, true);
+      seat('leftWrapAt', wLeft - ww - gap * 2, sideY - hh / 2, prefer === 'left' ? -1 : 2, true);
+      seat('belowWrap', cx, wBottom + gap, prefer === 'below' ? -1 : 3);
       // Diagonal seats clear of the value printed over the point.
-      seat('aboveLeftWrap', Math.max(input.plot.x, left - ww - gap * 2), top - hh - gap, 3.1, true);
-      seat('aboveRightWrap', Math.min(right + gap * 2, input.plot.x + input.plot.w - ww), top - hh - gap, 3.2, true);
-      seat('belowLeftWrap', Math.max(input.plot.x, left - ww - gap * 2), bottom + gap, 3.3, true);
-      seat('belowRightWrap', Math.min(right + gap * 2, input.plot.x + input.plot.w - ww), bottom + gap, 3.4, true);
+      seat('aboveLeftWrap', Math.max(input.plot.x, wLeft - ww - gap * 2), wTop - hh - gap, 3.1, true);
+      seat('aboveRightWrap', Math.min(wRight + gap * 2, input.plot.x + input.plot.w - ww), wTop - hh - gap, 3.2, true);
+      seat('belowLeftWrap', Math.max(input.plot.x, wLeft - ww - gap * 2), wBottom + gap, 3.3, true);
+      seat('belowRightWrap', Math.min(wRight + gap * 2, input.plot.x + input.plot.w - ww), wBottom + gap, 3.4, true);
     }
     all.push(...wrappedSeats.sort((a, b) => a.penalty - b.penalty));
   }
