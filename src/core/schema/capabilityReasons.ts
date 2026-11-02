@@ -103,7 +103,7 @@ export const LEGEND_REFUSED_REASONS: Readonly<Record<string, string>> = {
 };
 
 export const LEGEND_DRAWS_REASONS: Readonly<Record<string, string>> = {
-  slope: "a slope chart names every line at both ends, so 'none' and 'auto' draw what the chart draws without them; drop legend, or name 'top' or 'bottom' for a key",
+  slope: "a slope chart names every line at both ends, so 'none' and 'auto' draw what the chart draws without them; drop legend, or name 'top', 'bottom', 'right' or 'left' for a key",
 };
 
 /** The one key no type implements; the base schema refuses it on every type. */

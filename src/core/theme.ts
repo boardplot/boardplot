@@ -31,6 +31,8 @@ import type { DashRole, StrokeRole, Theme, ThemeRef, ThemeTable, TypeRoleName } 
 import { adoptedTheme } from './themeStore';
 import { RETIRED_PALETTES, RETIRED_PRESETS, RETIRED_THEME_KEYS, retiredThemeKeyWarning, withoutRetiredThemeKeys } from './retired';
 import { themeColors } from './themeColors';
+import { DEFAULT_THEME } from './themeDefault';
+import { themeShape } from './normalize/optionShapes';
 
 /**
  * The structural theme checks below run only over a theme a caller PATCHED,
@@ -579,7 +581,7 @@ export const bridgeTheme: Theme = bridgeFamilyJson as Theme;
 export const bridgeDarkTheme: Theme = bridgeDarkFamilyJson as Theme;
 
 /** The preset a chart draws with when it names none. */
-export const DEFAULT_PRESET = 'bridge';
+export const DEFAULT_PRESET = DEFAULT_THEME;
 
 /** The glass design family. */
 export const glassTheme: Theme = roadshowFamilyThemes.glass;
@@ -862,7 +864,8 @@ export function resolveTheme(ref?: ThemeRef): Theme {
   // The shipped default is Bridge. A document that wants the old look pins
   // `theme: 'boardroom'` (light) or `theme: 'standard-dark'` (dark) explicitly.
   if (!ref) return own(bridgeTheme);
-  const presetName = typeof ref === 'string' ? currentPreset(ref) : typeof ref.preset === 'string' ? currentPreset(ref.preset) : ref.preset;
+  ref = themeShape(ref);
+  const presetName = currentPreset(typeof ref === 'string' ? ref : ref.preset ?? DEFAULT_PRESET);
   // A registered theme, else one a spec brought along (core/themeStore). Own
   // keys only: a name is data, never a path to Object.prototype; a non-string
   // name matches neither.
@@ -1556,9 +1559,14 @@ function defaultCanvasMargin(width: number): Margin {
 export function spaceTokens(theme: Theme, width: number): SpaceTokens {
   const wide = width >= WIDE_CANVAS_MIN_WIDTH;
   const canvas = theme.space.canvas;
+  const margin = wide ? canvas?.wide : canvas?.base;
+  const fallback = defaultCanvasMargin(width);
   const gap = theme.space.gap;
   return {
-    margin: { ...defaultCanvasMargin(width), ...(wide ? canvas?.wide : canvas?.base) },
+    margin: {
+      top: margin?.top ?? fallback.top, right: margin?.right ?? fallback.right,
+      bottom: margin?.bottom ?? fallback.bottom, left: margin?.left ?? fallback.left,
+    },
     gapTitleSubtitle: gap?.titleSubtitle ?? 4,
     // 8 below W-L: the first plot element sits about 16-18 px under the last
     // header baseline; 12 would leave charts about 5 px lower.

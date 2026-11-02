@@ -41,6 +41,7 @@ import { scenarioPartners, seriesScenarioRole } from '../../scenarioPairs';
 import { OTHERS_ID, type BarDomain, type NormCat, type NormSeries } from './model';
 import { disclosuresShown } from '../../notes';
 import { cappedItems } from '../../frame';
+import { dataSeriesUnitRefusal } from '../../schema/units';
 
 /** The label text of a bar or segment: the display value with the cell's `${value}` override; null when the cell hides it. */
 /**
@@ -451,6 +452,10 @@ export function resolveBarDomain(data: ChartData, options: BarOptions, warnings:
   const refSeries = normSeries.filter((s) => s.role === 'reference');
   if (dataSeries.length === 0) {
     throw new NormalizeError('no-data-series', 'series', 'bar requires at least one data-role series');
+  }
+  if (variant === 'grouped' || variant === 'stacked') {
+    const refusal = dataSeriesUnitRefusal(normSeries, options.unit);
+    if (refusal) warnings.push(refusal);
   }
   // Exhibit-wide format raster: bar is column's twin and formats through
   // the identical rule: style from the example, one precision from the

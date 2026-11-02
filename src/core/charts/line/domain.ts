@@ -787,7 +787,7 @@ export function resolveLineDomain(data: LineChartData, input: LineOptions, env: 
   const resolvedModes = lineLabelModes(options, isBump ? 'bump' : variant, drawnSeries.length);
   const legendPosition = typeof options.legend === 'object' ? options.legend.position : options.legend;
   if (isArea && options.seriesLabels === undefined && options.labels !== false && options.labels?.series === undefined
-    && (legendPosition === 'top' || legendPosition === 'bottom' || legendPosition === 'right')) {
+    && (legendPosition === 'top' || legendPosition === 'bottom' || legendPosition === 'right' || legendPosition === 'left')) {
     // An authored area key carries the automatic series names once.
     resolvedModes.series = 'key';
   }

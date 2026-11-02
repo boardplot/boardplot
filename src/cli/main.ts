@@ -66,12 +66,14 @@ function rowFlags(flags: Flags): { rowsFile?: string; columns?: Record<string, s
  */
 function quietRender(flags: Flags, result: VerbResult): VerbResult {
   if (flags.quiet !== true || result.exit !== 0) return result;
-  const returned = (text(flags, 'return') ?? '').split(',').map((entry) => entry.trim());
+  const svgReturned = (result.body.warnings as { code: string }[] | undefined)?.filter(warning => warning.code === 'svg-returned');
+  const returned = (text(flags, 'return') ?? (svgReturned?.length ? 'svg' : '')).split(',').map((entry) => entry.trim().toLowerCase());
   const pick = (from: Record<string, unknown>) => Object.fromEntries(returned.filter((key) => key in from).map((key) => [key, from[key]]));
   // A document answers per chart, under charts with each chart's name.
   const charts = Array.isArray(result.body.charts) && returned.some((key) => key !== '')
     ? { charts: (result.body.charts as Record<string, unknown>[]).map((chart) => ({ name: chart.name, ...pick(chart) })) } : {};
-  return { ...result, body: { ok: true, ...(result.body.outputs ? { outputs: result.body.outputs } : {}), ...pick(result.body), ...charts } };
+  return { ...result, body: { ok: true, ...(result.body.outputs ? { outputs: result.body.outputs } : {}), ...pick(result.body), ...charts,
+    ...(svgReturned?.length ? { warnings: svgReturned } : {}) } };
 }
 
 /** Print before quiet mode removes warnings; stdout keeps its existing JSON shape. */
@@ -106,7 +108,7 @@ function dispatch(verb: string, flags: Flags, seen: UsageSeen): VerbResult {
       return fixtures({ type: text(flags, 'type'), id: text(flags, 'id'), kind: text(flags, 'kind') }, Infinity);
     case 'render':
       // The CLI answers with one JSON object; a PNG has to go to a file.
-      if (text(flags, 'format') === 'png' && text(flags, 'out') === undefined) {
+      if (text(flags, 'format')?.toLowerCase() === 'png' && text(flags, 'out') === undefined) {
         throw new InputError('png-needs-out', 'render --format png writes files; pass --out <dir>', {
           suggest: 'Add --out with a directory, or render svg.',
         });

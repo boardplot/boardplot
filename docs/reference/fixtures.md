@@ -121,6 +121,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | option-value-labels-none | column.grouped | example | No value prints; the axis reads every column (valueLabels none) |
 | option-value-labels-all | column.grouped | example | Every quarter prints its value (valueLabels all) |
 | grouped-twelve-slide | column.grouped | torture | Two series over twelve units on a full slide print all 24 values |
+| key-right-slide | column.grouped | example | Clustered columns on a slide with the key in a column right of the plot |
 
 ## bar
 
@@ -184,6 +185,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | option-small-values-zero | bar.grouped | torture | Turku prints the series format (smallValues zero) |
 | option-small-values-scientific | bar.grouped | torture | Turku prints a power of ten (smallValues scientific) |
 | option-small-values-p-value | bar.grouped | torture | Every rate prints as an APA p-value (smallValues p-value) |
+| key-left | bar.stacked | example | Stacked bars with the key in a column left of the plot |
 
 ## line
 
@@ -635,6 +637,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | programme-rollout-rag | status | example | Consulting programme rollout RAG board with sparse future gates |
 | capability-assessment | status | example | Capability assessment with a patterned unverified state |
 | review-status-legend-none | status | torture | Review status with one explained state and no legend |
+| review-status-legend-right | status | example | Review status with a state legend in a column beside the grid |
 | review-status-legend-bottom | status | torture | Review status with a bottom legend |
 | review-status-legend-top | status | torture | Review status with a top legend |
 | torture-long-labels | status | torture | Torture: long names at a generous size read whole, never cut |
@@ -1110,6 +1113,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | eu27-demand-versus-plan | tilemap | example | Demand above plan is favorable |
 | eu27-cost-versus-plan | tilemap | example | Cost below plan is favorable |
 | eu27-demand-colorblind | tilemap | example | Demand versus plan in the colorblind-safe good/bad pair |
+| tile-key-right | tilemap | example | The value key in a column right of the tiles |
 | us-state-tile-grid-wide-slot | tilemap | example | US states on a wide slot: the value key stands beside the tiles |
 | tile-key-bottom | tilemap | example | The value key in one row below the tiles |
 | us-states-overlay-tones | tilemap | example | Five state overlays in every tone, the tones and the ball measure named in the overlay key |

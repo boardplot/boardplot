@@ -281,6 +281,42 @@ describe('data gaps', () => {
       .toEqual([['33', '33', '34'], [expect.objectContaining({ part: 'a', nearest: '33%', printed: '34%' })]]);
   });
 
+  // Stacked column shares must total 100 without changing segment values or adjusting categories without share labels.
+  it('rounds complete stacked column shares at the chart precision and reports only printed adjustments', () => {
+    const data = {
+      categories: [{ id: 'selected', label: 'Selected' }, { id: 'other', label: 'Other' }],
+      series: [290, 740, 610, 260, 287.5, 312.5].map((value, i) => ({
+        id: `s${i}`, label: ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta'][i], values: [value, value],
+      })),
+    };
+    const options = { variant: 'stacked', shareLabels: {} };
+    const segments = (g: Geometry, categoryId: string) => g.labels
+      .filter((label) => label.kind === 'segment' && label.owner.categoryId === categoryId && !label.hidden)
+      .map((label) => label.text);
+    const values = ['290', '740', '610', '260', '288', '313'];
+    const rounded = ['290 12%', '740 30%', '610 24%', '260 10%', '288 12%', '313 12%'];
+    const all = lay('column', data, options);
+    expect(segments(all, 'selected')).toEqual(rounded);
+    expect(segments(all, 'other')).toEqual(rounded);
+    const selectedOptions = { ...options, labels: { segment: ['absolute', 'percent'] }, shareLabels: { only: ['selected'] } };
+    const selected = lay('column', data, selectedOptions);
+    expect(segments(selected, 'selected')).toEqual(rounded);
+    expect(segments(selected, 'other')).toEqual(values);
+    const request = resolveChartRequest({ type: 'column', data, options: selectedOptions } as never);
+    const reading = chartReading({ name: 'Parts of one stack', type: 'column', request, geometry: selected, claims: claimsForChart('column', selected) });
+    expect(reading.rounding).toEqual([{ whole: 'Selected', part: 'Zeta', share: 12.5, nearest: '13%', printed: '12%' }]);
+    expect(noteTexts(selected, ['method']).join(' ')).toContain('moved by one step');
+    const nearest = lay('column', data, { ...selectedOptions, rounding: 'nearest' });
+    expect(segments(nearest, 'selected')).toEqual([...rounded.slice(0, -1), '313 13%']);
+    expect(noteTexts(nearest, ['method'])).toEqual([]);
+    expect(nearest.warnings.find((warning) => warning.code === 'share-rounding-drift')?.message).toContain("101% for 'Selected'");
+    const formatted = lay('column', data, { ...options, shareLabels: { format: '1.0%' } });
+    expect(segments(formatted, 'selected')).toEqual(['290 11.6%', '740 29.6%', '610 24.4%', '260 10.4%', '288 11.5%', '313 12.5%']);
+    const hidden = lay('column', data, { ...options, labels: { segment: false } });
+    expect(noteTexts(hidden, ['method'])).toEqual([]);
+    expect(hidden.derived).not.toHaveProperty('roundingAdjustments');
+  });
+
   // The drift lint summed whole percents while the labels printed the authored decimals, so it named a sum no reader sees.
   it('checks share drift at the decimals of a percent options.format', () => {
     const thirds = { categories: [{ id: 'y' }], series: [{ id: 'a', values: [3334] }, { id: 'b', values: [3333] }, { id: 'c', values: [3333] }] };
