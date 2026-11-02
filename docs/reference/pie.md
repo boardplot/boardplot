@@ -83,7 +83,8 @@ An annotation anchor is a category or item id string, or an object with category
 ## Sizing
 
 Floor 120 × 320 px; fit `content`.
-Below 320 px high, down to the compact floor of 120 × 160 px, the chart draws in compact mode; `belowMinimum: 'refuse'` refuses there instead.
+Below 320 px high, down to the compact floor of 280 × 160 px, the chart draws in compact mode; `belowMinimum: 'refuse'` refuses there instead.
+Narrower than the compact floor, a pie draws while its circle keeps a radius of at least 36 px beside its labels.
 
 Below the floor a render is refused with `size-below-floor` and the pixels it needs. `measure` returns the natural and comfortable size for a given spec; see [Sizing in the manual](../manual.md#sizing).
 

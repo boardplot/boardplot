@@ -583,8 +583,8 @@ describe('boardplot MCP server', () => {
     expect(measured).toMatchObject({ ok: true, fit: 'fill', refused: null, titleLines: 1 });
     expect(measured.naturalWidth).toBeGreaterThanOrEqual(measured.minWidth);
     const small = body(callTool('boardplot_measure', { spec: { ...SPEC, options: { ...SPEC.options, size: { width: 100, height: 120 } } } }));
-    // Below the full floor the chart falls back to compact, so the refusal names the compact size, at the compact floor's width.
-    expect(small.refused).toMatchObject({ code: 'size-below-floor', required: { width: small.compactFloor.width } });
+    // Below the full floor the chart falls back to compact, so the refusal names the compact size: the 120 px a column's bars need.
+    expect(small.refused).toMatchObject({ code: 'size-below-floor', required: { width: 120 } });
   });
 
   it('describes an alias that boardplot_list advertises, as the CLI does', () => {

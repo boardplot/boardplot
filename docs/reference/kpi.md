@@ -76,6 +76,7 @@ This type takes no annotations.
 ## Sizing
 
 Floor 120 × 28 px; fit `content`.
+Narrower than 280 px a card draws while its figure fits.
 
 Below the floor a render is refused with `size-below-floor` and the pixels it needs. `measure` returns the natural and comfortable size for a given spec; see [Sizing in the manual](../manual.md#sizing).
 

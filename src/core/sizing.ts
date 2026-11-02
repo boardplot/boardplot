@@ -69,8 +69,9 @@ const CONTENT_TYPES = new Set([...ROW_TYPES, 'kpi', 'pie', 'diagram', 'sparkline
  * count, so only its width floor moves. The width is 280 px: a 360 px phone with a
  * 16 px page gutter and a 24 px card padding leaves 280 px, and compact keeps its
  * text sizes there (scaling a 320 px drawing down
- * would put 11 px text at 9.6 px). A column and a pie go below it, down to NARROW_MIN_WIDTH, while
- * their measured content fits (`columnBarFloor`, the pie's circle radius).
+ * would put 11 px text at 9.6 px). A column and a pie draw below it, down to NARROW_MIN_WIDTH, while
+ * their measured content fits (`columnBarFloor`, the pie's circle radius). The compact floor stays
+ * the size that `measure` verifies for a host.
  *
  * Every row and band chart has a compact form. Its static width floor is
  * CARD_MIN_WIDTH, so compact is not a width band below a static minimum: full draws where the
@@ -83,14 +84,14 @@ const CONTENT_TYPES = new Set([...ROW_TYPES, 'kpi', 'pie', 'diagram', 'sparkline
 const ROW_COMPACT_FLOOR = { width: CARD_MIN_WIDTH, height: 28 };
 const BAND_COMPACT_FLOOR = { width: CARD_MIN_WIDTH, height: 180 };
 const COMPACT_FLOORS: Record<string, { width: number; height: number }> = {
-  column: { width: NARROW_MIN_WIDTH, height: 180 },
+  column: { width: 280, height: 180 },
   line: { width: 280, height: 180 },
   scatter: { width: 280, height: 240 },
   dot: { width: 280, height: 240 },
   combo: { width: 280, height: 240 },
   histogram: { width: 280, height: 240 },
   treemap: { width: 280, height: 180 },
-  pie: { width: NARROW_MIN_WIDTH, height: 160 },
+  pie: { width: 280, height: 160 },
   slope: { width: 280, height: 180 },
   // A grid at the shared minimum height: its compact form (one column of panels) is only the
   // fallback of a refused full layout (FALLBACK_COMPACT), never a band under its minimum.
@@ -1806,7 +1807,10 @@ function fitSize<D, O extends ChartOptions, M extends object, DV extends object>
   // The tight band lowers what the chart ACCEPTS, never what it reports. A
   // caller asking `measure` still hears the type's own 480 x 270 alongside the
   // compact floor, and a measured requirement (a bar's five rows) still gates.
-  const gatePolicy = tight ? { ...declared, minWidth: floor.width, minHeight: floor.height } : declared;
+  // A column draws narrower than its compact floor while its bars fit (`columnBarFloor`). The compact floor stays
+  // the size `measure` verifies and reports, so a host that reads it keeps a size that draws.
+  const gateWidth = definition.type === 'column' ? Math.min(floor.width, NARROW_MIN_WIDTH) : floor.width;
+  const gatePolicy = tight ? { ...declared, minWidth: gateWidth, minHeight: floor.height } : declared;
   if (!nested && !fitsSize(requested, definition.type === 'grid' ? { ...gatePolicy, minHeight: 0 } : gatePolicy)) {
     return sizeRefusal(definition.type, definition.title, requested, resolveSizing(gatePolicy, requested));
   }
