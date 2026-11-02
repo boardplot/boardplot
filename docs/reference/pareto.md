@@ -49,7 +49,7 @@ One form; its chart ID is `pareto`.
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
 | categoryLabels | string | `'axis'`, `'staircase'` |  | 'staircase' names each cause over the lower columns; it needs cumulative: false, as the curve climbs through that space. Default 'axis'. |
-| topN | object |  |  | Keep the n largest causes. rest: false hides only the remainder column (the folded tail, or the authored rest that holds it); its labelled curve point and the full-population total remain. |
+| topN | object \| integer |  |  | Keep the n largest causes. rest: false hides only the remainder column (the folded tail, or the authored rest that holds it); its labelled curve point and the full-population total remain. A positive integer n means { n }. |
 | threshold | number \| false | `false` (or another value of its type) | `80` | Cumulative-share reference, default 80. A convention to choose, not a property of the data: 80 is the classic Pareto rule, 90 or 95 asks which causes carry nearly all of the total. The dashed rule is drawn at the value, and the highlighted vital few and their key follow it. false draws the curve with no reference and no vital-few split: every column in one colour, no key. |
 | cumulative | boolean |  | `true` | Draw the derived cumulative curve. Default true; false also withholds the threshold rule. |
 | axisTitles | object |  |  | Title over the left value axis, which is drawn by default. Drawn when authored, or as 'Measure, unit' under a theme that derives value-axis titles. |

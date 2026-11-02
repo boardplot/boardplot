@@ -54,7 +54,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | points[].size | number |  | Bubble magnitude; proportional to area by default, or diameter when sizeBy requests it. |
 | points[].fill | string |  | Explicit CSS fill for this point, overriding group paint. |
 | points[].marker | string |  | Point symbol overriding its group marker. One of `'circle'`, `'square'`, `'triangle'`, `'diamond'`, `'none'`. |
-| points[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). Scenario controlling the point paint convention. |
+| points[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. Scenario controlling the point paint convention. |
 | points[].count | number |  | Observations behind this point. options.minCount filters on this field and refuses when it is absent. |
 | groups | array |  | Named point groups supplying shared legend and styling information. |
 | groups[].id | string | yes | Group identity referenced by point.group. |
@@ -68,7 +68,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 |---|---|---|---|---|
 | labels | false \| object | `false` (or another value of its type) |  | Point labels. Names print by default; labels.value adds each point's value. false turns both off. |
 | labels.value | boolean |  |  | true prints each point's value: the size on a bubble chart, y otherwise. It sits inside a bubble it fits with a contrasting ink, otherwise beside its point, and the name moves beside the bubble. Default false. |
-| legend | string \| object | `'top'`, `'bottom'`, `'none'`, `'auto'` (or another value of its type) |  | Key position. Multiple drawn groups get a key by default unless point labels name each group. 'none' hides the key; unnamed groups warn. Point names alone do not identify groups. |
+| legend | string \| object | `'top'`, `'bottom'`, `'right'`, `'left'`, `'none'`, `'auto'` (or another value of its type) |  | Key position. Multiple drawn groups get a key by default unless point labels name each group. 'none' hides the key; unnamed groups warn. Point names alone do not identify groups. |
 | valueAxis.clamp | object |  |  | Cap one or both axes and draw the points beyond the cap at the edge as open markers, with a derived footnote counting them. |
 | valueAxis.clamp.min | number |  |  | Lower bound of the vertical axis, the short form of clamp.y.min. |
 | valueAxis.clamp.max | number |  |  | Upper bound of the vertical axis, the short form of clamp.y.max. |

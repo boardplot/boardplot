@@ -51,7 +51,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | series[].id | string | yes | Series identity used by keyed options, annotations and legend entries. |
 | series[].label | string |  | Displayed series name; defaults to the series id. |
 | series[].values | (cell \| { categoryId, value: cell })[] | yes | Values in category order, or keyed entries pairing a categoryId with its value. |
-| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). |
+| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. |
 | series[].role | string |  | Declares a plotted data series or a comparison reference series. One of `'data'`, `'reference'`. |
 | series[].colorRole | string |  | Theme color role used for this series when no explicit fill takes precedence. One of good, bad, warn, neutral, neutralLight, highlight, total, others; series-N for step N of the theme ramp, 1-based (series-2 is color.series[1]); or status-<key> for a theme status colour. A hex colour goes in fill. |
 | series[].fill | string |  | Explicit CSS fill color for this series; remains authored across theme changes. |
@@ -65,7 +65,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
-| legend | string \| object | `'top'`, `'bottom'`, `'none'`, `'auto'` (or another value of its type) |  | On 'slope' only 'top' and 'bottom' or a position object draw a key. 'none' and 'auto' are ignored with an option-ignored warning at info level: a slope chart names every line at both ends, so 'none' and 'auto' draw what the chart draws without them; drop legend, or name 'top' or 'bottom' for a key. 'right' stays refused. |
+| legend | string \| object | `'top'`, `'bottom'`, `'right'`, `'left'`, `'none'`, `'auto'` (or another value of its type) |  | On 'slope' only 'top' and 'bottom' and 'right' and 'left' or a position object draw a key. 'none' and 'auto' are ignored with an option-ignored warning at info level: a slope chart names every line at both ends, so 'none' and 'auto' draw what the chart draws without them; drop legend, or name 'top', 'bottom', 'right' or 'left' for a key. 'right' stays refused. |
 | foldBelowShare | number |  |  | Share of the endpoint total below which series fold into one 'Other' line, measured at both ends: 0.05 is five percent. A value at or above 1 is refused. Highlighted series keep their own name. |
 | change | string | `'none'`, `'absolute'`, `'relative'` |  | A column of each line's change between the two periods, right of the second rail's labels under a head such as 'Change, pp': 'absolute' prints second minus first (pp for percent values), 'relative' prints the percent change. The highlighted line prints bold. Default 'none'. The column stays off below 576 px canvas width. |
 | variant | string | `'lines'`, `'diverging'` |  | 'diverging': one panel per series, values as the positive share up from zero and negative as the negative share down, on one scale; two categories, at most 12 series. Default 'lines'. |

@@ -27,7 +27,8 @@ const MARK: Record<string, NumberMarks['thousands']> = { p: '.', c: ',', s: ' ',
 
 /** The chart's pair: the explicit marks, else '.' and ','. */
 export function chartNumberMarks(locale: Pick<LocaleSpec, 'decimal' | 'thousands'> | undefined): NumberMarks {
-  const requested = locale?.thousands === '’' ? "'" : locale?.thousands;
+  // The typed apostrophe and the curly one are one mark, as are the space and the narrow no-break space.
+  const requested = locale?.thousands === '’' ? "'" : locale?.thousands === '\u202f' ? ' ' : locale?.thousands;
   const decimal = locale?.decimal ?? '.';
   const thousands = requested !== undefined && requested !== decimal ? requested : decimal === ',' ? '.' : ',';
   return { decimal, thousands };

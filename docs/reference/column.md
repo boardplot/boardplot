@@ -56,7 +56,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | series[].id | string | yes | Series identity used by keyed options, annotations and legend entries. |
 | series[].label | string |  | Displayed series name; defaults to the series id. |
 | series[].values | (cell \| { categoryId, value: cell })[] | yes | Values in category order, or keyed entries pairing a categoryId with its value. |
-| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). Controls scenario labels and paint conventions. |
+| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. Controls scenario labels and paint conventions. |
 | series[].direction | string |  | Whether increases are favorable; defaults to higherIsBetter for directional comparisons. One of `'higherIsBetter'`, `'lowerIsBetter'`. |
 | series[].role | string |  | Data series or comparison-only reference series; references are excluded from the main plotted data. One of `'data'`, `'reference'`. |
 | series[].colorRole | string |  | Theme color role used for this series when no explicit fill takes precedence. One of good, bad, warn, neutral, neutralLight, highlight, total, others; series-N for step N of the theme ramp, 1-based (series-2 is color.series[1]); or status-<key> for a theme status colour. A hex colour goes in fill. |
@@ -69,7 +69,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
 | labelDensity | string | `'full'`, `'smart'`, `'minimal'` |  | Value-label density. Default 'smart': every value stays eligible. A chart with more than 12 categories, or with most labels wider than the band, ranks the first, last, highest and lowest value (ties: the first) first. The other values then use only their natural seat beside the mark; with none free they are drawn nowhere and left out of the note. Those four may take one step, and the note names any that finds no seat. A smaller chart keeps every value on the bounded one-step rule and names any that finds no seat. 'full' treats all values alike and names every one that finds no seat. 'minimal' also applies the shared priority gate. Seats stay inside the plot band and one step from the natural seat. All values remain in reading records. When valueLabels is set, it wins: labelDensity is not read for the value labels. |
-| legend | string \| object | `'top'`, `'bottom'`, `'none'`, `'auto'` (or another value of its type) |  | Key position. Multiple series get a key by default unless visible direct labels name them all. 'none' hides the key and warns if names are missing. Subtitle and footnote mentions do not replace the key. |
+| legend | string \| object | `'top'`, `'bottom'`, `'right'`, `'left'`, `'none'`, `'auto'` (or another value of its type) |  | Key position. Multiple series get a key by default unless visible direct labels name them all. 'none' hides the key and warns if names are missing. Subtitle and footnote mentions do not replace the key. |
 | valueAxis.break | false \| object | `false` (or another value of its type) |  | No break by default or with false. Set { from, to, style? } for a straight value-axis break; the omitted span collapses to a fixed 12px gap when valid. Automatic placement is supported only by waterfall and pvm. |
 | axisTitles | object |  |  | Title over the value axis when valueAxis.show draws it, in the top row left of the plot. A theme with valueAxis.titles derives 'Measure, unit' from subtitle.measure and a unit the drawn subtitle does not print, when none is authored. |
 | axisTitles.primary | string |  |  | 'Measure, unit' title over the value axis, e.g. 'Revenue, €m'. |
@@ -133,7 +133,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | viewDomain | object |  |  | Zoom the visible categories. Means, the average marker and anomaly rules keep every source period. A mean's Ø label names the periods it covers where the plot draws fewer, 'Ø 40.4 (Jan 25–Dec 26)'. Refused with a category sort or topN, which break the period order. |
 | viewDomain.x | array |  |  | Inclusive category ids bounding the visible x axis. |
 
-Plus the [shared options](options.md). This type does not accept `valueAxis.log`, `valueAxis.reverse`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `secondaryAxis` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `valueAxis.log`, `valueAxis.reverse`. This type ignores `animate`, `debug`, `rowLabels`, `secondaryAxis` with an `option-ignored` warning.
 
 ## Annotations
 
@@ -160,6 +160,7 @@ The default `labelDensity: 'smart'` keeps every value eligible. In a chart with 
 
 Floor 480 × 270 px; fit `fill`.
 Below 480 px wide or 270 px high, down to the compact floor of 280 × 180 px, the chart draws in compact mode; `belowMinimum: 'refuse'` refuses there instead.
+Narrower than the compact floor, down to 120 px wide, a column draws while its bars stay at least 3 px wide.
 
 Below the floor a render is refused with `size-below-floor` and the pixels it needs. `measure` returns the natural and comfortable size for a given spec; see [Sizing in the manual](../manual.md#sizing).
 
@@ -278,3 +279,4 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | option-value-labels-none | example | No value prints; the axis reads every column (valueLabels none) |
 | option-value-labels-all | example | Every quarter prints its value (valueLabels all) |
 | grouped-twelve-slide | torture | Two series over twelve units on a full slide print all 24 values |
+| key-right-slide | example | Clustered columns on a slide with the key in a column right of the plot |

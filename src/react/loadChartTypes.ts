@@ -13,6 +13,7 @@ import { registerChartCoreLoader } from '../core/deferred';
 import { registeredType } from './chartEntry';
 import { coreLoaders } from './coreLoaders';
 import { chartTypeAliases, schemaLoaders } from './schemaLoaders';
+import { caseInsensitiveValue } from '../core/inputConversion';
 
 /** alias -> the type it names, built once from the generated table. */
 const aliasOwners = new Map<string, string>();
@@ -22,6 +23,7 @@ for (const [type, aliases] of Object.entries(chartTypeAliases)) {
 
 /** The type a name stands for, or undefined for a name Boardplot does not draw. */
 export function knownChartType(name: string): string | undefined {
+  name = caseInsensitiveValue(name, [...Object.keys(coreLoaders), ...aliasOwners.keys()]) ?? name;
   // Object.hasOwn, not `in`: a type called 'toString' would find Object.prototype's.
   return Object.hasOwn(coreLoaders, name) ? name : aliasOwners.get(name);
 }

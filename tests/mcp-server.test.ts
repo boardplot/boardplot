@@ -327,20 +327,49 @@ describe('boardplot MCP server', () => {
     }
   });
 
-  it('renders a spec passed as an object and refuses one passed as a string', () => {
+  // A spec serialized by an MCP host must render or measure while invalid strings keep their refusal.
+  it('parses an object spec from a JSON string for render and measure', () => {
     const drawn = body(callTool('boardplot_render', { spec: SPEC }));
     expect(drawn.ok).toBe(true);
     expect(drawn.size).toEqual({ width: expect.any(Number), height: expect.any(Number) });
     expect(drawn.reading.series).toEqual(['s']);
     expect(drawn.svg).toBeUndefined();
 
-    const refused = callTool('boardplot_render', { spec: JSON.stringify(SPEC) });
-    expect(refused.isError).toBe(true);
-    expect(body(refused).errors[0]).toMatchObject({
-      code: 'spec-must-be-object',
-      message: 'pass the spec as a JSON object, not a string',
-    });
-    expect(body(callTool('boardplot_measure', { spec: JSON.stringify(SPEC) })).errors[0].code).toBe('spec-must-be-object');
+    for (const name of ['boardplot_render', 'boardplot_measure']) {
+      const parsed = body(callTool(name, { spec: JSON.stringify(SPEC) }));
+      expect(parsed.ok).toBe(true);
+      expect(parsed.warnings).toContainEqual(expect.objectContaining({ code: 'spec-parsed-from-string', severity: 'info', fix: [{ op: 'replace', path: '/spec', value: SPEC }] }));
+      for (const spec of ['not json', '[]', 'null', '5', 'true', '"text"']) {
+        const refused = callTool(name, { spec });
+        expect(refused.isError).toBe(true);
+        expect(body(refused).errors[0]).toMatchObject({ code: 'spec-must-be-object', message: 'pass the spec as a JSON object, not a string' });
+      }
+    }
+  });
+
+  // Explicit SVG requests need the drawing, while omitted format and file output retain their response contract.
+  it('returns an explicit SVG format and folds enum arguments without applying listing defaults', () => {
+    const ordinary = body(callTool('boardplot_render', { spec: SPEC }));
+    expect(ordinary.svg).toBeUndefined();
+    expect(ordinary.warnings.some((warning: any) => warning.code === 'svg-returned')).toBe(false);
+    const explicit = body(callTool('boardplot_render', { spec: SPEC, format: 'svg' }));
+    expect(explicit.svg).toContain('<svg');
+    expect(explicit.reading).toEqual(ordinary.reading);
+    expect(explicit.warnings).toContainEqual(expect.objectContaining({ code: 'svg-returned', severity: 'info' }));
+    const cased = body(callTool('boardplot_render', { spec: SPEC, format: 'SVG', target: 'Report', background: 'Transparent', return: ['SVG', 'Reading'] }));
+    expect(cased.ok).toBe(true);
+    expect(cased.svg).toContain('<svg');
+    expect(cased.warnings.filter((warning: any) => warning.code === 'input-converted').map((warning: any) => warning.path)).toEqual(['/format', '/target', '/background', '/return/0', '/return/1']);
+    expect(cased.warnings.some((warning: any) => warning.code === 'svg-returned')).toBe(false);
+    const dir = mkdtempSync(join(tmpdir(), 'boardplot-svg-output-'));
+    dirs.push(dir);
+    const saved = body(callTool('boardplot_render', { spec: SPEC, format: 'svg', outDir: dir }));
+    expect(saved.ok).toBe(true);
+    expect(saved.svg).toBeUndefined();
+    expect(saved.outputs).toHaveLength(1);
+    expect(saved.warnings.some((warning: any) => warning.code === 'svg-returned')).toBe(false);
+    expect(body(callTool('boardplot_describe', { type: 'Column' })).type).toBe('column');
+    expect(body(callTool('boardplot_fixtures', { type: 'CoLumn' })).fixtures.length).toBeGreaterThan(0);
   });
 
   it('returns an invalid enum in the 2.5 shape, fix included, pointing into the bare spec', () => {
@@ -525,9 +554,9 @@ describe('boardplot MCP server', () => {
   }, 60_000);
 
   it('names a width argument, not /options/size, when that argument makes the chart too small', () => {
-    const [error] = body(callTool('boardplot_render', { spec: SPEC, width: 200 })).errors;
-    expect(error).toMatchObject({ code: 'size-below-floor', path: '/width', fix: [{ op: 'replace', path: '/width', value: 280 }] });
-    expect(body(callTool('boardplot_render', { spec: SPEC, width: 280 })).ok).toBe(true);
+    const [error] = body(callTool('boardplot_render', { spec: SPEC, width: 100 })).errors;
+    expect(error).toMatchObject({ code: 'size-below-floor', path: '/width', fix: [{ op: 'replace', path: '/width', value: 120 }] });
+    expect(body(callTool('boardplot_render', { spec: SPEC, width: 120 })).ok).toBe(true);
   });
 
   it('carries the warnings of a full theme object into the render result', () => {
@@ -582,9 +611,9 @@ describe('boardplot MCP server', () => {
     const measured = body(callTool('boardplot_measure', { spec: SPEC, width: 800 }));
     expect(measured).toMatchObject({ ok: true, fit: 'fill', refused: null, titleLines: 1 });
     expect(measured.naturalWidth).toBeGreaterThanOrEqual(measured.minWidth);
-    const small = body(callTool('boardplot_measure', { spec: { ...SPEC, options: { ...SPEC.options, size: { width: 200, height: 120 } } } }));
-    // Below the full floor the chart falls back to compact, so the refusal names the compact size, at the compact floor's width.
-    expect(small.refused).toMatchObject({ code: 'size-below-floor', required: { width: small.compactFloor.width } });
+    const small = body(callTool('boardplot_measure', { spec: { ...SPEC, options: { ...SPEC.options, size: { width: 100, height: 120 } } } }));
+    // Below the full floor the chart falls back to compact, so the refusal names the compact size: the 120 px a column's bars need.
+    expect(small.refused).toMatchObject({ code: 'size-below-floor', required: { width: 120 } });
   });
 
   it('describes an alias that boardplot_list advertises, as the CLI does', () => {

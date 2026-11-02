@@ -103,15 +103,15 @@ fixtures.push({
 /**
  * The value key right of the tiles, from their top, because the spec names
  * 'right'; the layout says what that costs the plot (lint legend-beside-plot).
- * Every unnamed key sits in one row above the plot.
+ * Where the column would leave the tiles under about two thirds of the width, the key
+ * stays in the row above them with a warning. Every unnamed key sits in one row above the plot.
  */
 const coverage = fixtures.find((fixture) => fixture.id === 'us-state-tile-grid')!;
 fixtures.push({
   ...coverage,
   id: 'tile-key-right',
-  title: 'Refusal example: the value key right of the tiles, refused for the width it takes',
+  title: 'The value key in a column right of the tiles',
   kind: 'example',
-  refuses: { code: 'invalid-options', path: 'options.legend' },
   options: {
     ...coverage.options,
     legend: 'right',

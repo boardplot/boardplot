@@ -19,10 +19,10 @@ export const LEGEND_REFUSED: readonly string[] = ['box'];
 /**
  * Types on which some legend values draw exactly what the default draws:
  * 'none' and 'auto' are ignored with a warning, and the values that draw a
- * key stay accepted. A key on the right stays refused.
+ * key stay accepted.
  */
 export const LEGEND_DRAWS: Readonly<Record<string, readonly string[]>> = {
-  slope: ['top', 'bottom'],
+  slope: ['top', 'bottom', 'right', 'left'],
 };
 
 /** Options ignored with a warning when a chart type does not read them. */
@@ -66,7 +66,7 @@ export const OPTION_CAPABILITY = {
     implementedBy: ['bar', 'bullet', 'box', 'dot', 'likert'],
   },
   categoryAxis: {
-    implementedBy: ['line'],
+    implementedBy: ['column', 'combo', 'line'],
   },
   categoryLabels: {
     implementedBy: ['column', 'combo', 'pareto'],

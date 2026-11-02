@@ -57,10 +57,12 @@ if (existsSync(out) && readdirSync(out).length && !existsSync(join(out, 'gallery
  * its overrides under the chosen preset, unless they set colours.
  */
 const THEMES = [
-  { key: 'boardroom', label: 'Boardroom', scheme: 'light', dir: 'authored' },
+  { key: 'bridge', label: 'Bridge', scheme: 'light', dir: 'authored' },
+  { key: 'boardroom', label: 'Boardroom', scheme: 'light', dir: 'boardroom' },
   { key: 'notation', label: 'Notation', scheme: 'light', dir: 'notation' },
   { key: 'capital', label: 'Capital', scheme: 'light', dir: 'capital' },
   { key: 'studio', label: 'Studio', scheme: 'light', dir: 'studio' },
+  { key: 'bridge-dark', label: 'Bridge', scheme: 'dark', dir: 'bridge-dark' },
   { key: 'notation-dark', label: 'Notation', scheme: 'dark', dir: 'notation-dark' },
   { key: 'glass', label: 'Glass', scheme: 'dark', dir: 'glass' },
 ];

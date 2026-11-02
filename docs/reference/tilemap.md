@@ -112,6 +112,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | eu27-demand-versus-plan | example | Demand above plan is favorable |
 | eu27-cost-versus-plan | example | Cost below plan is favorable |
 | eu27-demand-colorblind | example | Demand versus plan in the colorblind-safe good/bad pair |
+| tile-key-right | example | The value key in a column right of the tiles |
 | us-state-tile-grid-wide-slot | example | US states on a wide slot: the value key stands beside the tiles |
 | tile-key-bottom | example | The value key in one row below the tiles |
 | us-states-overlay-tones | example | Five state overlays in every tone, the tones and the ball measure named in the overlay key |
