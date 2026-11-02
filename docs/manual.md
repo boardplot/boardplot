@@ -32,7 +32,7 @@ Every chart is one JSON object, the spec.
 }
 ```
 
-- `name` is optional: the output file name and the chart's identity, default `chart`. It takes letters, digits, `.`, `_` and `-`.
+- `name` is optional: the output file name and the chart's identity, default `chart`. A valid file stem stays unchanged. Other string names lose diacritics, become lowercase, replace unsafe character runs with `-`, trim edge hyphens and dots, and stop at 100 characters. `"Revenue Q3 2024"` becomes `revenue-q3-2024`, with a `name-slugified` warning and a fix. An empty result is refused. Names in a versioned document keep their existing rules.
 - `type` names the chart type. `boardplot_list` returns all of them with their aliases.
 - `data` has the shape of that type. `boardplot_describe` lists its fields.
 - `options` is optional. It holds the title, subtitle, unit, source, axes and labels, plus the options of the type. `options.target` names the medium the chart is read in and `options.size` its slot; see [Sizing](#sizing). The subtitle prints the unit after its measure ("Revenue in $m"); a unit that neither the subtitle, an axis title nor a value label prints gets the warning `unit-not-shown`.
@@ -40,6 +40,10 @@ Every chart is one JSON object, the spec.
 - `theme` is optional. It takes a preset name or a theme object; see [Themes](#themes).
 
 A field the type does not list is an error. `boardplot_render`, `boardplot_measure`, the CLI and the React component `BoardplotChart` all take this spec.
+
+A KPI accepts `data.label: ""` to omit its label and the space for the label. The accessible name falls back to `KPI`.
+
+Where the chart supports sorting, `options.sort: "sheet"`, `"asc"`, `"desc"` or `"reverse"` sets `sort.categories`. `sort: true` means `{ categories: "desc" }`. A positive integer `options.topN: n` means `{ n }`. Charts keep their existing restrictions on sorting and Top-N.
 
 ## Choosing a chart
 
@@ -431,6 +435,8 @@ The panel shows up to four title lines and ten body lines. A cut title or body r
 
 ## Notes under the chart
 
+`options.footnotes` accepts one string as a one-item array. `options.source` accepts an array of strings, joined with `; ` into one source line. An empty array prints no source. Set `options.strings.source: ""` to print the credit without a prefix or colon.
+
 Boardplot sorts every note under a chart by kind. In the live React chart, the render target decides how much of it the frame prints. A React chart with `fit="content"` takes its height from its content and prints the footer of the static image: every note of the kinds `notes.show` lists, in full, with no line budget, so it is as tall as `boardplot render` at the same width. Under `notes.placement: 'info'` a "Notes and sources (N)" button opens the notes the image does not print; it sits in the space the image leaves free for it.
 
 Boardplot prints none of its own notes under a chart by default, on every target and surface: the `method` and `disclosure` notes go to the notes list only. `notes.show` prints them where the author asks for them. A spec that asks for notes another way gets them too: `methodNote: true` or an authored `notes.placement` prints the method notes and disclosures, as `notes.show: ['note', 'method', 'disclosure']` does. A changed note wording alone (`strings.incompleteStacks`) prints nothing. Static SVG, PNG and clipboard images print the full author notes, the kinds `notes.show` adds, the source and the credit. Compact charts retain note reference numbers. Grid panels move notes that do not fit into the outer footer, under the panel title and ID. They have no notes button or "+N notes" pointer. The notes start at the normal footer gap below the chart's last element. They use the existing footer space first. If they need more room, the canvas grows below its original boundary. The plot keeps its position and size. `footnotes: false` still suppresses notes other than the disclosures `notes.show` prints.
@@ -693,6 +699,8 @@ EOF
 - `docs` names the reference section that describes the field.
 - Errors come sorted by path, at most ten, then one `more-errors` entry with the count.
 
+`options.locale: "de"` means `{ language: "de" }`. A language sets words only. Decimal and grouping marks come only from `options.locale.decimal` and `options.locale.thousands`. A root `locale` on a bare chart remains invalid, with a fix that moves its value into options.
+
 Column, combo, bar and line charts use locale strings for built-in labels and notes. English mean labels read `Average 27.5`. German mean labels keep `Ø`. Set `options.strings.average` to change that word. Other keys cover status labels, missing-value notes, ranks, ranges and anomaly rules. Each key is listed in the reference. `options.strings` also works through the React theme provider. Authored text stays as written. Unsupported languages use English built-in wording.
 
 A partial category is named once, such as `W38 to date`. On combo, column, bar and variance charts, and on a line chart with one line, the words stand under the running value itself where a single value or total prints there and they fit its column; the chart then draws no partial key or axis words. On a time axis (`xAxis.type: "time"`), the words stand under the running value where they have room, else after the end value in the key, else under the reading below the axis, in a row of their own where the tick rows have no room. Otherwise its key comes after the series keys. With no partial key, the chart adds a note. Set `strings.toDate` to change the suffix and `strings.partial` to change a generic partial key. Combo charts hide the default value axis when all column totals are labelled. An explicit `valueAxis.show` still wins. Column and combo category rows try a smaller font before rotation. Combo line end labels stay inside the plot and clear the columns; a moved label has a leader to its point.
@@ -754,6 +762,8 @@ Common mistakes:
 
 The line reference has the full recipe under "Cycle bands", and the fixture `cycle-bands` draws 583 monthly points this way.
 
+`valueLine.text` is read as `label` when `label` is absent or equal, with an info warning and a rename fix. Different `text` and `label` values remain refused. `indicator100.text` remains refused.
+
 For a `valueLine` with `value: "mean"`, `seriesId` selects the series. A paired `from` and `to` selects the inclusive category window. The mean line spans only that window. Adjacent shaded `band` annotations have a hairline between them, so each period remains distinct.
 
 ## Times and numbers on the x axis of a line
@@ -793,6 +803,10 @@ A theme sets colours, type sizes, spacing and the scenario patterns. The presets
 Bridge keeps the engine's measured default font stack: `'Helvetica Neue', Helvetica, Arial, Roboto, sans-serif`. Bridge keeps the engine's role type sizes, which the render target replaces for a preset. A host with width tables for its own licensed brand font can set `type.family` and pass its own measurer, as described in [FONTS.md](FONTS.md).
 
 The `notation` preset follows the IBCS® Standards; IBCS is a registered trademark of the IBCS Institute, and the standards are published under CC BY-SA 4.0 at [www.ibcs.com](https://www.ibcs.com).
+
+A theme object containing only `{ overrides }`, at the spec root or in `options.theme`, uses the default `bridge` preset. A full theme object keeps its existing meaning.
+
+`space.canvas` overrides can contain only `base` or `wide`, and any subset of `top`, `right`, `bottom` and `left`. Missing classes and sides keep the preset values. Each side stays within 0 to 96 px. A class needs a side object, so write `{ base: { top: 16 } }` instead of `{ base: 16 }`.
 
 A brand theme is a preset plus overrides:
 
