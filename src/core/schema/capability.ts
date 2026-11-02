@@ -185,10 +185,9 @@ export const VALUE_AXIS_CAPABILITY = {
   break: {
     implementedBy: ['bar', 'box', 'column', 'histogram', 'pvm', 'waterfall'],
   },
-  // Line, column, combo, mekko and variance would accept
-  // log, warn log-refused and draw linear. Scatter is the one log scale.
+  // Bars and columns cannot use a log scale without distorting their lengths.
   log: {
-    implementedBy: ['scatter'],
+    implementedBy: ['line', 'scatter'],
   },
 } as const;
 

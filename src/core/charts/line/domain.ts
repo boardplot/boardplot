@@ -43,6 +43,9 @@ import type { LineInterpolation, LineOptionTarget, LineOptions } from './types';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
 import { checkPointBudget } from '../../itemBudget';
+import { logDomain } from '../logAxis';
+import { authoredDecimals } from '../../formatPrecision';
+import { validateLineLog, validateLogTolerances } from './log';
 
 /**
  * The nice domain already caps wasted domain on either side at 15%. If the plotted data
@@ -539,12 +542,53 @@ function valueDomain(d: Core & { cumTop: number[][]; cumBot: number[][] }, isBum
     lo = Math.min(lo, band.value ?? band.low ?? lo);
     hi = Math.max(hi, band.value ?? band.high ?? hi);
   }
+  const log = va.log === true || va.log === 'y';
   if (!Number.isFinite(lo)) {
-    lo = 0;
-    hi = 1;
+    lo = log ? 1 : 0;
+    hi = log ? 10 : 1;
   }
   const dataLo = lo;
   const dataHi = hi;
+  if (log) {
+    let base = logDomain(lo, hi);
+    if (!(base[0] > 0) || !Number.isFinite(base[1]) || !(base[1] > base[0])) {
+      base = lo < hi ? [lo, hi] : lo <= Number.MAX_VALUE / 10 ? [lo, lo * 10] : [lo / 10, lo];
+    }
+    let [dLo, dHi] = applyAxisBounds(base, [lo, hi], va, warnings);
+    if (!(dHi > dLo)) {
+      warnings.push({
+        code: 'value-axis-bounds-expanded', severity: 'warn',
+        message: 'the requested value-axis bounds leave no range, so the log axis uses a positive range around the data',
+        suggest: 'set valueAxis.min below valueAxis.max',
+      });
+      [dLo, dHi] = base;
+    }
+    let stepTicks: number[] | undefined;
+    if (va.tickStep !== undefined) {
+      const step = va.tickStep;
+      const from = Math.floor((va.min !== undefined ? dLo : dataLo) / step);
+      const to = Math.ceil((va.max !== undefined ? dHi : dataHi) / step);
+      const multiple = (index: number) => {
+        const value = index * step;
+        return step >= 1e-20 && value < 1e21 ? Number(value.toFixed(authoredDecimals(step))) : value;
+      };
+      if (Number.isSafeInteger(to) && to - Math.max(1, from) <= 20 && to > Math.max(1, from)) {
+        if (from > 0) dLo = Math.min(multiple(from), dataLo);
+        else warnings.push({
+          code: 'log-tick-step-zero', severity: 'warn',
+          message: `valueAxis.tickStep ${step} would snap the lower bound to zero, so the log axis keeps its positive lower bound`,
+          suggest: 'use a smaller tick step or remove valueAxis.tickStep',
+        });
+        dHi = Math.max(multiple(to), dataHi);
+        stepTicks = Array.from({ length: to - Math.max(1, from) + 1 }, (_, i) => multiple(Math.max(1, from) + i));
+      } else warnings.push({
+        code: 'tick-step-ignored', severity: 'warn',
+        message: `valueAxis.tickStep ${step} does not produce 2 to 21 positive ticks over the log domain; log ticks are drawn instead`,
+        suggest: 'pick a step that gives 2 to 21 positive ticks',
+      });
+    }
+    return { dLo, dHi, domainExtendingValueLines, bumpLadderMax: 1, stepTicks, gridDataHi: dataHi };
+  }
   let dLo: number;
   let dHi: number;
   if (variant === 'stacked100-area') {
@@ -694,11 +738,12 @@ export function resolveLineDomain(data: LineChartData, input: LineOptions, env: 
   // a theme may make a zero-based value axis the default; an
   // authored includeZero, true or false, still wins.
   const themeZero = env.theme.valueAxis?.includeZero;
-  if (themeZero !== undefined && options.valueAxis?.includeZero === undefined) {
+  if (themeZero !== undefined && options.valueAxis?.includeZero === undefined && !options.valueAxis?.log) {
     options = { ...options, valueAxis: { ...options.valueAxis, includeZero: themeZero } };
   }
   const { isBump } = env;
   const { cats, seriesNorm } = normalizeLineData(data);
+  validateLineLog(options, seriesNorm);
   // A continuous x axis: refusals, the range and every x anchor, before the presets read them.
   const xModel = lineXModel(options, cats);
   const xRange = xModel ? resolveLineXOptions(options, xModel, cats, warnings) : undefined;
@@ -782,9 +827,26 @@ export function resolveLineDomain(data: LineChartData, input: LineOptions, env: 
     isBump, direction: bumpPrepared.bumpDirection, dataSeries, cats, pv, rowOf, fmt: valueSpec.fmt, format: options.format, warnings,
   });
   const gapFillSeries = resolveGapFillSeries({ gapFill: options.gapFill, seriesById, warnings });
+  if (options.valueAxis?.log && gapFillSeries) {
+    const [a, b] = gapFillSeries.map(interpolationFor);
+    if (a !== b || a === 'monotone') throw new NormalizeError(
+      'log-line-conflict', 'options.gapFill',
+      'the gap fill cannot follow different interpolations or solve crossings between monotone curves on a log axis',
+      'use matching linear or step interpolation, or remove gapFill',
+      [{ op: 'remove', path: '/options/gapFill' }], ['options', 'gapFill'],
+    );
+  }
   const fan = resolveFan({
     spec: options.fan, seriesById, seriesNorm, cats, variant, isArea, rebase100: options.rebase100, gapFill: options.gapFill, pv, rowOf, warnings,
   });
+  if (options.valueAxis?.log && fan && interpolationFor(fan.of) === 'monotone') {
+    throw new NormalizeError(
+      'log-line-conflict', 'options.fan',
+      'monotone fan curves can cross between readings, so their interval nesting cannot be guaranteed on a log axis',
+      'use linear or step interpolation, or remove fan',
+      [{ op: 'remove', path: '/options/fan' }], ['options', 'fan'],
+    );
+  }
   // A fan that does not PAINT does not strip anything: if there is no wash to
   // draw, the bounds are ordinary series and are drawn as such.
   const bumpFocus = bumpFocusOf(isBump, options, dataSeries, bumpDerived, cats, warnings);
@@ -832,6 +894,7 @@ export function resolveLineDomain(data: LineChartData, input: LineOptions, env: 
   const anomalyRun = options.anomaly
     ? lineAnomalyModel(options.anomaly, { variant, isBump, drawnSeries, cats, pv, rowOf, fmt: valueSpec.fmt, statFmt, locale: options.locale?.language, strings: options.strings, warnings })
     : undefined;
+  const sourceAnnotations = options.annotations;
   const live = lineWindow(options, cats, variant, isBump, Boolean(fan), env.size.width, warnings, xModel !== undefined);
   const population = applyCategoryViewport({ domain: options.viewDomain as { x: [string, string] } | undefined, window: live.window, categories: cats, series: seriesNorm,
     ...(xModel ? { positions: xModel.xs } : {}),
@@ -841,6 +904,8 @@ export function resolveLineDomain(data: LineChartData, input: LineOptions, env: 
   checkPointBudget(cats.length, seriesNorm.length);
   if (population) projectLineViewport({ ...population, bump: bumpDerived, fan, phases });
   if (population) options = liveWindowOptions({ ...options, annotations: population.annotations }, population.sampling);
+  if (options.valueAxis?.log) validateLogTolerances(options, drawnSeries, population?.categories ?? cats,
+    population?.plotted ?? pv, rowOf, !rebased, sourceAnnotations);
   // The printed stacked100-area shares (both ends of the drawn window, every drawn category under 'all') sum to
   // 100, or the drift is disclosed. Computed shares only.
   const printedValues = lineLabelModes(options, variant, 0).values;
@@ -871,7 +936,7 @@ export function resolveLineDomain(data: LineChartData, input: LineOptions, env: 
   // A side is cut only where its bound falls between a kept reading and the reading outside it.
   const cut = xModel && population ? rangeCut(xModel.xs, population.indexes, xRange!.lo, xRange!.hi) : undefined;
   const range: LineRange | undefined = xModel && population && cut && (cut.lo || cut.hi)
-    ? { lo: xRange!.lo, hi: xRange!.hi, cut, xs: xModel.xs, categories: population.categories, indexes: population.indexes, plotted: population.plotted, values: population.values,
+    ? { lo: xRange!.lo, hi: xRange!.hi, cut, ...(options.valueAxis?.log ? { log: true } : {}), xs: xModel.xs, categories: population.categories, indexes: population.indexes, plotted: population.plotted, values: population.values,
       ...stackAndEndpoints(population.categories, dataSeries, drawnSeries, population.plotted, rowOf, isStacked),
       invalid: new Set(population.categories.flatMap((c, i) => nmCats100.has(c.id) || naCats100.has(c.id) ? [i] : [])) }
     : undefined;

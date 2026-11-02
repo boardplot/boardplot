@@ -719,6 +719,10 @@ In code, `refused` on a layout from `layoutResolvedRequest` marks a size refusal
 
 Bar, line, waterfall and diagram have a design card: what the chart says, when to use it and when not, and four to eight rules. `boardplot_describe` prints the message, the use, the not-when and the first two rules; `path: "design"` (CLI: `boardplot describe bar --path design`) prints every rule. Each rule is marked `engine` or `describe`. Render checks the `engine` rules on the drawn chart and returns each finding as a warning with severity `advice`, a code that starts with `design-`, one sentence and a `docs` link to the rule. A `fix` patch is included only when it can apply to the input as sent. Otherwise follow `suggest`; for example, a waterfall built from rows gets written advice when a patch would target generated items. Advice never changes the drawing and never refuses. A render returns at most three, the MCP server returns each code once per session, and a refused render returns none. The `describe` rules need the author's judgment, such as the business order of a bridge.
 
+## Log scales on a line
+
+Set `options.valueAxis.log` to `true` or `'y'` to draw a plain line with positive values and value-axis bounds on a log10 axis. Area and bump variants, percent mode, trends, phases, monotone fans, and gap fills with mismatched or monotone interpolation are refused.
+
 ## Named reference bands on a line
 
 Use `options.referenceBands` on a line when the reader judges one long series against a few fixed regimes, such as the strong, typical and down cycles of a growth rate. Each band is one level (`value`) or a range (`low`, `high`) in the value-axis units, drawn thin and neutral behind the line. Its bold `label` and plain `description` stand in a column right of the plot, and an elbow leader ties a name to its band where the names had to spread apart. For the number at a point, a callout with `"headline": "${value}"` prints the value from the data in bold over its text, and `"arrow": true` points at the point.

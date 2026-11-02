@@ -327,7 +327,7 @@ export interface ValueAxisOptions {
   tickStep?: number; // snapped to nice; may NEVER clip data
   includeZero?: boolean;
   percent?: boolean;
-  /** Scatter only: log10 scale on 'x', 'y' (also `true`) or 'both'; every value on it must be above zero. */
+  /** Log10 scale on scatter ('x', 'y', 'both' or true) and line ('y' or true); every value on it must be above zero. */
   log?: boolean | 'x' | 'y' | 'both';
   reverse?: boolean;
   gridlines?: boolean; // default false
