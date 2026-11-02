@@ -83,6 +83,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | netLine.connectors | boolean |  |  | Connect adjacent category ticks as a stepped line; defaults to true for columns. |
 | averageMarker | boolean \| object |  |  | Computed dashed average rule with a solver-placed Ø label. |
 | averageMarker.scope | string \| array | `'all'` (or another value of its type) |  | Series included in the computed average; defaults to 'all'. |
+| averageMarker.includePartial | boolean |  |  | true averages the categories marked partial too. By default they are left out, and the label names the periods the average covers. Column, bar and combo. |
 | connectors | boolean \| object |  |  | Connect matching series boundaries between adjacent stacked columns. |
 | connectors.style | string | `'line'`, `'dashed'` |  | Connector stroke: solid 'line' (default) or 'dashed', matching the waterfall bridge's dash. |
 | connectors.scope | string \| array | `'all'` (or another value of its type) |  | Series boundaries to connect; defaults to 'all'. |
@@ -159,6 +160,7 @@ The default `labelDensity: 'smart'` keeps every value eligible. In a chart with 
 
 Floor 480 × 270 px; fit `fill`.
 Below 480 px wide or 270 px high, down to the compact floor of 280 × 180 px, the chart draws in compact mode; `belowMinimum: 'refuse'` refuses there instead.
+Narrower than the compact floor, down to 120 px wide, a column draws while its bars stay at least 3 px wide.
 
 Below the floor a render is refused with `size-below-floor` and the pixels it needs. `measure` returns the natural and comfortable size for a given spec; see [Sizing in the manual](../manual.md#sizing).
 
@@ -235,6 +237,8 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | column-compact-380 | example | Column in a 380px dashboard column |
 | column-card-320-frame-rules | example | Grouped column in a 320px card with an automatic height |
 | column-partial-week | example | Stacked weekly orders with the running week marked partial |
+| column-partial-week-average | example | Stacked weekly orders with an average rule that leaves the running week out |
+| column-partial-week-average-included | example | Stacked weekly orders with an average rule that includes the running week |
 | torture-long-labels | torture | Torture: long names at a generous size read whole, never cut |
 | revenue-axis-title | example | Grouped columns with a titled value axis |
 | weekly-events-lane | example | Event lane: stock-outs and launches over weekly revenue, the rest numbered in the key |

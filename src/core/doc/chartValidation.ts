@@ -19,6 +19,7 @@ import type { DiagramData, DiagramOptions } from '../types/diagram';
 import { pushAll } from '../arrays';
 import { timeAnnotationAnchors } from '../timeAxis';
 import { retireChartSettings } from '../retired';
+import { normalizeOptionShapes } from '../normalize/optionShapes';
 
 type Definition = NonNullable<ReturnType<typeof getChartSchemas>>;
 
@@ -107,6 +108,9 @@ function parseChartInput(doc: BoardplotDoc, chart: DocChart, envelope: DocumentE
     return null;
   }
   // A retired setting draws as its successor or is dropped, and warns; only a key that never existed is refused below.
+  const shaped = normalizeOptionShapes(def.type, chart, canonicalChartType);
+  chart = shaped.chart;
+  pushAll(envelope.warnings, shaped.warnings);
   const retired = retireChartSettings(def.type, chart, canonicalChartType);
   chart = retired.chart;
   pushAll(envelope.warnings, retired.warnings);

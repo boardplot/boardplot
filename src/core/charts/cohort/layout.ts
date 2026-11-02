@@ -33,9 +33,9 @@ import { paintColor, resolveSemanticPaletteTheme, semanticPalettePaint } from '.
 import type { Cell, Id } from '../../types/cell';
 import type { ChartData } from '../../types/data';
 import type { HeatmapOptions } from '../../types/options';
-import type { Geometry, LintWarning, Paint, SceneNode } from '../../types/scene';
+import type { Geometry, Paint, SceneNode } from '../../types/scene';
 import { AVERAGE_ROW_ID, deriveRetention, missingCohortRate } from './retention';
-import { cohortFormula, cohortMeasure } from './wording';
+import { cohortBasisWarnings, cohortFormula, cohortMeasure } from './wording';
 import { layoutCohortExhibit } from './exhibit';
 import type {
   CohortCellMark,
@@ -57,6 +57,7 @@ export function layoutCohort(
   data: CohortData,
   options: CohortOptions = {},
 ): Geometry<CohortMarks, CohortDerived> {
+  const warnings = cohortBasisWarnings(options);
   if (options.variant !== undefined && options.variant !== 'heatmap') {
     const geometry = layoutCohortExhibit(data, options);
     // Backstop for direct layout() callers — the options schema refuses this
@@ -72,9 +73,9 @@ export function layoutCohort(
         suggest: "drop 'labels', or set variant 'heatmap', which honours it",
       });
     }
+    pushAll(geometry.warnings, warnings);
     return geometry;
   }
-  const warnings: LintWarning[] = [];
   const basis = options.basis ?? 'cohort';
   const averagesMode = options.averages ?? false;
   const methodNote = options.methodNote === true;

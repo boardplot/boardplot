@@ -619,7 +619,7 @@ def chart(
                          suggest="Pass a list, for example [{'kind': 'note', 'at': {'categoryId': 'A', 'seriesId': 'v'}, 'text': 'Largest share'}].")
     if theme is not None and not isinstance(theme, (str, Mapping)):
         raise InputError(f"theme= is a preset name or a theme dict, not {theme!r}", code="invalid-argument", path="/theme",
-                         suggest="Pass a preset name such as 'boardroom' or 'standard-dark' (bp.list_charts()['themes'] lists them), "
+                         suggest="Pass a preset name such as 'bridge' or 'bridge-dark' (bp.list_charts()['themes'] lists them), "
                          "{'preset': ..., 'overrides': {...}} or a full theme dict.")
     shapes = _rows_shapes()
     canonical = shapes["types"].get(type)

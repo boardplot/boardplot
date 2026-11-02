@@ -635,7 +635,7 @@ function layoutBarTableOnce(
       ...(overhang > 0 ? [] : head.split(/\s+/).map((word) => width(word, fieldFont))),
     );
     const headFitAt = (w: number) => fitText(head, fieldFont, w, 3, measure, { target: options.target, typeRole: 'axis' });
-    while (overhang > 0 && headFitAt(inner + overhang).title !== undefined && inner < width(head, fieldFont)) inner += 4;
+    while ((overhang > 0 || (interleaved && cascade?.growth)) && headFitAt(inner + overhang).title !== undefined && inner < width(head, fieldFont)) inner += 4;
     const track = { ...entry, name, head, headFit: headFitAt(inner + overhang), right: x + CELL_AIR + inner };
     x += CELL_AIR + inner;
     return track;
@@ -751,8 +751,22 @@ function layoutBarTableOnce(
   const growthTrack = growth
     ? { right: plot.x + plot.w, headFit: interleaved ? growthFit(Math.max(growthInner, plot.w * 0.4)) : growthFit(growthInner + growthOverhang) }
     : undefined;
-  // Interleaved: a growth head wider than its column stands on the lines above the Share head.
-  const growthLift = interleaved && growthTrack && showShare && growthTrack.headFit.w > growthInner ? lineBox(headFont) + 2 : 0;
+  // Interleaved cascade: the number and Share heads can occupy the same column, so stack only the heads that overlap.
+  const overlaps = (left: number, right: number, otherLeft: number, otherRight: number) => left < otherRight + 1 && right + 1 > otherLeft;
+  const shareBox = interleaved && growthTrack && showShare ? measure(shareHead, fieldFont) : undefined;
+  const shareRight = panelTracks[0]?.shareRight ?? 0;
+  const shareLift = shareBox ? Math.max(0, maxOf(numberTracks
+    .filter((track) => overlaps(shareRight - shareBox.width, shareRight, track.right - track.headFit.w, track.right))
+    .map((track) => track.headFit.h + 2))) : 0;
+  const growthLift = interleaved && growthTrack ? Math.max(
+    showShare && growthTrack.headFit.w > growthInner ? lineBox(headFont) + 2 : 0,
+    maxOf(numberTracks
+      .filter((track) => overlaps(growthTrack.right - growthTrack.headFit.w, growthTrack.right, track.right - track.headFit.w, track.right))
+      .map((track) => track.headFit.h + 2)),
+    shareBox && overlaps(growthTrack.right - growthTrack.headFit.w, growthTrack.right, shareRight - shareBox.width, shareRight)
+      ? shareLift + shareBox.height + 2 : 0,
+  ) : 0;
+  const shareHeadH = shareLift > 0 ? shareLift + shareBox!.height : 0;
   // One shared scale per panel stays; the bars it leaves as slivers
   // are listed under a line that states the scale, one row per line with its
   // value and the parts its bar cannot show.
@@ -816,7 +830,7 @@ function layoutBarTableOnce(
   const heads: FittedText[] = [...numberTracks, ...(interleaved ? [] : panelTracks), ...(growthTrack ? [growthTrack] : [])].map((track) => track.headFit);
   // Interleaved: the panel key stacks one line (or two) per panel.
   const keyH = interleaved && !cascade ? panelTracks.reduce((sum, track) => sum + track.headFit.h + 2, 0) - 2 : 0;
-  const headH = Math.max(lineBox(headFont), keyH, maxOf(heads.map((head) => head.h)), (growthTrack?.headFit.h ?? 0) + growthLift);
+  const headH = Math.max(lineBox(headFont), keyH, maxOf(heads.map((head) => head.h)), shareHeadH, (growthTrack?.headFit.h ?? 0) + growthLift);
   // Rows take their natural pitch; a canvas the author sized shorter
   // tightens them down to the bar and the label plus a little air.
   const house = fixedBarRow(theme, rowText.map((text) => text.h + 4));
@@ -827,7 +841,7 @@ function layoutBarTableOnce(
   const blockH = headH + HEAD_GAP + (showTotal ? TOTAL_GAP : 0);
   // Two heading lines set the floor; the third line uses spare height.
   const minimumBlockH = Math.max(lineBox(headFont), maxOf(numberTracks.map((track) => track.headFit.h)),
-    maxOf(panelTracks.map((track) => Math.min(track.headFit.h, 2 * lineBox(headFont)))), (growthTrack?.headFit.h ?? 0) + growthLift)
+    maxOf(panelTracks.map((track) => Math.min(track.headFit.h, 2 * lineBox(headFont)))), shareHeadH, (growthTrack?.headFit.h ?? 0) + growthLift)
     + HEAD_GAP + (showTotal ? TOTAL_GAP : 0);
   // Compact: a row is its name line(s) and a bar line; the Total likewise.
   // Each line keeps 2 px of air over the solver's label padding.
@@ -975,7 +989,7 @@ function layoutBarTableOnce(
       const id = `head:share:${track.panel.id}`;
       const box = measure(shareHead, fieldFont);
       rightAligned.add(id);
-      label(id, 'axisTitle', { colId: `share:${track.panel.id}` }, shareHead, fieldFont, { x: track.shareRight - box.width, y: tableTop + headH - box.height, w: box.width, h: box.height });
+      label(id, 'axisTitle', { colId: `share:${track.panel.id}` }, shareHead, fieldFont, { x: track.shareRight - box.width, y: tableTop + headH - shareLift - box.height, w: box.width, h: box.height });
       return;
     }
     const headBottom = blockTop(p) + headH;

@@ -75,7 +75,7 @@ One form; its chart ID is `choropleth`.
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
 | labels | string \| false | `'auto'`, `'all'`, `'none'`, `false` | `'auto'` | Region-label selection policy; placement still respects available space. false is the same as 'none'. |
-| topN | object |  |  | On the world pack, the automatic labels name the n regions with the largest absolute values, plus the large countries (default 12). The other packs label every region, and labels 'all' or 'none' decide for themselves, so there topN changes nothing. |
+| topN | object \| integer |  |  | On the world pack, the automatic labels name the n regions with the largest absolute values, plus the large countries (default 12). The other packs label every region, and labels 'all' or 'none' decide for themselves, so there topN changes nothing. A positive integer n means { n }. |
 | topN.n | integer |  |  | How many regions with the largest absolute values the automatic labels name. |
 | scale | object |  | `{"kind":"sequential"}` | Sequential magnitude or diverging midpoint color scale. |
 | scale.kind (scale branch 1) | string | `'sequential'` | `'sequential'` | Encode ordered magnitudes with one color ramp. |
@@ -85,7 +85,7 @@ One form; its chart ID is `choropleth`.
 | scale.polarity (scale branch 2) | string | `'higherIsBetter'`, `'lowerIsBetter'` |  | Which side of the midpoint is favorable; the diverging poles paint good/bad accordingly. Default higherIsBetter. |
 | classes | integer |  |  | Number of equal-interval color classes, from 3 through 7. Explicit steps define five classes instead. |
 | steps | array |  |  | Four ascending thresholds in source units, as on cohort, defining five colour classes. A value on a threshold enters the higher class. The first and last classes are open-ended. Omit to keep the continuous ramp or equal-interval classes. Use a format that prints each threshold exactly. |
-| regionValues | boolean |  |  | Print each labelled region's value after its code, e.g. 'DE 2.2%', through the same placement and fit tiers as the code. Default true when the map labels at most 10 regions, else false. Needs region labels, so labels 'none' or false refuse it. |
+| regionValues | boolean |  |  | Print each labelled region's value after its code, e.g. 'DE 2.2%', through the same placement and fit tiers as the code. Default true when no value table is drawn and the map labels at most 10 regions, or, off the world map, when the canvas is at least 560 px wide and gives each label at least 8000 square pixels; else false. A region whose label no longer fits is listed with its value. Needs region labels, so labels 'none' or false refuse it. |
 | labelRegions | array |  |  | Explicit region ids to label, retained by the small-region filter. |
 | microStateMarkers | boolean |  |  | Draw a dot for a micro-state the data lists without a value (null); one with a value is always drawn. Default off on the world pack, the only pack whose micro-states have no outline; on the other packs it would change nothing and is refused. |
 | smallRegionArea | number |  |  | Area fraction below which automatic labels move to Small members. Default 0.001; 0 disables. Explicit label requests are retained. |
@@ -108,7 +108,8 @@ This type takes no annotations.
 
 ## Sizing
 
-Floor 280 × 270 px; fit `content`.
+Floor 160 × 270 px; fit `content`.
+Narrower than 280 px a map draws while its key and small members fit.
 
 Below the floor a render is refused with `size-below-floor` and the pixels it needs. `measure` returns the natural and comfortable size for a given spec; see [Sizing in the manual](../manual.md#sizing).
 

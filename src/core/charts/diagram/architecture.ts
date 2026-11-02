@@ -57,6 +57,8 @@ interface Env {
   options: DiagramOptions & { variant: 'architecture' };
   plot: Rect;
   ownReturnLabels?: boolean;
+  labelBlocks?: Map<string, LabelBlock[]>;
+  nodeText?: Map<string, NodeText | undefined>;
   name: FontSpec;
   text: FontSpec;
   title: FontSpec;
@@ -94,6 +96,8 @@ interface Geometry {
   ys: Line[];
   gaps: Gap[];
   width: number;
+  /** Edge labels stay out of the column reserved for lane headings. */
+  labelLeft: number;
 }
 
 type Side = 'top' | 'right' | 'bottom' | 'left';
@@ -103,7 +107,7 @@ export function architectureEligible(options: DiagramOptions): options is Diagra
 }
 
 type ArchitectureFonts = { name: FontSpec; text: FontSpec; title: FontSpec };
-type Plan = { geometry: Geometry; routed: Routed; arrangement: Arrangement };
+type Plan = { geometry: Geometry; routed: Routed; arrangement: Arrangement; order?: Env['order']; neighbours?: Env['neighbours'] };
 
 /**
  * One render's chosen plans. A size search probes many heights, and height does
@@ -202,48 +206,57 @@ function planArchitecture(
   plans?: ArchitecturePlans,
 ): OrgChartLayout {
   // Height never shapes a plan: labels may run past the plot, and emit reports a shortfall.
-  const env: Env = { data, options, plot: { ...plot, h: Infinity }, ...fonts, measure, u, badges, order: rankNodes(data), neighbours: neighboursOf(data) };
   const key = [plot.x, plot.y, plot.w, u, fonts.name.size, fonts.text.size, fonts.title.size].join();
   const planned = plans?.get(key);
+  const env: Env = { data, options, plot: { ...plot, h: Infinity }, ...fonts, measure, u, badges,
+    order: planned?.order ?? rankNodes(data), neighbours: planned?.neighbours ?? neighboursOf(data) };
   if (planned) return emit(planned.arrangement, planned.geometry, planned.routed, { ...env, plot }, palette, theme);
   const finish = (plan: Plan) => {
-    plans?.set(key, plan);
+    plans?.set(key, { ...plan, order: env.order, neighbours: env.neighbours });
     return emit(plan.arrangement, plan.geometry, plan.routed, { ...env, plot }, palette, theme);
   };
   let last: Plan | undefined;
+  const routedLines = new Map<string, RoutedLines>();
   // A return label sits closer to its own line than to any other, unless no layout allows that.
-  for (const ownReturnLabels of env.data.edges.some((edge) => edge.flow === 'return' && edge.label) ? [true, false] : [false]) for (const arrangement of arrangements(env)) {
-    env.ownReturnLabels = ownReturnLabels;
-    const gaps = new Map<string, number>();
-    const wants = new Map<string, number>();
-    const outward = new Set<string>();
-    let clean: typeof last;
-    for (let pass = 0; pass < ROUTE_PASSES; pass++) {
-      // A wanted width gives way before the arrangement does.
-      const geometry = place(arrangement, new Map([...gaps, ...[...wants].filter(([key, need]) => need > (gaps.get(key) ?? 0))]), env) ?? place(arrangement, gaps, env);
-      if (!geometry) break;
-      const routed = routeEdges(geometry, env, outward);
-      last = { geometry, routed, arrangement };
-      if (routed.problems.length === 0) clean = last;
-      let grew = false;
-      for (const id of routed.unseated) {
-        // An edge inside one zone keeps its path, and its gutter grows instead.
-        if (!outward.has(id) && !heldInZone(env.data.edges.find((edge) => edge.id === id)!, geometry, env.data)) {
-          outward.add(id);
-          grew = true;
+  for (const ownReturnLabels of env.data.edges.some((edge) => edge.flow === 'return' && edge.label) ? [true, false] : [false]) {
+    let arrangementIndex = 0;
+    for (const arrangement of arrangements(env)) {
+      const index = arrangementIndex++;
+      env.ownReturnLabels = ownReturnLabels;
+      const gaps = new Map<string, number>();
+      const wants = new Map<string, number>();
+      const outward = new Set<string>();
+      let clean: typeof last;
+      for (let pass = 0; pass < ROUTE_PASSES; pass++) {
+        // A wanted width gives way before the arrangement does.
+        const requested = new Map([...gaps, ...[...wants].filter(([key, need]) => need > (gaps.get(key) ?? 0))]);
+        const wanted = place(arrangement, requested, env);
+        const geometry = wanted ?? place(arrangement, gaps, env);
+        if (!geometry) break;
+        const routeKey = JSON.stringify([index, [...(wanted ? requested : gaps)], [...outward]]);
+        const routed = routeEdges(geometry, env, outward, routedLines, routeKey);
+        last = { geometry, routed, arrangement };
+        if (routed.problems.length === 0) clean = last;
+        let grew = false;
+        for (const id of routed.unseated) {
+          // An edge inside one zone keeps its path, and its gutter grows instead.
+          if (!outward.has(id) && !heldInZone(env.data.edges.find((edge) => edge.id === id)!, geometry, env.data)) {
+            outward.add(id);
+            grew = true;
+          }
         }
-      }
-      for (const [name, need] of routed.needs) {
-        const key = name.replace('want:', '');
-        const store = key === name ? gaps : wants;
-        if ((store.get(key) ?? 0) < need) {
-          store.set(key, need);
-          grew = true;
+        for (const [name, need] of routed.needs) {
+          const key = name.replace('want:', '');
+          const store = key === name ? gaps : wants;
+          if ((store.get(key) ?? 0) < need) {
+            store.set(key, need);
+            grew = true;
+          }
         }
+        if (!grew) break;
       }
-      if (!grew) break;
+      if (clean) return finish(clean);
     }
-    if (clean) return finish(clean);
   }
   if (!last) {
     const fallback = fallbackArrangement(env);
@@ -610,6 +623,15 @@ function frontRect(node: DiagramNode, rect: Rect): Rect {
 const storeCap = (node: DiagramNode, u: number) => (node.shape.kind === 'store' ? 2 * u : 0);
 
 function nodeText(node: DiagramNode, width: number, env: Env): NodeText | undefined {
+  const cache = env.nodeText ??= new Map();
+  const key = `${node.id}:${width}`;
+  if (cache.has(key)) return cache.get(key);
+  const result = measureNodeText(node, width, env);
+  cache.set(key, result);
+  return result;
+}
+
+function measureNodeText(node: DiagramNode, width: number, env: Env): NodeText | undefined {
   const { name, text, measure, options, u } = env;
   const inner = width - 4 * u - (node.icon ? 3.5 * u : 0) - lockWidth(node, u);
   if (inner < 1) return undefined;
@@ -632,10 +654,10 @@ function place(arrangement: Arrangement, gaps: ReadonlyMap<string, number>, env:
   const innerGap = 2 * GAP_HALF;
   const unitGap = 2 * GAP_HALF;
   const gap = (key: string, base: number) => Math.max(base, gaps.get(key) ?? 0);
-  const geometry: Geometry = { rects: new Map(), textBoxes: new Map(), icons: new Map(), badges: new Map(), zones: [], loops: [], locks: new Map(), lanes: [], labelClaims: [], xs: [], ys: [], gaps: [], width: plot.w };
+  const laneLabel = lanesFlow && !arrangement.labelAbove ? laneLabelWidth(env) : 0;
+  const geometry: Geometry = { rects: new Map(), textBoxes: new Map(), icons: new Map(), badges: new Map(), zones: [], loops: [], locks: new Map(), lanes: [], labelClaims: [], xs: [], ys: [], gaps: [], width: plot.w, labelLeft: plot.x + laneLabel };
   const outerL = gap('oL', 0);
   const outerR = gap('oR', 0);
-  const laneLabel = lanesFlow && !arrangement.labelAbove ? laneLabelWidth(env) : 0;
   // A dashed zone's frame stands 1.5 u off its nodes and stays in the plot.
   const frameInset = lanesFlow && env.data.groups.some((group) => group.kind !== 'policy') ? 1.5 * u + 1 : 0;
   const left = plot.x + laneLabel + outerL + frameInset;
@@ -958,7 +980,38 @@ function sideLines(lines: readonly Line[], from: number, to: number): number[] {
   return out;
 }
 
-function routeEdges(geometry: Geometry, env: Env, outward: ReadonlySet<string>): Routed {
+interface RoutedLines {
+  order: DiagramEdge[];
+  polylines: Point[][];
+  segmentBoxes: Rect[][];
+  loops: Rect[];
+  seats: Map<string, EdgeLabelSeats>;
+  labelBlockers: Rect[];
+  routes: Routed['routes'];
+  dots: Point[];
+  needs: Map<string, number>;
+  problems: string[];
+}
+
+function routeEdges(geometry: Geometry, env: Env, outward: ReadonlySet<string>, cache?: Map<string, RoutedLines>, key?: string): Routed {
+  // Paths stay the same when return-label ownership changes.
+  let lines = key === undefined ? undefined : cache!.get(key);
+  if (!lines) {
+    lines = routeLines(geometry, env, outward);
+    if (key !== undefined) cache!.set(key, lines);
+  }
+  geometry.loops = lines.loops;
+  const { order, polylines, segmentBoxes, routes, dots } = lines;
+  const needs = new Map(lines.needs);
+  const problems = [...lines.problems];
+  const unseated: string[] = [];
+  const labels = placeLabels(order, polylines, segmentBoxes, geometry, env, needs, unseated, outward, lines);
+  problems.push(...unseated);
+  const channels = placeChannels(order, polylines, segmentBoxes, geometry, labels, env, needs, problems);
+  return { routes, dots, labels, channels, problems, needs, unseated };
+}
+
+function routeLines(geometry: Geometry, env: Env, outward: ReadonlySet<string>): RoutedLines {
   const { data } = env;
   const { xs, ys, rects } = geometry;
   const W = xs.length;
@@ -966,6 +1019,7 @@ function routeEdges(geometry: Geometry, env: Env, outward: ReadonlySet<string>):
   // Each self-loop holds its corner of the gutter before any other edge routes.
   const loops = new Map(data.edges.filter(selfLoop).map((edge) => [edge.id, selfLoopRoute(rects.get(edge.source.nodeId)!, env)]));
   geometry.loops = [...loops.values()].map(([a, b, c]) => ({ x: a!.x, y: a!.y, w: c!.x - a!.x, h: b!.y - a!.y }));
+  const stubClaims = [...geometry.labelClaims, ...geometry.loops].map((claim) => grown(claim, TEXT_CLEARANCE));
   const blocked = obstacleGrid(geometry, W, H);
   const zones = geometry.zones.filter((zone) => !zone.policy);
   const frameUse = frameCrossings(geometry, zones, W, H);
@@ -1029,7 +1083,7 @@ function routeEdges(geometry: Geometry, env: Env, outward: ReadonlySet<string>):
           ? [{ x: edgePos, y: crossPos }, { x: lines[index]!.pos, y: crossPos }]
           : [{ x: crossPos, y: edgePos }, { x: crossPos, y: lines[index]!.pos }];
         // A port stub stays off a lane or zone title too.
-        if ([...geometry.labelClaims, ...geometry.loops].some((claim) => segmentHits(stubA, stubB, grown(claim, TEXT_CLEARANCE)))) continue;
+        if (stubClaims.some((claim) => segmentHits(stubA, stubB, claim))) continue;
         const state = (i + j * W) * 4 + dir;
         const stub = Math.abs(lines[index]!.pos - edgePos) + penalty;
         if (source) {
@@ -1049,8 +1103,12 @@ function routeEdges(geometry: Geometry, env: Env, outward: ReadonlySet<string>):
       open(side, targetRect, false);
     }
     const self = edgeIndex;
-    const incompatible = (users: readonly number[] | undefined) => (users ?? []).filter((user) => !compatible(order[user]!, edge)).length;
-    const friendly = (users: readonly number[] | undefined) => (users ?? []).some((user) => compatible(order[user]!, edge));
+    const friendlyUsers = order.slice(0, edgeIndex).map((other) => compatible(other, edge));
+    const incompatible = (users: readonly number[] | undefined) => {
+      let count = 0;
+      if (users) for (const user of users) if (!friendlyUsers[user]) count++;
+      return count;
+    };
     let best = Infinity;
     let bestState = -1;
     let bestEnd = -1;
@@ -1061,7 +1119,8 @@ function routeEdges(geometry: Geometry, env: Env, outward: ReadonlySet<string>):
       const dir = state & 3;
       const vertex = state >> 2;
       // The last corner may fall on the vertex in front of the port.
-      for (const arrive of [dir, (dir + 1) & 3, (dir + 3) & 3]) {
+      for (let turn = 0; turn < 3; turn++) {
+        const arrive = turn === 0 ? dir : (dir + (turn === 1 ? 1 : 3)) & 3;
         const total = here + goal[vertex * 4 + arrive]! + (arrive === dir ? 0 : BEND_COST);
         if (total < best) {
           best = total;
@@ -1071,7 +1130,8 @@ function routeEdges(geometry: Geometry, env: Env, outward: ReadonlySet<string>):
       }
       const i = vertex % W;
       const j = (vertex - i) / W;
-      for (const next of [dir, (dir + 1) & 3, (dir + 3) & 3]) {
+      for (let turn = 0; turn < 3; turn++) {
+        const next = turn === 0 ? dir : (dir + (turn === 1 ? 1 : 3)) & 3;
         const horizontal = next === 0 || next === 2;
         const ni = next === 0 ? i + 1 : next === 2 ? i - 1 : i;
         const nj = next === 1 ? j + 1 : next === 3 ? j - 1 : j;
@@ -1083,16 +1143,15 @@ function routeEdges(geometry: Geometry, env: Env, outward: ReadonlySet<string>):
         let step = length;
         const against = incompatible(users);
         if (against > 0) step += 24 * against;
-        else if (friendly(users)) step *= 0.15;
+        else if (users?.length) step *= 0.15;
         // A return keeps to the outer corridors, off the forward flow.
         if ((edge.flow === 'return' || outward.has(edge.id)) && !(horizontal ? ys[j]! : xs[i]!).keys.some((key) => key.startsWith('o'))) step *= outward.has(edge.id) ? 40 : 2.5;
         if ((horizontal ? walledH : walledV)[seg]) step += ZONE_COST;
         if (next !== dir) step += BEND_COST;
         else {
-          const across = horizontal
-            ? [...(useV.get(i + j * W) ?? []), ...(useV.get(i + (j - 1) * W) ?? [])]
-            : [...(useH.get(i + j * W) ?? []), ...(useH.get(i - 1 + j * W) ?? [])];
-          if (incompatible(across) > 0) step += CROSSING_COST;
+          const crossUse = horizontal ? useV : useH;
+          if (incompatible(crossUse.get(i + j * W)) > 0
+            || incompatible(crossUse.get(horizontal ? i + (j - 1) * W : i - 1 + j * W)) > 0) step += CROSSING_COST;
         }
         const target = (ni + nj * W) * 4 + next;
         if (here + step < cost[target]!) {
@@ -1122,7 +1181,9 @@ function routeEdges(geometry: Geometry, env: Env, outward: ReadonlySet<string>):
       const bj = (b - bi) / W;
       const seg = horizontal ? Math.min(ai, bi) + aj * W : ai + Math.min(aj, bj) * W;
       const map = horizontal ? useH : useV;
-      map.set(seg, [...(map.get(seg) ?? []), self]);
+      const users = map.get(seg);
+      if (users) users.push(self);
+      else map.set(seg, [self]);
     }
     const first = startSide.get(trail[0]!)!;
     const lastSide = endSide.get(bestEnd)!;
@@ -1156,11 +1217,15 @@ function routeEdges(geometry: Geometry, env: Env, outward: ReadonlySet<string>):
     else if (tracks > 1) need(line.keys, (tracks - 1) * PITCH + 2 * GAP_HALF);
   }
   problems.push(...lineProblems(order, polylines, rects, geometry, data, zones));
-  const unseated: string[] = [];
-  const labels = placeLabels(order, polylines, geometry, env, needs, unseated, outward);
-  problems.push(...unseated);
-  const channels = placeChannels(order, polylines, geometry, labels, env, needs, problems);
-  return { routes, dots: junctions(order, polylines), labels, channels, problems, needs, unseated };
+  const segmentBoxes = polylines.map((points) => {
+    const boxes: Rect[] = [];
+    forSegments(points, (a, b) => boxes.push({ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) }));
+    return boxes;
+  });
+  const rules = geometry.lanes.flatMap((lane) => (lane.rule === undefined ? [] : [{ x: env.plot.x, y: lane.rule, w: env.plot.w, h: 1 }]));
+  const frames = geometry.zones.flatMap(({ bounds: { x, y, w, h } }) => [{ x, y, w, h: 1 }, { x, y: y + h, w, h: 1 }, { x, y, w: 1, h }, { x: x + w, y, w: 1, h }]);
+  const labelBlockers = labelClaims(segmentBoxes, [...geometry.rects.values(), ...geometry.labelClaims, ...rules, ...frames]);
+  return { order, polylines, segmentBoxes, loops: geometry.loops, seats: new Map(), labelBlockers, routes, dots: junctions(order, polylines), needs, problems };
 }
 
 /** What an edge end stands on: its node, or the zone it names. */
@@ -1451,122 +1516,395 @@ function grown(rect: Rect, by: number): Rect {
   return { x: rect.x - by, y: rect.y - by, w: rect.w + 2 * by, h: rect.h + 2 * by };
 }
 
-const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
-
-function labelClear(box: Rect, polylines: readonly Point[][], blockers: readonly Rect[], plot: Rect): boolean {
+function labelClear(box: Rect, blockers: readonly Rect[], plot: Rect): boolean {
   if (box.x < plot.x || box.x + box.w > plot.x + plot.w) return false;
-  const halo = grown(box, TEXT_CLEARANCE);
-  if (blockers.some((rect) => overlaps(halo, rect))) return false;
-  let clear = true;
-  for (const points of polylines) forSegments(points, (a, b) => { if (segmentHits(a, b, halo)) clear = false; });
-  return clear;
+  const left = box.x - TEXT_CLEARANCE;
+  const top = box.y - TEXT_CLEARANCE;
+  const right = left + (box.w + 2 * TEXT_CLEARANCE);
+  const bottom = top + (box.h + 2 * TEXT_CLEARANCE);
+  for (const rect of blockers) if (left < rect.x + rect.w && rect.x < right && top < rect.y + rect.h && rect.y < bottom) return false;
+  return true;
+}
+
+/** Labels on one line keep enough space to read as separate phrases. */
+function labelsApart(box: Rect, labels: Iterable<Rect>, u: number): boolean {
+  for (const other of labels) {
+    if (box.y < other.y + other.h && other.y < box.y + box.h
+      && box.x < other.x + other.w + 2 * u && other.x < box.x + box.w + 2 * u) return false;
+  }
+  return true;
+}
+
+/** Every obstacle boundary in this band, shared by seats that slide along it. */
+function slidePositions(box: Rect, axis: 'x' | 'y', claims: readonly Rect[], positions = new Set<number>()): number[] {
+  if (axis === 'x') {
+    const top = box.y - TEXT_CLEARANCE;
+    const bottom = top + (box.h + 2 * TEXT_CLEARANCE);
+    for (const claim of claims) {
+      if (top >= claim.y + claim.h || claim.y >= bottom) continue;
+      positions.add(Math.floor(2 * (claim.x - box.w - TEXT_CLEARANCE)) / 2);
+      positions.add(Math.ceil(2 * (claim.x + claim.w + TEXT_CLEARANCE)) / 2);
+    }
+  } else {
+    const left = box.x - TEXT_CLEARANCE;
+    const right = left + (box.w + 2 * TEXT_CLEARANCE);
+    for (const claim of claims) {
+      if (left >= claim.x + claim.w || claim.x >= right) continue;
+      positions.add(Math.floor(2 * (claim.y - box.h - TEXT_CLEARANCE)) / 2);
+      positions.add(Math.ceil(2 * (claim.y + claim.h + TEXT_CLEARANCE)) / 2);
+    }
+  }
+  return Array.from(positions);
+}
+
+/** The nearest clear slide, with the same position tie order as the full candidate sort. */
+function slideLabel(box: Rect, axis: 'x' | 'y', from: number, to: number, claims: readonly Rect[], clear: (box: Rect) => boolean): Rect | undefined {
+  if (clear(box)) return box;
+  const size = axis === 'x' ? box.w : box.h;
+  let best: Rect | undefined;
+  let offset = Infinity;
+  for (const position of slidePositions(box, axis, claims)) {
+    if (position + size / 2 < from || position + size / 2 > to) continue;
+    const distance = Math.abs(position - box[axis]);
+    if (distance > offset || (distance === offset && position >= best![axis])) continue;
+    const candidate = { ...box, [axis]: position };
+    if (!clear(candidate)) continue;
+    best = candidate;
+    offset = distance;
+  }
+  return best;
+}
+
+function labelClaims(segmentBoxes: readonly Rect[][], blockers: readonly Rect[]): Rect[] {
+  const claims = [...blockers];
+  for (const boxes of segmentBoxes) for (const box of boxes) claims.push(box);
+  return claims;
+}
+
+/** Segment boxes reject distant seats before the exact distance calculation. */
+function canImprove(box: Rect, segments: readonly Rect[], distance: number): boolean {
+  if (distance === Infinity || segments.length === 0) return true;
+  if (!(distance > 0)) return false;
+  for (const segment of segments) {
+    if (segment.x - box.x - box.w < distance && box.x - segment.x - segment.w < distance
+      && segment.y - box.y - box.h < distance && box.y - segment.y - segment.h < distance) return true;
+  }
+  return false;
+}
+
+function spacedLabel(box: Rect, u: number): Rect {
+  const extra = Math.max(0, 2 * u - TEXT_CLEARANCE);
+  return { ...box, x: box.x - extra, w: box.w + 2 * extra };
+}
+
+type LabelBlock = { width: number; height: number };
+type LabelSeat = { box: Rect; axis: 'x' | 'y'; from: number; to: number };
+interface LabelBand {
+  blockers: Rect[];
+  positions?: number[];
+  remaining?: number[];
+  seen: Set<number>;
+  pass: number;
+  distances?: Map<number, number>;
+}
+interface EdgeLabelSeats {
+  segments: Array<[Point, Point]>;
+  flat: Array<[Point, Point]>;
+  blocks: LabelBlock[];
+  seats: LabelSeat[];
+  rest: Generator<LabelSeat>;
+  bands: Map<string, LabelBand>;
+  pass: number;
+}
+
+const gapContains = (item: Gap, point: Point) => point.x >= item.rect.x && point.x <= item.rect.x + item.rect.w && point.y >= item.rect.y && point.y <= item.rect.y + item.rect.h;
+const segmentMiddle = ([a, b]: [Point, Point]) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+const labelGutterWidth = (width: number, seg: [Point, Point]) => (seg[0].x === seg[1].x ? 2 : 1) * (width + 2 * (TEXT_CLEARANCE + 1));
+
+const segmentLength = ([a, b]: [Point, Point]) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+const longestFirst = (a: [Point, Point], b: [Point, Point]) => segmentLength(b) - segmentLength(a);
+
+/** Text wrapping stays the same while a plan tries different gutters and routes. */
+function edgeLabelBlocks(edge: DiagramEdge, env: Env): LabelBlock[] {
+  const cache = env.labelBlocks ??= new Map();
+  const cached = cache.get(edge.id);
+  if (cached) return cached;
+  const { text, measure } = env;
+  const lineH = text.size * (text.lineHeight ?? 1.2);
+  const one = Math.ceil(measure(edge.label!, text).width) + 1;
+  const two = wrapText(edge.label!, text, Math.ceil(one * 0.6), 2, measure);
+  // A callout on this edge sits at the end of its label, inside the same seat.
+  const disc = env.data.callouts.some((callout) => 'edgeId' in callout.target && callout.target.edgeId === edge.id) ? DISC_UNITS * env.u + 2 : 0;
+  const blocks = [{ width: one + disc, height: Math.max(lineH, disc) }];
+  const three = wrapText(edge.label!, text, Math.ceil(one * 0.42), 3, measure);
+  for (const wrapped of [two, three]) {
+    if (!wrapped.truncated && wrapped.lines.length > 1) blocks.push({ width: Math.ceil(Math.max(...wrapped.lines.map((line) => measure(line, text).width))) + 1 + disc, height: wrapped.lines.length * lineH });
+  }
+  cache.set(edge.id, blocks);
+  return blocks;
+}
+
+function prepareLabelSeats(edge: DiagramEdge, points: Point[], geometry: Geometry, env: Env, plot: Rect): EdgeLabelSeats {
+  const segments: Array<[Point, Point]> = [];
+  forSegments(points, (a, b) => segments.push([a, b]));
+  const flat = segments.filter((s) => s[0].y === s[1].y).sort(longestFirst);
+  const upright = segments.filter((s) => s[0].x === s[1].x).sort(longestFirst);
+  const blocks = edgeLabelBlocks(edge, env);
+  return { segments, flat, blocks, seats: [], rest: edgeLabelSeats(blocks, flat, upright, geometry, env, plot), bands: new Map(), pass: 0 };
+}
+
+function* edgeLabelSeats(blocks: readonly LabelBlock[], flat: Array<[Point, Point]>, upright: Array<[Point, Point]>, geometry: Geometry, env: Env, plot: Rect): Generator<LabelSeat> {
+  const off = TEXT_CLEARANCE + 1;
+  const rows = geometry.gaps.filter((item) => item.axis === 'h');
+  // Run crossings do not change between the one-, two- and three-line blocks.
+  const horizontal = flat.map(([a, b]) => {
+    const from = Math.min(a.x, b.x);
+    const to = Math.max(a.x, b.x);
+    const spots = [(a.x + b.x) / 2];
+    for (const gap of geometry.gaps) if (gap.axis === 'v' && from <= gap.rect.x && to >= gap.rect.x + gap.rect.w) {
+      spots.push(gap.rect.x + gap.rect.w / 4, gap.rect.x + (3 * gap.rect.w) / 4);
+    }
+    for (const { bounds } of geometry.zones) for (const wall of [bounds.x, bounds.x + bounds.w]) {
+      if (wall > from && wall < to) spots.push((a.x + wall) / 2, (b.x + wall) / 2);
+    }
+    return { y: a.y, from, to, spots };
+  });
+  const vertical = upright.map(([a, b]) => {
+    const from = Math.min(a.y, b.y);
+    const to = Math.max(a.y, b.y);
+    const middles = [(a.y + b.y) / 2];
+    for (const { bounds } of geometry.zones) for (const wall of [bounds.y, bounds.y + bounds.h]) {
+      if (wall > from && wall < to) middles.push((a.y + wall) / 2, (b.y + wall) / 2);
+    }
+    return { x: a.x, from, to, middles, crossed: rows.filter((row) => row.rect.y > from && row.rect.y + row.rect.h < to) };
+  });
+  // Generate seats in their original order, stopping as soon as the distance cannot improve.
+  for (const { width, height } of blocks) {
+    const w = q(width);
+    const h = q(height);
+    if (w > plot.w) continue;
+    for (const { y, from, to, spots } of horizontal) for (const spot of spots) {
+      // A run near the plot edge keeps its label inside the plot.
+      const x = q(Math.max(env.plot.x, Math.min(spot - width / 2, env.plot.x + env.plot.w - width)));
+      yield { box: { x, y: q(y - off - height), w, h }, axis: 'x', from, to };
+      yield { box: { x, y: q(y + off), w, h }, axis: 'x', from, to };
+    }
+    for (const { x, from, to, middles, crossed } of vertical) {
+      const right = q(x + off + 2);
+      const left = q(x - off - 2 - width);
+      for (const middle of middles) {
+        const y = q(middle - height / 2);
+        yield { box: { x: right, y, w, h }, axis: 'y', from, to };
+        yield { box: { x: left, y, w, h }, axis: 'y', from, to };
+      }
+      for (const row of crossed) {
+        const y = q(row.rect.y + (row.rect.h - height) / 2);
+        yield { box: { x: right, y, w, h }, axis: 'y', from, to };
+        yield { box: { x: left, y, w, h }, axis: 'y', from, to };
+        // A line just outside a zone seats its label inside the frame, in the same row gutter.
+        for (const { bounds } of geometry.zones) {
+          if (x > bounds.x + bounds.w && x - bounds.x - bounds.w < width + 2 * off) {
+            yield { box: { x: q(bounds.x + bounds.w - off - width), y, w, h }, axis: 'y', from, to };
+          } else if (x < bounds.x && bounds.x - x < width + 2 * off) {
+            yield { box: { x: q(bounds.x + off), y, w, h }, axis: 'y', from, to };
+          }
+        }
+      }
+    }
+  }
+}
+
+interface LabelSearch {
+  seat?: Rect;
+  nearest: number;
+  points: Point[];
+  segmentBoxes: Rect[];
+  lineBoxes: readonly Rect[][];
+  polylines: readonly Point[][];
+  index: number;
+  plot: Rect;
+  otherLabels: Rect[];
+  u: number;
+  ownReturn: boolean;
+}
+
+function considerLabel(box: Rect, axis: 'x' | 'y', band: LabelBand, pos: number, search: LabelSearch): void {
+  if (band.seen.has(pos)) return;
+  band.seen.add(pos);
+  const candidate = pos === (axis === 'x' ? box.x : box.y) ? box : {
+    x: axis === 'x' ? pos : box.x, y: axis === 'y' ? pos : box.y, w: box.w, h: box.h,
+  };
+  if (!canImprove(candidate, search.segmentBoxes, search.nearest)) return;
+  if (!labelClear(candidate, band.blockers, search.plot)
+    || (search.otherLabels.length > 0 && (!labelClear(candidate, search.otherLabels, search.plot) || !labelsApart(candidate, search.otherLabels, search.u)))) return;
+  const distances = band.distances ??= new Map();
+  const cached = distances.get(pos);
+  const distance = cached ?? rectLineDistance(candidate, search.points);
+  if (cached === undefined) distances.set(pos, distance);
+  if (search.seat && distance >= search.nearest) return;
+  if (search.ownReturn) for (let other = 0; other < search.polylines.length; other++) {
+    if (other !== search.index && canImprove(candidate, search.lineBoxes[other]!, distance)
+      && !(distance <= rectLineDistance(candidate, search.polylines[other]!))) return;
+  }
+  search.seat = candidate;
+  search.nearest = distance;
 }
 
 /** A label sits by the longest free run of its edge, reserved in the routing passes. */
 function placeLabels(
-  order: readonly DiagramEdge[], polylines: readonly Point[][], geometry: Geometry, env: Env,
-  needs: Map<string, number>, unseated: string[], outward: ReadonlySet<string>,
+  order: readonly DiagramEdge[], polylines: readonly Point[][], segmentBoxes: readonly Rect[][], geometry: Geometry, env: Env,
+  needs: Map<string, number>, unseated: string[], outward: ReadonlySet<string>, lines: RoutedLines,
 ): Map<string, Rect> {
-  const { text, measure } = env;
   const out = new Map<string, Rect>();
-  const rules = geometry.lanes.flatMap((lane) => (lane.rule === undefined ? [] : [{ x: env.plot.x, y: lane.rule, w: env.plot.w, h: 1 }]));
-  const frames = geometry.zones.flatMap(({ bounds: { x, y, w, h } }) => [{ x, y, w, h: 1 }, { x, y: y + h, w, h: 1 }, { x, y, w: 1, h }, { x: x + w, y, w: 1, h }]);
-  const blockers: Rect[] = [...geometry.rects.values(), ...geometry.labelClaims, ...rules, ...frames];
-  const lineH = text.size * (text.lineHeight ?? 1.2);
-  order.forEach((edge, index) => {
-    if (!edge.label) return;
+  if (!order.some((edge) => edge.label)) return out;
+  const blockers = lines.labelBlockers;
+  const spacing: Rect[] = [];
+  const otherLabels: Rect[] = [];
+  const plot = { ...env.plot, x: geometry.labelLeft, w: env.plot.x + env.plot.w - geometry.labelLeft };
+  const rows = geometry.gaps.filter((item) => item.axis === 'h');
+  for (let index = 0; index < order.length; index++) {
+    const edge = order[index]!;
+    if (!edge.label) continue;
     const points = polylines[index]!;
-    const segments: Array<[Point, Point]> = [];
-    forSegments(points, (a, b) => segments.push([a, b]));
-    const length = (s: [Point, Point]) => Math.abs(s[0].x - s[1].x) + Math.abs(s[0].y - s[1].y);
-    const flat = segments.filter((s) => s[0].y === s[1].y).sort((a, b) => length(b) - length(a));
-    const upright = segments.filter((s) => s[0].x === s[1].x).sort((a, b) => length(b) - length(a));
-    const off = TEXT_CLEARANCE + 1;
-    const one = Math.ceil(measure(edge.label, text).width) + 1;
-    const two = wrapText(edge.label, text, Math.ceil(one * 0.6), 2, measure);
-    // A callout on this edge sits at the end of its label, inside the same seat.
-    const disc = env.data.callouts.some((callout) => 'edgeId' in callout.target && callout.target.edgeId === edge.id) ? DISC_UNITS * env.u + 2 : 0;
-    const blocks = [{ width: one + disc, height: Math.max(lineH, disc) }];
-    const three = wrapText(edge.label, text, Math.ceil(one * 0.42), 3, measure);
-    for (const wrapped of [two, three]) {
-      if (!wrapped.truncated && wrapped.lines.length > 1) blocks.push({ width: Math.ceil(Math.max(...wrapped.lines.map((line) => measure(line, text).width))) + 1 + disc, height: wrapped.lines.length * lineH });
+    let prepared = lines.seats.get(edge.id);
+    if (!prepared) {
+      prepared = prepareLabelSeats(edge, points, geometry, env, plot);
+      lines.seats.set(edge.id, prepared);
     }
-    const rows = geometry.gaps.filter((item) => item.axis === 'h');
-    const seats = blocks.flatMap(({ width, height }) => [
-      ...flat.flatMap(([a, b]) => {
-        // A run near the plot edge keeps its label inside the plot.
-        const inPlot = (x: number) => Math.max(env.plot.x, Math.min(x, env.plot.x + env.plot.w - width));
-        // Besides the middle of the run, each side of a gutter it crosses, clear of a trunk there.
-        const columns = geometry.gaps.filter((item) => item.axis === 'v' && Math.min(a.x, b.x) <= item.rect.x && Math.max(a.x, b.x) >= item.rect.x + item.rect.w);
-        // And the middle of each stretch between a zone frame and the end of the run.
-        const walls = geometry.zones.flatMap(({ bounds }) => [bounds.x, bounds.x + bounds.w]).filter((x) => x > Math.min(a.x, b.x) && x < Math.max(a.x, b.x));
-        const spots = [(a.x + b.x) / 2, ...columns.flatMap(({ rect }) => [rect.x + rect.w / 4, rect.x + (3 * rect.w) / 4]),
-          ...walls.flatMap((x) => [(a.x + x) / 2, (b.x + x) / 2])];
-        return spots.flatMap((spot) => [{ x: inPlot(spot - width / 2), y: a.y - off - height, w: width, h: height }, { x: inPlot(spot - width / 2), y: a.y + off, w: width, h: height }]);
-      }),
-      ...upright.flatMap(([a, b]) => {
-        const y = (a.y + b.y) / 2 - height / 2;
-        const beside = (top: number) => [{ x: a.x + off + 2, y: top, w: width, h: height }, { x: a.x - off - 2 - width, y: top, w: width, h: height }];
-        const crossed = rows.filter((row) => row.rect.y > Math.min(a.y, b.y) && row.rect.y + row.rect.h < Math.max(a.y, b.y));
-        // A line just outside a zone seats its label inside the frame, in the same row gutter.
-        const inset = (top: number) => geometry.zones.flatMap(({ bounds }) => (a.x > bounds.x + bounds.w && a.x - bounds.x - bounds.w < width + 2 * off
-          ? [{ x: bounds.x + bounds.w - off - width, y: top, w: width, h: height }]
-          : a.x < bounds.x && bounds.x - a.x < width + 2 * off ? [{ x: bounds.x + off, y: top, w: width, h: height }] : []));
-        // The middle of each stretch between a zone frame and the end of the run.
-        const walls = geometry.zones.flatMap(({ bounds }) => [bounds.y, bounds.y + bounds.h]).filter((wall) => wall > Math.min(a.y, b.y) && wall < Math.max(a.y, b.y));
-        return [...beside(y), ...walls.flatMap((wall) => [...beside((a.y + wall) / 2 - height / 2), ...beside((b.y + wall) / 2 - height / 2)]), ...crossed.flatMap((row) => {
-          const top = row.rect.y + (row.rect.h - height) / 2;
-          return [...beside(top), ...inset(top)];
-        })];
-      }),
-    ]).map(qRect);
-    const clear = (box: Rect) => labelClear(box, polylines, blockers, env.plot);
-    const seat = seats.find((box) => clear(box) && (!env.ownReturnLabels || edge.flow !== 'return'
-      || polylines.every((line, i) => i === index || rectLineDistance(box, points) <= rectLineDistance(box, line))));
-    if (seat) {
-      out.set(edge.id, seat);
-      blockers.push(seat);
-      return;
+    const { segments, flat, blocks } = prepared;
+    const off = TEXT_CLEARANCE + 1;
+    const pass = ++prepared.pass;
+    const search: LabelSearch = {
+      seat: undefined, nearest: Infinity, points, segmentBoxes: segmentBoxes[index]!, lineBoxes: segmentBoxes, polylines, index,
+      plot, otherLabels, u: env.u, ownReturn: !!env.ownReturnLabels && edge.flow === 'return',
+    };
+    // Resume cached candidates in the same order without a second generator.
+    for (let at = 0; ; at++) {
+      let candidate = prepared.seats[at];
+      if (!candidate) {
+        const next = prepared.rest.next();
+        if (next.done) break;
+        candidate = next.value;
+        prepared.seats.push(candidate);
+      }
+      const { box, axis, from, to } = candidate;
+      if (axis === 'y' && (box.x < plot.x || box.x + box.w > plot.x + plot.w)) continue;
+      const size = axis === 'x' ? box.w : box.h;
+      const start = axis === 'x' ? Math.max(from - size / 2, plot.x) : from - size / 2;
+      const end = axis === 'x' ? Math.min(to - size / 2, plot.x + plot.w - box.w) : to - size / 2;
+      const sweep = axis === 'x'
+        ? { x: start, y: box.y, w: end - start + box.w, h: box.h }
+        : { x: box.x, y: start, w: box.w, h: end - start + box.h };
+      if (!canImprove(box, segmentBoxes[index]!, search.nearest)
+        && (start > end || !canImprove(sweep, segmentBoxes[index]!, search.nearest))) continue;
+      const key = `${axis}:${axis === 'x' ? box.y : box.x}:${box.w}:${box.h}`;
+      let band = prepared.bands.get(key);
+      if (!band) {
+        const halo = grown(box, TEXT_CLEARANCE);
+        band = {
+          blockers: axis === 'x'
+            ? blockers.filter((rect) => halo.y < rect.y + rect.h && rect.y < halo.y + halo.h)
+            : blockers.filter((rect) => halo.x < rect.x + rect.w && rect.x < halo.x + halo.w),
+          seen: new Set(), pass,
+        };
+        prepared.bands.set(key, band);
+      } else if (band.pass !== pass) {
+        band.seen.clear();
+        band.remaining = undefined;
+        band.pass = pass;
+      }
+      const position = axis === 'x' ? box.x : box.y;
+      considerLabel(box, axis, band, position, search);
+      // A slide cannot improve on the distance from the whole allowed band to this edge.
+      // Keep the first seat on a tie, just as the full candidate search does.
+      if (search.nearest === TEXT_CLEARANCE) break;
+      if (band.remaining?.length === 0) continue;
+      if (start > end) continue;
+      if (!canImprove(sweep, segmentBoxes[index]!, search.nearest) || search.nearest <= rectLineDistance(sweep, points)) continue;
+      // Visit slides in the original distance-from-base order, lower position first on a tie.
+      const bandBlockers = band.blockers;
+      const fixedPositions = band.positions ??= slidePositions(box, axis, bandBlockers).filter((pos) => {
+        const candidate = { x: axis === 'x' ? pos : box.x, y: axis === 'y' ? pos : box.y, w: box.w, h: box.h };
+        return labelClear(candidate, bandBlockers, plot);
+      }).sort((a, b) => a - b);
+      const positions = band.remaining ??= spacing.length === 0 ? fixedPositions
+        : slidePositions(box, axis, spacing, new Set(fixedPositions)).sort((a, b) => a - b);
+      let lo = 0;
+      let hi = positions.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        if (positions[mid]! < position) lo = mid + 1;
+        else hi = mid;
+      }
+      let left = lo - 1;
+      let right = lo;
+      while ((left >= 0 || right < positions.length) && search.nearest !== TEXT_CLEARANCE) {
+        const before = left >= 0 ? positions[left]! : -Infinity;
+        const after = right < positions.length ? positions[right]! : Infinity;
+        const pos = position - before <= after - position ? positions[left--]! : positions[right++]!;
+        if (pos >= start && pos <= end) considerLabel(box, axis, band, pos, search);
+      }
+      // A later base seat in this band only needs slides that have not been checked yet.
+      band.remaining = positions.filter((pos) => !band.seen.has(pos));
+      // A clear halo puts every seat at least TEXT_CLEARANCE from its own line.
+      // The first seat at that distance also wins the stable distance sort.
+      if (search.nearest === TEXT_CLEARANCE) break;
+    }
+    if (search.seat) {
+      out.set(edge.id, search.seat);
+      otherLabels.push(search.seat);
+      spacing.push(search.seat, spacedLabel(search.seat, env.u));
+      continue;
     }
     unseated.push(edge.id);
     // A return tries the outer corridors before any gutter grows.
-    if (edge.flow === 'return' && !outward.has(edge.id)) return;
+    if (edge.flow === 'return' && !outward.has(edge.id)) continue;
     const block = blocks.at(-1)!;
-    const contains = (item: Gap, point: Point) => point.x >= item.rect.x && point.x <= item.rect.x + item.rect.w && point.y >= item.rect.y && point.y <= item.rect.y + item.rect.h;
-    const middle = ([a, b]: [Point, Point]) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
-    const beside = (width: number, seg: [Point, Point]) => (seg[0].x === seg[1].x ? 2 : 1) * (width + 2 * off);
     const tall = 2 * (block.height + off + TEXT_CLEARANCE);
-    const along = flat.find((seg) => length(seg) >= block.width + 2 * off && rows.some((row) => contains(row, middle(seg))));
+    const along = flat.find((seg) => segmentLength(seg) >= block.width + 2 * off && rows.some((row) => gapContains(row, segmentMiddle(seg))));
     if (along) {
-      const row = rows.find((item) => contains(item, middle(along)))!;
+      const row = rows.find((item) => gapContains(item, segmentMiddle(along)))!;
       needs.set(row.key, Math.max(needs.get(row.key) ?? 0, tall));
-      return;
+      continue;
     }
-    const longest = [...segments].sort((a, b) => length(b) - length(a))[0];
-    if (!longest) return;
-    const inside = geometry.gaps.find((item) => contains(item, middle(longest)));
+    const longest = [...segments].sort((a, b) => segmentLength(b) - segmentLength(a))[0];
+    if (!longest) continue;
+    const inside = geometry.gaps.find((item) => gapContains(item, segmentMiddle(longest)));
     // A wide label does not fit a gutter beside the nodes: it takes a row gutter that the run crosses.
     // A line along a gutter runs down its middle, so a label beside it takes half the gutter.
-    const wide = beside(block.width, longest);
+    let wide = labelGutterWidth(block.width, longest);
     const row = inside?.axis === 'v' && wide > env.plot.w / 3
       ? rows.filter((item) => item.rect.y > Math.min(longest[0].y, longest[1].y) && item.rect.y + item.rect.h < Math.max(longest[0].y, longest[1].y))
-        .sort((a, b) => Math.abs(a.rect.y - middle(longest).y) - Math.abs(b.rect.y - middle(longest).y))[0] : undefined;
+        .sort((a, b) => Math.abs(a.rect.y - segmentMiddle(longest).y) - Math.abs(b.rect.y - segmentMiddle(longest).y))[0] : undefined;
     const gap = row ?? inside;
-    if (!gap) return;
+    if (!gap) continue;
+    // Tracks across a short horizontal edge split its column gutter into smaller label seats.
+    if (gap.axis === 'v' && longest[0].y === longest[1].y) {
+      const tracks: number[] = [];
+      for (const line of polylines) forSegments(line, (a, b) => {
+        if (a.x === b.x && a.x > gap.rect.x && a.x < gap.rect.x + gap.rect.w
+          && Math.min(a.y, b.y) < longest[0].y - off && Math.max(a.y, b.y) > longest[0].y + off) tracks.push(a.x);
+      });
+      if (tracks.length > 0) wide = Math.max(wide, 2 * (block.width + 2 * off) + Math.max(...tracks) - Math.min(...tracks));
+    }
     needs.set(gap.key, Math.max(needs.get(gap.key) ?? 0, gap.axis === 'v' ? wide : tall));
-    if (gap.axis === 'v' && block !== blocks[0]) needs.set(`want:${gap.key}`, beside(blocks[0]!.width, longest));
-  });
+    if (gap.axis === 'v' && block !== blocks[0]) needs.set(`want:${gap.key}`, labelGutterWidth(blocks[0]!.width, longest));
+  }
   return out;
 }
 
 /** A channel's label centres between its edges in the gutter they all cross. */
 function placeChannels(
-  order: readonly DiagramEdge[], polylines: readonly Point[][], geometry: Geometry, labels: ReadonlyMap<string, Rect>,
+  order: readonly DiagramEdge[], polylines: readonly Point[][], segmentBoxes: readonly Rect[][], geometry: Geometry, labels: ReadonlyMap<string, Rect>,
   env: Env, needs: Map<string, number>, problems: string[],
 ): Routed['channels'] {
   const { text, measure, data } = env;
   const out: Routed['channels'] = [];
-  const blockers = [...geometry.rects.values(), ...geometry.labelClaims, ...labels.values()];
+  if (data.channels.length === 0) return out;
+  const blockers = labelClaims(segmentBoxes, [...geometry.rects.values(), ...geometry.labelClaims, ...labels.values()]);
+  const otherLabels = [...labels.values()];
+  const claims = [...blockers, ...otherLabels.map((box) => spacedLabel(box, env.u))];
+  const plot = { ...env.plot, x: geometry.labelLeft, w: env.plot.x + env.plot.w - geometry.labelLeft };
   const lineH = text.size * (text.lineHeight ?? 1.2);
   for (const channel of data.channels) {
     const crossing = (gap: Gap, points: readonly Point[]): number[] => {
@@ -1595,8 +1933,9 @@ function placeChannels(
     const box = gap.axis === 'v'
       ? { x: gap.rect.x + (gap.rect.w - width) / 2, y: hits.length > 1 ? (hits[0]! + hits.at(-1)!) / 2 - height / 2 : hits[0]! + 2 * TEXT_CLEARANCE, w: width, h: height }
       : { x: hits.length > 1 ? (hits[0]! + hits.at(-1)!) / 2 - width / 2 : hits[0]! + 2 * TEXT_CLEARANCE, y: gap.rect.y + (gap.rect.h - height) / 2, w: width, h: height };
-    const rect = qRect(box);
-    if (wrapped.truncated || !labelClear(rect, polylines, blockers, env.plot)) {
+    const rect = wrapped.truncated ? undefined : slideLabel(qRect(box), gap.axis === 'v' ? 'y' : 'x', hits[0]!, hits.at(-1)!, claims,
+      (seat) => labelClear(seat, blockers, plot) && (otherLabels.length === 0 || labelsApart(seat, otherLabels, env.u)));
+    if (wrapped.truncated || !rect) {
       problems.push(`channel:${channel.id}`);
       needs.set(gap.key, Math.max(needs.get(gap.key) ?? 0, gap.axis === 'v' ? width + 2 * GAP_HALF : height + 2 * GAP_HALF));
       continue;
@@ -1604,6 +1943,8 @@ function placeChannels(
     // The first line sits at the box's left edge, so each channel line stays one block.
     out.push({ id: channel.id, label: channel.label, rect, edgeId: channel.edgeIds[0]! });
     blockers.push(rect);
+    otherLabels.push(rect);
+    claims.push(rect, spacedLabel(rect, env.u));
   }
   return out;
 }

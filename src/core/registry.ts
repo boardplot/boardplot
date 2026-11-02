@@ -15,7 +15,7 @@ import type { BaseOptions, RenderTarget } from './types/options';
 import { withSmallValues } from './formatPrecision';
 import type { Geometry, LayoutResult, LintWarning, RefusedLayout } from './types/scene';
 import type { ChartSizing } from './types/sizing';
-import { chartSizing, declaredSizing, fitsSize, compactFallbackApplies, FORCE_COMPACT, LAYOUT_CALL, FULL_LAYOUT_PROBE, type LayoutCall, plotRepairHeight, WIDTH_PROBE, FIXED_SIZE_PROBE, ACCEPTANCE_PROBE, CARD_HEIGHT_MEMO, type CardHeightMemo, type FitLayout, isWidthProbe, compactReplacesRefusal, sizeRefusal, withoutForcedCompact, hiddenForSpace, narrowShareApplies, PLOT_SHARE, PLOT_FLOOR_SHARE, withLayoutMemo, SIZE_TOLERANCE, lostCategoryNames } from './sizing';
+import { CARD_MIN_WIDTH, chartSizing, declaredSizing, fitsSize, compactFallbackApplies, FORCE_COMPACT, LAYOUT_CALL, FULL_LAYOUT_PROBE, type LayoutCall, plotRepairHeight, WIDTH_PROBE, FIXED_SIZE_PROBE, ACCEPTANCE_PROBE, CARD_HEIGHT_MEMO, type CardHeightMemo, type FitLayout, isWidthProbe, compactReplacesRefusal, sizeRefusal, withoutForcedCompact, hiddenForSpace, narrowShareApplies, PLOT_SHARE, PLOT_FLOOR_SHARE, withLayoutMemo, SIZE_TOLERANCE, lostCategoryNames } from './sizing';
 import { NormalizeError, resolveCanvasOptions, resolveSize } from './normalize/shared';
 import { checkItemBudget } from './itemBudget';
 import { DENSITY_VALUES, UNVERIFIED_DENSITY_REFUSALS, authoredNotes, dataOrder, densityNoteInList, hiddenNoteLine, withDensityNotes, withCutLabelNotes, finishCutLabelNotes, footnoteSwitch, markNotedLabels, owedHiddenLabels, withHiddenLabelNote, withNoteInA11y } from './frame';
@@ -25,7 +25,7 @@ import { markLostOnBandWarnings } from './paintWarnings';
 import { casingUnderFills, labelsOnFills, fillEdges, marksOnBands, referenceLineClearance, withoutOrphanAnnotationMarks } from './markVisibility';
 import { groundEdges } from './label/emit';
 import { withoutRepeatedAxisBreaks } from './axis';
-import { panelTypeClass, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, stampHatchLook } from './theme';
+import { DEFAULT_PRESET, panelTypeClass, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, stampHatchLook } from './theme';
 import { textScaleOf, textSizeOf } from './typeFloors';
 import { DEFAULT_TARGET, resolveTargetSize, TARGET_SIZE, withDefaultTarget } from './target';
 import type { Category } from './types/data';
@@ -277,7 +277,7 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     const ref = authored?.theme;
     // One pair of number marks per chart (numberMarks.ts).
     const localized = withNumberMarks(withLocaleStrings(footnoteSwitch(resolveCanvasOptions({ ...authored, target,
-      theme: { preset: typeof ref === 'string' ? ref : ref?.preset ?? 'boardroom', overrides: theme },
+      theme: { preset: typeof ref === 'string' ? ref : ref?.preset ?? DEFAULT_PRESET, overrides: theme },
     } as unknown as O))));
     const prepared = def.defaultStrings ? withChartDefaultStrings(localized, def.defaultStrings(localized)) : localized;
     if (def.type === 'grid') data = inheritGridTarget(data, target, textScale, textSize);
@@ -439,7 +439,10 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     const sClassMinimum = <S extends NonNullable<typeof geo.sizing>>(minimum: S, size: { width: number; height: number }): S => {
       if (nested || isWidthProbe(def.type, options) || minimum.aspect !== 'content'
         || size.width < 720 || minimum.minWidth >= 720) return minimum;
-      const at = Math.ceil(minimum.minWidth);
+      // A type whose floor is under the card width (a KPI, a pie, a map) probes at the card width: a layout at a floor
+      // of 160 px that refuses costs several times a layout at 280 px. A probe that draws there still reports the width
+      // its own content needs (a map lists its small regions beside it).
+      const at = Math.max(Math.ceil(minimum.minWidth), CARD_MIN_WIDTH);
       let probe: ReturnType<typeof named>['geo'];
       // A chart whose text cannot wrap at the probe width throws (creative-text-overflow in German).
       // The probe only refines the reported minimum, so the chart that drew keeps it.
@@ -449,7 +452,7 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
         ...(def.type === 'gantt' && !resolved.fixed.height ? { [ACCEPTANCE_PROBE]: true } : {}),
         size: resolved.fixed.height ? { width: at, height: Math.max(size.height, minimum.minHeight) } : { width: at } } as O)); }
       catch (error) { if (error instanceof NormalizeError) return minimum; throw error; }
-      return probe.refused && probe.warnings[0]?.code === 'size-below-floor' && probe.sizing && probe.sizing.minWidth > minimum.minWidth
+      return (probe.refused ? probe.warnings[0]?.code === 'size-below-floor' : at > minimum.minWidth) && probe.sizing && probe.sizing.minWidth > minimum.minWidth
         ? { ...minimum, minWidth: Math.min(720, probe.sizing.minWidth) } : minimum;
     };
     const geo = named(layoutOptions).geo;

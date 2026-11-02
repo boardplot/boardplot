@@ -1,6 +1,6 @@
 import { linkStaticFooter } from '../../core/staticFooter';
 import { claimsForChart, type ClaimRecordV1 } from '../../core/claims/browser';
-import { resolveTargetTheme } from '../../core/theme';
+import { DEFAULT_PRESET, resolveTargetTheme } from '../../core/theme';
 import { textScaleOf, textSizeOf } from '../../core/typeFloors';
 import { INTERACTIVE_LAYOUT } from '../../core/footer';
 import { canonicalJson } from '../../core/claims/canonical';
@@ -79,7 +79,7 @@ function effectiveRequest(request: ChartRequest, resolved: ResolvedChartRequest)
   else options.locale = locale;
   if (canonicalJson(resolveTargetTheme(options.theme, resolved.target, textScaleOf(options), textSizeOf(options))) !== canonicalJson(resolved.theme)) {
     const ref = options.theme;
-    options.theme = { preset: typeof ref === 'string' ? ref : ref?.preset ?? 'boardroom', overrides: resolved.theme };
+    options.theme = { preset: typeof ref === 'string' ? ref : ref?.preset ?? DEFAULT_PRESET, overrides: resolved.theme };
   }
   return { ...request, options };
 }

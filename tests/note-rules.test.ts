@@ -113,6 +113,39 @@ describe('note rules', () => {
     if (plain.labels.find((label) => label.id === 'point:b:d0')?.hidden) expect(noteTexts(plain).join(' ')).toContain('Series B 1,020 (09/01)');
   });
 
+  // A sentence-long callout at 720 px found no one-line seat and was left off the chart: it must wrap and draw.
+  it('wraps a sentence-long callout to a seat on the chart instead of dropping it', () => {
+    const text = 'New pricing launched in March lifted the average deal size by a fifth, and two large renewals closed early in the fourth quarter';
+    const geo = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'column',
+      data: { categories: ['2022', '2023', '2024'], series: [{ id: 'a', label: 'Revenue', values: [10, 12, 15] }] },
+      options: { title: 'Revenue grows', unit: '$m' }, annotations: [{ kind: 'callout', id: 'c1', at: { categoryId: '2023', seriesId: 'a' }, text }] } as never)));
+    const label = geo.labels.find((entry) => entry.id === 'annotation:c1')!;
+    expect(label.hidden).toBeUndefined();
+    expect(label.lines!.length).toBeGreaterThan(1);
+    expect(label.lines!.join(' ')).toBe(text);
+  });
+
+  // A wide callout on a stacked100 column segment could disappear into a note that the image does not show.
+  it('seats a stacked100 segment callout above the plot when it cannot fit beside the column', () => {
+    const geo = requireGeometry(layoutResolvedRequest(resolveChartRequest({
+      name: 'c1',
+      type: 'column',
+      data: {
+        categories: [{ id: 'a', label: '2019' }, { id: 'b', label: '2020' }, { id: 'c', label: '2021' }],
+        series: [
+          { id: 'x', label: 'X', unit: '%', values: [60, 50, 40] },
+          { id: 'y', label: 'Y', unit: '%', values: [40, 50, 60] },
+        ],
+      },
+      options: { variant: 'stacked100', title: 'Authored callout on a stacked100 segment', format: '0.0%', target: 'slide', size: { width: 900, height: 497, unit: 'pt' } },
+      annotations: [{ kind: 'callout', at: { categoryId: 'c', seriesId: 'y' }, text: 'Y: +20.0 points vs. the 2019 level' }],
+    } as never)));
+    const callout = geo.labels.find((label) => label.id === 'annotation:callout-1');
+    expect(callout).toBeDefined();
+    expect(callout?.hidden).toBeUndefined();
+    expect(noteTexts(geo).some((text) => text.includes('Not labelled on the chart'))).toBe(false);
+  });
+
   // A callout on a stacked column's total led from the edge of a segment's value: it pointed at the wrong number.
   it('a callout on a stacked column total leads from the total, not from a segment value', () => {
     const series = (id: string, c: number) => ({ id, label: id.toUpperCase(), values: [10, 10, c, 10, 10, 10] });
@@ -435,16 +468,17 @@ describe('requested line values', () => {
     options: { valueLabels: 'all', size: { width } },
   });
   const drawn = (body: { svg: string }) => body.svg.match(/data-part="point"/g)?.length ?? 0;
-  // A requested row that loses every seat must name all its values and their destinations.
+  // A requested row that loses its seats must name every value it does not draw and its destination.
   it('draws every value of a steep line, and warns when a row truly has no room', () => {
     const fits = render({ spec: spec([12.4, 13.1, 12.8, 14.2, 15.0, 14.6], 640), return: ['svg'] }).body as { svg: string; warnings: { code: string }[] };
     expect(drawn(fits)).toBe(6);
     expect(fits.warnings.map((w) => w.code)).not.toContain('label-hidden');
     const crowded = render({ spec: spec(Array.from({ length: 24 }, (_, i) => (i * 7) % 11 + 100.5), 320), return: ['svg', 'reading'] }).body as { svg: string; warnings: LintWarning[]; reading: ChartReading };
-    expect(drawn(crowded)).toBe(0);
+    // The row gives up its interior values and keeps the end value that has a seat.
+    expect(drawn(crowded)).toBe(1);
     expect(crowded.warnings.filter((w) => w.code === 'label-hidden')).toHaveLength(1);
     expect(crowded.warnings.find((w) => w.code === 'label-hidden')).toMatchObject({ severity: 'warn' });
-    expect(crowded.reading.omissions.filter(o => o.labelId.startsWith('point:'))).toHaveLength(24);
+    expect(crowded.reading.omissions.filter(o => o.labelId.startsWith('point:'))).toHaveLength(23);
     expect(crowded.reading.omissions.every(o => o.destination !== undefined)).toBe(true);
   });
 
