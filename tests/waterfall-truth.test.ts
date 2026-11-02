@@ -19,7 +19,50 @@ import { getChartDefinition } from '../src/core/registry';
 import { unscaledFormatLint } from '../src/core/formatSpec';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/index';
 import { getFixtures } from '../src/fixtures';
+import { resolvePaint } from '../src/core/svg/paint';
+import { resolveTheme } from '../src/core/theme';
 import type { Geometry } from '../src/core/types/scene';
+
+// colorblindSafe was refused on KPI, waterfall and pvm although all three paint a good/bad pair, and on every chart that paints none.
+it('accepts colorblindSafe on every chart and swaps the good/bad paints of KPI, waterfall and pvm', () => {
+  const layout = (spec: object, options: object) => {
+    const result = layoutResolvedRequest(resolveChartRequest({ ...spec, options } as never));
+    if (result.refused) throw new Error('colorblindSafe chart refused');
+    return result;
+  };
+  const colorblind = (role: string) => expect.objectContaining({ theme: expect.objectContaining({ kind: 'colorblind', role }) });
+  const theme = resolveTheme('standard');
+  const options = { colorblindSafe: true };
+
+  const kpi = layout({ type: 'kpi', data: { label: 'Revenue', value: 120, delta: { vs: 100, scenario: 'PY' } } }, options);
+  const caret = kpi.scene.find(node => node.id === 'mark:delta:caret');
+  if (caret?.t !== 'path' || !caret.fill) throw new Error('delta caret missing');
+  expect(caret.fill).toEqual(colorblind('good'));
+  expect(resolvePaint(caret.fill, theme)).toBe(theme.color.colorblind.good);
+  const delta = kpi.scene.find(node => node.id === 'label:point:delta');
+  expect(delta?.t === 'text' && delta.ink).toEqual(caret.fill);
+
+  const bridge = { type: 'waterfall', data: { items: [
+    { id: 'open', type: 'total', value: 100 }, { id: 'gain', value: 12 }, { id: 'loss', value: -8 }, { id: 'close', type: 'total' },
+  ] } };
+  for (const variant of ['vertical', 'horizontal']) {
+    const drawn = layout(bridge, { ...options, variant, theme: { preset: 'standard', overrides: { marks: { bridge: 'sign' } } } });
+    for (const [id, tone] of [['gain', 'good'], ['loss', 'bad']] as const) {
+      const bar = drawn.scene.find(node => node.t === 'rect' && node.part === 'segment' && node.owner?.categoryId === id);
+      if (bar?.t !== 'rect') throw new Error(`${id} step missing`);
+      expect(bar.fill).toEqual(colorblind(`${tone}Fill`));
+      const label = drawn.scene.find(node => node.id === `label:sum:${id}`);
+      expect(label?.t === 'text' && label.ink).toEqual(colorblind(tone));
+    }
+  }
+  const pvm = getFixtures('pvm')[0]!;
+  const bridgePvm = layout({ type: 'pvm', data: pvm.data }, { ...pvm.options, ...options });
+  expect(bridgePvm.scene.some(node => node.t === 'rect' && node.fill && 'theme' in node.fill && node.fill.theme?.kind === 'colorblind')).toBe(true);
+
+  // A chart with no good/bad pair draws the same geometry with the flag.
+  const line = { type: 'line', data: { categories: [{ id: 'a' }, { id: 'b' }], series: [{ id: 's', values: [3, 1] }] } };
+  expect(layout(line, options).scene).toEqual(layout(line, {}).scene);
+});
 
 const def = getChartDefinition('waterfall')!;
 
@@ -559,4 +602,34 @@ describe('waterfall automatic break with none found', () => {
     } as never)).size.height;
     expect(heightWith({ break: 'auto' })).toBe(heightWith({ break: false }));
   });
+});
+
+// colorblindSafe was accepted on bullet and on a grid but left their good/bad paints red and green.
+it('swaps the good/bad paints of a bullet delta and of the panels of a grid under colorblindSafe', () => {
+  const plain = (paint: unknown): number => Array.isArray(paint) ? paint.reduce((sum: number, item) => sum + plain(item), 0)
+    : paint === null || typeof paint !== 'object' ? 0
+    : Object.values(paint).reduce((sum: number, item) => sum + plain(item), 0)
+      + (['good', 'bad', 'goodFill', 'badFill'].includes((paint as { token?: string }).token ?? '') && !('theme' in paint) ? 1 : 0);
+  const unswapped = (geometry: Geometry) => plain([geometry.scene, geometry.labels]);
+  const drawn = (spec: object) => {
+    const result = layoutResolvedRequest(resolveChartRequest({ ...spec, options: { colorblindSafe: true } } as never));
+    if (result.refused) throw new Error('chart refused');
+    return result as Geometry;
+  };
+  const bullet = drawn({ type: 'bullet', data: { rows: [
+    { id: 'rev', label: 'Revenue', value: { number: 80 }, target: { number: 100 } },
+    { id: 'cost', label: 'Cost', value: { number: 120 }, target: { number: 100 }, direction: 'lowerIsBetter' },
+  ] } });
+  expect(unswapped(bullet)).toBe(0);
+  const column = getFixtures('column').find(fixture => JSON.stringify(drawnPlain(fixture)).includes('"token":"good'));
+  if (!column) throw new Error('no column fixture paints a good/bad pair');
+  const grid = drawn({ type: 'grid', data: { panels: [{ id: 'p', type: 'column', data: column.data, options: column.options }] } });
+  expect(unswapped(grid)).toBe(0);
+  const panels = (grid.marks as { panels: { chart?: { geometry: Geometry } }[] }).panels;
+  expect(panels.reduce((sum, panel) => sum + (panel.chart ? unswapped(panel.chart.geometry) : 0), 0)).toBe(0);
+
+  function drawnPlain(fixture: { data: unknown; options?: object }) {
+    const result = layoutResolvedRequest(resolveChartRequest({ type: 'column', data: fixture.data, options: { ...fixture.options } } as never));
+    return result.refused ? [] : [result.scene, result.labels];
+  }
 });

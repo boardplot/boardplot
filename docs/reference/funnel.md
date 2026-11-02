@@ -71,7 +71,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | stageShade | string | `'darken'`, `'lighten'` |  | Centered single-series stage shading; default 'darken'. Authored paints and palettes take priority. |
 | worstDropCallout | boolean |  | `false` | Rows only: draws the automatic 'Biggest drop' callout at the step with the largest loss. Default false: the step captions already print every rate. An authored note replaces it. |
 
-Plus the [shared options](options.md). This type does not accept `valueAxis`, `colorblindSafe`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `valueAxis`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 

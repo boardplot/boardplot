@@ -25,7 +25,7 @@ import { markLostOnBandWarnings } from './paintWarnings';
 import { casingUnderFills, labelsOnFills, fillEdges, marksOnBands, referenceLineClearance, withoutOrphanAnnotationMarks } from './markVisibility';
 import { groundEdges } from './label/emit';
 import { withoutRepeatedAxisBreaks } from './axis';
-import { DEFAULT_PRESET, panelTypeClass, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, stampHatchLook } from './theme';
+import { colorblindRoles, DEFAULT_PRESET, panelTypeClass, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, stampHatchLook } from './theme';
 import { textScaleOf, textSizeOf } from './typeFloors';
 import { DEFAULT_TARGET, resolveTargetSize, TARGET_SIZE, withDefaultTarget } from './target';
 import type { Category } from './types/data';
@@ -209,6 +209,9 @@ export function onChartRegistered(redraw: () => void): () => void {
 export function chartRegistryRevision(): number {
   return registryRevision;
 }
+
+/** Types whose layout paints every good/bad pair from theme.color.colorblind under colorblindSafe. */
+const COLORBLIND_IN_LAYOUT: ReadonlySet<string> = new Set(['bar', 'dimswitch', 'heatmap', 'kpi', 'status', 'table', 'variance']);
 
 /**
  * The engine-free index beside the chart registry. `BoardplotChart` fills it
@@ -744,6 +747,15 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
       if (!(options as { [FULL_LAYOUT_PROBE]?: boolean })[FULL_LAYOUT_PROBE]
         && !(options as { [ACCEPTANCE_PROBE]?: boolean })[ACCEPTANCE_PROBE]) {
         estimatedPlotAdvice(geo, options);
+      }
+      // colorblindSafe swaps every good/bad paint the chart drew, whichever type drew it; a paint a layout already
+      // swapped carries its colorblind recipe and stays as it is. These types paint every good/bad pair from the
+      // colorblind recipe themselves, so they skip the walk.
+      if (!geo.refused && (options as { colorblindSafe?: boolean }).colorblindSafe === true && !COLORBLIND_IN_LAYOUT.has(def.type)) {
+        geo.scene = colorblindRoles(geo.scene).value;
+        geo.labels = colorblindRoles(geo.labels).value;
+        if (geo.legend) geo.legend = colorblindRoles(geo.legend).value;
+        geo.annotations = colorblindRoles(geo.annotations).value;
       }
       if (geo.warnings.some(warning => warning.fix)) {
         geo.warnings = geo.warnings.map(warning => warning.fix

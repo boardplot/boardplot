@@ -65,7 +65,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | colors | string | `'categorical'`, `'sequential'` |  | Slice colour strategy. Default 'sequential': one ramp of the first series colour in slice order, the first slice strongest, at every slice count. 'categorical' gives each slice its own theme hue. A highlight keeps its accent and steps the other slices into grey. |
 | othersShade | string | `'quietest'`, `'apart'` |  | Sequential ramp beside an Others slice. Without an Others slice the ramp does not change. Default 'quietest'. 'quietest': Others is the quietest part, so every named step has more contrast against the background than Others and none matches it. 'apart': named steps only differ from Others, and some may be quieter. If Others is stronger than the first named step, the ramp falls back to 'apart' and the chart warns others-shade-unavailable. |
 
-Plus the [shared options](options.md). This type does not accept `valueAxis`, `hatchStrength`, `colorblindSafe`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `valueAxis`, `hatchStrength`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 

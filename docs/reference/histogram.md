@@ -50,7 +50,7 @@ One form; its chart ID is `histogram`.
 | binSnap | boolean |  |  | Snap an 'auto' width onto the {1, 2, 2.5, 5} ladder so bin edges are round numbers. Default true; ignored for an authored count or width. |
 | methodNote | boolean |  |  | Default false: the axis caption states the sample base n and the realized bins; without a caption, a method note carries them. true adds the binning rule, width, first edge and interval convention. footnotes: false hides method notes. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis.tickStep`, `valueAxis.log`, `valueAxis.reverse`, `hatchStrength`, `colorblindSafe`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis.tickStep`, `valueAxis.log`, `valueAxis.reverse`, `hatchStrength`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN` with an `option-ignored` warning.
 
 ## Annotations
 

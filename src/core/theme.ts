@@ -2356,15 +2356,36 @@ function colorblindColor(theme: Theme, role: 'good' | 'bad' | 'goodFill' | 'badF
  */
 export function colorblindRoles<T>(value: T): { value: T; swapped: number } {
   let swapped = 0;
+  // Copy on write: a branch with no good / bad paint under it keeps its identity, so a scene that already swapped its paints is walked and not copied.
   const walk = (entry: unknown): unknown => {
-    if (Array.isArray(entry)) return entry.map(walk);
     if (entry === null || typeof entry !== 'object') return entry;
-    const out: Record<string, unknown> = {};
-    for (const [key, item] of Object.entries(entry)) out[key] = walk(item);
-    const token = out.token;
-    if (out.theme !== undefined || (token !== 'good' && token !== 'bad' && token !== 'goodFill' && token !== 'badFill')) return out;
+    if (Array.isArray(entry)) {
+      let copy: unknown[] | undefined;
+      for (let index = 0; index < entry.length; index++) {
+        const item: unknown = entry[index];
+        if (item === null || typeof item !== 'object') continue;
+        const next = walk(item);
+        if (next === item) continue;
+        copy ??= entry.slice();
+        copy[index] = next;
+      }
+      return copy ?? entry;
+    }
+    const record = entry as Record<string, unknown>;
+    let copy: Record<string, unknown> | undefined;
+    for (const key in record) {
+      const item = record[key];
+      if (item === null || typeof item !== 'object') continue;
+      const next = walk(item);
+      if (next === item) continue;
+      copy ??= { ...record };
+      copy[key] = next;
+    }
+    const result = copy ?? record;
+    const token = result.token;
+    if (result.theme !== undefined || (token !== 'good' && token !== 'bad' && token !== 'goodFill' && token !== 'badFill')) return result;
     swapped++;
-    return { ...out, ...colorblindPaint(token.startsWith('good') ? 'good' : 'bad', token.endsWith('Fill')) };
+    return { ...result, ...colorblindPaint(token.startsWith('good') ? 'good' : 'bad', token.endsWith('Fill')) };
   };
   return { value: walk(value) as T, swapped };
 }

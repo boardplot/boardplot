@@ -1,7 +1,7 @@
 import { geoRegionSchema } from '../../schema/geoRegion';
 import * as z from 'zod';
 import { addGeoIdIssues, baseOptionsSchema, refusedBaseOptions } from '../../schema/shared';
-import { addGeoColorblindIssue, addGeoLegendNoneIssue, addGeoStepsIssue, geoStepsSchema, geoHighlightRefused, geoOverlaySchema, geoScaleSchema, overlayMeasureSchema, overlayTonesSchema } from '../choropleth/schema';
+import { addGeoLegendNoneIssue, addGeoStepsIssue, geoStepsSchema, geoHighlightRefused, geoOverlaySchema, geoScaleSchema, overlayMeasureSchema, overlayTonesSchema } from '../choropleth/schema';
 import { REGION_VALUES_WITHOUT_CODES_REFUSED } from '../choropleth/geoRefusals';
 import type { TilemapData, TilemapOptions } from './types';
 
@@ -23,7 +23,7 @@ export const tilemapOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOpti
   overlayTones: overlayTonesSchema,
   overlayMeasure: overlayMeasureSchema,
   regionValues: z.boolean().optional().describe("Print each tile's value under its code, e.g. 'CA' over '52'. Unset prints the values when every value fits its tile and keeps the codes alone when one does not. true prints them where they fit: a tile too small for both keeps its code and the layout warns that its value shows on hover only. false prints codes only."),
-}).superRefine(addGeoColorblindIssue).superRefine(addGeoLegendNoneIssue).superRefine(addGeoStepsIssue).superRefine((options, ctx) => {
+}).superRefine(addGeoLegendNoneIssue).superRefine(addGeoStepsIssue).superRefine((options, ctx) => {
   const labels = options.labels as false | { category?: boolean } | undefined;
   if (options.regionValues === true && (labels === false || labels?.category === false)) {
     ctx.addIssue({

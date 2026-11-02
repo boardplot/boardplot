@@ -861,6 +861,8 @@ An override can give `color.series` one or two colours. These colours come first
 
 ### Design system colours
 
+Set `colorblindSafe: true` to use the theme's colour-blind good/bad pair on supported marks, including KPI deltas and chips and waterfall and pvm steps. Every chart accepts the option, and a chart with no affected marks draws the same.
+
 Colour fields accept hex, the supported colour keywords, `rgb()` / `rgba()`, `hsl()` / `hsla()` and `oklch()`. For example, `oklch(65% 0.15 270)` becomes `#6c88ea`. Space-separated functions accept `/ alpha`, as in `hsl(210 50% 40% / 50%)`. Hue accepts degrees, `deg`, `grad`, `rad` and `turn`. OKLCH lightness accepts a number or percent; 100% chroma means 0.4. Missing components (`none`) become zero. Relative colours, `calc()`, `color-mix()` and other colour spaces are not supported. Use their computed literal colour instead.
 
 Boardplot converts new colour forms to 8-bit sRGB before drawing. It clips each linear RGB channel to 0–1, applies the sRGB transfer function, then rounds each channel to the nearest byte. Alpha is kept. This is a fixed channel clip, so a colour outside sRGB can differ from a browser's gamut mapping. Contrast checks use the same bytes that the SVG draws. Existing hex and comma-separated RGB spellings keep their output bytes.

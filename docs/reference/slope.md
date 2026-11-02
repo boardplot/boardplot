@@ -78,7 +78,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | diverging.neutralNote | boolean |  |  | Note the share that chose neither answer. Default true. |
 | diverging.minBase | number |  |  | Base n below which a panel is hatched and noted. Default 30. |
 
-Plus the [shared options](options.md). This type does not accept `valueAxis.tickStep`, `valueAxis.includeZero`, `valueAxis.percent`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `colorblindSafe`, `rounding`, `seriesLabels`, `valueLabels`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines`, `legend: 'none'`, `legend: 'auto'` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `valueAxis.tickStep`, `valueAxis.includeZero`, `valueAxis.percent`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `rounding`, `seriesLabels`, `valueLabels`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines`, `legend: 'none'`, `legend: 'auto'` with an `option-ignored` warning.
 
 ## Annotations
 

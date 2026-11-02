@@ -31,7 +31,7 @@ import { useExportLink, type DrawnChart, type ExportLink } from './exportLink';
 import { checkedIdPrefix, IdPrefixContext, useScopedId } from './idPrefix';
 import { asSize, frameSize, RefusalBoundary, type PerTypeSizeOptions } from './RefusalBoundary';
 import { LayoutRefusal, LoadingPlaceholder, SizePlaceholder, type RefusalProps } from './SizePlaceholder';
-import { chartRefusals, isSizeDependentRefusal, optionRefusals, refusalFindings } from '../core/schema/refusals';
+import { chartRefusals, isSizeDependentRefusal, optionRefusals } from '../core/schema/refusals';
 import { useRefusalSettle } from './useRefusalSettle';
 import type { OptionKeyCheck } from '../core/schema/unknownKeys';
 import { publishTableChart } from './specHandover';
@@ -636,7 +636,6 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   // spec that carries `expansion.rootsHidden` or the totals step hides its
   // roots in the grid as the SVG does.
   const rootsHidden = controlledRootsHidden ?? (resolved === undefined ? false : expansionRootsHidden(resolved.table, tableOptions?.expansion));
-  const colorblindSafe = tableOptions?.colorblindSafe === true;
   // By content: a container that reports its width re-derives the theme, and the same theme must not fit and measure
   // every cell again.
   // A table in a container, mounted fresh on the client, waits the frame its container takes to report a width, as a
@@ -650,12 +649,6 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   // every cell again.
   const theme = useStableValue(useMemo(() => request && !waitsForWidth ? tableRenderTheme(request) : undefined,
     [request?.theme, request?.target, request?.size.width, tableOptions, waitsForWidth]));
-  // Whether the table paints a good/bad pair at all is the SVG layout's own
-  // check (table-colorblind-safe-unused), so the grid refuses what the CLI
-  // refuses. It lays the table out only when colorblindSafe is on.
-  const colorblindWarnings = useMemo(() => colorblindSafe && layoutRequest && tableOptions
-    ? tableCore.layout(layoutRequest.data as TableData, tableOptions).warnings.filter((warning) => warning.code === 'table-colorblind-safe-unused')
-    : [], [layoutRequest, colorblindSafe]);
   const metricMeasure = request?.fontMetrics ?? defaultMeasurer;
   const width = useWidthMeasure(metricMeasure, measureWidths === 'browser');
   const statement = resolved?.table.rows.some(row => row.sign === -1 || row.operator !== undefined || row.kind === 'subtotal' || row.kind === 'result' || row.kind === 'driver') ?? false;
@@ -1053,10 +1046,10 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   const spacerWidths = measured?.spacerBefore ?? new Map<Id, number>();
   const labelsWrap = measured?.labelsWrap ?? false;
   const diagnostics = useMemo(() => layoutRequest && resolved ? {
-    warnings: [...resolved.warnings, ...(layoutRequest.inputWarnings ?? []), ...(fittedNote === undefined ? [] : [fittedNote]), ...colorblindWarnings, ...(measured?.warnings ?? []), ...(sized?.warnings ?? [])],
+    warnings: [...resolved.warnings, ...(layoutRequest.inputWarnings ?? []), ...(fittedNote === undefined ? [] : [fittedNote]), ...(measured?.warnings ?? []), ...(sized?.warnings ?? [])],
     presentation: initialPrepared?.presentation ?? tablePresentation(layoutRequest, resolved.table),
     refused: sized?.refused,
-  } : undefined, [layoutRequest, resolved, initialPrepared, sized, colorblindWarnings, fittedNote, measured?.warnings]);
+  } : undefined, [layoutRequest, resolved, initialPrepared, sized, fittedNote, measured?.warnings]);
   const displayRef = useDisplayWarnings(settling ? undefined : diagnostics, onWarnings, null);
   const headFonts = measured?.fonts;
   const frameRoom = !rowToFrame || tableOptions?.frameFill === 'none' ? undefined
@@ -1545,7 +1538,6 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   const refusedOptions = [
     ...refusedProps,
     ...heatEncodingRefusals((stableOptions as { encodings?: Record<string, unknown> }).encodings),
-    ...refusalFindings(colorblindWarnings),
     // The table is the vertical scroll owner under fillHeight, so it cannot also pin its head to the page.
     ...(pageHead && fillHeight ? [{
       code: 'invalid-options',

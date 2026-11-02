@@ -2250,23 +2250,8 @@ function layoutTableOnce(authoredData: TableData, options: LayoutOptions, initia
     pushAll(warnings, groundTextWarnings(theme, texts));
   }
 
-  // colorblindSafe swaps every good/bad paint the table drew; a
-  // table that drew none is refused, since the option would change nothing.
-  let scene = nodes;
-  if (options.colorblindSafe === true) {
-    const swap = colorblindRoles(nodes);
-    scene = swap.value;
-    if (swap.swapped === 0) {
-      warnings.push({
-        code: 'table-colorblind-safe-unused',
-        severity: 'error',
-        message: 'colorblindSafe swaps the good/bad pair, and this table paints none: no good or bad tone, diverging or status heat lane, in-cell bar below zero, toned badge or row highlight, so it would change nothing',
-        suggest: 'drop colorblindSafe; options.palette names a colorblind-safe categorical ramp',
-        field: ['options', 'colorblindSafe'],
-        fix: [{ op: 'remove', path: '/options/colorblindSafe' }],
-      });
-    }
-  }
+  // colorblindSafe swaps every good/bad paint the table drew.
+  const scene = options.colorblindSafe === true ? colorblindRoles(nodes).value : nodes;
 
   // The cut labels in full, one disclosure per status column. The tracks do
   // not depend on the notes, so the second pass draws the same cuts.

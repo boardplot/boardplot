@@ -32,6 +32,7 @@ import { chartSizing, resolveSizing } from '../../sizing';
 import { rowDrivenHeight } from '../../rowCanvas';
 import { defaultMeasurer, type FontSpec, type TextMeasurer } from '../../text';
 import {
+  colorblindRoles,
   resolveSemanticPaletteTheme,
   resolveSurface,
   panelTypeClass,
@@ -1117,8 +1118,8 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
       naturalHeight,
     }),
     plot,
-    scene: nodes,
-    labels: allLabels,
+    scene: options.colorblindSafe === true ? colorblindRoles(nodes).value : nodes,
+    labels: options.colorblindSafe === true ? colorblindRoles(allLabels).value : allLabels,
     axes: [],
     annotations: [],
     legend: frameResult.legend,
