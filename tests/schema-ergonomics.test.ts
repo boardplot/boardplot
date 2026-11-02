@@ -222,8 +222,9 @@ it('accepts short option shapes and preserves their content', async () => {
   for (const sort of [false, 'largest']) expect(() => request({ sort })).toThrow();
   for (const topN of [0, -1, 1.5]) expect(() => request({ topN })).toThrow();
   expect(() => request({ locale: 'bad tag!' })).toThrow(/BCP 47/);
-  const refusedSort = (sort: unknown) => refusal(() => request({ sort }, 'kpi', { label: 'Revenue', value: 12 }));
-  expect(refusedSort('desc')).toEqual(refusedSort({ categories: 'desc' }));
+  const ignoredSort = (sort: unknown) => request({ sort }, 'kpi', { label: 'Revenue', value: 12 }).inputWarnings?.map(({ code }) => code);
+  expect(ignoredSort('desc')).toEqual(['option-ignored']);
+  expect(ignoredSort({ categories: 'desc' })).toEqual(['option-ignored']);
 
   const rendered = render({ spec, return: ['svg'] });
   expect(rendered.exit).toBe(0);
