@@ -206,6 +206,8 @@ export interface LabelRequest {
   noLeader?: true;
   /** Candidates were checked against the exact own stroke; its coarse boxes need no extra air. */
   ownStrokeClear?: true;
+  /** The drawn stroke of the value's own line: a seat added later (a flag seat) may not cross it. */
+  ownStroke?: readonly { hits(rect: Rect, pad: number): boolean }[];
   /** This numeric label names a mark rather than a separate readout rail. false: a name or other text, never bound to the plot. */
   markAnchored?: boolean;
   /** Authored value text stays eligible when the planner ranks engine values. */

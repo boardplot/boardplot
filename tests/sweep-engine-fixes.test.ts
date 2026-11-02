@@ -33,6 +33,13 @@ describe('chart layout edge cases', () => {
     expect(shown).toContain('−42');
   });
 
+  // A narrow peak flagged down left the flag seat under the point on the line's way back, so the value 1,502 printed on the line.
+  it('a flagged peak whose flag seat lies on its line keeps its value off the line (orders-strict-k at 320)', () => {
+    const geometry = layoutFixture('line', 'orders-strict-k', { size: { width: 320, height: 386 } });
+    const label = geometry.labels.find((l: { id: string }) => l.id === 'point:orders:w8');
+    expect(!label || label.hidden).toBeTruthy();
+  });
+
   // A dot scatter lost two names with free room: a seat across the 2x2 divider was dropped
   // before its copy slid to the point's side, and a name ranked first kept the seat a later name needed.
   it('scatter keeps every point name where room is free (log-both-stores-revenue)', () => {
