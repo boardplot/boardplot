@@ -735,7 +735,9 @@ export function seatFlaggedValues(
     if (!flag || !first) continue;
     const { w, h } = first.rect;
     const seat = { slot: flag.up ? 'aboveFlag' : 'belowFlag', rect: { x: flag.cx - w / 2, y: flag.up ? flag.tip - h - 3 : flag.tip + 3, w, h }, penalty: -1, overRules: true };
-    request.candidates.unshift(seat);
+    // The flag seat never puts the value on its own line: a narrow peak flagged down leaves the seat under
+    // the flag on the line's way back, so the value takes a seat beside the point instead.
+    if (!request.ownStroke?.some((stroke) => stroke.hits(seat.rect, 2))) request.candidates.unshift(seat);
     // A flagged value is the one value the rule exists to show: where every
     // seat meets a column or a total, it takes the flag seat on the column,
     // on a backing and wholly inside one fill, as a combo line value does.
