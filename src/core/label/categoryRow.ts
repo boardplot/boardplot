@@ -179,6 +179,12 @@ interface CategoryRowInput {
   /** Try the upright spread before the 45° step (default true on the new targets). */
   spreadBeforeRotate?: boolean;
   /**
+   * Add the target's reader floor for the axis role as the last font step of a row of names,
+   * where the ladder stops above it. The names then wrap upright at the floor size
+   * (and break after a hyphen) before the row rotates.
+   */
+  stepToFloor?: boolean;
+  /**
    * The rotate step turns names -90° (vertical, reading up) instead of 45°
    * (pareto at 480–320 px). A vertical name needs a pitch of
    * one line only, and stands inside its own column. Absent, rows turn 45°.
@@ -733,6 +739,9 @@ function shortMonthNames(labels: readonly string[]): string[] | undefined {
   return undefined;
 }
 
+/** Lines an upright name may take at the floor size. */
+const PROSE_FLOOR_LINES = 3;
+
 function planRow(input: CategoryRowInput, bundled: boolean): CategoryRowPlan {
   const { labels, centers, step, measure } = input;
   const n = labels.length;
@@ -741,7 +750,25 @@ function planRow(input: CategoryRowInput, bundled: boolean): CategoryRowPlan {
   // A period row keeps the muted secondary role but prints at the label step.
   const secondary = periodRow && input.secondary !== undefined && input.secondary.size < input.fonts[0]!.size ? { ...input.secondary, size: input.fonts[0]!.size } : undefined;
   const ladder = secondary ? [secondary, ...input.fonts.filter(font => font.size < secondary.size)] : input.fonts;
-  const fonts = ladder.filter((font, index) => index === 0 || font.size >= targetFloorsPx(input.target ?? DEFAULT_TARGET, input.textScale)[secondary ? 'secondary' : 'axis']);
+  const axisFloor = targetFloorsPx(input.target ?? DEFAULT_TARGET, input.textScale)[secondary ? 'secondary' : 'axis'];
+  const fonts = ladder.filter((font, index) => index === 0 || font.size >= axisFloor);
+  // A row of names (not periods or an ordered sequence) may step down to the reader floor before it rotates.
+  const smallest = fonts.at(-1)!;
+  const nameRow = input.stepToFloor === true && !periodRow && !(input.ordered || input.strideFromEnd || numberedSequence(labels));
+  const floorFont: FontSpec = { ...fonts[0]!, size: axisFloor };
+  // The floor step is worth its planning cost only where every name can wrap on three lines at that size
+  // and no word (or hyphen part) is wider than its slot; else the row rotates as it did.
+  const floorHolds = () => labels.every((label, i) => {
+    const suffix = input.suffixes?.[i] ?? '';
+    const slot = (input.widths?.[i] ?? step) - (suffix ? measure(suffix, floorFont).width : 0);
+    if (/[\n\u200d\u{E0020}-\u{E007F}]/u.test(label)) return true;
+    const parts = label.split(/[^\S\u00a0\u202f]+/).filter(Boolean).flatMap(word => word.split(/(?<=-)(?=[^-])/));
+    return measure(label, floorFont).width <= PROSE_FLOOR_LINES * slot && parts.every(part => measure(part, floorFont).width <= slot);
+  });
+  const stepsToFloor = nameRow && smallest.size > axisFloor + 0.01 && floorHolds();
+  if (stepsToFloor) fonts.push(floorFont);
+  // The floor step serves upright names only: a rotated row keeps the ladder it had.
+  const rotateFonts = stepsToFloor ? fonts.slice(0, -1) : fonts;
   // 4 px between neighbouring names; the row thins only where names collide.
   const gap = input.gap ?? 4;
   const padding = input.padding ?? 6;
@@ -786,7 +813,9 @@ function planRow(input: CategoryRowInput, bundled: boolean): CategoryRowPlan {
       if (single !== undefined && measure(single, font).width <= width) {
         return withSuffix({ lines: [single], w: Math.max(measure(single, font).width, 1), h: font.size * (font.lineHeight ?? 1.2), truncated: false }, i, font);
       }
-      const wrap = fitText(label, font, width, maxLines, measure);
+      // A break after a hyphen is tried only where the name could fit in its lines at all.
+      const hyphenRetry = nameRow && /[-_/.]/.test(label) && measure(label, font).width <= maxLines * width;
+      const wrap = fitText(label, font, width, maxLines, measure, hyphenRetry ? { hyphenRetry: true } : {});
       const lines = wrap.lines.length ? wrap.lines : [''];
       return withSuffix({
         lines,
@@ -801,7 +830,8 @@ function planRow(input: CategoryRowInput, bundled: boolean): CategoryRowPlan {
   };
 
   // Breaks can remove whitespace; a ZWJ or Unicode tag can join a word to the preceding space.
-  const words = labels.map(label => /[\n\u200d\u{E0020}-\u{E007F}]/u.test(label) ? [] : label.split(/[^\S\u00a0\u202f]+/).filter(Boolean));
+  const words = labels.map(label => /[\n\u200d\u{E0020}-\u{E007F}]/u.test(label) ? [] : label.split(/[^\S\u00a0\u202f]+/).filter(Boolean)
+    .flatMap(word => nameRow ? word.split(/(?<=-)(?=[^-])/) : [word]));
   // A word wider than the slot must be cut at every line count; defer that work to the cut fallback.
   const wholeRows = (font: FontSpec, maxLines: number, pad = padding, kept?: readonly boolean[]) =>
     growingWidths(font) && words.some((parts, i) => (!kept || kept[i]) && parts.some(word => measure(word, font).width > Math.max(widthAt(i) - pad - (suffixAt(i) ? measure(suffixAt(i), font).width : 0), 1)))
@@ -1119,10 +1149,10 @@ function planRow(input: CategoryRowInput, bundled: boolean): CategoryRowPlan {
   }
   // A nominal row that keeps every name turns -90° only where 45° has no room.
   const everyName = input.everyName === true && !orderedProse;
-  const room45 = allowRotate && fonts.some((font) => step * SIN45 >= font.size * (font.lineHeight ?? 1.2) + 2);
+  const room45 = allowRotate && rotateFonts.some((font) => step * SIN45 >= font.size * (font.lineHeight ?? 1.2) + 2);
   if (allowRotate && (input.rotate90 || everyName && !room45)) {
     // Vertical names stand side by side: the pitch holds one line and 2 px.
-    const upright = fonts.filter((font) => step >= font.size * (font.lineHeight ?? 1.2) + 2);
+    const upright = rotateFonts.filter((font) => step >= font.size * (font.lineHeight ?? 1.2) + 2);
     const cap = Math.max(VERTICAL_MIN_WIDTH, Math.floor((input.plotHeight ?? 0) * VERTICAL_HEIGHT_SHARE));
     const font = upright.find((f) => measureAll(f, 1).every((info) => info.w <= cap)) ?? upright[0];
     if (font) {
@@ -1151,7 +1181,7 @@ function planRow(input: CategoryRowInput, bundled: boolean): CategoryRowPlan {
     // Rotated labels lie on parallel 45° lines; the clear distance between
     // neighbours is the pitch × sin 45°, which must hold one line of text.
     // A smaller step that holds every name whole beats a cut at the base size.
-    const rotatable = fonts.filter((font) => step * SIN45 >= font.size * (font.lineHeight ?? 1.2) + 2);
+    const rotatable = rotateFonts.filter((font) => step * SIN45 >= font.size * (font.lineHeight ?? 1.2) + 2);
     const whole = rotatable.find((font) => measureAll(font, 1).every((info) => info.w <= maxRotatedWidth));
     const font = whole ?? rotatable[0];
     if (font) {
