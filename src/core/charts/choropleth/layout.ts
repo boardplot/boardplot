@@ -1930,7 +1930,11 @@ function labelPlanForRegion(
     compactText,
     compactFont,
     priority,
-    inlineRegionCandidates(region, compactText, compactFont, effectiveFill(paintColor(theme, insidePaint), pattern, theme), measure, insidePaint, pattern),
+    inlineRegionCandidates(region, compactText, compactFont, effectiveFill(paintColor(theme, insidePaint), pattern, theme), measure, insidePaint, pattern)
+      // A value label is wide enough to reach a coastline from inside its region. A seat whose
+      // box meets the region's outline puts a line through the figures, so the label takes a
+      // callout or the list, which carries the value.
+      .filter(candidate => !valueTexts.has(region.id) || !rectMeetsOutline(candidate.rect, region.polygons)),
   );
   const markerNeedsLeader = region.marker !== undefined && region.polygons.length === 0;
   // Marker records stay visible as marks; their labels must not cover the marker.
@@ -2536,6 +2540,50 @@ function claimLeader(
       'regionLeader',
     );
   }
+}
+
+/** True when an edge of the polygons' rings passes through or touches the rect. */
+function rectMeetsOutline(rect: Rect, polygons: GeoPoint[][][]): boolean {
+  const [minX, minY, maxX, maxY] = boundsOfPolygons(polygons);
+  const x0 = rect.x;
+  const y0 = rect.y;
+  const x1 = rect.x + rect.w;
+  const y1 = rect.y + rect.h;
+  if (x1 < minX || x0 > maxX || y1 < minY || y0 > maxY) return false;
+  for (const polygon of polygons) {
+    for (const ring of polygon) {
+      let previous = ring[ring.length - 1];
+      for (const point of ring) {
+        if (previous !== undefined && segmentMeetsRect(previous, point, x0, y0, x1, y1)) return true;
+        previous = point;
+      }
+    }
+  }
+  return false;
+}
+
+/** Liang-Barsky clip of the segment a-b against the box. */
+function segmentMeetsRect(a: GeoPoint, b: GeoPoint, x0: number, y0: number, x1: number, y1: number): boolean {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  let t0 = 0;
+  let t1 = 1;
+  const edges: [number, number][] = [[-dx, a[0] - x0], [dx, x1 - a[0]], [-dy, a[1] - y0], [dy, y1 - a[1]]];
+  for (const [p, q] of edges) {
+    if (p === 0) {
+      if (q < 0) return false;
+    } else {
+      const t = q / p;
+      if (p < 0) {
+        if (t > t1) return false;
+        if (t > t0) t0 = t;
+      } else {
+        if (t < t0) return false;
+        if (t < t1) t1 = t;
+      }
+    }
+  }
+  return true;
 }
 
 function boundsOfPolygons(polygons: GeoPoint[][][]): [number, number, number, number] {
