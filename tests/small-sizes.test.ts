@@ -12,7 +12,8 @@ import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request'
 import { interactionRecords } from '../src/core/a11y/records';
 import { BoardplotTheme } from '../src/react/BoardplotTheme';
 import { layoutDiagram } from '../src/core/charts/diagram/layout';
-import type { DiagramData } from '../src/core/types/diagram';
+import type { DiagramData, DiagramMarks } from '../src/core/types/diagram';
+import { boundsOf, rectLineDistance, rectsOverlap } from '../src/core/geometry';
 import type { SlopeChartData } from '../src/core/types/data';
 import type { Geometry } from '../src/core/types/scene';
 import { cutLabels } from '../src/core/label/omissions';
@@ -1113,6 +1114,41 @@ it('prints a circular-process arrow label in full', () => {
   const body = render({ spec: { type: 'diagram', data: { nodes, edges }, options: { variant: 'circular-process', size: { width: 456 } } } }).body as any;
   expect(body.ok).toBe(true);
   expect(body.reading.labelsTruncated).toEqual([]);
+});
+
+// Prevents a six-step circular process from dropping arrow labels or drawing them against arrows, arrowheads, nodes or text when space is available.
+it('seats all six circular-process arrow labels clear of the whole diagram', () => {
+  const names = ['Customers share results', 'New leads arrive from referrals', 'Sales converts leads faster',
+    'Revenue funds more product work', 'Product adds visible features', 'Customers see more value'];
+  const edgeNames = ['Proof points', 'Referral invites', 'Shorter cycles', 'Investment', 'Releases', 'Advocacy'];
+  const nodes = names.map((label, i) => ({ id: `s${i + 1}`, kind: 'step', shape: { kind: 'circle' }, label,
+    badge: { text: String(i + 1), role: 'accent' }, role: 'primary', order: i + 1 }));
+  const edges = edgeNames.map((label, i) => ({ id: `e${i + 1}`, source: { nodeId: `s${i + 1}` },
+    target: { nodeId: `s${(i + 1) % 6 + 1}` }, arrowEnd: true, label }));
+  const spec = { type: 'diagram', data: { nodes, edges }, options: { variant: 'circular-process', target: 'dashboard' as const,
+    title: 'Circular process: the growth loop', subtitle: 'Growth loop', source: 'Illustrative growth model', size: { width: 920 } } };
+  const body = render({ spec }).body as any;
+  expect(body.ok).toBe(true);
+  expect(body.reading.omissions).toEqual([]);
+  const geometry = layoutResolvedRequest(resolveChartRequest(spec));
+  if (geometry.refused) throw new Error('refused');
+  const marks = geometry.marks as unknown as DiagramMarks;
+  const labels = geometry.labels.filter(label => label.id.startsWith('edge-label:') && !label.hidden);
+  expect(labels.map(label => label.text).sort()).toEqual([...edgeNames].sort());
+  const arrowBoxes = geometry.scene.filter(node => node.t === 'path' && node.part === 'diagramArrow').map(node => {
+    const values = (node.t === 'path' ? node.d : '').match(/-?\d+(?:\.\d+)?/g)!.map(Number);
+    return boundsOf([0, 2, 4].map(i => ({ x: values[i]!, y: values[i + 1]!, w: 0, h: 0 })));
+  });
+  for (const label of labels) {
+    for (const edge of marks.edges) {
+      if (edge.route.kind !== 'polyline') throw new Error('expected orthogonal arrow');
+      expect(rectLineDistance(label.rect, edge.route.points), `${label.text} touches ${edge.id}`).toBeGreaterThan(2);
+    }
+    for (const box of [...arrowBoxes, ...marks.nodes.map(node => node.rect),
+      ...geometry.labels.filter(other => other !== label && !other.hidden).map(other => other.rect)]) {
+      expect(rectsOverlap(label.rect, box, 2), `${label.text} crowds another part of the diagram`).toBe(false);
+    }
+  }
 });
 
 // A 13-row bar on the default slide canvas was refused, while the same canvas written out as a size drew in compact mode.
