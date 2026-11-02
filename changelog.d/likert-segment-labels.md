@@ -1,3 +1,0 @@
-### Fixed
-
-- A stacked bar or Likert share that is too wide for its segment at the label size now steps down toward the reader floor (11 px on a report) and prints inside its segment. Before, such a share was hidden, although it was readable at the smaller size. This happened most on Likert charts, whose right-hand base column made the bars narrower. A share keeps its seat past the end of the stack or in the share row of a 100 % bar where it has one. A share that does not fit even at the floor stays hidden and is named in the notes as before. Changed goldens: `likert/torture-likert-degenerate`, `likert/customer-effort-7pt` and `likert/employee-engagement-compact`, each as authored and under `notation`.

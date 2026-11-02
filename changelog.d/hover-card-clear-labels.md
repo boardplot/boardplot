@@ -1,4 +1,0 @@
-### Fixed
-
-- The hover card of a chart no longer covers the hovered mark's own labels, and it prefers a seat that covers no other text. Before, the card could hide value and end labels: on a butterfly chart it covered the next bar's value, on a pyramid it cut the hovered value, and on a slope chart it covered the end labels of two other series. A seat beside the mark now wins at once only when it covers no filled mark and no text. Else the card takes the cheapest seat that covers no text, on the chart or at most one card size beyond it. Only when no such seat exists does it cover text, and never the hovered record's own labels. In the chart's own frame the card keeps 8 px from the edge.
-- Changed hover previews (both theme families): bar, bartable, bullet, butterfly, choropleth, column, combo, dimswitch, dot, funnel, gantt, histogram, kpi, likert, line, mekko, pareto, pie, pyramid, scatter, slope, sparkline, status, table, tilemap, variance, waffle.
