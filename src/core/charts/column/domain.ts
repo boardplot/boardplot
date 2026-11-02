@@ -11,6 +11,7 @@ import { breakStyleRefusal } from '../band/breakOrder';
 import { cagr, formatAuthoredPercent, formatAutomaticPercent, formatShare, shareSetFormatter } from '../../format';
 import { formatStatWithSpec, formatterFromExample, formatWithSpec, parseFormatExample, roundedNumber, seriesRasterFormatter, shareFormatExample, withChartMarks } from '../../formatSpec';
 import { yearSpan, yearSpanFromLabels } from '../../periodYears';
+import { cleanSum } from '../../geometry';
 import { PRIORITY } from '../../label/solver';
 import {
   NormalizeError,
@@ -33,7 +34,7 @@ import type { LintWarning, PlacedAnnotation } from '../../types/scene';
 import { valueLineExtent, type ValueLineExtent } from '../../valueLineDomain';
 import { applyCategoryViewport, liveWindowOptions, viewportMeanSpan } from '../../viewport';
 import { VALUE_LINE_RESERVE } from '../../annotateParts';
-import { accumulateStack, averageMarkerLine, averageOfUnaddedSums, averageOfWholeShares, grandTotalRequested, compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning, plottedMean, sortSegments, stackTotalFormatter, warnIncompleteStacks } from '../band/stacks';
+import { accumulateStack, averageMarkerLine, averageOfUnaddedSums, averageOfWholeShares, grandTotalRequested, compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning, plottedMean, sortSegments, stackTotalFormatter, warnIncompleteStacks, withoutShareMean } from '../band/stacks';
 import { NO_STACK_MEAN, stackAdds } from '../../stackAdds';
 import { isIncomplete, warnShareRoundingDrift } from '../../dataGaps';
 import { roundingUnavailable, shareRoundingNotes, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
@@ -570,7 +571,7 @@ function columnBasis(
   // decimals first printed 0.014 → 0.02 as "+100%" and took 0.004 for zero.
   const stackTotals: Record<Id, number> = emptyIdRecord();
   cats.forEach((c, ci) => {
-    stackTotals[c.id] = dataSeries.reduce((a, s) => a + (absOf(s, ci) ?? 0), 0);
+    stackTotals[c.id] = cleanSum(dataSeries.map((s) => absOf(s, ci) ?? 0));
   });
   let percents: Record<Id, Record<Id, number>> | undefined;
   if (variant === 'stacked100') {
@@ -974,6 +975,7 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
     || stackAdds(series.map((s) => ({ label: s.label, unit: s.unit, pctCells: s.vals.some((val) => val.isPct) })), options.unit, options.sharesOfOneWhole);
   const partsAdd = addsOver(dataSeries);
   const meanValue = partsAdd ? plottedMean('all', stackedLike, cats.length, dataSeries, (series, _, ci) => source.plottedOf(series, ci)) : undefined;
+  if (variant === 'stacked100') options = withoutShareMean(options, meanValue, warnings);
   const averageMarkerScope =
     typeof options.averageMarker === 'object' ? options.averageMarker.scope : 'all';
   const averageMarkerRequested = options.averageMarker !== undefined && options.averageMarker !== false &&

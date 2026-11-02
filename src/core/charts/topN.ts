@@ -1,5 +1,6 @@
 /** The topN cut of bar, column, butterfly, pie and mekko: one ranking, one rest name, one rest sum. */
 
+import { cleanSum } from '../geometry';
 import { normalizeCategory, normalizeSeriesValues } from '../normalize/shared';
 import { isDateCell } from '../types/cell';
 import type { ChartData } from '../types/data';
@@ -38,10 +39,10 @@ export function restLabel(topN: TopN, strings: StringsSpec | undefined, folded: 
   return (topN.restLabel ?? strings?.others ?? 'Others') + (topN.showRestCount ? ` (${folded.length})` : '');
 }
 
-/** The sum of the folded values; null when every folded value is null (no data is not zero). */
+/** The sum of the folded values, cleaned of cancelling residue; null when every folded value is null (no data is not zero). */
 export function restSum(values: readonly (number | null)[]): number | null {
   const nums = values.filter((x): x is number => x !== null);
-  return nums.length ? nums.reduce((a, b) => a + b, 0) : null;
+  return nums.length ? cleanSum(nums) : null;
 }
 
 /**
