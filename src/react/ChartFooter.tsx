@@ -12,9 +12,10 @@ import type { StringsSpec } from '../core/types/options';
 import { useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 import { useIsomorphicLayoutEffect as useLayoutEffect } from './useIsomorphicLayoutEffect';
 import { footerParts, notesPointer, sourceLine, unprintedNotes, type ChartNote, type CreditLink } from '../core/notes';
+import { boldRuns, hasBold, markBold } from '../core/inlineBold';
 import { footnoteMark } from '../core/footnoteMark';
 import { footerType } from '../core/footer';
-import { strokeToken, themeForWidth } from '../core/theme';
+import { emphasisWeight, strokeToken, themeForWidth } from '../core/theme';
 import type { FontSpec } from '../core/text';
 import type { SceneNode } from '../core/types/scene';
 import { footerNodeIds, footerNodes, type FooterFrame } from './footerFrame';
@@ -43,6 +44,13 @@ function linked(text: string, links: readonly CreditLink[] | undefined): ReactNo
     text = text.slice(at + link.text.length);
   }
   return [...parts, text];
+}
+
+/** Authored notes keep their source text in data and draw only the supported bold pairs. */
+function inlineBold(text: string, theme: Theme, baseWeight: number): ReactNode {
+  if (!hasBold(text)) return text;
+  return boldRuns(markBold(text), emphasisWeight(theme), baseWeight).map((run, i) =>
+    run.weight === undefined ? run.text : <strong key={i} style={{ fontWeight: run.weight }}>{run.text}</strong>);
 }
 
 interface ChartFooterProps {
@@ -163,7 +171,7 @@ export function ChartFooter({ geometry, notes, theme, sourceWord, strings, rende
           <ol style={{ margin: '6px 0 0', paddingLeft: '1.5em' }}>
             {panel.map((note) => (
               <li key={note.n} data-kind={note.kind} value={note.ref} style={{ listStyleType: note.ref ? undefined : 'none' }}>
-                {note.kind === 'source' ? sourceText : note.kind === 'credit' ? <>{words.mapCredit}: {linked(note.text, note.links)}</> : note.text}
+                {note.kind === 'source' ? inlineBold(sourceText ?? '', theme, font.weight) : note.kind === 'credit' ? <>{words.mapCredit}: {linked(note.text, note.links)}</> : inlineBold(note.text, theme, font.weight)}
               </li>
             ))}
           </ol>
@@ -181,11 +189,11 @@ export function ChartFooter({ geometry, notes, theme, sourceWord, strings, rende
       }
     }}>
       {ownStyle && <style nonce={styleNonce}>{FOOTER_PRINT_CSS}</style>}
-      {shown.map((note) => <p key={note.n} style={{ margin: 0 }}>{note.ref ? `${footnoteMark(note.ref)} ` : ''}{note.kind === 'method' || note.kind === 'disclosure' ? note.short ?? note.text : note.text}</p>)}
+      {shown.map((note) => <p key={note.n} style={{ margin: 0 }}>{note.ref ? `${footnoteMark(note.ref)} ` : ''}{inlineBold(note.kind === 'method' || note.kind === 'disclosure' ? note.short ?? note.text : note.text, theme, font.weight)}</p>)}
       {/* An empty row would still take its top margin, a row the layout does not reserve. */}
       {(sourceText || (creditLine && info) || (panel.length > 0 && !renderNotes)) && <p style={{ margin: shown.length ? '4px 0 0' : 0, display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '2px 0.75em' }}>
         {/* Small print prints as written, as on the SVG: no period is added to a source, credit or note. */}
-        {sourceText && <span>{sourceText}</span>}
+        {sourceText && <span>{inlineBold(sourceText, theme, font.weight)}</span>}
         {creditLine && info && <span>{creditLine}</span>}
         {panel.length > 0 && !renderNotes && (
           <button {...notesD.button}>{label}</button>
@@ -283,7 +291,7 @@ function DrawnFooter({ geometry, theme, credit, words, renderNotes, notes, pad, 
     const lines = node.id === geometry.frame?.creditNodeId && creditText ? linkedLines(node.lines, creditText, credit?.links) : node.lines;
     return (
       <p key={node.id} data-part={node.part} title={node.title} style={{ margin: `${Math.max(0, gap)}px 0 0`, font: fontCss(node, height), whiteSpace: 'nowrap' }}>
-        {lines.map((line, i) => <span key={i} style={{ display: 'block' }}>{line}{node.id === place?.nodeId && i === lines.length - 1 && button}</span>)}
+        {lines.map((line, i) => <span key={i} style={{ display: 'block' }}>{node.lineRuns ? node.lineRuns[i]!.map((run, j) => run.weight === undefined ? run.text : <strong key={j} style={{ fontWeight: run.weight }}>{run.text}</strong>) : line}{node.id === place?.nodeId && i === lines.length - 1 && button}</span>)}
       </p>
     );
   });
@@ -307,7 +315,7 @@ function DrawnFooter({ geometry, theme, credit, words, renderNotes, notes, pad, 
           <ol style={{ margin: '6px 0 0', paddingLeft: '1.5em' }}>
             {panel.map((note) => (
               <li key={note.n} data-kind={note.kind} value={note.ref} style={{ listStyleType: note.ref ? undefined : 'none' }}>
-                {note.kind === 'credit' ? <>{words.mapCredit}: {linked(note.text, note.links)}</> : note.text}
+                {note.kind === 'credit' ? <>{words.mapCredit}: {linked(note.text, note.links)}</> : inlineBold(note.text, theme, font.weight)}
               </li>
             ))}
           </ol>

@@ -1179,17 +1179,17 @@ export const baseOptionsSchema = z.object({
   margin: marginSchema.optional().describe('Outer canvas margins in pixels; omitted sides use chart or theme defaults. canvas.margin overrides supplied sides.'),
   canvas: z.strictObject({ margin: marginSchema.optional().describe('Per-side outer margins overriding margin, then chart or theme defaults.') }).optional().describe('Canvas framing overrides applied before chart furniture is laid out.'),
   title: z.union([
-    z.string().describe('Visible chart title text.'),
+    z.string().describe('Visible chart title text. `**text**` draws bold and a single `*` stays literal.'),
     z.literal(false).describe('Suppress the visible title while retaining the accessible chart name.'),
-  ]).optional().describe('Visible title override; omission retains the chart-specific title behaviour.'),
-  subtitle: subtitleSchema.optional().describe('Measure subtitle below the title; strings expand to the measure field.'),
+  ]).optional().describe('Visible title override. `**text**` draws bold and a single `*` stays literal. Omission retains the chart-specific title behaviour.'),
+  subtitle: subtitleSchema.optional().describe('Measure subtitle below the title. Strings expand to the measure field. `**text**` draws bold in company, measure and period. A single `*` stays literal.'),
   unit: z.string().optional().describe("Chart unit, composed into the subtitle where supported; individual series may declare their own units. A unit prints as text after the number, so unit 'USD' reads 2,456 USD. For a currency sign, set format instead, such as '$1,234'; a unit the format already prints warns unit-in-format, and a unit that names another currency than the format's sign warns unit-format-conflict."),
   unitShown: z.boolean().optional().describe('True when the host prints the unit beside the chart: no unit line, no unit beside a kpi value; line end labels, a table head and the legend check treat the unit as shown. Number formatting does not change. Default false.'),
-  source: z.string().optional().describe('Source credit rendered in the chart frame.'),
+  source: z.string().optional().describe('Source credit rendered in the chart frame. `**text**` draws bold and a single `*` stays literal.'),
   footnotes: z.union([
-    z.array(z.string().describe('Authored footnote text.')).describe('Footnotes in authored order; compact framing leaves optional notes off the canvas, keeps them in the accessible description and lists them in the info lint compact-notes-omitted.'),
+    z.array(z.string().describe('Authored footnote text. `**text**` draws bold and a single `*` stays literal.')).describe('Footnotes in authored order; compact framing leaves optional notes off the canvas, keeps them in the accessible description and lists them in the info lint compact-notes-omitted.'),
     z.literal(false).describe('No notes in the frame: authored notes, method notes, event keys and the "+N notes" pointer are left off. Disclosures that notes.show prints (rounding, partial periods, unlabelled values), the source line and a required map credit stay; leave source out for no source line. For a host that carries the notes in its own frame; the info lint footnotes-off lists what was left off and the render result lists every note in notes.'),
-  ]).optional().describe('Footnotes in authored order; the frame prints them within notes.maxLines and the rest go to the notes list. false leaves notes and the pointer off the frame; disclosures that notes.show prints, the source line and a required map credit stay.'),
+  ]).optional().describe('Footnotes in authored order. `**text**` draws bold and a single `*` stays literal. The frame prints them within notes.maxLines and the rest go to the notes list. false leaves notes and the pointer off the frame; disclosures that notes.show prints, the source line and a required map credit stay.'),
   notes: z.object({
     maxListed: z.union([
       z.number().int().min(0).describe('Most items a note line names; the rest are counted. 0 names none and only counts them.'),

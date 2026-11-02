@@ -1,4 +1,5 @@
 /** Shared footer text wrapping and the static output layout. */
+import { BOLD_OPEN, BOLD_CLOSE } from './inlineBold';
 import { hasAuthoredTypeSize, wrapText, type FontSpec, type TextMeasurer } from './text';
 import type { FrameGeometry } from './types/scene';
 import type { FrameInput } from './frame';
@@ -117,9 +118,21 @@ export function wrapFootnote(text: string, font: FontSpec, width: number, measur
  */
 function breakWord(chars: string[], font: FontSpec, width: number, measure: TextMeasurer): string[] {
   const parts: string[] = [];
+  const marked = chars.includes(BOLD_OPEN) || chars.includes(BOLD_CLOSE);
+  const states: boolean[] = [];
+  if (marked) {
+    let bold = chars.indexOf(BOLD_CLOSE) >= 0 && (chars.indexOf(BOLD_OPEN) < 0 || chars.indexOf(BOLD_CLOSE) < chars.indexOf(BOLD_OPEN));
+    for (const char of chars) {
+      states.push(bold);
+      if (char === BOLD_OPEN) bold = true;
+      else if (char === BOLD_CLOSE) bold = false;
+    }
+    states.push(bold);
+  }
+  const slice = (from: number, n: number) => `${states[from] ? BOLD_OPEN : ''}${chars.slice(from, from + n).join('')}${states[from + n] ? BOLD_CLOSE : ''}`;
   for (let from = 0; from < chars.length;) {
     const rest = chars.length - from;
-    const fits = (n: number) => measure(chars.slice(from, from + n).join(''), font).width <= width;
+    const fits = (n: number) => measure(slice(from, n), font).width <= width;
     let good = 1;
     let bad = rest + 1;
     while (good < rest && bad > rest) {
@@ -135,7 +148,7 @@ function breakWord(chars: string[], font: FontSpec, width: number, measure: Text
     // A URL breaks after a slash where one sits in the back half of the line.
     const slash = good < rest ? chars.lastIndexOf('/', from + good - 1) - from + 1 : 0;
     if (slash > good / 2) good = slash;
-    parts.push(chars.slice(from, from + good).join(''));
+    parts.push(slice(from, good));
     from += good;
   }
   return parts;

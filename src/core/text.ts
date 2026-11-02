@@ -11,6 +11,7 @@
  * fine-trim rendered text in-browser but never changes placement decisions.
  */
 
+import { BOLD_OPEN, plainText } from './inlineBold';
 import { resolveFace, type Face } from './fontMetrics';
 
 /** An authored role size survives the frame's default key and footer sizes. */
@@ -368,7 +369,7 @@ export function wrapText(
   // Prefer a connector at the end of its line: "UK &" / "Ireland".
   const words: string[] = [];
   for (const word of separate) {
-    if (words.length > 0 && CONNECTOR.test(word)) words[words.length - 1] += ` ${word}`;
+    if (words.length > 0 && CONNECTOR.test(word.startsWith(BOLD_OPEN) ? plainText(word) : word)) words[words.length - 1] += ` ${word}`;
     else words.push(word);
   }
   const wrap = (list: readonly string[]) => {

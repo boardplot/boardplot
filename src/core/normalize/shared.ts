@@ -4,6 +4,7 @@
  * canonical form back.
  */
 
+import { plainText } from '../inlineBold';
 import type { Size } from '../geometry';
 import type { Cell, Id, Scenario } from '../types/cell';
 import type { Category, Series } from '../types/data';
@@ -177,7 +178,7 @@ export function resolveCanvasOptions<O extends Pick<BaseOptions, 'canvas' | 'mar
 
 /** Hiding the frame title does not remove the chart's accessible name. */
 export function accessibleTitle(title: string | false | undefined, fallback: string): string {
-  return typeof title === 'string' ? title : fallback;
+  return typeof title === 'string' ? plainText(title) : fallback;
 }
 
 /** Subtitle string shorthand. */

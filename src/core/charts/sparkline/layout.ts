@@ -1,3 +1,4 @@
+import { boldMeasurer, markBold } from '../../inlineBold';
 import { SPARK_LABEL_SHARE } from './share';
 import { chartString } from '../../strings/sparkline';
 import { structureCount } from '../../structureCounts';
@@ -22,6 +23,7 @@ import { linePath } from '../../svgPath';
 import { defaultMeasurer, type FontSpec, type TextMeasurer } from '../../text';
 import {
   canvasMargin,
+  emphasisWeight,
   microType,
   panelTypeClass,
   themeForWidth,
@@ -681,8 +683,9 @@ function framedCardSize(options: SparklineOptions, theme: Theme, measure: TextMe
   if (options.size !== undefined && constraints?.fixed.width !== false) return card;
   const canvas = resolveTargetSize(options.target ?? DEFAULT_TARGET).sizePx.width;
   const base = Math.min(canvas, FRAMED_DEFAULT_WIDTH);
-  const title = options.title;
-  if (typeof title !== 'string' || title === '') return { ...card, width: base };
+  if (typeof options.title !== 'string' || options.title === '') return { ...card, width: base };
+  const title = markBold(options.title);
+  if (title !== options.title) measure = boldMeasurer(measure, emphasisWeight(theme));
   const font: FontSpec = { family: theme.type.family, ...theme.type.title };
   const lineWidth = Math.max(...title.split('\n').map((line) => measure(line.trim(), font).width));
   return { ...card, width: Math.max(base, Math.min(canvas, Math.ceil(lineWidth) + 2 * FRAMED_SIDE_MARGIN)) };

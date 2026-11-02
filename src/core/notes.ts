@@ -1,3 +1,4 @@
+import { plainText } from './inlineBold';
 import { localeStrings, stringFields } from './strings';
 import type { StringsSpec } from './types/options';
 /**
@@ -85,8 +86,9 @@ export function defaultNoteLines(target: RenderTarget = DEFAULT_TARGET, width: n
  * "Source: Source: …".
  */
 export function sourceLine(source: string, word: string): string {
-  const opensWithWord = source.slice(0, word.length).toLowerCase() === word.toLowerCase() &&
-    /^\p{L}*\s*:/u.test(source.slice(word.length));
+  const plain = plainText(source);
+  const opensWithWord = plain.slice(0, word.length).toLowerCase() === word.toLowerCase() &&
+    /^\p{L}*\s*:/u.test(plain.slice(word.length));
   return opensWithWord ? source : `${word}: ${source}`;
 }
 

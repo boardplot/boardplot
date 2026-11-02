@@ -1,3 +1,4 @@
+import { plainText } from './inlineBold';
 import { isHatchPattern } from './svgPath';
 /**
  * MARK VISIBILITY — one policy, applied at the scene, not at the theme.
@@ -459,7 +460,7 @@ export function fillEdges(geometry: Pick<Geometry, 'scene' | 'labels'> & { frame
   const footnoteIds = new Set(geometry.frame?.footnoteNodeIds ?? []);
   const squeeze = (text: string) => text.replace(/\s+/g, '');
   const footnotes = squeeze(geometry.scene.flatMap((node) => (node.t === 'text' && footnoteIds.has(node.id) ? [node.lines.join(' ')] : [])).join(' '));
-  const inFootnote = (text: string | undefined) => text !== undefined && text !== '' && footnotes.includes(squeeze(text));
+  const inFootnote = (text: string | undefined) => text !== undefined && text !== '' && footnotes.includes(squeeze(plainText(text)));
   const noteNames = (label: PlacedLabel) => label.noted === true && label.noteCounted !== true
     && ([...footnoteIds].some((id) => label.noteLocation?.includes(`(${id})`) === true) || inFootnote(label.noteText));
   const shows = (label: PlacedLabel) => !label.hidden || (label.printedIn !== undefined && drawn.has(label.printedIn)) || noteNames(label);

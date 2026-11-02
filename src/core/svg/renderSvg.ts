@@ -1,4 +1,5 @@
 import { assertEmbeddedImage } from '../image';
+import { plainText } from '../inlineBold';
 import { ENGINE_REV } from '../engine';
 /**
  * Framework-free SVG serializer. React and the CLI are both
@@ -258,34 +259,35 @@ function validateGeometryNumbers(geometry: Geometry): void {
       if (node.font.style !== undefined && node.font.style !== 'normal' && node.font.style !== 'italic') throw new Error(`invalid SVG font style ${node.id}`);
       validateNumber(`${node.id}.font.lineHeight`, node.font.lineHeight, 0);
       validateNumber(`${node.id}.font.letterSpacing`, node.font.letterSpacing);
-      if (node.runs !== undefined) {
-        // Same boundary class as lineCap above: run.weight reaches attribute
-        // position in the markup, so shape and numbers are enforced at
-        // runtime — the TypeScript type does not protect a public caller.
-        if (!Array.isArray(node.runs) || node.runs.length === 0) {
-          throw new Error(`invalid SVG text runs ${node.id} — expected a non-empty array`);
+      if (node.runs !== undefined || node.lineRuns !== undefined) {
+        if (node.lineRuns !== undefined && (node.runs !== undefined || !Array.isArray(node.lineRuns) || node.lineRuns.length !== node.lines.length)) {
+          throw new Error(`invalid SVG text lineRuns ${node.id} — one run list per line, without runs`);
         }
-        // index loop, not forEach: forEach/some/map skip sparse-array holes,
-        // which would let `Array(1)` sail through every per-run check
-        for (let index = 0; index < node.runs.length; index++) {
-          const run: unknown = node.runs[index];
-          if (typeof run !== 'object' || run === null) {
-            throw new Error(`invalid SVG text run ${node.id}.runs[${index}] — expected an object`);
+        const lists = node.lineRuns ?? [node.runs!];
+        for (let line = 0; line < lists.length; line++) {
+          const runs = lists[line];
+          const field = node.lineRuns ? `lineRuns[${line}]` : 'runs';
+          if (!Array.isArray(runs) || runs.length === 0) {
+            throw new Error(`invalid SVG text ${field} ${node.id} — expected a non-empty array`);
           }
-          const { text, weight } = run as { text?: unknown; weight?: unknown };
-          if (typeof text !== 'string') {
-            throw new Error(`invalid SVG text run ${node.id}.runs[${index}].text — expected a string`);
+          // Index loops visit sparse holes at this public boundary.
+          for (let index = 0; index < runs.length; index++) {
+            const run: unknown = runs[index];
+            if (typeof run !== 'object' || run === null) {
+              throw new Error(`invalid SVG text run ${node.id}.${field}[${index}] — expected an object`);
+            }
+            const { text, weight } = run as { text?: unknown; weight?: unknown };
+            if (typeof text !== 'string') {
+              throw new Error(`invalid SVG text run ${node.id}.${field}[${index}].text — expected a string`);
+            }
+            validateNumber(`${node.id}.${field}[${index}].weight`, weight as number | undefined, 1);
+            if (typeof weight === 'number' && weight > 1000) {
+              throw new Error(`invalid SVG numeric ${node.id}.${field}[${index}].weight '${weight}' — above 1000`);
+            }
           }
-          // CSS Fonts 4: numeric font-weight is 1..1000 — enforce both ends
-          validateNumber(`${node.id}.runs[${index}].weight`, weight as number | undefined, 1);
-          if (typeof weight === 'number' && weight > 1000) {
-            throw new Error(`invalid SVG numeric ${node.id}.runs[${index}].weight '${weight}' — above 1000`);
+          if ((!node.lineRuns && node.lines.length !== 1) || node.lines[line] !== runs.map(run => run.text).join('')) {
+            throw new Error(`invalid SVG text ${field} ${node.id} — lines must equal the concatenated run texts`);
           }
-        }
-        if (node.lines.length !== 1 || node.lines[0] !== node.runs.map((run) => run.text).join('')) {
-          throw new Error(
-            `invalid SVG text runs ${node.id} — runs are single-line and lines[0] must equal the concatenated run texts`,
-          );
         }
       }
       if (node.backing) validateRectNumbers(`${node.id}.backing`, node.backing);
@@ -515,15 +517,15 @@ function renderSvgInternal(
   out.push(
     `<svg xmlns="http://www.w3.org/2000/svg"${xlink} data-bp-engine="${ENGINE_REV}" viewBox="0 0 ${n2(size.width)} ${n2(size.height)}" ` +
       `${dims} direction="ltr" style="${ROOT_STYLE}" ` +
-      `preserveAspectRatio="xMidYMid meet" role="${interactive ? 'graphics-document document' : 'img'}" aria-label="${esc(geometry.a11y.title, 'a11y.title')}" aria-describedby="${descId}" ` +
+      `preserveAspectRatio="xMidYMid meet" role="${interactive ? 'graphics-document document' : 'img'}" aria-label="${esc(plainText(geometry.a11y.title), 'a11y.title')}" aria-describedby="${descId}" ` +
       `${geometry.sizing ? `data-bp-sizing="${esc(JSON.stringify(geometry.sizing), 'sizing')}" ` : ''}` +
       `${geometry.mode ? `data-bp-mode="${geometry.mode}" ` : ''}` +
       `font-family="${esc(theme.type.family, 'theme.type.family')}"${interactive ? ` data-bp-interactive="" data-bp-chart="${esc(geometry.type, 'geometry.type')}"` : ''}>`,
   );
   if (geometry.a11y.includeTitle === true) {
-    out.push(`<title id="${titleId}">${esc(geometry.a11y.title, 'a11y.title')}</title>`);
+    out.push(`<title id="${titleId}">${esc(plainText(geometry.a11y.title), 'a11y.title')}</title>`);
   }
-  out.push(`<desc id="${descId}">${esc(geometry.a11y.desc, 'a11y.desc')}</desc>`);
+  out.push(`<desc id="${descId}">${esc(plainText(geometry.a11y.desc), 'a11y.desc')}</desc>`);
 
   // Collect required pattern defs from the scene.
   const patternDefs = new Map<string, string>();
@@ -761,16 +763,16 @@ function renderNodeInner(
                 `<tspan${run.weight !== undefined && run.weight !== font.weight ? ` font-weight="${n2(run.weight)}"` : ''}>${esc(run.text, `text run ${i}`)}</tspan>`,
             )
             .join('')
-        : node.lines
-            .map(
-              (line, i) =>
-                // Between two lines a space of its own chunk (absolute x) keeps the words
-                // apart for copied or extracted text. A trailing space inside the line would
-                // be part of its anchored width and move a centred or right-aligned line.
-                // A line that ends in a hyphen joins the next one without a space.
-                `${i === 0 || /\S-$/.test(node.lines[i - 1]!) ? '' : `<tspan x="${n2(tx0)}" dy="0"> </tspan>`}<tspan x="${n2(tx0)}" dy="${i === 0 ? '0' : n2(lineH)}">${esc(line, `text line ${i}`)}</tspan>`,
-            )
-            .join('');
+        : node.lines.map((line, i) => {
+            const content = node.lineRuns
+              ? node.lineRuns[i]!.map((run, j) =>
+                  `<tspan${run.weight !== undefined && run.weight !== font.weight ? ` font-weight="${n2(run.weight)}"` : ''}>${esc(run.text, `text run ${i}.${j}`)}</tspan>`,
+                ).join('')
+              : esc(line, `text line ${i}`);
+            // A separate space keeps extracted words apart without moving anchored text.
+            const space = i === 0 || /\S-$/.test(node.lines[i - 1]!) ? '' : `<tspan x="${n2(tx0)}" dy="0"> </tspan>`;
+            return `${space}<tspan x="${n2(tx0)}" dy="${i === 0 ? '0' : n2(lineH)}">${content}</tspan>`;
+          }).join('');
       // The root <svg> carries the theme family; a node repeats it only when it differs.
       const family =
         font.family && font.family !== rootFontFamily ? ` font-family="${esc(font.family, 'font.family')}"` : '';

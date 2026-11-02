@@ -1,3 +1,4 @@
+import { plainText } from './inlineBold';
 import type { StackReadout } from './charts/grid/metricStack';
 import type { GridDerived } from './charts/grid/layout';
 /**
@@ -419,7 +420,7 @@ export function chartReading(input: ChartReadingInput): ChartReading {
   const source = input.geometry.frame.source;
   const fittedSource = input.geometry.scene.find(node => node.id === input.geometry.frame.sourceNodeId && node.t === 'text');
   const sourceDrawn = source && (fittedSource?.t === 'text' && fittedSource.opacity !== 0
-    && fittedSource.lines.join(' ').replace(/\s+/g, ' ').trim() === source.replace(/\s+/g, ' ').trim()
+    && fittedSource.lines.join(' ').replace(/\s+/g, ' ').trim() === plainText(source).replace(/\s+/g, ' ').trim()
     || readableLabelDestination(input.geometry)('frame:source', source, {}, 'source'));
   return {
     name: input.name,
