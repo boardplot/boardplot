@@ -1017,17 +1017,27 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
       suggest: 'Omit labels, or set labels.grandTotal to true and turn other label kinds off by name.',
     });
   }
-  const sharesOn = variant === 'stacked100' && contentOf(options, 'segment', ['percent'])?.includes('percent') === true;
+  const segmentContent = contentOf(options, 'segment', variant === 'stacked100' ? ['percent'] : ['absolute']);
+  const sharesOn = variant === 'stacked100' ? segmentContent?.includes('percent') === true
+    : variant === 'stacked' && segmentContent !== null && (options.shareLabels !== undefined || segmentContent.includes('percent'));
+  // Match planColumnValueLabels: shareLabels adds percent only in the named columns.
+  // Keep the existing stacked100 rounding path unchanged.
+  const shareOnly = variant === 'stacked' ? options.shareLabels?.only : undefined;
   warnIncompleteStacks(variant, cats, basis.incompleteCats, gtContent !== null, sharesOn, 'columns', warnings, disclosuresShown(options));
   // Every computed share the chart prints takes one precision.
   const shareSet = shareSetFormatter(cats.flatMap((_, ci) => dataSeries.flatMap((s) => basis.shareOf(s, ci) ?? [])), options.locale?.language);
   // An authored total100 is the author's whole. Percent cells take part, as on bar:
   // shares that add to exactly 100 print so they still do, and others print as given.
-  const wholes = sharesOn ? cats.flatMap((c, ci) =>
-    basis.nmCats100.has(c.id) || basis.naCats100.has(c.id) || basis.incompleteCats.has(c.id) ||
-    c.total100 !== undefined
-      ? []
-      : [{ c, parts: dataSeries.flatMap((s) => { const share = basis.plottedOf(s, ci); return share === null ? [] : [{ s, share }]; }) }]) : [];
+  const wholes = sharesOn ? cats.flatMap((c, ci) => {
+    if ((shareOnly && !shareOnly.includes(c.id)) || basis.nmCats100.has(c.id) || basis.naCats100.has(c.id) ||
+      basis.incompleteCats.has(c.id) || c.total100 !== undefined) return [];
+    const parts = dataSeries.flatMap((s) => {
+      const share = variant === 'stacked' ? basis.shareOf(s, ci) : basis.plottedOf(s, ci);
+      return share === null ? [] : [{ s, share }];
+    });
+    // A negative or authored percent part leaves no complete set of computed shares.
+    return variant === 'stacked' && parts.length !== dataSeries.length ? [] : [{ c, parts }];
+  }) : [];
   // rounding 'sum-consistent' (the default): each complete stack's shares print so they add up to 100%,
   // at the chart's one share precision (or the share format's: shareLabels.format, else a percent options.format).
   const shareTexts = new Map<string, string>();
