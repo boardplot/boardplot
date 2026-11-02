@@ -7,7 +7,6 @@
  */
 
 import { addWhereAbsent, toJsonPointer } from './diagnostics/jsonPatch';
-import { withValueLabelDefaults } from './charts/band/valueSelection';
 import { IGNORED_OPTION_KEYS, LEGEND_REFUSED, schemaRefusedKeys, valueAxisOnly, valueAxisRefusal } from './schema/capability';
 import type { LintWarning } from './types/scene';
 
@@ -133,6 +132,16 @@ const quoted = (value: unknown) => typeof value === 'string' ? `'${value}'` : St
 /** The content parts a `labels` array can name. */
 const LABEL_PARTS: readonly unknown[] = ['absolute', 'percent', 'category', 'series'];
 
+/** The warning for a valueLabels mode on a stacked variant, which has no single value per category. */
+export function valueLabelsIgnoredWarning(type: 'bar' | 'column', variant: string): LintWarning {
+  return {
+    code: 'option-ignored', severity: 'warn', field: ['options', 'valueLabels'],
+    message: `options.valueLabels picks single values and applies to grouped ${type === 'column' ? 'columns' : 'bars'} only; variant '${variant}' has no single value per category, so it is ignored.`,
+    suggest: 'Remove options.valueLabels.',
+    fix: [{ op: 'remove', path: '/options/valueLabels' }],
+  };
+}
+
 /** A chart copy without settings its type ignores, with one remove warning per setting. */
 export function ignoreChartSettings<C extends { options?: unknown; data?: unknown }>(
   type: string, chart: C, canonical: (name: string) => string | undefined = (name) => name,
@@ -187,12 +196,12 @@ export function ignoreChartSettings<C extends { options?: unknown; data?: unknow
     ignore(['options', 'legend'], legend === 'none' || legend === 'auto' ? 'info' : 'warn');
   }
   // Remove an ignored label mode before the chart's SVG ids are computed too.
-  const options = readAt(next, ['options']) as Record<string, unknown>;
   if (type === 'bar' || type === 'column') {
+    const options = readAt(next, ['options']) as Record<string, unknown>;
     const variant = type === 'column' && isRecord(options.valueAxis) && options.valueAxis.percent ? 'stacked100' : options.variant;
-    if (typeof variant === 'string' && variant !== 'grouped') {
-      const kept = withValueLabelDefaults(options, type, variant, warnings);
-      if (kept !== options) next = setAt(next, ['options'], kept);
+    if (options.valueLabels !== undefined && options.valueLabels !== 'all' && typeof variant === 'string' && variant !== 'grouped') {
+      next = setAt(next, ['options', 'valueLabels'], undefined);
+      warnings.push(valueLabelsIgnoredWarning(type, variant));
     }
   }
   return { chart: next as C, warnings };

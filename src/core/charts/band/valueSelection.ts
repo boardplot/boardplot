@@ -7,6 +7,7 @@
  * owed to the note, as every value is under labelDensity 'full'.
  */
 
+import { valueLabelsIgnoredWarning } from '../../retired';
 import type { ValueLabelMode } from '../../types/options';
 import type { LintWarning } from '../../types/scene';
 
@@ -51,12 +52,7 @@ export function withValueLabelDefaults<O extends BandLabelOptions>(options: O, t
     // 'all' asks for what every variant already prints, so it changes nothing there.
     if (options.valueLabels === 'all') return options;
     const { valueLabels: _valueLabels, ...kept } = options;
-    warnings.push({
-      code: 'option-ignored', severity: 'warn', field: ['options', 'valueLabels'],
-      message: `options.valueLabels picks single values and applies to grouped ${type === 'column' ? 'columns' : 'bars'} only; variant '${variant}' has no single value per category, so it is ignored.`,
-      suggest: 'Remove options.valueLabels.',
-      fix: [{ op: 'remove', path: '/options/valueLabels' }],
-    });
+    warnings.push(valueLabelsIgnoredWarning(type, variant));
     return kept as O;
   }
   return {
