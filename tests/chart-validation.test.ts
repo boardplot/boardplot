@@ -129,6 +129,50 @@ describe('actionable input refusals', () => {
     expect(secondary?.suggest).not.toContain('options.unit');
   });
 
+  // Unlike units on one value axis make grouped and stacked bars or columns unreadable.
+  it('refuses conflicting units on bar and column value axes', () => {
+    const series = [
+      { id: 'reference', role: 'reference', unit: 'USD', values: [9] },
+      { id: 'first', unit: 'EUR k', values: [100] },
+      { id: 'implicit', values: [20] },
+      { id: 'same', unit: 'EURk', values: [10] },
+      { id: 'conflict', unit: 'x', values: [2] },
+      { id: 'later', unit: '%', values: [3] },
+    ];
+    const data = { categories: ['a'], series };
+    for (const type of ['bar', 'column']) {
+      for (const variant of ['grouped', 'stacked']) {
+        const options = { variant, sort: { segments: 'reverse' } };
+        const result = render({ spec: { type, data, options } }).body;
+        expect(result.ok).toBe(false);
+        expect(result.errors).toEqual(expect.arrayContaining([expect.objectContaining({
+          code: 'unit-conflict', path: '/data/series/4/unit',
+          message: expect.stringContaining("series 'conflict'"),
+          suggest: expect.stringMatching(/give the series one unit.*own charts/),
+        })]));
+        const layout = getChartDefinition(type)!.layout(data, options);
+        expect(layout.warnings).toEqual(expect.arrayContaining([expect.objectContaining({
+          code: 'unit-conflict', severity: 'error', field: ['data', 'series', 4, 'unit'],
+        })]));
+        const accepted = render({ spec: { type, data: { ...data, series: series.slice(0, 4) }, options: { ...options, unit: 'EURk' } } }).body;
+        expect(accepted.ok).toBe(true);
+        const chartUnit = render({ spec: { type, data, options: { ...options, unit: 'x' } } }).body;
+        expect(chartUnit.ok).toBe(false);
+        expect(chartUnit.errors).toEqual(expect.arrayContaining([expect.objectContaining({
+          code: 'unit-conflict', path: '/data/series/1/unit', suggest: expect.stringContaining('options.unit'),
+        })]));
+      }
+      expect(render({ spec: { type, data, options: { variant: 'stacked100' } } }).body.ok).toBe(true);
+    }
+    expect(render({ spec: { type: 'column', data, options: { valueAxis: { percent: true } } } }).body.ok).toBe(true);
+    expect(render({ spec: { type: 'bar', data: { categories: ['a'], series: [
+      { id: 'range', unit: 'EUR', values: [{ number: 2, range: { low: 1, high: 3 } }] },
+    ] }, options: { variant: 'football-field', unit: '%' } } }).body.ok).toBe(true);
+    expect(render({ spec: { type: 'bar', data: { categories: ['a'], series: [
+      { id: 'low', unit: 'EUR', values: [1] }, { id: 'high', unit: '%', values: [3] },
+    ] }, options: { variant: 'tornado', baseValue: 2, tornado: { low: 'low', high: 'high' } } } }).body.ok).toBe(true);
+  });
+
   // Two nodes in one architecture cell have no drawing, so the refusal must name both and the fix.
   it('refuses two architecture nodes in one lane and track', () => {
     const node = (id: string) => ({ id, kind: 'step', shape: { kind: 'rectangle' }, label: id, laneId: 'l', track: 't' });

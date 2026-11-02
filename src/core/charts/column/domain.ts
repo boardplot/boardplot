@@ -49,6 +49,7 @@ import { disclosuresShown } from '../../notes';
 import { cappedItems } from '../../frame';
 import { maxOf } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
+import { dataSeriesUnitRefusal } from '../../schema/units';
 
 /** What the options resolve to once: theme, palette, size, measurer, formatters. */
 function resolveColumnEnv(options: AnomalyColumnOptions, warnings: LintWarning[]): ColumnEnv {
@@ -942,6 +943,10 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
   const refSeries = seriesNorm.filter((s) => s.role === 'reference');
   if (plotted.length === 0) {
     throw new NormalizeError('empty-data', 'series', 'column requires at least one data-role series');
+  }
+  if (variant === 'grouped' || variant === 'stacked') {
+    const refusal = dataSeriesUnitRefusal(seriesNorm, options.unit);
+    if (refusal) warnings.push(refusal);
   }
   // The variant is resolved before sort/topN because the refusals must fire first.
   const signColor = options.signColor === true;
