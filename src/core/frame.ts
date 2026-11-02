@@ -1604,12 +1604,14 @@ export function markNotedLabels(
 /** The drawing prints no `options.unit` although the author declared one (the test `unit-not-shown` and the unit line share). */
 export function unitMissing(
   options: Record<string, unknown> | undefined,
-  geo: { type?: string; scene: readonly SceneNode[]; warnings: readonly LintWarning[] },
+  geo: { type?: string; scene: readonly SceneNode[]; warnings: readonly LintWarning[]; derived?: unknown },
 ): boolean {
   const unit = typeof options?.unit === 'string' ? options.unit.trim() : '';
   if (!unit || options?.unitShown === true || geo.warnings.some((w) => w.severity === 'error')) return false;
   // A relative variance prints its differences in % on purpose; the unit is the base's, not the drawing's.
   if (geo.type === 'variance' && (options as { variant?: string } | undefined)?.variant === 'relative') return false;
+  // Shares print with their own % sign, and options.unit names values no label shows.
+  if (printsOnlyShares(geo.type, options, geo.derived)) return false;
   const subtitle = resolveSubtitle(options?.subtitle as BaseOptions['subtitle']);
   if (subtitle && subtitleUnitClause(unit, subtitle.measure) === '') return false;
   if (!squeezeUnit(unit)) return false;
@@ -1621,40 +1623,86 @@ export function unitMissing(
 
 /** A unit that says percent: "%", "% of revenue", "percent", "per cent", "pct", "percentage". */
 const PERCENT_UNIT = /^(?:%|percent|per\s*cent|pct|percentage)(?!\p{L})/iu;
+export const isPercentUnit = (unit: string): boolean => PERCENT_UNIT.test(unit.trim());
 
 /**
- * `share-unit-conflict`: a computed-share variant (stacked100,
- * stacked100-area) plots % and its axis says %, but a subtitle that prints a unit
- * clause such as "in TWh" names the raw values. When the engine composed the
- * clause from options.unit, the fix removes options.unit and with it the
- * clause. An authored clause ("Generation in TWh", "Generation (TWh)") stays
- * the author's: the warning asks for a subtitle edit and offers no fix. A
- * measure that names the unit as its base ("Share of generation from 100
- * TWh of output") is no unit clause and does not warn.
+ * Whether a column prints an absolute figure on its segments: `labels.segment`
+ * names 'absolute', or `shareLabels` adds the value to segments that are not
+ * switched off. A 100% column prints the share alone by default.
+ */
+export function columnSegmentsPrintAbsolute(options: object | undefined): boolean {
+  const o = (options ?? {}) as { labels?: false | { segment?: boolean | readonly string[] }; shareLabels?: unknown };
+  if (o.labels === false) return false;
+  const segment = o.labels?.segment;
+  return Array.isArray(segment) ? segment.includes('absolute') : segment !== false && o.shareLabels !== undefined;
+}
+
+/**
+ * Whether the chart's values all print as shares: a computed-share variant
+ * (stacked100, stacked100-area) or a treemap with `cellValue: 'share'`. An
+ * absolute figure printed beside them (an authored grand total, absolute
+ * column segment values, a treemap total, or the group totals in a treemap key) keeps `options.unit`
+ * meaningful, so such a chart does not count. The treemap key shows when the
+ * layout's `derived.groups` lists more than one group. A mekko is left out:
+ * its `options.unit` already names the shares.
+ */
+export function printsOnlyShares(type: string | undefined, options: object | undefined, derived?: unknown): boolean {
+  const o = (options ?? {}) as { variant?: string; valueAxis?: { percent?: boolean }; grandTotalLabels?: boolean; cellValue?: string; total?: unknown; legend?: unknown };
+  const groupKey = ((derived as { groups?: readonly unknown[] } | undefined)?.groups?.length ?? 0) > 1 && o.legend !== 'none';
+  switch (type) {
+    case 'column': return (o.variant === 'stacked100' || o.valueAxis?.percent === true) && o.grandTotalLabels !== true && !columnSegmentsPrintAbsolute(options);
+    case 'bar': return o.variant === 'stacked100' && o.grandTotalLabels !== true;
+    case 'line': return o.variant === 'stacked100-area' || o.valueAxis?.percent === true;
+    case 'treemap': return o.cellValue === 'share' && !o.total && !groupKey;
+    default: return false;
+  }
+}
+
+/**
+ * The options the frame reads for its unit line. A chart that prints only
+ * shares names the percent there: `options.unit` states the raw values, which
+ * no label shows. Authored text is never rewritten.
+ */
+export function shareUnitOptions<O extends { unit?: string }>(type: string, options: O, derived?: unknown): O {
+  const unit = options.unit?.trim();
+  if (!unit || PERCENT_UNIT.test(unit) || !printsOnlyShares(type, options, derived)) return options;
+  // A subtitle that already names the unit stays as written: the engine adds no second clause beside it.
+  const measure = resolveSubtitle((options as BaseOptions).subtitle)?.measure;
+  if (measure && measureNamesUnit(unit, measure)) return options;
+  return { ...options, unit: '%' };
+}
+
+/**
+ * `share-unit-conflict`: a chart that prints only shares says % in its unit
+ * line, but an authored subtitle clause such as "Generation in TWh" or
+ * "Generation (TWh)" names the raw values. The clause stays the author's: the
+ * warning asks for a subtitle edit. A measure that names the unit as its base
+ * ("Share of generation from 100 TWh of output") is no unit clause and does
+ * not warn.
  */
 export function shareUnitLints(
   options: Record<string, unknown> | undefined,
-  geo: { scene: readonly SceneNode[]; warnings: readonly LintWarning[] },
+  geo: { type?: string; scene: readonly SceneNode[]; warnings: readonly LintWarning[]; derived?: unknown },
 ): LintWarning[] {
   const unit = typeof options?.unit === 'string' ? options.unit.trim() : '';
-  if (!unit || PERCENT_UNIT.test(unit) || !['stacked100', 'stacked100-area'].includes(options?.variant as string)) return [];
+  if (!unit || PERCENT_UNIT.test(unit) || !printsOnlyShares(geo.type, options, geo.derived)) return [];
   if (geo.warnings.some((w) => w.severity === 'error')) return [];
   const measure = resolveSubtitle(options?.subtitle as BaseOptions['subtitle'])?.measure ?? '';
   const subtitleText = geo.scene.flatMap((node) => (node.t === 'text' && node.id.startsWith('frame:subtitle') ? node.lines : [])).join(' ');
   if (!measure || !textCarriesUnit(subtitleText, unit)) return [];
-  const composed = subtitleUnitClause(unit, measure) !== '';
   const escaped = unit.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
-  const authored = !composed && new RegExp(`(?:\\bin|,|\\()\\s*${escaped}\\s*\\)?\\s*$`, 'iu').test(measure);
-  if (!composed && !authored) return [];
+  const clause = new RegExp(`(?:\\bin|,|\\()\\s*${escaped}\\s*\\)?\\s*$`, 'iu');
+  if (!clause.test(measure)) return [];
+  // The fix drops only the unit clause; the engine's unit line then names the percent.
+  const kept = measure.replace(clause, '').trim();
+  const path = typeof options?.subtitle === 'string' ? '/options/subtitle' : '/options/subtitle/measure';
   return [{
     code: 'share-unit-conflict',
     severity: 'warn',
-    message: `variant '${options!.variant}' plots shares in %, but the subtitle names the unit '${unit}' of the raw values`,
-    suggest: composed
-      ? `remove options.unit, or name the base in the measure (subtitle: { measure: 'Share of generation' })`
-      : `remove the unit clause from the subtitle measure '${measure}', or name the base instead ('Share of generation')`,
-    field: composed ? ['options', 'unit'] : ['options', 'subtitle'],
-    ...(composed ? { fix: [{ op: 'remove' as const, path: '/options/unit' }] } : {}),
+    message: `the chart prints shares in %, but the subtitle names the unit '${unit}' of the raw values`,
+    suggest: `remove the unit clause from the subtitle measure '${measure}', or name the base instead ('Share of generation')`,
+    field: ['options', 'subtitle'],
+    ...(kept ? { fix: [{ op: 'replace' as const, path, value: kept }] } : {}),
   }];
 }
 

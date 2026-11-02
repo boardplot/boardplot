@@ -8,6 +8,18 @@ import type { DocChart } from '../core/doc/document';
 import type { DocumentFinding } from '../core/doc/diagnostics';
 import { readJsonPointer, type JsonPatchOperation } from '../core/diagnostics/jsonPatch';
 import { InputError } from './result';
+import { caseInsensitiveValue, inputConversion } from '../core/inputConversion';
+import { completeDiagnostic } from '../core/doc/diagnostics';
+import type { LintWarning } from '../core/types/scene';
+
+/** A differently cased argument writes the spelling used by the verb. */
+export function enumArgument(name: string | number, value: unknown, allowed: readonly string[], warnings: LintWarning[], parent: string[] = []): unknown {
+  const converted = caseInsensitiveValue(value, allowed);
+  if (converted === undefined) return value;
+  const field = [...parent, name];
+  warnings.push(completeDiagnostic({ ...inputConversion(field, value, converted), received: { type: typeof value, value } }, undefined, field));
+  return converted;
+}
 
 /** A pixel argument: a positive finite number. */
 export function pixels(name: string, value: unknown): number | undefined {
@@ -24,8 +36,9 @@ export function pixels(name: string, value: unknown): number | undefined {
 export const TARGETS = renderTargetSchema.options;
 
 /** The target argument. It beats the spec's options.target; absent, the spec decides (default report). */
-export function targetArgument(value: unknown): RenderTarget | undefined {
+export function targetArgument(value: unknown, warnings: LintWarning[] = []): RenderTarget | undefined {
   if (value === undefined) return undefined;
+  value = enumArgument('target', value, TARGETS, warnings);
   if (!(TARGETS as readonly unknown[]).includes(value)) {
     throw new InputError('invalid-argument', `target must be one of ${TARGETS.join(', ')}`, {
       path: '/target', expected: { values: [...TARGETS] }, received: { type: typeof value, value }, suggest: 'Pass target report (the default), dashboard, slide or print.',

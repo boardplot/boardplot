@@ -5,7 +5,7 @@ import { levenshtein } from '../../spelling';
 import { authoredNotes, frameTextOptions, legendRequired, solveFrame, SIDE_KEY_PLOT_SHARE, unitPrinted } from '../../frame';
 import { formatAutomaticNumber } from '../../format';
 import { formatterFromExample } from '../../formatSpec';
-import { boxGap, rectHitsConvexPolygon, rectsOverlap, round2, type Rect } from '../../geometry';
+import { boxGap, rectContains, rectHitsConvexPolygon, rectsOverlap, round2, type Rect, type Size } from '../../geometry';
 // The geo modules by name, not the '../../geo' barrel: the barrel re-exports
 // './packs', whose import registers every pack, and a choropleth must not
 // register the pack it draws.
@@ -75,7 +75,12 @@ interface RegionLabelVariant {
   font: FontSpec;
   leader: boolean;
   /** A callout off the map: its seats are built against what is placed when its turn comes. */
-  callout?: (occupied: OccupiedIndex, plot: Rect) => LabelRequest['candidates'];
+  callout?: (occupied: OccupiedIndex, plot: Rect, labels: OccupiedIndex, canvas?: Rect) => RegionCallout;
+}
+
+interface RegionCallout {
+  candidates: LabelRequest['candidates'];
+  hatchBlocked: boolean;
 }
 
 interface RegionLabelPlan {
@@ -102,6 +107,27 @@ type RegionLabelSolveResult = ReturnType<typeof solveLabels> & {
   fontByLabel: Map<string, FontSpec>;
 };
 
+type CalloutLabel = Pick<RegionLabelSolveResult['placed'][number], 'id' | 'kind' | 'hidden' | 'rect' | 'backing' | 'leader'>;
+interface CalloutPass {
+  claims: OccupiedClaim[];
+  plot: Rect;
+  labels: CalloutLabel[];
+  calls: (RegionCallout & { id: string; text: string; font: FontSpec })[];
+}
+// A guard belongs to one fitted map. Probes and drawing can repeat the same callout search.
+const calloutPasses = new WeakMap<ReturnType<typeof outsideLabelGuard>, CalloutPass>();
+
+function sameCalloutRect(a: Rect | undefined, b: Rect | undefined): boolean {
+  return a === b || (a !== undefined && b !== undefined && Object.is(a.x, b.x) && Object.is(a.y, b.y)
+    && Object.is(a.w, b.w) && Object.is(a.h, b.h));
+}
+
+function sameCalloutClaim(a: OccupiedClaim, b: OccupiedClaim): boolean {
+  return a.kind === b.kind && a.part === b.part && sameCalloutRect(a.rect, b.rect)
+    && (a.polygon === b.polygon || (a.polygon !== undefined && b.polygon !== undefined && a.polygon.length === b.polygon.length
+      && a.polygon.every((point, i) => Object.is(point.x, b.polygon![i]!.x) && Object.is(point.y, b.polygon![i]!.y))));
+}
+
 const MAP_PAD = 8;
 /** A plot this much wider than tall is a wide slot: the one where an unnamed key may stand beside the map. */
 const WIDE_SLOT = 1.6;
@@ -123,6 +149,10 @@ const CALLOUT_STEP = 4;
 const LABEL_MAX_COVER = 0.3;
 /** Up to this many regions labelled on the map, each label prints its value by default. */
 const REGION_VALUES_DEFAULT_MAX = 10;
+/** Canvas area per label (px squared) from which a map prints values by default. */
+const REGION_VALUES_MIN_AREA_PER_LABEL = 8000;
+/** A canvas narrower than this keeps codes: value labels would spill over their regions and crowd the card. */
+const REGION_VALUES_MIN_WIDTH = 560;
 /** A leader longer than this share of the map width sends its region to the table. */
 const LISTED_LEADER_FRACTION = 0.2;
 const LISTED_PASSES = 4;
@@ -151,6 +181,14 @@ const MIN_MAP_AREA_H = 120;
 // Canonical clearance 14.5 is the first tier that includes India plus the
 // six continent-scale anchors without admitting the broader mid-size tier.
 const WORLD_LARGE_REGION_CLEARANCE = 14.5;
+
+// Choose the label form from canvas room before solving so it stays stable across frame passes.
+function defaultRegionValues(pack: GeoPack, size: Size, autoLabelled: number, tableDrawn: boolean): boolean {
+  return !tableDrawn && autoLabelled > 0 && (
+    autoLabelled <= REGION_VALUES_DEFAULT_MAX ||
+    (pack.id !== 'world' && size.width >= REGION_VALUES_MIN_WIDTH && size.width * size.height / autoLabelled >= REGION_VALUES_MIN_AREA_PER_LABEL)
+  );
+}
 
 export function layoutChoropleth(
   data: ChoroplethData,
@@ -534,13 +572,10 @@ export function layoutChoropleth(
     // The complete table names the regions; the map needs only its thumbnail reserve.
     minMapHeight = Math.min(minMapHeight, 2 * (compactPadding ?? MAP_PAD) + 2 * theme.type.label.size);
   }
-  // A map that names only a few regions prints their values too, so the
-  // reader need not match a tint against the key. The count is taken before
-  // any label drops for room, so the label form is one at every width; with
-  // the value table the values stand there and the map prints codes.
+  // Count before labels drop for room so the default stays stable across frame passes.
   const autoLabelled = [...labelPolicy.eligibleIds].filter((id) => !baseSmallIds.has(id)).length;
   const regionValues = options.regionValues ??
-    (!tableDrawn && autoLabelled > 0 && autoLabelled <= REGION_VALUES_DEFAULT_MAX);
+    defaultRegionValues(pack, size, autoLabelled, Boolean(tableDrawn));
   // The table's top group is bold on the map too, so the two read as one key.
   const withTable: TableLabels = tableDrawn ? { emphasis: topIds } : undefined;
   const valueTexts = new Map<string, string>(regionValues
@@ -624,21 +659,25 @@ export function layoutChoropleth(
       undrawnUnlisted += 1;
       continue;
     }
-    const d = regionVisible
-      ? region.polygons.length > 0
-        ? polygonsPath(region.polygons)
-        : markerPath(
-            region.marker?.x ?? region.anchor.x,
-            region.marker?.y ?? region.anchor.y,
-            region.marker?.radius ?? 2.5,
-            regionStroke,
-          )
-      : '';
+    // Listed and sizing passes can discard this scene. Format its coordinates only when read.
+    let d: string | undefined;
     const fill: Paint = state ? { token: 'inkMuted' } : noData ? { token: 'background' } : unlisted ? landPaint : scale.paint(value);
     (unlisted ? landNodes : nodes).push({
       t: 'path',
       id: pathNodeId,
-      d,
+      get d() {
+        return d ??= regionVisible
+          ? region.polygons.length > 0
+            ? polygonsPath(region.polygons)
+            : markerPath(
+                region.marker?.x ?? region.anchor.x,
+                region.marker?.y ?? region.anchor.y,
+                region.marker?.radius ?? 2.5,
+                regionStroke,
+              )
+          : '';
+      },
+      set d(value: string) { d = value; },
       fill,
       stroke: unlisted ? { token: 'background' } : { token: 'inkMuted' },
       width: regionStroke,
@@ -903,7 +942,9 @@ function prepareMapLayout(pack: GeoPack, plot: Rect, laneSpan: { y: number; h: n
     let prepared = fits.get(key);
     if (!prepared) {
       const fitted = fitGeoPack(pack, frame);
-      const outsideFits = outsideLabelGuard(fitted.regions.filter(region => region.polygons.length > 0 || visibleMarkerIds.has(region.id)));
+      let guard: ReturnType<typeof outsideLabelGuard> | undefined;
+      const outsideFits: ReturnType<typeof outsideLabelGuard> = (id, rect, from, to) =>
+        (guard ??= outsideLabelGuard(fitted.regions.filter(region => region.polygons.length > 0 || visibleMarkerIds.has(region.id))))(id, rect, from, to);
       prepared = { fitted, outsideFits };
       fits.set(key, prepared);
     }
@@ -1000,6 +1041,15 @@ function solveRegionLabels(
   /** A probe that reads only these regions' labels: the escalation stops after the last of them. */
   reads?: (regionId: string) => boolean,
 ): RegionLabelSolveResult {
+  const allOccupied = occupied;
+  let labelOccupied: OccupiedIndex | undefined;
+  occupied = {
+    ...allOccupied,
+    claim(rect, kind, owner, part, polygon) {
+      allOccupied.claim(rect, kind, owner, part, polygon);
+      if (kind === 'label' || part === 'regionLeader') labelOccupied?.claim(rect, kind, owner, part, polygon);
+    },
+  };
   const pinOf = (plan: RegionLabelPlan) => ctx.pins[`category:${plan.region.id}`];
   const ordered = [...plans].sort((a, b) => {
     const aPinned = pinOf(a) ? 1 : 0;
@@ -1084,23 +1134,73 @@ function solveRegionLabels(
   // a probe's answer does not depend on the labels after its last region.
   let escalated = unresolved.length;
   if (reads) while (escalated > 0 && !reads(unresolved[escalated - 1]!.plan.region.id)) escalated--;
+  // Compare the occupied geometry once, after inline placement. Reuse stops at the first
+  // different earlier label or request. The solver still places and claims every label.
+  const previous = calloutPasses.get(outsideFits);
+  const calloutPass: CalloutPass | undefined = escalated > 0 && ctx.measure === defaultMeasurer
+    ? { claims: occupied.snapshot(), plot: { ...ctx.plot }, labels: [], calls: [] } : undefined;
+  let samePass = calloutPass !== undefined && previous !== undefined && sameCalloutRect(previous.plot, ctx.plot)
+    && previous.claims.length === calloutPass.claims.length
+    && previous.claims.every((claim, i) => sameCalloutClaim(claim, calloutPass.claims[i]!));
+  let removedHatches = false;
+  if (!samePass && previous && calloutPass && sameCalloutRect(previous.plot, ctx.plot)
+    && !calloutPass.claims.some(claim => claim.kind === 'mark' && claim.part === 'noDataHatch')) {
+    let matched = 0;
+    let compatible = true;
+    for (const claim of previous.claims) {
+      if (claim.kind === 'mark' && claim.part === 'noDataHatch') continue;
+      const next = calloutPass.claims[matched];
+      if (!next || !sameCalloutClaim(claim, next)) { compatible = false; break; }
+      matched++;
+    }
+    // Removing hatches cannot change a search whose blocked seats all hit other claims.
+    removedHatches = samePass = compatible && matched === calloutPass.claims.length;
+  }
+  const inlineCount = result.placed.length;
+  const calloutLabels = () => {
+    if (!labelOccupied) {
+      labelOccupied = createOccupiedIndex(ctx.canvas ?? ctx.plot);
+      const claims = calloutPass && result.placed.length === inlineCount ? calloutPass.claims : occupied.snapshot();
+      for (const claim of claims) if (claim.kind === 'label' || claim.part === 'regionLeader') {
+        labelOccupied.claim(claim.rect, claim.kind, claim.owner, claim.part, claim.polygon);
+      }
+    }
+    return labelOccupied;
+  };
   const solvedLeaders: { placed: ReturnType<typeof solveLabels>['placed'][number]; region: FittedGeoRegion }[] = [];
   for (const item of unresolved.slice(0, escalated)) {
     const callout = item.plan.variants.find((variant) => variant.callout);
     if (callout) {
-      const candidates = callout.callout!(occupied, ctx.plot);
-      const next = solveLabels([{ ...callout.request, candidates }], occupied, solveCtx);
-      const placed = next.placed[0];
-      if (placed && !placed.hidden) {
-        item.tried.push(...(next.decisions[0]?.tried ?? []));
-        appendRegionSolve(result, next, callout.font, item.plan, item.tried);
-        const from: GeoPoint = [item.plan.region.anchor.x, item.plan.region.anchor.y];
-        const to = calloutTerminus(from, placed.rect);
-        placed.leader = { d: polylinePath([from, to]), curved: false };
-        claimLeaderRoute([from, to], occupied, item.plan.region.id);
-        continue;
+      if (calloutPass) for (let i = calloutPass.labels.length; i < result.placed.length - inlineCount; i++) {
+        const label = result.placed[inlineCount + i]!;
+        const old = previous?.labels[i];
+        samePass = samePass && old !== undefined && old.id === label.id && old.kind === label.kind && old.hidden === label.hidden
+          && sameCalloutRect(old.rect, label.rect) && sameCalloutRect(old.backing, label.backing) && old.leader?.d === label.leader?.d;
+        calloutPass.labels.push({ id: label.id, kind: label.kind, hidden: label.hidden, rect: { ...label.rect },
+          backing: label.backing ? { ...label.backing } : undefined, leader: label.leader ? { ...label.leader } : undefined });
       }
-      item.tried.push(...(next.decisions[0]?.tried ?? []));
+      const cached = calloutPass && previous?.calls[calloutPass.calls.length];
+      samePass = samePass && cached !== undefined && cached.id === item.plan.region.id && cached.text === callout.request.text
+        && Object.keys(callout.font).length === Object.keys(cached.font).length
+        && (Object.keys(callout.font) as (keyof FontSpec)[]).every(key => Object.is(callout.font[key], cached.font[key]));
+      const search = samePass && (!removedHatches || !cached!.hatchBlocked)
+        ? cached! : callout.callout!(occupied, ctx.plot, calloutLabels(), ctx.canvas);
+      const { candidates } = search;
+      calloutPass?.calls.push({ id: item.plan.region.id, text: callout.request.text, font: { ...callout.font }, candidates, hatchBlocked: search.hatchBlocked });
+      // An empty callout claims nothing and adds no tried slots; its hidden result is discarded.
+      if (candidates.length > 0) {
+        const next = solveLabels([{ ...callout.request, candidates }], occupied, solveCtx);
+        const placed = next.placed[0];
+        item.tried.push(...(next.decisions[0]?.tried ?? []));
+        if (placed && !placed.hidden) {
+          appendRegionSolve(result, next, callout.font, item.plan, item.tried);
+          const from: GeoPoint = [item.plan.region.anchor.x, item.plan.region.anchor.y];
+          const to = calloutTerminus(from, placed.rect);
+          placed.leader = { d: polylinePath([from, to]), curved: false };
+          claimLeaderRoute([from, to], occupied, item.plan.region.id);
+          continue;
+        }
+      }
     }
     const leaderVariant = item.plan.variants.find((variant) => variant.leader);
     if (!leaderVariant) {
@@ -1116,6 +1216,7 @@ function solveRegionLabels(
       solvedLeaders.push({ placed, region: item.plan.region });
     }
   }
+  if (calloutPass) calloutPasses.set(outsideFits, calloutPass);
   routeAndClaimLeaders(solvedLeaders, result.placed, ctx.plot, occupied, outsideFits);
   return result;
 }
@@ -1491,9 +1592,11 @@ function resolveRegionLabelLayout(
       .map((region) => region.id),
   );
   if (leaderIds.size > 0) {
-    const initialFit = fitGeoPack(pack, choroplethMapFrame(plot, 0, pack.id));
-    gutter = measuredLeaderGutter(initialFit.regions, leaderIds, plot, theme, measure, valueTexts);
+    gutter = measuredLeaderGutter(decodeGeoPack(pack).regions, leaderIds, plot, theme, measure, valueTexts);
   }
+  // A probe can only add an eligible leader. With none left, every iteration returns this gutter.
+  if (!pack.regions.some(region => labelIds.has(region.id) && leaderEligibleIds.has(region.id) && !leaderIds.has(region.id)
+    && (pack.id !== 'world' || region.microState))) return { gutter, leaderIds };
   const ranks = valueRanks(valuesById);
   for (let iteration = 0; iteration <= pack.regions.length; iteration++) {
     const mapFrame = choroplethMapFrame(plot, gutter, pack.id);
@@ -1666,9 +1769,21 @@ function certainlyUnderKey(pack: GeoPack, rect: Rect, padding: number | undefine
   const margin = 16 * Number.EPSILON * magnitude;
   const inner = { x: keyArea.x + margin, y: keyArea.y + margin, w: keyArea.w - 2 * margin, h: keyArea.h - 2 * margin };
   if (!(inner.w >= 0 && inner.h >= 0)) return false;
-  const inside = (px: number, py: number) => fits.every((fit) => pointInRect(px * fit.scale + fit.x, py * fit.scale + fit.y, inner));
+  const inside = (px: number, py: number) => {
+    for (const fit of fits) if (!pointInRect(px * fit.scale + fit.x, py * fit.scale + fit.y, inner)) return false;
+    return true;
+  };
   for (const region of decodeGeoPack(pack).regions) {
     if (region.marker !== undefined && inside(region.marker.x, region.marker.y)) return true;
+    const [x0, y0, x1, y1] = boundsOfPolygons(region.polygons);
+    // A vertex must be under the key in every fit. Reject a whole region when its extrema
+    // miss the key in any fit; the positive scale preserves the coordinate order exactly.
+    let apart = false;
+    for (const fit of fits) {
+      if (x1 * fit.scale + fit.x < inner.x || x0 * fit.scale + fit.x > inner.x + inner.w
+        || y1 * fit.scale + fit.y < inner.y || y0 * fit.scale + fit.y > inner.y + inner.h) { apart = true; break; }
+    }
+    if (apart) continue;
     for (const polygon of region.polygons) for (const ring of polygon) for (const [px, py] of ring) if (inside(px, py)) return true;
   }
   return false;
@@ -1686,7 +1801,7 @@ function choroplethMapFrame(plot: Rect, gutter: number, packId: GeoPack['id'], p
 }
 
 function measuredLeaderGutter(
-  regions: FittedGeoRegion[],
+  regions: Pick<FittedGeoRegion, 'id' | 'anchor'>[],
   leaderIds: Set<string>,
   plot: Rect,
   theme: Theme,
@@ -1861,11 +1976,8 @@ function labelPlanForRegion(
           request: regionLabelRequest(region, compactText, compactFont, priority, []),
           font: compactFont,
           leader: false,
-          callout: (occupied: OccupiedIndex, plot: Rect) => {
-            const strict = calloutCandidates(region, compactText, compactFont, measure, occupied, plot, outsideFits);
-            return strict.length || !crossingCallouts ? strict
-              : calloutCandidates(region, compactText, compactFont, measure, occupied, plot, () => true);
-          },
+          callout: (occupied: OccupiedIndex, plot: Rect, labels: OccupiedIndex, canvas?: Rect) =>
+            calloutCandidates(region, compactText, compactFont, measure, occupied, plot, outsideFits, crossingCallouts, labels, canvas),
         },
       ];
   if (leaderLane) {
@@ -1892,7 +2004,7 @@ function labelPlanForRegion(
 
 /** The region's code, followed by its value when `regionValues` prints them. */
 function regionLabelText(
-  region: FittedGeoRegion,
+  region: Pick<FittedGeoRegion, 'id' | 'anchor'>,
   font: FontSpec,
   measure: typeof defaultMeasurer,
   valueTexts: ReadonlyMap<string, string>,
@@ -2096,6 +2208,8 @@ function regionLabelRequest(
 const regionPaths = new WeakMap<GeoPoint[][][], string>();
 const regionStrips = new WeakMap<GeoPoint[][][], Rect[]>();
 const regionHatches = new WeakMap<GeoPoint[][][], HatchSegment[]>();
+const regionAreas = new WeakMap<GeoPoint[][][], number>();
+const regionBounds = new WeakMap<GeoPoint[][][], [number, number, number, number]>();
 
 function polygonsPath(polygons: GeoPoint[][][]): string {
   let d = regionPaths.get(polygons);
@@ -2263,7 +2377,8 @@ function claimPolygonFill(
 ): void {
   let strips = regionStrips.get(polygons);
   if (!strips) regionStrips.set(polygons, strips = polygonFillStrips(polygons));
-  for (const strip of strips) occupied.claim(strip, 'mark', { categoryId: regionId }, 'region');
+  const owner = { categoryId: regionId };
+  for (const strip of strips) occupied.claim(strip, 'mark', owner, 'region');
 }
 
 /** The CLAIM_STEP strips that cover the polygons, in claim order. */
@@ -2284,13 +2399,11 @@ function polygonFillStrips(polygons: GeoPoint[][][]): Rect[] {
         const low = Math.min(a[1], b[1]);
         const high = Math.max(a[1], b[1]);
         if (!(low < high)) continue;
-        let lo = 0;
-        let hi = rows.length;
-        while (lo < hi) {
-          const mid = (lo + hi) >> 1;
-          if (rows[mid]! < low) lo = mid + 1;
-          else hi = mid;
-        }
+        // Rows are 4 px apart. Correct the direct estimate against the actual rows so rounding
+        // keeps the same first crossing as the binary search.
+        let lo = Math.max(0, Math.min(rows.length, Math.ceil((low - firstY) / CLAIM_STEP))) || 0;
+        while (lo > 0 && rows[lo - 1]! >= low) lo--;
+        while (lo < rows.length && rows[lo]! < low) lo++;
         for (let row = lo; row < rows.length && rows[row]! < high; row++) crossing[row]!.push(a, b);
       }
     }
@@ -2445,6 +2558,8 @@ function claimLeader(
 }
 
 function boundsOfPolygons(polygons: GeoPoint[][][]): [number, number, number, number] {
+  const known = regionBounds.get(polygons);
+  if (known !== undefined) return known;
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -2459,7 +2574,9 @@ function boundsOfPolygons(polygons: GeoPoint[][][]): [number, number, number, nu
       }
     }
   }
-  return [minX, minY, maxX, maxY];
+  const bounds: [number, number, number, number] = [minX, minY, maxX, maxY];
+  regionBounds.set(polygons, bounds);
+  return bounds;
 }
 
 function nearestRegionId(
@@ -2501,7 +2618,9 @@ function valueRanks(valuesById: ReadonlyMap<string, number | null>): Map<string,
 }
 
 function polygonsArea(polygons: GeoPoint[][][]): number {
-  return polygons.reduce((total, polygon) => total + polygon.reduce((sum, ring, index) => {
+  const known = regionAreas.get(polygons);
+  if (known !== undefined) return known;
+  const area = polygons.reduce((total, polygon) => total + polygon.reduce((sum, ring, index) => {
     let twice = 0;
     for (let i = 0; i < ring.length; i++) {
       const a = ring[i]!;
@@ -2510,12 +2629,14 @@ function polygonsArea(polygons: GeoPoint[][][]): number {
     }
     return sum + (index === 0 ? 1 : -1) * Math.abs(twice) / 2;
   }, 0), 0);
+  regionAreas.set(polygons, area);
+  return area;
 }
 
 /** Where a callout's leader stops: the label box's nearest point, 2 px short of it. */
 function calloutTerminus(from: GeoPoint, rect: Rect): GeoPoint {
-  const box = { x: rect.x - 2, y: rect.y - 2, w: rect.w + 4, h: rect.h + 4 };
-  return [Math.max(box.x, Math.min(from[0], box.x + box.w)), Math.max(box.y, Math.min(from[1], box.y + box.h))];
+  const x = rect.x - 2, y = rect.y - 2;
+  return [Math.max(x, Math.min(from[0], x + (rect.w + 4))), Math.max(y, Math.min(from[1], y + (rect.h + 4)))];
 }
 
 /**
@@ -2534,37 +2655,62 @@ function calloutCandidates(
   occupied: OccupiedIndex,
   plot: Rect,
   outsideFits: ReturnType<typeof outsideLabelGuard>,
-): LabelRequest['candidates'] {
+  crossingCallouts: boolean,
+  labelOccupied: OccupiedIndex,
+  canvas: Rect | undefined,
+): RegionCallout {
   const w = measure(text, font).width;
   const h = font.size * (font.lineHeight ?? 1.2);
   const from: GeoPoint = [region.anchor.x, region.anchor.y];
   const candidates: LabelRequest['candidates'] = [];
+  const crossingCandidates: LabelRequest['candidates'] = [];
+  const rect = { x: 0, y: 0, w, h };
+  const right = plot.x + plot.w, bottom = plot.y + plot.h;
+  // A seat clear at pad 2 is clear at the solver's pad 0. When the plot fits the canvas,
+  // the first sorted callout always places, and the chart replaces its published slot list.
+  const bestOnly = (!canvas || rectContains(canvas, plot)) && w >= 0 && h >= 0
+    && Math.max(Math.abs(from[0]), Math.abs(from[1]), w, h, Math.abs(plot.x), Math.abs(plot.y), Math.abs(right), Math.abs(bottom)) <= 2 ** 40;
+  let best: LabelRequest['candidates'][number] | undefined;
   // The claim that blocked the last seat tried. The next seat out often meets
   // it again, and a box it meets is taken whatever else is near (a measure
   // runs this search some 15,000 times).
   let blocker: OccupiedClaim | undefined;
-  const taken = (claim: OccupiedClaim) => { blocker = claim; return false; };
+  let hatchBlocked = false;
+  const taken = (claim: OccupiedClaim) => {
+    blocker = claim;
+    if (claim.kind === 'mark' && claim.part === 'noDataHatch') hatchBlocked = true;
+    return true;
+  };
+  const skip = (claim: OccupiedClaim) => !taken(claim);
+  // Skip leaders before the index checks their geometry. Crowding concerns labels only.
+  const skipUncrowdedLabel = (claim: OccupiedClaim) => !(claim.kind === 'label' &&
+    Math.abs(rect.y + h / 2 - claim.rect.y - claim.rect.h / 2) < Math.min(h, claim.rect.h) / 2 && boxGap(rect, claim.rect) < 8);
   for (let k = 0; k < CALLOUT_DIRECTIONS; k++) {
     const angle = (2 * Math.PI * k) / CALLOUT_DIRECTIONS;
     const dx = Math.cos(angle);
     const dy = Math.sin(angle);
     const reach = Math.abs(dx) * (w / 2) + Math.abs(dy) * (h / 2);
     for (let d = Math.max(2, region.anchor.clearance); d <= 2 * CALLOUT_MAX_LEADER; d += Math.max(CALLOUT_STEP, d / 8)) {
-      const rect = { x: from[0] + dx * (d + reach) - w / 2, y: from[1] + dy * (d + reach) - h / 2, w, h };
-      if (rect.x < plot.x || rect.y < plot.y || rect.x + rect.w > plot.x + plot.w || rect.y + rect.h > plot.y + plot.h) break;
+      // Projection onto this direction puts the expanded label at least d - 2*sqrt(2)
+      // away. Using d - 4 and flooring leaves room for floating-point error.
+      const lower = d - 4;
+      if (bestOnly && best && Math.floor(lower + (lower > CALLOUT_MAX_LEADER ? 1000 : 0)) > best.penalty) break;
+      rect.x = from[0] + dx * (d + reach) - w / 2;
+      rect.y = from[1] + dy * (d + reach) - h / 2;
+      if (rect.x < plot.x || rect.y < plot.y || rect.x + rect.w > right || rect.y + rect.h > bottom) break;
       if (blocker && !blocker.polygon && rectsOverlap(blocker.rect, rect, 2)) continue;
-      if (occupied.hits(rect, 2, taken)) continue;
-      if (!text.includes(' ') && occupied.hitsWhich(rect, 8).some(claim => claim.kind === 'label' && boxGap(rect, claim.rect) < 8 &&
-        Math.abs(rect.y + h / 2 - claim.rect.y - claim.rect.h / 2) < Math.min(h, claim.rect.h) / 2)) continue;
+      if (occupied.some ? occupied.some(rect, 2, taken) : occupied.hits(rect, 2, skip)) continue;
+      if (labelOccupied.hits(rect, 8, skipUncrowdedLabel)) continue;
       const to = calloutTerminus(from, rect);
-      if (!outsideFits(region.id, rect, from, to)) break;
+      const fits = outsideFits(region.id, rect, from, to);
+      if (!fits && (!crossingCallouts || candidates.length > 0)) break;
       const length = Math.hypot(to[0] - from[0], to[1] - from[1]);
       let crossesLabel = false;
       const samples = Math.max(1, Math.ceil(length / 3));
       // The leader is sampled every 3 px. Its padded box contains every sample.
       // Only a label or leader ends the query; visiting the claims in cell order
       // avoids collecting and sorting them. The outline guard checked regions.
-      occupied.hits(
+      labelOccupied.hits(
         { x: Math.min(from[0], to[0]) - 0.5, y: Math.min(from[1], to[1]) - 0.5, w: Math.abs(to[0] - from[0]) + 1, h: Math.abs(to[1] - from[1]) + 1 },
         1,
         (claim) => {
@@ -2584,16 +2730,19 @@ function calloutCandidates(
         },
       );
       if (!crossesLabel) {
-        candidates.push({
+        const candidate = {
           slot: `callout${k}`,
-          rect,
+          rect: { ...rect },
           penalty: Math.round(length + (length > CALLOUT_MAX_LEADER ? 1000 : 0)),
-        });
+        };
+        (fits ? candidates : crossingCandidates).push(candidate);
+        if (fits && (!best || candidate.penalty < best.penalty || (candidate.penalty === best.penalty && compareText(candidate.slot, best.slot) < 0))) best = candidate;
       }
       break;
     }
   }
-  return candidates.sort((a, b) => a.penalty - b.penalty || compareText(a.slot, b.slot));
+  const sorted = (candidates.length ? candidates : crossingCandidates).sort((a, b) => a.penalty - b.penalty || compareText(a.slot, b.slot));
+  return { candidates: bestOnly && sorted.length ? [sorted[0]!] : sorted, hatchBlocked };
 }
 
 /** The sample indices 0..samples whose 1 px box can meet [lo, hi] on one axis, widened by one sample each side. */

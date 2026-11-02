@@ -18,6 +18,8 @@ interface SweepItem {
   size: number;
   /** Higher wins. Ties broken by input order (earlier wins). */
   priority: number;
+  /** Items in different lanes never clash: they sit in different rows. Default 0. */
+  lane?: number;
 }
 
 /**
@@ -29,15 +31,16 @@ export function sweepHide(items: readonly SweepItem[], gap = 2): boolean[] {
   const order = items
     .map((_, i) => i)
     .sort((a, b) => items[b]!.priority - items[a]!.priority || a - b);
-  const kept: Array<{ start: number; end: number }> = [];
+  const kept: Array<{ start: number; end: number; lane: number }> = [];
   for (const i of order) {
     const it = items[i]!;
     const start = it.start;
     const end = it.start + it.size;
-    const clash = kept.some((k) => start < k.end + gap && k.start < end + gap);
+    const lane = it.lane ?? 0;
+    const clash = kept.some((k) => k.lane === lane && start < k.end + gap && k.start < end + gap);
     if (!clash) {
       keep[i] = true;
-      kept.push({ start, end });
+      kept.push({ start, end, lane });
     }
   }
   return keep;

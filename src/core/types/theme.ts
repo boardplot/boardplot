@@ -269,7 +269,7 @@ export interface Theme {
      * two card types (kpi, bullet) are exempt from the width classes and
      * keep their compact card margins.
      */
-    canvas?: { base: Margin; wide: Margin };
+    canvas?: { base?: Partial<Margin>; wide?: Partial<Margin> };
     /** Frame gap tokens; `*Wide` variants apply at W-L. */
     gap?: {
       titleSubtitle?: number;
@@ -763,4 +763,4 @@ export interface ThemeTablePad {
  * Preset names plus any theme registered at runtime via `registerTheme`
  * (the design-interface path: brand themes load as validated JSON).
  */
-export type ThemeRef = string | { preset: string; overrides?: DeepPartial<Theme> };
+export type ThemeRef = string | { preset: string; overrides?: DeepPartial<Theme> } | { preset?: never; overrides: DeepPartial<Theme> };

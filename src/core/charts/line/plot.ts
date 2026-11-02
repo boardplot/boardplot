@@ -14,7 +14,7 @@ import { dateTickRow, dayCategories } from '../../calendarLabels';
 import type { DateTickInterval } from '../../dateFormat';
 import { formatAutomaticPercent, notApplicableGlyph, numberRange } from '../../format';
 import { percentCellsOnly } from '../../annotatePass';
-import { frameTextOptions, normalizeLegendOption, plotHeightAfter, solveFrame, type FrameBand, type FrameInput, type FrameResult, type LegendItemInput, authoredFootnoteCount } from '../../frame';
+import { frameTextOptions, normalizeLegendOption, plotHeightAfter, shareUnitOptions, solveFrame, type FrameBand, type FrameInput, type FrameResult, type LegendItemInput, authoredFootnoteCount } from '../../frame';
 import { stepDownFont } from '../../label/rowFit';
 import { planCategoryRow, rotatedLeftOverhang } from '../../label/categoryRow';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
@@ -430,7 +430,7 @@ export function solveLineFrame(
       ...frameTextOptions(frameOptions),
       // Actually ignored, not merely warned about: `bump-unit-ignored` would
       // be a lie if the frame still printed "in EUR m" over a rank ladder.
-      unit: isBump ? undefined : options.unit,
+      unit: isBump ? undefined : shareUnitOptions('line', options).unit,
       footnotes: [
         ...lineFrameFootnotes({ fan: domain.fan, cats, partialNamed: lineToDateIds(env, domain, text).size > 0, bumpDerived: domain.bumpDerived, nearZeroTail: reserves.endpoint.nearZeroTail, options: frameOptions,
           footer: { width: size.width - margin.left - margin.right, font: { family: theme.type.family, ...footerType(theme.type.footnote, options.target, textScaleOf(options)) }, measure },

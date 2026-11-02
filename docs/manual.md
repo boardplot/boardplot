@@ -28,11 +28,11 @@ Every chart is one JSON object, the spec.
     "subtitle": { "measure": "Revenue by line" },
     "unit": "$m"
   },
-  "theme": "boardroom"
+  "theme": "bridge"
 }
 ```
 
-- `name` is optional: the output file name and the chart's identity, default `chart`. It takes letters, digits, `.`, `_` and `-`.
+- `name` is optional: the output file name and the chart's identity, default `chart`. A valid file stem stays unchanged. Other string names lose diacritics, become lowercase, replace unsafe character runs with `-`, trim edge hyphens and dots, and stop at 100 characters. `"Revenue Q3 2024"` becomes `revenue-q3-2024`, with a `name-slugified` warning and a fix. An empty result is refused. Names in a versioned document keep their existing rules.
 - `type` names the chart type. `boardplot_list` returns all of them with their aliases.
 - `data` has the shape of that type. `boardplot_describe` lists its fields.
 - `options` is optional. It holds the title, subtitle, unit, source, axes and labels, plus the options of the type. `options.target` names the medium the chart is read in and `options.size` its slot; see [Sizing](#sizing). The subtitle prints the unit after its measure ("Revenue in $m"); a unit that neither the subtitle, an axis title nor a value label prints gets the warning `unit-not-shown`.
@@ -40,6 +40,10 @@ Every chart is one JSON object, the spec.
 - `theme` is optional. It takes a preset name or a theme object; see [Themes](#themes).
 
 A field the type does not list is an error. `boardplot_render`, `boardplot_measure`, the CLI and the React component `BoardplotChart` all take this spec.
+
+A KPI accepts `data.label: ""` to omit its label and the space for the label. The accessible name falls back to `KPI`.
+
+Where the chart supports sorting, `options.sort: "sheet"`, `"asc"`, `"desc"` or `"reverse"` sets `sort.categories`. `sort: true` means `{ categories: "desc" }`. A positive integer `options.topN: n` means `{ n }`. Charts keep their existing restrictions on sorting and Top-N.
 
 ## Choosing a chart
 
@@ -147,6 +151,18 @@ Each derived reading has `visible: true` when it has displayed text. A calculati
 The last item has no value, so the engine computed the FY25 total of 133. A total that carries a value is checked against the sum; the computed value is drawn and the render warns `derived-mismatch`.
 
 `boardplot_render` takes `spec` and optionally `format` (`svg` or `png`), `target` (see [Sizing](#sizing)), `width` and `height` in px, `scale` (PNG pixels per layout pixel, default 2), `background` (`theme` by default; `transparent` leaves the canvas out, while halos and hollow marks keep the theme background colour, so place the chart on a surface of that colour), `return` (`["reading"]` by default; add `"svg"` for the markup) and `outDir`, an absolute directory to write the files to. PNG uses `@resvg/resvg-js`, an optional dependency, when it is installed, and otherwise Chrome or Chromium, found on the usual paths or through `BOARDPLOT_CHROME_PATH`. With neither, the render returns the SVG and the warning `no-rasterizer`. Chrome's exit code does not decide: on a busy machine Chrome writes the PNG and then exits 2, so a PNG that decodes at the requested size counts as drawn. Without one, Boardplot runs Chrome once more and then fails with `png-export-failed` (exit 2), whose message names the cause: a browser that would not start, the 60 s timeout, a crash, or Chrome's exit code with its last line of output. On Linux, resvg draws with the first family of the theme stack that fontconfig lists, else Liberation Sans, Arimo, Nimbus Sans, DejaVu Sans or Noto Sans; with none of them installed Chrome draws the PNG, and without Chrome the render returns the SVG and the warning `raster-fonts-missing`. A chart with characters the theme font has no width for, such as emoji or CJK, is drawn by Chrome when Chrome is installed, because resvg draws them as boxes and loses the whole label with them. On macOS and Windows, which ship those fonts, Chrome clears the warning; on other systems the warning `png-glyph-coverage` stays, because Chrome draws boxes when no installed font covers a character. Without Chrome the render keeps the resvg PNG and warns `png-glyph-coverage`, naming the labels that can be lost. A PNG above 100 million pixels (width x height x `scale` squared) is refused with `png-too-large` (exit 1), because the rasterizer would run out of memory; draw the SVG, lower `scale` or shrink the canvas. `boardplot_list` reports the limit as `limits.pngPixelsMax`. A PNG records 96 dpi times `scale`. [PowerPoint or Keynote deck](use-cases.md#powerpoint-or-keynote-deck) says how slide and document tools place it.
+
+### Accepted input forms
+
+Plain numeric strings such as `"120"`, `"-3.5"` and `"1e3"` are accepted where the schema needs a number, after trimming whitespace.
+The conversion uses `Number(text)` and refuses more than 15 significant digits, overflow and underflow to zero.
+Strings with grouping marks or units stay refused. Grouping and decimal marks come only from `options.locale`; `"1,200"`, `"1.234"`, `"12%"` and `"$5"` are not guessed.
+Boolean options accept `"true"` and `"false"` in any case. Numeric `id` fields in data become strings.
+Chart types, aliases and enum values accept a unique case-insensitive match, including grid panel types and the CLI/MCP format, target, background and return arguments. Names are not trimmed or respelled.
+Table status cells accept green as on-track, amber or yellow as at-risk, and red as off-track. Status keys and traffic-light words accept any case; column labels still control display text.
+Scenario `LY` means `PY` (last year), in any case. Value conversions report `input-converted` with a JSON Patch fix that writes the converted value.
+MCP render and measure parse an object spec sent as a JSON string and report `spec-parsed-from-string`. Invalid JSON and non-object results stay refused.
+Explicit `--format svg` or MCP `format: "svg"`, without return or an output path, includes the SVG and reports `svg-returned`. An omitted format keeps the reading-only response.
 
 ### Rows as data
 
@@ -431,6 +447,8 @@ The panel shows up to four title lines and ten body lines. A cut title or body r
 
 ## Notes under the chart
 
+`options.footnotes` accepts one string as a one-item array. `options.source` accepts an array of strings, joined with `; ` into one source line. An empty array prints no source. Set `options.strings.source: ""` to print the credit without a prefix or colon.
+
 Boardplot sorts every note under a chart by kind. In the live React chart, the render target decides how much of it the frame prints. A React chart with `fit="content"` takes its height from its content and prints the footer of the static image: every note of the kinds `notes.show` lists, in full, with no line budget, so it is as tall as `boardplot render` at the same width. Under `notes.placement: 'info'` a "Notes and sources (N)" button opens the notes the image does not print; it sits in the space the image leaves free for it.
 
 Boardplot prints none of its own notes under a chart by default, on every target and surface: the `method` and `disclosure` notes go to the notes list only. `notes.show` prints them where the author asks for them. A spec that asks for notes another way gets them too: `methodNote: true` or an authored `notes.placement` prints the method notes and disclosures, as `notes.show: ['note', 'method', 'disclosure']` does. A changed note wording alone (`strings.incompleteStacks`) prints nothing. Static SVG, PNG and clipboard images print the full author notes, the kinds `notes.show` adds, the source and the credit. Compact charts retain note reference numbers. Grid panels move notes that do not fit into the outer footer, under the panel title and ID. They have no notes button or "+N notes" pointer. The notes start at the normal footer gap below the chart's last element. They use the existing footer space first. If they need more room, the canvas grows below its original boundary. The plot keeps its position and size. `footnotes: false` still suppresses notes other than the disclosures `notes.show` prints.
@@ -513,7 +531,7 @@ A chart in a narrow phone layout needs a new layout, not shrinking. Render it ag
 
 Each type has a floor, `minWidth` × `minHeight` in layout px, and a fit, listed by `boardplot_list` and `boardplot_describe`. A `fill` type uses the whole frame. A `content` type such as `bar`, `table` or `kpi` takes the height its rows need.
 
-The width floor of a row chart (bar, bartable, funnel, butterfly, likert, gantt, cohort, heatmap) and of a band chart (waterfall, pareto, variance, pyramid, box, mekko, pvm) is the width its content measures, and never less than the card minimum of 280 px. The chart draws full where its content fits. Below that it draws compact, and it is refused only when compact does not fit either; the refusal names the size compact needs. This also holds for a width alone. Every row and band type has a compact form, except mekko, whose `mode` names its calculation, and bullet, which compacts only by `density: 'compact'`. A horizontal waterfall and a status grid keep a 480 px floor for now. A bullet chart's width floor is the width its rows measure. A diagram draws on a card down to 280 px when no card or group text is cut and no group frame overlaps another there; otherwise it keeps a 480 px floor. A node, group, caption, badge or edge label that the narrow card would hide, or an edge label it would cut, also keeps the 480 px floor. Column, line, combo, histogram, scatter and dot keep a 480 px floor and draw below `minWidth` or `minHeight`, on either axis, down to a `compactFloor`. A pie keeps its 320 px height floor for an automatic height; a pinned pie draws compact below it, down to 160 px, while its circle keeps a radius of at least 36 px. A pinned slope draws compact under its 270 px height floor, down to 180 px, while its plot keeps 80 px; with an automatic height it takes its content height. An authored grid of several columns that refuses under 480 px draws compact: its panels stack in one column, in authored order, down to the width its widest panel measures. Metric stacks, category tiers, legacy facet grids and grids with `anchors` or `alignmentRules` have no compact form.
+The width floor of a row chart (bar, bartable, funnel, butterfly, likert, gantt, cohort, heatmap) and of a band chart (waterfall, pareto, variance, pyramid, box, mekko, pvm) is the width its content measures, and never less than the card minimum of 280 px. The chart draws full where its content fits. Below that it draws compact, and it is refused only when compact does not fit either; the refusal names the size compact needs. This also holds for a width alone. Every row and band type has a compact form, except mekko, whose `mode` names its calculation, and bullet, which compacts only by `density: 'compact'`. A horizontal waterfall and a status grid keep a 480 px floor for now. A bullet chart's width floor is the width its rows measure. A diagram draws on a card down to 280 px when no card or group text is cut and no group frame overlaps another there; otherwise it keeps a 480 px floor. A node, group, caption, badge or edge label that the narrow card would hide, or an edge label it would cut, also keeps the 480 px floor. Column, line, combo, histogram, scatter and dot keep a 480 px floor and draw below `minWidth` or `minHeight`, on either axis, down to a `compactFloor`. A KPI card, a pie, a choropleth and a column also draw narrower than 280 px, down to 120 px (160 px for a map) and below their `compactFloor`, while their content fits: the KPI's figure, the pie's circle and labels, the map's key and small members, and the column's bars, each at least 3 px wide. Otherwise the refusal names the width the content needs. A pie keeps its 320 px height floor for an automatic height; a pinned pie draws compact below it, down to 160 px, while its circle keeps a radius of at least 36 px. A pinned slope draws compact under its 270 px height floor, down to 180 px, while its plot keeps 80 px; with an automatic height it takes its content height. An authored grid of several columns that refuses under 480 px draws compact: its panels stack in one column, in authored order, down to the width its widest panel measures. Metric stacks, category tiers, legacy facet grids and grids with `anchors` or `alignmentRules` have no compact form.
 
 Compact mode sets minimal labels, tight spacing and the key in the footnote size. It keeps the series key, the whole title and the subtitle; a canvas too short for them is refused with the height they need. A `fill` chart in compact mode keeps a plot of at least 80 px, whichever side of the canvas is short. On a fixed width and height a canvas that cannot hold it draws the plot under that floor, down to the type's hard minimum (step 7 under "Fixed height"), and warns `plot-under-floor` with the height it needs. `belowMinimum: 'refuse'` refuses below the measured floor instead of drawing compact. A type without a compact floor refuses below its minimum. Every refusal names the minimum it needs.
 
@@ -658,6 +676,8 @@ The KPI hero figure prefers 1.5 × the M title size, rounded in the table unit, 
 
 A callout that uses a side other than `preferSide` reports `callout-side-changed` at info level. The warning names the callout and the side used. It does not change placement.
 
+A callout or note text wider than any free seat wraps to two to four lines at the width that fits, next to its point. A line break written as `\n` stays where the author put it. Text that still finds no seat is named in the "Not labelled on the chart" note, as before.
+
 `story-text-truncated` reports a story title cut at four lines or a body cut at ten lines. Its severity is `warn`. It names the step id, the line limit and `options.story.steps[index].title` or `.body`. It reports only the chosen panel layout. The suggested fix is to shorten that field or give the panel more width.
 
 Every error and warning has one shape:
@@ -691,6 +711,8 @@ EOF
 - `fix` is a JSON Patch. Apply it to that spec as it is, or read `suggest` and change the field yourself. It is absent when the engine has no single repair. A size warning on a chart that draws never carries one, and `measure` names a drawn size instead.
 - `docs` names the reference section that describes the field.
 - Errors come sorted by path, at most ten, then one `more-errors` entry with the count.
+
+`options.locale: "de"` means `{ language: "de" }`. A language sets words only. Decimal and grouping marks come only from `options.locale.decimal` and `options.locale.thousands`. A root `locale` on a bare chart remains invalid, with a fix that moves its value into options.
 
 Column, combo, bar and line charts use locale strings for built-in labels and notes. English mean labels read `Average 27.5`. German mean labels keep `Ø`. Set `options.strings.average` to change that word. Other keys cover status labels, missing-value notes, ranks, ranges and anomaly rules. Each key is listed in the reference. `options.strings` also works through the React theme provider. Authored text stays as written. Unsupported languages use English built-in wording.
 
@@ -753,6 +775,8 @@ Common mistakes:
 
 The line reference has the full recipe under "Cycle bands", and the fixture `cycle-bands` draws 583 monthly points this way.
 
+`valueLine.text` is read as `label` when `label` is absent or equal, with an info warning and a rename fix. Different `text` and `label` values remain refused. `indicator100.text` remains refused.
+
 For a `valueLine` with `value: "mean"`, `seriesId` selects the series. A paired `from` and `to` selects the inclusive category window. The mean line spans only that window. Adjacent shaded `band` annotations have a hairline between them, so each period remains distinct.
 
 ## Times and numbers on the x axis of a line
@@ -787,9 +811,15 @@ The fixtures `x-time-daily`, `x-time-berlin-dst`, `x-time-uneven-sensors` and `x
 
 ## Themes
 
-A theme sets colours, type sizes, spacing and the scenario patterns. The presets are `boardroom` (the default), `standard`, `standard-dark`, `notation`, `notation-dark`, `capital`, `studio` and `glass`.
+A theme sets colours, type sizes, spacing and the scenario patterns. The presets are `bridge` (the default), `bridge-dark` (its dark pair), `boardroom`, `standard`, `standard-dark`, `notation`, `notation-dark`, `capital`, `studio` and `glass`. Use `theme: "boardroom"` for the old light look and `theme: "standard-dark"` for the old dark look. The host passes `bridge-dark` when it needs a dark chart. Presets do not switch automatically.
+
+Bridge keeps the engine's measured default font stack: `'Helvetica Neue', Helvetica, Arial, Roboto, sans-serif`. Bridge keeps the engine's role type sizes, which the render target replaces for a preset. A host with width tables for its own licensed brand font can set `type.family` and pass its own measurer, as described in [FONTS.md](FONTS.md).
 
 The `notation` preset follows the IBCS® Standards; IBCS is a registered trademark of the IBCS Institute, and the standards are published under CC BY-SA 4.0 at [www.ibcs.com](https://www.ibcs.com).
+
+A theme object containing only `{ overrides }`, at the spec root or in `options.theme`, uses the default `bridge` preset. A full theme object keeps its existing meaning.
+
+`space.canvas` overrides can contain only `base` or `wide`, and any subset of `top`, `right`, `bottom` and `left`. Missing classes and sides keep the preset values. Each side stays within 0 to 96 px. A class needs a side object, so write `{ base: { top: 16 } }` instead of `{ base: 16 }`.
 
 A brand theme is a preset plus overrides:
 
@@ -797,7 +827,7 @@ A brand theme is a preset plus overrides:
 {
   "type": "column",
   "data": { "categories": ["2024", "2025"], "series": [{ "id": "revenue", "values": [120, 135] }] },
-  "theme": { "preset": "standard", "overrides": { "color": { "highlight": "#0B5CAD", "series": ["#0B5CAD", "#5B8DB8", "#A9C1D9"] } } }
+  "theme": { "preset": "bridge", "overrides": { "color": { "highlight": "#0B5CAD", "series": ["#0B5CAD", "#5B8DB8", "#A9C1D9"] } } }
 }
 ```
 
@@ -823,7 +853,7 @@ import { ColumnChart } from 'boardplot/react/column';
 
 export function BrandChart({ dark = false }) {
   const theme = {
-    preset: dark ? 'standard-dark' : 'boardroom',
+    preset: dark ? 'bridge-dark' : 'bridge',
     overrides: { color: { series: [dark ? '#8cbcff' : '#1f4e79'] } },
   };
   return <BoardplotTheme theme={theme}>
@@ -851,7 +881,7 @@ const visibleSeries = colouredSeries.filter(s => selectedIds.has(s.id));
 
 Map every id whose colour must stay fixed. Unmapped series keep the automatic order-based colours. The map is application data; no provider state or new Boardplot option is needed. Roles follow the active theme, so a light-to-dark theme change keeps the series' rank while the theme chooses its colour. Use a shared map to `fill` instead when each id must keep an exact literal colour, and check that colour on both page themes.
 
-If the ramp runs out, Boardplot keeps its repeat policy and warns. `series-colour-repeated` names each group that shares a colour. `series-indistinguishable` names keys with the same colour and shape. Group the tail into an “Other” series only when the values add. Otherwise use small multiples, or supply more distinct colours and assign them with `colorRole` or `fill`. Changing `seriesOverflow` to `cycle` still repeats colours. Boardroom's eight colours and their order stay unchanged.
+If the ramp runs out, Boardplot keeps its repeat policy and warns. `series-colour-repeated` names each group that shares a colour. `series-indistinguishable` names keys with the same colour and shape. Group the tail into an “Other” series only when the values add. Otherwise use small multiples, or supply more distinct colours and assign them with `colorRole` or `fill`. Changing `seriesOverflow` to `cycle` still repeats colours. The `boardroom` preset keeps its old eight colours and their order.
 
 Render checks colour roles present in the chart layout. `validateTheme(theme)` from `boardplot/validate` checks the full theme. Colour findings name the measured colours, vision mode and floor; contrast ratios round down to two decimals.
 

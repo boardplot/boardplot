@@ -79,7 +79,7 @@ import type {
   SceneNode,
 } from '../../types/scene';
 import { AUTO_LEGEND } from '../../legendPolicy';
-import { contentSizing } from '../../sizing';
+import { CARD_MIN_WIDTH, contentSizing } from '../../sizing';
 import { pieLabelContent, pieCenterLines } from './labels';
 import { labelAngle, placeColumns, placeRing, RING_GAP, type RingItem } from './ring';
 import { composedTextRole } from '../../textRole';
@@ -617,9 +617,11 @@ function layoutPiePass(
   const columnGap = (width: number): number => Math.max(COLUMN_GAP_MIN, Math.min(COLUMN_GAP_MAX, width * COLUMN_GAP_RATIO));
   /** The room a label column takes beside the circle: its gap and its widest line. */
   const sideReserve = (side: 0 | 1, width: number): number => column.counts[side]! > 0 ? columnGap(width) + column.widths[side]! + 2 : 0;
-  const outsideReserve = (width: number): number => {
+  const outsideReserve = (width: number, canvasWidth = size.width): number => {
     if (columns) return (sideReserve(0, width) + sideReserve(1, width)) / 2;
-    return Math.max(OUTSIDE_MARGIN, Math.min(width * 0.3, 4 * lineH + 10 + widestSliceWord));
+    // On a canvas under the card width the 90 px floor would leave a circle of 20 px at 200: the reserve is its share of the plot.
+    const reserve = Math.min(width * 0.3, 4 * lineH + 10 + widestSliceWord);
+    return canvasWidth < CARD_MIN_WIDTH ? reserve : Math.max(OUTSIDE_MARGIN, reserve);
   };
   const heightFixed = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === true;
   const diameterCap = !heightFixed && panelTypeClass(options) === undefined ? diameterCapFor(size.width, (options.doughnut ?? 0) >= CENTER_TEXT_MIN) : Number.POSITIVE_INFINITY;
@@ -731,15 +733,19 @@ function layoutPiePass(
   if (!automatic) {
     frameResult.frame.plotMinHeight = Math.max(frameResult.frame.plotMinHeight ?? 0, Math.ceil(size.height
       + (frameResult.deficit ?? 0) + 2 * (PIE_MIN_RADIUS * (1 + maxAuthoredExplode) + arcRoom + verticalPad) - plot.h));
-    // Under the 320 px height floor (the compact band) wide outside labels can limit the radius
-    // by width; more height does not help there, so the chart names the width that holds it.
-    const radiusAt = (width: number) => (width - 2 * outsideReserve(width)) / 2 - arcRoom;
-    const need = PIE_MIN_RADIUS * (1 + maxAuthoredExplode);
-    if (size.height < PIE_STATIC_MIN_HEIGHT && radiusAt(plot.w) < need) {
-      let width = Math.ceil(plot.w);
-      while (radiusAt(width) < need && width < 4 * size.width) width += 4;
-      pieMinWidth = Math.ceil(size.width - plot.w + width);
-    }
+  }
+  // Under the 320 px height floor (the compact band) wide outside labels can limit the radius
+  // by width; more height does not help there, so the chart names the width that holds it.
+  // Under the 280 px card width the same measure holds a tall pie too, whatever its height,
+  // since no static width floor gates it there.
+  const radiusAt = (width: number) => (width - 2 * outsideReserve(width, size.width - plot.w + width)) / 2 - arcRoom;
+  const need = PIE_MIN_RADIUS * (1 + maxAuthoredExplode);
+  if (((!automatic && size.height < PIE_STATIC_MIN_HEIGHT) || size.width < CARD_MIN_WIDTH) && radiusAt(plot.w) < need) {
+    let width = Math.ceil(plot.w);
+    while (radiusAt(width) < need && width < 4 * size.width) width += 4;
+    pieMinWidth = Math.ceil(size.width - plot.w + width);
+    // A tall pie at 280 px and wider drew before, so its need never passes the card width.
+    if (size.height >= PIE_STATIC_MIN_HEIGHT) pieMinWidth = Math.min(pieMinWidth, CARD_MIN_WIDTH);
   }
   let ri = r * hole;
   // The circle stands where its label columns' overhang fits above and below it,

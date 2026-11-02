@@ -6,6 +6,7 @@
  */
 
 import { disclosuresShown } from '../../notes';
+import { caseInsensitiveValue, inputConversion } from '../../inputConversion';
 import { bandFor } from '../../bandSelect';
 import { datePatternFromExample, formatDate, parseISODate } from '../../dateFormat';
 import { currencyWholeNumbers, MINUS } from '../../format';
@@ -62,6 +63,7 @@ import type {
   TotalPolicy,
 } from '../../types/table';
 import { previousColumnInGroup, readCalcInput, resolveCalcRef } from './calcRef';
+import { cleanDiff, cleanSum } from '../../geometry';
 import { calcFlipsWithInputs, calcIsLinear, calcPreservesScale, calcYieldsPoints, columnOwnsFormat } from '../../tableCalc';
 import {
   additiveRankKey,
@@ -70,7 +72,7 @@ import {
   ranksAsData,
   requireAdditiveRanking,
 } from './rank';
-import { BADGE_SECTION_ONLY, BADGE_TEXT_EMPTY, STATUS_VALUES } from './rules';
+import { BADGE_SECTION_ONLY, BADGE_TEXT_EMPTY, STATUS_VALUES, STATUS_WORDS } from './rules';
 import { ARROW_FOOTNOTE } from './encodings/arrow';
 import { heatRanges, statusDirectionNote } from './encodings/heat';
 import { chartNumberMarks } from '../../numberMarks';
@@ -636,14 +638,12 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     // in fact stated a reason — and printed the parent as '—' when the truth
     // was "withheld" or "not meaningful".
     const blockers: { id: Id; state: Exclude<CellState, 'value'> }[] = [];
-    let sum = 0;
     let partialKid = false;
     const skippedKids: string[] = [];
     for (const kid of kids) {
       const ks = rawState.get(kid.id)!.get(col.id)!;
       if (ks.state === 'value' && typeof ks.raw === 'number') {
         const contribution = signTo(kid, row.id) * ks.raw;
-        sum += contribution;
         if (ks.partial) { partialKid = true; pushAll(skippedKids, skippedRows(ks)); }
         inputs.push({ rowId: kid.id, colId: col.id, value: contribution });
       } else {
@@ -733,7 +733,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
         partialColumnIds.add(col.id);
       }
       // A sum that skipped a child, or adds a partial one, prints marked on the cell.
-      derived = { raw: sum, state: 'value', ...(blockers.length > 0 || partialKid ? { partial: true as const, skipped: skippedKey([...blockers.map((b) => b.id), ...skippedKids]) } : {}) };
+      derived = { raw: cleanSum(inputs.map((input) => input.value)), state: 'value', ...(blockers.length > 0 || partialKid ? { partial: true as const, skipped: skippedKey([...blockers.map((b) => b.id), ...skippedKids]) } : {}) };
     }
 
     const policy: TotalPolicy = row.totalPolicy ?? (authored.raw !== null ? 'validate' : 'derive');
@@ -811,15 +811,15 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
   // Rows that topN.rest false omits still belong to the partition, so hiding a row leaves the other shares as they were.
   const hiddenLeaves = [...folded.hidden].filter(([, h]) => h.leaf);
   const leafTotal = (colId: Id): number | null => {
-    let t = 0;
+    const terms: number[] = [];
     for (const [s, sign] of [
       ...leafRows.map((r) => [rawState.get(r.id)!.get(colId), signTo(r, null)] as const),
       ...hiddenLeaves.map(([, h]) => [h.states.get(colId), h.sign] as const),
     ]) {
       if (!s || s.state !== 'value' || typeof s.raw !== 'number') return null;
-      t += sign * s.raw;
+      terms.push(sign * s.raw);
     }
-    return t;
+    return cleanSum(terms);
   };
 
   // ---- computed columns then row-level calcs (RAW inputs) ----
@@ -1727,7 +1727,8 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
       }
       case 'status': {
         const given = typeof authored === 'number' ? authored : obj?.v;
-        const v = typeof authored === 'string' ? authored : typeof given === 'string' ? given : null;
+        const written = typeof authored === 'string' ? authored : typeof given === 'string' ? given : null;
+        let v = written;
         // A number is no status. It still draws the missing dash, as before,
         // and now warns; a later release refuses it as an unknown key.
         if (typeof given === 'number') {
@@ -1740,10 +1741,28 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
           return { ...base, displayed: missingGlyph };
         }
         if (v !== null && !(STATUS_VALUES as readonly string[]).includes(v)) {
+          const converted = caseInsensitiveValue(v, STATUS_VALUES) ?? (Object.hasOwn(STATUS_WORDS, v.toLowerCase()) ? STATUS_WORDS[v.toLowerCase()] : undefined);
+          if (converted !== undefined) {
+            const rowPath = (rows: TableData['rows'], base: (string | number)[]): (string | number)[] | undefined => {
+              for (const [index, candidate] of rows.entries()) {
+                const path = [...base, index];
+                if (candidate.id === row.id) return path;
+                const child = candidate.children && rowPath(candidate.children, [...path, 'children']);
+                if (child) return child;
+              }
+              return undefined;
+            };
+            const field = [...rowPath(data.rows, ['data', 'rows'])!, 'cells', col.id, ...(obj ? ['v'] : [])];
+            warnings.push(inputConversion(field, v, converted));
+            v = converted;
+          }
+        }
+        if (v !== null && !(STATUS_VALUES as readonly string[]).includes(v)) {
           throw new NormalizeError(
             'status-value-invalid',
             `rows[${row.id}].cells[${col.id}]`,
             `status '${v}' is not one of: ${STATUS_VALUES.join(' · ')}; for free status text use a text column with a cell tone`,
+            'Use on-track, at-risk, off-track, done or pending, or green, amber, yellow or red (any case). For free status text use a text column with a cell tone.',
           );
         }
         if (v === null) return { ...base, displayed: missingGlyph };
@@ -1753,7 +1772,8 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
         const tone: CellTone =
           v === 'off-track' ? 'bad' : v === 'at-risk' ? 'warn' : v === 'done' || v === 'on-track' ? 'good' : 'neutral';
         const labels: Readonly<Record<string, string | undefined>> | undefined = col.kind === 'status' ? col.labels : undefined;
-        return { ...base, raw: v, state: 'value', displayed: labels?.[v] ?? v, tone: judgementTone(tone, obj?.strong) };
+        const displayed = written === v ? labels?.[v] ?? v : labels?.[written!] ?? labels?.[v] ?? v;
+        return { ...base, raw: v, state: 'value', displayed, tone: judgementTone(tone, obj?.strong) };
       }
       case 'date': {
         const given = typeof authored === 'number' ? authored : obj?.v;
@@ -2860,8 +2880,8 @@ function evalCalc(
         if (isState(a) && isState(b)) return worse(a, b);
         if (isState(a)) return a;
         if (isState(b)) return b;
-        if (node.op === 'add') return a + b;
-        if (node.op === 'sub') return a - b;
+        if (node.op === 'add') return cleanSum([a, b]);
+        if (node.op === 'sub') return cleanDiff(a, b);
         if (node.op === 'mul') return a * b;
         if (b === 0) return a === 0 ? 'na' : 'nm';
         // A literal divisor is the author's own constant, not a base that went negative.

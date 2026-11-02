@@ -69,7 +69,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | series[].id | string | yes | Series identity used by keyed options, annotations and legend entries. |
 | series[].label | string |  | Displayed series name; defaults to the series id. |
 | series[].values | (cell \| { categoryId, value: cell })[] | yes | Values in category order, or keyed entries pairing a categoryId with its value. |
-| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). Controls scenario labels and paint conventions. |
+| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. Controls scenario labels and paint conventions. |
 | series[].role | string |  | Data series or comparison-only reference series; references are excluded from the main plotted data. One of `'data'`, `'reference'`. |
 | series[].colorRole | string |  | Theme color role used for this series when no explicit fill takes precedence. One of good, bad, warn, neutral, neutralLight, highlight, total, others; series-N for step N of the theme ramp, 1-based (series-2 is color.series[1]); or status-<key> for a theme status colour. A hex colour goes in fill. |
 | series[].fill | string |  | Explicit CSS fill color for this series; remains authored across theme changes. |
@@ -122,6 +122,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | latestPoint | string | `'ring'`, `'none'` |  | Ring the last observed point of the lead line in the highlight colour, r 4.5 with a dot inside it, as on the line chart. 'ring' picks the first line series that is not a prior year, plan or forecast, and a forecast or plan point is never the one ringed. 'none' rings nothing, including the ring a theme with an ink lead line draws by default; omitted, the theme decides. |
 | averageMarker | boolean \| object |  |  | Computed dashed average rule with a solver-placed Ø label on the primary axis, as on column: the mean over every category of the column stack, the columns in scope summed ('all' by default). A line named in the scope is left out with the warning average-marker-scope. |
 | averageMarker.scope | string \| array | `'all'` (or another value of its type) |  | Series included in the computed average; defaults to 'all'. |
+| averageMarker.includePartial | boolean |  |  | true averages the categories marked partial too. By default they are left out, and the label names the periods the average covers. Column, bar and combo. |
 | referenceStyle | string | `'tick'`, `'line'`, `'marker'` | `'tick'` | How reference series draw, as on bar and column: 'tick' (default) a solid plan tick across the column, 'line' the same span dashed at 1.25px, 'marker' a dot at the column centre. |
 | referenceTick | object |  |  | Weight and ink of the reference tick, as on bar, read under referenceStyle 'tick' only: the dashed 'line' keeps its 1.25px and the 'marker' its dot. |
 | referenceTick.width | number |  | `2.2` | Stroke width of the tick in px; default 2.2. |
