@@ -157,7 +157,29 @@ const MAGNITUDE_WORD_LETTER: Record<string, string> = {
   milliard: 'b', milliards: 'b', tn: 't', bio: 't', trillion: 't', trillions: 't', billionen: 't',
 };
 
+/** A spec for each example text; callers change what they get, so every read is a copy. */
+const parsedExamples = new Map<string, NumberFormatSpec>();
+const MAX_PARSED_EXAMPLES = 2048;
+
+function copySpec(spec: NumberFormatSpec): NumberFormatSpec {
+  const copy = { ...spec };
+  if (spec.magnitudeWord) copy.magnitudeWord = { ...spec.magnitudeWord };
+  if (spec.glyphs) copy.glyphs = { ...spec.glyphs };
+  if (spec.exponent) copy.exponent = { ...spec.exponent };
+  return copy;
+}
+
 export function parseFormatExample(example: string, keepWord = false): NumberFormatSpec {
+  const key = `${keepWord ? 'w' : 'n'}${String(example)}`;
+  const known = parsedExamples.get(key);
+  if (known) return copySpec(known);
+  const spec = parseExample(example, keepWord);
+  if (parsedExamples.size >= MAX_PARSED_EXAMPLES) parsedExamples.clear();
+  parsedExamples.set(key, copySpec(spec));
+  return spec;
+}
+
+function parseExample(example: string, keepWord: boolean): NumberFormatSpec {
   const s = formatExampleText(String(example)).trim();
 
   const spec: NumberFormatSpec = {
@@ -345,6 +367,8 @@ function isCurrency(text: string): boolean {
 }
 
 function currencyAffixMagnitude(text: string): NumberFormatSpec['magnitude'] | undefined {
+  // Every magnitude word has an ASCII letter; a symbol or a space alone names no scale.
+  if (!/[A-Za-z]/.test(text)) return undefined;
   const trimmed = text.trim();
   if (!/^[\p{Sc}\p{L}. ]+$/u.test(trimmed)) return undefined;
   const magnitude = unitMagnitude(trimmed);
@@ -374,11 +398,15 @@ export function formatExampleText(example: string): string {
   return unitOnlyExample(example) ?? example;
 }
 
-const DIRECTION_GLYPHS = [['▲', '▼'], ['△', '▽'], ['↑', '↓'], ['⬆', '⬇'], ['▴', '▾']] as const;
+const DIRECTION_GLYPHS = [['▲', '▼'], ['△', '▽'], ['↑', '↓'], ['⬆', '⬇'], ['▴', '▾']].map(([up, down]) => (
+  { up: up!, down: down!, start: new RegExp(`^[${up}${down}](\\s?)`), end: new RegExp(`(\\s?)[${up}${down}]$`) }));
+const ANY_GLYPH = /^[▲▼△▽↑↓⬆⬇▴▾]|[▲▼△▽↑↓⬆⬇▴▾]$/;
 
 function exampleSigns(spec: NumberFormatSpec, before: string, after: string, example: string): [string, string] {
-  before = before.replace(/±/g, '+');
-  const trailing = /([^\s])([-−])$/.exec(before + '0' + after);
+  if (before.includes('±')) before = before.replace(/±/g, '+');
+  const last = example.charCodeAt(example.length - 1);
+  // Only an example that ends in a minus can carry a trailing one.
+  const trailing = last === 0x2d || last === 0x2212 ? /([^\s])([-−])$/.exec(before + '0' + after) : null;
   if (trailing && !/[-−]/.test((before + after).slice(0, -1))) {
     after = after.slice(0, -1);
     if (spec.negative !== 'parens') {
@@ -386,9 +414,10 @@ function exampleSigns(spec: NumberFormatSpec, before: string, after: string, exa
       spec.trailingMinus = trailing[2] as '-' | '−';
     }
   }
-  for (const [up, down] of DIRECTION_GLYPHS) {
-    const start = new RegExp(`^[${up}${down}](\\s?)`).exec(example);
-    const end = new RegExp(`(\\s?)[${up}${down}]$`).exec(example);
+  if (!ANY_GLYPH.test(example)) return [before, after];
+  for (const { up, down, start: startPattern, end: endPattern } of DIRECTION_GLYPHS) {
+    const start = startPattern.exec(example);
+    const end = endPattern.exec(example);
     if (!start && !end) continue;
     spec.glyphs = { up, down, at: start ? 'start' : 'end', space: (start ?? end)![1]! };
     spec.signed = true;
@@ -406,7 +435,7 @@ function magnitudeAfterNumber(entry: typeof MAGNITUDE_SUFFIXES[number], lead: st
 }
 
 function affixMagnitude(spec: NumberFormatSpec): void {
-  if (spec.magnitude !== 'none') return;
+  if (spec.magnitude !== 'none' || (spec.prefix === '' && spec.suffix === '')) return;
   const magnitude = currencyAffixMagnitude(spec.prefix) ?? currencyAffixMagnitude(spec.suffix);
   if (magnitude) {
     spec.magnitude = magnitude;
