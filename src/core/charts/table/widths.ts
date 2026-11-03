@@ -17,7 +17,7 @@ import { fieldHeadText } from './headFace';
 import { columnHeaderAffix } from './resolve';
 import { visibleColumns, visibleRows, visibleInlineRows, treeChildCounts, heatColumn, printsFigures, cellDrawsTabular } from './view';
 import { operatorWidth, qualifierFont } from './statement';
-import { groupHeadingFaces, groupHeadingFloors, groupHeadingNeed } from './groupHeading';
+import { groupHeadingFaces, groupHeadingFloors, groupHeadingNeed, groupHeadingWrap } from './groupHeading';
 import {
   DENSE_COLUMNS, LABEL_WRAP_FLOOR, SOFT_LABEL_CAP, INLINE_LABEL_INDENT, cellPadX as trackCellPadX,
   tableFonts, rowFont as ladderRowFont, kindFont, strongColumnFont, labelIndents, inlineFont as ladderInlineFont,
@@ -58,6 +58,8 @@ interface TableWidthView {
   defaultColumns?: readonly ResolvedColumn[];
   /** The label track the default columns need; the label never shrinks below it in a scrolling host. */
   labelKeep?: number;
+  /** false: a head may break before a short last word (the tight rung). */
+  headGlue?: boolean;
 }
 
 type WidthOptions = TableOptions & { [LABEL_WRAP_FLOOR]?: boolean; [SOFT_LABEL_CAP]?: boolean };
@@ -117,6 +119,8 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
   const rowById = new Map([...widthRows, ...rows].map(row => [row.id, row]));
   const hasChanges = new Set(table.rows.filter(row => visibleInlineRows(row, options.inlineVisibility).length > 0).map(row => row.id));
   const cellStep = (cell: ResolvedCell) => rowById.get(cell.rowId)?.step ?? cell.level;
+  /** The rung a label indents at: a memo row may indent with its parent (`ResolvedRow.indentStep`). */
+  const indentStep = (cell: ResolvedCell) => rowById.get(cell.rowId)?.indentStep ?? cellStep(cell);
   const childCount = treeChildCounts(table);
   const isTree = fullRows.some(row => row.hasChildren);
   const indents = labelIndents(cellPadX, options.labelIndent, view.withMarks ?? options.outlineMarks === true);
@@ -144,8 +148,12 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
   // came to state two different scales for one table.
   // The label's case is the theme's (`table.head.case`), and the
   // tracks measure the text the head draws.
-  const columnHeaderText = (col: (typeof cols)[number]) =>
-    fieldHeadText(col.label, theme) + columnHeaderAffix(col);
+  // A short last word stays on the line before it: a narrow card broke "WEEK 1" into "WEEK" over "1".
+  // The tight rung lets it break again: "PERIOD" over "1" beats a card that leaves the period out.
+  const columnHeaderText = (col: (typeof cols)[number]) => {
+    const text = fieldHeadText(col.label, theme) + columnHeaderAffix(col);
+    return view.headGlue === false ? text : text.replace(/ (\S{1,2})$/u, '\u00a0$1');
+  };
   /** The tracks every column takes at one set of head faces, and the cuts they report. */
   function trackWidths(faces: TableFonts) {
     const widths = new Map<Id, number>();
@@ -267,7 +275,7 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
       const cell = row.cells[col.id];
       if (row.role === 'section' || row.inline === true || !cell?.displayed) continue;
       const font = cellFont(cell);
-      const indent = rowIndent(cellStep(cell));
+      const indent = rowIndent(indentStep(cell));
       text = Math.max(text, indent + (options.rowLabelLines === 1 ? measure(cell.displayed, font).width : twoLineWidth(cell.displayed, font, measure, true)));
       if (row.unitAffix !== undefined && !(row.kind === 'member' && open.has(row.id))) {
         const unitFont = theme.table?.qualifier === undefined ? { ...inlineFont(row.step, false), ...(font.style ? { style: font.style } : {}) } : qualifierFont(font, theme);
@@ -500,8 +508,12 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
   for (const [id, short] of groupHeadingFloors(table.columnGroups, cols.map((col) => col.id), (member) => widths.get(member) ?? 0, () => false, headingFaces(fonts), measure, groupCell)) {
     const add = options.frameFill === 'none' ? 0 : Math.max(0, Math.min(room, Math.ceil(short)));
     if (add >= 1) { grow(id, add); room -= add; }
-    if (short - add > 0.5) {
-      const group = table.columnGroups.find((candidate) => candidate.columnIds.includes(id))!;
+    const group = table.columnGroups.find((candidate) => candidate.columnIds.includes(id))!;
+    // The SVG wraps a heading inside its block; only one it cannot wrap runs past.
+    const wraps = () => !view.scroll && groupHeadingWrap(group, headingFaces(fonts), measure,
+      cols.filter((col) => group.columnIds.includes(col.id)).reduce((sum, col) => sum + widths.get(col.id)!, 0)
+        - 2 * cellPadX - (groupCell.startRule?.(group.id) ?? 0)) !== undefined;
+    if (short - add > 0.5 && !wraps()) {
       warnings.push({ code: 'table-group-heading-overflow', severity: 'warn',
         message: `column group '${group.id}' heading needs ${Math.ceil(short - add)} px more than its columns' authored widths; it runs past the block`,
         suggest: 'Shorten the heading or its note, widen a column of the group, or give the table a wider frame.' });
@@ -559,7 +571,7 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
       const cell = row.cells[labelId];
       if (row.role === 'section' || !cell?.displayed) return 0;
       const font = cellFont(cell);
-      return measure(cell.displayed, font).width + affixRoom(row, font) + rowIndent(cellStep(cell)) + 2 * cellPadX;
+      return measure(cell.displayed, font).width + affixRoom(row, font) + rowIndent(indentStep(cell)) + 2 * cellPadX;
     }))));
     const cap = labelColumn.maxWidth !== undefined && options[SOFT_LABEL_CAP] !== true ? labelColumn.maxWidth : Infinity;
     labelNeed = Math.min(need, cap);
@@ -599,7 +611,7 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
   const labelBeforeFill = labelColumn === undefined ? undefined : beforeFill.get(labelColumn.id);
   return { tracks, gridTracks, spacerBefore, spacerTotal, labelNeed, labelBeforeFill, labelsWrap, widths, minimumWidths, sizingMinimums, totalW, minimumW, fonts, regularFonts,
     context: chosen.context, wouldWrap: (dense ?? regular).wouldWrap, wrapMinimumWidth, warnings, cellPadX,
-    rowIndent, cellFont, cellStep, columnHeaderText, indents, operatorSlot, childCount, hasChanges };
+    rowIndent, cellFont, cellStep, indentStep, columnHeaderText, indents, operatorSlot, childCount, hasChanges };
 }
 
 /**

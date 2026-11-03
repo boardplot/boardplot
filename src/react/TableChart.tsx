@@ -2441,7 +2441,7 @@ function TableGridRow({
   const step = Math.min(3, row.step);
   // An empty band before the row; the first drawn row takes none.
   const style = {
-    '--bp-level': row.step,
+    '--bp-level': row.indentStep ?? row.step,
     ...(row.spacer === undefined ? {} : { '--bp-row-spacer': `${row.spacer}px` }),
   } as CSSProperties;
   // A section heading is one cell across the whole grid, and its hairline

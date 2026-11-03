@@ -1532,12 +1532,24 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     if (driverToneMode !== 'grouped') return driverToneMode === 'always';
     return row.parentId !== null && flatById.get(row.parentId)?.role !== 'section';
   }
+  // A memo row listed after one of its siblings indents with its parent: at the siblings' indent
+  // "of which digital" 41.3 under "Rest of Europe" 12.5 read as a child larger than its parent.
+  function memoIndentStep(row: FlatRow): number | undefined {
+    // A statement split ('split', the dimswitch shares) keeps its rung's indent under the measure it splits.
+    if (row.relation !== 'ofWhich' || row.kind !== undefined || row.parentId === null) return undefined;
+    const siblings = treeChildrenOf.get(row.parentId) ?? [];
+    const before = siblings.slice(0, siblings.findIndex((sibling) => sibling.id === row.id));
+    if (!before.some((sibling) => sibling.relation !== 'ofWhich')) return undefined;
+    const parentStep = ladderStep(flatById.get(row.parentId)!, flatById, levelOffset);
+    return parentStep < ladderStep(row, flatById, levelOffset) ? parentStep : undefined;
+  }
   const resolvedRows: ResolvedRow[] = flat.map((row) => {
     const cells: Record<Id, ResolvedCell> = emptyIdRecord();
     for (const col of columns) {
       cells[col.id] = resolveCell(row, col);
     }
     const hasChildren = (treeChildrenOf.get(row.id) ?? []).length > 0;
+    const indentStep = memoIndentStep(row);
     return {
       id: row.id,
       label: row.label,
@@ -1546,6 +1558,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
       ...(hasChildren ? { defaultExpanded: expansion.get(row.id)! } : {}),
       level: row.level,
       step: ladderStep(row, flatById, levelOffset),
+      ...(indentStep === undefined ? {} : { indentStep }),
       ...(row.kind === undefined ? {} : { kind: row.kind }),
       ...(row.kind === 'driver' && driverToneOf(row) ? { driverTone: true as const } : {}),
       ...(row.sign === undefined ? {} : { sign: row.sign }),

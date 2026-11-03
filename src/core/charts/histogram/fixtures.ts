@@ -109,11 +109,11 @@ export const fixtures: Fixture<HistogramData, HistogramOptions>[] = [
       // No unit: the format prints the euro sign on every edge.
       source: 'Order book extract',
       // The two axes of a histogram carry different quantities. Applied to
-      // both, this format would make the count labels read "$42": `format`
+      // both, this format would make the count labels read "€42": `format`
       // describes the MEASURE, so it prints the edges and never the frequencies.
       // One locale on the exhibit, the subtitle's English, and a round
       // authored width the caption can print as it is.
-      format: '$1,234',
+      format: '€1,234',
       bins: { width: 250 },
       axisTitles: { y: 'Orders' },
       size: { width: 960, height: 540 },

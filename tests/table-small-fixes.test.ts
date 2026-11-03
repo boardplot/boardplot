@@ -1092,6 +1092,17 @@ it('gives a group heading over fixed columns free frame width, and warns where n
   expect(narrow.warnings.map((w) => w.code)).toContain('table-group-heading-overflow');
 });
 
+// A heading too wide for its full frame wraps inside its block, so a warning that it runs past the block would be false.
+it('wraps a group heading inside its block and does not warn that it runs past', () => {
+  const fixture = getFixtures('table').find((f) => f.id === 'cohort-heat-blocks')!;
+  const result = layout('table', fixture.data, fixture.options);
+  expect(result.warnings.map((w) => w.code)).not.toContain('table-group-heading-overflow');
+  const rule = result.scene.find((node): node is Extract<SceneNode, { t: 'line' }> => node.t === 'line' && node.id === 'group-rule:revenue')!;
+  const note = result.scene.find((node): node is TextNode => node.t === 'text' && node.id === 'group-note:revenue')!;
+  expect(note.lines).toEqual(['$ cumulative']);
+  expect(note.x + defaultMeasurer(note.lines[0]!, note.font).width / 2).toBeLessThanOrEqual(rule.x2);
+});
+
 // A pinned narrow label width cut "South" to "So…" in the SVG and the React grid; the track now grows to whole labels and gives the growth back to a narrow frame.
 it('grows an authored row-label width to whole labels and still draws where the authored width drew', async () => {
   const data: TableData = { columns: [{ id: 'label', kind: 'rowLabel', label: 'Key', width: 52 }, ...['A', 'B', 'C', 'D'].map(id => ({ id, kind: 'value' as const, label: id, width: 64 }))],

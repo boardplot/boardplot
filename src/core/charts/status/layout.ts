@@ -12,6 +12,7 @@ import { formatNonzeroWithSpec, formatterFromExample, seriesRasterFormatter } fr
  */
 
 import { sweepHide } from '../../collide';
+import { bareGridPlot } from '../heatmap/layout';
 import { frameTextOptions, legendRequired, normalizeLegendOption, solveFrame, type FrameInput, type LegendItemInput, authoredFootnoteCount } from '../../frame';
 import type { Rect } from '../../geometry';
 import { linePath } from '../../svgPath';
@@ -291,7 +292,7 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
     },
     occupied,
   );
-  const framePlot = frameResult.plot;
+  const framePlot = bareGridPlot(frameResult.plot, size.height, margin, options);
   const axisFont: FontSpec = { family: theme.type.family, ...theme.type.axis };
   const cellFont: FontSpec = { family: theme.type.family, ...theme.type.label };
   const axisLineH = axisFont.size * (axisFont.lineHeight ?? 1.2);
@@ -707,9 +708,12 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
   for (const label of solved.placed) {
     if (label.kind === 'category' && !highlights.has(label.owner.categoryId ?? '') && !label.emphasis && plainInk(label.ink)) label.ink = headInk;
   }
+  // A wrapped cell label ("On plan" over "97.5%") centres each line on its cell; anchored at the box start the lines sat right of centre.
   pushAll(scene, labelsToNodes(theme, solved.placed, label => label.kind === 'point' ? cellFont : axisFont, scene)
     .map((node): SceneNode => node.t === 'text' && node.part === 'series' && node.lines.length > 1 && node.align === 'start'
-      ? { ...node, align: 'end', x: labelRects.get(node.id)!.x + labelRects.get(node.id)!.w } : node));
+      ? { ...node, align: 'end', x: labelRects.get(node.id)!.x + labelRects.get(node.id)!.w }
+      : node.t === 'text' && node.id.startsWith('label:state:') && node.lines.length > 1 && node.align === 'start' && labelRects.has(node.id)
+        ? { ...node, align: 'middle', x: labelRects.get(node.id)!.x + labelRects.get(node.id)!.w / 2 } : node));
 
   const stateCounts = new Map<Id, number>();
   let noneCount = 0;
