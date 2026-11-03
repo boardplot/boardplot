@@ -19,7 +19,7 @@ import { runAnnotatePass } from '../../annotatePass';
 import { marginBracketLayout } from '../../annotateLinks';
 import { defaultNumberDecimals, formatAutomaticNumber, lowBaseKeyLabel, NOT_AVAILABLE, numberRange } from '../../format';
 import { AUTOMATIC_FORMAT, type AutomaticFormatSource, defaultFormatSpec, exampleSpec, formatNonzeroWithSpec, formatterFromExample, rasterDecimals, seriesRasterFormatter, parseFormatExample, specUnitKind } from '../../formatSpec';
-import { cleanFloat, round2, type Rect } from '../../geometry';
+import { cleanFloat, round2, type Margin, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
 import { categoryLineAlign, planCategoryRow, rotatedClaimRect } from '../../label/categoryRow';
@@ -623,7 +623,9 @@ export function layoutHeatmap(
   );
   const keyRightW = continuousKey && keyRight ? KEY_BAR_H + 6 + KEY_GAP
     + Math.max(...[vMin, vMax, ...(cap === undefined ? [] : [-cap, cap])].map(v => measure(`>=${displayFor(v, pctMatrix, null, keySeries)}`, tickFont).width)) : 0;
-  const plot0 = { ...frameResult.plot, w: Math.max(10, frameResult.plot.w - keyRightW) };
+  // Bubbles and Harvey balls stand in their cells with air of their own; only filled cells reach the plot edge.
+  const framePlot = bubble || glyph === 'harvey' ? frameResult.plot : bareGridPlot(frameResult.plot, size.height, margin, options);
+  const plot0 = { ...framePlot, w: Math.max(10, framePlot.w - keyRightW) };
 
   // ---- row-label band (measured like bar's category band, capped at 28%) ----
   const capW = Math.max(24, plot0.w * 0.28);
@@ -2094,4 +2096,16 @@ function measureRowLabels(
     // 6 px a reader needs between values: 2 px of air each side plus the gap.
     return { text, size, fits: size.width + air <= width && size.height + 2 <= height };
   });
+}
+
+/**
+ * A grid of filled cells with nothing under it keeps the side margin below it too. The 10 px
+ * bottom margin is the air under a footer line, and without one the last row of cells ran to
+ * the canvas edge. An authored bottom margin stands, and a grid panel takes its grid's spacing.
+ */
+export function bareGridPlot(plot: Rect, height: number, margin: Margin, options: { margin?: Partial<Margin> }): Rect {
+  if (options.margin?.bottom !== undefined || panelTypeClass(options) !== undefined
+    || Math.abs(plot.y + plot.h - (height - margin.bottom)) > 0.5) return plot;
+  const extra = Math.max(0, margin.left - margin.bottom);
+  return extra === 0 ? plot : { ...plot, h: Math.max(10, plot.h - extra) };
 }

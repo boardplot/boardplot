@@ -741,6 +741,8 @@ export interface ResolvedRow {
    * stays the authored depth.
    */
   step: number;
+  /** The rung of the label indent where it is not `step`: a memo row listed after a sibling indents with its parent. */
+  indentStep?: number;
   role: RowRole;
   relation: RowRelation;
   order: number; // final display order (totalPosition resolved)

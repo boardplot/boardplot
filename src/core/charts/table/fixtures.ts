@@ -840,7 +840,7 @@ export const fixtures: Fixture<TableData, TableOptions>[] = [
         {
           id: 'branded',
           label: 'Branded search share',
-          cells: { y24: 61, y25: 52, y26: { v: 44, note: '(−51% vs peak)', tone: 'bad' } },
+          cells: { y24: 61, y25: 52, y26: { v: 44, note: '(−28% vs peak)', tone: 'bad' } },
         },
       ],
     },
@@ -1906,7 +1906,7 @@ fixtures.push({
     magnitude: 'thousand',
     size: { width: 520, height: 312 },
     title: 'In Q1 and Q2, search spends about 30 times what retail media does',
-    source: 'Illustrative media plan in thousands of euros',
+    source: 'Illustrative media plan in thousands of US dollars',
   },
 });
 

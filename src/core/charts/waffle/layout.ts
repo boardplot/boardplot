@@ -248,7 +248,7 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false, oneRo
     const noValue = values.every((value) => value === null);
     missingPanel.push(noValue);
     if (noValue) {
-      warnings.push({ code: 'waffle-missing-value', severity: 'info', message: `'${cat.id}' has no value, so its ${square ? 'square' : 'grid'} is empty and it prints no headline`, owner: { categoryId: cat.id } });
+      warnings.push({ code: 'waffle-missing-value', severity: 'info', message: `'${cat.id}' has no value, so its ${square ? 'square' : 'grid'} is empty and its headline prints n/a`, owner: { categoryId: cat.id } });
     }
     // Square mode draws no cells: every segment keeps zero cells and reads as its share.
     const { exact, whole } = square ? { exact: values.map(() => 0), whole: values.map(() => 0) } : allocateCells(values.map((value) => value ?? 0), cellCount);
@@ -382,20 +382,25 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false, oneRo
   const readout = !lean && !square && panels.length === 1 && series.length > 1 && !authoredKey && !!legend;
   if (readout) legend = undefined;
   const subtotalNotes = subtotal && !readout ? [disclosureNote(`${subtotalText} ${subtotal.label}`)] : [];
+  // The notes say which panels have no value: n/a in the headline, or an empty grid where no headline prints.
+  const missingLabels = panels.filter((panel) => missing(panel)).map((panel) => panel.label);
+  const missingNotes = missingLabels.length === 0 ? [] : [disclosureNote(chartString(options, 'noValueNote', {
+    na: chartString(options, 'notApplicable'), v1: missingLabels.join(', ') }))];
   const measureInFrame = !lean && panels.length === 1 && !options.subtitle && panels[0]!.label !== '';
   const referenceNotes = referenceNote ? [lean ? engineNote(reference!.label, 'note') : disclosureNote(reference!.label)] : [];
   // A fixed frame that hands its source line to the host (COMPACT_SOURCE_LINES 0) has no row for a
   // "+1 note" pointer either: the reference note stays in the notes list, and a static footer prints it.
   const pointerOff = lean && referenceNote && (options as CompactSourceOptions)[COMPACT_SOURCE_LINES] === 0 && authoredNotes(options).length === 0;
-  const frame = solveFrame({ size, margin, ...frameTextOptions(options), ...(measureInFrame ? { subtitle: { measure: panels[0]!.label } } : {}), ...(referenceNote ? { footnotesOff: false } : {}), ...(pointerOff ? { notes: { ...options.notes, pointer: false } } : {}), footnotes: [...authoredNotes(options), ...cellNote, ...referenceNotes, ...subtotalNotes], legend, theme, measure }, occupied);
+  const frame = solveFrame({ size, margin, ...frameTextOptions(options), ...(measureInFrame ? { subtitle: { measure: panels[0]!.label } } : {}), ...(referenceNote ? { footnotesOff: false } : {}), ...(pointerOff ? { notes: { ...options.notes, pointer: false } } : {}), footnotes: [...authoredNotes(options), ...cellNote, ...referenceNotes, ...subtotalNotes, ...missingNotes], legend, theme, measure }, occupied);
   // The contrast stroke needs the mark's ground to stay readable in its key.
   const referenceKey = frame.legend?.items.find((item) => item.id === referenceId);
   const referenceSwatch = frame.nodes.find((node) => node.id === referenceKey?.swatchNodeId);
   if (reference && referenceSwatch?.t === 'line') {
-    // The swatch is a small panel: the pale ground and the dashed corner of the outline (bottom fill: top and right edges).
+    // The swatch is a small panel: the pale ground inside a dashed outline. Its corner alone, 10 px a side,
+    // drew one dash and a fragment, which did not read as a dashed outline.
     const at = frame.nodes.indexOf(referenceSwatch);
-    const x = referenceSwatch.x1, top = referenceSwatch.y1 - 5.5, r = 10;
-    const d = fillFrom === 'bottom' ? `M${round2(x + 0.5)} ${round2(top + 0.5)}H${round2(x + r + 0.5)}V${round2(top + 11)}` : `M${round2(x + r + 0.5)} ${round2(top)}V${round2(top + r + 0.5)}H${round2(x + 0.5)}`;
+    const x = referenceSwatch.x1, top = referenceSwatch.y1 - 5.5;
+    const d = `M${round2(x + 0.5)} ${round2(top + 0.5)}H${round2(x + 15.5)}V${round2(top + 10.5)}H${round2(x + 0.5)}Z`;
     frame.nodes.splice(at, 1,
       { t: 'rect', id: `${referenceSwatch.id}:ground`, rect: { x, y: top, w: 16, h: 11 }, fill: referenceKeyGround!, owner: {}, part: 'legendGround' },
       { t: 'path', id: referenceSwatch.id, d, stroke: referenceSwatch.stroke, width: referenceSwatch.width, dash: referenceSwatch.dash, owner: referenceSwatch.owner, part: referenceSwatch.part });
@@ -552,10 +557,11 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false, oneRo
   // A pinned chart keeps the panel total when the segment readout has to give way.
   // A lean pass prints the panel total: the key then carries no values.
   const showHeadline = options.headline === 'value' || (options.headline !== 'none' && (lean || series.length === 1 || !valuesFit));
-  const headlineValues = panels.map((panel, pi) => missing(panel) ? undefined : headlineFormat(pi)(panel.total));
+  // A panel with no value prints n/a, so its empty grid does not read as 0; a numeric 0 prints 0.
+  const headlineValues = panels.map((panel, pi) => missing(panel) ? chartString(options, 'notApplicable') : headlineFormat(pi)(panel.total));
   // Total names the sum when it fits; the numeric value alone sets the width floor.
-  const headlineTexts = headlineValues.map((value) => {
-    if (value === undefined || series.length === 1) return value;
+  const headlineTexts = headlineValues.map((value, pi) => {
+    if (value === undefined || series.length === 1 || missing(panels[pi]!)) return value;
     const named = `${options.strings?.total ?? strings.total} ${value}`;
     return measure(named, { family: figure.family, size: hero.minimum, weight: figure.weight }).width <= panelW ? named : value;
   });
@@ -900,6 +906,7 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false, oneRo
   for (const label of solved.placed) {
     if (!label.hidden && label.id.startsWith('category:')) label.ink = { token: theme.type.eyebrow?.ink ?? 'inkMuted' };
     if (!label.hidden && label.id === 'subtotal:label') label.ink = { token: 'inkMuted' };
+    if (!label.hidden && label.id.startsWith('total:') && panels.some((panel) => missing(panel) && label.id === `total:${panel.categoryId}`)) label.ink = { token: 'inkMuted' };
   }
   const allLabels: PlacedLabel[] = solved.placed;
   pushAll(nodes, labelsToNodes(theme, allLabels, (label) => fontOf.get(label.id) ?? labelFont).map((node): SceneNode => {

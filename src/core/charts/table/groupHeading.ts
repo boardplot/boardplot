@@ -9,7 +9,7 @@
 
 import { WEIGHT_REGULAR } from '../../theme';
 import { fieldHeadText } from './headFace';
-import type { FontSpec, TextMeasurer } from '../../text';
+import { wrapText, type FontSpec, type TextMeasurer } from '../../text';
 import type { Id } from '../../types/cell';
 import type { ResolvedTable } from '../../types/table';
 
@@ -53,6 +53,31 @@ export function groupHeadingWidth(
     label: measure(groupHeadingLabel(group.label), faces.label).width,
     note: note === undefined ? 0 : measure(note, faces.note).width,
   };
+}
+
+/** The most lines a wrapped heading takes, its note line included. */
+const GROUP_HEADING_LINES = 3;
+
+/**
+ * A heading too wide for its span on one line, wrapped inside it: the label
+ * at its spaces, then the note on a line of its own without the " · ".
+ * "REVENUE PER SUBSCRIBER · $ cumulative" ran 35 px past its block's rule.
+ * Undefined where the heading fits on one line, or where it needs more than
+ * three lines or a word or the note alone is wider than the span: that
+ * heading keeps one line, runs on and warns.
+ */
+export function groupHeadingWrap(
+  group: { label: string; note?: string },
+  faces: GroupHeadingFaces,
+  measure: TextMeasurer,
+  room: number,
+): { label: string[]; note?: string } | undefined {
+  const width = groupHeadingWidth(group, faces, measure);
+  if (width.label + width.note <= room) return undefined;
+  const wrapped = wrapText(groupHeadingLabel(group.label), faces.label, room, GROUP_HEADING_LINES - (group.note === undefined ? 0 : 1), measure);
+  if (wrapped.truncated || wrapped.lines.some((line) => measure(line, faces.label).width > room)) return undefined;
+  if (group.note !== undefined && measure(group.note, faces.note).width > room) return undefined;
+  return { label: wrapped.lines, ...(group.note === undefined ? {} : { note: group.note }) };
 }
 
 /**

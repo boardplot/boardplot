@@ -48,7 +48,7 @@ import {
   ENGINE_NOTES, LABEL_WRAP_FLOOR, SOFT_LABEL_CAP, INLINE_LABEL_INDENT, cellPadX as trackCellPadX, figureFont, inlineFont as ladderInlineFont, changeLineFont, changeLineFitFont,
   rowFont as ladderRowFont, tableFonts,
 } from './tracks';
-import { groupHeadingFaces, groupHeadingLabel, groupHeadingNote, groupHeadingWidth } from './groupHeading';
+import { groupHeadingFaces, groupHeadingLabel, groupHeadingNote, groupHeadingWidth, groupHeadingWrap } from './groupHeading';
 import { fitTableFormats, formatsFittedWarning } from './fitFormats';
 import { qualifierFont, tableInk, tableRuleInk } from './statement';
 import { chipHeight, chipPaints, hasPolarityBadge, isFigureCell, polarityBadgeInk, onTableGround, statusSquare, statusSquarePaint, tableGround, toneTextPaint } from './chips';
@@ -740,7 +740,7 @@ function layoutTableOnce(authoredData: TableData, options: LayoutOptions, initia
   // and 1/3px column anchors antialias into fake font-weight differences.
   const gridX = Math.round(plot.x);
   const gridY = Math.round(plot.y);
-  const { widths, sizingMinimums, totalW, minimumW, fonts, regularFonts, columnHeaderText, cellFont, cellStep, rowIndent, operatorSlot, childCount, hasChanges: hasChangesById } = widthPlan;
+  const { widths, sizingMinimums, totalW, minimumW, fonts, regularFonts, columnHeaderText, cellFont, indentStep, rowIndent, operatorSlot, childCount, hasChanges: hasChangesById } = widthPlan;
   const rowFont = (role: RowRole, level: number, hasChildren: boolean, hasChanges = false): FontSpec =>
     ladderRowFont(theme, ladder, regularFonts, role, level, hasChildren, hasChanges);
   // Theme conventions for the ink: the section heading's colour, and
@@ -881,8 +881,11 @@ function layoutTableOnce(authoredData: TableData, options: LayoutOptions, initia
   const groupPad = tightRows ? { top: 2, bottom: 2 }
     : leanHead && themeGroup !== undefined && groupAirAboveLeast(themeGroup, ruleSpace) ? undefined : themeGroup;
   const headRoom = (col: ResolvedColumn) => Math.max(1, Math.round(widths.get(col.id)!) - 2 * cellPadX - (col.kind === 'rowLabel' ? rowIndent(0) : 0));
-  const headerFits = new Map(cols.map(col => [col.id, fitText(columnHeaderText(col), fonts.header,
-    headRoom(col), Infinity, measure, { target: options.target, typeRole: 'axis' })]));
+  // The head text glues a short last word to the one before it; the drawn lines print a plain space.
+  const headerFits = new Map(cols.map(col => {
+    const fit = fitText(columnHeaderText(col), fonts.header, headRoom(col), Infinity, measure, { target: options.target, typeRole: 'axis' });
+    return [col.id, { ...fit, lines: fit.lines.map((line) => line.replace(/\u00a0/g, ' ')) }];
+  }));
   // The sub-label keeps inside the same cell air as the label above it, so
   // neighbouring heads keep the column gap: it wraps at a space, and a word
   // wider than the track takes the label's cut ("4 weeks before" over an
@@ -899,14 +902,6 @@ function layoutTableOnce(authoredData: TableData, options: LayoutOptions, initia
     : maxOf([...subFits.values()].map(fit => lineBox(fonts.sub.size) + (fit.lines.length > 1 ? (fit.h * (fit.lines.length - 1)) / fit.lines.length : 0)));
   const headerTextH = Math.max(fonts.header.size * 1.2, maxOf([...headerFits.values()].map(fit => fit.h)));
   const headerLabelH = headPadTop + Math.max(ladder.headBox(fonts.header.size), headerTextH) + headerSubH + headPadBottom + ruleSpace;
-  const headerGroupH = !hasGroupHeads ? 0
-    : groupPad === undefined ? ladder.headBox(fonts.group.size) + 9
-      : groupPad.top + ladder.headBox(fonts.group.size) + ruleSpace + groupPad.bottom;
-  const headerH = headerGroupH + headerLabelH;
-  // The rule spans the group's columns by default, so it says which columns the heading covers; 'label' underlines the heading text alone.
-  const spanRule = (options.groupRule ?? 'span') === 'span';
-  const groupAlign = options.groupAlign ?? 'center';
-
   const colX = new Map<Id, { x: number; w: number }>();
   let x = gridX;
   for (const col of cols) {
@@ -918,6 +913,34 @@ function layoutTableOnce(authoredData: TableData, options: LayoutOptions, initia
     colX.set(col.id, { x, w });
     x += w;
   }
+  // A heading wider than its block wraps inside it, and the group row grows by the extra lines.
+  // Every rule keeps one height, so a one-line heading sits on its rule beside a wrapped one.
+  const groupWraps = new Map<Id, NonNullable<ReturnType<typeof groupHeadingWrap>>>();
+  if (hasGroupHeads) {
+    for (const [groupIndex, g] of table.columnGroups.entries()) {
+      if (spans[groupIndex]!.span === 0 || g.heading === false) continue;
+      const tracks = g.columnIds.filter((columnId) => colX.has(columnId)).map((columnId) => colX.get(columnId)!);
+      const from = Math.round(Math.min(...tracks.map((track) => track.x)) + cellPadX);
+      const to = Math.round(Math.max(...tracks.map((track) => track.x + track.w)) - cellPadX);
+      const wrap = groupHeadingWrap(g, groupHeadingFaces(fonts.group), measure, to - from);
+      if (wrap !== undefined) groupWraps.set(g.id, wrap);
+    }
+  }
+  const groupLineCount = (id: Id) => {
+    const wrap = groupWraps.get(id);
+    return wrap === undefined ? 1 : wrap.label.length + (wrap.note === undefined ? 0 : 1);
+  };
+  const groupLines = Math.max(1, ...[...groupWraps.keys()].map(groupLineCount));
+  const groupLineH = fonts.group.size * (fonts.group.lineHeight ?? 1.2);
+  const groupExtraH = Math.ceil((groupLines - 1) * groupLineH);
+  const headerGroupH = !hasGroupHeads ? 0
+    : groupExtraH + (groupPad === undefined ? ladder.headBox(fonts.group.size) + 9
+      : groupPad.top + ladder.headBox(fonts.group.size) + ruleSpace + groupPad.bottom);
+  const headerH = headerGroupH + headerLabelH;
+  // The rule spans the group's columns by default, so it says which columns the heading covers; 'label' underlines the heading text alone.
+  const spanRule = (options.groupRule ?? 'span') === 'span';
+  const groupAlign = options.groupAlign ?? 'center';
+
   const tableW = x - gridX;
   /**
    * How far a row reaches. 'tracks' stops its ground and its rules
@@ -960,7 +983,7 @@ function layoutTableOnce(authoredData: TableData, options: LayoutOptions, initia
       const font = cellFont(sectionCell);
       const text = theme.table?.section?.case === 'asis' ? sectionCell.displayed : sectionCell.displayed.toUpperCase();
       const badgeW = row.badge === undefined ? 0 : Math.round(measure(row.badge.text, fonts.chip).width + 2 * CHIP_PAD_X) + BADGE_GAP;
-      const room = tableW - (colX.get(sectionCol.id)!.x - gridX) - 2 * cellPadX - rowIndent(cellStep(sectionCell)) - affixRoom(row, font) - badgeW;
+      const room = tableW - (colX.get(sectionCol.id)!.x - gridX) - 2 * cellPadX - rowIndent(indentStep(sectionCell)) - affixRoom(row, font) - badgeW;
       if (measure(text, font).width > room) {
         const wrap = fitText(text, font, Math.max(room, 20), 2, measure, { target: options.target, typeRole: 'label' });
         wrappedLines.set(tableCellKey(row.id, sectionCol.id), wrap.lines);
@@ -975,7 +998,7 @@ function layoutTableOnce(authoredData: TableData, options: LayoutOptions, initia
       if (!cell || !cell.displayed) continue;
       const font = cellFont(cell);
       const w = colX.get(col.id)!.w;
-      const indent = cell.kind === 'rowLabel' ? rowIndent(cellStep(cell)) : 0;
+      const indent = cell.kind === 'rowLabel' ? rowIndent(indentStep(cell)) : 0;
       const room = w - 2 * cellPadX - indent
         - (cell.note && cell.kind !== 'rowLabel' && col.noteLine !== true ? measure(` ${cell.note}`, fonts.note).width : 0);
       const affix = cell.kind === 'rowLabel' ? affixRoom(row, font) : 0;
@@ -1154,11 +1177,12 @@ function layoutTableOnce(authoredData: TableData, options: LayoutOptions, initia
       const cx = Math.round(first.x + (last.x + last.w - first.x) / 2);
       const bracketY = groupPad === undefined
         ? gridY + headerGroupH - 3 + CRISP
-        : gridY + groupPad.top + ladder.headBox(fonts.group.size) + CRISP;
+        : gridY + groupPad.top + groupExtraH + ladder.headBox(fonts.group.size) + CRISP;
       const label = groupHeadingLabel(g.label);
+      const lineCount = groupLineCount(g.id);
       const labelY = groupPad === undefined
-        ? bracketY - 4 - fonts.group.size * 1.2
-        : gridY + groupPad.top + (ladder.headBox(fonts.group.size) - fonts.group.size * 1.2) / 2;
+        ? bracketY - 4 - fonts.group.size * 1.2 - (lineCount - 1) * groupLineH
+        : gridY + groupPad.top + groupExtraH - (lineCount - 1) * groupLineH + (ladder.headBox(fonts.group.size) - fonts.group.size * 1.2) / 2;
       // The qualifier a heading cannot say in its own words: the
       // period the block covers, printed after the label as "· note",
       // lowercase, untracked and at 400 as in the grid, and
@@ -1173,6 +1197,34 @@ function layoutTableOnce(authoredData: TableData, options: LayoutOptions, initia
       const labelW = trackedW + measured.note;
       const spanStart = Math.round(first.x + cellPadX);
       const spanEnd = Math.round(last.x + last.w - cellPadX);
+      const wrap = groupWraps.get(g.id);
+      if (wrap !== undefined) {
+        // The wrapped lines keep the alignment, each line on its own, inside the span.
+        const align = groupAlign === 'left' ? 'start' : groupAlign === 'right' ? 'end' : 'middle';
+        const anchorX = align === 'start' ? spanStart : align === 'end' ? spanEnd : cx;
+        nodes.push({
+          t: 'text', typeRole: 'axis', id: `group:${g.id}`, x: anchorX, y: labelY, lines: wrap.label, align,
+          font: fonts.group, ink: tableInk('head'), owner: {}, part: 'tableGroupHeader',
+        });
+        if (wrap.note !== undefined) {
+          nodes.push({
+            t: 'text', typeRole: 'footnote', id: `group-note:${g.id}`, x: anchorX, y: labelY + wrap.label.length * groupLineH,
+            lines: [wrap.note], align, font: noteFont, ink: tableInk('secondary'), owner: {}, part: 'tableGroupHeader',
+          });
+        }
+        const textW = Math.max(...wrap.label.map((line) => measure(line, fonts.group).width),
+          wrap.note === undefined ? 0 : measure(wrap.note, noteFont).width);
+        const textStart = align === 'start' ? spanStart : align === 'end' ? Math.round(spanEnd - textW) : Math.round(cx - textW / 2);
+        nodes.push({
+          t: 'line', id: `group-rule:${g.id}`,
+          x1: spanRule ? spanStart : textStart, y1: bracketY,
+          x2: spanRule ? spanEnd : Math.round(textStart + textW), y2: bracketY,
+          stroke: tableRuleInk(), width: rowRuleWidth, owner: {}, part: 'tableGroupRule',
+        });
+        headingFrom = first.x;
+        headingEnd = spanEnd;
+        continue;
+      }
       // A heading wider than its columns starts at the first, whatever the alignment.
       const overflows = labelW > spanEnd - spanStart;
       const centred = groupAlign === 'center' && !overflows;
@@ -1260,7 +1312,7 @@ function layoutTableOnce(authoredData: TableData, options: LayoutOptions, initia
     // cell padding plus the outline gutter of a tree table.
     const headerIndent = col.kind === 'rowLabel' ? rowIndent(0) : 0;
     const tx = align === 'end' ? cx + w - cellPadX : align === 'middle' ? cx + w / 2 : cx + cellPadX + headerIndent;
-    const label = columnHeaderText(col);
+    const label = columnHeaderText(col).replace(/\u00a0/g, ' ');
     nodes.push({
       t: 'text', typeRole: 'axis',
       id: `header:${col.id}`,
@@ -1840,7 +1892,7 @@ function layoutTableOnce(authoredData: TableData, options: LayoutOptions, initia
     }
 
     // Depth adds indent. Opt-in outline marks reserve their gutter.
-    const indent = cell.kind === 'rowLabel' ? rowIndent(cellStep(cell)) : 0;
+    const indent = cell.kind === 'rowLabel' ? rowIndent(indentStep(cell)) : 0;
     const align = col.align === 'right' ? 'end' : col.align === 'center' ? 'middle' : 'start';
     let tx = align === 'end' ? cx + w - cellPadX : align === 'middle' ? cx + w / 2 : contentX + indent;
 

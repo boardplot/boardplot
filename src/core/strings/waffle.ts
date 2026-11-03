@@ -13,6 +13,7 @@ const EN = {
   "waffleCellsReading": "{v1} = {v2} of {v3} cells",
   "waffleWholeReading": "{v1} of the whole",
   "noValue": "no value",
+  "noValueNote": "{na} = no value: {v1}",
   "waffleAllClause": ", {v1} in all",
   "emptyCellsClause": ", {v1} of {v2} cells empty",
   // the key line that names the dashed reference outline.
@@ -31,6 +32,7 @@ const DE: { [K in keyof typeof EN]: string } = {
   "waffleCellsReading": "{v1} = {v2} von {v3} {v3|Zelle|Zellen}",
   "waffleWholeReading": "{v1} des Ganzen",
   "noValue": "kein Wert",
+  "noValueNote": "{na} = kein Wert: {v1}",
   "waffleAllClause": ", {v1} insgesamt",
   "emptyCellsClause": ", {v1} von {v2} {v2|Zelle|Zellen} leer",
   // the key line that names the dashed reference outline.
