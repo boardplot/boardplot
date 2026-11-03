@@ -31,7 +31,7 @@ import { DATE_NAME_LANGUAGES, dateNames } from '../dateNames';
 import type { RenderTarget } from '../types/options';
 import { calendarMonths, type CalendarInfo } from '../calendarLabels';
 import { defaultMeasurer, measureText, type FontSpec, type TextMeasurer, type TextSize } from '../text';
-import { cutWithTitle, fitText } from './fitText';
+import { cutWithTitle, fitText, type FittedText } from './fitText';
 import { footnoteMark } from '../footnoteMark';
 import type { LintWarning } from '../types/scene';
 import { PRIORITY, type LabelRequest } from './solver';
@@ -304,6 +304,23 @@ const VERTICAL_HEIGHT_SHARE = 0.5;
 const VERTICAL_MIN_WIDTH = 130;
 /** The most lines a requested vertical name stacks across its column. */
 const VERTICAL_MAX_LINES = 3;
+
+/**
+ * A vertical name on `lines` lines, at the narrowest length up to `room` that
+ * holds it (undefined when it does not fit). The search runs only between two
+ * bounds: the lines' share of the name, and the longest line it wraps to at the
+ * full room, since a narrower length breaks no line earlier.
+ */
+function stackedName(label: string, font: FontSpec, room: number, lines: number, measure: TextMeasurer): FittedText | undefined {
+  // Wrapping drops only the spaces it breaks at: a name longer than its lines' room cannot fit them.
+  const least = Math.floor((measure(label, font).width - (lines - 1) * measure(' ', font).width) / lines) - 2;
+  if (least > room) return undefined;
+  const widest = fitText(label, font, room, lines, measure);
+  if (widest.title !== undefined) return undefined;
+  const most = Math.min(room, Math.ceil(widest.w));
+  const start = Math.min(most, Math.max(least, Math.min(room, VERTICAL_MIN_WIDTH)));
+  return start >= most ? widest : fitText(label, font, start, lines, measure, { wider: most });
+}
 const ROTATED_MIN_WIDTH = 110;
 /** The most names a date row keeps once it has to thin its interval ticks. */
 const DATE_ROW_LABELS = 8;
@@ -1160,14 +1177,17 @@ function planRow(input: CategoryRowInput, bundled: boolean): CategoryRowPlan {
     // side across its column, as many as the pitch holds up to three, before
     // it cuts the name: the column's width is room the cut would leave empty.
     const stackFor = (f: FontSpec) => input.rotate90 ? Math.max(1, Math.min(VERTICAL_MAX_LINES, Math.floor((step - 2) / (f.size * (f.lineHeight ?? 1.2))))) : 1;
-    const verticalAll = (f: FontSpec): CategoryLabelInfo[] => measureAll(f, 1).map((info, i) => {
+    // Worked out once per font: the font search and the chosen font read the same lines.
+    const verticalMemo = new Map<FontSpec, CategoryLabelInfo[]>();
+    const verticalAll = (f: FontSpec): CategoryLabelInfo[] => verticalMemo.get(f) ?? verticalMemo.set(f, verticalLines(f)).get(f)!;
+    const verticalLines = (f: FontSpec): CategoryLabelInfo[] => measureAll(f, 1).map((info, i) => {
       if (info.w <= cap || stackFor(f) < 2) return info;
       const reserve = suffixAt(i) ? measure(suffixAt(i), f).width : 0;
+      const room = Math.max(cap - reserve, 1);
       for (let lines = 2; lines <= stackFor(f); lines++) {
         // The narrowest length that holds the name in these lines keeps the row, and the plot's loss, short.
-        const room = Math.max(cap - reserve, 1);
-        const fitted = fitText(labels[i]!, f, Math.min(room, VERTICAL_MIN_WIDTH), lines, measure, { wider: room });
-        if (fitted.title === undefined) return withSuffix({ lines: fitted.lines, w: fitted.w, h: fitted.h, truncated: false }, i, f);
+        const fitted = stackedName(labels[i]!, f, room, lines, measure);
+        if (fitted) return withSuffix({ lines: fitted.lines, w: fitted.w, h: fitted.h, truncated: false }, i, f);
       }
       return info;
     });

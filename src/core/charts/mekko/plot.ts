@@ -572,9 +572,52 @@ function stackUpperNames(
   base: readonly { left: number; right: number }[],
   lo: number,
   hi: number,
-): { row: Record<number, number>; left: Record<number, number> } | undefined {
+): UpperStack | undefined {
+  if (upper.length < 2 || upper.length > STACK_SEARCH_MAX) return undefined;
+  // The layout passes and the height search ask for the same stack again (eight times in dense-10-columns).
+  const key = JSON.stringify([upper, upper.map((ci) => width[ci]), xEdge, base, lo, hi]);
+  if (stackMemo.has(key)) return stackMemo.get(key);
+  if (stackMemo.size >= STACK_MEMO_MAX) stackMemo.clear();
+  const stack = searchUpperStack(upper, width, xEdge, base, lo, hi);
+  stackMemo.set(key, stack);
+  return stack;
+}
+
+/**
+ * The least distance, as a share of `half`, from `centre` to a whole-px x in
+ * [from, to] that keeps LEADER_NAME_AIR from every name; undefined where none
+ * does. The nearest such x lies at the centre or at an end of a clear run: the
+ * range's ends, or one px past a name's edge.
+ */
+function nearestClearLeader(from: number, to: number, centre: number, half: number, under: readonly { left: number; right: number }[]): number | undefined {
+  if (from > to) return undefined;
+  let best: number | undefined;
+  const at = Math.min(to, Math.max(from, Math.floor(centre)));
+  for (let j = -4; j < 2 * under.length; j++) {
+    const x = j === -4 ? from : j === -3 ? to : j === -2 ? at : j === -1 ? Math.min(to, at + 1)
+      : j % 2 === 0 ? Math.ceil(under[j >> 1]!.left - LEADER_NAME_AIR) - 1 : Math.floor(under[j >> 1]!.right + LEADER_NAME_AIR) + 1;
+    if (x < from || x > to) continue;
+    let clear = true;
+    for (const name of under) if (x >= name.left - LEADER_NAME_AIR && x <= name.right + LEADER_NAME_AIR) { clear = false; break; }
+    if (clear) best = Math.min(best ?? Infinity, Math.abs(x - centre) / half);
+  }
+  return best;
+}
+
+type UpperStack = { readonly row: Readonly<Record<number, number>>; readonly left: Readonly<Record<number, number>> };
+/** Stacks by their inputs: the search is a pure function of them. Cleared when full, so it stays small. */
+const stackMemo = new Map<string, UpperStack | undefined>();
+const STACK_MEMO_MAX = 64;
+
+function searchUpperStack(
+  upper: readonly number[],
+  width: readonly number[],
+  xEdge: readonly number[],
+  base: readonly { left: number; right: number }[],
+  lo: number,
+  hi: number,
+): UpperStack | undefined {
   const n = upper.length;
-  if (n < 2 || n > STACK_SEARCH_MAX) return undefined;
   const minL = upper.map((ci) => Math.max(lo, xEdge[ci]! - width[ci]! / 2));
   const maxL = upper.map((ci) => Math.min(hi - width[ci]!, xEdge[ci + 1]! - width[ci]! / 2));
   if (upper.some((_, k) => minL[k]! > maxL[k]! + 0.01)) return undefined;
@@ -584,11 +627,7 @@ function stackUpperNames(
     const centre = (xEdge[ci]! + xEdge[ci + 1]!) / 2, half = Math.max(1, (xEdge[ci + 1]! - xEdge[ci]!) / 2);
     const from = Math.ceil(Math.max(xEdge[ci]! + 1, left + 2));
     const to = Math.floor(Math.min(xEdge[ci + 1]! - 1, left + width[ci]! - 2));
-    let best: number | undefined;
-    for (let x = from; x <= to; x++) {
-      if (under.every((name) => x < name.left - LEADER_NAME_AIR || x > name.right + LEADER_NAME_AIR)) best = Math.min(best ?? Infinity, Math.abs(x - centre) / half);
-    }
-    return best;
+    return nearestClearLeader(from, to, centre, half, under);
   };
   // Seats each tier left to right, lowest tier first, on its lowest, centred or highest seat after its neighbour.
   const place = (tierOf: readonly number[], tiers: number): { left: number[]; off: number } | undefined => {
@@ -608,7 +647,11 @@ function stackUpperNames(
         const low = Math.max(minL[k]!, prevRight + NAME_GAP);
         if (low > maxL[k]! + 0.01) return false;
         const centred = Math.min(Math.max((xEdge[upper[k]!]! + xEdge[upper[k]! + 1]!) / 2 - width[upper[k]!]! / 2, low), maxL[k]!);
-        for (const at of [...new Set([low, centred, maxL[k]!])]) {
+        const high = maxL[k]!;
+        for (let seat = 0; seat < 3; seat++) {
+          // The lowest, centred and highest seats, each once.
+          const at = seat === 0 ? low : seat === 1 ? centred : high;
+          if ((seat === 1 && at === low) || (seat === 2 && (at === low || at === centred))) continue;
           const off = leaderOff(k, at, under[t]!);
           if (off === undefined) continue;
           left[k] = at;
