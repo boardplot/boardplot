@@ -422,7 +422,7 @@ function categoryLabels(domain: ComboDomain, area: ComboArea, requests: LabelReq
       redundant: !catPlan.keep[ci],
       ...(rotated ? { rotate: catPlan.rotation === 90 ? -90 : -45 } : {}),
       candidates: catPlan.rotation === 90
-        ? [{ slot: 'below', rect: verticalNameRect(band.center(ci), area.catRowY, info.w, catPlan.font), penalty: 0 }]
+        ? [{ slot: 'below', rect: verticalNameRect(band.center(ci), area.catRowY, info.w, catPlan.font, info.lines.length), penalty: 0 }]
         : rotated
         ? [{ slot: 'below', rect: rotatedClaimRect(band.center(ci), area.catRowY + Math.max(8, info.h * Math.SQRT1_2 / 2 + ROTATED_NAME_AIR), info.h), penalty: 0 }]
         : [

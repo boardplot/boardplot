@@ -505,8 +505,12 @@ function pointLabelRequests(
     // It flips to another side, or is hidden with a label-hidden warning.
     // The highlighted dot's name is set bold; a bubble keeps its ring alone.
     // A highlighted dot's labels sit outside its ring, not on it.
-    const reach = hl && !bubbleMode ? r + HIGHLIGHT_RING_GAP + strokeToken(env.theme, 'mark') : r;
-    const ownMark = { id: p.id, cx, cy, r: reach };
+    const ringReach = hl && !bubbleMode ? r + HIGHLIGHT_RING_GAP + strokeToken(env.theme, 'mark') : r;
+    const ownMark = { id: p.id, cx, cy, r: ringReach };
+    // Marks drawn on top of this one read as one clump with it (nameReading.ts):
+    // the names stand around the whole clump, clear of its other marks.
+    const reach = placed.reduce((most, o) => o.p.id === p.id || o.r <= 0 || Math.hypot(o.cx - cx, o.cy - cy) >= Math.min(ringReach, o.r)
+      ? most : Math.max(most, Math.hypot(o.cx - cx, o.cy - cy) + o.r), ringReach);
     // The point's paints, worked out once per point and run (a seat list holds dozens of seats).
     let pointPaint = paintMemo.get(p.id);
     if (!pointPaint) paintMemo.set(p.id, pointPaint = {});
@@ -549,7 +553,7 @@ function pointLabelRequests(
       const built = buildSeats(text, insideFill, fine, font, block)
         // A name takes only seats where it reads as this point's
         // name (nameReading.ts); with none left, the note names the point.
-        .filter((c) => !name || nameReadsAsOwn(c.rect, c.leaderFrom ? seatLeader(c.rect, c.leaderFrom)?.d : undefined, ownMark, marks, [], font.size));
+        .filter((c) => !name || nameReadsAsOwn(c.rect, c.leaderFrom ? seatLeader(c.rect, c.leaderFrom)?.d : undefined, ownMark, marks, [], font.size, bubbleMode && !/^(left|right)/.test(c.slot)));
       seatMemo.set(key, built);
       return [...built];
     };
@@ -559,7 +563,22 @@ function pointLabelRequests(
       const plotSlid = (c: SlotCandidate): SlotCandidate => c.slot.includes('Slide')
         ? { ...c, rect: { ...c.rect, x: Math.min(Math.max(c.rect.x, area.plot.x + RULE_GAP), area.plot.x + area.plot.w - RULE_GAP - c.rect.w) } }
         : c;
-      const candidates = boxedSeats(spiralCandidates(cx, cy, reach, block ?? env.measure(text, font), insideFill, fine, bubbleMode).map(plotSlid))
+      const size = block ?? env.measure(text, font);
+      // A label-only point (marker 'none') has its text as its mark: the text
+      // stands on the point first, so it reads at its coordinates.
+      const onPoint: SlotCandidate[] = p.marker === 'none' ? [{ slot: 'onPoint', rect: { x: cx - size.width / 2, y: cy - size.height / 2, w: size.width, h: size.height }, penalty: 0 }] : [];
+      const spiral = spiralCandidates(cx, cy, reach, size, insideFill, fine, bubbleMode);
+      // A clump's names stack over and under it, a line beyond the first
+      // seats, before any leader: at a plot edge one side of the clump is
+      // closed, and four names need a fifth seat (cluster-spiral).
+      const stacked = reach > ringReach
+        ? spiral.flatMap((c) => c.slot === 'above' || c.slot === 'below'
+          ? [{ ...c, slot: `${c.slot}Stacked`, rect: { ...c.rect, y: c.rect.y + (c.slot === 'above' ? -1 : 1) * (size.height + NAME_GAP) } }]
+          : [])
+        : [];
+      const ring = spiral.findIndex((c) => c.leaderFrom !== undefined);
+      const seatsAround = stacked.length === 0 ? spiral : ring < 0 ? [...spiral, ...stacked] : [...spiral.slice(0, ring), ...stacked, ...spiral.slice(ring)];
+      const candidates = boxedSeats([...onPoint, ...seatsAround].map(plotSlid))
         .filter((candidate) => rectContains(area.inner, candidate.rect) &&
           candidate.rect.y + candidate.rect.h <= area.plot.y + area.plot.h && candidate.rect.x >= area.plot.x)
         .map(candidate => ({ ...candidate, insidePaint: insidePaint() }));
@@ -619,8 +638,10 @@ function pointLabelRequests(
       const all = [...kept, ...over];
       // The tier is the penalty, so the solver's name gap reorders seats
       // within a tier and never takes a seat across a rule first.
-      const tier = (c: SlotCandidate) => c.overRules ? (c.leaderFrom ? 5 : 2) : (c.leaderFrom ? 3 : 0) + (across(c.rect) ? 1 : 0);
-      return [0, 1, 2, 3, 4, 5].flatMap((t) => all.filter((c) => tier(c) === t))
+      // A label-only point's seat on the point comes before every other seat.
+      const shift = onPoint.length;
+      const tier = (c: SlotCandidate) => c.slot === 'onPoint' ? 0 : shift + (c.overRules ? (c.leaderFrom ? 5 : 2) : (c.leaderFrom ? 3 : 0) + (across(c.rect) ? 1 : 0));
+      return [0, 1, 2, 3, 4, 5, 6].flatMap((t) => all.filter((c) => tier(c) === t))
         .map((candidate) => ({ ...candidate, penalty: tier(candidate) }));
     };
     // A point's name and value stay together: a value that fits
