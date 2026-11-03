@@ -58,6 +58,8 @@ interface TableWidthView {
   defaultColumns?: readonly ResolvedColumn[];
   /** The label track the default columns need; the label never shrinks below it in a scrolling host. */
   labelKeep?: number;
+  /** false: a head may break before a short last word (the tight rung). */
+  headGlue?: boolean;
 }
 
 type WidthOptions = TableOptions & { [LABEL_WRAP_FLOOR]?: boolean; [SOFT_LABEL_CAP]?: boolean };
@@ -147,8 +149,11 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
   // The label's case is the theme's (`table.head.case`), and the
   // tracks measure the text the head draws.
   // A short last word stays on the line before it: a narrow card broke "WEEK 1" into "WEEK" over "1".
-  const columnHeaderText = (col: (typeof cols)[number]) =>
-    (fieldHeadText(col.label, theme) + columnHeaderAffix(col)).replace(/ (\S{1,2})$/u, '\u00a0$1');
+  // The tight rung lets it break again: "PERIOD" over "1" beats a card that leaves the period out.
+  const columnHeaderText = (col: (typeof cols)[number]) => {
+    const text = fieldHeadText(col.label, theme) + columnHeaderAffix(col);
+    return view.headGlue === false ? text : text.replace(/ (\S{1,2})$/u, '\u00a0$1');
+  };
   /** The tracks every column takes at one set of head faces, and the cuts they report. */
   function trackWidths(faces: TableFonts) {
     const widths = new Map<Id, number>();

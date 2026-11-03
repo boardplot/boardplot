@@ -115,6 +115,8 @@ const HEAD_LINES = Symbol('tableHeadLines');
 const TIGHT_SPACING = Symbol('tableTightSpacing');
 /** The head and group rows at their least air (no air above the head, 7 px to its rule), whatever the theme's `headPad` and `groupPad`. */
 const HEAD_AIR_MIN = Symbol('tableHeadAirMin');
+/** The tight rung's last try: a head may break before a short last word ("PERIOD" over "1"). */
+const HEAD_LOOSE = Symbol('tableHeadLoose');
 /** The tight rung's cell air; a column gap is twice this, the side margin too. */
 const TIGHT_PAD = 2;
 /** The most air a row takes above and below its line, as the theme's `table.rows.pad` allows. */
@@ -128,7 +130,7 @@ const SUB_LINES = Symbol('tableSubLines');
 /** Regular spacing only: no tight rung. A caller that has other regular forms to try first (dimswitch) or only reads the floor (classFloor) sets it. */
 export const REGULAR_SPACING = Symbol('tableRegularSpacing');
 /** The compact retry carries the canvas height its caller gave the full table. */
-type LayoutOptions = TableOptions & { [SIZING_ONLY]?: boolean; [COMPACT_RETRY]?: number; [HEAD_LINES]?: number; [TIGHT_SPACING]?: { columns: boolean; rows: boolean }; [HEAD_AIR_MIN]?: boolean; [SUB_LINES]?: number; [REGULAR_SPACING]?: boolean; [ENGINE_NOTES]?: string[]; [SOFT_LABEL_CAP]?: boolean; [LABEL_WRAP_FLOOR]?: boolean };
+type LayoutOptions = TableOptions & { [SIZING_ONLY]?: boolean; [COMPACT_RETRY]?: number; [HEAD_LINES]?: number; [TIGHT_SPACING]?: { columns: boolean; rows: boolean }; [HEAD_AIR_MIN]?: boolean; [SUB_LINES]?: number; [REGULAR_SPACING]?: boolean; [HEAD_LOOSE]?: boolean; [ENGINE_NOTES]?: string[]; [SOFT_LABEL_CAP]?: boolean; [LABEL_WRAP_FLOOR]?: boolean };
 type FormatFits = Map<string, ReturnType<typeof fitTableFormats>>;
 /** The frame gutter of a card-class table: 12 px a side at 480 px and narrower. */
 const CARD_GUTTER = 12;
@@ -503,6 +505,11 @@ function compactTable(
         ...(missesWidth ? { left: Math.min(margin.left ?? CARD_GUTTER, TIGHT_PAD * 2), right: Math.min(margin.right ?? CARD_GUTTER, TIGHT_PAD * 2) } : {}),
       },
     }, resolved, sizingOnly, formatFits);
+    // A head kept whole ("WEEK 1") gives way before the table misses its width.
+    if (missesSize(compact, options).width && resolved.table.columns.some((col) => / \S{1,2}$/u.test(col.label ?? ''))) {
+      const loose = layoutTableOnce(authoredData, { ...lastOptions, [HEAD_LOOSE]: true }, resolved, sizingOnly, formatFits);
+      if (!missesSize(loose, options).width) { compact = loose; lastOptions = { ...lastOptions, [HEAD_LOOSE]: true }; }
+    }
     compact.warnings.push(tightWarning);
   }
   // A pinned height that still misses takes the sub-labels back to one line before it refuses:
@@ -725,7 +732,7 @@ function layoutTableOnce(authoredData: TableData, options: LayoutOptions, initia
   }
   const { lineBox, pad: levelPad } = ladder;
   const widthPlan = tableWidths(table, theme, measure, options, {
-    columns: cols, rows, widthRows, fullRows, available: plot.w, spacerTotal, headLines: options[HEAD_LINES], subLines: options[SUB_LINES],
+    columns: cols, rows, widthRows, fullRows, available: plot.w, spacerTotal, headLines: options[HEAD_LINES], subLines: options[SUB_LINES], headGlue: options[HEAD_LOOSE] !== true,
   });
   cellPadX = widthPlan.cellPadX;
   if (frameInput.footerInset !== cellPadX) {
@@ -882,8 +889,12 @@ function layoutTableOnce(authoredData: TableData, options: LayoutOptions, initia
     : leanHead && themeGroup !== undefined && groupAirAboveLeast(themeGroup, ruleSpace) ? undefined : themeGroup;
   const headRoom = (col: ResolvedColumn) => Math.max(1, Math.round(widths.get(col.id)!) - 2 * cellPadX - (col.kind === 'rowLabel' ? rowIndent(0) : 0));
   // The head text glues a short last word to the one before it; the drawn lines print a plain space.
+  // A track squeezed below the glued head takes the head broken at its last space.
   const headerFits = new Map(cols.map(col => {
-    const fit = fitText(columnHeaderText(col), fonts.header, headRoom(col), Infinity, measure, { target: options.target, typeRole: 'axis' });
+    const text = columnHeaderText(col);
+    const headFit = (head: string) => fitText(head, fonts.header, headRoom(col), Infinity, measure, { target: options.target, typeRole: 'axis' });
+    let fit = headFit(text);
+    if (fit.title !== undefined && text.includes('\u00a0')) fit = headFit(text.replace(/\u00a0/g, ' '));
     return [col.id, { ...fit, lines: fit.lines.map((line) => line.replace(/\u00a0/g, ' ')) }];
   }));
   // The sub-label keeps inside the same cell air as the label above it, so
