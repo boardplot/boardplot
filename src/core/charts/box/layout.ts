@@ -35,7 +35,7 @@ import { structureCount } from '../../structureCounts';
 import { rowLabelBand } from '../../label/rowLabels';
 import { fittedLabel, gutterBudget, stepDownFont } from '../../label/rowFit';
 import { applyValueAxisTitleInk, layoutValueAxis, straightBreakGlyph, planValueAxisTitle, valueAxisTitleRequest } from '../../axis';
-import { formatAutomaticNumber, numberRange, seriesValueFormatter } from '../../format';
+import { formatAutomaticNumber, numberRange, seriesFormatterAt, seriesValueDecimals, seriesValueFormatter } from '../../format';
 import { formatterFromExample, seriesRasterFormatter } from '../../formatSpec';
 import { rowLabelX, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
@@ -221,7 +221,9 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   const axisFmt = authoredFmt ?? scaled?.fmt ?? ((value: number) =>
     formatAutomaticNumber(value, { locale: options.locale?.language, decimals: autoDecimals(value) }));
   // The statistic and point labels are one series: one precision for them all (seriesValueFormatter), not one per value.
-  const fmt = authoredFmt ?? scaled?.fmt ?? seriesValueFormatter(printed, options.locale?.language);
+  // The hover card prints its quartile and whisker ranges at the same precision (marks.labelDecimals).
+  const labelDecimals = seriesValueDecimals(printed);
+  const fmt = authoredFmt ?? scaled?.fmt ?? seriesFormatterAt(labelDecimals, options.locale?.language);
 
   // ---- the median COLUMN gets ONE decimal convention ------------------------
   // The default formatter decides decimals per value, which printed 107 / 97.6
@@ -677,7 +679,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   }
 
   // ---- marks: every one claims BEFORE the solver runs ----------------------
-  const marks: BoxMarks = { rows: [] };
+  const marks: BoxMarks = { rows: [], labelDecimals };
   const labelRequests: LabelRequest[] = [];
   const firstMedianRow = rows.findIndex((row) => row.median !== null && row.state !== 'points');
   // 20 px boxes on cards, 22 px at 720, 24 px from 900.

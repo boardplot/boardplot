@@ -23,6 +23,7 @@ import { cellValue, isPctCell, type OwnerRef } from '../types/cell';
 import { cellRecordValue, derivedPercent, derivedValue, makeRecord, numericValue, textValue, type RecordContext } from './recordsShared';
 import type { InteractionRecord, InteractionValue } from './types';
 import { detailRecordFields } from './details';
+import { isPercentLevel } from './comparison';
 
 const unavailable = (reason: string): InteractionValue => ({ kind: 'number', raw: null, state: 'unavailable', reason });
 const field = (key: string, label: string, value: InteractionValue) => ({ key, label, value });
@@ -244,7 +245,9 @@ function bullet(ctx: RecordContext): InteractionRecord[] {
       label: row.label ?? row.id, anchor: mark.rect,
       fields: [field('target', name, target)],
       comparisons: [{ label: name, current: value, reference: target,
-        delta: typeof value.raw === 'number' && typeof target.raw === 'number' ? numericValue(value.raw - target.raw, value.unit, value.format) : unavailable('Value or target missing'),
+        // A gap between two percentages is in points: 78% against 85% is −7pp, as for every other comparison (compareValues).
+        delta: typeof value.raw === 'number' && typeof target.raw === 'number'
+          ? numericValue(value.raw - target.raw, isPercentLevel(value) && isPercentLevel(target) ? 'pp' : value.unit, value.format) : unavailable('Value or target missing'),
         percent: typeof value.raw === 'number' && typeof target.raw === 'number' && target.raw > 0
           ? derivedPercent((value.raw - target.raw) / target.raw * 100) : unavailable('Positive reference and value required') }],
     });
@@ -272,8 +275,11 @@ function funnel(ctx: RecordContext): InteractionRecord[] {
   return geo.marks.rows.flatMap(row => row.segments.map(segment => {
     const value = source.cell(row.categoryId, segment.id);
     const conversion = geo.derived.conversions.find(conversion => conversion.toId === row.categoryId);
+    // A stage split into segments names the segment its value counts ("Advanced: 2,100 leads"); the title names the stage.
+    const segmentLabel = row.segments.length > 1 ? source.series.find(series => series.id === segment.id)?.label ?? segment.id : undefined;
     return makeRecord(ctx, { categoryId: row.categoryId, seriesId: segment.id }, value, {
       label: source.categories.find(category => category.id === row.categoryId)?.label ?? row.categoryId,
+      ...(segmentLabel === undefined ? {} : { valueLabel: segmentLabel }),
       anchor: segment.rect, scenario: source.series.find(series => series.id === segment.id)?.scenario,
       fields: [field('stageTotal', chartString(ctx.request.options, 'stageTotal'), derived(ctx, geo.derived.stageTotals[row.categoryId] ?? undefined)),
         field('conversion', chartString(ctx.request.options, 'stageConversion'), conversion ? derivedPercent(conversion.rate * 100) : unavailable(chartString(ctx.request.options, 'noPrecedingStage'))),
@@ -510,7 +516,7 @@ function likert(ctx: RecordContext): InteractionRecord[] {
   const data = ctx.request.data as LikertData;
   const options = ctx.request.options as LikertOptions;
   const geo = geometry<LikertMarks, LikertDerived>(ctx);
-  return geo.marks.rows.flatMap(row => row.bars.map(bar => {
+  const records = geo.marks.rows.flatMap(row => row.bars.map(bar => {
     const option = data.scale.find(option => [ `likert:${option.id}`, `likert:${option.id}:neg`, `likert:${option.id}:pos` ].includes(bar.seriesId))!;
     const item = data.items.find(item => item.id === row.id)!;
     const index = data.scale.indexOf(option);
@@ -520,10 +526,28 @@ function likert(ctx: RecordContext): InteractionRecord[] {
     const value = numericValue(raw, options.values === 'percent' ? '%' : ctx.request.options.unit);
     return makeRecord(ctx, { categoryId: row.id, seriesId: bar.seriesId }, value, {
       label: `${item.label ?? item.id} / ${option.label ?? option.id}`, anchor: bar.rect,
+      // A count of answers says what it counts; a percent value is the response share itself.
+      ...(options.values === 'percent' ? {} : { valueLabel: chartString(ctx.request.options, 'responses') }),
       fields: [field('share', chartString(ctx.request.options, 'responseShare'), shareValue(geo.derived.shares[row.id]?.[option.id], options.format, options.values === 'percent')),
         field('base', chartString(ctx.request.options, 'sampleSize'), row.id in geo.derived.base ? numericValue(geo.derived.base[row.id]) : unavailable(chartString(ctx.request.options, 'sampleSizeMissing')))],
     });
   }));
+  // A neutral split across the centre line is one answer drawn as two halves
+  // under one label: either half lights and outlines both, so the outline
+  // runs around the label and not through it.
+  const halves = new Map<string, InteractionRecord[]>();
+  for (const record of records) {
+    const { categoryId, seriesId } = record.target.owner;
+    const whole = seriesId?.match(/^(.*):(?:neg|pos)$/)?.[1];
+    if (whole === undefined || categoryId === undefined) continue;
+    const key = JSON.stringify([categoryId, whole]);
+    halves.set(key, [...halves.get(key) ?? [], record]);
+  }
+  for (const pair of halves.values()) {
+    const nodeIds = [...new Set(pair.flatMap(record => record.nodeIds))];
+    if (pair.length > 1) for (const record of pair) record.nodeIds = nodeIds;
+  }
+  return records;
 }
 
 export function businessRecords(ctx: RecordContext): InteractionRecord[] | undefined {

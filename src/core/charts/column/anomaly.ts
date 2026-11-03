@@ -138,6 +138,31 @@ export function refuseAnomalySpec(anomalySpec: AnomalySpec): void {
   }
 }
 
+/**
+ * A corridor bound at the precision it needs. A computed bound such as
+ * 1,319.99 printed "1,320.0" beside integer values and ticks: the statistic's
+ * extra decimal stays only where it is not zero after rounding. The digits of
+ * the two prints are compared, so separators, signs and units do not matter.
+ */
+function boundFormatter(statFmt: (v: number) => string): (v: number) => string {
+  const zero = statFmt(0).replace(/\P{Nd}/gu, '');
+  return (value) => {
+    const text = statFmt(value);
+    if (!Number.isFinite(value) || value === 0 || zero.length !== 1) return text;
+    const digits = text.replace(/\P{Nd}/gu, '');
+    for (let power = Math.ceil(Math.log10(Math.abs(value))); power >= -12; power--) {
+      const step = 10 ** power;
+      const rounded = Math.round(value / step) * step;
+      if (rounded === 0) continue;
+      const coarse = statFmt(rounded);
+      if (coarse === text) return text;
+      const head = coarse.replace(/\P{Nd}/gu, '');
+      if (head.length < digits.length && digits.startsWith(head) && [...digits.slice(head.length)].every((digit) => digit === zero)) return coarse;
+    }
+    return text;
+  };
+}
+
 /** The flag test and its sentence: MAD modified z against k, or authored bounds. */
 function anomalyRule(
   anomalySpec: AnomalySpec,
@@ -222,7 +247,7 @@ function anomalyRule(
         rule = stringFields(words.anomalyMadRule, {
           k: plainFmt(k), factor: plainFmt(MAD_SIGMA), mad: statFmt(mad),
           centre: stringFields(baseline === 'zero' ? words.anomalyCentreZero : words.anomalyCentreMedian, { median: statFmt(dataMedian) }),
-          low: statFmt(corridorLow), high: statFmt(corridorHigh), count: n,
+          low: boundFormatter(statFmt)(corridorLow), high: boundFormatter(statFmt)(corridorHigh), count: n,
         });
       }
     }
@@ -441,11 +466,11 @@ export function anomalyCorridor(
     const missing: string[] = [];
     if (anomaly.corridor.low !== null && !corridorShown.low) {
       offscale.push(anomaly.corridor.low);
-      missing.push(stringFields(words.lowerBound, { value: statFmt(anomaly.corridor.low) }));
+      missing.push(stringFields(words.lowerBound, { value: boundFormatter(statFmt)(anomaly.corridor.low) }));
     }
     if (anomaly.corridor.high !== null && !corridorShown.high) {
       offscale.push(anomaly.corridor.high);
-      missing.push(stringFields(words.upperBound, { value: statFmt(anomaly.corridor.high) }));
+      missing.push(stringFields(words.upperBound, { value: boundFormatter(statFmt)(anomaly.corridor.high) }));
     }
     if (offscale.length > 0) {
       // A blanket claim such as "no period comes near it" can be false — a bound
@@ -527,10 +552,10 @@ export function anomalyRuleLines(
   const rules: AnomalyRuleLine[] = [];
   if (!anomaly.corridor) return rules;
   if (corridorShown.low && anomaly.corridor.low !== null) {
-    rules.push({ id: 'anomaly:corridor:low', value: anomaly.corridor.low, dash: dashToken(theme, 'reference'), width: strokeToken(theme, 'rule'), paint: corridorPaint, label: statFmt(anomaly.corridor.low) });
+    rules.push({ id: 'anomaly:corridor:low', value: anomaly.corridor.low, dash: dashToken(theme, 'reference'), width: strokeToken(theme, 'rule'), paint: corridorPaint, label: boundFormatter(statFmt)(anomaly.corridor.low) });
   }
   if (corridorShown.high && anomaly.corridor.high !== null) {
-    rules.push({ id: 'anomaly:corridor:high', value: anomaly.corridor.high, dash: dashToken(theme, 'reference'), width: strokeToken(theme, 'rule'), paint: corridorPaint, label: statFmt(anomaly.corridor.high) });
+    rules.push({ id: 'anomaly:corridor:high', value: anomaly.corridor.high, dash: dashToken(theme, 'reference'), width: strokeToken(theme, 'rule'), paint: corridorPaint, label: boundFormatter(statFmt)(anomaly.corridor.high) });
   }
   if (anomaly.baseline === 'median' && anomaly.centre !== null && anomaly.usable) {
     // NAMED, not just numbered: this rule sits parallel to the solid zero

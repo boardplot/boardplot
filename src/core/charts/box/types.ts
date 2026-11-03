@@ -111,4 +111,6 @@ export interface BoxRowMark {
 
 export interface BoxMarks {
   rows: BoxRowMark[];
+  /** The decimals the automatic statistic and point labels print at; the hover card's ranges use them too. */
+  labelDecimals: number;
 }

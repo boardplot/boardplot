@@ -1,4 +1,5 @@
 import { chartString } from '../strings/a11y-structuralRecords';
+import { chartString as ganttString } from '../strings/gantt';
 import type { DimSwitchDerived } from '../charts/dimswitch/types';
 import type { GridDerived } from '../charts/grid/layout';
 import type { MetricStackData } from '../charts/grid/metricStack';
@@ -244,8 +245,11 @@ function ganttItemRecord(ctx: RecordContext, rowId: string, rowLabel: string, it
   const start: InteractionValue = mark ? textValue(mark.start, 'date') : item.anchor
     ? { kind: 'date', raw: null, state: 'unavailable', reason: chartString(ctx.request.options, 'anchoredDateUnavailable') }
     : textValue(item.start, 'date');
-  return makeRecord(ctx, { categoryId: rowId, segmentId: item.id }, textValue(item.label ?? item.kind), {
-    label: `${rowLabel} / ${item.label ?? item.id}`,
+  // An unnamed item reads as the row and what the mark is, in the key's words ("Overall span"), never its id or kind code.
+  const what = item.label ?? item.colorLabel ?? ganttString(ctx.request.options,
+    item.kind === 'bracket' ? 'overallSpan' : item.kind === 'milestone' ? 'milestone' : 'task');
+  return makeRecord(ctx, { categoryId: rowId, segmentId: item.id }, textValue(what), {
+    label: item.label ? `${rowLabel} / ${item.label}` : rowLabel,
     fields: [{ key: 'start', label: chartString(ctx.request.options, 'start'), value: start },
       ...(mark || item.end ? [{ key: 'end', label: chartString(ctx.request.options, 'end'), value: textValue(mark?.end ?? item.end, 'date') }] : [])],
     ...(mark ? { nodeIds: [mark.nodeId], anchor: mark.rect } : {}),

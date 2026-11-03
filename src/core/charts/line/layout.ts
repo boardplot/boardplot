@@ -755,6 +755,15 @@ function assembleLineGeometry(input: LineAssembly): Geometry<LineMarks, LineDeri
   }
   emitForecastDividers(env.theme, area.forecast, xOf, area.forecastPlot, nodes, forecastDividerAt(domain));
   if (domain.isArea) backForecastAreaLabels(allLabels, drawnSeries, cats, plot, input.areaFill, nodes);
+  // A name seated on its line stands on a page-colour plate: a halo
+  // follows the glyphs, so the line still showed in the letter gaps and
+  // touched the name's ends.
+  for (const label of allLabels) {
+    if (label.kind === 'series' && label.halo && !label.hidden && label.slot.startsWith('inline:')) {
+      label.plate = true;
+      label.halo = false;
+    }
+  }
   const bandLabelIds = new Set(
     annResult.placed.filter((ann) => ann.kind === 'band').map((ann) => ann.labelId),
   );

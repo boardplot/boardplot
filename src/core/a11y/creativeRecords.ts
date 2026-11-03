@@ -1,4 +1,5 @@
 import { chartString } from '../strings/a11y-creativeRecords';
+import { chartString as creativeString } from '../strings/creative';
 import { creativeMetrics } from '../charts/creative/layout';
 import type { CreativeDerived, CreativeMarks } from '../charts/creative/layout';
 import type { CreativeData } from '../charts/creative/types';
@@ -14,7 +15,8 @@ export function creativeRecords(ctx: RecordContext): InteractionRecord[] | undef
     const unit = suffix === 'currency' ? data.facts.currency : suffix;
     const owner = { seriesId: key, categoryId: data.id };
     return makeRecord(ctx, owner, numericValue(data.metrics[key].value, unit), {
-      label, seriesLabel: label, categoryLabel: data.facts.name, anchor: marks.metrics[key],
+      // The value is the creative's own, beside the account median: it carries the column's name.
+      label, seriesLabel: label, categoryLabel: data.facts.name, valueLabel: creativeString(ctx.request.options, 'creativeColumn'), anchor: marks.metrics[key],
       nodeIds: [`creative:row:${key}`, `label:creative:metric:${key}`, `label:creative:value:${key}`, `label:creative:median:${key}`],
       fields: [
         { key: 'accountMedian', label: chartString(ctx.request.options, 'accountMedian'), value: numericValue(data.metrics[key].accountMedian, unit) },
