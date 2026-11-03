@@ -44,6 +44,7 @@ import { actualHeader, forecastBoundaries, forecastDividerAt, type ForecastBound
 import { lineFrameFootnotes } from './footnotes';
 import { gapFillPaint } from './difference';
 import { anomalyLegendItems, anomalyRuleLines, anomalyRuleReserve, columnCorridorPaint } from '../column/anomaly';
+import { withUnit } from '../../unitJoin';
 import { defaultValueContent, endUnitSuffix, fanEdgeInKey, flaggedPoints, lineFocusFont, lineToDateIds, PLOT_END_AIR, pointLabelEndRoom, pointLabelSelection, prepareEndpointLabels, usesEndLabelKey, valueUnit } from './labels';
 import { forecastBoundaryX, latestRingReach } from './marks';
 import { rangeRuns } from './range';
@@ -461,7 +462,7 @@ export function solveLineFrame(
  * its tick even with the axis off. Ticks raster over the TICK SET, not the
  * data.
  */
-function valueAxisTicks(env: LineEnv, domain: LineDomain, frame: FrameResult) {
+function valueAxisTicks(env: LineEnv, domain: LineDomain) {
   const { theme, measure, isBump } = env;
   const { options, variant, dLo, dHi, bumpDerived } = domain;
   const va = options.valueAxis ?? {};
@@ -480,7 +481,15 @@ function valueAxisTicks(env: LineEnv, domain: LineDomain, frame: FrameResult) {
     : variant === 'stacked100-area'
       ? (v: number) => formatAutomaticPercent(v, 0, false, options.locale?.language)
       : percentAxis ? domain.valueSpec.fmtPercent : domain.fmt;
-  const axisTickSpec = log || bumpDerived || variant === 'stacked100-area' ? undefined : percentAxis ? domain.valueSpec.percentSpec : domain.valueSpec.spec;
+  const plainTickSpec = log || bumpDerived || variant === 'stacked100-area' ? undefined : percentAxis ? domain.valueSpec.percentSpec : domain.valueSpec.spec;
+  // The last value prints the unit when nothing else does ("57k"); the ticks
+  // then print a sign or magnitude unit too, so a bare 40 to 60 does not read
+  // as another magnitude. A word unit ("2,100 leads") stays on the value.
+  const tickUnit = axisShown && plainTickSpec && !percentAxis && !plainTickSpec.suffix.includes('%') ? endUnitSuffix(options, domain.rebased) : '';
+  const unitFace = tickUnit ? withUnit('\u0000', tickUnit, true, options.locale?.language).split('\u0000') : [];
+  const axisTickSpec = plainTickSpec && unitFace.length === 2 && !unitFace.join('').includes(' ')
+    ? { ...plainTickSpec, prefix: `${unitFace[0]}${plainTickSpec.prefix}`, suffix: `${plainTickSpec.suffix}${unitFace[1]}` }
+    : plainTickSpec;
   let bumpTicks: number[] | undefined;
   if (bumpDerived) {
     const max = domain.bumpLadderMax;
@@ -501,7 +510,15 @@ function valueAxisTicks(env: LineEnv, domain: LineDomain, frame: FrameResult) {
       const tolerance = Math.max(1, Math.abs(value)) * 1e-12;
       if (!ticks.some((tick) => Math.abs(tick - value) <= tolerance)) ticks.push(value);
     };
-    if (discloseNonzeroBaseline) addTick(baselineValue);
+    // A shown axis labels an engine-chosen baseline only where it sits on the
+    // tick grid: an off-grid 850 under 1,000 and 1,200 read as a misprinted
+    // tick, and it could push the grid tick next to it out. The break glyph
+    // still marks the cut. An authored bound prints as set, and with the axis
+    // off the lone baseline tick is the only scale.
+    const step = ticks.length >= 2 ? ticks[1]! - ticks[0]! : 0;
+    const authoredBound = (va.reverse ? va.max : va.min) !== undefined;
+    const onGrid = !axisShown || authoredBound || (step > 0 && Math.abs((baselineValue - ticks[0]!) / step - Math.round((baselineValue - ticks[0]!) / step)) < 1e-9);
+    if (discloseNonzeroBaseline && onGrid) addTick(baselineValue);
     for (const value of valueLineTicks) addTick(value);
     disclosedTicks = ticks.sort((left, right) => left - right);
   }
@@ -511,7 +528,7 @@ function valueAxisTicks(env: LineEnv, domain: LineDomain, frame: FrameResult) {
       : measureValueAxisWidth([dLo, dHi], axisFmt, theme, measure, 5, axisTickSpec, log ? stepTicks ?? logTickTiers(dLo, dHi)[0] : disclosedTicks ?? stepTicks)
     : 0;
   const disclosureReserve = !axisShown && disclosedTicks
-    ? Math.max(0, measureValueAxisWidth([dLo, dHi], axisFmt, theme, measure, 5, axisTickSpec, disclosedTicks) - frame.plot.x)
+    ? measureValueAxisWidth([dLo, dHi], axisFmt, theme, measure, 5, axisTickSpec, disclosedTicks)
     : 0;
   return {
     axisShown, axisFmt, axisTickSpec, bumpTicks, disclosedTicks, stepTicks, discloseNonzeroBaseline, baselineValue,
@@ -785,7 +802,7 @@ export function linePlotArea(
   const { options, cats, seriesNorm, drawnSeries, phases, dLo, dHi } = domain;
   const { frame } = framed;
   const { annList } = reserves;
-  const axis = valueAxisTicks(env, domain, frame);
+  const axis = valueAxisTicks(env, domain);
   // A numerator under a fifth of its denominator lies flat on
   // the scale they share and cannot be read off it, so each chip prints both.
   const peak = (id: Id | undefined): number => Math.max(0, maxOf((seriesNorm.find((s) => s.id === id)?.vals ?? []).map((cell) => Math.abs(cell.v ?? 0))));
