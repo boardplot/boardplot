@@ -179,11 +179,14 @@ export function planXTicks(input: {
   return { values: row.values, labels: row.labels, widths, keep, context, title, font, lineH, rowHeight, ...(input.partialRow ? { partialRow: true as const } : {}) };
 }
 
-/** Context labels start at their x; one that would run into the next yields, a partial first day before a full one. */
-export function placedContext(plan: XTickPlan, xOf: (x: number) => number, left: number, right: number): { text: string; x: number; w: number }[] {
+/**
+ * Context labels start at their x; one that would run into the next yields, a partial first day before a full one.
+ * `first` seats the label under the first tick where that tick's label sits: centred with it, or both at the plot's left edge.
+ */
+export function placedContext(plan: XTickPlan, xOf: (x: number) => number, left: number, right: number, first?: { at: number; x: (w: number) => number }): { text: string; x: number; w: number }[] {
   const placed: { text: string; x: number; w: number }[] = [];
   for (const item of plan.context) {
-    const x = Math.max(left, Math.min(xOf(item.at), right - item.w));
+    const x = Math.max(left, Math.min(first && item.at === first.at ? first.x(item.w) : xOf(item.at), right - item.w));
     const last = placed[placed.length - 1];
     if (last && last.x + last.w + TICK_GAP > x) {
       // The later label names a whole day or year; the earlier one only the stretch before it.
@@ -250,18 +253,29 @@ export function placeXTickLabels(input: {
     candidates: [{ slot: 'below', rect: { x, y, w, h: plan.lineH }, penalty: 0 }],
   });
   let y = input.bottom;
+  // The day or year under the first tick reads as one stack with that tick's label: both centred on the tick, or,
+  // where either centred label would poke left of the plot, both starting at its left edge.
+  const firstTick = plan.keep.indexOf(true);
+  const under = firstTick >= 0 ? plan.context.find((item) => item.at === plan.values[firstTick]) : undefined;
+  const firstX = under ? xOf(under.at) : 0;
+  const pokes = (w: number) => firstX - w / 2 < input.plotLeft - 0.5;
+  const startsAtPlot = under !== undefined && (pokes(plan.widths[firstTick]!) || pokes(under.w));
+  const first = under ? { at: under.at, x: (w: number) => startsAtPlot ? input.plotLeft : firstX - w / 2 } : undefined;
   if (plan.values.length) {
     plan.values.forEach((_, i) => {
       if (!plan.keep[i]) return;
       const x = tickLabelX(plan, i, xOf, left, right), w = plan.widths[i]!;
       const req = request(`xtick:${i}`, plan.labels[i]!, x, y, w);
-      if (x < input.plotLeft - 0.5) req.candidates.push({ slot: 'below', rect: { x: input.plotLeft, y, w, h: plan.lineH }, penalty: 1 });
+      const atPlot = { slot: 'below' as const, rect: { x: input.plotLeft, y, w, h: plan.lineH }, penalty: 1 };
+      // The stacked pair starts at the plot's edge first; the centred seat stays a fallback so the tick never drops.
+      if (i === firstTick && startsAtPlot) req.candidates = [{ ...atPlot, penalty: 0 }, { ...req.candidates[0]!, penalty: 1 }];
+      else if (x < input.plotLeft - 0.5) req.candidates.push(atPlot);
       input.labelRequests.push(req);
     });
     y += plan.lineH + ROW_GAP;
   }
   if (plan.context.length) {
-    placedContext(plan, xOf, left, right).forEach((item, k) => input.labelRequests.push(request(`xcontext:${k}`, item.text, item.x, y, item.w)));
+    placedContext(plan, xOf, left, right, first).forEach((item, k) => input.labelRequests.push(request(`xcontext:${k}`, item.text, item.x, y, item.w)));
     y += plan.lineH + ROW_GAP;
   }
   const partialTop = y;
