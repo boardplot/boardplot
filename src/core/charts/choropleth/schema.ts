@@ -73,7 +73,7 @@ export const overlayTonesSchema = z
   .strictObject(Object.fromEntries((['good', 'bad', 'warn', 'neutral', 'info'] as const).map((tone) =>
     [tone, z.string().trim().min(1).optional().describe(`What the ${tone} tone marks on this map.`)])))
   .optional()
-  .describe("The key words for each overlay tone, e.g. { warn: 'Behind plan' }. The overlay key shows a toned glyph among plain ones, each status and each pie share; direct labels name every overlay, so plain glyphs get no entry. A toned entry without a name prints the tone word and warns.");
+  .describe("The key words for each overlay tone, e.g. { warn: 'Behind plan' }. The overlay key shows a toned glyph among plain ones, each status and each pie share; beside keyed tones, plain Harvey balls take the overlayMeasure entry and other plain glyphs share one 'Other' entry. A toned entry without a name prints the tone word and warns.");
 
 export const overlayMeasureSchema = z.string().trim().min(1).optional()
   .describe("The measure the overlay glyphs show, e.g. 'Activation progress, %'. The overlay key prints it as a heading without a category swatch, apart from the colour key; Harvey-ball overlays without it warn geo-overlay-measure-unnamed.");

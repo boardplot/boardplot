@@ -41,6 +41,8 @@ const EN = {
   "overlayWarn": "Warning",
   "overlayNeutral": "Neutral",
   "overlayInfo": "Info",
+  // The key word for an overlay glyph without a tone, beside keyed tones.
+  "overlayPlain": "Other",
   "toneGood": "good",
   "toneBad": "bad",
   "toneWarn": "warn",
@@ -90,6 +92,7 @@ const DE: { [K in keyof typeof EN]: string } = {
   "overlayWarn": "Warnung",
   "overlayNeutral": "Neutral",
   "overlayInfo": "Info",
+  "overlayPlain": "Sonstige",
   "toneGood": "gut",
   "toneBad": "schlecht",
   "toneWarn": "Warnung",

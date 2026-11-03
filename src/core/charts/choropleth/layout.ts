@@ -739,6 +739,7 @@ export function layoutChoropleth(
         state ? geoStatePattern(state) : undefined,
         withTable?.emphasis.has(region.id) ?? false,
         withTable !== undefined,
+        hatchNodeId !== undefined,
       ));
     }
   }
@@ -807,6 +808,11 @@ export function layoutChoropleth(
     frame: mapFrame,
     toneNames: options.overlayTones,
     overlayMeasure: options.overlayMeasure,
+    regionName: (overlay) => {
+      if (!('region' in overlay.at)) return undefined;
+      const resolution = resolveGeoRegionId(idIndex, overlay.at.region);
+      return resolution.kind === 'resolved' ? fitted.regions.find((region) => region.id === resolution.id)?.anchor.name : undefined;
+    },
     resolveAnchor: (overlay, index) =>
       resolveChoroplethOverlayAnchor(overlay, index, fitted, idIndex, pack),
     occupied,
@@ -1610,11 +1616,15 @@ function resolveRegionLabelLayout(
     for (const claim of frameClaims) {
       probeOccupied.claim(claim.rect, claim.kind, claim.owner, claim.part);
     }
+    // Listed regions on a hatch or state pattern, whose labels take a halo as in the drawn map.
+    const hatchedIds = new Set<string>();
     for (const region of fitted.regions) {
       const regionVisible = region.polygons.length > 0 || visibleMarkerIds.has(region.id);
       if (regionVisible) claimRegionMark(region, probeOccupied);
       if (regionVisible && (valuesById.get(region.id) ?? null) === null) {
-        claimHatchSegments(hatchSegments(region, strokeToken(theme, 'hair')), probeOccupied, region.id);
+        const segments = hatchSegments(region, strokeToken(theme, 'hair'));
+        claimHatchSegments(segments, probeOccupied, region.id);
+        if (segments.length > 0 && valuesById.has(region.id)) hatchedIds.add(region.id);
       }
     }
     for (const boundary of fitted.boundaries) claimBoundaryMark(boundary, probeOccupied);
@@ -1635,6 +1645,7 @@ function resolveRegionLabelLayout(
           undefined,
           withTable?.emphasis.has(region.id) ?? false,
           withTable !== undefined,
+          hatchedIds.has(region.id),
         )
       );
     // Only a region not yet on a leader can add one.
@@ -1921,6 +1932,8 @@ function labelPlanForRegion(
    * else may take a callout whose leader crosses a neighbour.
    */
   crossingCallouts = false,
+  /** The region draws the no-data hatch, whose strokes cross a label as a state pattern does. */
+  noDataHatch = false,
 ): RegionLabelPlan {
   /*
    * ONE vocabulary per map, decided before placement.
@@ -1947,7 +1960,7 @@ function labelPlanForRegion(
   const compactText = regionLabelText(region, compactFont, measure, valueTexts);
   // Labels claim room in value order, so the highest values keep theirs.
   const priority = PRIORITY.interior + Math.max(0, 300 - rank);
-  const inlineCandidates = inlineRegionCandidates(region, compactText, compactFont, effectiveFill(paintColor(theme, insidePaint), pattern, theme), measure, insidePaint, pattern);
+  const inlineCandidates = inlineRegionCandidates(region, compactText, compactFont, effectiveFill(paintColor(theme, insidePaint), pattern, theme), measure, insidePaint, pattern, noDataHatch);
   const compact = regionLabelRequest(
     region,
     compactText,
@@ -2097,6 +2110,7 @@ function inlineRegionCandidates(
   measure: typeof defaultMeasurer,
   insidePaint: Paint,
   insidePattern?: import('../../types/scene').HatchPattern,
+  noDataHatch = false,
 ): LabelRequest['candidates'] {
   // A label sits on its own fill without a box, and only where it covers at
   // most LABEL_MAX_COVER of the region; else it takes a callout. The slot
@@ -2111,8 +2125,14 @@ function inlineRegionCandidates(
   const decorate = (
     candidate: Omit<LabelRequest['candidates'][number], 'insideFill' | 'needsBacking'>,
   ): LabelRequest['candidates'][number] =>
-    // Pattern strokes need the same page-colour halo as a hatched tile.
-    ({ ...candidate, insideFill, insidePaint, ...(insidePattern ? { insidePattern, needsBacking: true } : {}) });
+    // Pattern and no-data hatch strokes need the same page-colour halo as a hatched tile.
+    ({
+      ...candidate,
+      insideFill,
+      insidePaint,
+      ...(insidePattern ? { insidePattern } : {}),
+      ...(insidePattern || noDataHatch ? { needsBacking: true } : {}),
+    });
   const gap = 3;
   const center = {
     x: region.anchor.x - w / 2,
