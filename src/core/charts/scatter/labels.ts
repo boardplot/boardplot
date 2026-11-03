@@ -553,7 +553,7 @@ function pointLabelRequests(
       const built = buildSeats(text, insideFill, fine, font, block)
         // A name takes only seats where it reads as this point's
         // name (nameReading.ts); with none left, the note names the point.
-        .filter((c) => !name || nameReadsAsOwn(c.rect, c.leaderFrom ? seatLeader(c.rect, c.leaderFrom)?.d : undefined, ownMark, marks, [], font.size, bubbleMode && !/^(left|right)/.test(c.slot)));
+        .filter((c) => !name || nameReadsAsOwn(c.rect, c.leaderFrom ? seatLeader(c.rect, c.leaderFrom)?.d : undefined, ownMark, marks, [], font.size, bubbleMode && !/^(left|right)/.test(c.slot), bubbleMode));
       seatMemo.set(key, built);
       return [...built];
     };
