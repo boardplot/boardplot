@@ -594,7 +594,7 @@ const FACET_COLUMN_SHARE = 0.85;
  */
 const FACET_HEAD_TOP = 5;
 const FACET_HEAD_PULL = 11;
-/** The least space between a facet heading and a tick or value label under it. */
+/** The least space between a facet heading and the tick label under it. */
 const FACET_HEAD_TEXT_GAP = 2;
 
 /**
@@ -782,8 +782,9 @@ function layoutLegacyGrid(
     pushAll(captionNodes, band.nodes);
     pushAll(captionClaims, band.claims);
   }
-  // The pull lifts the plot under its heading; a top tick or value label it
-  // lifts into the heading takes that much pull back, with a text gap.
+  // The pull lifts the plot under its heading; a top tick label it lifts into
+  // the heading takes that much pull back, with a text gap. A tick moves with
+  // the plot top, so one more layout seats it.
   let headClash = 0;
   for (const entry of captionSlots) {
     const band = panelCaptionBand(entry.panel, theme, measure, entry.slot, highlighted, false, facetHeads && measureCaptionBand(entry.panel, theme, measure, slotWidth) > 0 ? headPull : 0);
@@ -791,11 +792,12 @@ function layoutLegacyGrid(
     entry.captionNodeId = band.nodes.find(n => n.part === 'panelCaption')?.id;
     pushAll(captionNodes, band.nodes);
     pushAll(captionClaims, band.claims);
-    if (facetHeads && headPull > 0) {
+    if (facetHeads && headPull === FACET_HEAD_PULL) {
       for (const head of band.claims) {
         const bottom = head.rect.y + head.rect.h + FACET_HEAD_TEXT_GAP;
         for (const claim of geometry.debug.occupied) {
-          if ((claim.kind !== 'axis' && claim.kind !== 'label') || claim.rect.x >= head.rect.x + head.rect.w || claim.rect.x + claim.rect.w <= head.rect.x) continue;
+          // A tick label is a text box under the heading's top; a 1 px axis line is not.
+          if (claim.kind !== 'axis' || claim.rect.h <= 2 || claim.rect.y <= head.rect.y || claim.rect.x >= head.rect.x + head.rect.w || claim.rect.x + claim.rect.w <= head.rect.x) continue;
           if (claim.rect.y < bottom && claim.rect.y + claim.rect.h > head.rect.y) headClash = Math.max(headClash, bottom - claim.rect.y);
         }
       }
