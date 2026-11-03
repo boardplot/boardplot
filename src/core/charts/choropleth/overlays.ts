@@ -190,7 +190,7 @@ export function geoOverlayLegend(
   };
   const plain = overlays.flatMap(({ glyph }) => {
     if (glyph.kind !== 'harvey' && glyph.kind !== 'icon' && glyph.kind !== 'marker') return [];
-    return [{ tone: glyph.tone, hollow: glyph.kind !== 'marker',
+    return [{ tone: glyph.tone, hollow: glyph.kind !== 'marker', harvey: glyph.kind === 'harvey',
       key: glyph.kind === 'marker' && glyph.shape === 'square' ? 'box' as const
         : glyph.kind === 'marker' && glyph.shape === 'diamond' ? 'diamond' as const : 'marker' as const }];
   });
@@ -212,13 +212,20 @@ export function geoOverlayLegend(
     }
   }
   // Beside keyed tones the plain glyph's accent is a colour too, and every
-  // colour in the key needs an entry: one entry names it, solid when a plain
-  // marker is drawn, else a ring like the plain Harvey and icon glyphs.
+  // colour in the key needs an entry. Plain Harvey balls show the named
+  // measure, so the measure entry takes their ring and the key adds no item;
+  // other plain glyphs share one 'Other' entry, solid when a plain marker is
+  // drawn, else a ring like the plain icon glyphs.
   const untoned = plain.filter(glyph => glyph.tone === undefined);
   if (keyed && untoned.length) {
-    const hollow = untoned.every(glyph => glyph.hollow);
-    items.push({ id: 'overlay-tone:plain', label: chartString(options, 'overlayPlain'), key: 'marker',
-      paint: hollow ? { token: 'background' } : tonePaint(undefined), ...(hollow ? { stroke: tonePaint(undefined) } : {}) });
+    const ring = { paint: { token: 'background' } as Paint, stroke: tonePaint(undefined) };
+    const heading = items.findIndex(item => item.id === 'overlay-measure');
+    if (heading >= 0 && untoned.every(glyph => glyph.harvey)) {
+      items[heading] = { ...items[heading]!, key: 'marker', ...ring };
+    } else {
+      items.push({ id: 'overlay-tone:plain', label: chartString(options, 'overlayPlain'), key: 'marker',
+        ...(untoned.every(glyph => glyph.hollow) ? ring : { paint: tonePaint(undefined) }) });
+    }
   }
   if (unnamed.size) {
     const tones = [...unnamed];
