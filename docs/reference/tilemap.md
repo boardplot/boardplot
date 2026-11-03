@@ -81,7 +81,7 @@ One form; its chart ID is `tilemap`.
 | scale.polarity (scale branch 2) | string | `'higherIsBetter'`, `'lowerIsBetter'` |  | Which side of the midpoint is favorable; the diverging poles paint good/bad accordingly. Default higherIsBetter. |
 | classes | integer |  |  | Number of equal-interval color classes, from 3 through 7. Explicit steps define five classes instead. |
 | steps | array |  |  | Four ascending thresholds in source units, as on cohort, defining five colour classes. A value on a threshold enters the higher class. The first and last classes are open-ended. Omit to keep the continuous ramp or equal-interval classes. Use a format that prints each threshold exactly. |
-| overlayTones | object |  |  | The key words for each overlay tone, e.g. { warn: 'Behind plan' }. The overlay key shows a toned glyph among plain ones, each status and each pie share; direct labels name every overlay, so plain glyphs get no entry. A toned entry without a name prints the tone word and warns. |
+| overlayTones | object |  |  | The key words for each overlay tone, e.g. { warn: 'Behind plan' }. The overlay key shows a toned glyph among plain ones, each status and each pie share; beside keyed tones, plain glyphs share one 'Other' entry. A toned entry without a name prints the tone word and warns. |
 | overlayTones.good | string |  |  | What the good tone marks on this map. |
 | overlayTones.bad | string |  |  | What the bad tone marks on this map. |
 | overlayTones.warn | string |  |  | What the warn tone marks on this map. |

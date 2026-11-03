@@ -89,7 +89,7 @@ One form; its chart ID is `choropleth`.
 | labelRegions | array |  |  | Explicit region ids to label, retained by the small-region filter. |
 | microStateMarkers | boolean |  |  | Draw a dot for a micro-state the data lists without a value (null); one with a value is always drawn. Default off on the world pack, the only pack whose micro-states have no outline; on the other packs it would change nothing and is refused. |
 | smallRegionArea | number |  |  | Area fraction below which automatic labels move to Small members. Default 0.001; 0 disables. Explicit label requests are retained. |
-| overlayTones | object |  |  | The key words for each overlay tone, e.g. { warn: 'Behind plan' }. The overlay key shows a toned glyph among plain ones, each status and each pie share; direct labels name every overlay, so plain glyphs get no entry. A toned entry without a name prints the tone word and warns. |
+| overlayTones | object |  |  | The key words for each overlay tone, e.g. { warn: 'Behind plan' }. The overlay key shows a toned glyph among plain ones, each status and each pie share; beside keyed tones, plain glyphs share one 'Other' entry. A toned entry without a name prints the tone word and warns. |
 | overlayTones.good | string |  |  | What the good tone marks on this map. |
 | overlayTones.bad | string |  |  | What the bad tone marks on this map. |
 | overlayTones.warn | string |  |  | What the warn tone marks on this map. |
