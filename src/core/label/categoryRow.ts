@@ -31,7 +31,7 @@ import { DATE_NAME_LANGUAGES, dateNames } from '../dateNames';
 import type { RenderTarget } from '../types/options';
 import { calendarMonths, type CalendarInfo } from '../calendarLabels';
 import { defaultMeasurer, measureText, type FontSpec, type TextMeasurer, type TextSize } from '../text';
-import { cutWithTitle, fitText } from './fitText';
+import { cutWithTitle, fitText, type FittedText } from './fitText';
 import { footnoteMark } from '../footnoteMark';
 import type { LintWarning } from '../types/scene';
 import { PRIORITY, type LabelRequest } from './solver';
@@ -302,6 +302,25 @@ const ROTATED_HEIGHT_SHARE = 0.3;
  */
 const VERTICAL_HEIGHT_SHARE = 0.5;
 const VERTICAL_MIN_WIDTH = 130;
+/** The most lines a requested vertical name stacks across its column. */
+const VERTICAL_MAX_LINES = 3;
+
+/**
+ * A vertical name on `lines` lines, at the narrowest length up to `room` that
+ * holds it (undefined when it does not fit). The search runs only between two
+ * bounds: the lines' share of the name, and the longest line it wraps to at the
+ * full room, since a narrower length breaks no line earlier.
+ */
+function stackedName(label: string, font: FontSpec, room: number, lines: number, measure: TextMeasurer): FittedText | undefined {
+  // Wrapping drops only the spaces it breaks at: a name longer than its lines' room cannot fit them.
+  const least = Math.floor((measure(label, font).width - (lines - 1) * measure(' ', font).width) / lines) - 2;
+  if (least > room) return undefined;
+  const widest = fitText(label, font, room, lines, measure);
+  if (widest.title !== undefined) return undefined;
+  const most = Math.min(room, Math.ceil(widest.w));
+  const start = Math.min(most, Math.max(least, Math.min(room, VERTICAL_MIN_WIDTH)));
+  return start >= most ? widest : fitText(label, font, start, lines, measure, { wider: most });
+}
 const ROTATED_MIN_WIDTH = 110;
 /** The most names a date row keeps once it has to thin its interval ticks. */
 const DATE_ROW_LABELS = 8;
@@ -1154,13 +1173,37 @@ function planRow(input: CategoryRowInput, bundled: boolean): CategoryRowPlan {
     // Vertical names stand side by side: the pitch holds one line and 2 px.
     const upright = rotateFonts.filter((font) => step >= font.size * (font.lineHeight ?? 1.2) + 2);
     const cap = Math.max(VERTICAL_MIN_WIDTH, Math.floor((input.plotHeight ?? 0) * VERTICAL_HEIGHT_SHARE));
-    const font = upright.find((f) => measureAll(f, 1).every((info) => info.w <= cap)) ?? upright[0];
+    // A requested vertical row (pareto) stacks a long name's lines side by
+    // side across its column, as many as the pitch holds up to three, before
+    // it cuts the name: the column's width is room the cut would leave empty.
+    const stackFor = (f: FontSpec) => input.rotate90 ? Math.max(1, Math.min(VERTICAL_MAX_LINES, Math.floor((step - 2) / (f.size * (f.lineHeight ?? 1.2))))) : 1;
+    // Worked out once per font: the font search and the chosen font read the same lines.
+    const verticalMemo = new Map<FontSpec, CategoryLabelInfo[]>();
+    const verticalAll = (f: FontSpec): CategoryLabelInfo[] => verticalMemo.get(f) ?? verticalMemo.set(f, verticalLines(f)).get(f)!;
+    const verticalLines = (f: FontSpec): CategoryLabelInfo[] => measureAll(f, 1).map((info, i) => {
+      if (info.w <= cap || stackFor(f) < 2) return info;
+      const reserve = suffixAt(i) ? measure(suffixAt(i), f).width : 0;
+      const room = Math.max(cap - reserve, 1);
+      for (let lines = 2; lines <= stackFor(f); lines++) {
+        // The narrowest length that holds the name in these lines keeps the row, and the plot's loss, short.
+        const fitted = stackedName(labels[i]!, f, room, lines, measure);
+        if (fitted) return withSuffix({ lines: fitted.lines, w: fitted.w, h: fitted.h, truncated: false }, i, f);
+      }
+      return info;
+    });
+    const font = upright.find((f) => verticalAll(f).every((info) => info.w <= cap)) ?? upright[0];
     if (font) {
       const cutNames: string[] = [];
-      const infos = measureAll(font, 1).map((info, i) => {
+      const stack = stackFor(font);
+      const infos = verticalAll(font).map((info, i) => {
         if (info.w <= cap) return info;
-        const cut = cutWithTitle(info.lines[0]!, font, cap, measure);
         cutNames.push(labels[i]!);
+        if (stack > 1) {
+          // The cut keeps every line the column holds; the last one ends in the ellipsis.
+          const fitted = fitText(labels[i]!, font, cap, stack, measure);
+          return { ...info, lines: fitted.lines, w: Math.min(cap, fitted.w), h: fitted.h, truncated: true, ...(fitted.title !== undefined ? { title: fitted.title } : {}) };
+        }
+        const cut = cutWithTitle(info.lines[0]!, font, cap, measure);
         return { ...info, lines: [cut.text], w: cap, truncated: true, ...(cut.title !== undefined ? { title: cut.title } : {}) };
       });
       return plan(font, infos, all, 'rotate', {
@@ -1338,14 +1381,15 @@ export function rotatedLeftOverhang(plan: CategoryRowPlan, centers: readonly num
  * column (the baseline sits half a cap height right of the centre). The box
  * is the name's own column strip, so neighbours never claim each other.
  */
-export function verticalNameRect(centerX: number, rowTop: number, width: number, font: FontSpec): { x: number; y: number; w: number; h: number } {
+export function verticalNameRect(centerX: number, rowTop: number, width: number, font: FontSpec, lines = 1): { x: number; y: number; w: number; h: number } {
   const lineH = font.size * (font.lineHeight ?? 1.2);
-  const pivotX = centerX + (font.size * VERTICAL_CAP_SHARE) / 2;
+  // Stacked lines run rightward from the first one's baseline, so the block shifts left by half the added lines.
+  const pivotX = centerX + (font.size * VERTICAL_CAP_SHARE) / 2 - ((lines - 1) * lineH) / 2;
   // The box starts 4 px under the axis, clear of the axis claim and the
   // solver's 2 px pad; the name's top then keeps about 9.5 px from the baseline,
   // far more than the 1 px line-touch distance.
   const pivotY = rowTop + 4 + (lineH * SIN45) / 2;
-  return { x: pivotX - lineH, y: pivotY - (lineH * SIN45) / 2, w: lineH, h: (lineH * SIN45) / 2 + width };
+  return { x: pivotX - lineH, y: pivotY - (lineH * SIN45) / 2, w: lineH * lines, h: (lineH * SIN45) / 2 + width };
 }
 
 /** Cap height as a share of the font size (Helvetica/Arial): a vertical name centres its capitals on the column. */

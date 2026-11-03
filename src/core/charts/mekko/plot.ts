@@ -323,6 +323,28 @@ export function mekkoPlotArea(env: MekkoEnv, domain: MekkoDomain, frame: FrameRe
         };
         unnamed = unnamed.filter((ci) => !seated.includes(ci));
       }
+      // Names one upper tier cannot hold stack on more tiers, each on a leader
+      // that passes clear of the names under it (dense-10-columns).
+      if (unnamed.length > 0) {
+        const upper = cats.flatMap((_, ci) => (seated.includes(ci) || unnamed.includes(ci) ? [ci] : []));
+        const lineH = font.size * (font.lineHeight ?? 1.2);
+        const base = cats.flatMap((_, ci) => {
+          if (!catPlan.keep[ci] || seated.includes(ci) || catPlan.infos[ci]!.w === 0) return [];
+          const left = ci === last ? Math.min(catPlan.x(ci), plotX0 + plotW0 + gutter - catPlan.infos[ci]!.w) : catPlan.x(ci);
+          return [{ left, right: left + catPlan.infos[ci]!.w }];
+        });
+        const stack = stackUpperNames(upper, tier.width, xEdge, base, plotX0, plotX0 + plotW0 + gutter);
+        if (stack) {
+          namePack = { ...tier, left: tier.left.map((left, ci) => stack.left[ci] ?? left), row: cats.map((_, ci) => stack.row[ci] ?? (unnamed.includes(ci) ? -1 : 0)) };
+          catPlan = {
+            ...catPlan,
+            rowHeight: Math.max(catPlan.rowHeight, lineH),
+            keep: catPlan.keep.map((kept, ci) => kept || upper.includes(ci)),
+            infos: catPlan.infos.map((info, ci) => (upper.includes(ci) ? { lines: [texts[ci]!], w: tier.width[ci]!, h: lineH, truncated: false } : info)),
+          };
+          unnamed = [];
+        }
+      }
     }
   }
   if (showCats) pushAll(warnings, catPlan.warnings);
@@ -352,7 +374,10 @@ export function mekkoPlotArea(env: MekkoEnv, domain: MekkoDomain, frame: FrameRe
   const widthTitlePlan = planValueAxisTitle(widthTitleText, theme, measure, frame.plot.w, 2);
   const widthTitleH = widthTitlePlan ? widthTitlePlan.height + 4 : 0;
   // A second tier of names takes one more row of name and width.
-  const tierH = namePack?.row.includes(1) ? catPlan.rowHeight + widthLineH + (catsOnTop ? UPPER_TIER_GAP : 2) : 0;
+  // Each further upper tier takes one more line of names.
+  const upperTiers = namePack ? Math.max(0, ...namePack.row) : 0;
+  const tierH = namePack?.row.includes(1) ? catPlan.rowHeight + widthLineH + (catsOnTop ? UPPER_TIER_GAP : 2)
+    + Math.max(0, upperTiers - 1) * (catPlan.font.size * (catPlan.font.lineHeight ?? 1.2) + UPPER_TIER_GAP) : 0;
   const categoryTickReserve = showCats ? catPlan.rowHeight + widthLineH + tierH + widthTitleH + (catsOnTop ? 4 : 8) : 0;
   // percent: name (≤2 lines) + bold total stacked above the 100% edge;
   // unit/bar: totals float above varying column tops (headroom already in domain)
@@ -523,6 +548,138 @@ function packNames(
     }
   }
   return best.pack;
+}
+
+/** The most upper tiers a percent mekko stacks its names on. */
+export const MAX_UPPER_TIERS = 3;
+/** At most this many upper names are stacked by search. */
+const STACK_SEARCH_MAX = 6;
+/** Air a leader keeps from a name it passes, as upperLeader in labels.ts. */
+const LEADER_NAME_AIR = 3;
+
+/**
+ * Percent: the upper names on up to MAX_UPPER_TIERS tiers over the first one.
+ * Each name centres over its own column, keeps NAME_GAP to its tier
+ * neighbours, and has a vertical leader line inside its column and its name
+ * that passes clear of every name on a lower tier. The search takes the
+ * fewest tiers, then the fewest names on the higher tiers. Undefined where no
+ * stack names them all, or there are more than STACK_SEARCH_MAX names.
+ */
+function stackUpperNames(
+  upper: readonly number[],
+  width: readonly number[],
+  xEdge: readonly number[],
+  base: readonly { left: number; right: number }[],
+  lo: number,
+  hi: number,
+): UpperStack | undefined {
+  if (upper.length < 2 || upper.length > STACK_SEARCH_MAX) return undefined;
+  // The layout passes and the height search ask for the same stack again (eight times in dense-10-columns).
+  const key = JSON.stringify([upper, upper.map((ci) => width[ci]), xEdge, base, lo, hi]);
+  if (stackMemo.has(key)) return stackMemo.get(key);
+  if (stackMemo.size >= STACK_MEMO_MAX) stackMemo.clear();
+  const stack = searchUpperStack(upper, width, xEdge, base, lo, hi);
+  stackMemo.set(key, stack);
+  return stack;
+}
+
+/**
+ * The least distance, as a share of `half`, from `centre` to a whole-px x in
+ * [from, to] that keeps LEADER_NAME_AIR from every name; undefined where none
+ * does. The nearest such x lies at the centre or at an end of a clear run: the
+ * range's ends, or one px past a name's edge.
+ */
+function nearestClearLeader(from: number, to: number, centre: number, half: number, under: readonly { left: number; right: number }[]): number | undefined {
+  if (from > to) return undefined;
+  let best: number | undefined;
+  const at = Math.min(to, Math.max(from, Math.floor(centre)));
+  for (let j = -4; j < 2 * under.length; j++) {
+    const x = j === -4 ? from : j === -3 ? to : j === -2 ? at : j === -1 ? Math.min(to, at + 1)
+      : j % 2 === 0 ? Math.ceil(under[j >> 1]!.left - LEADER_NAME_AIR) - 1 : Math.floor(under[j >> 1]!.right + LEADER_NAME_AIR) + 1;
+    if (x < from || x > to) continue;
+    let clear = true;
+    for (const name of under) if (x >= name.left - LEADER_NAME_AIR && x <= name.right + LEADER_NAME_AIR) { clear = false; break; }
+    if (clear) best = Math.min(best ?? Infinity, Math.abs(x - centre) / half);
+  }
+  return best;
+}
+
+type UpperStack = { readonly row: Readonly<Record<number, number>>; readonly left: Readonly<Record<number, number>> };
+/** Stacks by their inputs: the search is a pure function of them. Cleared when full, so it stays small. */
+const stackMemo = new Map<string, UpperStack | undefined>();
+const STACK_MEMO_MAX = 64;
+
+function searchUpperStack(
+  upper: readonly number[],
+  width: readonly number[],
+  xEdge: readonly number[],
+  base: readonly { left: number; right: number }[],
+  lo: number,
+  hi: number,
+): UpperStack | undefined {
+  const n = upper.length;
+  const minL = upper.map((ci) => Math.max(lo, xEdge[ci]! - width[ci]! / 2));
+  const maxL = upper.map((ci) => Math.min(hi - width[ci]!, xEdge[ci + 1]! - width[ci]! / 2));
+  if (upper.some((_, k) => minL[k]! > maxL[k]! + 0.01)) return undefined;
+  // The leader's distance from its column's centre, as a share of the half width; undefined where no line is clear.
+  const leaderOff = (k: number, left: number, under: readonly { left: number; right: number }[]): number | undefined => {
+    const ci = upper[k]!;
+    const centre = (xEdge[ci]! + xEdge[ci + 1]!) / 2, half = Math.max(1, (xEdge[ci + 1]! - xEdge[ci]!) / 2);
+    const from = Math.ceil(Math.max(xEdge[ci]! + 1, left + 2));
+    const to = Math.floor(Math.min(xEdge[ci + 1]! - 1, left + width[ci]! - 2));
+    return nearestClearLeader(from, to, centre, half, under);
+  };
+  // Seats each tier left to right, lowest tier first, on its lowest, centred or highest seat after its neighbour.
+  const place = (tierOf: readonly number[], tiers: number): { left: number[]; off: number } | undefined => {
+    const left: number[] = new Array(n).fill(0);
+    const offs: number[] = new Array(n).fill(0);
+    const byTier = Array.from({ length: tiers }, (_, t) => upper.map((_, k) => k).filter((k) => tierOf[k] === t + 1));
+    const under: { left: number; right: number }[][] = [[...base]];
+    const seatTier = (t: number): boolean => {
+      if (t === tiers) return true;
+      const ks = byTier[t]!;
+      const go = (i: number, prevRight: number): boolean => {
+        if (i === ks.length) {
+          under[t + 1] = [...under[t]!, ...ks.map((k) => ({ left: left[k]!, right: left[k]! + width[upper[k]!]! }))];
+          return seatTier(t + 1);
+        }
+        const k = ks[i]!;
+        const low = Math.max(minL[k]!, prevRight + NAME_GAP);
+        if (low > maxL[k]! + 0.01) return false;
+        const centred = Math.min(Math.max((xEdge[upper[k]!]! + xEdge[upper[k]! + 1]!) / 2 - width[upper[k]!]! / 2, low), maxL[k]!);
+        const high = maxL[k]!;
+        for (let seat = 0; seat < 3; seat++) {
+          // The lowest, centred and highest seats, each once.
+          const at = seat === 0 ? low : seat === 1 ? centred : high;
+          if ((seat === 1 && at === low) || (seat === 2 && (at === low || at === centred))) continue;
+          const off = leaderOff(k, at, under[t]!);
+          if (off === undefined) continue;
+          left[k] = at;
+          offs[k] = off;
+          if (go(i + 1, at + width[upper[k]!]!)) return true;
+        }
+        return false;
+      };
+      return go(0, Number.NEGATIVE_INFINITY);
+    };
+    return seatTier(0) ? { left, off: offs.reduce((sum, off) => sum + off, 0) } : undefined;
+  };
+  for (let tiers = 2; tiers <= MAX_UPPER_TIERS; tiers++) {
+    // Every assignment of the names to the tiers: the leaders nearest their
+    // column centres win (a leader at a column's edge reads as the neighbour's),
+    // then the fewest names on the higher tiers.
+    let best: { tierOf: number[]; left: number[]; score: number[] } | undefined;
+    for (let code = 0; code < tiers ** n; code++) {
+      const tierOf = upper.map((_, k) => Math.floor(code / tiers ** k) % tiers + 1);
+      if (!tierOf.includes(tiers)) continue;
+      const seated = place(tierOf, tiers);
+      if (!seated) continue;
+      const score = [seated.off, tierOf.reduce((sum, t) => sum + t, 0)];
+      if (!best || score[0]! < best.score[0]! - 1e-9 || (Math.abs(score[0]! - best.score[0]!) <= 1e-9 && score[1]! < best.score[1]!)) best = { tierOf, left: seated.left, score };
+    }
+    if (best) return { row: Object.fromEntries(upper.map((ci, k) => [ci, best!.tierOf[k]!])), left: Object.fromEntries(upper.map((ci, k) => [ci, best!.left[k]!])) };
+  }
+  return undefined;
 }
 
 /** The widest drawn column that can hold shares, or -1: its segment labels name their series. */

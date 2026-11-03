@@ -331,9 +331,11 @@ function categoryLabel(ctx: LabelCtx, ci: number, visibleCol: boolean, edges: { 
   const packed = (slot: string, y: number, penalty: number): SlotCandidate => ({ slot, rect: { x: pack!.left[ci]!, y, w: info.w, h: info.h }, penalty });
   // Percent: a name that did not fit its column stands on a second tier over the first names and their totals.
   const upperY = edges.top - (area.showTotals ? area.totalH + 4 : 2) - 2 - (catPlan.rowHeight + area.widthLineH) - UPPER_TIER_GAP - info.h;
+  // A stacked name stands one line and the tier gap higher for each tier under it.
+  const tierUp = Math.max(0, (pack?.row[ci] ?? 0) - 1) * (info.h + UPPER_TIER_GAP);
   const candidates: SlotCandidate[] = area.catsOnTop
-    ? pack?.row[ci] === 1
-      ? [{ ...packed('aboveTier', upperY, 0), ...upperLeader(ctx, ci, info.w, edges) }]
+    ? (pack?.row[ci] ?? 0) >= 1
+      ? [{ ...packed('aboveTier', upperY - tierUp, 0), ...upperLeader(ctx, ci, info.w, edges) }]
       : [at('aboveColumn', aboveY, 0), ...(dateNumericTicks ? [] : [at('aboveColumnShifted', aboveY - catPlan.rowHeight, 1)])]
     : pack
       ? (pack.row[ci] === 1 ? [{ ...packed('belowShifted', area.catRowY + info.h + 2, 0), ...tierLeader(ctx, ci, info.w, edges) }] : [packed('below', area.catRowY, 0), packed('belowShifted', area.catRowY + info.h + 2, 1)])
@@ -347,7 +349,7 @@ function categoryLabel(ctx: LabelCtx, ci: number, visibleCol: boolean, edges: { 
     owner: { categoryId: c.id },
     text: c.label ?? c.id,
     lines: info.lines,
-    ...(width || (pack && !area.catsOnTop) || pack?.row[ci] === 1 ? { align: 'middle' as const } : categoryLineAlign(catPlan, ci)),
+    ...(width || (pack && !area.catsOnTop) || (pack?.row[ci] ?? 0) >= 1 ? { align: 'middle' as const } : categoryLineAlign(catPlan, ci)),
     ...(info.title !== undefined ? { title: info.title } : {}),
     font: catPlan.font,
     priority: PRIORITY.endpoint,
@@ -387,8 +389,11 @@ function upperLeader(ctx: LabelCtx, ci: number, w: number, edges: { top: number;
   const lo = Math.max(area.xEdge[ci]! + 1, left + 2);
   const hi = Math.min(area.xEdge[ci + 1]! - 1, left + w - 2);
   if (lo > hi) return {};
+  // The names under this one: the first tier, and the upper tiers below its own.
   const first = domain.cats.flatMap((_, cj) => {
-    if (cj === ci || pack.row[cj] !== 0 || !area.catPlan.keep[cj] || area.catPlan.infos[cj]!.w === 0) return [];
+    if (cj === ci || !area.catPlan.keep[cj] || area.catPlan.infos[cj]!.w === 0) return [];
+    if (pack.row[cj]! >= 1 && pack.row[cj]! < pack.row[ci]!) return [{ left: pack.left[cj]!, right: pack.left[cj]! + pack.width[cj]! }];
+    if (pack.row[cj] !== 0) return [];
     const block = nameBlock(ctx, cj);
     return [{ left: block.left, right: block.left + block.info.w }];
   });
