@@ -12,7 +12,7 @@ import { rectContains, rectsOverlap } from '../../geometry';
 import { formatAutomaticNumber, seriesValueFormatter } from '../../format';
 import { wrapText } from '../../text';
 import { labelCtx, PRIORITY, seatLeader, type LabelRequest, type SlotCandidate, type SolveCtx } from '../../label/solver';
-import { nameReadsAsOwn } from './nameReading';
+import { middleNearerOther, nameReadsAsOwn } from './nameReading';
 import type { LintWarning, Paint } from '../../types/scene';
 import { HIGHLIGHT_RING_GAP, quadrantBoxRect, type PlacedPoint, type ScatterMarkGeometry } from './marks';
 import {
@@ -39,6 +39,8 @@ const NAME_GAP = 6;
 
 /** Clear air between a label and a rule it keeps to one side of: the rule's 1 px half-width, the 2 px label pad and 1 px. */
 const RULE_GAP = 4;
+/** The tier of a bubble name seat between two bubbles: after every other seat (pointLabelRequests). */
+const BETWEEN_TIER = 7;
 const RING2_GAP = 16;
 /** Two outer rings for a crowded cluster, both on a leader. */
 const RING3_GAP = 30;
@@ -553,9 +555,16 @@ function pointLabelRequests(
       const built = buildSeats(text, insideFill, fine, font, block)
         // A name takes only seats where it reads as this point's
         // name (nameReading.ts); with none left, the note names the point.
-        .filter((c) => !name || nameReadsAsOwn(c.rect, c.leaderFrom ? seatLeader(c.rect, c.leaderFrom)?.d : undefined, ownMark, marks, [], font.size, bubbleMode && !/^(left|right)/.test(c.slot), bubbleMode));
-      seatMemo.set(key, built);
-      return [...built];
+        .filter((c) => !name || nameReadsAsOwn(c.rect, c.leaderFrom ? seatLeader(c.rect, c.leaderFrom)?.d : undefined, ownMark, marks, [], font.size, bubbleMode));
+      // A bubble name over, under or slanted off its bubble with its middle
+      // nearer a neighbour stands between the two: such a seat comes after
+      // every other seat, so the name takes it only where it would be hidden.
+      const between = (c: SlotCandidate) => name && bubbleMode && !c.leaderFrom && !/^(left|right)/.test(c.slot) && middleNearerOther(c.rect, ownMark, marks, font.size);
+      const ordered = name && bubbleMode
+        ? [...built.filter((c) => !between(c)), ...built.filter(between).map((c) => ({ ...c, penalty: BETWEEN_TIER }))]
+        : built;
+      seatMemo.set(key, ordered);
+      return [...ordered];
     };
     const buildSeats = (text: string, insideFill: string | undefined, fine: boolean, font: typeof area.fonts.label, block?: { width: number; height: number }): SlotCandidate[] => {
       // A name never sits in a tick row, under the plot or left of it.

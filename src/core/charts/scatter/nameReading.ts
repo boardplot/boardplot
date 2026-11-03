@@ -16,7 +16,7 @@ import { inkBox, leaderCrosses, nearestIsOwn, type NameMark } from '../../label/
  * mark is its own, or when a leader joins them that crosses no other mark
  * and no text.
  */
-export function nameReadsAsOwn(rect: Rect, leader: string | undefined, own: NameMark, marks: readonly NameMark[], texts: readonly Rect[] = [], fontSize?: number, centred = false, nearer = true): boolean {
+export function nameReadsAsOwn(rect: Rect, leader: string | undefined, own: NameMark, marks: readonly NameMark[], texts: readonly Rect[] = [], fontSize?: number, nearer = true): boolean {
   // A mark whose centre lies inside the own mark, and the own centre inside it,
   // draws as one clump with it: no seat is nearer one of them and no leader
   // leaves the clump without crossing the other, so the rule reads the clump
@@ -30,12 +30,18 @@ export function nameReadsAsOwn(rect: Rect, leader: string | undefined, own: Name
   // height search through extra layouts (dense-40-thinning).
   const margin = fontSize === undefined || !nearer ? 0 : NEARER_SHARE * fontSize;
   const ink = inkBox(rect, fontSize);
-  if (!nearestIsOwn(ink, own, widened(clump, own, margin))) return false;
-  // A name over, under or slanted off a bubble reaches sideways, along the
-  // bubble's row: its middle is nearer its own bubble too, or it stands over a
-  // neighbour (a name slid between two bubbles). A name beside its mark starts at the mark.
-  if (!centred) return true;
-  return nearestIsOwn({ x: ink.x + ink.w / 2, y: ink.y + ink.h / 2, w: 0, h: 0 }, own, clump.apart);
+  return nearestIsOwn(ink, own, widened(clump, own, margin));
+}
+
+/**
+ * Whether a name with no leader has its middle nearer another mark than its
+ * own. A name over, under or slanted off a bubble reaches sideways, along the
+ * bubble's row: with its middle nearer a neighbour it stands between the two
+ * (a name slid between two bubbles). A name beside its mark starts at the mark.
+ */
+export function middleNearerOther(rect: Rect, own: NameMark, marks: readonly NameMark[], fontSize?: number): boolean {
+  const ink = inkBox(rect, fontSize);
+  return !nearestIsOwn({ x: ink.x + ink.w / 2, y: ink.y + ink.h / 2, w: 0, h: 0 }, own, clumpFor(own, marks).apart);
 }
 
 interface Clump { apart: NameMark[]; widened: Map<number, NameMark[]> }
