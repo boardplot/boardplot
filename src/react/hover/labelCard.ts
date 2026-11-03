@@ -365,6 +365,20 @@ function rowFont(row: LabelCardRow, theme: Theme): FontSpec {
     row.kind === 'title' || row.pointed || (row.kind === 'value' && row.value === undefined) ? 600 : 400);
 }
 
+/** Claims a layout makes only for its own label solver, such as a funnel's row lanes: they draw nothing a card could hide. */
+const SOLVER_CLAIMS = new Set(['funnel-row-lane']);
+
+/**
+ * Where the marks of a record's owner cross, for a record with no anchor of
+ * its own: a table cell sits where its row's band meets its column's band.
+ */
+function ownerCrossing(record: InteractionRecord, occupied: readonly OccupiedRect[]): Rect | undefined {
+  const parts = occupied.filter(item => item.kind === 'mark' && ownerContains(record.target.owner, item.owner));
+  let crossing = parts[0]?.rect;
+  for (const part of parts.slice(1)) crossing = crossing && intersect(crossing, part.rect);
+  return crossing;
+}
+
 /** Cost per CSS pixel of card area outside the chart frame. A filled mark costs 10. */
 const OUTSIDE_CHART_WEIGHT = 1;
 
@@ -384,9 +398,13 @@ interface CardSlots extends Array<CardSlot> {
   floor?: (slot: CardSlot) => number;
 }
 
-/** Place, flip, then shift along an edge. Distances are viewport CSS pixels. */
+/**
+ * Place, flip, then shift along an edge: to the mark's and the frame's ends,
+ * and just past each forbidden box and each text in the seat's way.
+ * Distances are viewport CSS pixels.
+ */
 function besideSlots(target: Rect, width: number, height: number, boundary: Rect,
-  input: Pick<LabelCardInput, 'band' | 'pointer' | 'slots' | 'direction' | 'forbidden'>): CardSlot[] {
+  input: Pick<LabelCardInput, 'band' | 'pointer' | 'slots' | 'direction' | 'forbidden'>, texts: readonly Rect[] = []): CardSlot[] {
   const center = rectCenter(target);
   const centerX = input.band === 'y' && input.pointer ? input.pointer.x : center.x;
   const centerY = input.band && input.pointer ? input.pointer.y : center.y;
@@ -415,9 +433,13 @@ function besideSlots(target: Rect, width: number, height: number, boundary: Rect
     const axis = horizontal ? 'x' : 'y';
     const size = horizontal ? 'w' : 'h';
     const length = horizontal ? width : height;
+    const across = horizontal ? 'y' : 'x';
+    const depth = horizontal ? 'h' : 'w';
+    const inWay = (rect: Rect) => rect[across] < raw.rect[across] + raw.rect[depth] && raw.rect[across] < rect[across] + rect[depth];
     const shifts = [target[axis], target[axis] + target[size] - length,
       boundary[axis], boundary[axis] + boundary[size] - length,
-      ...(input.forbidden ?? []).flatMap(rect => [rect[axis] - length, rect[axis] + rect[size]])];
+      ...(input.forbidden ?? []).flatMap(rect => [rect[axis] - length, rect[axis] + rect[size]]),
+      ...texts.filter(inWay).flatMap(rect => [rect[axis] - length - TEXT_GAP, rect[axis] + rect[size] + TEXT_GAP])];
     return [...(raw.phase === 2 ? [raw] : []), ...shifts.map((value, shift) => seat(side, index, gap, shift + 1, value)).filter(slot => slot.fits)];
   }));
   return candidates;
@@ -433,12 +455,12 @@ export function tableCardSlots(target: Rect, boundary: Rect, width: number, heig
  * Cost orders a phase. Only when every seat fails may hard overlap win. A
  * seat is safe only when it is clear of `forbidden` and of the pointer. A
  * direct seat, which wins before cost is compared, must also pass `clear`.
- * A safe seat that covers no text (`readable`) wins over one that does,
- * whatever its phase: a covered number is lost to the reader.
+ * A safe seat that covers fewer texts (`hidden`) wins over one that covers
+ * more, whatever its phase: a covered number is lost to the reader.
  */
 export function selectCardSlot(candidates: CardSlots, forbidden: readonly Rect[], cost: (slot: CardSlot) => number,
-  pointer?: Point, clear?: (slot: CardSlot) => boolean, readable?: (slot: CardSlot) => boolean): CardSlot {
-  type Score = { slot: CardSlot; overlap: number; cost: number; safe: boolean; readable: boolean };
+  pointer?: Point, clear?: (slot: CardSlot) => boolean, hidden?: (slot: CardSlot) => number): CardSlot {
+  type Score = { slot: CardSlot; overlap: number; cost: number; safe: boolean; hidden: number };
   const scores = new Map<string, Score>();
   const score = (slot: CardSlot): Score => {
     const { x, y, w, h } = slot.rect;
@@ -448,14 +470,14 @@ export function selectCardSlot(candidates: CardSlots, forbidden: readonly Rect[]
     const overlap = activeCoverCost(slot.rect, forbidden);
     const result = { slot, overlap, cost: cost(slot), safe: slot.fits !== false && overlap === 0
       && !(pointer && rectContains(slot.rect, { ...pointer, w: 0, h: 0 }, 0)) && !(slot.phase! < 2 && clear?.(slot) === false),
-      readable: readable?.(slot) !== false };
+      hidden: hidden?.(slot) ?? 0 };
     scores.set(key, result);
     return result;
   };
   // A clear seat (phase 3) competes on cost with the shifted seats (phase 2).
   const phase = (score: Score) => Math.min(score.slot.phase ?? 0, 2);
   const better = (a: Score, b: Score) => a.safe !== b.safe ? a.safe
-    : a.safe && a.readable !== b.readable ? a.readable
+    : a.safe && a.hidden !== b.hidden ? a.hidden < b.hidden
     : (a.safe ? phase(a) - phase(b) : a.overlap - b.overlap) < 0
       || (a.safe ? phase(a) === phase(b) : a.overlap === b.overlap)
         && (a.cost < b.cost || a.cost === b.cost && a.slot.penalty < b.slot.penalty);
@@ -474,11 +496,11 @@ export function selectCardSlot(candidates: CardSlots, forbidden: readonly Rect[]
     evaluate(shifted);
     candidates.push(...shifted);
   }
-  if (!(best?.safe && best.readable && candidates.clean?.(best.slot)) && candidates.clear) {
+  if (!(best?.safe && best.hidden === 0 && candidates.clean?.(best.slot)) && candidates.clear) {
     // Nearest first: a seat farther from the pointer than the best cost cannot win, since distance is part of the cost.
     for (const slot of candidates.clear()) {
-      if (best?.safe && best.readable && slot.penalty > best.cost) break;
-      if (best?.safe && best.readable && (candidates.floor?.(slot) ?? 0) > best.cost) continue;
+      if (best?.safe && best.hidden === 0 && slot.penalty > best.cost) break;
+      if (best?.safe && best.hidden === 0 && (candidates.floor?.(slot) ?? 0) > best.cost) continue;
       const entry = score(slot);
       if (!best || better(entry, best)) best = entry;
     }
@@ -494,15 +516,17 @@ export function activeCoverCost(rect: Rect, active: readonly Rect[] = []): numbe
 
 /**
  * Seats in `frame` that keep `TEXT_GAP` from every text box, nearest to
- * `pointer` first. Each row starts at a frame edge or at a text edge; in a
- * row, each run of free width offers its two ends and the spot nearest the
- * pointer. The penalty is the distance, which the cost also counts.
+ * `pointer` first. Each row starts at a frame edge, at a text edge or a
+ * beside gap above or below the mark; in a row, each run of free width offers
+ * its two ends and the spot nearest the pointer. The penalty is the distance,
+ * which the cost also counts.
  */
-function clearSlots(frame: Rect, width: number, height: number, texts: readonly Rect[], pointer: Point): CardSlot[] {
+function clearSlots(frame: Rect, width: number, height: number, texts: readonly Rect[], pointer: Point, target: Rect): CardSlot[] {
   if (frame.w < width || frame.h < height) return [];
   const bottom = frame.y + frame.h - height;
   const rows = new Set([frame.y, bottom, Math.max(frame.y, Math.min(bottom, pointer.y - height / 2)),
-    ...texts.flatMap(text => [text.y + text.h + TEXT_GAP, text.y - TEXT_GAP - height]).filter(y => y >= frame.y && y <= bottom)]);
+    ...[target.y + target.h + 8, target.y - 8 - height, ...texts.flatMap(text => [text.y + text.h + TEXT_GAP, text.y - TEXT_GAP - height])]
+      .filter(y => y >= frame.y && y <= bottom)]);
   const slots = new Map<string, CardSlot>();
   for (const y of rows) {
     const blocked = texts.filter(text => text.y - TEXT_GAP < y + height && y < text.y + text.h + TEXT_GAP)
@@ -762,28 +786,34 @@ export function layoutLabelCardContent(input: LabelCardInput, content: LabelCard
  * The label card and a host's own card content share this one rule.
  */
 export function placeLabelCard(input: LabelCardInput, width: number, height: number): Pick<LabelCardLayout, 'placement' | 'rect' | 'side' | 'decisions'> {
-  const anchor = input.target ?? input.record.anchor;
+  const occupied = input.occupied.filter(item => !SOLVER_CLAIMS.has(item.part ?? ''));
+  // A record with no anchor of its own at a row and column crossing is a table cell: its card takes a table cell's seats.
+  const cell = input.target ?? input.record.anchor ? undefined : ownerCrossing(input.record, occupied);
+  const anchor = input.target ?? input.record.anchor ?? cell;
   const target = anchor ? { w: 0, h: 0, ...anchor } : undefined;
   // A record scrolled out of the viewport keeps its card in the chart frame, at the record, not at the screen edge.
   const viewport = input.boundary && (!target || !(input.boundary.w > 0 && input.boundary.h > 0) || boxGap(target, input.boundary) === 0);
-  const table = input.slots === 'table';
+  const table = input.slots === 'table' || cell !== undefined;
   // The chart's own frame keeps an inset, as the viewport boundary does, so a card never touches the chart's edge.
   const boundary = viewport ? input.boundary! : insetFrame(input.chart ?? input.canvas, table ? 0 : FRAME_INSET, width, height);
   const frame = { ...boundary, w: Math.max(0, boundary.w) || width, h: Math.max(0, boundary.h) || height };
   const coversPointer = (rect: Rect) => input.pointer !== undefined && rectContains(rect, { ...input.pointer, w: 0, h: 0 }, 0);
-  const candidates: CardSlot[] = target ? input.slots === 'table'
-    ? tableCardSlots(target, frame, width, height, input) : besideSlots(target, width, height, frame, input) : frameSlots(frame, width, height);
-  const covered = (rect: Rect) => cardCoverCost(rect, input.occupied, input.slots === 'table');
+  // Text the card would hide: labels, notes, axis and frame text. A rule of an axis is no text.
+  const texts = table ? [] : occupied.filter(item => item.kind !== 'mark' && item.kind !== 'reserved' && Math.min(item.rect.w, item.rect.h) > 2);
+  const candidates: CardSlot[] = target ? table
+    ? tableCardSlots(target, frame, width, height, input) : besideSlots(target, width, height, frame, input, texts.map(item => item.rect)) : frameSlots(frame, width, height);
+  const covered = (rect: Rect) => cardCoverCost(rect, occupied, table);
   // The card explains the marks, so a direct seat over a filled mark does not win before cost is compared.
-  const coversFilledMark = (rect: Rect) => input.occupied.some(item => item.kind === 'mark' && item.filled !== false && overlapArea(rect, item.rect) > 0);
+  const coversFilledMark = (rect: Rect) => occupied.some(item => item.kind === 'mark' && item.filled !== false && overlapArea(rect, item.rect) > 0);
   // The viewport bounds the card and the chart frame is only a preference: area outside the frame costs less than covering a mark.
   const chart = input.chart ?? input.canvas;
-  const outsideChart = (rect: Rect) => input.slots === 'table' ? 0 : (rect.w * rect.h - overlapArea(rect, chart)) * OUTSIDE_CHART_WEIGHT;
-  // Text the card would hide: labels, notes, axis and frame text. A rule of an axis is no text.
-  const texts = table ? [] : input.occupied.filter(item => item.kind !== 'mark' && item.kind !== 'reserved' && Math.min(item.rect.w, item.rect.h) > 2);
+  const outsideChart = (rect: Rect) => table ? 0 : (rect.w * rect.h - overlapArea(rect, chart)) * OUTSIDE_CHART_WEIGHT;
   const coversText = (rect: Rect) => texts.some(item => overlapArea(rect, item.rect) > 0);
-  // The hovered record's own labels stay readable beside its card, as the engine's active labels do.
-  const own = texts.filter(item => ownerContains(item.owner, input.record.target.owner)).map(item => item.rect);
+  const hiddenTexts = (rect: Rect) => texts.reduce((count, item) => count + (overlapArea(rect, item.rect) > 0 ? 1 : 0), 0);
+  // The hovered record's own labels stay readable beside its card, as the engine's active labels do. So do
+  // the chart's own words, which no record owns: its title, notes, headers and legend.
+  const own = texts.filter(item => item.kind === 'frame' || item.kind === 'legend' || Object.keys(item.owner).length === 0
+    || ownerContains(item.owner, input.record.target.owner)).map(item => item.rect);
   const active = [...(input.forbidden ?? []), ...own];
   const exclusion = target ? { ...target, w: target.w || 0.001, h: target.h || 0.001 } : undefined;
   const forbidden = [...(exclusion ? [exclusion] : []), ...(table ? [] : active)];
@@ -795,12 +825,12 @@ export function placeLabelCard(input: LabelCardInput, width: number, height: num
   if (target && !table) {
     // Inside the boundary and at most one card size beyond the chart: the seats clear of text that the seats beside the mark could not find.
     const area = intersect({ x: chart.x - width, y: chart.y - height, w: chart.w + 2 * width, h: chart.h + 2 * height }, frame);
-    (candidates as CardSlots).clear = () => area ? clearSlots(area, width, height, texts.map(item => item.rect), pointer) : [];
+    (candidates as CardSlots).clear = () => area ? clearSlots(area, width, height, texts.map(item => item.rect), pointer, target) : [];
     (candidates as CardSlots).clean = slot => covered(slot.rect) === 0 && !coversText(slot.rect);
     (candidates as CardSlots).floor = slot => slot.penalty + outsideChart(slot.rect);
   }
   const selected = selectCardSlot(candidates, forbidden, cost, input.pointer, table ? undefined : slot => !coversFilledMark(slot.rect) && !coversText(slot.rect),
-    table ? undefined : slot => !coversText(slot.rect));
+    table ? undefined : slot => hiddenTexts(slot.rect));
   const rect = selected.rect;
   const placement = covered(rect) > 0 || activeCoverCost(rect, forbidden) > 0 || activeCoverCost(rect, input.forbidden) > 0 ? 'overlay' : target ? 'beside' : 'frame';
   // Cost and side memory own the card seat. A second box solver would undo
