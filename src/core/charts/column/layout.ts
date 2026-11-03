@@ -34,8 +34,9 @@ import { NOT_AVAILABLE } from '../../format';
 import { noTotal } from '../../stackAdds';
 import { emitEventLane, percentLevels, runAnnotatePass, settleEventLane } from '../../annotatePass';
 import { categoryTargetFields, spliceAnnotationNodes } from '../../annotateFields';
-import { segmentHitsRect, type Rect } from '../../geometry';
-import { linePath } from '../../svgPath';
+import { segmentHitsRect, type Point, type Rect } from '../../geometry';
+import { leaderPath, linePath } from '../../svgPath';
+import { fmtPathNumber as fmt } from '../../curve';
 import { labelsToNodes } from '../../label/emit';
 import type { OccupiedIndex } from '../../label/occupied';
 import { labelCtx, leaderTerminus, solveLabels, type LabelRequest, type SolveCtx, type SolveResult } from '../../label/solver';
@@ -74,7 +75,11 @@ function clearStraightLeaders(labels: PlacedLabel[], theme: Theme): void {
   const visible = labels.filter((label) => !label.hidden);
   const pad = REFERENCE_LABEL_CLEARANCE + strokeToken(theme, 'rule') / 2 + 0.01;
   for (const label of visible) {
-    if (!label.leader || label.leader.curved) continue;
+    if (!label.leader) continue;
+    if (label.leader.curved) {
+      clearCurvedLeader(label, visible, pad);
+      continue;
+    }
     const match = /^M(-?[\d.]+) (-?[\d.]+)L(-?[\d.]+) (-?[\d.]+)$/.exec(label.leader.d);
     if (!match) continue;
     const [x, y, x2, y2] = match.slice(1).map(Number) as [number, number, number, number];
@@ -115,6 +120,45 @@ function clearStraightLeaders(labels: PlacedLabel[], theme: Theme): void {
     const point = (t: number) => ({ x: x + t * dx, y: y + t * dy });
     const d = runs.map(([from, to]) => linePath([point(from), point(to)])).join('');
     label.leader = d ? { d, curved: false } : undefined;
+  }
+}
+
+/** Points along a leader's S-curve, as straight pieces for the clearance test. */
+function curvePoints(from: Point, mx: number, to: Point): Point[] {
+  return Array.from({ length: 17 }, (_, i) => {
+    const t = i / 16, u = 1 - t;
+    const x = u * u * u * from.x + 3 * u * t * (u + t) * mx + t * t * t * to.x;
+    const y = (u * u * u + 3 * u * u * t) * from.y + (3 * u * t * t + t * t * t) * to.y;
+    return { x, y };
+  });
+}
+
+/**
+ * A curved leader that passes within the shared gap of another printed box
+ * (a stack total over the anchor) runs flat along its start until it is past
+ * that box, and curves up from there. With no such run, the leader stays.
+ */
+function clearCurvedLeader(label: PlacedLabel, visible: readonly PlacedLabel[], pad: number): void {
+  const match = /^M(-?[\d.]+) (-?[\d.]+)C(-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+)$/.exec(label.leader!.d);
+  if (!match) return;
+  const [x, y, , , , , x2, y2] = match.slice(1).map(Number) as number[];
+  const from = { x: x!, y: y! }, to = { x: x2!, y: y2! };
+  const sign = Math.sign(to.x - from.x);
+  const others = visible.filter((other) => other !== label);
+  const blockers = (points: Point[]) => others.filter((other) => points.slice(1).some((b, i) => segmentHitsRect(points[i]!, b, other.rect, pad)));
+  let start = from;
+  for (let round = 0; round < 4; round++) {
+    const points = [...(start === from ? [] : [from]), ...curvePoints(start, (start.x + to.x) / 2, to)];
+    const hit = blockers(points);
+    if (!hit.length) {
+      if (start !== from) label.leader = { d: `M${fmt(from.x)} ${fmt(from.y)}L${leaderPath(start, to).slice(1)}`, curved: true };
+      return;
+    }
+    // A box on the flat run itself cannot be passed by running further.
+    if (blockers([from, start]).length) return;
+    const past = sign > 0 ? Math.max(...hit.map((other) => other.rect.x + other.rect.w + pad)) : Math.min(...hit.map((other) => other.rect.x - pad));
+    if ((to.x - past) * sign <= 0) return;
+    start = { x: past, y: from.y };
   }
 }
 

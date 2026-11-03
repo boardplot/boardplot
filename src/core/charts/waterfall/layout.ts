@@ -221,6 +221,16 @@ function mixedSliverSeats(rect: Rect, tsize: { width: number; height: number }, 
   }));
 }
 
+/**
+ * The seats beside a stacked segment whose value does not fit inside: level with the segment on
+ * either side first, then over and under it on a leader, right before left at each level.
+ */
+function besideSegmentSeats(rect: Rect, tsize: { width: number; height: number }): SlotCandidate[] {
+  const right = mixedSliverSeats(rect, tsize, 0, 2, ['right'], true);
+  const left = mixedSliverSeats(rect, tsize, 0, 2, ['left'], true);
+  return right.flatMap((seat, i) => [seat, { ...left[i]!, penalty: seat.penalty + 0.5 }]);
+}
+
 /** Air between a sliver and its value outside the column. */
 const SLIVER_SEAT_GAP = 4;
 /** An off-level value's distance from the column: past the leader gutter, so the hairline shows. */
@@ -1710,12 +1720,12 @@ function layoutWaterfallWithPad(
           : [];
         // A whole-axis stack can hold the digits while their line boxes overlap.
         // Use the measured cap height for this numeric seat. labelsToNodes centres
-        // the same ink bounds. Keep clear of the seam and retain every other seat
+        // the same ink bounds. Keep 1 px air above and below the digits, past the seam, and retain every other seat
         // when the digits themselves do not fit. Font size and scale stay intact.
         // Where every line box fits, the seat is the last inside one: a value whose
         // line box touches the baseline or a neighbour still prints its digits.
         const digits = categoryRow && !activeBreak && !mixed
-          ? digitSeat(rect, text, tsize, measure.capHeight?.(segmentFont), segmentFont.size, digitSeatEdge(theme, pattern)) : undefined;
+          ? digitSeat(rect, text, tsize, measure.capHeight?.(segmentFont), segmentFont.size, Math.max(2, digitSeatEdge(theme, pattern))) : undefined;
         const inkFits = digits !== undefined;
         const wholeAxisInkFits = inkFits && drawOrder.at(-1)!.extent < tsize.height + 2;
         const inkSeat: SlotCandidate[] = digits ? [{
@@ -1742,12 +1752,14 @@ function layoutWaterfallWithPad(
           // chart's largest, so large values do not tie.
           priority: seg.priority ?? PRIORITY.interior + (99 * Math.abs(seg.value)) / segMaxAbs,
           redundant: sliver || seg.valueLabel === false,
-          ...(typeof seg.valueLabel !== 'string' ? { noLeader: true } : {}),
+          // A value too short for its segment on an unbroken bridge takes a seat beside it on a leader.
+          ...(typeof seg.valueLabel !== 'string' && !wholeAxisSliver ? { noLeader: true } : {}),
           // The value reads as its own sub-bar's; a seat nearer another mark takes a leader.
           ...(mixed || wholeAxisSliver ? { anchor: { x: rect.x, y: rect.y, w: rect.w, h: rect.h } } : {}),
           ...(wholeAxisSliver ? { leaderClear: 'includingPins' as const } : {}),
           candidates: typeof seg.valueLabel !== 'string'
-            ? [...inkSeat, ...glyphSeat, ...stacked].filter(candidate => candidate.insideFill !== undefined)
+            ? [...[...inkSeat, ...glyphSeat, ...stacked].filter(candidate => candidate.insideFill !== undefined),
+              ...(wholeAxisSliver ? besideSegmentSeats(rect, tsize) : [])]
             : mixed && !fits ? [...mixedSliverSeats(rect, tsize, k, n), ...stacked]
               : [...inkSeat, ...glyphSeat, ...stacked, ...(wholeAxisSliver ? mixedSliverSeats(rect, tsize, k, n, ['left', 'right'], true) : [])],
         });
