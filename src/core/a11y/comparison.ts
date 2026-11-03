@@ -3,7 +3,8 @@ import type { InteractionComparison, InteractionValue } from './types';
 import { derivedPercent, derivedValue } from './recordsShared';
 import { parseFormatExample, specUnitKind } from '../formatSpec';
 
-function isPercentLevel(value: InteractionValue): boolean {
+/** A rate in percent, whose change against another rate is in percentage points. */
+export function isPercentLevel(value: InteractionValue): boolean {
   if (value.unit !== undefined) return value.unit === '%';
   return value.format !== undefined && specUnitKind(parseFormatExample(value.format)) === 'percent';
 }

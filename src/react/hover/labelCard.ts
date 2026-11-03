@@ -592,10 +592,15 @@ export function cardValueLines(text: string, font: FontSpec, width: number, meas
   return lines;
 }
 
-/** A shared value column reserves its full width before names are fitted. */
+/**
+ * A shared value column takes the width its values need, less the room the
+ * names need to print in full: names keep up to half the card, and a value
+ * wider than the rest wraps there ("Account median:" beside a long
+ * population, not "Accou…"). No digit is removed either way.
+ */
 function measureRows(rows: readonly LabelCardRow[], theme: Theme, maxWidth: number, measure: TextMeasurer): MeasuredRow[] {
   const labelReserve = Math.max(0, maxOf(rows.map(row => !row.label ? 0
-    : Math.min(48, measure(row.label, rowFont(row, theme)).width) + CARD_SPACE.column + (row.series ? 14 : 0))));
+    : measure(row.label, rowFont(row, theme)).width + CARD_SPACE.column + (row.series ? 14 : 0))));
   const valueWidth = Math.min(Math.max(1, maxWidth - Math.min(labelReserve, maxWidth / 2)), Math.max(0, maxOf(rows.map(row => row.value === undefined ? 0
     : measure(row.value, { ...rowFont(row, theme), tabular: true }).width))));
   return rows.map((row, index) => {
@@ -615,6 +620,22 @@ function measureRows(rows: readonly LabelCardRow[], theme: Theme, maxWidth: numb
       width: Math.max(...lines.map(line => measure(line, font).width)) + swatch + (paired ? valueWidth + (label ? CARD_SPACE.column : 0) : 0),
       height: Math.max(lines.length, valueLines?.length ?? 0) * lineBox(font) };
   });
+}
+
+/** The widest a card is by default. */
+const CARD_WIDTH = 280;
+/** The widest a card grows when a name and its value do not fit one line at `CARD_WIDTH`, so a long text value wraps less. */
+const WIDE_CARD_WIDTH = 320;
+
+/** The card's widest measure: `CARD_WIDTH`, wider up to `WIDE_CARD_WIDTH` for a name and value that need it on one line. */
+function cardWidth(rows: readonly LabelCardRow[], theme: Theme, measure: TextMeasurer): number {
+  const paired = Math.max(0, maxOf(rows.map(row => {
+    if (row.value === undefined) return 0;
+    const font = rowFont(row, theme);
+    return (row.label ? measure(row.label, font).width + CARD_SPACE.column : 0) + (row.series ? 14 : 0)
+      + measure(row.value, { ...font, tabular: true }).width;
+  })));
+  return Math.min(WIDE_CARD_WIDTH, Math.max(CARD_WIDTH, paired + 2 * CARD_SPACE.x));
 }
 
 function cardHeight(measured: readonly MeasuredRow[]): number {
@@ -725,7 +746,7 @@ export function layoutLabelCardContent(input: LabelCardInput, content: LabelCard
   const boundary = input.boundary ?? canvas;
   // Only the viewport (or the table's supplied boundary) can drop rows.
   const frameWidth = Math.min(input.boundary ? Math.max(0, boundary.w) : limit(boundary.w),
-    content.maxWidth ?? 280);
+    content.maxWidth ?? cardWidth(content.rows, theme, measure));
   const frameHeight = input.boundary ? Math.max(0, boundary.h) : limit(boundary.h);
   const { rows, measured } = rowsWithinHeight(content.rows, theme, frameHeight, frameWidth - 2 * pad, measure, input.locale);
   const width = Math.min(frameWidth, Math.max(0, maxOf(measured.map(size => size.width))) + 2 * pad);

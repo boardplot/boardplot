@@ -399,8 +399,8 @@ it('cleans the computed box statistics in the hover record, even when one equals
   const geometry = requireGeometry(layoutResolvedRequest(request));
   const [record] = interactionRecords({ request, geometry, scope: request.scope, claims: [] });
   const text = (entry: typeof record, key: string) => entry!.fields!.find((f) => f.key === key)!.value.raw;
-  // Quartiles that are observations stay exact; the card prints them as a span.
-  expect(text(record, 'quartiles')).toBe('0.1 to 0.4');
+  // Quartiles that are observations stay exact; the card prints them as a span at the chart's label precision.
+  expect(text(record, 'quartiles')).toBe('0.10 to 0.40');
   // An integer statistic has no residue and keeps every digit.
   const big = resolveChartRequest({ type: 'box', data: { groups: [{ id: 'g', label: 'G', observations: [0, 0, 1, 1000000000000001, 1000000000000001] }] }, options: { title: 'Big' } });
   const [bigRecord] = interactionRecords({ request: big, geometry: requireGeometry(layoutResolvedRequest(big)), scope: big.scope, claims: [] });

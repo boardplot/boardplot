@@ -1,5 +1,6 @@
 import { chartString } from '../strings/a11y-statisticsRecords';
-import type { BoxData, BoxDerived, BoxMarks } from '../charts/box/types';
+import type { BoxData, BoxDerived, BoxMarks, BoxOptions } from '../charts/box/types';
+import { boxValueFormatters } from '../charts/box/layout';
 import type { CohortDerived, CohortMarks, CohortCellMark, CohortRowDerived } from '../charts/cohort/types';
 import type { HistogramData, HistogramDerived, HistogramMarks } from '../charts/histogram/types';
 import type { ScatterMarks } from '../charts/scatter/layout';
@@ -10,7 +11,7 @@ import type { ScatterData } from '../types/data';
 import type { OwnerRef } from '../types/cell';
 import { normalizeCell, normalizeScenario } from '../normalize/shared';
 import { cellRecordValue, derivedPercent, makeRecord, numericValue, statedValue, textValue, withoutResidue, type RecordContext } from './recordsShared';
-import { DERIVED_PERCENT_FORMAT, displayedValueText } from './valueText';
+import { DERIVED_PERCENT_FORMAT, derivedValueText, displayedValueText } from './valueText';
 import { intervalText } from '../format';
 import type { InteractionRecord, InteractionValue } from './types';
 import { pushAll } from '../arrays';
@@ -72,11 +73,17 @@ function computedValue(value: number | null, observed: ReadonlySet<number>): num
   return value === null || observed.has(value) ? value : withoutResidue(value);
 }
 
-/** "70.75 to 79.25 EUR k": both ends as the card prints a value, the unit once. */
-function spanValue(low: number | null, high: number | null, unit?: string, format?: string, locale?: string): InteractionValue {
+/**
+ * "$47.2k to $234.1k": both ends at the decimals the chart prints its
+ * statistic labels at (an authored format as authored), each with the unit
+ * as a mark joins it, so the low end never reads as a bare number in
+ * another precision. Every digit of an integer stays.
+ */
+function spanValue(low: number | null, high: number | null, decimals: number, unit?: string, format?: string, locale?: string): InteractionValue {
   if (low === null || high === null) return numericValue(null);
-  const bare = (raw: number) => displayedValueText(numericValue(raw, undefined, format), locale);
-  return textValue(chartString({ locale: { language: locale } }, 'spanText', { v1: bare(low), v2: displayedValueText(numericValue(high, unit, format), locale) }));
+  const end = (raw: number) => format ? displayedValueText(numericValue(raw, unit, format), locale)
+    : derivedValueText(numericValue(raw, unit), decimals, false, locale);
+  return textValue(chartString({ locale: { language: locale } }, 'spanText', { v1: end(low), v2: end(high) }));
 }
 
 /**
@@ -90,6 +97,8 @@ function boxRecords(ctx: RecordContext): InteractionRecord[] {
   const derived = ctx.geometry.derived as unknown as BoxDerived;
   const { unit, format } = ctx.request.options;
   const locale = ctx.request.locale?.language;
+  const { decimals } = boxValueFormatters(derived.groups,
+    derived.groups.map(group => data.groups.find(row => row.id === group.id)?.observations ?? []), ctx.request.options as BoxOptions);
   return derived.groups.map(group => {
     const mark = marks.rows.find(row => row.id === group.id);
     const input = data.groups.find(row => row.id === group.id);
@@ -98,10 +107,11 @@ function boxRecords(ctx: RecordContext): InteractionRecord[] {
     // whiskers are observations.
     const observed = new Set(input?.observations ?? []);
     const stat = (key: 'median' | 'q1' | 'q3' | 'whiskerLow' | 'whiskerHigh') => computedValue(group[key], observed);
+    const span = (low: number | null, high: number | null) => spanValue(low, high, decimals, unit, format, locale);
     return makeRecord(ctx, { categoryId: group.id }, numericValue(stat('median'), unit, format), {
       label: group.label, valueLabel: chartString(ctx.request.options, 'medianName'), ...(mark ? { anchor: mark.rect } : {}),
-      fields: [field('quartiles', chartString(ctx.request.options, 'quartiles'), spanValue(stat('q1'), stat('q3'), unit, format, locale)),
-        field('whiskers', chartString(ctx.request.options, 'whiskers'), spanValue(stat('whiskerLow'), stat('whiskerHigh'), unit, format, locale)),
+      fields: [field('quartiles', chartString(ctx.request.options, 'quartiles'), span(stat('q1'), stat('q3'))),
+        field('whiskers', chartString(ctx.request.options, 'whiskers'), span(stat('whiskerLow'), stat('whiskerHigh'))),
         field('n', 'n', numericValue(group.n)),
         ...members.map(item => numberField(item.owner.pointId!, item.value, unit, format))],
       members: members.map(item => item.owner),

@@ -66,7 +66,7 @@ import type {
   BoxRowMark,
   WhiskerRule,
 } from './types';
-import { autoDecimals } from '../../formatPrecision';
+import { autoDecimals, valueSetDecimals } from '../../formatPrecision';
 import { annotateBox } from './annotations';
 import { composedTextRole } from '../../textRole';
 import { textScaleOf } from '../../typeFloors';
@@ -140,6 +140,39 @@ function boxAxisBreak(
 }
 
 /**
+ * The formatter of the box's statistic and point labels, the engine scale
+ * when the labels reach a million, and the decimals the automatic labels
+ * print at. `observations` lines up with `rows`. The hover card prints its
+ * quartile and whisker ranges at those decimals.
+ */
+export function boxValueFormatters(rows: readonly BoxGroupDerived[], observations: readonly (readonly number[])[],
+  options: BoxOptions): { scaled?: ReturnType<typeof seriesRasterFormatter>; fmt: (value: number) => string; decimals: number } {
+  const authoredFmt = options.format ? formatterFromExample(options.format, options.locale?.language) : undefined;
+  const showOutliers = options.showOutliers ?? true;
+  const showObservations = options.showObservations ?? 'small-n';
+  const printed = [
+    ...observations.flat(),
+    ...rows.flatMap((row) => [row.min, row.q1, row.median, row.q3, row.max, row.whiskerLow, row.whiskerHigh]),
+  ];
+  // From a million the chart takes the engine scale bar takes, chosen once
+  // from its largest value: labels and ticks print 2.78B, not 2,778,700,000.
+  // Its precision comes from the values that print (statistics, drawn
+  // outliers and small-n points), so 160 raw observations do not lift every
+  // label to "2.7787B". An authored format keeps its digits.
+  const labelled = rows.flatMap((row, index) => [
+    row.min, row.q1, row.median, row.q3, row.max, row.whiskerLow, row.whiskerHigh,
+    ...(showOutliers ? row.beyondWhiskers : []),
+    ...(row.state === 'points' && showObservations === 'small-n' ? observations[index] ?? [] : []),
+  ]);
+  const engine = authoredFmt || options.target === undefined || !labelled.some((value) => value != null && Math.abs(value) >= 1e6)
+    ? undefined : seriesRasterFormatter(undefined, labelled, options.locale?.language, options.unit, options.target);
+  const scaled = engine?.spec.autoMagnitude ? engine : undefined;
+  // The statistic and point labels are one series: one precision for them all (seriesValueFormatter), not one per value.
+  return { ...(scaled ? { scaled } : {}), fmt: authoredFmt ?? scaled?.fmt ?? seriesValueFormatter(printed, options.locale?.language),
+    decimals: valueSetDecimals(printed.filter((value): value is number => typeof value === 'number' && Number.isFinite(value))) };
+}
+
+/**
  * `bracketRoom` is the width the second pass keeps between the plot and the n column for comparison brackets.
  * `wrapLead` puts a bracket's named span on its own line over the figure.
  */
@@ -201,27 +234,9 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
     });
   }
   const rows = order.map((index) => summaries[index]!);
-  const printed = [
-    ...data.groups.flatMap((group) => group.observations ?? []),
-    ...rows.flatMap((row) => [row.min, row.q1, row.median, row.q3, row.max, row.whiskerLow, row.whiskerHigh]),
-  ];
-  // From a million the chart takes the engine scale bar takes, chosen once
-  // from its largest value: labels and ticks print 2.78B, not 2,778,700,000.
-  // Its precision comes from the values that print (statistics, drawn
-  // outliers and small-n points), so 160 raw observations do not lift every
-  // label to "2.7787B". An authored format keeps its digits.
-  const labelled = rows.flatMap((row, index) => [
-    row.min, row.q1, row.median, row.q3, row.max, row.whiskerLow, row.whiskerHigh,
-    ...(showOutliers ? row.beyondWhiskers : []),
-    ...(row.state === 'points' && showObservations === 'small-n' ? data.groups[order[index]!]!.observations ?? [] : []),
-  ]);
-  const engine = authoredFmt || options.target === undefined || !labelled.some((value) => value != null && Math.abs(value) >= 1e6)
-    ? undefined : seriesRasterFormatter(undefined, labelled, options.locale?.language, options.unit, options.target);
-  const scaled = engine?.spec.autoMagnitude ? engine : undefined;
+  const { scaled, fmt } = boxValueFormatters(rows, order.map((index) => data.groups[index]!.observations ?? []), options);
   const axisFmt = authoredFmt ?? scaled?.fmt ?? ((value: number) =>
     formatAutomaticNumber(value, { locale: options.locale?.language, decimals: autoDecimals(value) }));
-  // The statistic and point labels are one series: one precision for them all (seriesValueFormatter), not one per value.
-  const fmt = authoredFmt ?? scaled?.fmt ?? seriesValueFormatter(printed, options.locale?.language);
 
   // ---- the median COLUMN gets ONE decimal convention ------------------------
   // The default formatter decides decimals per value, which printed 107 / 97.6
