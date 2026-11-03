@@ -2,6 +2,49 @@
 
 Boardplot is in 0.x: options and output can change between minor versions. Each release lists its changes here.
 
+## 0.56.0
+
+### Fixed
+
+- Column: a curved callout leader that would pass within the label gap of another printed text, such as a stack total over the anchor, now runs flat along its start until it is past that text and curves from there. The leader no longer touches the total's digits.
+- Column, line and combo anomaly corridors: the MAD rule in the footnote reads "median 20.5 ± 3.5 × 1.4826 × MAD 1" with a plus-minus sign where it printed a dash, in English and German.
+- Grid: an alignment rule stops at the ends of a panel line drawn on the same coordinate, such as a panel baseline, so one baseline draws instead of a faint rule over the axis line.
+- Grid facets with their own value axes: the plot gives back as much of its pull under the heading as keeps a 2 px gap between the heading and the top tick label. Panel titles no longer sit on the top tick label.
+- Waterfall: a value inside a stacked segment keeps 1 px air above and below its digits. A value that does not fit takes a seat beside its segment, level with it on either side first, then above or below on a leader, so the parts of a split step visibly add up.
+- Line and area with a time x axis: the day or year label under the first tick lines up with that tick's label again. Both centre on the tick, or, where either label would reach left of the plot, both start at the plot's left edge. Before, "2 Mar" sat centred over a "2026" that started at the tick, and "01:00" over a "Tue 3 Mar" that started 15 px to its right.
+- A box chart's hover card prints both ends of the quartile and whisker ranges with the unit and at the precision of the chart's labels ("$47.2k to $234.1k"). Before, only the upper end had the unit, and each end kept its raw precision ("47.225 to $234.05k").
+- A bullet chart's hover card gives the gap between two percentages in points ("vs Target: −7pp (−8%)"), as the chart's gap column does. Before, it read "−7% (−8%)".
+- A hover card prints its row names in full: names keep up to half the card, and a long value wraps beside them. A card whose name and value do not fit one line grows from 280 px to at most 320 px wide. Before, names were cut to 48 px ("Accou…", "Media…").
+- The hover card names a value that the title alone does not say: a creative's own metric value ("Creative: 1.8%"), the segment of a split funnel stage ("Advanced: 2,100 leads") and the answer count of a Likert segment ("Responses: 100").
+- A neutral Likert answer split across the centre line lights and outlines both halves on hover. Before, the outline of one half ran along the centre line through the shared label.
+- A gantt item without a label reads as its row and what the mark is, in the key's words ("External interviews", "Overall span"). Before, the hover card showed the item id and the kind code ("interviews-span", "bracket").
+- Value labels on dimmed marks take readable ink while another mark is hovered, also when the label belongs to a whole category (a column total) or names the mark's base colour (a gantt bar). Before, white labels stayed on the faded bars.
+- Changed hover previews (both theme families): box, bullet, combo, creative, funnel, gantt, likert.
+- A hover card keeps clear of the chart's title, subtitle, notes, headers and legend where a seat allows it. A waffle's card at 480 and 560 px wide no longer covers the title and subtitle when the space beside the grid is too narrow.
+- A funnel's hover card sits next to the hovered stage. Before, the row lanes that the funnel reserves for its own labels counted as drawn marks, so the card moved far down the chart.
+- When no seat leaves every label free, the hover card takes the seat that hides the fewest labels, and only when it hides no label the earlier seat left readable. A football field's card for the first row hides one other row's label instead of two.
+- A line name seated on its line now stands on a page-colour plate. Before, a halo only followed the glyphs, so the line showed through the letter gaps (a dot inside the "o" of North) and touched the ends of a name such as Central.
+- A disclosed baseline tick with the value axis off now stays inside the plot margin. Before, a lone break tick such as "15%" started about 2 px from the left canvas edge.
+- An anomaly corridor bound prints the precision it needs: a computed bound of 1,319.99 prints "1,320", not "1,320.0", on the chart and in the rule note. Column, line and combo charts share this.
+- A shown line value axis no longer adds an off-grid tick at a cut baseline, such as 850 under 1,000 and 1,200 or 39 under 45. The break glyph still marks the cut, and the grid tick the off-grid one pushed out (40) prints again. An authored valueAxis.min still prints as set. Ticks that shared the extra decimal with the off-grid tick ("11.0") print whole again.
+- When the last value carries a sign or magnitude unit because no subtitle prints it ("57k"), the value-axis ticks carry it too ("40k" to "60k"), so ticks and end label agree.
+- Choropleth region labels on the no-data hatch now take the same page-colour halo as labels on a state pattern, so the hatch lines no longer cross the text.
+- A choropleth overlay glyph that is left off a crowded map is listed in the note in reader words: its label, its region name and its value, for example "DE 84% (Germany)". The note no longer repeats the accessible description.
+- On choropleth and tile maps whose overlay key names tones, glyphs without a tone now have a key entry for their accent colour. Plain Harvey balls show the accent ring on the `overlayMeasure` entry. Other plain glyphs share one "Other" entry. Before, that colour had no key entry. No option brings back the old key.
+- Scatter points drawn on top of each other keep every name: the names stand around the whole clump, and a clump at the plot's edge stacks a second name over and under it (four clustered points kept only two names each).
+- A scatter point with `marker: 'none'` prints its name on its own coordinates first, so the text marks where the point is instead of floating beside an empty spot.
+- A bubble name sits only where its own bubble is clearly the nearest, also from the name's middle, so a name slid between two bubbles moves to a seat or a leader that reads as its own.
+- A dense percent mekko names its narrow columns on up to three upper tiers, each name on a leader to its own column that passes clear of the names below it (three of ten columns had no name).
+- Pareto cause names that stand vertical wrap onto two or three lines across their column before they are cut, so long names read whole where the column has room.
+- A table column-group heading that is wider than its block wraps inside the block: the label wraps at its spaces, and the note moves to its own line. The group row grows by the extra lines. Before, "REVENUE PER SUBSCRIBER · $ cumulative" ran about 35 px past its rule toward the next group. A heading that needs more than three lines, or one word wider than the block, keeps one line and still warns `table-group-heading-overflow`.
+- A table memo row (`relation: 'ofWhich'`) listed after one of its siblings indents with its parent, in the SVG and in the React grid. Before, "of which digital" sat at the indent of the countries above it and read as a child larger than its parent. A dimswitch split row keeps its indent.
+- A table head no longer breaks before a short last word where the track has the room: a narrow card wrapped "WEEK 1" into "WEEK" over "1". Where keeping the word costs the table its width, the head breaks as before, and no column is left out for it.
+- A heatmap of filled cells and a status grid with nothing under them keep the side margin below the last row. Before, the last row ended 10 px from the canvas edge. An authored bottom margin, a grid panel, and the bubble and Harvey matrices keep their spacing.
+- A wrapped status cell label ("On plan" over "97.5%") centres each line on its cell. Before, both lines started at the left edge of the label box, so the shorter line sat left of centre.
+- A waffle panel with no value prints n/a in the muted ink as its headline, and the notes list names it ("n/a = no value: Wed"). Before, the panel showed an empty grid with no headline and no explanation. A numeric 0 still prints 0.
+- The waffle reference key draws a dashed outline around its pale swatch. Before, it drew a 10 px corner that showed one dash and a fragment.
+- Fixture text: `histogram/order-value-eur-formatted` formats in euro to match its title, `table/magnitude-forced` names US dollars in its source to match its "$k" heads, and `table/pivot-with-notes` gives the 44 against the peak of 61 as −28%.
+
 ## 0.55.0
 
 ### Added
