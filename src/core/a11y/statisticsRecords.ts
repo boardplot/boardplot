@@ -1,6 +1,5 @@
 import { chartString } from '../strings/a11y-statisticsRecords';
-import type { BoxData, BoxDerived, BoxMarks, BoxOptions } from '../charts/box/types';
-import { boxValueFormatters } from '../charts/box/layout';
+import type { BoxData, BoxDerived, BoxMarks } from '../charts/box/types';
 import type { CohortDerived, CohortMarks, CohortCellMark, CohortRowDerived } from '../charts/cohort/types';
 import type { HistogramData, HistogramDerived, HistogramMarks } from '../charts/histogram/types';
 import type { ScatterMarks } from '../charts/scatter/layout';
@@ -97,8 +96,7 @@ function boxRecords(ctx: RecordContext): InteractionRecord[] {
   const derived = ctx.geometry.derived as unknown as BoxDerived;
   const { unit, format } = ctx.request.options;
   const locale = ctx.request.locale?.language;
-  const { decimals } = boxValueFormatters(derived.groups,
-    derived.groups.map(group => data.groups.find(row => row.id === group.id)?.observations ?? []), ctx.request.options as BoxOptions);
+  const decimals = marks.labelDecimals;
   return derived.groups.map(group => {
     const mark = marks.rows.find(row => row.id === group.id);
     const input = data.groups.find(row => row.id === group.id);

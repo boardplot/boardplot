@@ -291,7 +291,16 @@ export function valueSetFormatter(values: Iterable<number>, locale?: string, sig
  * series' "0.5"; a nonzero value below the last digit prints its bound ("<0.01").
  */
 export function seriesValueFormatter(values: Iterable<number | null | undefined>, locale?: string, unit?: string, target?: RenderTarget): (value: number, signed?: boolean) => string {
-  const decimals = valueSetDecimals([...values].filter((value): value is number => typeof value === 'number' && Number.isFinite(value)));
+  return seriesFormatterAt(seriesValueDecimals(values), locale, unit, target);
+}
+
+/** The one precision `seriesValueFormatter` gives a set of values. */
+export function seriesValueDecimals(values: Iterable<number | null | undefined>): number {
+  return valueSetDecimals([...values].filter((value): value is number => typeof value === 'number' && Number.isFinite(value)));
+}
+
+/** `seriesValueFormatter` at a precision already chosen. */
+export function seriesFormatterAt(decimals: number, locale?: string, unit?: string, target?: RenderTarget): (value: number, signed?: boolean) => string {
   return (value, signed = false) => formatAutomaticNumber(value, { locale, signed, decimals: defaultNumberDecimals(value, decimals, unit, target) });
 }
 
