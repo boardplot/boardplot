@@ -250,8 +250,8 @@ it('names only the figures that print in the method line', () => {
 
 // The span prints the averages with the headline hidden, so the line named a change that no figure shows.
 it('drops only the word Change from the method line when the headline is hidden', () => {
-  const fixture = metricStackFixtures.find(f => f.id === 'metric-stack-volume' && f.data.panels.some((panel: { readout?: string }) => panel.readout === 'change')) ?? metricStackFixtures.find(f => f.data.windows && f.data.panels.some((panel: { readout?: string }) => panel.readout === 'change'))!;
-  const line = (columnVisibility: object, language: string) => (render({ spec: { type: 'grid', data: fixture.data, options: { ...fixture.options, locale: { language }, stack: { ...fixture.options.stack, columnVisibility } } }, return: ['svg'] }).body as { svg: string }).svg;
+  const fixture = metricStackFixtures.find(f => f.data.windows && f.data.panels.some(panel => panel.readout === 'change'))!;
+  const line = (columnVisibility: object, language: string) => (render({ spec: { type: 'grid', data: fixture.data, options: { ...fixture.options, locale: { language }, stack: { ...fixture.options?.stack, columnVisibility } } }, return: ['svg'] }).body as { svg: string }).svg;
   expect(line({ headline: false }, 'en')).toContain('>Average per ');
   expect(line({ headline: false }, 'en')).not.toContain('Change: average');
   expect(line({ headline: false }, 'de')).toContain('>Mittelwert je ');
