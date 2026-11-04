@@ -411,3 +411,20 @@ it('settles the decimals of a folded table on the rows it draws', () => {
   expect(formatOf(false)).toBe('+1.2%');
   expect(formatOf(true)).not.toContain('.');
 });
+
+describe('dimswitch columnVisibility', () => {
+  // A left-out column must leave no track, no unknown-toggle warning and no note or claim about the column.
+  it('leaves out Range and vs prior with nothing left behind', () => {
+    const data: DimSwitchData = { ...exampleData, periods: exampleData.periods.map(p => p.kind === 'range' ? { ...p, partial: true, label: 'Range label' } : p) };
+    const compiled = compileDimSwitch(data, { columnVisibility: { range: false, pp: false } });
+    expect(compiled.data.columns.map(column => column.id)).toEqual(['label', ...data.periods.filter(p => !p.kind).map(p => p.id)]);
+    expect(compiled.options.stickyLabels).toBe(1);
+    expect(compiled.computedCells.some(record => record.colId === 'range' || record.colId === 'pp')).toBe(false);
+    const geometry = requireGeometry(dimswitchCore.layout(data, { columnVisibility: { range: false, pp: false }, size: { width: 900 } }));
+    expect(geometry.warnings.map(warning => warning.code)).not.toContain('column-visibility-ref-unknown');
+  });
+  it('still warns on an encodings key for a left-out column', () => {
+    const compiled = compileDimSwitch(exampleData, { columnVisibility: { range: false }, encodings: { range: { type: 'heat' } } as never });
+    expect(compiled.warnings.map(warning => warning.code)).toContain('dimswitch-encoding-column');
+  });
+});

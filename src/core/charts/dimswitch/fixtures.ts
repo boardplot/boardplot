@@ -10,6 +10,8 @@ export const fixtures: Fixture<DimSwitchData,DimSwitchOptions>[] = [
  {id:'by-measure',tags:['interaction'],hover:{owner:{rowId:dimswitchRowId('by-measure','total','orders'),colId:'range'}},title:'KPIs and their channel members',kind:'example',data:exampleData,options:{title:'Channel performance',variant:'by-measure',depth:2,order:'sheet',show:'always'}},
  {id:'by-member',title:'Channels and their KPIs',kind:'example',data:{...exampleData,measures:[...exampleData.measures.map(m => m.id === 'new' ? {...m,parentId:undefined,splitOf:'orders'} : m),{id:'rate',scale:'percent',label:'New customer share',value:{op:'div',a:{field:'nc'},b:{field:'orders'},factor:100},format:'1.2%',unit:'%',change:'pp',judge:{family:'rate',base:'orders'}}]},options:{title:'Channel performance',show:'withData',variant:'by-member',depth:1,splits:true}},
 ];
+/** The periods alone: a host that shows its Range elsewhere leaves out the Range and vs prior columns. */
+fixtures.push({id:'periods-only',title:'KPIs by period without the Range and vs prior columns',kind:'example',data:exampleData,options:{title:'Channel performance by week',variant:'by-measure',depth:2,columnVisibility:{range:false,pp:false}}});
 /** The report sheet: one face for every rung, judged cells on grounds, unjudged volumes as bars. */
 const sheet: DimSwitchData={...exampleData,changeLabel:'WoW',measures:exampleData.measures.map(m=>m.id==='revenue' ? {...m,divider:true} : m.id==='cac' ? {...m,group:'Unit costs'} : m)};
 fixtures.push({id:'sheet',title:'KPIs on the report sheet',kind:'example',data:sheet,options:{title:'Channel performance',variant:'by-measure',depth:2,widths:{label:240,range:92,change:92,period:66},
