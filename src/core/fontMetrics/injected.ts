@@ -1,5 +1,5 @@
 /** Build a per-chart TextMeasurer from generated font tables. */
-import { capHeightOfFace, defaultMeasurer, estimateTextWidthForFace, quantize, type TextMeasurer } from '../text';
+import { cachedMeasurer, capHeightOfFace, defaultMeasurer, estimateTextWidthForFace, type TextMeasurer } from '../text';
 import {
   DEFAULT_FAMILY,
   buildCodePointIndex,
@@ -92,11 +92,7 @@ function measurerOverTables(tables: FontMetricTables): TextMeasurer {
     resolved.set(key, face);
     return face;
   };
-  const measure: TextMeasurer = (text, font) => ({
-    width: quantize(estimateTextWidthForFace(text, font, resolve(font.family, font.weight))),
-    height: quantize(font.size * (font.lineHeight ?? 1.2)),
-    ascent: quantize(font.size * 0.8),
-  });
+  const measure = cachedMeasurer((text, font) => estimateTextWidthForFace(text, font, resolve(font.family, font.weight)));
   measure.capHeight = (font) => capHeightOfFace(font, resolve(font.family, font.weight));
   return measure;
 }

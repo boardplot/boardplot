@@ -223,38 +223,56 @@ function widestDigit(face: Face): number {
  * fixed by the spec now so adding tables later is non-breaking.
  */
 export function createMeasurer(): TextMeasurer {
+  const measure = cachedMeasurer((text, font) => estimateTextWidth(text, font));
+  measure.capHeight = (font) => capHeightOfFace(font, resolveFace(font.family, font.weight));
+  return measure;
+}
+
+/**
+ * Text widths one measurer keeps before it starts again. A wide table at one
+ * width in ten themes asks for about 8,000 distinct strings and fonts, so the
+ * limit holds several widths of it.
+ */
+const WIDTH_CACHE_LIMIT = 65536;
+
+/**
+ * An exact measurer over `rawWidth`, which must be a pure function of the text
+ * and the font's fields. The cache is keyed by field values, because callers
+ * build new font objects and may change one in place, and belongs to this
+ * measurer, so a caller's wrapper still sees its own calls. Every call returns
+ * a new object, which the caller may change.
+ */
+export function cachedMeasurer(rawWidth: (text: string, font: FontSpec) => number): TextMeasurer {
   const families = new Map<FontSpec['family'], Map<string, Map<string, number>>>();
   let widthCount = 0;
   // The last font's plan: a run of measurements in one font skips the key and the box arithmetic.
-  let last: { family: FontSpec['family']; size: number; weight: number; letterSpacing: FontSpec['letterSpacing']; tabular: FontSpec['tabular']; lineHeight: FontSpec['lineHeight']; widths: Map<string, number>; height: number; ascent: number } | undefined;
+  let last: { family: FontSpec['family']; size: number; weight: number; style: FontSpec['style']; letterSpacing: FontSpec['letterSpacing']; tabular: FontSpec['tabular']; lineHeight: FontSpec['lineHeight']; widths: Map<string, number>; height: number; ascent: number } | undefined;
   const plan = (font: FontSpec) => {
-    if (last !== undefined && last.family === font.family && last.size === font.size && last.weight === font.weight
+    if (last !== undefined && last.family === font.family && last.size === font.size && last.weight === font.weight && last.style === font.style
       && last.letterSpacing === font.letterSpacing && last.tabular === font.tabular && last.lineHeight === font.lineHeight) return last;
     // Family and text stay separate keys; only numeric and boolean fields are joined.
-    const key = `${font.size}:${font.weight}:${font.letterSpacing}:${font.tabular}`;
+    const key = `${font.size}:${font.weight}:${font.style}:${font.letterSpacing}:${font.tabular}`;
     let faces = families.get(font.family);
     if (!faces) families.set(font.family, faces = new Map());
     let widths = faces.get(key);
     if (!widths) faces.set(key, widths = new Map());
     return last = {
-      family: font.family, size: font.size, weight: font.weight, letterSpacing: font.letterSpacing, tabular: font.tabular, lineHeight: font.lineHeight,
+      family: font.family, size: font.size, weight: font.weight, style: font.style, letterSpacing: font.letterSpacing, tabular: font.tabular, lineHeight: font.lineHeight,
       widths, height: quantize(font.size * (font.lineHeight ?? 1.2)), ascent: quantize(font.size * 0.8),
     };
   };
-  const measure: TextMeasurer = (text, font) => {
+  return (text, font) => {
     let current = plan(font);
     let width = current.widths.get(text);
     if (width === undefined) {
-      width = quantize(estimateTextWidth(text, font));
+      width = quantize(rawWidth(text, font));
       // Bound authored text in long-lived renderers; a fit pass reuses the same strings.
-      if (widthCount >= 4096) { families.clear(); widthCount = 0; last = undefined; current = plan(font); }
+      if (widthCount >= WIDTH_CACHE_LIMIT) { families.clear(); widthCount = 0; last = undefined; current = plan(font); }
       current.widths.set(text, width);
       widthCount++;
     }
     return { width, height: current.height, ascent: current.ascent };
   };
-  measure.capHeight = (font) => capHeightOfFace(font, resolveFace(font.family, font.weight));
-  return measure;
 }
 
 /** Cap height in px of a resolved face (tables hold it in 1/1000 em). */
