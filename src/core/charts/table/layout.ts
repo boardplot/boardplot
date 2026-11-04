@@ -53,7 +53,7 @@ import { fitTableFormats, formatsFittedWarning } from './fitFormats';
 import { qualifierFont, tableInk, tableRuleInk } from './statement';
 import { chipHeight, chipPaints, hasPolarityBadge, isFigureCell, polarityBadgeInk, onTableGround, statusSquare, statusSquarePaint, tableGround, toneTextPaint } from './chips';
 import { lastObservedIndex, type SparklineDomain } from '../sparkline/layout';
-import { resolveTable, ZERO_LIFT, type ZeroLiftOptions } from './resolve';
+import { resolveTable, ZERO_LIFT, type ResolvedTable, type ZeroLiftOptions } from './resolve';
 import { DEFAULT_EMPTY_MESSAGE } from '../../emptyData';
 import { cellDrawsTabular, cellHoldsNumber, emptyMessageRow, expansionRootsHidden, finalClosers, hasNoDataRows, groupSpans, heatColumn, printsFigures, rowGrounds, tableFootnotes, visibleColumns, visibleInlineRows, visibleRows } from './view';
 import { fixedHeightCanvas, rowDrivenHeight, spareShare } from '../../rowCanvas';
@@ -180,6 +180,28 @@ function resolvedForSize(data: TableData, options: TableOptions): ReturnType<typ
   let resolved = byKey.get(key);
   if (resolved === undefined) byKey.set(key, resolved = resolveTable(data, options));
   return resolved;
+}
+
+const widthPlans = new WeakMap<object, Map<string, ReturnType<typeof tableWidths>>>();
+
+/**
+ * The tracks of one resolved table, shared by the passes that try other heights
+ * at one width. The plan reads the height only for the size a `table-overflow`
+ * patch names, so an open height leaves it out of the key. A layout only reads
+ * the plan. A theme named by string always measures again, as `memoLayout` does.
+ */
+function sharedWidthPlan(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: LayoutOptions, view: Parameters<typeof tableWidths>[4] & object): ReturnType<typeof tableWidths> {
+  if (typeof options.theme === 'string') return tableWidths(table, theme, measure, options, view);
+  const { size, [TARGET_SIZE]: target, [WIDTH_PROBE]: _probe, [COMPACT_RETRY]: _retry, ...rest } = options as LayoutOptions & TargetSizeOptions & { [WIDTH_PROBE]?: unknown };
+  const heightOpen = target?.fixed.height === false || (typeof size === 'object' && size.height === undefined);
+  const key = layoutKey({ rows: view.rows!.map((row) => row.id), widthRows: view.widthRows!.map((row) => row.id), columns: view.columns!.map((col) => col.id),
+    available: view.available, spacerTotal: view.spacerTotal, headLines: view.headLines, subLines: view.subLines, headGlue: view.headGlue,
+    height: heightOpen || size === undefined ? undefined : resolveSize(size).height }, rest);
+  let byKey = widthPlans.get(table);
+  if (!byKey || byKey.size >= 32) widthPlans.set(table, byKey = new Map());
+  let plan = byKey.get(key);
+  if (plan === undefined) byKey.set(key, plan = tableWidths(table, theme, measure, options, view));
+  return plan;
 }
 
 /** Whether a table layout misses the size its frame fixes. */
@@ -384,7 +406,8 @@ export function layoutKey(data: object, options: object): string {
 /** Copy shared fonts and cells once per result. A copy of every array, Map, Set and plain object; a function and any other value is shared (the compiled options hold the measurer). */
 function deepCopy<T>(value: T, copies = new Map<object, unknown>()): T {
   if (value === null || typeof value !== 'object') return value;
-  if (copies.has(value)) return copies.get(value) as T;
+  const known = copies.get(value);
+  if (known !== undefined) return known as T;
   if (Array.isArray(value)) {
     const copy: unknown[] = [];
     copies.set(value, copy);
@@ -760,7 +783,7 @@ function layoutTableOnce(
     if (ladder.rowHeight !== undefined) ladder.rowHeight = ladder.lineBox(ladder.label) + 2;
   }
   const { lineBox, pad: levelPad } = ladder;
-  const widthPlan = tableWidths(table, theme, measure, options, {
+  const widthPlan = sharedWidthPlan(table, theme, measure, options, {
     columns: cols, rows, widthRows, fullRows, available: plot.w, spacerTotal, headLines: options[HEAD_LINES], subLines: options[SUB_LINES], headGlue: options[HEAD_LOOSE] !== true,
   });
   cellPadX = widthPlan.cellPadX;
