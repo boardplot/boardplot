@@ -1,5 +1,6 @@
 import * as z from 'zod';
 import { NormalizeError } from '../../normalize/shared';
+import { columnOrderOption, columnOverridesOption, columnVisibilityOption } from '../../schema/generatedColumnOptions';
 import { normalizeMetricStack } from './metricStack';
 
 const id = z.string().min(1);
@@ -23,7 +24,7 @@ export const metricStackDataSchema = z.strictObject({
   panels: z.array(z.strictObject({
     id: id.describe('Unique panel id; state scopes use this id.'),
     type: z.enum(['column', 'line']).describe('Columns, stacked columns for a multi-measure sum, or a line with points.'),
-    title: id.describe('Measure name in the shared left readout gutter.'),
+    title: id.describe('Measure name in the shared readout gutter.'),
     unit: id.describe('Measure unit in the readout gutter.'),
     measure: z.union([
       z.strictObject({ sum: fields.describe('Measures added for each category. Columns stack the inputs in order.') }),
@@ -60,4 +61,7 @@ export const metricStackDataSchema = z.strictObject({
 
 export const metricStackOptionsSchema = z.strictObject({
   heights: z.array(z.number().positive()).min(2).max(5).optional().describe('Plot heights in layout pixels, one per panel in top-down order. Use rows for proportional heights instead.'),
+  columnVisibility: columnVisibilityOption('grid').describe('False leaves a seat of the one gutter track out, with its height: unit, headline or span. The panel name stays. Hiding headline and span also drops the method line. The values stay in the marks.'),
+  columnOverrides: columnOverridesOption('grid', ['width', 'align']),
+  columnOrder: columnOrderOption('grid'),
 }).describe('Select metric-stack mode of sharedAxis category. Top-down panels, independent zero scales, one axis, one gutter and shared states.');
