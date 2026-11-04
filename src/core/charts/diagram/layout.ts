@@ -74,6 +74,8 @@ export function layoutDiagram(
   if (inset?.columnOverrides === undefined) return layoutPlanned(rawData, rawOptions, measureMinimum);
   const { columnOverrides: tracks, ...rest } = inset;
   const pinned = (rawOptions as TargetSizeOptions | undefined)?.[TARGET_SIZE]?.fixed.height ?? !heightOmitted(rawOptions?.size);
+  // A height nobody gave grows to hold the inset, so the widths have nothing to give way to.
+  if (!pinned) return layoutPlanned(rawData, rawOptions, measureMinimum);
   // The inset's keys live under data, so the shared give-way draws through this small adapter.
   const draw = ({ columnOverrides }: { columnOverrides?: typeof tracks }) => layoutPlanned({ ...rawData, inset: { ...rest, ...(columnOverrides ? { columnOverrides } : {}) } }, rawOptions, measureMinimum);
   const field = ['data', 'inset', 'columnOverrides'];
