@@ -5,7 +5,7 @@ import { parseFontMetricTables } from '../src/core/fontMetrics/tableDocument';
 import { createMeasurer, type FontSpec, type TextMeasurer } from '../src/core/text';
 import { join } from 'node:path';
 
-const TEXT = 'Revenue 1,110';
+const TEXT = 'Revenue 1,111,111';
 
 /** The base font, then one font per field: a field left out of the key reads another font's width. */
 function oneFieldApart(base: FontSpec, otherFamily: string): FontSpec[] {
