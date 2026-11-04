@@ -341,6 +341,7 @@ const baseTableDataSchema = z
 
 export const tableOptionsObject = baseOptionsSchema.safeExtend(refusedBaseOptions('table')).safeExtend({
   mountCollapsed: z.boolean().optional().describe('Default true. false removes closed descendants from the React DOM and defers offscreen leaf paint.'),
+  paintOffscreenRows: z.boolean().optional().describe('React only. true paints every mounted row at once, so a capture of a long table has no blank rows, and a long table paints slower. Default false. Closed rows follow mountCollapsed.'),
   signs: z.enum(['signed', 'operators', 'plain']).optional().describe('How sign -1 rows print. signed (default) negates them; operators draws + − × =; plain draws neither.'),
   driverTones: z.enum(['grouped', 'always', 'never']).optional().describe("Driver tones. 'grouped' (default): drivers with a parentId whose parent is not a section heading do, as statement lines do. 'always': every driver. 'never': driver ink only, as before 0.28. Neutral figures and labels keep the driver ink."),
   judgements: z.enum(['all', 'exceptions']).optional().describe('Which tones show. exceptions: strong good and bad only.'),
@@ -439,9 +440,9 @@ export const tableOptionsObject = baseOptionsSchema.safeExtend(refusedBaseOption
   heightFill: z.enum(['rows', 'none']).optional()
     .meta({ default: 'rows' })
     .describe("Spare canvas height. 'rows' (default) spreads it over leaf rows as air, up to 16 px a side. 'none' leaves it empty."),
-  rowLabelLines: z.union([z.literal(1), z.literal(2)]).optional()
+  rowLabelLines: z.number().int().positive().optional()
     .meta({ default: 2 })
-    .describe("Lines a row label may take before a cut (default 2). A label breaks at a space or after _ - / or a dot, so a long campaign name wraps instead of ending in '…'. 1 keeps every label on one line. The hover card always prints the full name."),
+    .describe("Lines a row label may take before a cut (default 2). A label breaks at a space or after _ - / or a dot, so a long campaign name wraps instead of ending in '…'. 1 keeps every label on one line; a higher count lets a row grow to its lines. A cut label keeps its full name in its title."),
   lastTrackFlex: z.boolean().optional()
     .describe('Last unauthored track takes the spare frame width when rowExtent is tracks. Default false.'),
   rowExtent: z.enum(['tracks', 'frame']).optional()
