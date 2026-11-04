@@ -49,6 +49,18 @@ const multipleBases=judgeExample();
 multipleBases.measures=multipleBases.measures.map(m=>({...m,judge:{family:'rate',base:['orders','sessions']}}));
 multipleBases.facts.find(f=>f.memberId==='alpha' && f.periodId==='budget')!.sums.sessions=40;
 fixtures.push({id:'multiple-sample-bases',title:'Judge only when both sample fields pass',kind:'example',data:multipleBases,options:{title:'Both sample fields must pass',widths:{change:110,period:110},variant:'by-member',depth:2,minimumSample:{orders:50,sessions:100}}});
+/** The numbers stay, the automatic size bars go. */
+fixtures.push({id:'no-bars',title:'KPIs without the automatic size bars',kind:'example',data:exampleData,options:{title:'Channel performance',variant:'by-measure',depth:2,bars:false}});
+/** The members alone: the Total block goes, and members print as they do beside it. */
+fixtures.push({id:'no-total-block',title:'Channels and their KPIs without the Total block',kind:'example',data:fixtures[1]!.data,options:{...fixtures[1]!.options,title:'Channel performance',rowVisibility:{total:false}}});
+/** KPI names stay as labels over their members, with blank cells where the Total would print. */
+fixtures.push({id:'total-row-blank',title:'KPIs over their members with blank Total cells',kind:'example',data:exampleData,options:{title:'Channel performance',variant:'by-measure',depth:2,rowVisibility:{total:false}}});
+/** The Total block after the last member. */
+fixtures.push({id:'total-bottom',title:'Channels and their KPIs with the Total block last',kind:'example',data:fixtures[1]!.data,options:{...fixtures[1]!.options,title:'Channel performance',totalPosition:'bottom'}});
+/** The section heads go, with their height and air. */
+fixtures.push({id:'no-group-heads',title:'KPIs without their section heads',kind:'example',data:sheet,options:{title:'Channel performance',variant:'by-measure',depth:2,rowVisibility:{'group:':false,'group:Unit costs':false}}});
+/** The group's measures sit directly under each member. */
+fixtures.push({id:'no-group-heads-by-member',title:'Channels with grouped KPIs and no group label rows',kind:'example',data:sheet,options:{title:'Channel performance',variant:'by-member',depth:2,rowVisibility:{'group:Unit costs':false}}});
 // The engine notes in German on a phone card: a base that rounds to zero prints n.m., and the card leaves out the first week.
 const nearZero:DimSwitchData={...fixtures[1]!.data,facts:fixtures[1]!.data.facts.map(f=>f.memberId==='organic' && f.periodId==='prior' ? {...f,sums:{...f.sums,orders:0.4,nc:0.2}} : f)};
 fixtures.push({id:'card-notes-de',title:'German engine notes on a phone card',kind:'torture',data:nearZero,options:{...fixtures[1]!.options,title:'Channel overview',depth:2,locale:{language:'de'},size:{width:320}}});

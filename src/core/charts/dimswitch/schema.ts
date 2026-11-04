@@ -1,7 +1,7 @@
 import { valueBandsSchema } from '../../bands';
 import { formatExample, idRecord, refusedBaseOptions } from '../../schema/shared';
 import * as z from 'zod';
-import { columnOrderOption, columnOverridesOption, columnVisibilityOption } from '../../schema/generatedColumnOptions';
+import { columnOrderOption, columnOverridesOption, columnVisibilityOption, rowVisibilityOption } from '../../schema/generatedColumnOptions';
 import { tableOptionsObject } from '../table/schema';
 import type { DimSwitchData, DimSwitchExpression, DimSwitchOptions, DimSwitchJudgeBase } from './types';
 const id = z.string().min(1).describe('Stable id or display label.');
@@ -66,15 +66,19 @@ export const dimswitchDataSchema: z.ZodType<DimSwitchData> = z.strictObject({
 const columnVisibility = columnVisibilityOption('dimswitch');
 const columnOverrides = columnOverridesOption('dimswitch', ['width', 'align', 'headAlign', 'label']);
 const columnOrder = columnOrderOption('dimswitch');
+const rowVisibility = rowVisibilityOption('dimswitch');
 export const dimswitchOptionsSchema = tableOptionsObject.safeExtend({
  topN:refusedBaseOptions('dimswitch').topN,
  encodings:tableOptionsObject.shape.encodings.describe('Per-column opt-in visual encodings. A key is a column id: range, pp (the vs prior column), pl (the vs plan column, with a plan) or the id of a displayed period. Any other key draws nothing and warns dimswitch-encoding-column.'),
  columnVisibility:columnVisibility.describe(`${columnVisibility.description} The label column stays, so hiding every value column draws labels only and warns. The data still needs its range and prior periods, and order and show still read Range.`),
  columnOverrides:columnOverrides.describe(`${columnOverrides.description} width beats widths. The automatic card form sizes tracks by content and ignores width, except a smaller label width.`),
  columnOrder:columnOrder.describe(`${columnOrder.description} block is Range and its comparisons. The label stays first, and only the label and leading block columns pin.`),
+ bars:z.boolean().optional().describe('false turns the automatic size bars off. Scale, precision, data and judgement stay. Default true.'),
+ rowVisibility:rowVisibility.describe(`${rowVisibility.description} A key equal to dimension.total.id means the Total. by-member: the whole Total block goes. by-measure: each Total line keeps its label and folds with blank cells, because it carries the KPI name and owns its members, and Total splits go. Facts stay for ratios and judgement, and members print the same. A group id removes its heads. These ids differ from expansion ids: expansion names one row of one variant, and rowVisibility names a block.`),
+ totalPosition:z.enum(['top','bottom']).optional().describe('by-member: where the Total block sits, top (default) or bottom. In by-measure each Total row owns its members, so the key warns option-ignored.'),
  density:z.enum(['compact','regular','relaxed']).optional().describe("Cell spacing: 'compact', 'regular' or 'relaxed'. The cohort densities do not apply: every cell holds a value and a change line, and cohort rows are fixed one-liners."),
  // The table's own variant is fixed to steering here, so this key names the dimswitch form (the cast only quiets safeExtend's same-type rule).
- variant:z.enum(['by-measure','by-member']).optional().describe('by-measure: KPI rows over members (by-member: members over KPIs, Total first). In by-member the Total block is always open.') as unknown as (typeof tableOptionsObject.shape)['variant'],
+ variant:z.enum(['by-measure','by-member']).optional().describe('by-measure: KPI rows over members. by-member: members over KPIs, with the Total block at totalPosition. A fixed height may fold it.') as unknown as (typeof tableOptionsObject.shape)['variant'],
  depth:z.number().int().min(1).optional().describe('Open rungs: 1 roots folded, 2 one member level open, 3 two levels; the same in both variants. Maximum member levels plus one. Splits add no rung.'),
  splits:z.boolean().optional().describe('Show split measures under their root measure.'),
  expansion:z.strictObject({expanded:z.array(id).optional().describe('Row ids to open.'),collapsed:z.array(id).optional().describe('Row ids to fold.')}).optional().describe('Row-id exceptions over depth (id: JSON.stringify([variant, memberId, measureId])).'),

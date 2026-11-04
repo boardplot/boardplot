@@ -43,7 +43,9 @@ export const AUTOMATIC_FORMAT = Symbol('automatic-format');
 export type AutomaticFormatSource = { [AUTOMATIC_FORMAT]?: true };
 /** A composing chart's rows of one measure: they print in one magnitude, picked from their largest cell. */
 export const MAGNITUDE_GROUP = Symbol('magnitude-group');
-export type MagnitudeGroupSource = { [MAGNITUDE_GROUP]?: string };
+/** Figures of a group that print nowhere, by column: they still set the group's magnitude and precision. */
+export const MAGNITUDE_FIGURES = Symbol('magnitude-figures');
+export type MagnitudeGroupSource = { [MAGNITUDE_GROUP]?: string; [MAGNITUDE_FIGURES]?: readonly (readonly [string, number])[] };
 
 export interface NumberFormatSpec {
   decimals: number;

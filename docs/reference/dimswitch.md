@@ -243,7 +243,7 @@ A KPI table: measures by one hierarchical dimension by period, switchable betwee
 | signs | string | `'signed'`, `'operators'`, `'plain'` |  | How sign -1 rows print. signed (default) negates them; operators draws + − × =; plain draws neither. |
 | driverTones | string | `'grouped'`, `'always'`, `'never'` |  | Driver tones. 'grouped' (default): drivers with a parentId whose parent is not a section heading do, as statement lines do. 'always': every driver. 'never': driver ink only, as before 0.28. Neutral figures and labels keep the driver ink. |
 | judgements | string | `'all'`, `'exceptions'` |  | Which tones show. exceptions: strong good and bad only. |
-| variant | string | `'by-measure'`, `'by-member'` | `'by-measure'` | by-measure: KPI rows over members (by-member: members over KPIs, Total first). In by-member the Total block is always open. |
+| variant | string | `'by-measure'`, `'by-member'` | `'by-measure'` | by-measure: KPI rows over members. by-member: members over KPIs, with the Total block at totalPosition. A fixed height may fold it. |
 | encodings | object |  |  | Per-column opt-in visual encodings. A key is a column id: range, pp (the vs prior column), pl (the vs plan column, with a plan) or the id of a displayed period. Any other key draws nothing and warns dimswitch-encoding-column. |
 | encodings.*.type (encodings.* branch 5) | string | `'arrow'` |  | Select the arrow lane. |
 | encodings.*.scale (encodings.* branch 5) | string | `'absolute'`, `'relative'` |  | 'absolute' cuts the change itself at 10 and 2 (points on a percent column); 'relative' cuts its share of the column's largest change at 10% and 2%. Default 'absolute' on a percent column, 'relative' elsewhere. |
@@ -262,7 +262,7 @@ A KPI table: measures by one hierarchical dimension by period, switchable betwee
 | encodings.*.tolerance.pct (encodings.* branch 6) | number |  |  | Percent of the centre. 5 reads 62 to 68 as warn around 65. |
 | encodings.*.tolerance.abs (encodings.* branch 6) | number |  |  | Column units. 2 reads 63 to 67 as warn around 65. |
 | encodings.*.columns (encodings.* branch 6) | array |  |  | Further columns this rule paints. A sixty-column cohort grid names its lane once instead of sixty times, and a column that carries its own entry keeps it. Leave a column out to keep it unshaded. |
-| totalPosition | string | `'top'`, `'bottom'` |  | Total-row position; variant supplies the default. |
+| totalPosition | string | `'top'`, `'bottom'` |  | by-member: where the Total block sits, top (default) or bottom. In by-measure each Total row owns its members, so the key warns option-ignored. |
 | density | string | `'compact'`, `'regular'`, `'relaxed'` |  | Cell spacing: 'compact', 'regular' or 'relaxed'. The cohort densities do not apply: every cell holds a value and a change line, and cohort rows are fixed one-liners. |
 | nulls | string | `'blank'`, `'dash'` |  | What a MISSING cell prints. 'dash' (the default) keeps the em dash; 'blank' leaves it empty, which is what a cohort staircase needs — a cohort acquired in May has not been observed at M8, and a triangle of dashes is noise. The explicit states na, nm and suppressed keep their glyphs. |
 | figures | boolean |  |  | Print the cell figures; default true. false draws the heat grounds alone in 22 px cells, over any width authored for the figures, on 14 px rows or the line box of the text a row still prints where that is taller, so a sixty-column triangle fits one screen. The heads keep their labels and the numbers stay in the markup for a reader who cannot see the grounds. Refused on a table without a heat lane in encodings. |
@@ -303,6 +303,8 @@ A KPI table: measures by one hierarchical dimension by period, switchable betwee
 | columnOverrides.*.headAlign | string | `'left'`, `'right'`, `'center'` |  | Head alignment; defaults to align. |
 | columnOverrides.*.label | string |  |  | Head text. |
 | columnOrder | array |  |  | Order of whole blocks; blocks left out follow in default order. Ids: block, periods. block is Range and its comparisons. The label stays first, and only the label and leading block columns pin. |
+| bars | boolean |  |  | false turns the automatic size bars off. Scale, precision, data and judgement stay. Default true. |
+| rowVisibility | object |  |  | False leaves a generated row out. Ids: dimension.total.id, group:<measures[].group as authored>, and group: for the ungrouped section. A key equal to dimension.total.id means the Total. by-member: the whole Total block goes. by-measure: each Total line keeps its label and folds with blank cells, because it carries the KPI name and owns its members, and Total splits go. Facts stay for ratios and judgement, and members print the same. A group id removes its heads. These ids differ from expansion ids: expansion names one row of one variant, and rowVisibility names a block. |
 | depth | integer |  | `1` | Open rungs: 1 roots folded, 2 one member level open, 3 two levels; the same in both variants. Maximum member levels plus one. Splits add no rung. |
 | splits | boolean |  | `false` | Show split measures under their root measure. |
 | order | string \| object | `'sheet'` (or another value of its type) |  | Sibling order: sheet, or {by: measure id} on Range values, descending. Ties by id, missing values last. |
@@ -1403,6 +1405,12 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | bands-and-plan | example | Value bands with separate prior and plan changes |
 | thresholds-by-kind | example | Separate thresholds for each change kind |
 | multiple-sample-bases | example | Judge only when both sample fields pass |
+| no-bars | example | KPIs without the automatic size bars |
+| no-total-block | example | Channels and their KPIs without the Total block |
+| total-row-blank | example | KPIs over their members with blank Total cells |
+| total-bottom | example | Channels and their KPIs with the Total block last |
+| no-group-heads | example | KPIs without their section heads |
+| no-group-heads-by-member | example | Channels with grouped KPIs and no group label rows |
 | card-notes-de | torture | German engine notes on a phone card |
 
 ## Not for
