@@ -65,12 +65,28 @@ interface TableWidthView {
 type WidthOptions = TableOptions & { [LABEL_WRAP_FLOOR]?: boolean; [SOFT_LABEL_CAP]?: boolean };
 
 /** One content width rule. Dense padding is a fallback only when normal padding cannot fit. */
-export function tableWidths(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions = {}, view: TableWidthView = {}) {
+export function tableWidths(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions = {}, view: TableWidthView = {}): ReturnType<typeof tableWidthsWithHeads> {
+  if (options.columnHeads !== false) return tableWidthsWithHeads(table, theme, measure, options, view);
+  // No head draws, so no head pays for a track: only the cells size the columns.
+  const { columnHeads: _heads, ...withHeads } = options;
+  const bare = (columns: readonly ResolvedColumn[]) => columns.map((col): ResolvedColumn => {
+    const { subLabel: _sub, unitLabel: _unit, partial: _partial, scenario: _scenario, ...rest } = col;
+    return { ...rest, label: '' };
+  });
+  return tableWidthsWithHeads({ ...table, columns: bare(table.columns), columnGroups: table.columnGroups.map((group) => ({ ...group, heading: false as const })) }, theme, measure, withHeads, {
+    ...view,
+    ...(view.columns === undefined ? {} : { columns: bare(view.columns) }),
+    ...(view.allColumns === undefined ? {} : { allColumns: bare(view.allColumns) }),
+    ...(view.defaultColumns === undefined ? {} : { defaultColumns: bare(view.defaultColumns) }),
+  });
+}
+
+function tableWidthsWithHeads(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions = {}, view: TableWidthView = {}) {
   const { defaultColumns, ...own } = view;
   const shown = own.columns ?? visibleColumns(table);
   if (own.scroll && defaultColumns !== undefined
     && (defaultColumns.length !== shown.length || defaultColumns.some((col, index) => col.id !== shown[index]!.id))) {
-    const base = tableWidths(table, theme, measure, options, { ...own, columns: defaultColumns });
+    const base = tableWidthsWithHeads(table, theme, measure, options, { ...own, columns: defaultColumns });
     const track = base.tracks.find((entry) => entry.id === defaultColumns.find((col) => col.kind === 'rowLabel')?.id)?.width;
     // The width the labels and their folded-row hints need, not the room a wide frame handed the label: only that keeps rows from wrapping.
     if (track !== undefined && base.labelNeed !== undefined) own.labelKeep = Math.min(track, Math.max(base.labelNeed, base.labelBeforeFill ?? 0));
@@ -656,9 +672,11 @@ export function tableDisplayFloor(table: ResolvedTable, theme: Theme, options: T
   if (frame.subtitle) include(theme.type.subtitle.size, 'subtitle');
   if (frame.source || frame.footnotes.length) include(footerType(theme.type.footnote, target, textScaleOf(options)).size, 'footnote');
   const includeHead = (size: number) => { scale = Math.max(scale, tableHeadFloorPx(target) / size); };
-  if (table.columns.length) includeHead(fonts.header.size);
-  if (table.columns.some(column => column.subLabel)) includeHead(fonts.sub.size);
-  if (table.columnGroups.some(group => group.heading !== false)) includeHead(fonts.group.size);
+  if (options.columnHeads !== false) {
+    if (table.columns.length) includeHead(fonts.header.size);
+    if (table.columns.some(column => column.subLabel)) includeHead(fonts.sub.size);
+    if (table.columnGroups.some(group => group.heading !== false)) includeHead(fonts.group.size);
+  }
   for (const row of table.rows) {
     if (row.inline) continue;
     const hasChanges = visibleInlineRows(row, options.inlineVisibility).length > 0;

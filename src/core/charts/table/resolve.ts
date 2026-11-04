@@ -385,6 +385,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
   const higherJudged = new Set<string>();
   // Columns whose aggregate skipped a null child: the partial footnote is theirs.
   const partialColumnIds = new Set<Id>();
+  const headMarksPartial = disclosuresShown(options) && options.columnHeads !== false;
   const highlightedRows = new Set(resolveHighlight(options.highlight));
   assertTableRankOptions(options);
   const folded = applyTableTopN(data, options);
@@ -736,7 +737,8 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
       derived = { raw: null, state: inherited };
     } else {
       if (blockers.length > 0) {
-        autoFootnotes.add(PARTIAL_FOOTNOTE);
+        // With no head for the † the cell says it, so the note has nothing to point at.
+        if (options.columnHeads !== false) autoFootnotes.add(PARTIAL_FOOTNOTE);
         partialColumnIds.add(col.id);
       }
       // A sum that skipped a child, or adds a partial one, prints marked on the cell.
@@ -1515,6 +1517,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     emphasis: c.emphasis ?? (c.kind === 'rowLabel' ? language.labelEmphasis : undefined),
     ...(c.band === undefined ? {} : { band: c.band }),
     ...(c.noteLine === undefined ? {} : { noteLine: c.noteLine }),
+    ...(c.headAlign === undefined ? {} : { headAlign: c.headAlign }),
     // A cohort grid centres its figures: every cell in a period column is
     // the same two or three digits, and a right edge would draw a ragged
     // column of gaps. A column that names its own alignment, the
@@ -1676,8 +1679,8 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
           negated = negate && s.raw !== 0;
           displayed = (negate ? undefined : displayOverride.get(tableCellKey(row.id, col.id))) ?? formatNumber(negate && s.raw !== 0 ? -s.raw : s.raw, col.id, row.id);
           if (negate && locale.minusGlyph === '-') displayed = displayed.replace(MINUS, '-');
-          // The head's † and its note say it where they print (disclosures shown, a column that skipped a child); else the cell says it.
-          if (s.partial && !(disclosuresShown(options) && partialColumnIds.has(col.id))) displayed = `${displayed} ${options.strings?.incomplete ?? localeStrings(options.locale?.language).incomplete}`;
+          // The head's † and its note say it where they print (disclosures shown, a head drawn, a column that skipped a child); else the cell says it.
+          if (s.partial && !(headMarksPartial && partialColumnIds.has(col.id))) displayed = `${displayed} ${options.strings?.incomplete ?? localeStrings(options.locale?.language).incomplete}`;
         }
         // Value bands: an explicit tone beats them, they beat the sign judgement.
         const band = obj?.bands !== undefined && s.state === 'value' && typeof s.raw === 'number' ? bandFor(s.raw, obj.bands) : undefined;
@@ -1870,7 +1873,14 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
   }
   const footnotes = [...autoFootnotes];
   // The † in the head points at its note, so it prints only where the note does.
-  if (disclosuresShown(options)) for (const column of resolvedColumns) if (partialColumnIds.has(column.id)) column.partial = true;
+  if (headMarksPartial) for (const column of resolvedColumns) if (partialColumnIds.has(column.id)) column.partial = true;
+  // A unit that only a head prints leaves with the head, so the reader needs to hear it.
+  if (options.columnHeads === false) {
+    const units = [...new Set(resolvedColumns.flatMap((column) => column.unitLabel ?? []))];
+    if (units.length > 0) warnings.push({ code: 'column-heads-unit-hidden', severity: 'warn', field: ['options', 'columnHeads'],
+      message: `columnHeads: false removes the only print of the unit ${units.join(', ')}`,
+      suggest: 'Name the unit in the subtitle or a footnote, or use formats that print it in each cell.' });
+  }
 
   const result: ResolveResult = {
     ...(zeroLifts.count === liftsBefore ? {} : { lifted: true as const }),

@@ -869,7 +869,8 @@ function layoutTableOnce(authoredData: TableData, options: LayoutOptions, initia
   const hasGroups = table.columnGroups.length > 0;
   // A group may keep its meaning and draw no heading; where none
   // draws one, the head has no group row to pay for.
-  const hasGroupHeads = table.columnGroups.some((g) => g.heading !== false);
+  const headsDrawn = options.columnHeads !== false;
+  const hasGroupHeads = headsDrawn && table.columnGroups.some((g) => g.heading !== false);
   // The header band is its text plus the constant 7 px gap to the rule below
   // it — the gap must not drift with density, and the band
   // keeps no dead air above the text.
@@ -912,7 +913,7 @@ function layoutTableOnce(authoredData: TableData, options: LayoutOptions, initia
   const headerSubH = subFits.size === 0 ? 0
     : maxOf([...subFits.values()].map(fit => lineBox(fonts.sub.size) + (fit.lines.length > 1 ? (fit.h * (fit.lines.length - 1)) / fit.lines.length : 0)));
   const headerTextH = Math.max(fonts.header.size * 1.2, maxOf([...headerFits.values()].map(fit => fit.h)));
-  const headerLabelH = headPadTop + Math.max(ladder.headBox(fonts.header.size), headerTextH) + headerSubH + headPadBottom + ruleSpace;
+  const headerLabelH = !headsDrawn ? 0 : headPadTop + Math.max(ladder.headBox(fonts.header.size), headerTextH) + headerSubH + headPadBottom + ruleSpace;
   const colX = new Map<Id, { x: number; w: number }>();
   let x = gridX;
   for (const col of cols) {
@@ -1315,10 +1316,11 @@ function layoutTableOnce(authoredData: TableData, options: LayoutOptions, initia
   const headerRuleY = gridY + headerH - 1 + CRISP;
   const headerBaseY = headerRuleY - headPadBottom - headerSubH - fonts.header.size * 1.2;
   const headerSubY = headerBaseY + fonts.header.size * 1.2;
-  for (const col of cols) {
+  for (const col of headsDrawn ? cols : []) {
     if (!col.label && col.kind === 'rowLabel') continue;
     const { x: cx, w } = colX.get(col.id)!;
-    const align = col.align === 'right' ? 'end' : col.align === 'center' ? 'middle' : 'start';
+    const headAlign = col.headAlign ?? col.align;
+    const align = headAlign === 'right' ? 'end' : headAlign === 'center' ? 'middle' : 'start';
     // The label column's header text starts where the level-0 labels start:
     // cell padding plus the outline gutter of a tree table.
     const headerIndent = col.kind === 'rowLabel' ? rowIndent(0) : 0;
@@ -1353,7 +1355,7 @@ function layoutTableOnce(authoredData: TableData, options: LayoutOptions, initia
     });
   }
   // header underline: a hairline in the structural ink (never a filled band)
-  nodes.push({
+  if (headsDrawn) nodes.push({
     t: 'line',
     id: 'rule:header',
     x1: rowX,
@@ -2288,7 +2290,7 @@ function layoutTableOnce(authoredData: TableData, options: LayoutOptions, initia
   }
 
   // ---- coarse claims (structure-proportional) ----
-  occupied.claim({ x: rowX, y: gridY, w: rowW, h: headerH }, 'mark', {}, 'tableHeader');
+  if (headsDrawn) occupied.claim({ x: rowX, y: gridY, w: rowW, h: headerH }, 'mark', {}, 'tableHeader');
   for (const row of rows) {
     const { y: ry, h: rh } = rowY.get(row.id)!;
     occupied.claim({ x: rowX, y: ry, w: rowW, h: rh }, 'mark', { rowId: row.id }, 'tableRow');

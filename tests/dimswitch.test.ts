@@ -428,3 +428,15 @@ describe('dimswitch columnVisibility', () => {
     expect(compiled.warnings.map(warning => warning.code)).toContain('dimswitch-encoding-column');
   });
 });
+
+describe('dimswitch columnHeads', () => {
+  // The star points from a head at its note: with no head it would mark nothing, and no head may pay for height.
+  it('draws no head and drops the partial star with it', () => {
+    const data: DimSwitchData = { ...exampleData, periods: exampleData.periods.map(p => p.kind === 'range' ? { ...p, partial: true } : p) };
+    const compiled = compileDimSwitch(data, { columnHeads: false });
+    expect(compiled.data.columns.map(column => column.label).join(' ')).not.toContain('*');
+    const svg = (options: object) => renderSvg(requireGeometry(dimswitchCore.layout(data, { size: { width: 900 }, ...options })) as never, resolveTheme());
+    expect(svg({ columnHeads: false })).not.toContain('tableHeader');
+    expect(svg({})).toContain('tableHeader');
+  });
+});

@@ -413,6 +413,8 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | frame-fill-none | table.hierarchy | example | The old frame: columns keep their widths and an empty stretch carries the rows to the edge |
 | height-fill-none | table.hierarchy | example | A pinned height keeps the rows at their natural height and leaves the rest empty |
 | table-look-keys | table.hierarchy | example | A theme sets the quiet row rule, its width and the secondary ink; each open block opens on the rule ink |
+| no-column-heads | table.hierarchy | example | No head row and no group heading: the first row starts at the top of the table |
+| head-align | table.hierarchy | example | The figures stay right under a head set left |
 
 ## waterfall
 

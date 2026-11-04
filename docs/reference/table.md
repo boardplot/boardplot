@@ -57,12 +57,13 @@ Consulting-grade table: hierarchy with honest totals (derive/validate/source), t
 | columnToggles[].label | string | yes | Column-toggle label. |
 | columnToggles[].columns | array | yes | Columns toggled within one header group. |
 | columnToggles[].defaultVisible | boolean |  | Visible before options.columnVisibility; defaults false. |
-| columns | array | yes | Display order; exactly one rowLabel column. |
+| columns | array | yes | Display order; exactly one rowLabel column. Width, alignment, label and order of a column are authored here, so table takes no columnOverrides or columnOrder. |
 | columns[].id (columns[] branch 1) | string | yes | Nonempty reference id. |
 | columns[].label (columns[] branch 1) | string |  | Visible name; defaults to id. |
 | columns[].subLabel (columns[] branch 1) | string |  | Second header line. At the micro step in muted ink: a weekday under a date, an ISO week under a week start. Primary labels keep one baseline. |
 | columns[].width (columns[] branch 1) | number |  | Width in px. React keeps it and scrolls. SVG narrows authored tracks only when the fixed frame needs it, with table-overflow and a wider-size fix. Value and computed tracks widen for figures, and a row-label track for its labels up to 180 px (table-column-widened). Other content may cut (table-column-clipped); remove width for automatic content sizing. |
 | columns[].align (columns[] branch 1) | string |  | Cell alignment. Numeric left alignment is accepted but linted. One of `'left'`, `'right'`, `'center'`. |
+| columns[].headAlign (columns[] branch 1) | string |  | Head alignment; defaults to align. One of `'left'`, `'right'`, `'center'`. |
 | columns[].emphasis (columns[] branch 1) | string |  | Header and cell emphasis. 'strong' sets the header and its cells to the emphasis weight (700 by default), 'muted' paints them in the muted ink. A strong column is measured in the bold weight; muted is paint only. One of `'strong'`, `'muted'`. |
 | columns[].band (columns[] branch 1) | boolean |  | Column band ground. Neighbouring banded columns read as one block and the first of the run takes the left hairline, so a block inside a column group needs no group of its own. Paint only. |
 | columns[].fitFormat (columns[] branch 1) | false |  | false: options.fitFormats leaves this column's format as authored. One of `false`. |
@@ -75,6 +76,7 @@ Consulting-grade table: hierarchy with honest totals (derive/validate/source), t
 | columns[].subLabel (columns[] branch 2) | string |  | Second header line. At the micro step in muted ink: a weekday under a date, an ISO week under a week start. Primary labels keep one baseline. |
 | columns[].width (columns[] branch 2) | number |  | Width in px. React keeps it and scrolls. SVG narrows authored tracks only when the fixed frame needs it, with table-overflow and a wider-size fix. Value and computed tracks widen for figures, and a row-label track for its labels up to 180 px (table-column-widened). Other content may cut (table-column-clipped); remove width for automatic content sizing. |
 | columns[].align (columns[] branch 2) | string |  | Cell alignment. Numeric left alignment is accepted but linted. One of `'left'`, `'right'`, `'center'`. |
+| columns[].headAlign (columns[] branch 2) | string |  | Head alignment; defaults to align. One of `'left'`, `'right'`, `'center'`. |
 | columns[].emphasis (columns[] branch 2) | string |  | Header and cell emphasis. 'strong' sets the header and its cells to the emphasis weight (700 by default), 'muted' paints them in the muted ink. A strong column is measured in the bold weight; muted is paint only. One of `'strong'`, `'muted'`. |
 | columns[].band (columns[] branch 2) | boolean |  | Column band ground. Neighbouring banded columns read as one block and the first of the run takes the left hairline, so a block inside a column group needs no group of its own. Paint only. |
 | columns[].fitFormat (columns[] branch 2) | false |  | false: options.fitFormats leaves this column's format as authored. One of `false`. |
@@ -94,6 +96,7 @@ Consulting-grade table: hierarchy with honest totals (derive/validate/source), t
 | columns[].subLabel (columns[] branch 3) | string |  | Second header line. At the micro step in muted ink: a weekday under a date, an ISO week under a week start. Primary labels keep one baseline. |
 | columns[].width (columns[] branch 3) | number |  | Width in px. React keeps it and scrolls. SVG narrows authored tracks only when the fixed frame needs it, with table-overflow and a wider-size fix. Value and computed tracks widen for figures, and a row-label track for its labels up to 180 px (table-column-widened). Other content may cut (table-column-clipped); remove width for automatic content sizing. |
 | columns[].align (columns[] branch 3) | string |  | Cell alignment. Numeric left alignment is accepted but linted. One of `'left'`, `'right'`, `'center'`. |
+| columns[].headAlign (columns[] branch 3) | string |  | Head alignment; defaults to align. One of `'left'`, `'right'`, `'center'`. |
 | columns[].emphasis (columns[] branch 3) | string |  | Header and cell emphasis. 'strong' sets the header and its cells to the emphasis weight (700 by default), 'muted' paints them in the muted ink. A strong column is measured in the bold weight; muted is paint only. One of `'strong'`, `'muted'`. |
 | columns[].band (columns[] branch 3) | boolean |  | Column band ground. Neighbouring banded columns read as one block and the first of the run takes the left hairline, so a block inside a column group needs no group of its own. Paint only. |
 | columns[].fitFormat (columns[] branch 3) | false |  | false: options.fitFormats leaves this column's format as authored. One of `false`. |
@@ -143,6 +146,7 @@ Consulting-grade table: hierarchy with honest totals (derive/validate/source), t
 | columns[].subLabel (columns[] branch 4) | string |  | Second header line. At the micro step in muted ink: a weekday under a date, an ISO week under a week start. Primary labels keep one baseline. |
 | columns[].width (columns[] branch 4) | number |  | Width in px. React keeps it and scrolls. SVG narrows authored tracks only when the fixed frame needs it, with table-overflow and a wider-size fix. Value and computed tracks widen for figures, and a row-label track for its labels up to 180 px (table-column-widened). Other content may cut (table-column-clipped); remove width for automatic content sizing. |
 | columns[].align (columns[] branch 4) | string |  | Cell alignment. Numeric left alignment is accepted but linted. One of `'left'`, `'right'`, `'center'`. |
+| columns[].headAlign (columns[] branch 4) | string |  | Head alignment; defaults to align. One of `'left'`, `'right'`, `'center'`. |
 | columns[].emphasis (columns[] branch 4) | string |  | Header and cell emphasis. 'strong' sets the header and its cells to the emphasis weight (700 by default), 'muted' paints them in the muted ink. A strong column is measured in the bold weight; muted is paint only. One of `'strong'`, `'muted'`. |
 | columns[].band (columns[] branch 4) | boolean |  | Column band ground. Neighbouring banded columns read as one block and the first of the run takes the left hairline, so a block inside a column group needs no group of its own. Paint only. |
 | columns[].fitFormat (columns[] branch 4) | false |  | false: options.fitFormats leaves this column's format as authored. One of `false`. |
@@ -154,6 +158,7 @@ Consulting-grade table: hierarchy with honest totals (derive/validate/source), t
 | columns[].subLabel (columns[] branch 5) | string |  | Second header line. At the micro step in muted ink: a weekday under a date, an ISO week under a week start. Primary labels keep one baseline. |
 | columns[].width (columns[] branch 5) | number |  | Width in px. React keeps it and scrolls. SVG narrows authored tracks only when the fixed frame needs it, with table-overflow and a wider-size fix. Value and computed tracks widen for figures, and a row-label track for its labels up to 180 px (table-column-widened). Other content may cut (table-column-clipped); remove width for automatic content sizing. |
 | columns[].align (columns[] branch 5) | string |  | Cell alignment. Numeric left alignment is accepted but linted. One of `'left'`, `'right'`, `'center'`. |
+| columns[].headAlign (columns[] branch 5) | string |  | Head alignment; defaults to align. One of `'left'`, `'right'`, `'center'`. |
 | columns[].emphasis (columns[] branch 5) | string |  | Header and cell emphasis. 'strong' sets the header and its cells to the emphasis weight (700 by default), 'muted' paints them in the muted ink. A strong column is measured in the bold weight; muted is paint only. One of `'strong'`, `'muted'`. |
 | columns[].band (columns[] branch 5) | boolean |  | Column band ground. Neighbouring banded columns read as one block and the first of the run takes the left hairline, so a block inside a column group needs no group of its own. Paint only. |
 | columns[].fitFormat (columns[] branch 5) | false |  | false: options.fitFormats leaves this column's format as authored. One of `false`. |
@@ -166,6 +171,7 @@ Consulting-grade table: hierarchy with honest totals (derive/validate/source), t
 | columns[].subLabel (columns[] branch 6) | string |  | Second header line. At the micro step in muted ink: a weekday under a date, an ISO week under a week start. Primary labels keep one baseline. |
 | columns[].width (columns[] branch 6) | number |  | Width in px. React keeps it and scrolls. SVG narrows authored tracks only when the fixed frame needs it, with table-overflow and a wider-size fix. Value and computed tracks widen for figures, and a row-label track for its labels up to 180 px (table-column-widened). Other content may cut (table-column-clipped); remove width for automatic content sizing. |
 | columns[].align (columns[] branch 6) | string |  | Cell alignment. Numeric left alignment is accepted but linted. One of `'left'`, `'right'`, `'center'`. |
+| columns[].headAlign (columns[] branch 6) | string |  | Head alignment; defaults to align. One of `'left'`, `'right'`, `'center'`. |
 | columns[].emphasis (columns[] branch 6) | string |  | Header and cell emphasis. 'strong' sets the header and its cells to the emphasis weight (700 by default), 'muted' paints them in the muted ink. A strong column is measured in the bold weight; muted is paint only. One of `'strong'`, `'muted'`. |
 | columns[].band (columns[] branch 6) | boolean |  | Column band ground. Neighbouring banded columns read as one block and the first of the run takes the left hairline, so a block inside a column group needs no group of its own. Paint only. |
 | columns[].fitFormat (columns[] branch 6) | false |  | false: options.fitFormats leaves this column's format as authored. One of `false`. |
@@ -177,6 +183,7 @@ Consulting-grade table: hierarchy with honest totals (derive/validate/source), t
 | columns[].subLabel (columns[] branch 7) | string |  | Second header line. At the micro step in muted ink: a weekday under a date, an ISO week under a week start. Primary labels keep one baseline. |
 | columns[].width (columns[] branch 7) | number |  | Width in px. React keeps it and scrolls. SVG narrows authored tracks only when the fixed frame needs it, with table-overflow and a wider-size fix. Value and computed tracks widen for figures, and a row-label track for its labels up to 180 px (table-column-widened). Other content may cut (table-column-clipped); remove width for automatic content sizing. |
 | columns[].align (columns[] branch 7) | string |  | Cell alignment. Numeric left alignment is accepted but linted. One of `'left'`, `'right'`, `'center'`. |
+| columns[].headAlign (columns[] branch 7) | string |  | Head alignment; defaults to align. One of `'left'`, `'right'`, `'center'`. |
 | columns[].emphasis (columns[] branch 7) | string |  | Header and cell emphasis. 'strong' sets the header and its cells to the emphasis weight (700 by default), 'muted' paints them in the muted ink. A strong column is measured in the bold weight; muted is paint only. One of `'strong'`, `'muted'`. |
 | columns[].band (columns[] branch 7) | boolean |  | Column band ground. Neighbouring banded columns read as one block and the first of the run takes the left hairline, so a block inside a column group needs no group of its own. Paint only. |
 | columns[].fitFormat (columns[] branch 7) | false |  | false: options.fitFormats leaves this column's format as authored. One of `false`. |
@@ -300,7 +307,8 @@ Consulting-grade table: hierarchy with honest totals (derive/validate/source), t
 | expansion.collapsed | array |  |  | Row-id overrides applied after depth. |
 | expansion.expanded | array |  |  | Row-id overrides applied last; they win over collapsed. |
 | expansion.rootsHidden | boolean |  |  | Hide level-0 data rows and subtrees. The totals and the section headings stay: this is the totals-only step of a depth control, which collapsing a parent cannot reach, because a collapsed parent still draws its own row. |
-| columnVisibility | object |  |  | Visibility by column-toggle id. |
+| columnVisibility | object |  |  | True shows a column and false leaves it out: the ids are data.columnToggles ids on table and column ids elsewhere. |
+| columnHeads | false | `false` |  | false: no visible head row and no group heads, with their height and rule. Assistive technology still reads the head in React, and sortable warns there. |
 | inlineVisibility | object |  |  | Visibility by inlineGroup. An absent group is visible, so a Changes control hides every MoM line of a table with one entry. |
 | magnitude | string | `'auto'`, `'thousand'`, `'million'` |  | Money scale for all rows and columns. 'thousand' prints whole thousands, 'million' keeps the example's decimals, and no column rolls up on its own. The scale letter leaves the cells and hoists to the frame, the column header or, where the format sits on the row, the row label. 'auto' (the default) lets each column and money row pick from its own largest value. |
 | foldOn | string | `'row'`, `'toggle'` |  | React only. What folds a parent row. 'row': a click on the row folds it, and selects it too where the host made it selectable. 'toggle': only the fold mark folds; a row click only selects. Default: 'toggle' for a selectable row, else 'row'. Enter and Space follow the click. |
@@ -673,3 +681,5 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | frame-fill-none | example | The old frame: columns keep their widths and an empty stretch carries the rows to the edge |
 | height-fill-none | example | A pinned height keeps the rows at their natural height and leaves the rest empty |
 | table-look-keys | example | A theme sets the quiet row rule, its width and the secondary ink; each open block opens on the rule ink |
+| no-column-heads | example | No head row and no group heading: the first row starts at the top of the table |
+| head-align | example | The figures stay right under a head set left |

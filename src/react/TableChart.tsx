@@ -847,8 +847,9 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     emptyListener.current?.();
   }, [isEmpty]);
   const sortableIds = useMemo(
-    () => (table ? sortableColumnIds(table, sortable) : new Set<Id>()),
-    [table, sortable],
+    // The sort controls live in the head, so no head means no sort control.
+    () => (table && tableOptions?.columnHeads !== false ? sortableColumnIds(table, sortable) : new Set<Id>()),
+    [table, sortable, tableOptions?.columnHeads],
   );
 
   const isCollapsedControlled = controlledCollapsed !== undefined;
@@ -1046,10 +1047,11 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   const spacerWidths = measured?.spacerBefore ?? new Map<Id, number>();
   const labelsWrap = measured?.labelsWrap ?? false;
   const diagnostics = useMemo(() => layoutRequest && resolved ? {
-    warnings: [...resolved.warnings, ...(layoutRequest.inputWarnings ?? []), ...(fittedNote === undefined ? [] : [fittedNote]), ...(measured?.warnings ?? []), ...(sized?.warnings ?? [])],
+    warnings: [...resolved.warnings, ...(layoutRequest.inputWarnings ?? []), ...(fittedNote === undefined ? [] : [fittedNote]), ...(measured?.warnings ?? []), ...(sized?.warnings ?? []),
+      ...(tableOptions?.columnHeads === false && sortable !== false && (sortable === true || sortable.length > 0) ? [SORT_WITHOUT_HEADS] : [])],
     presentation: initialPrepared?.presentation ?? tablePresentation(layoutRequest, resolved.table),
     refused: sized?.refused,
-  } : undefined, [layoutRequest, resolved, initialPrepared, sized, fittedNote, measured?.warnings]);
+  } : undefined, [layoutRequest, resolved, initialPrepared, sized, fittedNote, measured?.warnings, tableOptions?.columnHeads, sortable]);
   const displayRef = useDisplayWarnings(settling ? undefined : diagnostics, onWarnings, null);
   const headFonts = measured?.fonts;
   const frameRoom = !rowToFrame || tableOptions?.frameFill === 'none' ? undefined
@@ -1328,17 +1330,18 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   // It is measured, so a column toggle, a fold, a font swap or a resize that changes the head moves it too.
   const stickySections = sticky.sections;
   const stickyHeadMode = sticky.head;
+  const headsShown = tableOptions?.columnHeads !== false;
   const tableReady = table !== undefined;
   useEffect(() => {
     const element = grid.tableRef.current;
     const head = element?.querySelector<HTMLElement>('[data-bp-rowgroup="head"]');
     if (!stickySections || !element || !head) return undefined;
-    const apply = () => element.style.setProperty('--bp-head-h', `${stickyHeadMode === false ? 0 : head.offsetHeight}px`);
+    const apply = () => element.style.setProperty('--bp-head-h', `${stickyHeadMode === false || !headsShown ? 0 : head.offsetHeight}px`);
     apply();
     const watch = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(apply);
     watch?.observe(head);
     return () => watch?.disconnect();
-  }, [stickySections, stickyHeadMode, tableReady, gridWidth]);
+  }, [stickySections, stickyHeadMode, headsShown, tableReady, gridWidth]);
   // Page mode cannot pin a section row with CSS: the rows sit in the box that scrolls sideways, and an overflow
   // ancestor captures `position: sticky`. So one floating copy of the heading (`aria-hidden`, no ids, no pointer
   // events) is drawn under the head. The copy takes the last heading that scrolled under the head, and it leaves
@@ -1663,6 +1666,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
       theme={theme}
       windowIds={windowIds}
       wideGroups={wideGroups}
+      hidden={!headsShown}
     />
   );
   const rowShared: SharedRowProps = {
@@ -1967,6 +1971,8 @@ interface TableHeadProps {
   windowIds: ReadonlySet<Id> | undefined;
   /** Groups wider than the scroll box beside the pinned columns. */
   wideGroups: ReadonlySet<Id>;
+  /** `columnHeads: false`. */
+  hidden: boolean;
 }
 
 /** A group header starts at its leftmost reachable member: `columnGroups[].columns` need not follow display order. */
@@ -1994,6 +2000,7 @@ function TableHead({
   theme,
   windowIds,
   wideGroups,
+  hidden,
 }: TableHeadProps): ReactElement {
   // A sub-label is a second line under the label. Where one column
   // in the row has one, every other head cell reserves the same line, so the
@@ -2106,7 +2113,7 @@ function TableHead({
   }
 
   return (
-    <div ref={headRef} role="rowgroup" data-bp-rowgroup="head">
+    <div ref={headRef} role="rowgroup" data-bp-rowgroup="head" style={hidden ? HIDDEN_HEAD : undefined}>
       {table.columnGroups.some((group) => group.heading !== false)
         ? <div className="bp-groups" role="row" aria-rowindex={1}>{groupCells}</div>
         : null}
@@ -2141,7 +2148,7 @@ function TableHead({
               data-bp-pin={pinned.has(column.id) ? '' : undefined}
               data-bp-pin-last={pinned.get(column.id)?.last === true ? '' : undefined}
               style={headCellStyle(pinned.get(column.id), trackColumn?.get(column.id))}
-              className={alignmentClass(column)}
+              className={alignmentClass({ align: column.headAlign ?? column.align })}
             >
               {sortable ? (
                 <button
@@ -2924,7 +2931,14 @@ function headVars(fonts: TableFonts): Record<string, string> {
   };
 }
 
-function alignmentClass(column: ResolvedColumn): string | undefined {
+/** The sort controls live in the head. */
+const SORT_WITHOUT_HEADS: LintWarning = { code: 'column-heads-sortable', severity: 'warn', field: ['options', 'columnHeads'],
+  message: 'sortable has no effect under columnHeads: false, because the sort controls live in the head', suggest: 'Remove sortable, or remove columnHeads.' };
+
+/** The head under `columnHeads: false`: out of sight and out of the layout, still read by assistive technology. */
+const HIDDEN_HEAD: CSSProperties = { position: 'absolute', width: 1, height: 1, overflow: 'hidden', clipPath: 'inset(50%)', whiteSpace: 'nowrap', border: 0 };
+
+function alignmentClass(column: Pick<ResolvedColumn, 'align'>): string | undefined {
   if (column.align === 'right') return 'bp-num';
   return column.align === 'center' ? 'bp-center' : undefined;
 }

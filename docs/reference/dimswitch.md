@@ -269,6 +269,7 @@ A KPI table: measures by one hierarchical dimension by period, switchable betwee
 | expansion.expanded | array |  |  | Row ids to open. |
 | expansion.collapsed | array |  |  | Row ids to fold. |
 | columnVisibility | object |  |  | False leaves a column out: range, pp (the vs prior column) or pl (the vs plan column, with a plan). The data still needs its range and prior periods, and order and show still read Range. |
+| columnHeads | false | `false` |  | false: no visible head row and no group heads, with their height and rule. Assistive technology still reads the head in React, and sortable warns there. |
 | inlineVisibility | object |  |  | Visibility by inlineGroup. An absent group is visible, so a Changes control hides every MoM line of a table with one entry. |
 | magnitude | string | `'auto'`, `'thousand'`, `'million'` |  | Money scale for all rows and columns. 'thousand' prints whole thousands, 'million' keeps the example's decimals, and no column rolls up on its own. The scale letter leaves the cells and hoists to the frame, the column header or, where the format sits on the row, the row label. 'auto' (the default) lets each column and money row pick from its own largest value. |
 | foldOn | string | `'row'`, `'toggle'` |  | React only. What folds a parent row. 'row': a click on the row folds it, and selects it too where the host made it selectable. 'toggle': only the fold mark folds; a row click only selects. Default: 'toggle' for a selectable row, else 'row'. Enter and Space follow the click. |

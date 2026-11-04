@@ -113,6 +113,8 @@ interface TableColumnBase {
    */
   width?: number;
   align?: 'left' | 'right' | 'center';
+  /** Head alignment; defaults to `align`. */
+  headAlign?: 'left' | 'right' | 'center';
   /**
    * Print this column's cell notes as a SECOND LINE under the figure, at the
    * ladder's inline step in the muted ink. A note stays inline after the
@@ -484,6 +486,12 @@ export interface TableOptions extends BaseOptionsFor<'table'> {
     rootsHidden?: boolean;
   };
   columnVisibility?: Record<Id, boolean>;
+  /**
+   * false: no visible head row and no group heads, with their height, rule and
+   * sticky reservation gone. The React grid keeps a visually hidden head for
+   * assistive technology, and warns when `sortable` is set.
+   */
+  columnHeads?: false;
   /** Inline-line visibility keyed by `inlineGroup`; an absent group is visible. */
   inlineVisibility?: Record<Id, boolean>;
   /**
@@ -706,6 +714,8 @@ export interface ResolvedColumn {
   /** Authored `noteLine`: this column's cell notes print as a second line. */
   noteLine?: boolean;
   align: 'left' | 'right' | 'center';
+  /** Authored head alignment; absent, the head follows `align`. */
+  headAlign?: 'left' | 'right' | 'center';
   /** Money unit hoisted out of cells when table units are MIXED. */
   unitLabel?: string;
   /** The hoisted unit names a magnitude the cells print without ("$k"), so a raw value drops it. */

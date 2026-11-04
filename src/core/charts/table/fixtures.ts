@@ -3285,4 +3285,10 @@ fixtures.push(
   { id: 'table-look-keys', title: 'A theme sets the quiet row rule, its width and the secondary ink; each open block opens on the rule ink', kind: 'example', tags: [], data: groupsData(), options: { title: 'Costs rose less than revenue', theme: { preset: 'boardroom', overrides: { table: { ruleInk: '#B9C7D6', ruleWidths: { row: 1 }, inks: { secondary: '#3A5F86' }, blockRule: 'rule' } } } } },
 );
 
+/** A report whose frame names the columns: the head and its group heading leave with their height and rule. */
+fixtures.push(
+  { id: 'no-column-heads', title: 'No head row and no group heading: the first row starts at the top of the table', kind: 'example', tags: [], data: { ...groupsData(), columnGroups: [{ id: 'years', label: 'Fiscal years', columns: ['fy25', 'fy26'] }] }, options: { title: 'Revenue and costs, FY2025 and FY2026, in $k', columnHeads: false, size: { width: 720 } } },
+  { id: 'head-align', title: 'The figures stay right under a head set left', kind: 'example', tags: [], data: { ...groupsData(), columns: groupsData().columns.map((column) => column.id === 'fy25' ? { ...column, headAlign: 'left' as const } : column) }, options: { title: 'One head reads from the left of its column', size: { width: 720 } } },
+);
+
 registerFixtures('table', fixtures);
