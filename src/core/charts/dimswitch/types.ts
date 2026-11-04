@@ -64,6 +64,8 @@ export interface DimSwitchData {
 export type DimSwitchVariant = 'by-measure' | 'by-member';
 export interface DimSwitchOptions extends Omit<TableOptions, 'expansion' | 'topN' | 'variant'> {
   topN?: never;
+  /** False leaves a column out: range, pp (vs prior) or pl (vs plan). The data still needs its range and prior periods, and order and show still read Range. */
+  columnVisibility?: Record<string, boolean>;
   /** 'cohort' and 'cohort-small' are refused on dimswitch; use 'compact'. */
   density?: Exclude<TableOptions['density'], 'cohort' | 'cohort-small'>;
   variant?: DimSwitchVariant;

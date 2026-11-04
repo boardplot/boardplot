@@ -397,6 +397,15 @@ it('exports a DimSwitch whose document opens again', async () => {
   expect(again.ok ? '' : again.message).toBe('');
 });
 
+// The document must reopen as the table on screen, without the columns the host left out.
+it('keeps a DimSwitch column left out in its exported document', async () => {
+  const fixture = getFixtures('dimswitch').find(item => item.id === 'periods-only')!;
+  const handle = await exporterOf(exporter => <DimSwitchChart {...fixture.options as object} data={fixture.data as never} size={{ width: 720 }} exporter={exporter} />);
+  const result = await handle.svg();
+  const document = result.ok ? result.document as { charts: { options: { columnVisibility?: object } }[] } : undefined;
+  expect(document?.charts[0]!.options.columnVisibility).toEqual({ range: false, pp: false });
+});
+
 // A theme switch repaints the table but keeps its layout request: the export must take the theme on screen.
 it('exports a table in the theme it shows after a theme switch', async () => {
   stubDigest();

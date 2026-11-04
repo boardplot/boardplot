@@ -307,6 +307,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 |---|---|---|---|
 | by-measure | dimswitch.by-measure | example | KPIs and their channel members |
 | by-member | dimswitch.by-member | example | Channels and their KPIs |
+| periods-only | dimswitch.by-measure | example | KPIs by period without the Range and vs prior columns |
 | sheet | dimswitch.by-measure | example | KPIs on the report sheet |
 | statement | dimswitch.by-measure | example | A contribution-margin statement per order |
 | statement-channels | dimswitch.by-member | example | The statement with the channels folded under the Total |
