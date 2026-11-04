@@ -71,7 +71,7 @@ import { shareRoundingNotes } from '../../shareRounding';
 import { footerType } from '../../footer';
 import { textScaleOf } from '../../typeFloors';
 import { maxOf, minOf, pushAll } from '../../arrays';
-import { overrideIgnored, widthCapped } from '../heatmap/columnTracks';
+import { overrideIgnored, widthCapped, widthFloored } from '../heatmap/columnTracks';
 import { generatedIdWarnings } from '../../schema/generatedColumns';
 
 const LABEL_GAP = 12;
@@ -735,6 +735,7 @@ function layoutBarTableOnce(
     : fitRows(labelWidth === undefined ? plot.w * 0.3 : Math.max(1, Math.min(labelWidth, labelRoom) - LABEL_GAP), 3);
   const labelFloor = Math.max(rowBandW, showTotal ? width(totalLabel, totalFont) : 0) + LABEL_GAP;
   if (labelWidth !== undefined && labelWidth > Math.max(labelRoom, labelFloor)) warnings.push(widthCapped('bartable', 'label'));
+  if (labelWidth !== undefined && labelWidth < labelFloor) warnings.push(widthFloored('bartable', 'label'));
   const labelTrack = compact ? 0 : labelWidth === undefined ? labelFloor : Math.max(labelFloor, Math.min(labelWidth, labelRoom));
   // The width the chart can never go under reads the longest word, not the authored track.
   const labelTrackFloor = labelWidth === undefined ? labelTrack
@@ -757,6 +758,7 @@ function layoutBarTableOnce(
   });
   const numberSurplus = numberNaturals.map((natural) => {
     const asked = overrides[natural.entry.column.id]?.width;
+    if (asked !== undefined && asked < CELL_AIR + natural.inner) warnings.push(widthFloored('bartable', natural.entry.column.id));
     return asked === undefined ? 0 : Math.max(0, asked - CELL_AIR - natural.inner);
   });
   const numberSurplusSum = numberSurplus.reduce((sum, value) => sum + value, 0);
@@ -791,8 +793,9 @@ function layoutBarTableOnce(
   // An authored panel width beats its weight. Widths that pass the room shrink toward the floors together.
   const panelWidth = (p: number) => (compact || sharedScale || cascade ? undefined : overrides[panels[p]!.panel.id]?.width);
   const runRoom = Math.max(0, restW - panels.reduce((sum, _entry, p) => sum + PANEL_GAP + endReserves[p]!, 0));
-  const runSurplus = panels.map((_, p) => {
+  const runSurplus = panels.map((entry, p) => {
     const asked = panelWidth(p);
+    if (asked !== undefined && asked < PANEL_GAP + endReserves[p]! + runFloors[p]!) warnings.push(widthFloored('bartable', entry.panel.id));
     return asked === undefined ? 0 : Math.max(0, asked - PANEL_GAP - endReserves[p]! - runFloors[p]!);
   });
   const runSurplusSum = runSurplus.reduce((sum, value) => sum + value, 0);

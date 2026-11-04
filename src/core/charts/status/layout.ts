@@ -13,7 +13,7 @@ import { formatNonzeroWithSpec, formatterFromExample, seriesRasterFormatter } fr
 
 import { sweepHide } from '../../collide';
 import { bareGridPlot } from '../heatmap/layout';
-import { matrixTracks, overrideIgnored, widthCapped } from '../heatmap/columnTracks';
+import { matrixTracks, overrideIgnored, widthCapped, widthFloored } from '../heatmap/columnTracks';
 import { generatedIdWarnings, type ColumnOverride } from '../../schema/generatedColumns';
 import { frameTextOptions, legendRequired, normalizeLegendOption, solveFrame, type FrameInput, type LegendItemInput, authoredFootnoteCount } from '../../frame';
 import type { Rect } from '../../geometry';
@@ -361,11 +361,13 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
   }
   // The names set the width the chart can never go under; the band itself stays as authored.
   const rowBandFloor = rowBandW;
+  if (authoredBand !== undefined && nameTrack!.width! - LABEL_GAP < rowBandW) warnings.push(widthFloored('status', 'label'));
   if (authoredBand !== undefined) rowBandW = Math.max(rowBandW, authoredBand);
   const gridX = framePlot.x + rowBandW + LABEL_GAP;
   const gridRoom = Math.max(10, framePlot.w - rowBandW - LABEL_GAP);
-  const tracks = matrixTracks(columns.map((column) => column.id), gridRoom, CELL_GAP, (id) => overrides[id]?.width, MIN_CELL_W, (id) => columnKeep.get(id)!);
+  const tracks = matrixTracks(columns.map((column) => column.id), gridRoom, CELL_GAP, (id) => overrides[id]?.width, (id) => columnKeep.get(id)!);
   if (tracks) for (const id of tracks.capped) warnings.push(widthCapped('status', id));
+  if (tracks) for (const id of tracks.floored) warnings.push(widthFloored('status', id));
   const gridW = tracks?.gridW ?? gridRoom;
   // With authored widths the narrowest column sets the row pitch and the choices all cells share.
   const cellW = tracks ? minOf(tracks.widths) : Math.max(1, (gridW - (columns.length - 1) * CELL_GAP) / columns.length);

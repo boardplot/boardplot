@@ -3,7 +3,7 @@
  * table shares). One cell width becomes one width per column only when an
  * author sets one, so a spec without `columnOverrides` keeps its arithmetic.
  */
-import type { LintWarning } from '../../types/scene';
+import type { Geometry, LintWarning } from '../../types/scene';
 
 export interface MatrixTracks {
   /** Width of each column, in column order. */
@@ -16,20 +16,22 @@ export interface MatrixTracks {
   gridW: number;
   /** The ids whose authored width did not fit the room. */
   capped: string[];
+  /** The ids whose authored width stopped at their floor. */
+  floored: string[];
 }
 
 /**
  * Columns without a width share what the authored ones leave. A narrow width
- * stops at `hardFloor`. When the widths pass the room, each column keeps its
- * `keep` width (or less, if authored narrower) and the rest shrinks together,
- * so an authored width never makes the matrix wider than its plot.
+ * stops at its `keep` width. When the widths pass the room, each column keeps
+ * that width and the rest shrinks together, so an authored width never makes
+ * the matrix wider than its plot.
  */
-export function matrixTracks(ids: readonly string[], room: number, gap: number, widthOf: (id: string) => number | undefined, hardFloor: number, keepOf: (id: string) => number): MatrixTracks | undefined {
+export function matrixTracks(ids: readonly string[], room: number, gap: number, widthOf: (id: string) => number | undefined, keepOf: (id: string) => number): MatrixTracks | undefined {
   const asked = ids.map(widthOf);
   if (asked.every((width) => width === undefined)) return undefined;
   const cells = Math.max(1, room - (ids.length - 1) * gap);
-  const wanted = asked.map((width) => (width === undefined ? undefined : Math.max(hardFloor, width)));
-  const keeps = ids.map((id, i) => (wanted[i] === undefined ? keepOf(id) : Math.min(wanted[i]!, keepOf(id))));
+  const keeps = ids.map(keepOf);
+  const wanted = asked.map((width, i) => (width === undefined ? undefined : Math.max(keeps[i]!, width)));
   const keepSum = keeps.reduce((sum, value) => sum + value, 0);
   // A chart too narrow for the columns' keep widths gives each column its share of those.
   const keepScale = keepSum > cells ? cells / keepSum : 1;
@@ -50,6 +52,7 @@ export function matrixTracks(ids: readonly string[], room: number, gap: number, 
     authored: asked.map((width) => width !== undefined),
     gridW: free > 0 ? Math.max(room, at - gap) : at - gap,
     capped: scale < 1 ? ids.filter((_, i) => surplus[i]! > 0) : [],
+    floored: ids.filter((_, i) => asked[i] !== undefined && asked[i]! < keeps[i]!),
   };
 }
 
@@ -62,6 +65,15 @@ export function widthCapped(type: string, id: string): LintWarning {
   };
 }
 
+/** A narrow authored width stops at the floor of its column. */
+export function widthFloored(type: string, id: string): LintWarning {
+  return {
+    code: 'generated-column-width-floored', severity: 'warn', field: ['options', 'columnOverrides', id, 'width'],
+    message: `columnOverrides.${id}.width is narrower than this ${type} column can draw, so the column stops at its minimum`,
+    suggest: 'Set a larger width, or remove it.',
+  };
+}
+
 /** A setting this column or this form has no part for. */
 export function overrideIgnored(id: string, key: string, reason: string): LintWarning {
   return {
@@ -69,5 +81,46 @@ export function overrideIgnored(id: string, key: string, reason: string): LintWa
     message: `columnOverrides.${id}.${key} has no effect: ${reason}`,
     suggest: `Remove columnOverrides.${id}.${key}.`,
     fix: [{ op: 'remove', path: `/options/columnOverrides/${id}/${key}` }],
+  };
+}
+
+/** The labels the chart hid or cut. A label's title holds the full text of a cut one. */
+const textLost = (geometry: Geometry<any, any>) => (geometry.refused ? Infinity : geometry.labels.filter((label) => label.hidden || label.title !== undefined).length);
+
+type WidthOptions = { columnOverrides?: Readonly<Record<string, { width?: number } | undefined>>; size?: { width?: number } };
+
+/**
+ * An authored width never costs what the chart draws without it: a width that
+ * refuses, cuts or hides text gives way to the unset width and warns. It changes
+ * how many lines the names take, so only a drawn layout can tell. A spec with no
+ * width runs one layout.
+ */
+export function yieldingWidths<D, O extends object, G extends Geometry<any, any>>(type: string, layout: (data: D, options?: O) => G, trackCount: (data: D) => number): (data: D, options?: O) => G {
+  return (data, options) => {
+    const drawn = layout(data, options);
+    const read = (options ?? {}) as WidthOptions;
+    const overrides = read.columnOverrides ?? {};
+    const ids = Object.keys(overrides).filter((id) => overrides[id]?.width !== undefined);
+    if (ids.length === 0) return drawn;
+    const without = (gone: readonly string[]) => ({
+      ...read,
+      columnOverrides: Object.fromEntries(Object.entries(overrides).map(([id, override]) => {
+        if (!gone.includes(id)) return [id, override];
+        const { width: _width, ...rest } = override!;
+        return [id, rest];
+      })),
+    }) as O;
+    const natural = textLost(layout(data, without(ids)));
+    if (textLost(drawn) <= natural) return drawn;
+    const gone: string[] = [];
+    let result = drawn;
+    for (const id of ids) {
+      gone.push(id);
+      result = layout(data, without(gone));
+      if (textLost(result) <= natural) break;
+    }
+    // An equal share stands for the unset width, which no layout reports.
+    const share = (read.size?.width ?? 720) / Math.max(1, trackCount(data));
+    return { ...result, warnings: [...result.warnings, ...gone.map((id) => (overrides[id]!.width! < share ? widthFloored(type, id) : widthCapped(type, id)))] };
   };
 }

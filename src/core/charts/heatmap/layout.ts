@@ -73,7 +73,7 @@ import { disclosureNote } from '../../notes';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { headInk as tableHeadInk, plainInk } from '../table/headFace';
 import { emptyIdRecord } from '../../idRecords';
-import { matrixTracks, overrideIgnored, widthCapped } from './columnTracks';
+import { matrixTracks, overrideIgnored, widthCapped, widthFloored } from './columnTracks';
 import { generatedIdWarnings } from '../../schema/generatedColumns';
 
 export interface HeatmapMarks {
@@ -674,6 +674,7 @@ export function layoutHeatmap(
   // The chart's minimum reads the band the names need, not the authored one.
   const rowBandFloor = Math.max(fittedRows.width, maxOf(rowLines.map((label) => label.w)));
   const rowBandW = authoredBand === undefined ? rowBandFloor : Math.max(rowBandFloor, authoredBand);
+  if (authoredBand !== undefined && nameTrack!.width! - ROW_BAND_GAP < rowBandFloor) warnings.push(widthFloored('heatmap', 'label'));
   const rowSuffixShort = fittedRows.short;
 
   // A cell note gets a side seat only within 15% of the remaining grid width.
@@ -741,10 +742,11 @@ export function layoutHeatmap(
   const gridX = harveyList ? plot0.x : plot0.x + rowBandW + ROW_BAND_GAP + leftRoom;
   const gridRoom = harveyList ? HARVEY_LIST_CELL : Math.max(10, plot0.w - rowBandW - ROW_BAND_GAP - gutterRight - leftRoom);
   // A turned matrix has no column for a category: its authored settings warn and draw nothing.
-  const tracks = turned ? undefined : matrixTracks(cols.map((c) => c.id), gridRoom, CELL_GAP, (id) => overrides[id]?.width, 1, () => COLUMN_KEEP);
+  const tracks = turned ? undefined : matrixTracks(cols.map((c) => c.id), gridRoom, CELL_GAP, (id) => overrides[id]?.width, () => COLUMN_KEEP);
   if (tracks) for (const id of tracks.capped) warnings.push(widthCapped('heatmap', id));
+  if (tracks) for (const id of tracks.floored) warnings.push(widthFloored('heatmap', id));
   if (turned) {
-    for (const c of cols) for (const key of ['width', 'align', 'headAlign'] as const) {
+    for (const c of rawCats) for (const key of ['width', 'align', 'headAlign'] as const) {
       if (overrides[c.id]?.[key] !== undefined) warnings.push(overrideIgnored(c.id, key, 'this matrix draws its categories as rows'));
     }
   } else if (glyph !== 'value') {

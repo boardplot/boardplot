@@ -24,6 +24,29 @@ describe('authored column settings', () => {
     expect(geometry.sizing!.minWidth).toBeLessThanOrEqual(620);
   });
 
+  // A narrow width must draw too, and say that it gave way, because the column on the page is not the one asked for.
+  it.each([
+    ['bartable', bartableCore, 'column-widths'],
+    ['heatmap', heatmapCore, 'column-widths'],
+    ['status', statusCore, 'column-widths'],
+  ] as const)('%s floors a width under its minimum and still draws', (type, core, id) => {
+    const { data, options } = fixture(type, id);
+    const geometry = (core.layout as (d: never, o: never) => Geometry<any, any>)(data, { ...options, columnOverrides: { label: { width: 1 } }, size: { width: 620 } } as never);
+    expect(geometry.refused).toBeFalsy();
+    expect(codes(geometry)).toContain('generated-column-width-floored');
+    expect(geometry.labels.filter(label => label.title !== undefined)).toEqual([]);
+  });
+
+  // A width changes how many lines the names take, so it can cost text that the same chart keeps without it.
+  it('gives a width up where it would hide labels the chart draws without it', () => {
+    const { data, options } = fixture('status', 'programme-rollout-rag');
+    const layout = (extra: object) => (statusCore.layout as (d: never, o: never) => Geometry<any, any>)(data, { ...options, ...extra, size: { width: 400, height: 300 } } as never);
+    const geometry = layout({ columnOverrides: { label: { width: 300 } } });
+    expect(codes(geometry)).toContain('generated-column-width-capped');
+    expect(codes(geometry)).not.toContain('label-hidden');
+    expect(codes(layout({}))).not.toContain('label-hidden');
+  });
+
   // A wrong id must say which ids exist, because a silent no-op looks like a broken option.
   it('warns with the id list on an id the chart does not draw', () => {
     const warning = bartable({ columnOrder: ['bars'] }).warnings.find(item => item.code === 'generated-id-unknown');
