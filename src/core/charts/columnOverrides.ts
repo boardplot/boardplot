@@ -83,7 +83,7 @@ export const TRACK_WIDTH_TYPES: ReadonlySet<string> = new Set(['bullet', 'dot', 
 
 const WIDTH_WARNINGS: ReadonlySet<string> = new Set(['generated-column-width-capped', 'generated-column-width-floored']);
 
-/** Widths to try after `authored` failed, nearest first: half and double, in turn, up to the canvas. */
+/** Widths to try after `authored` failed: half and double, in turn, up to the canvas. */
 function nearbyWidths(authored: number, canvasW: number): number[] {
   const tries: number[] = [];
   for (let factor = 2; authored / factor >= 1 || authored * factor <= canvasW; factor *= 2) {
@@ -93,39 +93,80 @@ function nearbyWidths(authored: number, canvasW: number): number[] {
   return tries;
 }
 
+/** The authored overrides of one chart: the chart itself, or one panel of a grid, which `panel` names. */
+export interface WidthGroup {
+  overrides: Readonly<Record<string, ColumnOverride>>;
+  panel?: { id: string; index: number };
+}
+
+export interface MovedWidths {
+  overrides: Record<string, ColumnOverride>[];
+  warnings: LintWarning[];
+  /** The columns whose width moved, per group. */
+  moved: readonly (readonly string[])[];
+}
+
 /**
  * The overrides that draw on a canvas where the authored ones refuse, with the warnings that say what moved.
- * A width changes how many lines the names take, so on a fixed height it can raise the floor. Each width
- * stays if it can, else takes the nearest width that draws, else goes back to unset. `undefined` means the
- * chart refuses with every width unset too, so no width is the cause. Only the refusal path pays for these layouts.
+ * A width changes how many lines the names take, so it can raise the height a chart needs. All the widths clear
+ * together, then each comes back in turn: as authored if the chart draws, else at the first tested width that
+ * draws, else it stays unset. `undefined` means the chart refuses with every width unset too, so no width is
+ * the cause. Only the refusal path pays for these layouts.
  */
-export function widthsThatDraw(overrides: Readonly<Record<string, ColumnOverride>>, canvasW: number, draws: (overrides: Record<string, ColumnOverride>) => boolean): { overrides: Record<string, ColumnOverride>; warnings: LintWarning[]; moved: readonly string[] } | undefined {
-  const authored = Object.entries(overrides).flatMap(([id, override]) => (override.width === undefined ? [] : [[id, override.width] as const]));
-  if (authored.length === 0) return undefined;
-  const held: Record<string, ColumnOverride> = { ...overrides };
-  for (const [id] of authored) { const { width: _width, ...rest } = held[id]!; held[id] = rest; }
+export function widthsThatDraw(groups: readonly WidthGroup[], canvasW: number, draws: (overrides: readonly Record<string, ColumnOverride>[]) => boolean): MovedWidths | undefined {
+  const held = groups.map((group) => Object.fromEntries(Object.entries(group.overrides).map(([id, { width: _width, ...rest }]) => [id, rest as ColumnOverride])));
   if (!draws(held)) return undefined;
   const warnings: LintWarning[] = [];
-  const moved: string[] = [];
-  const withWidth = (id: string, width: number) => ({ ...held, [id]: { ...held[id]!, width } });
-  for (const [id, width] of authored) {
-    if (draws(withWidth(id, width))) { held[id] = { ...held[id]!, width }; continue; }
-    const seat = nearbyWidths(width, canvasW).find((nearby) => draws(withWidth(id, nearby)));
-    if (seat !== undefined) held[id] = { ...held[id]!, width: seat };
-    moved.push(id);
-    const wide = seat === undefined ? width > canvasW / 4 : seat < width;
-    const where = seat === undefined ? 'the column keeps its unset width' : `the column takes ${seat} px`;
-    warnings.push({
-      code: wide ? 'generated-column-width-capped' : 'generated-column-width-floored', severity: 'warn', field: ['options', 'columnOverrides', id, 'width'],
-      message: `columnOverrides.${id}.width ${width} does not draw on this canvas, so ${where}`,
-      suggest: seat === undefined ? `Remove columnOverrides.${id}.width, or give the chart more room.` : `Set columnOverrides.${id}.width to ${seat}, or give the chart more room.`,
-    });
-  }
+  const moved: string[][] = groups.map(() => []);
+  groups.forEach(({ overrides, panel }, at) => {
+    const withWidth = (id: string, width: number) => held.map((group, index) => (index === at ? { ...group, [id]: { ...group[id]!, width } } : group));
+    for (const [id, { width }] of Object.entries(overrides)) {
+      if (width === undefined) continue;
+      if (draws(withWidth(id, width))) { held[at]![id] = { ...held[at]![id]!, width }; continue; }
+      const seat = nearbyWidths(width, canvasW).find((nearby) => draws(withWidth(id, nearby)));
+      if (seat !== undefined) held[at]![id] = { ...held[at]![id]!, width: seat };
+      moved[at]!.push(id);
+      const wide = seat === undefined ? width > canvasW / 4 : seat < width;
+      const where = seat === undefined ? 'the column keeps its unset width' : `the column takes ${seat} px`;
+      warnings.push({
+        code: wide ? 'generated-column-width-capped' : 'generated-column-width-floored', severity: 'warn',
+        field: [...(panel ? ['data', 'panels', panel.index] : []), 'options', 'columnOverrides', id, 'width'],
+        message: `${panel ? `[${panel.id}] ` : ''}columnOverrides.${id}.width ${width} does not draw on this canvas, so ${where}`,
+        suggest: seat === undefined ? `Remove columnOverrides.${id}.width, or give the chart more room.` : `Set columnOverrides.${id}.width to ${seat}, or give the chart more room.`,
+      });
+    }
+  });
   return { overrides: held, warnings, moved };
 }
 
+const staleWidthWarning = (warning: LintWarning, columns: readonly string[], prefix = '') =>
+  WIDTH_WARNINGS.has(warning.code) && columns.some((id) => warning.message.startsWith(`${prefix}columnOverrides.${id}.`));
+
 /** Replaces what a tried width warned with what the author's own width did. */
-export function movedWidthWarnings(warnings: readonly LintWarning[], moved: { warnings: readonly LintWarning[]; moved: readonly string[] }): LintWarning[] {
-  const replaced = (warning: LintWarning) => WIDTH_WARNINGS.has(warning.code) && moved.moved.includes(String(warning.field?.[2]));
-  return [...warnings.filter((warning) => !replaced(warning)), ...moved.warnings];
+export function movedWidthWarnings(warnings: readonly LintWarning[], fit: MovedWidths): LintWarning[] {
+  return [...warnings.filter((warning) => !staleWidthWarning(warning, fit.moved[0]!)), ...fit.warnings];
+}
+
+interface PanelChart { geometry: { warnings: LintWarning[] }; warningOffset?: number }
+
+/**
+ * The same for a grid, whose warnings hold each panel's as a range that repainting a panel replaces. A stale
+ * warning leaves the panel's own list and the grid's, and each later range moves back by what left before it.
+ */
+export function movedGridWarnings<G extends { warnings: LintWarning[]; marks: unknown }>(grid: G, groups: readonly WidthGroup[], fit: MovedWidths): G {
+  const stale = new Set<number>();
+  const movedOf = groups.flatMap((group, at) => (group.panel && fit.moved[at]!.length ? [[group.panel.id, fit.moved[at]!] as const] : []));
+  grid.warnings.forEach((warning, index) => { if (movedOf.some(([id, columns]) => staleWidthWarning(warning, columns, `[${id}] `))) stale.add(index); });
+  const movedColumns = new Map(movedOf);
+  const marks = grid.marks as { panels: { id: string; chart?: PanelChart }[] };
+  const panels = marks.panels.map((panel) => {
+    const chart = panel.chart;
+    if (chart?.warningOffset === undefined) return panel;
+    const offset = chart.warningOffset;
+    const columns = movedColumns.get(panel.id) ?? [];
+    return { ...panel, chart: { ...chart,
+      warningOffset: offset - [...stale].filter((index) => index < offset).length,
+      geometry: { ...chart.geometry, warnings: chart.geometry.warnings.filter((warning) => !staleWidthWarning(warning, columns)) } } };
+  });
+  return { ...grid, marks: { ...marks, panels }, warnings: [...grid.warnings.filter((_, index) => !stale.has(index)), ...fit.warnings] };
 }

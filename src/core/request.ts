@@ -9,7 +9,7 @@ import { EMPTY_DATA, hasNoDataRows } from './emptyData';
 import { NormalizeError, canonicalLanguage } from './normalize/shared';
 import { withNumberMarks } from './numberMarks';
 import { chartRefusals, isRefused } from './schema/refusals';
-import { movedWidthWarnings, TRACK_WIDTH_TYPES, widthsThatDraw } from './charts/columnOverrides';
+import { movedGridWarnings, movedWidthWarnings, TRACK_WIDTH_TYPES, widthsThatDraw, type WidthGroup } from './charts/columnOverrides';
 import type { ColumnOverride } from './types/options';
 import { DEFAULT_PRESET, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, resolveTheme } from './theme';
 import { DEFAULT_TARGET, floorTextScale, resolveTargetSize } from './target';
@@ -300,20 +300,33 @@ export function layoutResolvedRequest(request: ResolvedChartRequest): LayoutResu
 
 /**
  * Nothing refuses because of an authored column width: where the chart draws with the width unset,
- * the width gives way toward it and warns. A refusal with every width unset stays as it is.
+ * the width gives way toward it and warns. A refusal with every width unset stays as it is. A grid
+ * refuses from the floors its panels add up to, so its panels' widths give way together, against the
+ * whole grid. A request with no authored width returns before any extra layout.
  */
 function widthsGiveWay(
   request: ResolvedChartRequest, result: LayoutResult, layout: (asked: ResolvedChartRequest) => LayoutResult,
 ): [ResolvedChartRequest, LayoutResult] | undefined {
-  if (!result.refused || result.warnings[0]?.code !== 'size-below-floor' || !TRACK_WIDTH_TYPES.has(request.type)) return undefined;
-  const overrides = (request.options as { columnOverrides?: Record<string, ColumnOverride> }).columnOverrides;
-  if (overrides === undefined) return undefined;
-  const asking = (columnOverrides: Record<string, ColumnOverride>): ResolvedChartRequest => ({ ...request, options: { ...request.options, columnOverrides } as typeof request.options });
-  const fit = widthsThatDraw(overrides, request.size.width, (columnOverrides) => !layout(asking(columnOverrides)).refused);
+  if (!result.refused || result.warnings[0]?.code !== 'size-below-floor') return undefined;
+  const panels = request.type === 'grid' ? (request.data as { panels?: { id: string; type: string; options?: { columnOverrides?: Record<string, ColumnOverride> } }[] }).panels : undefined;
+  const hasWidth = (overrides: Record<string, ColumnOverride> | undefined): overrides is Record<string, ColumnOverride> => overrides !== undefined && Object.values(overrides).some((override) => override.width !== undefined);
+  const own = (request.options as { columnOverrides?: Record<string, ColumnOverride> }).columnOverrides;
+  const groups: WidthGroup[] = panels
+    ? panels.flatMap((panel, index) => (TRACK_WIDTH_TYPES.has(panel.type) && hasWidth(panel.options?.columnOverrides) ? [{ overrides: panel.options!.columnOverrides!, panel: { id: panel.id, index } }] : []))
+    : TRACK_WIDTH_TYPES.has(request.type) && hasWidth(own) ? [{ overrides: own }] : [];
+  if (groups.length === 0) return undefined;
+  const asking = (overrides: readonly Record<string, ColumnOverride>[]): ResolvedChartRequest => {
+    if (!panels) return { ...request, options: { ...request.options, columnOverrides: overrides[0]! } as typeof request.options };
+    const next = [...panels];
+    groups.forEach((group, at) => { const panel = next[group.panel!.index]!; next[group.panel!.index] = { ...panel, options: { ...panel.options, columnOverrides: overrides[at]! } }; });
+    return { ...request, data: { ...(request.data as object), panels: next } };
+  };
+  const fit = widthsThatDraw(groups, request.size.width, (overrides) => !layout(asking(overrides)).refused);
   if (!fit) return undefined;
   const asked = asking(fit.overrides);
   const drawn = layout(asked);
-  return [asked, { ...drawn, warnings: movedWidthWarnings(drawn.warnings, fit) }];
+  if (drawn.refused) return undefined;
+  return [asked, panels ? movedGridWarnings(drawn as Geometry, groups, fit) : { ...drawn, warnings: movedWidthWarnings(drawn.warnings, fit) }];
 }
 
 /**

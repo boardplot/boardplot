@@ -398,6 +398,24 @@ it('exports a DimSwitch whose document opens again', async () => {
   expect(again.ok ? '' : again.message).toBe('');
 });
 
+// A panel's width raised the grid's floor, so the host got a refusal for a grid that draws with the width unset.
+it('draws a grid whose panel width gives way and names the panel to the host', async () => {
+  const funnel = getFixtures('funnel').find(item => item.id === 'lead-funnel')!;
+  const { size: _size, ...funnelOptions } = funnel.options as { size?: unknown };
+  const panels = [
+    { id: 'main', type: 'funnel', data: funnel.data, options: { ...funnelOptions, columnOverrides: { value: { width: 300 } } } },
+    { id: 'side', type: 'bar', data: { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: 's', label: 'Sales', values: [3, 5] }] } },
+  ];
+  let refused = false;
+  let warned: { code: string; message: string }[] = [];
+  const props = { data: { panels }, size: { width: 800, height: 600 }, onRefused: () => { refused = true; }, onWarnings: (warnings: typeof warned) => { warned = warnings; } };
+  act(() => root.render(<GridChart {...props as never as ComponentProps<typeof GridChart>} />));
+  await settle();
+  expect(host.querySelector('svg')).not.toBeNull();
+  expect(refused).toBe(false);
+  expect(warned.some(warning => /^generated-column-width-/.test(warning.code) && warning.message.startsWith('[main] '))).toBe(true);
+});
+
 // The document must reopen as the chart on screen, with the columns as the host set them.
 it('keeps bullet and likert column settings in the exported document', async () => {
   const bullet = getFixtures('bullet').find(item => item.id === 'plot-first')!;
@@ -422,6 +440,24 @@ it('keeps a DimSwitch column left out in its exported document', async () => {
   const result = await handle.svg();
   const document = result.ok ? result.document as { charts: { options: { columnVisibility?: object } }[] } : undefined;
   expect(document?.charts[0]!.options.columnVisibility).toEqual({ range: false, pp: false });
+});
+
+// A default must hide columns as the prop does, and the document must reopen as the table on screen; the prop wins over the default.
+it('resolves defaultColumnVisibility before the DimSwitch compile and keeps it in the document', async () => {
+  const fixture = getFixtures('dimswitch').find(item => item.id === 'by-measure')!;
+  const columnsOf = async (props: object) => {
+    const handle = await exporterOf(exporter => <DimSwitchChart {...fixture.options as object} {...props} data={fixture.data as never} size={{ width: 720 }} exporter={exporter} />);
+    const result = await handle.svg();
+    return result.ok ? (result.document as { charts: { options: { columnVisibility?: object } }[] }).charts[0]!.options.columnVisibility : undefined;
+  };
+  expect(await columnsOf({ defaultColumnVisibility: { w1: false } })).toEqual({ w1: false });
+  expect(await columnsOf({ defaultColumnVisibility: { w1: false }, columnVisibility: { w2: false } })).toEqual({ w2: false });
+  const host = document.createElement('div');
+  const root = createRoot(host);
+  act(() => root.render(<DimSwitchChart {...fixture.options as object} defaultColumnVisibility={{ w1: false, pp: false }} data={fixture.data as never} size={{ width: 720 }} />));
+  expect(host.textContent).not.toContain('WEEK 1');
+  expect(host.textContent).toContain('WEEK 2');
+  act(() => root.unmount());
 });
 
 // A document must reopen as the chart on screen, so a table with no head stays without one.

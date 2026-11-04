@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import '../src/core/charts';
 import { getFixtures } from '../src/fixtures';
-import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
+import { canDraw, layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { render } from '../src/cli/render';
 import type { Geometry } from '../src/core/types/scene';
 
@@ -45,6 +45,26 @@ describe('authored column widths', () => {
     }
   });
 
+  // A panel's width raises the height its grid needs, and the grid refused though it draws with the width unset.
+  it('gives way in a grid panel and names the panel', () => {
+    const panel = (panelId: string, type: string, id: string, columnOverrides: object) => {
+      const { size: _size, ...options } = fixture(type, id).options as { size?: unknown };
+      return { id: panelId, type, data: fixture(type, id).data, options: { ...options, columnOverrides } };
+    };
+    const side = { id: 'side', type: 'bar', data: { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: 's', label: 'Sales', values: [3, 5] }] } };
+    const grid = (panels: object[], width: number, height: number) => ({ type: 'grid', data: { panels: [...panels, side] }, options: { size: { width, height } } }) as never;
+    const funnel = grid([panel('main', 'funnel', 'lead-funnel', { value: { width: 300 } })], 800, 600);
+    const drawn = layoutResolvedRequest(resolveChartRequest(funnel));
+    expect(Boolean(drawn.refused)).toBe(false);
+    const named = drawn.warnings.filter((warning) => /^generated-column-width-/.test(warning.code) && warning.message.startsWith('[main] '));
+    expect(named.at(-1)!.field?.slice(0, 3)).toEqual(['data', 'panels', 0]);
+    expect(canDraw(funnel).ok).toBe(true);
+    // Two panels that fit alone can still refuse together, so they give way against the whole grid.
+    const ladder = { label: { width: 20 } };
+    const pair = { type: 'grid', data: { panels: [panel('first', 'bullet', 'four-band-neutral-ladder', ladder), panel('second', 'bullet', 'four-band-neutral-ladder', ladder)] }, options: { size: { width: 1200, height: 500 } } } as never;
+    expect(canDraw(pair).ok).toBe(true);
+  });
+
   // A cap the author does not hear about looks like the option did nothing.
   it('warns when a wide width stops at the plot floor', () => {
     expect(codes('dot', 'column-overrides', { columnOverrides: { label: { width: 5000 } } })).toContain('generated-column-width-capped');
@@ -79,7 +99,7 @@ describe('bullet columns', () => {
   // The values print on the rows here, so saying the chart does not draw them would be false.
   it('says a form without tracks cannot move a printed column', () => {
     const found = codes('bullet', 'column-overrides', { columnOverrides: undefined, targetColumns: false, columnOrder: ['actual', 'plot'] });
-    expect(found).toContain('bullet-column-order-not-applied');
+    expect(found).toContain('option-ignored');
     expect(found).not.toContain('generated-id-unknown');
   });
 

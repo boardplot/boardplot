@@ -104,8 +104,6 @@ export function generatedIdWarnings(type: GeneratedColumnType, key: GeneratedIdK
   const ids = Array.isArray(authored) ? authored as readonly string[]
     : Object.entries(authored).filter(([, value]) => key !== 'columnVisibility' && key !== 'rowVisibility' || value === false).map(([id]) => id);
   const list = generatedIdList(type, key);
-  // A list takes its position in the field path: a warning's path resolves against the spec.
-  const fieldOf = (id: string, index: number) => ['options', key, Array.isArray(authored) ? index : id];
   return ids.flatMap((id, index): LintWarning[] => {
     const shown = drawn.includes(id);
     if (key === 'columnVisibility' && shown && NAME_COLUMNS.has(id)) {
@@ -113,7 +111,8 @@ export function generatedIdWarnings(type: GeneratedColumnType, key: GeneratedIdK
         message: `${key} cannot hide '${id}': the marks need a name, so the column stays`, suggest: `Remove '${id}' from ${key}.` }];
     }
     if (shown) return [];
-    return [{ code: 'generated-id-unknown', severity: 'warn', field: fieldOf(id, index),
+    // A list takes its position in the field path: a warning's path resolves against the spec.
+    return [{ code: 'generated-id-unknown', severity: 'warn', field: ['options', key, Array.isArray(authored) ? index : id],
       message: `${key} names '${id}', which this ${type} does not draw, so nothing changed. Its ids: ${list}`, suggest: `Use one of: ${list}.` }];
   });
 }

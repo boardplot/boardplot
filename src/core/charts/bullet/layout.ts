@@ -1543,7 +1543,7 @@ export function layoutBullet(
   pushAll(warnings, generatedIdWarnings('bullet', 'columnOrder', options.columnOrder, cols ? ['plot', ...(valueColW > 0 ? ['actual'] : []), ...trackIds] : ['plot', ...(hasValues ? ['actual'] : []), ...(hasTargets ? ['target', 'gap'] : [])]));
   // This form prints its values on the rows, with no tracks to move.
   if (!cols && !compact && options.columnOrder?.some((id) => id !== 'plot' && (id === 'actual' ? hasValues : hasTargets && (id === 'target' || id === 'gap')))) {
-    warnings.push({ code: 'bullet-column-order-not-applied', severity: 'warn', field: ['options', 'columnOrder'], message: 'columnOrder moves columns, and this form prints its values on the rows, so nothing moved', suggest: 'Give the chart the width the target columns need, or remove columnOrder.' });
+    warnings.push({ code: 'option-ignored', severity: 'warn', field: ['options', 'columnOrder'], message: 'columnOrder moves columns, and this form prints its values on the rows, so nothing moved', suggest: 'Give the chart the width the target columns need, or remove columnOrder.' });
   }
   for (const kind of ['position', 'direction'] as const) {
     if (typeof options.labels !== 'object' || options.labels[kind] !== false || cols) continue;
