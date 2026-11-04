@@ -394,6 +394,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | percent-points-declared | table.hierarchy | example | Low conversion rates declared in points |
 | hierarchy-kinds | table.steering | example | Member, measure and split presentation |
 | row-label-text-cap | table.steering | example | A row-label text cap with an indent and a unit affix |
+| row-label-three-lines | table.hierarchy | example | Campaign names on three lines in a capped label track |
 | long-campaign-names | table.hierarchy | example | Campaign names that wrap after _ and - in a capped label track |
 | contribution-margin-statement | table.hierarchy | example | Contribution margin with signed costs and driver rows |
 | pl-statement | table.hierarchy | example | An authored P&L, signed |

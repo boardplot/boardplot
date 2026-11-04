@@ -276,6 +276,7 @@ Consulting-grade table: hierarchy with honest totals (derive/validate/source), t
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
 | mountCollapsed | boolean |  |  | Default true. false removes closed descendants from the React DOM and defers offscreen leaf paint. |
+| paintOffscreenRows | boolean |  |  | React only. true paints every mounted row at once, so a capture of a long table has no blank rows, and a long table paints slower. Default false. Closed rows follow mountCollapsed. |
 | signs | string | `'signed'`, `'operators'`, `'plain'` |  | How sign -1 rows print. signed (default) negates them; operators draws + − × =; plain draws neither. |
 | driverTones | string | `'grouped'`, `'always'`, `'never'` |  | Driver tones. 'grouped' (default): drivers with a parentId whose parent is not a section heading do, as statement lines do. 'always': every driver. 'never': driver ink only, as before 0.28. Neutral figures and labels keep the driver ink. |
 | judgements | string | `'all'`, `'exceptions'` |  | Which tones show. exceptions: strong good and bad only. |
@@ -321,7 +322,7 @@ Consulting-grade table: hierarchy with honest totals (derive/validate/source), t
 | stickyLabels.sections | boolean |  |  | Section label. Default false. true keeps the active section label under the head until the next section starts. |
 | frameFill | string | `'values'`, `'none'` | `'values'` | Under rowExtent 'frame'. 'values' (default): automatic value tracks grow in whole pixels, up to maxGrowth (default 2.5). An unauthored label track takes the rest. 'none': columns keep their widths; an empty track carries the row ground and rules to the edge. |
 | heightFill | string | `'rows'`, `'none'` | `'rows'` | Spare canvas height. 'rows' (default) spreads it over leaf rows as air, up to 16 px a side. 'none' leaves it empty. |
-| rowLabelLines | number | `1`, `2` | `2` | Lines a row label may take before a cut (default 2). A label breaks at a space or after _ - / or a dot, so a long campaign name wraps instead of ending in '…'. 1 keeps every label on one line. The hover card always prints the full name. |
+| rowLabelLines | integer |  | `2` | Lines a row label may take before a cut (default 2). A label breaks at a space or after _ - / or a dot, so a long campaign name wraps instead of ending in '…'. 1 keeps every label on one line; a higher count lets a row grow to its lines. A cut label keeps its full name in its title. |
 | lastTrackFlex | boolean |  |  | Last unauthored track takes the spare frame width when rowExtent is tracks. Default false. |
 | rowExtent | string | `'tracks'`, `'frame'` | `'frame'` | Where rows end. 'frame' (default) fills the width inside the frame margins. An explicit 'frame' also carries row grounds and rules through authored side margins. frameFill controls track growth. 'tracks' stops rows at the last column. Column bands stop at their columns. Tables use horizontal rules and explicit column separators; there is no single vertical end rule. |
 | sortIndicator | string | `'all'`, `'sorted'` |  | Sortable headers with a chevron. 'all' (the default) draws one on every sortable header; 'sorted' draws it on the sorted one alone and keeps the others' reserve, so no track moves. |
@@ -662,6 +663,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | percent-points-declared | example | Low conversion rates declared in points |
 | hierarchy-kinds | example | Member, measure and split presentation |
 | row-label-text-cap | example | A row-label text cap with an indent and a unit affix |
+| row-label-three-lines | example | Campaign names on three lines in a capped label track |
 | long-campaign-names | example | Campaign names that wrap after _ and - in a capped label track |
 | contribution-margin-statement | example | Contribution margin with signed costs and driver rows |
 | pl-statement | example | An authored P&L, signed |

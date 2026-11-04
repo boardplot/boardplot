@@ -3060,6 +3060,20 @@ fixtures.push({
       {parentId:'member',id:'orders',label:'Orders',kind:'measure',scale:'count',relation:'displayOnly',cells:{value:120}},
   ]}, options:{title:'Branded search spends $4,400 a month',variant:'steering',mountCollapsed:false},
 });
+// A label track capped under the names, with room for three lines: the row grows to them and no name is cut. Invented names.
+fixtures.push({
+  id: 'row-label-three-lines', title: 'Campaign names on three lines in a capped label track', kind: 'example',
+  data: { columns: [
+    {id:'name',kind:'rowLabel',label:'Campaign',maxWidth:170},
+    {id:'spend',kind:'value',label:'Spend',format:'$1.1k',aggregate:'sum'},
+    {id:'purchases',kind:'value',label:'Purchases',format:'1',aggregate:'sum'},
+  ], rows: [
+    {id:'a',label:'Garden-Tools_Spring-Sale_Northern_Region_Broad-Reach_Wave_Q4',cells:{spend:28000,purchases:18}},
+    {id:'b',label:'Garden-Tools_Spring-Sale_Northern_Return-Visitors_14d',cells:{spend:38000,purchases:31}},
+    {id:'c',label:'Brand search',cells:{spend:12500,purchases:52}},
+    {id:'d',label:'Kitchen-Goods_Autumn-Sale_Southern_Hobby-Cooks_v3.2',cells:{spend:24500,purchases:46}},
+  ]}, options:{title:'Four campaigns spend $103k',source:'Invented campaign names',rowLabelLines:3},
+});
 // Campaign names with no spaces break after _ - / . and take two lines in a capped label track
 // (rowLabelLines, default 2); a name longer than two lines keeps its distinguishing tail. Invented names.
 fixtures.push({
