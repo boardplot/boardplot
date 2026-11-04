@@ -54,7 +54,7 @@ import {
 } from '../src/core/charts/table/view';
 import type { Fixture } from '../src/core/registry';
 import type { TableData, TableOptions } from '../src/core/types/table';
-import { TableChart } from '../src/react';
+import { DimSwitchChart, TableChart } from '../src/react';
 
 const actGlobal = globalThis as typeof globalThis & {
   IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -131,13 +131,35 @@ it('keeps bold automatic value tracks safe when browser measurement is unavailab
   }
 });
 
+// A capture of a long table must not show blank rows where the browser skipped the paint.
+it('paints offscreen rows at once with paintOffscreenRows', () => {
+  const rows = Array.from({ length: 501 }, (_, index) => ({ id: `r${index}`, label: `Row ${index}`, cells: { v: index } }));
+  const data: TableData = { columns: [{ id: 'label', kind: 'rowLabel', label: 'Name' }, { id: 'v', kind: 'value', label: 'Value' }], rows };
+  vi.stubGlobal('IntersectionObserver', class { observe() {} unobserve() {} disconnect() {} });
+  const drawn = (paintOffscreenRows: boolean) => {
+    act(() => root.render(<TableChart data={data} size={{ width: 400 }} mountCollapsed={false} paintOffscreenRows={paintOffscreenRows} />));
+    return [container.querySelectorAll('[data-bp-defer-row]').length, container.querySelectorAll('[data-bp-row-page]').length];
+  };
+  expect(drawn(false)[0]).toBeGreaterThan(0);
+  expect(drawn(true)).toEqual([0, 0]);
+  vi.unstubAllGlobals();
+  // DimSwitch mounts its rows deferred by default, and takes the switch from the table schema.
+  const fixture = getFixtures('dimswitch').find(item => item.id === 'by-member')!;
+  const deferredRows = (paintOffscreenRows: boolean) => {
+    act(() => root.render(<DimSwitchChart {...fixture.options as object} data={fixture.data as never} size={{ width: 720 }} paintOffscreenRows={paintOffscreenRows} />));
+    return container.querySelectorAll('[data-bp-defer-row]').length;
+  };
+  expect(deferredRows(false)).toBeGreaterThan(0);
+  expect(deferredRows(true)).toBe(0);
+});
+
 // A scrolling table must show the whole name within its allowed lines, including a leading glyph.
-it('keeps the one-line or two-line label floor before a React table scrolls', () => {
+it('keeps the label floor of each line count before a React table scrolls', () => {
   const data: TableData = {
     columns: [{ id: 'label', kind: 'rowLabel', label: 'Region' }, { id: 'v', kind: 'value', label: 'Value', width: 200 }],
     rows: [{ id: 'a', label: 'North America enterprise customer acquisition', cells: { v: 1234 } }],
   };
-  for (const [rowLabelLines, floor] of [[2, 168], [1, 289]] as const) {
+  for (const [rowLabelLines, floor] of [[3, 120], [2, 168], [1, 289]] as const) {
     for (const lead of [0, 24.5]) {
       act(() => root.render(<TableChart data={data} size={{ width: 300 }} margin={{ left: 0, right: 0 }}
         theme={{ preset: 'standard', overrides: { type: { family: 'Geist Variable' } } }}

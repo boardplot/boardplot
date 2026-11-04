@@ -71,6 +71,8 @@ interface TableStyleFeatures {
   statement?: boolean;
   /** A cohort density: a row grows to hold its inline lines and bars instead of cutting them at the fixed pitch. */
   cohort?: boolean;
+  /** `rowLabelLines` above 2: the clamp reads the count from the grid, and every other grid keeps its stylesheet. */
+  manyLabelLines?: boolean;
   /** The object form of `stickyLabels` is in use: its page head, head switch and section rules come with it, and a 0.27 table draws none of them. */
   sticky?: boolean;
 }
@@ -89,6 +91,8 @@ interface TableStyleFeatures {
 const COHORT_GROWTH = '\n.bp-table-grid[data-bp-density^="cohort"] [role="row"]>*{height:auto;min-height:var(--bp-row-h)}\n.bp-table-grid[data-bp-density^="cohort"] [role="row"].bp-total>*{height:auto;min-height:calc(var(--bp-row-h) + 8px)}'
   + '\n.bp-table-grid[data-bp-density^="cohort"] [role="row"]:not(.bp-total)>[role="rowheader"] .bp-value{line-height:round(up,1.2em,1px);margin-block:calc((var(--bp-row-h) - round(up,1.2em,1px) - var(--bp-rule-top,var(--bp-stroke-hair)))/2)}'
   + '\n.bp-table-grid[data-bp-density^="cohort"] :is([data-bp-rowgroup="body"],[data-bp-row-page="0"])>.bp-rowwrap:first-child>[role="row"]>*,.bp-table-grid[data-bp-density^="cohort"] [role="row"][data-bp-spacer]:not(.bp-total)>*,.bp-table-grid[data-bp-density^="cohort"] .bp-rowwrap:has(>.bp-total)+.bp-rowwrap>[role="row"]>*{--bp-rule-top:0px}';
+
+const MANY_LABEL_LINES = '\n.bp-table-grid[data-bp-label-lines]:not([data-bp-label-lines="1"]) [role="rowheader"] .bp-value{-webkit-line-clamp:var(--bp-label-lines)}';
 
 /** HTML framing shares notes and mode selection with the React table. */
 export function tableFrame(
@@ -227,8 +231,8 @@ export const insetTint = (color: string) => ({
 const insetTintCss = (color: string): string => Object.entries(insetTint(color))
   .map(([key, value]) => `${key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}:${value}`).join(';');
 
-export function tableStylesheet(theme: Theme, target: RenderTarget = DEFAULT_TARGET, statement = false, cohort = false, sticky = false, textScale = 1, palette?: string): string {
-  return renderTableStyle(theme, { inCellBar: true, rowHighlight: true, anchorWash: true, statement, cohort, sticky }, target, textScale, palette);
+export function tableStylesheet(theme: Theme, target: RenderTarget = DEFAULT_TARGET, statement = false, cohort = false, sticky = false, textScale = 1, palette?: string, manyLabelLines = false): string {
+  return renderTableStyle(theme, { inCellBar: true, rowHighlight: true, anchorWash: true, statement, cohort, sticky, manyLabelLines }, target, textScale, palette);
 }
 
 /**
@@ -378,7 +382,7 @@ function renderTableStyle(
   // badges keep proportional figures.
   const figures = numericVariant('value', theme) ?? 'tabular-nums';
   const featureStyles = renderFeatureStyles(theme, features);
-  const tableRules = renderTableConventions(theme, target, features.statement, textScale) + (features.cohort ? COHORT_GROWTH : '');
+  const tableRules = renderTableConventions(theme, target, features.statement, textScale) + (features.cohort ? COHORT_GROWTH : '') + (features.manyLabelLines ? MANY_LABEL_LINES : '');
   // A row draws every value at the ladder's role weight, as the SVG
   // does (`rowFont`), not only the row header.
   // A glyph keeps the body weight and a strong column uses emphasis, as there.
