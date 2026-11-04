@@ -209,7 +209,7 @@ it('warns on wrong gutter ids under options.stack, keeps the name, and refuses t
 it('caps a wide gutter and floors a narrow one with a warning, and ignores it above the panels', () => {
   const codes = (stack: object, width?: number) => { const b = render({ spec: stackSpec(stack, width) }).body as { ok: boolean; warnings: { code: string }[] }; expect(b.ok).toBe(true); return b.warnings.map(warning => warning.code); };
   expect(codes({ columnOverrides: { gutter: { width: 5000 } } })).toContain('generated-column-width-capped');
-  expect(codes({ columnOverrides: { gutter: { width: 10 } } })).toContain('generated-column-width-floor');
+  expect(codes({ columnOverrides: { gutter: { width: 10 } } })).toContain('generated-column-width-floored');
   expect(codes({ columnOverrides: { gutter: { width: 200 } }, columnOrder: ['plot', 'gutter'] }, 320).filter(code => code === 'option-ignored')).toHaveLength(2);
 });
 
@@ -226,4 +226,24 @@ it('draws the gutter settings in React as in the CLI', async () => {
   expect(onScreen).toContain('Started');
   await act(async () => { root.unmount(); });
   host.remove();
+});
+
+// A gutter wide enough to take the room of the value labels refused the chart, though the spec without the width draws.
+it('never refuses for an authored gutter width, at the cap or past it', () => {
+  const fixture = metricStackFixtures.find(f => f.id === 'metric-stack-steps')!;
+  for (const [spec, widths] of [[{ data, options: {} }, [720, 960]], [{ data: fixture.data, options: fixture.options }, [960, 1180]]] as const) {
+    for (const canvas of widths) for (const gutter of [canvas * 0.6, canvas * 0.75, canvas * 0.95, 5000]) {
+      const options = spec.options as { stack?: object };
+      const drawn = render({ spec: { type: 'grid', data: spec.data, options: { title: 'Steps', ...options, stack: { ...options.stack, columnOverrides: { gutter: { width: gutter } } }, size: { width: canvas } } } }).body as { ok: boolean; warnings: { code: string }[] };
+      expect(drawn.ok, `${canvas} ${gutter}`).toBe(true);
+    }
+  }
+});
+
+// The method line named the remaining-per-100 chain after the span that prints it was hidden.
+it('names only the figures that print in the method line', () => {
+  const fixture = metricStackFixtures.find(f => f.id === 'metric-stack-steps')!;
+  const line = (columnVisibility: object) => (render({ spec: { type: 'grid', data: fixture.data, options: { ...fixture.options, stack: { columnVisibility } } }, return: ['svg'] }).body as { svg: string }).svg;
+  expect(line({ span: false })).toContain('Left: volume-weighted mature rates<');
+  expect(line({ headline: false })).toContain('Left: remaining per 100<');
 });

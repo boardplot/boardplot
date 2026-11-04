@@ -29,7 +29,7 @@ it('floors and caps authored widths with a warning and keeps every value', () =>
   const narrow = draw({ columnOverrides: { name: { width: 2 }, meta0: { width: 2 } } });
   expect(narrow.ok).toBe(true);
   expect(narrow.svg).toContain('Ana');
-  expect(narrow.warnings.map((warning) => warning.code)).toContain('generated-column-width-floor');
+  expect(narrow.warnings.map((warning) => warning.code)).toContain('generated-column-width-floored');
   const wide = draw({ columnOverrides: { name: { width: 5000 }, meta0: { width: 5000 } } });
   expect(wide.ok).toBe(true);
   expect(wide.svg).toContain('Ana');
@@ -63,4 +63,14 @@ it('draws the column settings in React as in the CLI', async () => {
   expect(host.querySelector('svg')!.textContent).toContain('Lead');
   await act(async () => { root.unmount(); });
   host.remove();
+});
+
+// A value past the 90 px cell cap chose the stacked form at every width, so its width and order did nothing.
+it('draws the table form for a long value with an authored width or order wherever it fits', () => {
+  const long = { rows: data.rows.map((row) => ({ ...row, cols: ['A rather long owner name here'] })) };
+  const form = (options: object, width: number) => { const body = render({ spec: { type: 'gantt', data: long, options: { title: 'Plan', size: { width }, ...options } } }).body as { ok: boolean; warnings: { code: string }[] }; expect(body.ok).toBe(true); return body.warnings.map((warning) => warning.code); };
+  for (const keys of [{ columnOverrides: { meta0: { width: 260 } } }, { columnOrder: ['plot', 'meta'] }]) {
+    expect(form(keys, 960)).not.toContain('option-ignored');
+    expect(form(keys, 320)).toContain('option-ignored');
+  }
 });

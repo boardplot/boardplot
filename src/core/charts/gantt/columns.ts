@@ -26,12 +26,16 @@ export interface GanttColumnSettings {
   metaAfter: boolean;
   /** A setting of a metadata column exists, so a plan reads them. */
   authored: boolean;
+  /** A width, an alignment or an order is authored: the author asks for columns, so the form choice tests them. */
+  layoutAuthored: boolean;
 }
 
 /** What the width overrides resolved to on one plot. */
 export interface AuthoredWidths {
   name?: number;
   meta: readonly (number | undefined)[];
+  /** Every metadata column keeps its values in full. False where they leave no timeline. */
+  keepAll: boolean;
   floored: readonly string[];
   capped: readonly string[];
 }
@@ -44,12 +48,14 @@ export function resolveGanttColumns(options: GanttOptions): GanttColumnSettings 
   const order = options.columnOrder ?? [];
   const plotAt = order.indexOf('plot');
   const metaAt = order.indexOf('meta');
+  const placesBlocks = plotAt >= 0 || metaAt >= 0;
   return {
     ...(overrides?.name ? { name: overrides.name } : {}),
     meta,
     headers,
     metaAfter: plotAt >= 0 && (metaAt < 0 || plotAt < metaAt),
-    authored: meta.some(Boolean) || plotAt >= 0 && (metaAt < 0 || plotAt < metaAt),
+    authored: meta.some(Boolean) || placesBlocks,
+    layoutAuthored: placesBlocks || [overrides?.name, ...meta].some((column) => column?.width !== undefined || column?.align !== undefined || column?.headAlign !== undefined),
   };
 }
 
@@ -72,13 +78,13 @@ export function ganttColumnWarnings(env: { options: GanttOptions }, rows: readon
     const layoutKeys = Object.entries(overrides ?? {}).filter(([, column]) => column.width !== undefined || column.align !== undefined || column.headAlign !== undefined).map(([id]) => id);
     if (layoutKeys.length) warnings.push({ code: 'option-ignored', severity: 'warn', field: ['options', 'columnOverrides'],
       message: `this canvas draws the gantt in its stacked form, which has no columns, so width, align and headAlign of ${layoutKeys.join(', ')} do nothing here; label still prints`,
-      suggest: 'Widen the chart to draw the columns.' });
+      suggest: 'Widen the chart or lower the width to draw the columns.' });
     if (order?.length) warnings.push({ code: 'option-ignored', severity: 'warn', field: ['options', 'columnOrder'],
       message: 'this canvas draws the gantt in its stacked form, where the metadata sits on each name line, so columnOrder does nothing here',
       suggest: 'Widen the chart to draw the columns.' });
     return warnings;
   }
-  if (widths.floored.length) warnings.push({ code: 'generated-column-width-floor', severity: 'warn', field: ['options', 'columnOverrides'],
+  if (widths.floored.length) warnings.push({ code: 'generated-column-width-floored', severity: 'warn', field: ['options', 'columnOverrides'],
     message: `columnOverrides width of ${widths.floored.join(', ')} is under what the text needs, so the column stays as wide as its text`,
     suggest: 'Raise the width, or shorten the text.' });
   if (widths.capped.length) warnings.push({ code: 'generated-column-width-capped', severity: 'warn', field: ['options', 'columnOverrides'],

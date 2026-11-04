@@ -91,7 +91,9 @@ function stackedLineWidth(env: GanttEnv, domain: GanttDomain, plotW: number): nu
   const count = Math.min(MAX_COLS, Math.max(0, maxOf(domain.rows.map((row) => row.cols.length))));
   const tableTimeline = plotW - Math.max(0, maxOf(rows.map(nameW))) - 12
     - columns.colWs.reduce((sum, width) => sum + width, 0) - (columns.colWs.length ? 4 : 0);
-  return columns.colWs.length < count || tableTimeline < STACKED_TIMELINE_SHARE * plotW ? lineW : undefined;
+  if (columns.colWs.length >= count && tableTimeline >= STACKED_TIMELINE_SHARE * plotW) return undefined;
+  // An authored width, alignment or order asks for columns: the table form draws wherever they fit.
+  return env.columns.layoutAuthored && authoredColumnsFit(env, domain, plotW) ? undefined : lineW;
 }
 
 /**
@@ -377,13 +379,13 @@ function planMetadataColumns(
   cap: number, headerY: number, headerH: number, font: FontSpec, headerFont: FontSpec,
   measure: TextMeasurer, target: RenderTarget | undefined,
   /** The authored settings per column, the widths they resolved to, and whether the block ends at the plot edge. */
-  authored?: { overrides: GanttColumnSettings['meta']; widths: readonly (number | undefined)[]; flushEnd: boolean },
+  authored?: { overrides: GanttColumnSettings['meta']; widths: readonly (number | undefined)[]; flushEnd: boolean; keepAll: boolean },
 ): MetadataColumns {
   const count = Math.min(MAX_COLS, Math.max(0, maxOf(rows.map((row) => row.cols.length))));
   // One line per cell: place, then cut with the full text kept for <title>.
-  // A column with an authored width shows its values in full at any length.
+  // A column with an authored width, or any column where keepAll holds, shows its values in full at any length.
   const fitCell = (text: string, cellFont: FontSpec, k: number, reserve = 0) => {
-    const fitted = fitText(text, cellFont, (authored?.widths[k] === undefined ? cap : AUTHORED_CAP) - reserve, 1, measure, { target, typeRole: cellFont === headerFont ? 'axis' : 'label' });
+    const fitted = fitText(text, cellFont, (authored?.keepAll || authored?.widths[k] !== undefined ? AUTHORED_CAP : cap) - reserve, 1, measure, { target, typeRole: cellFont === headerFont ? 'axis' : 'label' });
     return { text: fitted.lines[0] ?? '', ...(fitted.title ? { title: fitted.title } : {}) };
   };
   // A toned cell draws its marker before the text: the marker's width is reserved.
@@ -504,7 +506,30 @@ const AUTHORED_CAP = 1e6;
 const AUTHORED_MIN_GAP = 4;
 /** The least timeline an authored width may leave. */
 const MINIMUM_TIMELINE = 80;
-const NO_AUTHORED_WIDTHS: AuthoredWidths = { meta: [], floored: [], capped: [] };
+const NO_AUTHORED_WIDTHS: AuthoredWidths = { meta: [], keepAll: false, floored: [], capped: [] };
+
+/** The narrowest band that holds every complete name and the name head. */
+function nameFloorW(env: GanttEnv, rows: readonly NormRow[]): number {
+  const { fonts, measure } = env;
+  const fontOf = (r: NormRow): FontSpec => (r.indent === 0 ? fonts.strong : fonts.label);
+  return Math.max(0, maxOf(rows.filter((row) => !row.shared).map((row) => nameBandW(completeRowName(row, fontOf(row), measure, fonts.label)))), nameHeadW(env));
+}
+
+/** The px the columns may take beside the names: the plot less the gaps, the least timeline and the milestone lane. */
+function columnRoom(env: GanttEnv, domain: GanttDomain, plotW: number, hasColumns: boolean): number {
+  const laneReserve = domain.milestones.laneLabelW && env.options.mode !== 'compact' ? 12 + domain.milestones.laneLabelW : 0;
+  return plotW - 12 - (hasColumns ? (env.columns.metaAfter ? 12 : 4) : 0) - MINIMUM_TIMELINE - laneReserve;
+}
+
+/** Whether the columns fit in the table form at their authored widths, and every other column at its full text. */
+function authoredColumnsFit(env: GanttEnv, domain: GanttDomain, plotW: number): boolean {
+  const { name, meta } = env.columns;
+  const { rows } = domain;
+  const plan = planMetadataColumns(rows, env.columns.headers, 0, COLUMN_CAP, 0, 0, env.fonts.label, env.fonts.headerMajor, env.measure, env.options.target,
+    { overrides: meta, widths: meta.map((column) => column?.width), flushEnd: false, keepAll: true });
+  const used = plan.colWs.reduce((sum, width) => sum + width, 0) + Math.max(name?.width ?? 0, nameFloorW(env, rows));
+  return used <= columnRoom(env, domain, plotW, plan.colWs.length > 0);
+}
 
 /**
  * What the authored widths resolve to on a plot of this width. A width under
@@ -514,24 +539,21 @@ const NO_AUTHORED_WIDTHS: AuthoredWidths = { meta: [], floored: [], capped: [] }
  */
 function authoredWidths(env: GanttEnv, domain: GanttDomain, plotW: number): AuthoredWidths {
   const { name, meta } = env.columns;
-  if (name?.width === undefined && meta.every((column) => column?.width === undefined)) return NO_AUTHORED_WIDTHS;
+  if (!env.columns.layoutAuthored) return NO_AUTHORED_WIDTHS;
   const { fonts, measure, options } = env;
-  const { rows, milestones } = domain;
-  const fontOf = (r: NormRow): FontSpec => (r.indent === 0 ? fonts.strong : fonts.label);
-  const names = Math.max(0, maxOf(rows.filter((row) => !row.shared).map((row) => nameBandW(completeRowName(row, fontOf(row), measure, fonts.label)))));
-  const nameFloor = Math.max(names, nameHeadW(env));
+  const { rows } = domain;
+  const nameFloor = nameFloorW(env, rows);
   const widths = meta.map((column) => column?.width);
   const plan = planMetadataColumns(rows, env.columns.headers, 0, columnCap(env, rows, plotW), 0, 0, fonts.label, fonts.headerMajor, measure, options.target,
-    { overrides: meta, widths, flushEnd: false });
+    { overrides: meta, widths, flushEnd: false, keepAll: true });
   const floored = [
     ...(name?.width !== undefined && name.width < nameFloor ? ['name'] : []),
     ...plan.shown!.flatMap((k, index) => (widths[k] !== undefined && widths[k]! < plan.floors![index]! ? [`meta${k}`] : [])),
   ];
   const drawn = plan.colWs.slice();
   let nameW = name?.width === undefined ? undefined : Math.max(name.width, nameFloor);
-  const laneReserve = milestones.laneLabelW && options.mode !== 'compact' ? 12 + milestones.laneLabelW : 0;
-  const room = plotW - 12 - (drawn.length ? (env.columns.metaAfter ? 12 : 4) : 0) - MINIMUM_TIMELINE - laneReserve;
-  let excess = drawn.reduce((sum, width) => sum + width, 0) + (nameW ?? names) - room;
+  const room = columnRoom(env, domain, plotW, drawn.length > 0);
+  let excess = drawn.reduce((sum, width) => sum + width, 0) + (nameW ?? nameFloor) - room;
   const capped: string[] = [];
   for (let index = drawn.length - 1; index >= 0 && excess > 0; index--) {
     const k = plan.shown![index]!;
@@ -552,7 +574,7 @@ function authoredWidths(env: GanttEnv, domain: GanttDomain, plotW: number): Auth
   if (excess > 0) {
     meta.forEach((column, k) => { if (column?.width !== undefined && !capped.includes(`meta${k}`)) capped.push(`meta${k}`); widths[k] = undefined; });
   }
-  return { ...(nameW === undefined ? {} : { name: nameW }), meta: widths, floored, capped };
+  return { ...(nameW === undefined ? {} : { name: nameW }), meta: widths, keepAll: excess <= 0, floored, capped };
 }
 
 /** The width a name head asks of the name band. */
@@ -563,7 +585,7 @@ function nameHeadW(env: GanttEnv): number {
 
 /** The authored settings a table-form plan reads; undefined without overrides, so a plain chart takes the old path. */
 function authoredPlan(env: GanttEnv, widths: AuthoredWidths, flushEnd: boolean) {
-  return env.columns.authored ? { overrides: env.columns.meta, widths: widths.meta, flushEnd } : undefined;
+  return env.columns.authored ? { overrides: env.columns.meta, widths: widths.meta, flushEnd, keepAll: widths.keepAll } : undefined;
 }
 
 /**

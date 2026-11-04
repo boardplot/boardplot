@@ -42,6 +42,8 @@ const wash = (base: Paint, weight: number, pageFloor?: number): Paint =>
 const NO_WIDER_SEARCH = Symbol('boardplot.metricStackNoWiderSearch');
 /** A fixed canvas too short for the readout gutter: unit beside name, headline and span on one line, tighter spacing. */
 const COMPACT_READOUT = Symbol('boardplot.metricStackCompactReadout');
+/** The widest authored gutter that still places every label, once a wider one lost a label. */
+const GUTTER_LIMIT = Symbol('boardplot.metricStackGutterLimit');
 
 /** The narrowest width up to 512 px wider that draws every label, at the same height; undefined when none does. */
 function widerThatPlaces(raw: MetricStackData, options: GridLayoutOptions, size: { width: number; height: number }, automatic: boolean): number | undefined {
@@ -98,7 +100,7 @@ function stackColumnWarnings(stack: NonNullable<GridLayoutOptions['stack']>, nar
     message: `this canvas seats each readout above its panel, with no gutter track, so ${what} does nothing here`, suggest: 'Widen the chart to draw the gutter.' });
   if (narrow && stack.columnOverrides?.gutter) warnings.push(ignored('columnOverrides', 'the gutter override'));
   if (narrow && stack.columnOrder?.length) warnings.push(ignored('columnOrder', 'columnOrder'));
-  if (floored) warnings.push({ code: 'generated-column-width-floor', severity: 'warn', field: ['options', 'stack', 'columnOverrides', 'gutter', 'width'],
+  if (floored) warnings.push({ code: 'generated-column-width-floored', severity: 'warn', field: ['options', 'stack', 'columnOverrides', 'gutter', 'width'],
     message: 'the gutter width is under what its readouts need, so the gutter stays as wide as they need', suggest: 'Raise the width, or shorten the panel titles.' });
   if (capped) warnings.push({ code: 'generated-column-width-capped', severity: 'warn', field: ['options', 'stack', 'columnOverrides', 'gutter', 'width'],
     message: 'the gutter width leaves too little room for the values on this canvas, so it gave way', suggest: 'Lower the width, or widen the chart.' });
@@ -299,7 +301,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
     const at = gutterAt(width);
     return !heldHeight || at.heights.every((h, i) => h <= atDefault.heights[i]!) ? at : undefined;
   };
-  const wanted = authoredGutter === undefined ? defaultGutter : Math.min(Math.max(authoredGutter, minGutter, compactFloor), widest);
+  const wanted = authoredGutter === undefined ? defaultGutter : Math.min(Math.max(authoredGutter, minGutter, compactFloor), widest, (options as { [GUTTER_LIMIT]?: number })[GUTTER_LIMIT] ?? Infinity);
   const fitted = wanted === defaultGutter ? atDefault : fitGutter(wanted);
   const gutter = fitted ? wanted : defaultGutter;
   const { boxes: gutterBoxes, keys: gutterKeys, heights: gutterHeights } = fitted ?? atDefault;
@@ -364,7 +366,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const hasMethod = showHeadline || showSpan;
   const readLogic = data.panels.some(p => p.readout === 'change') && data.windows
     ? chartString(options, 'stackChangeMethod', { v1: metricStackGrain(data), v2: data.windows.base.label, v3: data.windows.compare.label })
-    : chartString(options, narrow ? 'stackAboveMethod' : onRight ? 'stackRightMethod' : 'stackLeftMethod');
+    : chartString(options, `stack${narrow ? 'Above' : onRight ? 'Right' : 'Left'}${!showSpan ? 'Rates' : !showHeadline ? 'Remaining' : 'Method'}` as const);
   const readLogicBox = hasMethod ? textBox(readLogic, keyFont, frame.plot.w) : NO_BOX;
   const headerRoom = hasMethod ? readLogicBox.h + 12 + (compactReadout ? 4 : 30) : 0;
   const topRoom = headerRoom + (bandFirstIndex === 0 ? firstOverhang : 0);
@@ -584,6 +586,16 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const fonts = new Map(requests.map(request => [request.id, request.font]));
   for(const label of solved.placed) { label.ink=inks.get(label.id)??label.ink; label.font=fonts.get(label.id); }
   const hidden=solved.placed.filter(l=>l.hidden&&!yielding.has(l.id));  if(hidden.length){
+    // An authored gutter wider than the default never refuses: it gives way to the widest gutter that places every label.
+    if(gutter>defaultGutter&&!(options as { [NO_WIDER_SEARCH]?: boolean })[NO_WIDER_SEARCH]){
+      const places=(width:number)=>{
+        try { return layoutMetricStack(raw,{...options,[GUTTER_LIMIT]:width,[NO_WIDER_SEARCH]:true} as GridLayoutOptions).scene.length>0; }
+        catch(error){ if(error instanceof NormalizeError)return false; throw error; }
+      };
+      let low=defaultGutter,high=gutter;
+      while(high-low>1){ const mid=Math.floor((low+high)/2); if(places(mid))low=mid; else high=mid; }
+      return layoutMetricStack(raw,{...options,[GUTTER_LIMIT]:low} as GridLayoutOptions);
+    }
     // A value that finds no room on a narrow card needs width: refuse with the narrowest width that places every label.
     const width=(options as { [NO_WIDER_SEARCH]?: boolean })[NO_WIDER_SEARCH]?undefined:widerThatPlaces(raw,options,size,automatic);
     if(width!==undefined)return needsWidth(width);
