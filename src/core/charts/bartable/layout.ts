@@ -1455,6 +1455,14 @@ function layoutBarTableOnce(
     ? Math.max(compactPanelsW + (cascade ? minSideW : 0), minSideW + LABEL_GAP + MIN_COMPACT_LABEL)
     : minFixedW + growthW + panelsW);
 
+  // Panels first take the first number head's room over the name track. Where that alone passes the width, the
+  // default order draws with a warning: a block order never moves a table to its compact form or a refusal.
+  if (panelsFirst && numberColumns.length > 0 && minWidth > size.width) {
+    const { columnOrder: _order, ...defaultOrder } = options;
+    const drawn = layoutBarTable(authored, defaultOrder);
+    return { ...drawn, warnings: [...drawn.warnings, { code: 'option-ignored', severity: 'warn', field: ['options', 'columnOrder'],
+      message: 'columnOrder has no effect at this width: the number heads need their room over the name track', suggest: 'Draw the chart wider, or remove columnOrder.', fix: [{ op: 'remove', path: '/options/columnOrder' }] }] };
+  }
   // Only a refusal carries the hint; a table that fits keeps its sizing unchanged.
   const sizeHint = minWidth > size.width ? wideHint() : undefined;
   return {

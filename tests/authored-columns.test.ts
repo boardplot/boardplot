@@ -37,6 +37,13 @@ describe('authored column settings', () => {
     expect(shared.warnings.find(item => item.code === 'option-ignored')?.field).toEqual(['options', 'columnOverrides', 'sales', 'width']);
   });
 
+  // A block order must not refuse a size the same table draws in its default order.
+  it('keeps the default order where panels first would pass the width', () => {
+    const geometry = bartable({ columnOrder: ['panels', 'numbers'], size: { width: 340, height: 300 } });
+    expect(geometry.refused).toBeFalsy();
+    expect(geometry.warnings.find(item => item.code === 'option-ignored')?.field).toEqual(['options', 'columnOrder']);
+  });
+
   // totalPosition with no Total row would otherwise do nothing and say nothing.
   it('warns on totalPosition with total false', () => {
     const geometry = bartable({ total: false, totalPosition: 'top' });
