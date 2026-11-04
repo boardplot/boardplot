@@ -257,7 +257,9 @@ export function layoutWaterfall(
   data: WaterfallData,
   options: WaterfallOptions = {},
 ): Geometry<WaterfallMarks, WaterfallDerived> {
-  const withBands = () => widthsThatFit(options, (next) => layoutHorizontalWaterfall(data, next), (options.size as { height?: number } | undefined)?.height !== undefined)!;
+  const withBands = () => widthsThatFit(options, (next) => layoutHorizontalWaterfall(data, next), (options.size as { height?: number } | undefined)?.height !== undefined, {
+    hidden: (geometry) => geometry.labels.filter((label) => label.hidden !== undefined && label.hidden !== 'redundant').length,
+  })!;
   if (options.variant === 'horizontal') return options.columnOverrides === undefined ? layoutHorizontalWaterfall(data, options) : withBands();
   if (options.columnOverrides === undefined) return automaticWaterfall(data, options).geometry;
   // The bands never choose the variant: the choice runs without them, and only a horizontal result reads them.
