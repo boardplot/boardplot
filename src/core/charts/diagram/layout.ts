@@ -80,13 +80,18 @@ export function layoutDiagram(
   const draw = ({ columnOverrides }: { columnOverrides?: typeof tracks }) => layoutPlanned({ ...rawData, inset: { ...rest, ...(columnOverrides ? { columnOverrides } : {}) } }, rawOptions, measureMinimum);
   const field = ['data', 'inset', 'columnOverrides'];
   const drawn = widthsThatFit({ columnOverrides: tracks }, draw, pinned, { field })!;
-  if (fitsRoom(drawn, pinned) || tracks?.label?.align === undefined || tracks.label.align === 'left') return drawn;
-  // One edge for the names can wrap a name: alignment gives way before it refuses a chart that draws.
-  const { align: _align, ...label } = tracks.label;
-  const plain = widthsThatFit({ columnOverrides: { ...tracks, label } }, draw, pinned, { field })!;
+  // An aligned column widens the value track, which wraps the names. A left label sets no edge, so it stays.
+  const dropLabel = tracks?.label?.align !== undefined && tracks.label.align !== 'left';
+  const dropValue = tracks?.value?.align !== undefined;
+  if (fitsRoom(drawn, pinned) || (!dropLabel && !dropValue)) return drawn;
+  // Alignment gives way before it refuses a chart that draws. Both keys go together: either one alone keeps the wide column.
+  const unaligned = { ...tracks };
+  const dropped: ('label' | 'value')[] = [...(dropLabel ? ['label' as const] : []), ...(dropValue ? ['value' as const] : [])];
+  for (const id of dropped) { const { align: _align, ...others } = tracks![id]!; unaligned[id] = others; }
+  const plain = widthsThatFit({ columnOverrides: unaligned }, draw, pinned, { field })!;
   if (!fitsRoom(plain, pinned)) return drawn;
-  return { ...plain, warnings: [...plain.warnings, { code: 'option-ignored', severity: 'warn', field: [...field, 'label', 'align'],
-    message: 'the aligned inset names need more height than this chart has, so label.align was ignored', suggest: 'Give the chart more height, or remove label.align.' }] };
+  return { ...plain, warnings: [...plain.warnings, ...dropped.map((id) => ({ code: 'option-ignored', severity: 'warn' as const, field: [...field, id, 'align'],
+    message: `the aligned inset columns need more height than this chart has, so ${id}.align was ignored`, suggest: `Give the chart more height, or remove ${id}.align.` }))] };
 }
 
 function layoutPlanned(rawData: DiagramData, rawOptions: DiagramOptions | undefined, measureMinimum: boolean): Geometry<DiagramMarks, DiagramDerived> {

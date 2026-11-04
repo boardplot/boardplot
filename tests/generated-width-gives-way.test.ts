@@ -50,6 +50,16 @@ describe('authored widths give way through the CLI', () => {
     expect(body.ok).toBe(true);
     expect(body.warnings.find((warning) => warning.code.startsWith('generated-column-width'))?.path).toBe('/data/inset/columnOverrides');
   });
+  // An aligned value column is as wide as its widest value, so the names wrap and can need more height than the chart has.
+  it('drops the inset value alignment before it refuses', () => {
+    const { data, options } = fixture('diagram', 'inset-no-heading');
+    const rows = [['Failed loads this month', '3'], ['Tables with a named owner', '$1,234,567'], ['Open incidents in the last ninety days', '7'], ['Pipelines over their service level today', '12'],
+      ['Dashboards without a certified source', '9'], ['Models with stale documentation pages', '1'], ['Loads retried more than twice this week', '5'], ['Sources without a freshness check', '2']].map(([label, value]) => ({ label, value }));
+    const inset = { ...(data as { inset: object }).inset, rows, columnOverrides: { value: { align: 'left' } } };
+    const body = render({ spec: { type: 'diagram', data: { ...(data as object), inset }, options: { ...options, size: { width: 1280, height: 360 } } }, format: 'svg' } as never).body as { ok: boolean; warnings: { code: string; path?: string }[] };
+    expect(body.ok).toBe(true);
+    expect(body.warnings).toContainEqual(expect.objectContaining({ code: 'option-ignored', path: '/data/inset/columnOverrides/value/align' }));
+  });
   // A value head must not cost the draw where its row is the only reason the lookup misses.
   it('drops the lookup head before it refuses', () => {
     const { data, options } = fixture('choropleth', 'lookup-columns');
