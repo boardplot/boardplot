@@ -183,6 +183,10 @@ export interface DiagramInset {
   title: string;
   kpis?: Array<{ value: string; label: string }>;
   rows?: Array<{ label: string; value: string }>;
+  /** false draws no panel title; the title stays the accessible name. */
+  heading?: false;
+  /** The rows' two columns: label, value. */
+  columnOverrides?: Record<string, { width?: number; align?: 'left' | 'right' | 'center' }>;
 }
 
 /** One key entry: what the fill of the nodes in `role` (and `paletteKey`) means. */

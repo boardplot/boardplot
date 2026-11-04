@@ -1,6 +1,7 @@
 import { chartString } from '../../strings/diagram';
 import { chartPalette, chartTheme } from '../chartEnv';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
+import { fitsRoom, widthsThatFit } from '../../generatedWidths';
 import { structureCount, type StructureCount } from '../../structureCounts';
 import { rectContains, rectsOverlap, type Point, type Rect } from '../../geometry';
 import { fitText } from '../../label/fitText';
@@ -31,7 +32,7 @@ import type {
   TextRole,
 } from '../../types/scene';
 import { rowDrivenHeight } from '../../rowCanvas';
-import { chartSizing, contentSizing, resolveSizing, sizeRefusal } from '../../sizing';
+import { chartSizing, contentSizing, heightOmitted, resolveSizing, sizeRefusal } from '../../sizing';
 import { diagramSceneId } from './ids';
 import { normalizeDiagramModel, type NormalizedDiagram } from './model';
 import {
@@ -69,6 +70,31 @@ export function layoutDiagram(
   rawOptions?: DiagramOptions,
   measureMinimum = true,
 ): Geometry<DiagramMarks, DiagramDerived> {
+  const inset = rawData.inset;
+  if (inset?.columnOverrides === undefined) return layoutPlanned(rawData, rawOptions, measureMinimum);
+  const { columnOverrides: tracks, ...rest } = inset;
+  const pinned = (rawOptions as TargetSizeOptions | undefined)?.[TARGET_SIZE]?.fixed.height ?? !heightOmitted(rawOptions?.size);
+  // A height nobody gave grows to hold the inset, so the widths have nothing to give way to.
+  if (!pinned) return layoutPlanned(rawData, rawOptions, measureMinimum);
+  // The inset's keys live under data, so the shared give-way draws through this small adapter.
+  const draw = ({ columnOverrides }: { columnOverrides?: typeof tracks }) => layoutPlanned({ ...rawData, inset: { ...rest, ...(columnOverrides ? { columnOverrides } : {}) } }, rawOptions, measureMinimum);
+  const field = ['data', 'inset', 'columnOverrides'];
+  const drawn = widthsThatFit({ columnOverrides: tracks }, draw, pinned, { field })!;
+  // An aligned column widens the value track, which wraps the names. A left label sets no edge, so it stays.
+  const dropLabel = tracks?.label?.align !== undefined && tracks.label.align !== 'left';
+  const dropValue = tracks?.value?.align !== undefined;
+  if (fitsRoom(drawn, pinned) || (!dropLabel && !dropValue)) return drawn;
+  // Alignment gives way before it refuses a chart that draws. Both keys go together: either one alone keeps the wide column.
+  const unaligned = { ...tracks };
+  const dropped: ('label' | 'value')[] = [...(dropLabel ? ['label' as const] : []), ...(dropValue ? ['value' as const] : [])];
+  for (const id of dropped) { const { align: _align, ...others } = tracks![id]!; unaligned[id] = others; }
+  const plain = widthsThatFit({ columnOverrides: unaligned }, draw, pinned, { field })!;
+  if (!fitsRoom(plain, pinned)) return drawn;
+  return { ...plain, warnings: [...plain.warnings, ...dropped.map((id) => ({ code: 'option-ignored', severity: 'warn' as const, field: [...field, id, 'align'],
+    message: `the aligned inset columns need more height than this chart has, so ${id}.align was ignored`, suggest: `Give the chart more height, or remove ${id}.align.` }))] };
+}
+
+function layoutPlanned(rawData: DiagramData, rawOptions: DiagramOptions | undefined, measureMinimum: boolean): Geometry<DiagramMarks, DiagramDerived> {
   const planned = rawOptions?.variant === 'architecture' && !(ARCHITECTURE_PLANS in rawOptions);
   return layoutDiagramPass(rawData, planned ? { ...rawOptions!, [ARCHITECTURE_PLANS]: new Map() } as DiagramOptions : rawOptions, measureMinimum);
 }

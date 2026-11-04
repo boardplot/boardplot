@@ -4,6 +4,7 @@ import * as z from 'zod';
 import { addDuplicateIdIssues, baseOptionsSchema, colorRoleField, idSchema, refusedBaseOptions } from '../../schema/shared';
 import type { SankeyData, SankeyOptions } from './types';
 import { SANKEY_OTHER_SHARE } from './normalize';
+import { columnOverridesOption } from '../../schema/generatedColumnOptions';
 
 const linkSchema = z.strictObject({
   source: idSchema.describe('Id of the node the flow leaves.'),
@@ -52,9 +53,10 @@ export const sankeyOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptio
   ]).optional().describe(
     `Small nodes folded into one Other node per column, so a long tail stays readable; the note lists every folded node with its value. A column folds only when at least two nodes qualify. The Other node is as tall as its members together, so each column keeps its total. Default { share: ${SANKEY_OTHER_SHARE} } without stages; off with stage-qualified links, where an object folds an id in every stage or in none. false keeps every node.`,
   ),
-  nodeValue: z.enum(['value', 'share', 'value-share']).optional().describe(
-    "What a node prints in bold after its name: 'value' (default), 'share' of its column's total, or 'value-share' as \"420 (38%)\". A percent format applies to the shares.",
+  nodeValue: z.union([z.enum(['value', 'share', 'value-share']), z.literal(false)]).optional().describe(
+    "What a node prints in bold after its name: 'value' (default), 'share' of its column's total, or 'value-share' as \"420 (38%)\". A percent format applies to the shares. false prints the name only; the marks, hover and records keep the value, and linkValue still decides the ribbon values.",
   ),
+  columnOverrides: columnOverridesOption('sankey', ['width']),
   linkValue: z.enum(['none', 'large']).optional().describe(
     "Flow values on the ribbons: 'large' (default) prints the value of every ribbon at least one line high at its arriving end, right aligned to the next bar; thinner ribbons print nothing, and a value that would cover a node label is left out. 'none' prints node values only.",
   ),

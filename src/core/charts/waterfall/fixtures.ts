@@ -651,4 +651,19 @@ fixtures.push({
   }
 });
 
+fixtures.push({
+  id: 'column-overrides',
+  title: 'A horizontal bridge with authored name and value bands',
+  kind: 'example',
+  tags: ['coverage'],
+  data: { items: [
+    { id: 'open', label: 'Opening balance', type: 'total', value: 420 },
+    { id: 'sales', label: 'Subscription renewals', value: 96 },
+    { id: 'new', label: 'New customers', value: 54 },
+    { id: 'churn', label: 'Cancelled contracts', value: -38 },
+    { id: 'close', label: 'Closing balance', type: 'total' },
+  ] },
+  options: { title: 'Renewals carry the balance up by $112k', unit: '$k', variant: 'horizontal', size: { width: 720 }, columnOverrides: { label: { width: 200 }, value: { width: 90 } } },
+});
+
 registerFixtures('waterfall', fixtures);

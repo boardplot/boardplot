@@ -5,6 +5,9 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { render } from '../src/cli/render';
+import { resolveChartRequest, layoutResolvedRequest } from '../src/core/request';
+import { requireGeometry } from '../src/core/sizing';
 import '../src/core/charts';
 import { claimsForChart } from '../src/core/claims';
 import {
@@ -688,5 +691,38 @@ describe('pvm valueAxis.break', () => {
     expect(broken()).toBe(true);
     expect(broken({ break: false })).toBe(false);
     expect(broken({ break: 'auto' })).toBe(true);
+  });
+});
+
+describe('pvm labels.point and columnOverrides', () => {
+  const portfolio = { items: [
+    { id: 'core', prior: { qty: 100, revenue: 1000 }, current: { qty: 120, revenue: 1320 } },
+    { id: 'addon', prior: { qty: 40, revenue: 400 }, current: { qty: 30, revenue: 330 } },
+  ], quantityUnit: 'seats' };
+  const draw = (options: object) => {
+    const request = resolveChartRequest({ type: 'pvm', data: portfolio, options: { title: 'Bridge', size: { width: 720 }, ...options } });
+    return requireGeometry(layoutResolvedRequest(request));
+  };
+  // Values off must not move into a note, and the marks and claims must keep them.
+  it('stops printing the values, with hover and claims intact', () => {
+    const on = draw({});
+    const off = draw({ labels: { point: false } });
+    expect(off.labels.filter((label) => /^(sum|total|segment):/.test(label.id))).toEqual([]);
+    expect(off.warnings.map((warning) => warning.code)).not.toContain('values-in-note');
+    const displays = (geometry: typeof on) => geometry.scene.flatMap((node) => (node.display ? [node.display.value] : []));
+    expect(displays(off)).toEqual(displays(on));
+    const claimIds = (geometry: typeof on) => claimsForChart('pvm', geometry as never).map((claim) => claim.id);
+    expect(claimIds(off)).toEqual(claimIds(on));
+    expect(off.labels.some((label) => label.id.startsWith('net:'))).toBe(true);
+  });
+  it('refuses labels: false and every other kind', () => {
+    for (const labels of [false, { total: false }]) {
+      expect((render({ spec: { type: 'pvm', data: portfolio, options: { title: 'Bridge', labels } }, format: 'svg' } as never).body as any).ok).toBe(false);
+    }
+  });
+  // A vertical pvm has no bands: the key must say so and must not change the form.
+  it('warns when it draws vertical', () => {
+    const geometry = draw({ columnOverrides: { label: { width: 200 } } });
+    expect(geometry.warnings.map((warning) => warning.code)).toContain('option-ignored');
   });
 });
