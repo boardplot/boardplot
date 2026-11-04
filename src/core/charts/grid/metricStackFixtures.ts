@@ -46,4 +46,27 @@ export const metricStackFixtures: Fixture<MetricStackData,GridLayoutOptions>[] =
     ],states:{maturing:{from:'2026-07',to:'2026-09',panels:['qualification','booking','attendance','completion']},partial:{panels:['qualification','booking','attendance','completion'],footnote:'October is month to date.'}},periods:periods.slice(2)},
     options:{stack:{},rows:[1,1,1,1],size:{width:1180},title:'The booking step loses the largest share of the original intake',subtitle:{measure:'Step conversion by creation cohort',period:'April–October 2026'},footnotes:['Readouts use mature cohorts, weighted by source volume. Each panel starts at zero on its own scale.'],source:'Invented example'},
   },
+  {
+    id:'stack-readout-parts',kind:'example',title:'Metric stack: readout gutter without the unit and the span',
+    data:{categories:categories.slice(6,12),measures:[
+      {id:'intake',label:'Intake',values:intake.slice(6,12)},
+      {id:'retained',label:'Retained',values:retained.slice(6,12)},
+    ],panels:[
+      {id:'intake',type:'column',title:'New enquiries',unit:'per month',measure:{sum:['intake']},readout:'change'},
+      {id:'conversion',type:'line',title:'Conversion',unit:'% of enquiries',measure:{numerator:['retained'],denominator:'intake'},readout:'change',emphasis:true},
+    ],windows:{grain:'month',base:{from:'2026-04',to:'2026-06',label:'Q2 2026'},compare:{from:'2026-07',to:'2026-09',label:'Q3 2026'}}},
+    options:{stack:{columnVisibility:{unit:false,span:false}},size:{width:960},title:'Enquiries rise while conversion falls',subtitle:{measure:'Enquiries and conversion',period:'April–September 2026'},source:'Invented example'},
+  },
+  {
+    id:'stack-gutter-right',kind:'example',title:'Metric stack: readout gutter right of the plots, with a set width and alignment',
+    data:{categories:categories.slice(6),measures:[
+      {id:'intake',label:'Intake',values:intake.slice(6)},
+      {id:'qualified',label:'Qualified',values:[2240,2200,2028,2250,2336,2165,390]},
+      {id:'booked',label:'Booked',values:[560,528,527,608,701,693,90]},
+    ],panels:[
+      {id:'qualification',type:'line',title:'Intake → qualified',unit:'% of intake',measure:{numerator:['qualified'],denominator:'intake'},readout:{base:'intake'}},
+      {id:'booking',type:'line',title:'Qualified → booked',unit:'% of qualified',measure:{numerator:['booked'],denominator:'qualified'},readout:{base:'intake'},emphasis:true},
+    ],periods:periods.slice(2)},
+    options:{stack:{columnOrder:['plot','gutter'],columnOverrides:{gutter:{width:200,align:'right'}}},size:{width:960},title:'The booking step loses the most intake',subtitle:{measure:'Step conversion by creation cohort',period:'April–October 2026'},source:'Invented example'},
+  },
 ];

@@ -104,14 +104,16 @@ export function generatedIdWarnings(type: GeneratedColumnType, key: GeneratedIdK
   const ids = Array.isArray(authored) ? authored as readonly string[]
     : Object.entries(authored).filter(([, value]) => key !== 'columnVisibility' && key !== 'rowVisibility' || value === false).map(([id]) => id);
   const list = generatedIdList(type, key);
-  return ids.flatMap((id): LintWarning[] => {
+  return ids.flatMap((id, index): LintWarning[] => {
     const shown = drawn.includes(id);
+    // An order is a list, so its warning points at the position: a path needs an index there.
+    const at = Array.isArray(authored) ? index : id;
     if (key === 'columnVisibility' && shown && NAME_COLUMNS.has(id)) {
       return [{ code: 'generated-name-column-kept', severity: 'warn', field: ['options', key, id],
         message: `${key} cannot hide '${id}': the marks need a name, so the column stays`, suggest: `Remove '${id}' from ${key}.` }];
     }
     if (shown) return [];
-    return [{ code: 'generated-id-unknown', severity: 'warn', field: ['options', key, id],
+    return [{ code: 'generated-id-unknown', severity: 'warn', field: ['options', key, at],
       message: `${key} names '${id}', which this ${type} does not draw, so nothing changed. Its ids: ${list}`, suggest: `Use one of: ${list}.` }];
   });
 }

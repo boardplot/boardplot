@@ -699,6 +699,8 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | dense-milestone-leaders | gantt | torture | Leaders of eighteen nearby milestones cross no label |
 | milestone-lane-tall-rows | gantt | example | Bars keep their height in rows a milestone lane makes tall |
 | adjacent-milestone-bands | gantt | torture | Neighbouring rows keep their milestone labels |
+| column-overrides | gantt | example | Widths, alignment and heads set per column: a wide name column, the owner flush right and a renamed status head |
+| meta-after-plot | gantt | example | Owner and status columns on the far side of the bars |
 
 ## scatter
 
@@ -878,6 +880,8 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | nine-regions-reflow | grid.facets | example | Nine facets in at most three columns draw in two on a 320 px card |
 | metric-stack-volume | grid.metric-stack | example | Metric stack: volume, completed outcomes and weighted conversion by cohort |
 | metric-stack-steps | grid.metric-stack | example | Metric stack: volume-weighted funnel steps and remaining-per-100 chain |
+| stack-readout-parts | grid.metric-stack | example | Metric stack: readout gutter without the unit and the span |
+| stack-gutter-right | grid.metric-stack | example | Metric stack: readout gutter right of the plots, with a set width and alignment |
 
 ## slope
 

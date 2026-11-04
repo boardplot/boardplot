@@ -1,0 +1,7 @@
+### Added
+
+- A gantt can set each column: `options.columnOverrides` takes `name`, `meta0`, `meta1` and `meta2`, each with `width`, `align`, `headAlign` and `label`, for example `{ "name": { "width": 180, "label": "Workstream" }, "meta0": { "align": "right" } }`. `label` beats `colHeaders` for that column. A width under the text stops at the text and a width that leaves too little timeline gives way, and both warn. The stacked form on a narrow canvas has no columns, so it reads only `label` and warns about the rest.
+- A gantt can put its metadata on the far side of the bars: `options.columnOrder` takes `meta` and `plot`, for example `["plot", "meta"]`. The name column stays first.
+- A metric stack can leave out parts of its readout: `options.stack.columnVisibility` takes the gutter's seats `unit`, `headline` and `span`, for example `{ "unit": false, "span": false }`. A hidden part leaves no claim or reserved height, and hiding both figures also drops the method line. The panel name stays.
+- A metric stack can size and align its readout gutter: `options.stack.columnOverrides` takes `{ "gutter": { "width": 200, "align": "right" } }`.
+- A metric stack can put its readouts right of the plots: `options.stack.columnOrder` takes `gutter` and `plot`, for example `["plot", "gutter"]`. Above the panels on a narrow canvas both gutter settings warn and do nothing.

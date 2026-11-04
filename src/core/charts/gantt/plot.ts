@@ -24,6 +24,7 @@ import { barSurfaces, cadenceRowPaint, milestonePaints } from './marks';
 import { badgeStrip, markerBand } from './events';
 import { LABEL_PAD, laneTop, MIN_ROW_H, NO_LANE, rowTextFloor, RULE_LABEL_GAP, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv, type GanttPaints, type MetadataColumns, type NormItem, type NormRow, type RowLabel, type RowNames } from './model';
 import { maxOf, minOf } from '../../arrays';
+import { alignedX, type AuthoredWidths, type GanttColumnSettings } from './columns';
 
 /** The palest tint a wash swatch in the key takes, so a 12 px swatch reads as filled. */
 const KEY_WASH_TINT = 0.8;
@@ -53,7 +54,7 @@ export function stackedCells(env: GanttEnv, row: NormRow): StackedCell[] {
 /** The stacked column-header line: the headers of displayed columns, in order, with their drawn widths. */
 function stackedHeaders(env: GanttEnv, rows: readonly NormRow[]): { k: number; text: string; line: string; w: number }[] {
   const count = Math.min(MAX_COLS, Math.max(0, maxOf(rows.map((row) => row.cols.length))));
-  const headers = Array.from({ length: count }, (_, k) => ({ k, text: env.options.colHeaders?.[k]?.trim() ?? '' }))
+  const headers = Array.from({ length: count }, (_, k) => ({ k, text: env.columns.headers?.[k]?.trim() ?? '' }))
     .filter((header) => header.text && rows.some((row) => row.cols[header.k]?.text));
   return headers.map((header, i) => {
     const line = i < headers.length - 1 ? `${header.text} ·` : header.text;
@@ -83,10 +84,10 @@ function stackedLineWidth(env: GanttEnv, domain: GanttDomain, plotW: number): nu
   const lineW = Math.max(0, maxOf(rows.map((row) => {
     const cells = stackedCells(env, row);
     return nameW(row) + (cells.length ? gap.name + cells.reduce((sum, cell) => sum + cell.w, 0) + (cells.length - 1) * gap.cell : 0);
-  })), stackedHeaders(env, domain.rows).reduce((sum, header) => sum + header.w, 0));
+  })), stackedHeaders(env, domain.rows).reduce((sum, header) => sum + header.w, 0) + stackedNameHeadW(env));
   if (lineW > plotW) return undefined;
   // Compact mode still counts the 30 px cap here: a plot that cuts a column stacks the cells on the name lines.
-  const columns = planMetadataColumns(domain.rows, options.colHeaders, 0, options.mode === 'compact' ? COMPACT_COLUMN_CAP : COLUMN_CAP, 0, 0, fonts.label, fonts.headerMajor, measure, options.target);
+  const columns = planMetadataColumns(domain.rows, env.columns.headers, 0, options.mode === 'compact' ? COMPACT_COLUMN_CAP : COLUMN_CAP, 0, 0, fonts.label, fonts.headerMajor, measure, options.target);
   const count = Math.min(MAX_COLS, Math.max(0, maxOf(domain.rows.map((row) => row.cols.length))));
   const tableTimeline = plotW - Math.max(0, maxOf(rows.map(nameW))) - 12
     - columns.colWs.reduce((sum, width) => sum + width, 0) - (columns.colWs.length ? 4 : 0);
@@ -311,7 +312,7 @@ export function ganttFrame(
   const sharedLine = stacked && sharedLabelsNeedLine(domain, plot0);
   const named = domain.rows.filter((row) => !row.shared || sharedLine).length;
   const nameLineH = stacked ? measure('Hg', fonts.strong).height + STACKED_NAME_AIR : 0;
-  const colHeaderH = stacked && stackedHeaders(env, domain.rows).length > 0 ? measure('Hg', fonts.headerMajor).height + 6 : 0;
+  const colHeaderH = stacked && (stackedHeaders(env, domain.rows).length > 0 || stackedNameHeadW(env) > 0) ? measure('Hg', fonts.headerMajor).height + 6 : 0;
   const rowsTop = headerTop + headerH + colHeaderH;
   const bodyH = Math.max(10, plot0.y + plot0.h - rowsTop);
   // A milestone cluster can only make a lane taller.
@@ -375,17 +376,20 @@ function planMetadataColumns(
   rows: readonly NormRow[], headers: readonly string[] | undefined, startX: number,
   cap: number, headerY: number, headerH: number, font: FontSpec, headerFont: FontSpec,
   measure: TextMeasurer, target: RenderTarget | undefined,
+  /** The authored settings per column, the widths they resolved to, and whether the block ends at the plot edge. */
+  authored?: { overrides: GanttColumnSettings['meta']; widths: readonly (number | undefined)[]; flushEnd: boolean },
 ): MetadataColumns {
   const count = Math.min(MAX_COLS, Math.max(0, maxOf(rows.map((row) => row.cols.length))));
   // One line per cell: place, then cut with the full text kept for <title>.
-  const fitCell = (text: string, cellFont: FontSpec, reserve = 0) => {
-    const fitted = fitText(text, cellFont, cap - reserve, 1, measure, { target, typeRole: cellFont === headerFont ? 'axis' : 'label' });
+  // A column with an authored width shows its values in full at any length.
+  const fitCell = (text: string, cellFont: FontSpec, k: number, reserve = 0) => {
+    const fitted = fitText(text, cellFont, (authored?.widths[k] === undefined ? cap : AUTHORED_CAP) - reserve, 1, measure, { target, typeRole: cellFont === headerFont ? 'axis' : 'label' });
     return { text: fitted.lines[0] ?? '', ...(fitted.title ? { title: fitted.title } : {}) };
   };
   // A toned cell draws its marker before the text: the marker's width is reserved.
-  const allTexts: MetadataColumns['colTexts'] = rows.map((row) => row.cols.slice(0, count).map((cell) =>
-    cell.tone ? { ...fitCell(cell.text, font, SWATCH_RESERVE), tone: cell.tone } : fitCell(cell.text, font)));
-  const allHeaders = Array.from({ length: count }, (_, index) => fitCell(headers?.[index] ?? '', headerFont));
+  const allTexts: MetadataColumns['colTexts'] = rows.map((row) => row.cols.slice(0, count).map((cell, k) =>
+    cell.tone ? { ...fitCell(cell.text, font, k, SWATCH_RESERVE), tone: cell.tone } : fitCell(cell.text, font, k)));
+  const allHeaders = Array.from({ length: count }, (_, index) => fitCell(headers?.[index] ?? '', headerFont, index));
   // A column shows its values in full, or it goes with its
   // header and the note line names each value (row) it held. A one-letter stub
   // with an ellipsis tells the reader nothing.
@@ -397,10 +401,21 @@ function planMetadataColumns(
     font, priority: PRIORITY.extreme, redundant: true, suppressedAs: 'density' as const, owed: true, noteText: `${cell.text} (${row.label})`, candidates: [],
   }])));
   const headerTexts = headerCells.map((cell) => cell.text);
-  const colWs = headerTexts.map((text, index) => Math.max(
+  const contentWs = headerTexts.map((text, index) => Math.max(
     12, measure(text, headerFont).width,
     maxOf(colTexts.map((row) => row[index]?.text ? measure(row[index]!.text, font).width + (row[index]!.tone ? SWATCH_RESERVE : 0) : 0)),
-  ) + 10);
+  ));
+  // A width under the content stops at the content and a small gap: a value is never cut for it.
+  const widthOf = (index: number) => authored?.widths[shown[index]!];
+  const colWs = contentWs.map((content, index) => {
+    const width = widthOf(index);
+    if (width !== undefined) return Math.max(width, content + AUTHORED_MIN_GAP);
+    return authored?.flushEnd && index === contentWs.length - 1 ? content : content + 10;
+  });
+  const aligned = !authored ? undefined : colWs.map((width, index) => ({
+    inner: authored.flushEnd && index === colWs.length - 1 ? width : Math.max(contentWs[index]!, width - 10),
+    ...(authored.overrides[shown[index]!]?.align ? { align: authored.overrides[shown[index]!]!.align } : {}),
+  }));
   const colXs: number[] = [];
   const headerRequests: LabelRequest[] = [];
   let x = startX;
@@ -408,32 +423,38 @@ function planMetadataColumns(
     colXs.push(x);
     if (text) {
       const size = measure(text, headerFont);
+      const override = authored?.overrides[shown[index]!];
+      const headAlign = override?.headAlign ?? override?.align;
       headerRequests.push({
         id: 'colHeader:' + index, kind: 'activity', owner: {}, text, lines: [text],
         ...(headerCells[index]!.title ? { title: headerCells[index]!.title } : {}),
         font: headerFont, typeRole: 'axis', priority: PRIORITY.total,
         candidates: [{
           slot: 'columnHeader', penalty: 0,
-          rect: { x, y: headerY + (headerH - size.height) / 2, w: size.width, h: size.height },
+          rect: { x: headAlign ? alignedX(x, aligned![index]!.inner, size.width, headAlign) : x, y: headerY + (headerH - size.height) / 2, w: size.width, h: size.height },
         }],
       });
     }
     x += colWs[index]!;
   });
-  return { colTexts, colWs, colXs, headerRequests: [...headerRequests, ...dropped] };
+  return {
+    colTexts, colWs, colXs, headerRequests: [...headerRequests, ...dropped],
+    ...(authored ? { aligned: aligned!, shown, floors: contentWs.map((content) => content + AUTHORED_MIN_GAP) } : {}),
+  };
 }
 
 /**
  * The stacked form's metadata: every cell in full on its row's name line
  * (labels.ts places them flush right), and one header line above the rows.
  */
-function stackedColumns(env: GanttEnv, rows: readonly NormRow[], band: GanttBand, right: number): MetadataColumns {
+function stackedColumns(env: GanttEnv, rows: readonly NormRow[], band: GanttBand, left: number, right: number): MetadataColumns {
   const headers = stackedHeaders(env, rows);
   return {
     colTexts: rows.map((row) => stackedCells(env, row).map((cell) => ({ text: cell.text, ...(cell.tone ? { tone: cell.tone } : {}) }))),
     colWs: [],
     colXs: [],
-    headerRequests: headers.length === 0 ? [] : stackedHeaderRequests(env, headers, band, right),
+    headerRequests: [...(stackedNameHeadW(env) > 0 ? [nameHeadRequest(env, env.columns.name!.label!.trim(), { x: left, w: 0 }, band.rowsTop - band.colHeaderH, band.colHeaderH, left)] : []),
+      ...(headers.length === 0 ? [] : stackedHeaderRequests(env, headers, band, right))],
   };
 }
 
@@ -456,10 +477,94 @@ function stackedHeaderRequests(env: GanttEnv, headers: ReturnType<typeof stacked
 }
 
 
+/** The room a name head takes on the stacked header line: the head and the name gap. */
+function stackedNameHeadW(env: GanttEnv): number {
+  const label = env.columns.name?.label?.trim();
+  return label ? env.measure(label, env.fonts.headerMajor).width + stackedGap(env).name : 0;
+}
+
+/** The head of the name column. */
+function nameHeadRequest(env: GanttEnv, text: string, band: { x: number; w: number }, y: number, h: number, x?: number): LabelRequest {
+  const font = env.fonts.headerMajor;
+  const size = env.measure(text, font);
+  const align = env.columns.name?.headAlign ?? env.columns.name?.align;
+  return {
+    id: 'colHeader:name', kind: 'activity', owner: {}, text, lines: [text], font, typeRole: 'axis', priority: PRIORITY.total,
+    candidates: [{ slot: 'columnHeader', penalty: 0, rect: { x: x ?? (align ? alignedX(band.x, band.w, size.width, align) : band.x), y: y + (h - size.height) / 2, w: size.width, h: size.height } }],
+  };
+}
+
 /** The widest a metadata cell draws before it is cut. */
 const COLUMN_CAP = 90;
 /** The cap of compact mode on a plot too narrow to give the timeline half its width. */
 const COMPACT_COLUMN_CAP = 30;
+/** Past any cell: a column with an authored width is never cut. */
+const AUTHORED_CAP = 1e6;
+/** The least air after a column's content when an authored width is narrower. */
+const AUTHORED_MIN_GAP = 4;
+/** The least timeline an authored width may leave. */
+const MINIMUM_TIMELINE = 80;
+const NO_AUTHORED_WIDTHS: AuthoredWidths = { meta: [], floored: [], capped: [] };
+
+/**
+ * What the authored widths resolve to on a plot of this width. A width under
+ * the content stops there, and a width that leaves less than the least timeline
+ * gives way, last column first. Both warn. Where the content alone leaves no
+ * timeline, the metadata widths stand down, so an authored width never refuses.
+ */
+function authoredWidths(env: GanttEnv, domain: GanttDomain, plotW: number): AuthoredWidths {
+  const { name, meta } = env.columns;
+  if (name?.width === undefined && meta.every((column) => column?.width === undefined)) return NO_AUTHORED_WIDTHS;
+  const { fonts, measure, options } = env;
+  const { rows, milestones } = domain;
+  const fontOf = (r: NormRow): FontSpec => (r.indent === 0 ? fonts.strong : fonts.label);
+  const names = Math.max(0, maxOf(rows.filter((row) => !row.shared).map((row) => nameBandW(completeRowName(row, fontOf(row), measure, fonts.label)))));
+  const nameFloor = Math.max(names, nameHeadW(env));
+  const widths = meta.map((column) => column?.width);
+  const plan = planMetadataColumns(rows, env.columns.headers, 0, columnCap(env, rows, plotW), 0, 0, fonts.label, fonts.headerMajor, measure, options.target,
+    { overrides: meta, widths, flushEnd: false });
+  const floored = [
+    ...(name?.width !== undefined && name.width < nameFloor ? ['name'] : []),
+    ...plan.shown!.flatMap((k, index) => (widths[k] !== undefined && widths[k]! < plan.floors![index]! ? [`meta${k}`] : [])),
+  ];
+  const drawn = plan.colWs.slice();
+  let nameW = name?.width === undefined ? undefined : Math.max(name.width, nameFloor);
+  const laneReserve = milestones.laneLabelW && options.mode !== 'compact' ? 12 + milestones.laneLabelW : 0;
+  const room = plotW - 12 - (drawn.length ? (env.columns.metaAfter ? 12 : 4) : 0) - MINIMUM_TIMELINE - laneReserve;
+  let excess = drawn.reduce((sum, width) => sum + width, 0) + (nameW ?? names) - room;
+  const capped: string[] = [];
+  for (let index = drawn.length - 1; index >= 0 && excess > 0; index--) {
+    const k = plan.shown![index]!;
+    if (widths[k] === undefined) continue;
+    const cut = Math.min(excess, drawn[index]! - plan.floors![index]!);
+    if (cut <= 0) continue;
+    drawn[index]! -= cut;
+    widths[k] = drawn[index]!;
+    excess -= cut;
+    capped.push(`meta${k}`);
+  }
+  if (excess > 0 && nameW !== undefined && nameW > nameFloor) {
+    const cut = Math.min(excess, nameW - nameFloor);
+    nameW -= cut;
+    excess -= cut;
+    capped.push('name');
+  }
+  if (excess > 0) {
+    meta.forEach((column, k) => { if (column?.width !== undefined && !capped.includes(`meta${k}`)) capped.push(`meta${k}`); widths[k] = undefined; });
+  }
+  return { ...(nameW === undefined ? {} : { name: nameW }), meta: widths, floored, capped };
+}
+
+/** The width a name head asks of the name band. */
+function nameHeadW(env: GanttEnv): number {
+  const label = env.columns.name?.label?.trim();
+  return label ? env.measure(label, env.fonts.headerMajor).width : 0;
+}
+
+/** The authored settings a table-form plan reads; undefined without overrides, so a plain chart takes the old path. */
+function authoredPlan(env: GanttEnv, widths: AuthoredWidths, flushEnd: boolean) {
+  return env.columns.authored ? { overrides: env.columns.meta, widths: widths.meta, flushEnd } : undefined;
+}
 
 /**
  * Both modes keep the full cap while the timeline keeps at least half the
@@ -468,7 +573,7 @@ const COMPACT_COLUMN_CAP = 30;
  * drawing in either mode. On a narrower plot the columns go.
  */
 function columnCap(env: GanttEnv, rows: readonly NormRow[], plotW: number): number {  const { fonts, measure } = env;
-  const colWs = planMetadataColumns(rows, env.options.colHeaders, 0, COLUMN_CAP, 0, 0, fonts.label, fonts.headerMajor, measure, env.options.target).colWs;
+  const colWs = planMetadataColumns(rows, env.columns.headers, 0, COLUMN_CAP, 0, 0, fonts.label, fonts.headerMajor, measure, env.options.target).colWs;
   if (colWs.length === 0) return COLUMN_CAP;
   const named = rows.filter(row => !row.shared);
   const fontOf = (r: NormRow): FontSpec => (r.indent === 0 ? fonts.strong : fonts.label);
@@ -487,8 +592,9 @@ const nameBandW = (name: RowLabel) => name.indentPx + Math.max(name.w, name.sub?
 function rowNames(env: GanttEnv, domain: GanttDomain, plotW: number, stacked: boolean, headerTop: number, headerH: number): RowNames {
   const { fonts, measure } = env;
   const { rows, milestones } = domain;
+  const widths = authoredWidths(env, domain, plotW);
   const measuredColumns = planMetadataColumns(
-    rows, env.options.colHeaders, 0, columnCap(env, rows, plotW), headerTop, headerH, fonts.label, fonts.headerMajor, measure, env.options.target,
+    rows, env.columns.headers, 0, columnCap(env, rows, plotW), headerTop, headerH, fonts.label, fonts.headerMajor, measure, env.options.target, authoredPlan(env, widths, env.columns.metaAfter),
   ).colWs;
   const rowFontOf = (r: NormRow): FontSpec => (r.indent === 0 ? fonts.strong : fonts.label);
   const completeNames = rows.map(row => completeRowName(row, rowFontOf(row), measure, fonts.label));
@@ -497,10 +603,10 @@ function rowNames(env: GanttEnv, domain: GanttDomain, plotW: number, stacked: bo
   const laneLabelW = milestones.laneLabelW;
   const laneReserve = laneLabelW && env.options.mode !== 'compact' ? 12 + laneLabelW : 0;
   const availableNames = plotW - 12 - measuredColumns.reduce((sum, width) => sum + width, 0)
-    - (measuredColumns.length ? 4 : 0) - minimumTimeline - laneReserve;
+    - (measuredColumns.length ? (env.columns.metaAfter ? 12 : 4) : 0) - minimumTimeline - laneReserve;
   const naturalNames = Math.max(0, maxOf(rows.filter(row => !row.shared).map(row => Math.min(row.indent, 6) * INDENT_PX
     + Math.max(measure(row.label, rowFontOf(row)).width, row.sublabel ? measure(row.sublabel, fonts.label).width : 0))));
-  const nameBudget = Math.max(minimumLabelBandW, Math.min(naturalNames, plotW * 0.3, availableNames));
+  const nameBudget = widths.name ?? Math.max(minimumLabelBandW, Math.min(naturalNames, plotW * 0.3, availableNames));
   const rowLabels = stacked ? completeNames.map((name, i) => {
     const text = rows[i]!.label.trim().split(/\s+/).join(' ');
     return { ...name, lines: [text], w: measure(text, name.font).width, h: name.font.size };
@@ -523,18 +629,28 @@ export function ganttBody(
   const { fonts, measure } = env;
   const { rows, milestones, d0Day, d1Day } = domain;
   const plot0 = frame.plot;
+  const metaAfter = env.columns.metaAfter && !band.stacked;
+  const widths = band.stacked ? NO_AUTHORED_WIDTHS : authoredWidths(env, domain, plot0.w);
   const planColumns = (startX: number) => planMetadataColumns(
-    rows, env.options.colHeaders, startX, columnCap(env, rows, plot0.w), band.headerTop, band.headerH, fonts.label, fonts.headerMajor, measure, env.options.target,
+    rows, env.columns.headers, startX, columnCap(env, rows, plot0.w), band.headerTop, band.headerH, fonts.label, fonts.headerMajor, measure, env.options.target, authoredPlan(env, widths, metaAfter),
   );
   const laneLabelW = milestones.laneLabelW;
   const { rowLabels, minimumLabelBandW } = band.names ?? rowNames(env, domain, plot0.w, band.stacked, band.headerTop, band.headerH);
-  const labelBandW = Math.max(0, maxOf(rowLabels.filter((_, i) => !rows[i]!.shared).map(nameBandW)));
+  const namesW = Math.max(0, maxOf(rowLabels.filter((_, i) => !rows[i]!.shared).map(nameBandW)));
+  const labelBandW = band.stacked || !env.columns.name ? namesW : Math.max(namesW, widths.name ?? 0, nameHeadW(env));
   // Stacked: names and cells sit on the rows' name lines, and the timeline takes the full plot width.
-  const columns = band.stacked ? stackedColumns(env, rows, band, plot0.x + plot0.w) : planColumns(plot0.x + labelBandW + 12);
+  const plotRight = plot0.x + plot0.w;
+  const metaW = (plan: MetadataColumns) => plan.colWs.reduce((sum, width) => sum + width, 0);
+  const columns = band.stacked ? stackedColumns(env, rows, band, plot0.x, plotRight)
+    : metaAfter ? planColumns(plotRight - metaW(planColumns(0))) : planColumns(plot0.x + labelBandW + 12);
   const colCount = columns.colWs.length;
-  const bodyX = band.stacked ? plot0.x : plot0.x + labelBandW + 12 +
+  const metaGap = colCount > 0 ? (metaAfter ? 12 : 4) : 0;
+  const trailing = metaAfter ? metaW(columns) + metaGap : 0;
+  const bodyX = band.stacked ? plot0.x : metaAfter ? plot0.x + labelBandW + 12 : plot0.x + labelBandW + 12 +
     columns.colWs.reduce((sum, width) => sum + width, 0) + (colCount > 0 ? 4 : 0);
-  const availableBodyW = Math.max(40, plot0.x + plot0.w - bodyX);
+  const availableBodyW = Math.max(40, plotRight - bodyX - trailing);
+  const nameLabel = env.columns.name?.label?.trim();
+  if (nameLabel && !band.stacked) columns.headerRequests.push(nameHeadRequest(env, nameLabel, { x: plot0.x, w: labelBandW }, band.headerTop, band.headerH));
   const laneGap = 12;
   const laneEnabled = !band.stacked && !(env.options as { [NO_LANE]?: true })[NO_LANE] && laneLabelW > 0 && env.options.mode !== 'compact' && availableBodyW >= 80 + laneGap + laneLabelW;
   if (laneLabelW > 0 && !laneEnabled && !band.stacked && !(env.options as { [NO_LANE]?: true })[NO_LANE]) {
@@ -580,6 +696,10 @@ export function ganttBody(
     labelBandW: band.stacked ? 0 : labelBandW,
     minimumLabelBandW,
     columns,
+    metaGap,
+    rowsRight: metaAfter ? plotRight : bodyX + bodyW,
+    timelineRight: plotRight - trailing,
+    authoredWidths: widths,
     bodyX,
     bodyW,
     laneGap,

@@ -54,6 +54,7 @@ import { resolveGanttDomain, resolveGanttEnv } from './domain';
 import { badgeFill, badgeLevels, layoutGanttAnnotations, ruleNodes, type GanttAnnotationLayer } from './events';
 import { flagRowPitch, ganttSpanBlockers, planGanttLabels, planRowFlags } from './labels';
 import { fmtDay, ganttPaints, layoutGanttMarks, type GanttMarkGeometry } from './marks';
+import { ganttColumnWarnings, type GanttColumnOverride } from './columns';
 import { BADGE_LEVELS, LABEL_PAD, MIN_ROW_H, NO_LANE, rowTextFloor, RULE_LABEL_GAP, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv } from './model';
 import { formatDate } from '../../dateFormat';
 import { ganttBody, ganttFrame, STACKED_LANE_FLOOR } from './plot';
@@ -75,6 +76,10 @@ export interface GanttOptions extends Omit<BaseOptionsFor<'gantt'>, 'labels'> {
   rowTint?: boolean;
   /** Headers for the existing cols positions, up to three. Extra headers without a column are ignored. */
   colHeaders?: string[];
+  /** Per-column settings: `name`, `meta0`, `meta1`, `meta2`. The stacked form reads only `label`. */
+  columnOverrides?: Record<string, GanttColumnOverride>;
+  /** Order of the `meta` and `plot` blocks; the name column stays first. The stacked form ignores it. */
+  columnOrder?: string[];
   /** Calendar head and span. */
   calendar?: {
     /** 'isoWeek' (default): week cells read "W11". 'startDay': the day of the month each week cell starts on. Week granularity only. */
@@ -241,7 +246,7 @@ function assembleGanttGeometry(input: {
         ? n * Math.max(STACKED_LANE_FLOOR, input.keyRowHeight) + rows.filter((row) => !row.shared || band.sharedLine).length * band.nameLineH
         : body.rowLabels.reduce((sum, label) => sum + Math.max(MIN_ROW_H, input.keyRowHeight, rowTextFloor(label)), 0),
       naturalRowsH: Math.max(band.naturalRowsH, (input.cardHeight ?? 0) - (size.height - band.bodyH)),
-      minWidth: band.stacked ? size.width - body.inner.w + Math.max(80, band.stackedLineW) : size.width - body.inner.w + body.minimumLabelBandW + 12 + colWs.reduce((sum, width) => sum + width, 0) + (colWs.length ? 4 : 0) + 80 + (laneLabelW && options.mode !== 'compact' ? body.laneGap + laneLabelW : 0),
+      minWidth: band.stacked ? size.width - body.inner.w + Math.max(80, band.stackedLineW) : size.width - body.inner.w + body.minimumLabelBandW + 12 + colWs.reduce((sum, width) => sum + width, 0) + (colWs.length ? body.metaGap : 0) + 80 + (laneLabelW && options.mode !== 'compact' ? body.laneGap + laneLabelW : 0),
     }),
     plot: body.plot,
     scene: [...frame.nodes, ...gridAroundLabels([...input.geometry.nodes, ...input.annotated.nodes], solved.placed, spans), ...labelNodes(env, domain, solved.placed)],
@@ -441,6 +446,7 @@ function layoutGanttPass(data: GanttData, options: GanttOptions = {}, keyed: Rea
     if (wideHidden < hidden || (wideHidden === hidden && (!laneUsed || flagsFit))) return wide;
   }
   pushAll(warnings, solved.warnings);
+  pushAll(warnings, ganttColumnWarnings(env, domain.rows, band.stacked, body.authoredWidths));
   // Content sizing needs the same card-height rule as fill sizing. Compare
   // with the registered wider form, including its key and composed notes.
   const openHeight = autoHeight || (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false;

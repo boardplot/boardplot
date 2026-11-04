@@ -181,3 +181,49 @@ it('draws a three-panel stack on a fixed 1184 x 528 canvas and refuses below its
   expect(floor).toBeLessThan(528);
   expect(at(floor).ok).toBe(true);
 });
+
+const stackSpec = (stack: object, width = 960) => ({ type: 'grid', data, options: { stack, title: 'Starts rise', size: { width } } });
+
+// A hidden readout part must not stay behind in the claims and records that hosts and agents read.
+it('leaves no claim, method line or reading for hidden readout parts', () => {
+  const { svg, reading } = render({ spec: stackSpec({ columnVisibility: { headline: false, span: false } }), return: ['svg', 'reading'] }).body as { svg: string; reading: { metricStack: { readouts: { claims: unknown[]; headlineText: string; spanText: string }[] } } };
+  expect(svg).not.toContain('Change: average');
+  expect(reading.metricStack.readouts.every(readout => readout.claims.length === 0 && readout.headlineText === '' && readout.spanText === '')).toBe(true);
+  const spanOnly = render({ spec: stackSpec({ columnVisibility: { headline: false } }), return: ['reading'] }).body as { reading: { metricStack: { readouts: { claims: { id: string }[] }[] } } };
+  const ids = spanOnly.reading.metricStack.readouts[0]!.claims.map(claim => claim.id);
+  expect(ids).toContain('stack:volume:after');
+  expect(ids).not.toContain('stack:volume:headline');
+});
+
+// A warning that points at options.columnVisibility sends the author to a key the grid refuses.
+it('warns on wrong gutter ids under options.stack, keeps the name, and refuses the keys on a panel grid', () => {
+  const warnings = (render({ spec: stackSpec({ columnVisibility: { name: false, value: false }, columnOverrides: { plot: { width: 300 } }, columnOrder: ['gutters'] }) }).body as { warnings: { code: string; path?: string; field?: string[] }[] }).warnings;
+  const named = warnings.filter(warning => warning.code.startsWith('generated-'));
+  expect(named.map(warning => warning.code).sort()).toEqual(['generated-id-unknown', 'generated-id-unknown', 'generated-id-unknown', 'generated-name-column-kept']);
+  expect(named.every(warning => warning.path?.startsWith('/options/stack/'))).toBe(true);
+  const panelGrid = render({ spec: { type: 'grid', data: { panels: [{ id: 'a', type: 'column', data: { categories: [{ id: 'x', label: 'X' }], series: [{ id: 's', label: 'S', values: [1] }] } }] }, options: { stack: { columnOrder: ['plot'] } } } }).body as { ok: boolean };
+  expect(panelGrid.ok).toBe(false);
+});
+
+// A gutter wider than the canvas would otherwise move the readouts above the panels or refuse the chart.
+it('caps a wide gutter and floors a narrow one with a warning, and ignores it above the panels', () => {
+  const codes = (stack: object, width?: number) => { const b = render({ spec: stackSpec(stack, width) }).body as { ok: boolean; warnings: { code: string }[] }; expect(b.ok).toBe(true); return b.warnings.map(warning => warning.code); };
+  expect(codes({ columnOverrides: { gutter: { width: 5000 } } })).toContain('generated-column-width-capped');
+  expect(codes({ columnOverrides: { gutter: { width: 10 } } })).toContain('generated-column-width-floor');
+  expect(codes({ columnOverrides: { gutter: { width: 200 } }, columnOrder: ['plot', 'gutter'] }, 320).filter(code => code === 'option-ignored')).toHaveLength(2);
+});
+
+// The React entry reads options.stack on its own path; a dropped key would show a different chart on screen than in an export.
+it('draws the gutter settings in React as in the CLI', async () => {
+  const stack = { columnVisibility: { unit: false }, columnOrder: ['plot', 'gutter'] };
+  const host = document.createElement('div');
+  document.body.append(host);
+  const root = createRoot(host);
+  await act(async () => { root.render(createElement(GridChart as never, { data, stack, title: 'Starts rise', size: { width: 960 } })); });
+  await act(async () => { await new Promise(done => setTimeout(done, 50)); });
+  const onScreen = host.querySelector('svg')!.textContent!;
+  expect(onScreen).not.toContain('cases per month');
+  expect(onScreen).toContain('Started');
+  await act(async () => { root.unmount(); });
+  host.remove();
+});
