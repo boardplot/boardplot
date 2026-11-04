@@ -94,7 +94,7 @@ One form; its chart ID is `gantt`.
 | colHeaders | array |  |  | Positional headers for up to three existing metadata columns. Omitted or empty entries have no header; entries without a displayed column are ignored. A columnOverrides label beats the entry of its column. |
 | columnOverrides | object |  |  | Settings per generated column. Ids: name, meta0, meta1, meta2. |
 | columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
-| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Cell alignment. |
+| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Alignment of the column: its cell text and, unless headAlign is set, its head. Bars keep starting at the panel origin. |
 | columnOverrides.*.headAlign | string | `'left'`, `'right'`, `'center'` |  | Head alignment; defaults to align. |
 | columnOverrides.*.label | string |  |  | Head text. |
 | columnOrder | array |  |  | Order of whole blocks; blocks left out follow in default order. Ids: meta, plot. |
