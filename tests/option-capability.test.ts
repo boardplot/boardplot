@@ -314,6 +314,7 @@ describe('published option behaviour census', () => {
 
   // These values exercise common options without depending on an implicit default.
   const VALUES: Options = {
+    rowLabelLines: 1,
     target: 'dashboard', textScale: 1.25, textSize: 18, a11y: { title: true },
     mode: 'compact', belowMinimum: 'refuse', size: { width: 960 }, embed: { width: 180 },
     margin: { left: 100 }, canvas: { margin: { left: 100 } },
@@ -470,6 +471,7 @@ describe('published option behaviour census', () => {
     ["scatter", "maxPointLabels", "Fixture price-quality-brands has no SVG or option-warning change with 307."],
     ["dimswitch", "strings", "Fixture by-measure has no SVG or option-warning change with {\"source\":\"Census source\"}."],
     ["dimswitch table", "mountCollapsed", "Initial React mount state does not change the static SVG."],
+    ["dimswitch table", "paintOffscreenRows", "Offscreen React paint does not change the static SVG."],
     ["dimswitch", "signs", "Fixture by-measure has no SVG or option-warning change with \"operators\"."],
     ["table", "signs", "Fixture steering-monthly has no SVG or option-warning change with \"operators\"."],
     ["dimswitch", "driverTones", "Fixture by-measure has no SVG or option-warning change with \"never\"."],
