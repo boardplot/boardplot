@@ -133,6 +133,7 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
   const ladder = levelLadder(theme, options.density ?? 'regular', options.target, textScaleOf(options));
   const regularFonts = tableFonts(theme, ladder);
   const rowById = new Map([...widthRows, ...rows].map(row => [row.id, row]));
+  const colById = new Map(cols.map(col => [col.id, col]));
   const hasChanges = new Set(table.rows.filter(row => visibleInlineRows(row, options.inlineVisibility).length > 0).map(row => row.id));
   const cellStep = (cell: ResolvedCell) => rowById.get(cell.rowId)?.step ?? cell.level;
   /** The rung a label indents at: a memo row may indent with its parent (`ResolvedRow.indentStep`). */
@@ -150,7 +151,7 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
       ((kind !== 'member' && kind !== 'measure') || theme.table?.weights?.figures?.[kind] === undefined));
     if (cell.role === 'total' && cell.kind !== 'rowLabel' && totalFace) return regularFonts.totalValue;
     const font = kindFont(ladderRowFont(theme, ladder, regularFonts, cell.role, cellStep(cell), row?.hasChildren === true, hasChanges.has(cell.rowId)), kind, cell.kind === 'rowLabel', theme);
-    return cell.state === 'value' ? strongColumnFont(font, cols.find((col) => col.id === cell.colId), cell, kind, theme) : font;
+    return cell.state === 'value' ? strongColumnFont(font, colById.get(cell.colId), cell, kind, theme) : font;
   }
   function affixRoom(row: ResolvedRow, font: FontSpec): number {
     if (row.unitAffix === undefined) return 0;
