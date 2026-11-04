@@ -13,6 +13,7 @@ import type { Id } from '../../types/cell';
 import type { GanttCell, GanttData, GanttItem } from '../../types/data';
 import type { LabelKind } from '../../types/options';
 import type { LintWarning } from '../../types/scene';
+import { MAX_COLS, resolveGanttColumns } from './columns';
 import { TIERS, boundariesOf, ceilTo, dateFromDay, dayNum, floorTo } from './calendar';
 import type { GanttGranularity, GanttOptions } from './layout';
 import type {
@@ -28,7 +29,7 @@ import type {
 import { maxOf, minOf, pushAll } from '../../arrays';
 
 const ITEM_KINDS: GanttItem['kind'][] = ['bar', 'milestone', 'chevron', 'bracket', 'shade', 'rule'];
-export const MAX_COLS = 3;
+export { MAX_COLS };
 
 /** Resolve the options once: theme, surface, size, measurer, highlights and fonts. */
 export function resolveGanttEnv(options: GanttOptions, warnings: LintWarning[]): GanttEnv {
@@ -40,6 +41,7 @@ export function resolveGanttEnv(options: GanttOptions, warnings: LintWarning[]):
   const tick = { family: theme.type.family, ...theme.type.axis };
   return {
     options,
+    columns: resolveGanttColumns(options),
     theme,
     surface: resolveSurface(theme),
     size: resolveSize(options.size),

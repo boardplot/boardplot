@@ -91,7 +91,13 @@ One form; its chart ID is `gantt`.
 | calendar | object |  |  | Calendar head and span. The defaults keep the ISO week head over whole periods. |
 | calendar.weeks | string | `'isoWeek'`, `'startDay'` |  | Week cell names. 'isoWeek' (default): ISO week numbers such as 'W11'. 'startDay': the day of the month each week cell starts on ('9'), flush left in its cell under the month tier, so the number reads as the day the week starts; a clipped first or last cell names the day it starts on. Week granularity only; elsewhere it is ignored with the info lint calendar-weeks-ignored. |
 | calendar.span | string | `'periods'`, `'data'` |  | Timeline span. 'periods' (default): whole calendar periods of the head's finer tier. 'data': from the first item or cadence day to the later of the last item end and options.today, so the arrows end at the edge. A milestone or cadence marker on the first or last day keeps room for its radius inside the edge. Event annotations and a today before the first item do not extend the span; they are left out with event-out-of-range or today-out-of-range. |
-| colHeaders | array |  |  | Positional headers for up to three existing metadata columns. Omitted or empty entries have no header; entries without a displayed column are ignored. |
+| colHeaders | array |  |  | Positional headers for up to three existing metadata columns. Omitted or empty entries have no header; entries without a displayed column are ignored. A columnOverrides label beats the entry of its column. |
+| columnOverrides | object |  |  | Settings per generated column. Ids: name, meta0, meta1, meta2. |
+| columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
+| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Cell alignment. |
+| columnOverrides.*.headAlign | string | `'left'`, `'right'`, `'center'` |  | Head alignment; defaults to align. |
+| columnOverrides.*.label | string |  |  | Head text. |
+| columnOrder | array |  |  | Order of whole blocks; blocks left out follow in default order. Ids: meta, plot. |
 
 Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis`, `hatchStrength`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
@@ -132,6 +138,8 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | dense-milestone-leaders | torture | Leaders of eighteen nearby milestones cross no label |
 | milestone-lane-tall-rows | example | Bars keep their height in rows a milestone lane makes tall |
 | adjacent-milestone-bands | torture | Neighbouring rows keep their milestone labels |
+| column-overrides | example | Widths, alignment and heads set per column: a wide name column, the owner flush right and a renamed status head |
+| meta-after-plot | example | Owner and status columns on the far side of the bars |
 
 ## Not for
 

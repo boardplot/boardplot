@@ -146,7 +146,7 @@ function backgroundLayers(ctx: MarkCtx, domain: GanttDomain): { elapsed: PlacedA
   const { options, surface } = env;
   const { rows, todayDay, d0Day } = domain;
   const { rowsTop, rowsBottom } = band;
-  const { x, bodyX, bodyW } = body;
+  const { x, bodyX } = body;
   const elapsed: PlacedAnnotation[] = [];
   // Gantt row shading uses its own wash and leaves table zebra shading unchanged.
   if (options.rowTint) {
@@ -155,7 +155,7 @@ function backgroundLayers(ctx: MarkCtx, domain: GanttDomain): { elapsed: PlacedA
       nodes.push({
         t: 'rect',
         id: `rowTint:${r.id}`,
-        rect: { x: body.inner.x, y: band.rowY[i]!, w: bodyX + bodyW - body.inner.x, h: band.stacked ? band.rowY[i + 1]! - band.rowY[i]! : band.rowHs[i]! },
+        rect: { x: body.inner.x, y: band.rowY[i]!, w: body.rowsRight - body.inner.x, h: band.stacked ? band.rowY[i + 1]! - band.rowY[i]! : band.rowHs[i]! },
         fill: ganttRowPaint(),
         owner: { categoryId: r.id },
         part: 'rowTint',
@@ -223,7 +223,7 @@ function backgroundLayers(ctx: MarkCtx, domain: GanttDomain): { elapsed: PlacedA
   });
   for (let i = 1; i <= rows.length; i++) {
     const y = band.rowY[i]!;
-    nodes.push({ t: 'line', id: `rowRule:${i}`, x1: body.inner.x, y1: y, x2: bodyX + bodyW, y2: y, stroke: { token: 'grid' }, width: strokeToken(env.theme, 'hair'), owner: {}, part: 'rowRule' });
+    nodes.push({ t: 'line', id: `rowRule:${i}`, x1: body.inner.x, y1: y, x2: body.rowsRight, y2: y, stroke: { token: 'grid' }, width: strokeToken(env.theme, 'hair'), owner: {}, part: 'rowRule' });
   }
   return { elapsed, shades };
 }

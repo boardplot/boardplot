@@ -8,6 +8,7 @@ import {
   idSchema,
   refusedBaseOptions,
 } from '../../schema/shared';
+import { columnOrderOption, columnOverridesOption } from '../../schema/generatedColumnOptions';
 import type { GanttData } from '../../types/data';
 import type { GanttOptions } from './layout';
 
@@ -106,7 +107,9 @@ export const ganttOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOption
     span: z.enum(['periods', 'data']).optional().describe("Timeline span. 'periods' (default): whole calendar periods of the head's finer tier. 'data': from the first item or cadence day to the later of the last item end and options.today, so the arrows end at the edge. A milestone or cadence marker on the first or last day keeps room for its radius inside the edge. Event annotations and a today before the first item do not extend the span; they are left out with event-out-of-range or today-out-of-range."),
   }).strict().optional().describe('Calendar head and span. The defaults keep the ISO week head over whole periods.'),
   colHeaders: z.array(z.string()).max(3).optional()
-    .describe('Positional headers for up to three existing metadata columns. Omitted or empty entries have no header; entries without a displayed column are ignored.'),
+    .describe('Positional headers for up to three existing metadata columns. Omitted or empty entries have no header; entries without a displayed column are ignored. A columnOverrides label beats the entry of its column.'),
+  columnOverrides: columnOverridesOption('gantt', ['width', 'align', 'headAlign', 'label']),
+  columnOrder: columnOrderOption('gantt'),
 }).superRefine((options, ctx) => {
   // Gantt prints one label per event; `items` (column, combo and line only) would lose its text silently.
   (options.annotations ?? []).forEach((annotation, index) => {
