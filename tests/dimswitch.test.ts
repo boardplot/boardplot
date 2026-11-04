@@ -467,6 +467,39 @@ describe('dimswitch generated columns', () => {
     expect(compileDimSwitch(exampleData, { columnOrder: ['periods', 'block'] }).options.stickyLabels).toBe(1);
     expect(compileDimSwitch(exampleData, { columnOrder: ['block'] }).options.stickyLabels).toBe(3);
   });
+  // The note must not cost a table its draw: without this, a head-less table refused at a height where the same table with a head drew.
+  it('moves the partial note out of a fixed frame before the floor refuses', () => {
+    const request = (height: number, extra: object = {}) => measure({ type: 'dimswitch', data: exampleData, options: { title: 'Channel performance', variant: 'by-measure', depth: 2, columnHeads: false, target: 'dashboard', size: { width: 400, height }, ...extra } as never });
+    const tight = request(280);
+    expect(tight.geometry?.warnings.map(warning => warning.code)).toContain('dimswitch-partial-note-off-frame');
+    expect(tight.geometry?.frame?.noteList?.find(note => note.text === 'Week 2 to date')?.inFrame).toBe(false);
+    const roomy = request(600);
+    expect(roomy.geometry?.warnings.map(warning => warning.code)).not.toContain('dimswitch-partial-note-off-frame');
+    expect(roomy.geometry?.frame?.noteList?.find(note => note.text === 'Week 2 to date')?.inFrame).toBe(true);
+  });
+  // One cell with two alignments reads as two columns: the change line must sit under its value.
+  it('seats the change line by the alignment of its column', () => {
+    const geometry = layout(exampleData, { columnOverrides: { w1: { align: 'center' }, w2: { align: 'left' } } });
+    const text = (geometry.scene as unknown as { t: string; id?: string; part?: string; x?: number; align?: string }[]).filter(node => node.t === 'text');
+    const row = dimswitchRowId('by-measure', 'total', 'orders');
+    for (const [column, align] of [['w1', 'middle'], ['w2', 'start']] as const) {
+      const value = text.find(node => node.id === tableCellNodeId('cell', row, column));
+      const line = text.find(node => node.part === 'tableCellLine' && node.id === tableCellNodeId('cellline', row, column, `${row}:change`));
+      expect([value?.align, line?.align]).toEqual([align, align]);
+      expect(line?.x).toBe(value?.x);
+    }
+  });
+  // An authored width the card form drops would otherwise vanish in silence.
+  it('warns when the card form ignores an authored width', () => {
+    const geometry = layout(exampleData, { columnOverrides: { range: { width: 5000 } } });
+    expect(geometry.warnings.find(warning => warning.code === 'option-ignored')?.field).toEqual(['options', 'columnOverrides', 'range', 'width']);
+    expect(layout(exampleData, { columnOverrides: { range: { width: 120 } } }).warnings.map(warning => warning.code)).not.toContain('option-ignored');
+  });
+  // An empty head leaves only the star, so the note must still name the column.
+  it('names a partial column from its default label under an empty head', () => {
+    const geometry = layout(partialData, { notes: { show: ['disclosure'] }, columnOverrides: { w2: { label: '' } } });
+    expect(geometry.frame?.noteList?.map(note => note.text)).toContain('* Range, Week 2 to date');
+  });
   // A wrong id must warn with the real ids: a list key's path once failed the whole render as an internal error.
   it('warns on a wrong id in every key and draws', () => {
     const geometry = layout(exampleData, { columnVisibility: { nope: false }, columnOverrides: { nope: { width: 10 } }, columnOrder: ['nope'] });

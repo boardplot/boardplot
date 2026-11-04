@@ -4,7 +4,7 @@ import { CARD_MIN_WIDTH, chartSizing, heightOmitted, isWidthProbe, VERIFY_ADVICE
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { cardHeightFloor, classFloor, layoutKey, layoutTable, memoLayout, REGULAR_SPACING, type TableMarks } from '../table/layout';
 import { resolveTable } from '../table/resolve';
-import { compileDimSwitch, dimSwitchTableWarnings, dimswitchRowId, FOLDED, hostPeriods, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning, type DimSwitchForm } from './compile';
+import { compileDimSwitch, dimSwitchTableWarnings, dimswitchRowId, FOLDED, hostPeriods, PARTIAL_NOTE_OFF, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning, type DimSwitchForm } from './compile';
 import type { DimSwitchData, DimSwitchOptions, DimSwitchDerived } from './types';
 import { minOf } from '../../arrays';
 
@@ -197,6 +197,9 @@ function latestThatFit(card: (hide: number) => Form, periods: number): { shown: 
   return undefined;
 }
 
+const missesFixedHeight=(options: DimSwitchOptions, geometry: Form) => (options as TargetSizeOptions)[TARGET_SIZE]?.fixed?.height === true && !heightOmitted(options.size)
+  && geometry.sizing !== undefined && geometry.size.height < geometry.sizing.minHeight;
+
 /**
  * On a fixed height, a table that misses it draws one fold shallower, down to depth 1 and then, by member, with the
  * Total folded too, instead of refusing. The first fold that fits draws and its warning names the depth. Where none
@@ -205,8 +208,7 @@ function latestThatFit(card: (hide: number) => Form, periods: number): { shown: 
  */
 function foldToFit(data: DimSwitchData, options: DimSwitchOptions, formsOf: (fold: string) => Map<string, PreparedForm>): Geometry<TableMarks, DimSwitchDerived> {
   const first=layoutDimSwitch(data,options,formsOf(''));
-  const missesHeight=(geometry: Form) => (options as TargetSizeOptions)[TARGET_SIZE]?.fixed?.height === true && !heightOmitted(options.size)
-    && geometry.sizing !== undefined && geometry.size.height < geometry.sizing.minHeight;
+  const missesHeight=(geometry: Form) => missesFixedHeight(options,geometry);
   // A table that misses the width refuses on width, and its floor names the authored depth.
   if (options.belowMinimum === 'refuse' || first.refused || !fixedFits(first) || !missesHeight(first)) return first;
   const depth=options.depth ?? 1, byMember=options.variant === 'by-member';
@@ -238,7 +240,12 @@ function layoutDimSwitchCard(data: DimSwitchData, options: DimSwitchOptions = {}
   return memoLayout(data, options, () => {
     const folded=new Map<string,Map<string,PreparedForm>>();
     const formsOf=(fold:string)=>{let forms=folded.get(fold); if (!forms) folded.set(fold,forms=new Map()); return forms;};
-    const layout=(input:DimSwitchData,step:DimSwitchOptions)=>foldToFit(input,step,formsOf);
+    const layout=(input:DimSwitchData,step:DimSwitchOptions)=>{
+      const drawn=foldToFit(input,step,formsOf);
+      // With no head, a partial window's note may print in the frame, but it never costs the table its draw: first it leaves the frame and warns.
+      if (step.columnHeads!==false || !(drawn.refused || missesFixedHeight(step,drawn))) return drawn;
+      return foldToFit(input,{...step,[PARTIAL_NOTE_OFF]:true} as DimSwitchOptions,fold=>formsOf(`off:${fold}`));
+    };
     return cardHeightFloor(layoutDimSwitchCard,data,options,classFloor(layout,data,options,layout(data,options)));
   });
 }

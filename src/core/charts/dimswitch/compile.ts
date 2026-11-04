@@ -37,6 +37,8 @@ export function dimSwitchTableWarnings(warnings: readonly LintWarning[], overrid
 }
 /** The displayed periods the host keeps: the one filter of `columnVisibility`, for the compile and the card search. */
 export const hostPeriods = (data: DimSwitchData, options: DimSwitchOptions): DimSwitchPeriod[] => data.periods.filter(p => !p.kind && options.columnVisibility?.[p.id] !== false);
+/** Set where a fixed height has no room for the note of a partial window with no head: the note leaves the frame, so it never raises the floor. */
+export const PARTIAL_NOTE_OFF = Symbol('dimswitchPartialNoteOff');
 /** A partial window with no head to say so, where the frame cannot print the note. */
 export const PARTIAL_NOTE_OFF_FRAME = 'dimswitch-partial-note-off-frame';
 export const partialNoteWarning = (note: string): LintWarning => ({ code: PARTIAL_NOTE_OFF_FRAME, severity: 'warn', field: ['options', 'columnHeads'],
@@ -752,7 +754,11 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   const headOf=(id:string,fallback:string)=>overrides?.[id]?.label ?? fallback;
   const aligned=(id:string)=>{const o=overrides?.[id];return {...(o?.align===undefined ? {} : {align:o.align}),...(o?.headAlign===undefined ? {} : {headAlign:o.headAlign})};};
   const track=(id:string,fallback:number)=>({...fixed(overrides?.[id]?.width ?? fallback),...aligned(id)});
+  // An empty head still leaves the note naming its column.
   const nameOf=(p:DimSwitchPeriod)=>headOf(p.kind ? 'range' : p.id,p.label);
+  const noteName=(p:DimSwitchPeriod)=>nameOf(p).trim() || p.label;
+  if (form.card) for (const [id,override] of Object.entries(overrides ?? {})) if (override.width!==undefined && (id==='label' ? override.width>CARD_LABEL_WIDTH : columnIds.includes(id))) warnings.push({code:'option-ignored',severity:'warn',field:['options','columnOverrides',id,'width'],
+    message:`The table does not fit at its authored widths, so the automatic card form sizes this track by content and ignores options.columnOverrides.${id}.width.`,suggest:`Give the table more width, or remove options.columnOverrides.${id}.width.`});
   // Engine notes (disclosures): a partial period's star, a near-zero change, the periods the card leaves out.
   const strings={...localeStrings(options.locale?.language),...options.strings};
   // The Range is a period too: a partial Range carries the star and enters the note.
@@ -760,15 +766,15 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   // The star points at its note, so it prints only where the note does (notes.show lists 'disclosure'), and it needs a head to sit on.
   const star=disclosuresShown(options) && options.columnHeads!==false ? '*' : '';
   // Where the star's note does not print, a partial head says "to date" itself, unless its words already do.
-  const headSub=(p:DimSwitchPeriod)=>star || !p.partial || saysToDate(`${nameOf(p)} ${p.subLabel ?? ''}`, strings.toDate) ? p.subLabel : p.subLabel ? `${p.subLabel} ${strings.toDate}` : strings.toDate;
+  const headSub=(p:DimSwitchPeriod)=>star || !p.partial || saysToDate(`${noteName(p)} ${p.subLabel ?? ''}`, strings.toDate) ? p.subLabel : p.subLabel ? `${p.subLabel} ${strings.toDate}` : strings.toDate;
   const omitted=hidden.map(p=>p.label), fullPeriodNote=stringFields(strings.hiddenPeriods,{periods:omitted.join(', ')});
   const listed=cappedItems(omitted,{notes:options.notes,strings});
   const shortPeriodNote=stringFields(strings.hiddenPeriods,{periods:listed.join(', ')});
-  const partialText=`${partial.map(nameOf).join(', ')} ${strings.toDate}`;
+  const partialText=`${partial.map(noteName).join(', ')} ${strings.toDate}`;
   // With no head, nothing in the drawing says a window is partial, so the note prints as a note where the author does not print disclosures.
   const partialNote=partial.length && options.columnHeads===false && !disclosuresShown(options) ? partialText : undefined;
   const shownKinds=shownNoteKinds(options);
-  const noteFits=partialNote!==undefined && options.footnotes!==false && (shownKinds===undefined || shownKinds.includes('note')) && (options.notes?.placement ?? defaultNotePlacement(options.target))!=='list';
+  const noteFits=partialNote!==undefined && !(options as {[PARTIAL_NOTE_OFF]?:boolean})[PARTIAL_NOTE_OFF] && options.footnotes!==false && (shownKinds===undefined || shownKinds.includes('note')) && (options.notes?.placement ?? defaultNotePlacement(options.target))!=='list';
   if (partialNote!==undefined && !noteFits) warnings.push(partialNoteWarning(partialNote));
   if (noteFits) tableOptions.footnotes=[...(tableOptions.footnotes || []),partialNote];
   const notes=[
