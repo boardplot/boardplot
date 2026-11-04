@@ -440,3 +440,36 @@ describe('dimswitch columnHeads', () => {
     expect(svg({})).toContain('tableHeader');
   });
 });
+
+describe('dimswitch generated columns', () => {
+  const partialData: DimSwitchData = { ...exampleData, periods: exampleData.periods.map(p => p.kind === 'range' || p.id === 'w2' ? { ...p, partial: true } : p) };
+  const layout = (data: DimSwitchData, options: object) => requireGeometry(dimswitchCore.layout(data, { size: { width: 900 }, ...options }));
+  // With no head, nothing else in the drawing says a window is partial, so a reader would take the cut week for a whole one.
+  it('prints the partial disclosure in the frame when the head is gone, and warns where the frame has no place', () => {
+    const inFrame = layout(partialData, { columnHeads: false });
+    expect(inFrame.frame?.noteList?.find(note => note.text === 'Range, Week 2 to date')?.inFrame).toBe(true);
+    expect(inFrame.warnings.map(warning => warning.code)).not.toContain('dimswitch-partial-note-off-frame');
+    const noPlace = layout(partialData, { columnHeads: false, notes: { show: [] } });
+    expect(noPlace.refused).toBeFalsy();
+    expect(noPlace.warnings.map(warning => warning.code)).toContain('dimswitch-partial-note-off-frame');
+    expect(noPlace.frame?.noteList?.find(note => note.text === 'Range, Week 2 to date')?.inFrame).toBe(false);
+  });
+  // A period the host hid must not read as one the card left out, and hiding all value columns must still draw the labels.
+  it('counts a hidden period as gone, never as left out by the card, and draws labels only without refusing', () => {
+    const noted = layout(exampleData, { size: { width: 320 }, columnVisibility: { w1: false } });
+    expect(noted.frame?.noteList?.some(note => note.text.includes('Week 1'))).toBe(false);
+    const labels = layout(exampleData, { columnVisibility: { range: false, pp: false, w1: false, w2: false } });
+    expect(labels.refused).toBeFalsy();
+    expect(labels.warnings.map(warning => warning.code)).toContain('dimswitch-labels-only');
+  });
+  // Pinned period tracks would not sit next to the label, so a periods-first table pins the label alone.
+  it('pins only the label when the periods lead', () => {
+    expect(compileDimSwitch(exampleData, { columnOrder: ['periods', 'block'] }).options.stickyLabels).toBe(1);
+    expect(compileDimSwitch(exampleData, { columnOrder: ['block'] }).options.stickyLabels).toBe(3);
+  });
+  // A wrong id must warn with the real ids: a list key's path once failed the whole render as an internal error.
+  it('warns on a wrong id in every key and draws', () => {
+    const geometry = layout(exampleData, { columnVisibility: { nope: false }, columnOverrides: { nope: { width: 10 } }, columnOrder: ['nope'] });
+    expect(geometry.warnings.filter(warning => warning.code === 'generated-id-unknown').map(warning => warning.field)).toEqual([['options', 'columnVisibility', 'nope'], ['options', 'columnOverrides', 'nope'], ['options', 'columnOrder', 0]]);
+  });
+});

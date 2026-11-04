@@ -1,6 +1,7 @@
 import { valueBandsSchema } from '../../bands';
 import { formatExample, idRecord, refusedBaseOptions } from '../../schema/shared';
 import * as z from 'zod';
+import { columnOrderOption, columnOverridesOption, columnVisibilityOption } from '../../schema/generatedColumnOptions';
 import { tableOptionsObject } from '../table/schema';
 import type { DimSwitchData, DimSwitchExpression, DimSwitchOptions, DimSwitchJudgeBase } from './types';
 const id = z.string().min(1).describe('Stable id or display label.');
@@ -62,10 +63,15 @@ export const dimswitchDataSchema: z.ZodType<DimSwitchData> = z.strictObject({
  const keys=new Set<string>();
  for(const [i,f] of data.facts.entries()){const key=JSON.stringify([f.memberId,f.periodId]);if(keys.has(key)) issue(['facts',i],`Duplicate fact for member '${f.memberId}' and period '${f.periodId}'.`);keys.add(key);if(f.memberId!==data.dimension.total.id&&!members.has(f.memberId)) issue(['facts',i,'memberId'],`Unknown member '${f.memberId}'; use the total id or a dimension.members id.`);if(!periodIds.has(f.periodId)) issue(['facts',i,'periodId'],`Unknown period '${f.periodId}'; use a periods id.`);}
 });
+const columnVisibility = columnVisibilityOption('dimswitch');
+const columnOverrides = columnOverridesOption('dimswitch', ['width', 'align', 'headAlign', 'label']);
+const columnOrder = columnOrderOption('dimswitch');
 export const dimswitchOptionsSchema = tableOptionsObject.safeExtend({
  topN:refusedBaseOptions('dimswitch').topN,
  encodings:tableOptionsObject.shape.encodings.describe('Per-column opt-in visual encodings. A key is a column id: range, pp (the vs prior column), pl (the vs plan column, with a plan) or the id of a displayed period. Any other key draws nothing and warns dimswitch-encoding-column.'),
- columnVisibility:tableOptionsObject.shape.columnVisibility.describe('False leaves a column out: range, pp (the vs prior column) or pl (the vs plan column, with a plan). The data still needs its range and prior periods, and order and show still read Range.'),
+ columnVisibility:columnVisibility.describe(`${columnVisibility.description} The label column stays, so hiding every value column draws labels only and warns. The data still needs its range and prior periods, and order and show still read Range.`),
+ columnOverrides:columnOverrides.describe(`${columnOverrides.description} width beats widths. The automatic card form sizes tracks by content and ignores width, except a smaller label width.`),
+ columnOrder:columnOrder.describe(`${columnOrder.description} block is Range and its comparisons. The label stays first, and only the label and leading block columns pin.`),
  density:z.enum(['compact','regular','relaxed']).optional().describe("Cell spacing: 'compact', 'regular' or 'relaxed'. The cohort densities do not apply: every cell holds a value and a change line, and cohort rows are fixed one-liners."),
  // The table's own variant is fixed to steering here, so this key names the dimswitch form (the cast only quiets safeExtend's same-type rule).
  variant:z.enum(['by-measure','by-member']).optional().describe('by-measure: KPI rows over members (by-member: members over KPIs, Total first). In by-member the Total block is always open.') as unknown as (typeof tableOptionsObject.shape)['variant'],

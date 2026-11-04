@@ -268,7 +268,7 @@ A KPI table: measures by one hierarchical dimension by period, switchable betwee
 | expansion | object |  |  | Row-id exceptions over depth (id: JSON.stringify([variant, memberId, measureId])). |
 | expansion.expanded | array |  |  | Row ids to open. |
 | expansion.collapsed | array |  |  | Row ids to fold. |
-| columnVisibility | object |  |  | False leaves a column out: range, pp (the vs prior column) or pl (the vs plan column, with a plan). The data still needs its range and prior periods, and order and show still read Range. |
+| columnVisibility | object |  |  | True shows a column and false leaves it out: the ids are data.columnToggles ids on table and column ids elsewhere. Ids: label, range, pp, pl, each displayed period id. The label column stays, so hiding every value column draws labels only and warns. The data still needs its range and prior periods, and order and show still read Range. |
 | columnHeads | false | `false` |  | false: no visible head row and no group heads, with their height and rule. Assistive technology still reads the head in React, and sortable warns there. |
 | inlineVisibility | object |  |  | Visibility by inlineGroup. An absent group is visible, so a Changes control hides every MoM line of a table with one entry. |
 | magnitude | string | `'auto'`, `'thousand'`, `'million'` |  | Money scale for all rows and columns. 'thousand' prints whole thousands, 'million' keeps the example's decimals, and no column rolls up on its own. The scale letter leaves the cells and hoists to the frame, the column header or, where the format sits on the row, the row label. 'auto' (the default) lets each column and money row pick from its own largest value. |
@@ -296,6 +296,12 @@ A KPI table: measures by one hierarchical dimension by period, switchable betwee
 | labelIndent.base | number |  |  | Level-0 start from row edge, padding included. |
 | labelIndent.step | number |  |  | px per rung; default 16. |
 | outlineMarks | boolean |  | `false` | Fold marks beside parent rows. Drawn in static SVG/PNG and read-only grids. Default false: no marks or gutter. true draws the marks and reserves their gutter. Interactive grids keep their fold buttons either way. |
+| columnOverrides | object |  |  | Settings per generated column. Ids: label, range, pp, pl, each displayed period id. width beats widths. The automatic card form sizes tracks by content and ignores width, except a smaller label width. |
+| columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
+| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Cell alignment. |
+| columnOverrides.*.headAlign | string | `'left'`, `'right'`, `'center'` |  | Head alignment; defaults to align. |
+| columnOverrides.*.label | string |  |  | Head text. |
+| columnOrder | array |  |  | Order of whole blocks; blocks left out follow in default order. Ids: block, periods. block is Range and its comparisons. The label stays first, and only the label and leading block columns pin. |
 | depth | integer |  | `1` | Open rungs: 1 roots folded, 2 one member level open, 3 two levels; the same in both variants. Maximum member levels plus one. Splits add no rung. |
 | splits | boolean |  | `false` | Show split measures under their root measure. |
 | order | string \| object | `'sheet'` (or another value of its type) |  | Sibling order: sheet, or {by: measure id} on Range values, descending. Ties by id, missing values last. |
@@ -1382,6 +1388,9 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | by-measure | example | KPIs and their channel members |
 | by-member | example | Channels and their KPIs |
 | periods-only | example | KPIs by period without the Range and vs prior columns |
+| range-only | example | KPIs with the Range column alone |
+| column-overrides | example | KPIs with authored head text, track widths and alignment |
+| periods-first | example | KPIs with the periods before the Range block |
 | sheet | example | KPIs on the report sheet |
 | statement | example | A contribution-margin statement per order |
 | statement-channels | example | The statement with the channels folded under the Total |

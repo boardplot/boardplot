@@ -4,7 +4,7 @@ import { CARD_MIN_WIDTH, chartSizing, heightOmitted, isWidthProbe, VERIFY_ADVICE
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { cardHeightFloor, classFloor, layoutKey, layoutTable, memoLayout, REGULAR_SPACING, type TableMarks } from '../table/layout';
 import { resolveTable } from '../table/resolve';
-import { compileDimSwitch, dimSwitchTableWarnings, dimswitchRowId, FOLDED, type DimSwitchForm } from './compile';
+import { compileDimSwitch, dimSwitchTableWarnings, dimswitchRowId, FOLDED, hostPeriods, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning, type DimSwitchForm } from './compile';
 import type { DimSwitchData, DimSwitchOptions, DimSwitchDerived } from './types';
 import { minOf } from '../../arrays';
 
@@ -64,7 +64,9 @@ function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwi
   // Only measure() sets VERIFY_ADVICE; the geometry it returns must equal the one React draws.
   const {[VERIFY_ADVICE]:_verify,...kept}=compiled.options as typeof compiled.options & {[VERIFY_ADVICE]?:boolean};
   const records=compiled.computedCells.map(record=>({...record,displayed:record.kind==='calc' ? originalRows.get(record.rowId)?.cells[record.colId]?.displayed ?? '' : record.displayed}));
-  return {...geometry,type:'dimswitch',warnings:[...dimSwitchTableWarnings(geometry.warnings),...compiled.warnings,...(options.format ? [{code:'format-unused',severity:'warn' as const,field:['options','format'],message:'DimSwitch measures supply their own formats. Set measures[].format.'}] : [])],derived:{...geometry.derived,compiled:{data:compiled.data,options:kept},omissions:compiled.omissions,computedCells:[...resolved.computedCells,...records].map(record=>({...record,displayed:record.kind==='calc' ? drawnRows.get(record.rowId)?.cells[record.colId]?.displayed ?? record.displayed : record.displayed}))}};
+  // The note of a partial window with no head may lose its place in a fixed frame's line budget. An open height prints every note.
+  const partialNote=compiled.partialNote, offFrame=partialNote!==undefined && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed?.height===true && !heightOmitted(options.size) && !compiled.warnings.some(warning=>warning.code===PARTIAL_NOTE_OFF_FRAME) && geometry.frame?.noteList?.some(note=>note.text===partialNote && !note.inFrame)===true;
+  return {...geometry,type:'dimswitch',warnings:[...dimSwitchTableWarnings(geometry.warnings,options.columnOverrides),...compiled.warnings,...(offFrame ? [partialNoteWarning(partialNote)] : []),...(options.format ? [{code:'format-unused',severity:'warn' as const,field:['options','format'],message:'DimSwitch measures supply their own formats. Set measures[].format.'}] : [])],derived:{...geometry.derived,compiled:{data:compiled.data,options:kept},omissions:compiled.omissions,computedCells:[...resolved.computedCells,...records].map(record=>({...record,displayed:record.kind==='calc' ? drawnRows.get(record.rowId)?.cells[record.colId]?.displayed ?? record.displayed : record.displayed}))}};
 }
 
 /**
@@ -78,7 +80,7 @@ function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwi
 function layoutDimSwitch(data: DimSwitchData, options: DimSwitchOptions, forms: Map<string, PreparedForm>): Geometry<TableMarks, DimSwitchDerived> {
   const openWidth=(options as TargetSizeOptions)[TARGET_SIZE]?.fixed?.width === false;
   const fits=(geometry: Geometry<TableMarks, DimSwitchDerived>) => openWidth || geometry.size.width >= (geometry.sizing?.minWidth ?? 0);
-  const periods=data.periods.filter(p=>!p.kind).length;
+  const periods=hostPeriods(data,options).length;
   const regular={...options,[REGULAR_SPACING]:true} as DimSwitchOptions;
   const card=(hide:number)=>layoutForm(data,regular,{card:true,hide},forms);
   const steps=options.belowMinimum !== 'refuse';
