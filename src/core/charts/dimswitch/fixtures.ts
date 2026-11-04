@@ -15,7 +15,7 @@ fixtures.push({id:'periods-only',title:'KPIs by period without the Range and vs 
 /** Range alone: a host that shows its periods elsewhere leaves every period and the comparison out. */
 fixtures.push({id:'range-only',title:'KPIs with the Range column alone',kind:'example',data:exampleData,options:{title:'Channel performance in the range',variant:'by-measure',depth:2,columnVisibility:{pp:false,w1:false,w2:false}}});
 /** Authored tracks and heads: the label head reads Metric, the partial period keeps its star. */
-fixtures.push({id:'column-overrides',title:'KPIs with authored head text, track widths and alignment',kind:'example',data:exampleData,options:{title:'Channel performance',variant:'by-measure',depth:2,notes:{show:['disclosure']},columnOverrides:{label:{label:'Metric',width:200},range:{label:'Selected',width:130,headAlign:'left'},pp:{label:'Change',width:80,align:'center'},w2:{label:'This week',width:120}}}});
+fixtures.push({id:'column-overrides',title:'KPIs with authored head text, track widths and alignment',kind:'example',data:exampleData,options:{title:'Channel performance',variant:'by-measure',depth:2,notes:{show:['disclosure']},columnOverrides:{label:{label:'Metric',width:200},range:{label:'Selected',width:130,headAlign:'left'},pp:{label:'Change',width:80,align:'center'},w2:{label:'Latest',width:120}}}});
 /** The periods first: the Range block follows them, and only the label pins. */
 fixtures.push({id:'periods-first',title:'KPIs with the periods before the Range block',kind:'example',data:exampleData,options:{title:'Channel performance by week, then the range',variant:'by-measure',depth:2,columnOrder:['periods','block']}});
 /** The report sheet: one face for every rung, judged cells on grounds, unjudged volumes as bars. */
