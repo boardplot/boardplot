@@ -11,13 +11,15 @@ export function creativeRecords(ctx: RecordContext): InteractionRecord[] | undef
   const data = ctx.request.data as CreativeData;
   const marks = ctx.geometry.marks as unknown as CreativeMarks;
   const fatigue = (ctx.geometry.derived as unknown as CreativeDerived).fatigue;
+  // A column or row the author left out has no node, and its record stays: hidden is display only.
+  const drawnIds = new Set(ctx.geometry.scene.map(node => node.id));
   const records = creativeMetrics.map(([key, label, suffix]) => {
     const unit = suffix === 'currency' ? data.facts.currency : suffix;
     const owner = { seriesId: key, categoryId: data.id };
     return makeRecord(ctx, owner, numericValue(data.metrics[key].value, unit), {
       // The value is the creative's own, beside the account median: it carries the column's name.
       label, seriesLabel: label, categoryLabel: data.facts.name, valueLabel: creativeString(ctx.request.options, 'creativeColumn'), anchor: marks.metrics[key],
-      nodeIds: [`creative:row:${key}`, `label:creative:metric:${key}`, `label:creative:value:${key}`, `label:creative:median:${key}`],
+      nodeIds: [`creative:row:${key}`, `label:creative:metric:${key}`, `label:creative:value:${key}`, `label:creative:median:${key}`].filter(id => drawnIds.has(id)),
       fields: [
         { key: 'accountMedian', label: chartString(ctx.request.options, 'accountMedian'), value: numericValue(data.metrics[key].accountMedian, unit) },
         { key: 'population', label: chartString(ctx.request.options, 'medianPopulation'), value: textValue(data.comparison.population) },
