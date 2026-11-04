@@ -17,7 +17,9 @@ export const bartableCore: ChartCore<BarTableData, BarTableOptions, BarTableMark
     "variant 'cascade': panels as periods of one total (category share by year).",
   aliases: ['bar-table', 'table-bars'],
   layout: layoutBarTable,
-  finishLayout: (layout) => yieldingWidths('bartable', layout, (data) => [...(data.columns ?? []).map((column) => column.id), ...data.panels.map((panel) => panel.id)]),
+  finishLayout: (layout) => yieldingWidths('bartable', layout, (data) => [...(data.columns ?? []).map((column) => column.id), ...data.panels.map((panel) => panel.id)], {
+    head: (id) => `head:${id}`, cell: (label, id) => label.startsWith(`cell:${id}:`) || label === `total:${id}`,
+  }),
   categoryLabels: calendarCategories,
   defaults: { total: true },
   annotationKinds: [],

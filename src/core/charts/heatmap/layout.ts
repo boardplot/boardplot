@@ -1382,13 +1382,13 @@ export function layoutHeatmap(
     });
   }
 
-  // A head reads its alignment unless it is rotated, tiered, left out or a list's. A glyph's cell never does.
+  // A head reads its alignment unless it is rotated, tiered, left out or a list's. Only printed cell values read it in a cell.
   if (!turned) {
     const headReads = showHeaderRow && !harveyList && !headerRotated && tierTicks.length === 0;
     for (const c of cols) {
       const override = overrides[c.id];
       if (override?.headAlign !== undefined && !headReads) warnings.push(overrideIgnored(c.id, 'headAlign', 'these heads keep their own place at this size'));
-      if (override?.align !== undefined && glyph !== 'value' && (!headReads || override.headAlign !== undefined)) warnings.push(overrideIgnored(c.id, 'align', 'a glyph stands in the middle of its cell, and no head reads this align'));
+      if (override?.align !== undefined && !(glyph === 'value' && cellLabelsOn) && (!headReads || override.headAlign !== undefined)) warnings.push(overrideIgnored(c.id, 'align', 'no cell text or head reads this align'));
     }
   }
   if (harveyList && nameTrack?.align !== undefined) warnings.push(overrideIgnored('label', 'align', 'a list form places the names after its glyphs'));

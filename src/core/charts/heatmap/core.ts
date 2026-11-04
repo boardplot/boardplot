@@ -16,7 +16,9 @@ export const heatmapCore: ChartCore<HeatmapData, HeatmapOptions, HeatmapMarks, H
   summary: 'Row × column matrix — continuous or discrete color scale, in-cell values or Harvey balls',
   aliases: ['matrix'],
   layout: (data, options) => layoutHeatmap(prepareFractionData(data), options),
-  finishLayout: (layout) => yieldingWidths('heatmap', layout, (data) => data.categories.map((category) => (typeof category === 'object' ? category.id : category))),
+  finishLayout: (layout) => yieldingWidths('heatmap', layout, (data) => data.categories.map((category) => (typeof category === 'object' ? category.id : category)), {
+    head: (id) => `category:${id}`, cell: (label, id) => label.startsWith('point:') && label.endsWith(`:${id}`),
+  }),
   categoryLabels: calendarCategories,
   prepare: prepareFractionData,
   defaults: { scale: 'continuous', variant: 'value' },

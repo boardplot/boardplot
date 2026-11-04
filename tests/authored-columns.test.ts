@@ -85,6 +85,12 @@ describe('authored column settings', () => {
     expect(geometry.warnings.find(warning => warning.code === 'option-ignored')?.field).toEqual(['options', 'columnOverrides', 'zero', 'headAlign']);
   });
 
+  // A key on a column with no printed text would otherwise do nothing and say nothing.
+  it('warns on an alignment of a status column whose head is thinned out', () => {
+    const geometry = drawn('status', 'central-bank-decisions', { '2021-02': { align: 'left' } }, { width: 480 });
+    expect(geometry.warnings.find(warning => warning.code === 'option-ignored')?.field).toEqual(['options', 'columnOverrides', '2021-02', 'align']);
+  });
+
   // A rename that stops at the head leaves the hover calling the column by another name.
   it.each([
     ['bartable', 'total-top', 'sales'],
