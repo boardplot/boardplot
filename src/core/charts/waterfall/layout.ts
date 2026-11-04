@@ -1,3 +1,4 @@
+import { generatedIdWarnings } from '../../schema/generatedColumns';
 import { chartString } from '../../strings/waterfall';
 import { chartPalette, chartTheme } from '../chartEnv';
 import { breakStyleRefusal } from '../band/breakOrder';
@@ -236,6 +237,14 @@ const SLIVER_SEAT_GAP = 4;
 /** An off-level value's distance from the column: past the leader gutter, so the hairline shows. */
 const SLIVER_LEADER_GAP = 10;
 
+/** The horizontal bars keep this much of the plot, as the band sum's floor. */
+const HORIZONTAL_BAR_FLOOR = 80;
+
+/** A host's `labels.point: false` (pvm): the bars stop printing their values, and the marks, hover and records keep them. */
+function pointValuesOff(options: WaterfallOptions): boolean {
+  return (options as { labels?: { point?: false } }).labels?.point === false;
+}
+
 /**
  * Without an authored variant the bridge draws vertical and turns it horizontal when its
  * names would rotate, shorten or drop, a horizontal bridge draws every name upright and
@@ -248,11 +257,28 @@ export function layoutWaterfall(
   options: WaterfallOptions = {},
 ): Geometry<WaterfallMarks, WaterfallDerived> {
   if (options.variant === 'horizontal') return layoutHorizontalWaterfall(data, options);
+  if (options.columnOverrides === undefined) return automaticWaterfall(data, options).geometry;
+  // The bands never choose the variant: the choice runs without them, and only a horizontal result reads them.
+  const { columnOverrides: _bands, ...plain } = options;
+  const chosen = automaticWaterfall(data, plain);
+  if (chosen.horizontal) return layoutHorizontalWaterfall(data, options);
+  return { ...chosen.geometry, warnings: [...chosen.geometry.warnings, {
+    code: 'option-ignored', severity: 'warn', field: ['options', 'columnOverrides'],
+    message: 'columnOverrides sets the bands of a horizontal bridge, and this one draws vertical, so it changed nothing',
+    suggest: 'Remove columnOverrides, or use a horizontal bridge where the type takes variant.',
+  }] };
+}
+
+function automaticWaterfall(
+  data: WaterfallData,
+  options: WaterfallOptions,
+): { geometry: Geometry<WaterfallMarks, WaterfallDerived>; horizontal: boolean } {
   const vertical = layoutVerticalWaterfall(data, options);
   const dropsOnHorizontal = (data.cases?.length ?? 0) > 0 || (options.annotations?.length ?? 0) > 0
     || options.axisTitles?.primary !== undefined || (options as { closingChange?: unknown }).closingChange !== undefined;
-  if (options.variant === 'vertical' || dropsOnHorizontal) return vertical;
-  if (!vertical.warnings.some((warning) => CROWDED_NAMES.has(warning.code))) return vertical;
+  const staysVertical = { geometry: vertical, horizontal: false };
+  if (options.variant === 'vertical' || dropsOnHorizontal) return staysVertical;
+  if (!vertical.warnings.some((warning) => CROWDED_NAMES.has(warning.code))) return staysVertical;
   const horizontal = layoutHorizontalWaterfall(data, options);
   // A finding is the same one when code, severity and owner match; a code alone lets a new omission
   // hide behind an old finding of that code. The label-hidden finding is added after layout, so the
@@ -262,14 +288,14 @@ export function layoutWaterfall(
   const hidden = new Set(vertical.labels.filter((label) => label.hidden !== undefined).map((label) => label.id));
   const added = horizontal.warnings.some((warning) => warning.severity !== 'info' && !known.has(finding(warning)))
     || horizontal.labels.some((label) => label.hidden !== undefined && !hidden.has(label.id));
-  if (added || horizontal.refused) return vertical;
+  if (added || horizontal.refused) return staysVertical;
   // Fits: the width is never repaired, the height only when the caller pinned it. A bridge that the size
   // refuses as a horizontal one would turn a drawn chart into a refusal.
   const need = horizontal.sizing;
   const pinned = (options.size as { height?: number } | undefined)?.height !== undefined;
   const fits = need === undefined || (horizontal.size.width + SIZE_TOLERANCE >= need.minWidth
     && (!pinned || horizontal.size.height + SIZE_TOLERANCE >= need.minHeight));
-  return fits ? horizontal : vertical;
+  return fits ? { geometry: horizontal, horizontal: true } : staysVertical;
 }
 
 function layoutVerticalWaterfall(
@@ -375,7 +401,13 @@ function layoutHorizontalWaterfall(
   // plot's width at the axis font, then a second line, instead of carrying the
   // vertical row's 45° cut.
   const nameFont: FontSpec = { family: theme.type.family, ...theme.type.axis };
-  const nameBudget = plot.w * 0.4 - 20;
+  const bands = options.columnOverrides;
+  const wantedName = bands?.label?.width;
+  const wantedValue = bands?.value?.width;
+  // The longest word of a name is the name band's floor, so an authored width never cuts one.
+  const wordFloor = wantedName === undefined ? 0 : Math.max(48, 20 + Math.ceil(Math.max(0, ...data.items.flatMap((item) => (item.label ?? item.id).split(/\s+/).map((word) => measure(word, nameFont).width)))));
+  const nameBand = wantedName === undefined ? undefined : Math.max(wordFloor, wantedName);
+  const nameBudget = nameBand === undefined ? plot.w * 0.4 - 20 : nameBand - 20;
   const categoryLabels = source.labels.filter((label) => label.kind === 'category');
   // under a render target a name wraps only where its row has the
   // height of two lines, may widen the column to the gutter share, and the
@@ -389,7 +421,7 @@ function layoutHorizontalWaterfall(
   const nameLines = rowPitch >= 2 * lineBox(nameFont) + 2 ? 2 : 1;
   const nameColumn = fitColumn(categoryLabels.map((label) => ({
     text: label.title ?? label.text, font: nameFont, maxWidth: nameBudget, maxLines: nameLines,
-    wider: plot.w * GUTTER_MAX_SHARE - 20, shrink: stepDownFont(theme, nameFont, 'axis', options.target, textScaleOf(options)), target: options.target, textScale: textScaleOf(options), typeRole: 'axis' as const,
+    wider: nameBand === undefined ? plot.w * GUTTER_MAX_SHARE - 20 : nameBudget, shrink: stepDownFont(theme, nameFont, 'axis', options.target, textScaleOf(options)), target: options.target, textScale: textScaleOf(options), typeRole: 'axis' as const,
   })), measure);
   const names = new Map(categoryLabels.map((label, index) => [label.id, nameColumn[index]!] as const));
   // The vertical row thins its names where the columns crowd (catPlan.keep); a row form gives each
@@ -411,8 +443,16 @@ function layoutHorizontalWaterfall(
       )
       .map((label) => label.rect.w)),
   );
-  const leftReserve = Math.min(plot.w * GUTTER_MAX_SHARE, Math.max(48, categoryLabelWidth + 20));
-  const rightReserve = Math.min(plot.w * 0.18, Math.max(32, valueLabelWidth + 20));
+  const valuesOff = pointValuesOff(options);
+  const automaticRight = valuesOff ? 8 : Math.min(plot.w * 0.18, Math.max(32, valueLabelWidth + 20));
+  const valueFloor = valuesOff ? 8 : 32;
+  // An authored band beats the content, and the bars keep their floor: the value band gives way first.
+  const leftWanted = nameBand ?? Math.min(plot.w * GUTTER_MAX_SHARE, Math.max(48, categoryLabelWidth + 20));
+  const rightWanted = wantedValue === undefined ? automaticRight : Math.max(valueFloor, wantedValue);
+  const barRoom = plot.w - HORIZONTAL_BAR_FLOOR;
+  const rightReserve = Math.max(valueFloor, Math.min(rightWanted, barRoom - (wordFloor || Math.min(leftWanted, barRoom - valueFloor))));
+  const leftReserve = wantedName === undefined && wantedValue === undefined ? leftWanted : Math.max(wordFloor, Math.min(leftWanted, barRoom - rightReserve));
+  const bandsCapped = (wantedName !== undefined && leftReserve < wantedName && wantedName > wordFloor) || (wantedValue !== undefined && rightReserve < wantedValue && wantedValue > valueFloor);
   const horizontalPlot: Rect = {
     x: plot.x + leftReserve,
     y: plot.y,
@@ -626,6 +666,11 @@ function layoutHorizontalWaterfall(
     }
   }
   pushAll(scene, labelsToNodes(theme, labels, fontForLabel, scene));
+  const bandWarnings: LintWarning[] = [
+    ...generatedIdWarnings('waterfall', 'columnOverrides', bands, ['label', 'value']),
+    ...(bandsCapped ? [{ code: 'generated-column-width-capped', severity: 'warn' as const, field: ['options', 'columnOverrides'],
+      message: `the authored bands leave the bars under ${HORIZONTAL_BAR_FLOOR} px of the ${Math.round(plot.w)} px plot, so they were reduced`, suggest: 'Use smaller widths, or give the chart more width.' }] : []),
+  ];
   const annotationWarning: LintWarning[] =
     authoredAnnotations.length === 0
       ? []
@@ -694,6 +739,7 @@ function layoutHorizontalWaterfall(
       ...source.warnings.filter((warning) => warning.code !== 'label-hidden'),
       ...solved.warnings,
       ...annotationWarning,
+      ...bandWarnings,
     ],
     debug: {
       occupied: occupied.snapshot(),
@@ -931,6 +977,7 @@ function layoutWaterfallWithPad(
   const bridges = cases.length > 0 ? caseItems.map(deriveBridge) : [deriveBridge(items)];
   const levels: WaterfallDerived['levels'] = bridges.reduce<WaterfallDerived['levels']>((all, bridge) => Object.assign(all, bridge.levels), emptyIdRecord());
   const totals: WaterfallDerived['totals'] = bridges.reduce<WaterfallDerived['totals']>((all, bridge) => Object.assign(all, bridge.totals), emptyIdRecord());
+  const valuesOff = pointValuesOff(options);
   // A host (pvm) can ask for the closing total's change over the opening total, printed over the closing column.
   const closingNet = (() => {
     const open = items[0]!;
@@ -1739,7 +1786,8 @@ function layoutWaterfallWithPad(
         // An unbroken bridge keeps its small segment values on the chart. A leader
         // ties an outside value to the segment even when a total stands beside it.
         const wholeAxisSliver = categoryRow && !activeBreak && !mixed && !fits;
-        labelRequests.push({
+        // Values off: no request at all, so no hidden label owes a place in the note.
+        if (!valuesOff) labelRequests.push({
           id: `segment:${it.id}:${seg.id}`,
           kind: 'segment',
           ...(drawSegments.length === 1 && typeof seg.valueLabel !== 'string' ? { printedIn: `${isTotal ? 'total' : 'sum'}:${it.id}` } : {}),
@@ -1893,14 +1941,15 @@ function layoutWaterfallWithPad(
         }] : []),
       ],
     };
-    labelRequests.push(valueRequest);
+    if (!valuesOff) labelRequests.push(valueRequest);
     if (caseIndex !== undefined) caseValues[i]!.push(valueRequest);
     // The closing total's net change over the opening total: a second bold value above the total's own.
     if (closingNet !== undefined && isTotal && caseIndex === undefined && i === items.length - 1) {
       const netId = `net:${it.id}`;
       const netText = closingNet.text;
       const netSize = measure(netText, strongFont);
-      const netY = negative ? outsideY + tsize.height + 2 : outsideY - netSize.height - 2;
+      // With the values off the change takes the total's own seat, so no gap stays under it.
+      const netY = valuesOff ? (negative ? outsideY : yTop - netSize.height - 4) : negative ? outsideY + tsize.height + 2 : outsideY - netSize.height - 2;
       boldValueIds.add(netId);
       labelRequests.push({
         id: netId,
@@ -1921,7 +1970,7 @@ function layoutWaterfallWithPad(
           ...(closingNet.lines.length === 2 ? [(() => {
             const w = Math.max(...closingNet.lines.map((line) => measure(line, strongFont).width));
             const h = netSize.height * 2;
-            return { slot: outsideSlot, rect: { x: bx + bw / 2 - w / 2, y: negative ? outsideY + tsize.height + 2 : outsideY - h - 2, w, h }, penalty: 2, lines: closingNet.lines };
+            return { slot: outsideSlot, rect: { x: bx + bw / 2 - w / 2, y: valuesOff ? (negative ? outsideY : yTop - h - 4) : negative ? outsideY + tsize.height + 2 : outsideY - h - 2, w, h }, penalty: 2, lines: closingNet.lines };
           })()] : []),
         ],
       });

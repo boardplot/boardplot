@@ -18,6 +18,9 @@ import { DimSwitchChart } from '../src/react/charts/dimswitch';
 import { BarTableChart } from '../src/react/charts/bartable';
 import { LikertChart } from '../src/react/charts/likert';
 import { ChoroplethChart } from '../src/react/charts/choropleth';
+import { CreativeChart } from '../src/react/charts/creative';
+import { PvmChart } from '../src/react/charts/pvm';
+import { SankeyChart } from '../src/react/charts/sankey';
 import '../src/core/geo/packs/all';
 import { SparklineChart } from '../src/react/charts/sparkline';
 import { CohortChart } from '../src/react/charts/cohort';
@@ -1236,4 +1239,20 @@ it.each(['chart', 'table'] as const)('accepts a new prepared %s after the contai
   expect(host.querySelector(kind === 'chart' ? 'svg[data-bp-chart]' : '.bp-table-grid')).not.toBeNull();
   if (kind === 'chart') expect(host.querySelector('svg[data-bp-chart]')?.getAttribute('viewBox')?.split(' ')[2]).toBe(String(width));
   }
+});
+
+// The document must reopen as the chart on screen, with the columns, rows and numbers the host left out.
+it('keeps creative, lookup, sankey and pvm keys in their exported documents', async () => {
+  const optionsOf = async (element: (exporter: UseExport) => ReactElement) => {
+    const result = await (await exporterOf(element)).svg();
+    return (result.ok ? result.document as { charts: { options: object }[] } : undefined)?.charts[0]!.options;
+  };
+  const creative = getFixtures('creative').find(item => item.id === 'columns-rows')!;
+  expect(await optionsOf(exporter => <CreativeChart {...creative.options as object} data={creative.data as never} size={{ width: 720 }} exporter={exporter} />)).toMatchObject({ columnVisibility: { median: false }, rowOrder: ['roas', 'cpa'] });
+  const lookup = getFixtures('choropleth').find(item => item.id === 'lookup-columns')!;
+  expect(await optionsOf(exporter => <ChoroplethChart {...lookup.options as object} data={lookup.data as never} exporter={exporter} />)).toMatchObject({ columnVisibility: { swatch: false }, rowOverrides: { 'DE-BE': { label: 'Capital' } } });
+  const sankey = getFixtures('sankey').find(item => item.id === 'no-node-values')!;
+  expect(await optionsOf(exporter => <SankeyChart {...sankey.options as object} data={sankey.data as never} exporter={exporter} />)).toMatchObject({ nodeValue: false });
+  const pvm = getFixtures('pvm').find(item => item.id === 'no-point-labels')!;
+  expect(await optionsOf(exporter => <PvmChart {...pvm.options as object} data={pvm.data as never} exporter={exporter} />)).toMatchObject({ labels: { point: false } });
 });

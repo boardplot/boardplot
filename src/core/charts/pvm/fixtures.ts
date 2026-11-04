@@ -200,4 +200,19 @@ fixtures.push({
   options: { ...revenueBridge.options, netChange: false },
 });
 
+fixtures.push({
+  ...revenueBridge,
+  id: 'no-point-labels',
+  title: 'The revenue bridge prints no step or total values, and keeps the net change',
+  tags: ['coverage'],
+  options: { ...revenueBridge.options, labels: { point: false } },
+}, {
+  ...revenueBridge,
+  id: 'column-overrides',
+  title: 'A bridge whose long names turn it horizontal takes an authored name band',
+  tags: ['coverage'],
+  data: { ...revenueBridge.data, priorLabel: 'Audited consolidated revenue of the prior fiscal year', currentLabel: 'Audited consolidated revenue of the current fiscal year' },
+  options: { ...revenueBridge.options, netChange: false, size: { width: 720 }, columnOverrides: { label: { width: 220 } } },
+});
+
 registerFixtures('pvm', fixtures);

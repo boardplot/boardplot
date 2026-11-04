@@ -18,3 +18,19 @@ describe('diagram text under the notation unit', () => {
     expect(texts(notation('portfolio-health-sampler'), 'diagramGroup')).toContain('On track');
   });
 });
+
+describe('diagram inset heading and columns', () => {
+  const fixture = getFixtures('diagram').find((entry) => entry.id === 'inset-no-heading')!;
+  const body = (inset: object) => render({ spec: { type: 'diagram', data: { ...(fixture.data as object), inset: { title: 'Service levels', rows: [{ label: 'Failed loads', value: '3' }], ...inset } }, options: fixture.options } as never, format: 'svg' } as never).body as any;
+  // The title must leave the drawing and stay the accessible name.
+  it('draws no title and keeps it as the accessible name', () => {
+    const { svg } = body({ heading: false });
+    expect(svg.replace(/<(title|desc)[^>]*>.*?<\/\1>/gs, '')).not.toContain('Service levels');
+    expect(svg).toContain('Service levels');
+  });
+  // The helper's warning says options; the inset lives in data, so a fix must point there.
+  it('warns on a wrong column under data.inset', () => {
+    const warning = body({ columnOverrides: { nope: { width: 90 } } }).warnings.find((item: any) => item.code === 'generated-id-unknown');
+    expect(warning.path).toBe('/data/inset/columnOverrides/nope');
+  });
+});

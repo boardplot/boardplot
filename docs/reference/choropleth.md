@@ -98,6 +98,17 @@ One form; its chart ID is `choropleth`.
 | overlayMeasure | string |  |  | The measure the overlay glyphs show, e.g. 'Activation progress, %'. The overlay key prints it as a heading without a category swatch, apart from the colour key; Harvey-ball overlays without it warn geo-overlay-measure-unnamed. |
 | keyTitle | string |  |  | Title of the colour key, naming what the colours measure. Default 'Measure, unit' from subtitle.measure and unit, else the unit alone; set it when the subtitle is drawn elsewhere. |
 | valueTable | string \| false | `'auto'`, `'side'`, `'below'`, `false` |  | The table of every region with its class swatch, code and value; the top values print bold and the map then prints codes only. 'auto' (default): beside the map when the map keeps most of the row, else under it; off above 20 regions, without numeric values, or when a pinned canvas is too short for it. 'side' or 'below' forces the place; false leaves it off. |
+| valueTableEmphasis | string \| false | `'top'`, `false` |  | 'top' (default) sets the top values bold in the value table and on the map, with a rule under them. The top group is ranked on all regions. false sets no row and no map label bold. |
+| columnVisibility | object |  |  | True shows a column and false leaves it out: the ids are data.columnToggles ids on table and column ids elsewhere. Ids: swatch, code, value. |
+| columnOverrides | object |  |  | Settings per generated column. Ids: swatch, code, value. |
+| columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
+| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Cell alignment. |
+| columnOverrides.*.headAlign | string | `'left'`, `'right'`, `'center'` |  | Head alignment; defaults to align. |
+| columnOverrides.*.label | string |  |  | Head text. |
+| rowVisibility | object |  |  | False leaves a generated row out. Ids: each region id, through the aliases of the map pack. |
+| rowOrder | array |  |  | Order of the generated rows; rows left out follow in default order. Ids: each region id, through the aliases of the map pack. |
+| rowOverrides | object |  |  | Settings per generated row. Ids: each region id, through the aliases of the map pack. |
+| rowOverrides.*.label | string |  |  | Row name. |
 | methodNote | boolean |  |  | Default false. true adds the method footnote on which regions the automatic label policy names. The world pack's endorsement disclaimer stays on the source line and prints once. The inset scale note is required for interpretation and prints regardless. |
 
 Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis`, `highlight`, `story`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
@@ -148,3 +159,5 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | overlay-measure-heading | torture | The overlay measure has a heading |
 | named-null-states | torture | Named map states differ from missing values |
 | info-glyphs-with-status | torture | Info marker and icon tones appear beside status in the key |
+| lookup-columns | example | The value table without swatches, with rows left out, moved and renamed |
+| lookup-no-emphasis | example | The value table and the map set no top group in bold |

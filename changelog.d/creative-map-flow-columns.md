@@ -1,0 +1,14 @@
+### Added
+
+- A creative card sets its metric table through `options.columnOverrides`, for example `{ "label": { "width": 120, "label": "Metric" }, "delta": { "align": "left" } }`. Each column takes `width`, `align`, `headAlign` and `label`. Charts without this setting draw as before.
+- A creative card can leave out columns: `options.columnVisibility` takes `{ "median": false, "delta": false }`. Hiding delta also drops the colour key, and the period sentence names only the columns drawn. `label` stays.
+- A creative card can leave out, reorder and rename metric rows: `options.rowVisibility` takes `{ "frequency": false }`, `options.rowOrder` takes `["roas", "ctr"]` and `options.rowOverrides` takes `{ "roas": { "label": "Return" } }`. Medians and fatigue still read all six metrics, and a hidden metric does not count as missing.
+- A creative card can drop its table head and reorder its columns: `options.columnHeads` takes `false` and `options.columnOrder` takes `["label", "delta", "value", "median"]`.
+- A choropleth lookup table sets its columns through `options.columnOverrides`, for example `{ "code": { "width": 96 }, "value": { "label": "Revenue", "align": "right" } }`, and `options.columnVisibility` leaves out `swatch` or `value`, for example `{ "swatch": false }`. `code` stays. Hiding `value` also drops the unit caption and warns once.
+- A choropleth lookup table can leave out, reorder and rename rows by region id, through the map pack's aliases: `options.rowVisibility` takes `{ "DE-HB": false }`, `options.rowOrder` takes `["DE-BE"]` and `options.rowOverrides` takes `{ "DE-BE": { "label": "Capital" } }`. The map still draws every region. The table's size limit counts the rows drawn.
+- A choropleth can turn off its top-group bold: `options.valueTableEmphasis` takes `"top"` or `false`. `false` also unbolds the map labels. The top group ranks all regions, also hidden rows.
+- A sankey can drop the values at its nodes: `options.nodeValue` takes `false`. Marks, hover and records stay.
+- A sankey sets the gutters of its first and last stage through `options.columnOverrides`, for example `{ "first": { "width": 90 }, "last": { "width": 120 } }`.
+- A horizontal waterfall and the horizontal form of a pvm set their name and value bands through `options.columnOverrides`, for example `{ "label": { "width": 220 }, "value": { "width": 80 } }`. An explicit `variant: "vertical"` refuses this key. A chart that draws vertical without that setting warns `option-ignored`. The key never changes which variant is chosen.
+- A pvm can drop its bar values: `options.labels` takes `{ "point": false }`. The net change stays on its own switch, `netChange`, and takes the seat of the total. Marks, hover and records stay.
+- A diagram inset can drop its heading and set its columns: `data.inset.heading` takes `false` and `data.inset.columnOverrides` takes `{ "label": { "width": 90 }, "value": { "align": "left" } }`. The accessible name stays.

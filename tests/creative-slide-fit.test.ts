@@ -35,3 +35,36 @@ describe('creative card on a short slide canvas', () => {
     expect(body.notes.some((note: any) => note.kind === 'method')).toBe(false);
   });
 });
+
+describe('creative columns and rows', () => {
+  const layout = (extra: object) => {
+    const body = render({ spec: { type: 'creative', data, options: { ...options, ...extra } }, format: 'svg' } as never).body as any;
+    return { body, codes: body.warnings.map((warning: any) => warning.code) as string[] };
+  };
+  const words = (svg: string) => svg.replace(/<[^>]+>/g, ' ');
+  // Hiding the change must not leave its head or colour key, and the fatigue rule must still read the hidden columns.
+  it('takes the head and the colour key with the change, and keeps the fatigue verdict', () => {
+    const { body } = layout({ columnVisibility: { delta: false, value: false } });
+    expect(words(body.svg)).not.toContain('vs median');
+    expect(words(body.svg)).not.toContain('Highlighted');
+    expect(words(body.svg)).toContain('Median basis');
+    expect(words(body.svg)).toContain(words(layout({}).body.svg).includes('fatigue rule met') ? 'fatigue rule met' : 'fatigue rule');
+  });
+  // A hidden metric must leave no row, while a missing one keeps printing n/a.
+  it('leaves a hidden metric out, and warns on an id it does not know', () => {
+    const { body, codes } = layout({ rowVisibility: { ctr: false, nope: false } });
+    expect(body.svg).not.toContain('>CTR<');
+    expect(codes).toContain('generated-id-unknown');
+  });
+  it('warns and keeps the label column', () => {
+    const { body, codes } = layout({ columnVisibility: { label: false } });
+    expect(words(body.svg)).toContain('Metric');
+    expect(codes).toContain('generated-name-column-kept');
+  });
+  // Authored widths too large for the table must warn and never refuse.
+  it('caps a width that does not fit', () => {
+    const { body, codes } = layout({ columnOverrides: { value: { width: 3000 } } });
+    expect(body.ok).toBe(true);
+    expect(codes).toContain('generated-column-width-capped');
+  });
+});

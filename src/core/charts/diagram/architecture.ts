@@ -1,3 +1,4 @@
+import { generatedIdWarnings } from '../../schema/generatedColumns';
 import { rectLineDistance, type Point, type Rect, type Size } from '../../geometry';
 import { NormalizeError } from '../../normalize/shared';
 import { fitText } from '../../label/fitText';
@@ -146,6 +147,7 @@ export function layoutArchitecture(
   const rule = beside ? { x1: box.x - gap / 2, y1: plot.y, x2: box.x - gap / 2, y2: Math.max(bottom, end) } : { x1: plot.x, y1: bottom + gap / 2, x2: plot.x + plot.w, y2: bottom + gap / 2 };
   layout.preset.decorationScene.push({ t: 'line', id: diagramSceneId('inset', 'rule'), ...rule, stroke, width: hair, owner: {}, part: 'diagramLane' } as SceneNode);
   layout.channelLabels = [...(layout.channelLabels ?? []), ...panel.labels];
+  layout.warnings = [...(layout.warnings ?? []), ...insetWarnings(data.inset, box.w, fonts, measure, u)];
   layout.extent!.push(...panel.labels.map((label) => label.rect));
   if (end > plot.y + plot.h + 1 && !layout.warnings!.some((warning) => warning.code === 'diagram-size-too-small')) {
     layout.warnings!.push({ code: 'diagram-size-too-small', severity: 'error', message: `architecture needs ${Math.ceil(end - plot.y - plot.h)} px more height` });
@@ -153,10 +155,24 @@ export function layoutArchitecture(
   return layout;
 }
 
+/** A wrong column id, and a width the panel could not give. The keys live under data.inset. */
+function insetWarnings(inset: NonNullable<NormalizedDiagram['inset']>, panelW: number, fonts: ArchitectureFonts, measure: TextMeasurer, u: number): LintWarning[] {
+  const tracks = inset.columnOverrides;
+  if (!tracks) return [];
+  const unknown = generatedIdWarnings('diagram', 'columnOverrides', tracks, inset.rows ? ['label', 'value'] : [])
+    .map((warning) => ({ ...warning, field: ['data', 'inset', 'columnOverrides', warning.field!.at(-1)!] }));
+  const widest = Math.max(...(inset.rows ?? []).map((row) => (tracks.label?.width ?? measure(row.label, fonts.text).width) + (tracks.value?.width ?? measure(row.value, fonts.name).width) + 2 * u), 0);
+  const capped = inset.rows !== undefined && (tracks.label?.width !== undefined || tracks.value?.width !== undefined)
+    && (widest > panelW + 1 || (tracks.value?.width ?? 0) > Math.floor(panelW / 2));
+  return [...unknown, ...(capped ? [{ code: 'generated-column-width-capped', severity: 'warn' as const, field: ['data', 'inset', 'columnOverrides'],
+    message: `the authored inset columns do not fit the ${Math.round(panelW)} px panel, so they were reduced`, suggest: 'Use smaller widths, or give the chart more width.' }] : [])];
+}
+
 /** The panel's width beside the exhibit: what its text asks for, within limits. */
 function insetWidth(inset: NonNullable<NormalizedDiagram['inset']>, plotW: number, fonts: ArchitectureFonts, measure: TextMeasurer, u: number): number {
-  const need = Math.max(measure(inset.title, fonts.title).width,
-    ...(inset.rows ?? []).map((row) => measure(row.label, fonts.text).width + measure(row.value, fonts.name).width + 3 * u),
+  const tracks = inset.columnOverrides;
+  const need = Math.max(inset.heading === false ? 0 : measure(inset.title, fonts.title).width,
+    ...(inset.rows ?? []).map((row) => (tracks?.label?.width ?? measure(row.label, fonts.text).width) + (tracks?.value?.width ?? measure(row.value, fonts.name).width) + 3 * u),
     ...(inset.kpis ?? []).flatMap((kpi) => [measure(kpi.value, kpiFont(fonts)).width, measure(kpi.label, fonts.text).width]));
   return q(Math.max(36 * u, Math.min(Math.ceil(need), INSET_MAX_SHARE * plotW)));
 }
@@ -166,14 +182,16 @@ const kpiFont = (fonts: ArchitectureFonts): FontSpec => ({ ...fonts.title, size:
 /** The panel's text seats. Numbers sit in a row under the exhibit, and in a column beside it. */
 function insetPanel(inset: NonNullable<NormalizedDiagram['inset']>, box: { x: number; y: number; w: number }, wide: boolean, fonts: ArchitectureFonts, measure: TextMeasurer, u: number) {
   const labels: NonNullable<OrgChartLayout['channelLabels']> = [];
-  const seat = (id: string, text: string, font: FontSpec, x: number, y: number, width: number, right = false) => {
+  const seat = (id: string, text: string, font: FontSpec, x: number, y: number, width: number, align: 'left' | 'right' | 'center' = 'left') => {
     const wrapped = wrapText(text, font, width, 4, measure);
     const w = Math.ceil(Math.max(...wrapped.lines.map((line) => measure(line, font).width))) + 1;
     const h = wrapped.lines.length * font.size * (font.lineHeight ?? 1.2);
-    labels.push({ id: `inset-label:${id}`, text, rect: qRect({ x: right ? x + width - w : x, y, w, h }), owner: {}, font });
+    labels.push({ id: `inset-label:${id}`, text, rect: qRect({ x: align === 'right' ? x + width - w : align === 'center' ? x + (width - w) / 2 : x, y, w, h }), owner: {}, font });
     return h;
   };
-  let y = box.y + seat('title', inset.title, fonts.title, box.x, box.y, box.w) + 2 * u;
+  const tracks = inset.columnOverrides;
+  // A title the author turns off leaves no height and no gap; it stays the accessible name.
+  let y = box.y + (inset.heading === false ? 0 : seat('title', inset.title, fonts.title, box.x, box.y, box.w) + 2 * u);
   const kpis = inset.kpis ?? [];
   const across = wide ? kpis.length : 1;
   const cell = (box.w - (across - 1) * 3 * u) / Math.max(1, across);
@@ -187,9 +205,12 @@ function insetPanel(inset: NonNullable<NormalizedDiagram['inset']>, box: { x: nu
     y += tallest + 2 * u;
   }
   (inset.rows ?? []).forEach((row, index) => {
-    const value = Math.min(Math.ceil(measure(row.value, fonts.name).width) + 1, Math.floor(box.w / 2));
-    const name = seat(`row:${index}:label`, row.label, fonts.text, box.x, y, box.w - value - 2 * u);
-    const worth = seat(`row:${index}:value`, row.value, fonts.name, box.x + box.w - value, y, value, true);
+    const value = Math.min(Math.max(Math.ceil(measure(row.value, fonts.name).width) + 1, tracks?.value?.width ?? 0), Math.floor(box.w / 2));
+    const room = box.w - value - 2 * u;
+    const wordFloor = Math.max(0, ...row.label.split(/\s+/).map((word) => Math.ceil(measure(word, fonts.text).width) + 1));
+    const nameW = tracks?.label?.width === undefined ? room : Math.min(room, Math.max(wordFloor, tracks.label.width));
+    const name = seat(`row:${index}:label`, row.label, fonts.text, box.x, y, nameW, tracks?.label?.align);
+    const worth = seat(`row:${index}:value`, row.value, fonts.name, box.x + box.w - value, y, value, tracks?.value?.align ?? 'right');
     y += Math.max(name, worth) + u;
   });
   return { labels, height: y - box.y - u };

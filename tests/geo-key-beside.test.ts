@@ -43,3 +43,35 @@ describe('tile map key column on a short canvas with overlays', () => {
     expect(geo.legend!.rect.x / geo.size.width).toBeLessThan(0.5);
   });
 });
+
+describe('choropleth lookup keys', () => {
+  const regions = [{ id: 'DE-BY', value: 80 }, { id: 'DE-NW', value: 70 }, { id: 'DE-BE', value: 60 }, { id: 'DE-HH', value: 50 }, { id: 'DE-HB', value: 40 }, { id: 'DE-SL', value: 30 }, { id: 'DE-TH', value: 20 }, { id: 'DE-ST', value: 10 }];
+  const draw = (options: object) => requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'choropleth', data: { pack: 'de-states', regions }, options: { title: 'States', valueTable: 'side', size: { width: 960, height: 540 }, ...options } })));
+  const rows = (geometry: ReturnType<typeof draw>) => geometry.labels.filter((label) => label.id.startsWith('value-table-code:')).sort((a, b) => a.rect.x - b.rect.x || a.rect.y - b.rect.y).map((label) => label.text);
+  // A hidden row must keep the top group ranked on all regions, and warn once that its map code has no name.
+  it('keeps the map whole and warns once', () => {
+    const all = draw({});
+    const hidden = draw({ rowVisibility: { 'DE-BY': false } });
+    expect(rows(hidden)).toEqual(rows(all).slice(1));
+    expect((hidden.marks as { regions: { id: string; value: number | null }[] }).regions.find((region) => region.id === 'DE-BY')?.value).toBe(80);
+    expect(hidden.warnings.filter((warning) => warning.code === 'choropleth-lookup-partial')).toHaveLength(1);
+  });
+  // The lookup and the map must print one name for a renamed region.
+  it('renames a region in the lookup and on the map', () => {
+    const geometry = draw({ rowOverrides: { 'DE-BE': { label: 'Capital' } }, labels: 'all' });
+    const texts = geometry.labels.filter((label) => !label.hidden && label.owner.categoryId === 'DE-BE').map((label) => label.text);
+    expect(texts.filter((text) => text.includes('Capital')).length).toBeGreaterThanOrEqual(2);
+    expect(texts.filter((text) => text === 'BE')).toEqual([]);
+  });
+  it('moves a named row to the top and warns on an unknown id', () => {
+    const geometry = draw({ rowOrder: ['DE-ST', 'nope'] });
+    expect(rows(geometry)[0]).toBe(rows(draw({})).at(-1));
+    expect(rows(geometry)).toHaveLength(8);
+    expect(geometry.warnings.map((warning) => warning.code)).toContain('generated-id-unknown');
+  });
+  it('drops the unit caption with the value column', () => {
+    const geometry = draw({ unit: '$bn', columnVisibility: { value: false } });
+    expect(geometry.labels.filter((label) => label.id.startsWith('value-table-value:') || label.id.startsWith('value-table-unit:'))).toEqual([]);
+    expect(geometry.warnings.filter((warning) => warning.code === 'choropleth-lookup-partial')).toHaveLength(1);
+  });
+});
