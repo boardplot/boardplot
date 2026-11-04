@@ -246,7 +246,8 @@ function authoredTracks(box: { x: number; w: number }, stacked: boolean, columns
     tracks.set(id, { x: left, w: widths.get(id)! });
     left += widths.get(id)! + NUMBER_GAP;
   }
-  return { labelW, tracks, capped };
+  const floored = (['label', ...columns] as const).some((id) => wanted(id) !== undefined && wanted(id)! < need[id]);
+  return { labelW, tracks, capped, floored };
 }
 
 function metricRows(theme: Theme, data: CreativeData, box: { x: number; y: number; w: number }, add: AddText, nodes: SceneNode[], fonts: CardFonts, stacked: boolean, options: CreativeOptions, target: RenderTarget | undefined, tight: boolean, plan: TablePlan, measure: TextMeasurer, warnings: LintWarning[]): { end: number; marks: Record<string, Rect> } {
@@ -285,6 +286,8 @@ function metricRows(theme: Theme, data: CreativeData, box: { x: number; y: numbe
     const planned = authoredTracks(box, stacked, plan.columns, overrides, need);
     labelW = overrides?.label?.width !== undefined || planned.labelW > box.w * 0.3 ? planned.labelW : labelW;
     tracks = planned.tracks;
+    if (planned.floored) warnings.push({ code: 'generated-column-width-floored', severity: 'warn', field: ['options', 'columnOverrides'],
+      message: 'an authored column width is narrower than its longest word, so it was raised', suggest: 'Use a larger width, or leave the width out.' });
     if (planned.capped) warnings.push({ code: 'generated-column-width-capped', severity: 'warn', field: ['options', 'columnOverrides'],
       message: `the authored column widths do not fit the ${Math.round(box.w)} px table, so they were reduced`, suggest: 'Use smaller widths, or give the chart more width.' });
   }

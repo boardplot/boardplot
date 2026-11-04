@@ -60,6 +60,12 @@ describe('creative columns and rows', () => {
     expect(shown.value.raw).toBe(data.metrics.cpa.accountMedian);
     expect(shown.fields.map((field) => field.key)).not.toContain('accountMedian');
   });
+  // The hover must print the number the card prints.
+  it('reads the hover change as the card prints it', () => {
+    const field = metric(records({ columnVisibility: { median: false } }), 'cpa')!.fields.find((entry) => entry.key === 'delta')!;
+    expect(field.value.displayed).toBe('\u221214%');
+    expect(metric(records({ columnVisibility: { value: false, median: false } }), 'cpa')!.value.displayed).toBe('\u221214%');
+  });
   // A rename must read the same in the card and in the hover and data table.
   it('carries renames into the record', () => {
     const shown = metric(records({ rowOverrides: { cpa: { label: 'Cost' } }, columnOverrides: { value: { label: 'This ad' } } }), 'cpa')!;

@@ -164,8 +164,13 @@ function insetWarnings(inset: NonNullable<NormalizedDiagram['inset']>, panelW: n
   const widest = Math.max(...(inset.rows ?? []).map((row) => (tracks.label?.width ?? measure(row.label, fonts.text).width) + (tracks.value?.width ?? measure(row.value, fonts.name).width) + 2 * u), 0);
   const capped = inset.rows !== undefined && (tracks.label?.width !== undefined || tracks.value?.width !== undefined)
     && (widest > panelW + 1 || (tracks.value?.width ?? 0) > Math.floor(panelW / 2));
+  const rows = inset.rows ?? [];
+  const floored = (tracks.label?.width !== undefined && rows.some((row) => row.label.split(/\s+/).some((word) => Math.ceil(measure(word, fonts.text).width) + 1 > tracks.label!.width!)))
+    || (tracks.value?.width !== undefined && rows.some((row) => Math.ceil(measure(row.value, fonts.name).width) + 1 > tracks.value!.width!));
   return [...unknown, ...(capped ? [{ code: 'generated-column-width-capped', severity: 'warn' as const, field: ['data', 'inset', 'columnOverrides'],
-    message: `the authored inset columns do not fit the ${Math.round(panelW)} px panel, so they were reduced`, suggest: 'Use smaller widths, or give the chart more width.' }] : [])];
+    message: `the authored inset columns do not fit the ${Math.round(panelW)} px panel, so they were reduced`, suggest: 'Use smaller widths, or give the chart more width.' }] : []),
+    ...(floored ? [{ code: 'generated-column-width-floored', severity: 'warn' as const, field: ['data', 'inset', 'columnOverrides'],
+      message: 'an authored inset width is narrower than its text, so it was raised', suggest: 'Use a larger width, or leave the width out.' }] : [])];
 }
 
 /** The panel's width beside the exhibit: what its text asks for, within limits. */
@@ -204,8 +209,8 @@ function insetPanel(inset: NonNullable<NormalizedDiagram['inset']>, box: { x: nu
     });
     y += tallest + 2 * u;
   }
-  // An aligned value column is as wide as its widest value, so the alignment shows without a width.
-  const widestValue = tracks?.value?.align === undefined ? 0 : Math.max(0, ...(inset.rows ?? []).map((row) => Math.ceil(measure(row.value, fonts.name).width) + 1));
+  // An aligned column has one edge: the value column is as wide as its widest value, which also gives the names one room.
+  const widestValue = tracks?.value?.align === undefined && (tracks?.label?.align ?? 'left') === 'left' ? 0 : Math.max(0, ...(inset.rows ?? []).map((row) => Math.ceil(measure(row.value, fonts.name).width) + 1));
   (inset.rows ?? []).forEach((row, index) => {
     const value = Math.min(Math.max(Math.ceil(measure(row.value, fonts.name).width) + 1, tracks?.value?.width ?? 0, widestValue), Math.floor(box.w / 2));
     const room = box.w - value - 2 * u;

@@ -539,6 +539,8 @@ export function valueTable(input: ValueTableInput) {
   let codeW = Math.max(codeNeed, overrides?.code?.width ?? 0);
   let valueW = Math.max(valueNeed, overrides?.value?.width ?? 0);
   const codeGap = valueDrawn ? (input.compact ? 6 : 12) : 0;
+  const below = (track: { width?: number } | undefined, need: number) => track?.width !== undefined && track.width < need;
+  const widthFloored = (swatchDrawn && below(overrides?.swatch, SWATCH + SWATCH_GAP)) || below(overrides?.code, codeNeed) || (valueDrawn && below(overrides?.value, valueNeed));
   const excess = swatchW + codeW + codeGap + valueW - (input.maxColumnW ?? Infinity);
   const widthCapped = excess > 0 && (swatchW > SWATCH + SWATCH_GAP || codeW > codeNeed || valueW > valueNeed);
   if (widthCapped) {
@@ -637,5 +639,5 @@ export function valueTable(input: ValueTableInput) {
     occupied.claim({ x: block.x, y: block.y, w: block.w, h: block.h }, 'reserved', {}, 'smallMembers');
     return { nodes, placed: solved.placed, decisions: solved.decisions, warnings: solved.warnings, rect: { x: block.x, y: block.y, w: block.w, h: block.h } };
   };
-  return { rowCount: rows.length, rowH, headerH, columnW, widthCapped, size, rowsIn, rowsAcross, columnsIn, draw };
+  return { rowCount: rows.length, rowH, headerH, columnW, widthCapped, widthFloored, size, rowsIn, rowsAcross, columnsIn, draw };
 }

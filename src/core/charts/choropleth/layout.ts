@@ -51,7 +51,7 @@ import { generatedIdWarnings } from '../../schema/generatedColumns';
 import { layoutMapKeys, mapKeysSize, MAP_GAP, smallRegionIds, shortestRegionName, valueTable, VALUE_TABLE_MAX_ROWS } from './smallMembers';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { chartSizing, heightOmitted, resolveSizing } from '../../sizing';
-import { widthsThatFit } from '../../generatedWidths';
+import { fitsRoom, widthsThatFit } from '../../generatedWidths';
 import { rowDrivenHeight } from '../../rowCanvas';
 import { textScaleOf } from '../../typeFloors';
 import type { GeoOverlay } from './overlayTypes';
@@ -216,7 +216,14 @@ function packWithRowNames(pack: GeoPack, overrides: ChoroplethOptions['rowOverri
 export function layoutChoropleth(data: ChoroplethData, options: ChoroplethOptions = {}): Geometry<ChoroplethMarks, ChoroplethDerived> {
   if (options.columnOverrides === undefined) return layoutMapPass(data, options);
   const pinned = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height ?? !heightOmitted(options.size);
-  return widthsThatFit(options, (next) => layoutMapPass(data, next), pinned)!;
+  const drawn = widthsThatFit(options, (next) => layoutMapPass(data, next), pinned)!;
+  const { label, ...valueTrack } = options.columnOverrides.value ?? {};
+  if (label === undefined || fitsRoom(drawn, pinned)) return drawn;
+  // A value head never costs the draw: where its row is the only reason the lookup misses, the row goes.
+  const plain = widthsThatFit({ ...options, columnOverrides: { ...options.columnOverrides, value: valueTrack } }, (next) => layoutMapPass(data, next), pinned)!;
+  if (!fitsRoom(plain, pinned)) return drawn;
+  return { ...plain, warnings: [...plain.warnings, { code: 'option-ignored', severity: 'warn', field: ['options', 'columnOverrides', 'value', 'label'],
+    message: 'the value head needs more height than this chart has, so it does not print', suggest: 'Give the chart more height, or remove the label.' }] };
 }
 
 function layoutMapPass(
@@ -637,6 +644,8 @@ function layoutMapPass(
     // A new name reaches the map label and the record, with or without a table.
     ...generatedIdWarnings('choropleth', 'rowOverrides', options.rowOverrides, Object.keys(options.rowOverrides ?? {}).filter((id) => canonicalRow(id) !== undefined)),
   );
+  if (table?.widthFloored) warnings.push({ code: 'generated-column-width-floored', severity: 'warn', field: ['options', 'columnOverrides'],
+    message: 'an authored lookup column width is narrower than its text, so it was raised', suggest: 'Use a larger width, or leave the width out.' });
   if (table?.widthCapped) warnings.push({ code: 'generated-column-width-capped', severity: 'warn', field: ['options', 'columnOverrides'],
     message: `the authored lookup column widths do not fit the ${Math.round(frameResult.plot.w)} px plot, so they were reduced`, suggest: 'Use smaller widths, or give the chart more width.' });
   // The lookup is where a reader decodes a map code and reads its value.

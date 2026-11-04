@@ -4,7 +4,13 @@ import { tablePlan } from '../charts/creative/layout';
 import type { CreativeDerived, CreativeMarks } from '../charts/creative/layout';
 import type { CreativeData, CreativeOptions } from '../charts/creative/types';
 import { derivedPercent, makeRecord, numericValue, textValue, type RecordContext } from './recordsShared';
-import type { InteractionRecord } from './types';
+import type { InteractionRecord, InteractionValue } from './types';
+
+/** The change as the card prints it: the hover reads the same number. */
+function printedChange(delta: { pct: number | null; text: string } | undefined): InteractionValue {
+  const value = derivedPercent(delta?.pct);
+  return delta?.pct === null || delta === undefined ? value : { ...value, displayed: delta.text };
+}
 
 export function creativeRecords(ctx: RecordContext): InteractionRecord[] | undefined {
   if (ctx.request.type !== 'creative') return undefined;
@@ -28,7 +34,7 @@ export function creativeRecords(ctx: RecordContext): InteractionRecord[] | undef
     // The record leads with the first number the row prints.
     const primary = drawn.value ? { value: numericValue(metric.value, unit), valueLabel: overrides?.value?.label ?? creativeString(ctx.request.options, 'creativeColumn') }
       : drawn.median ? { value: numericValue(metric.accountMedian, unit), valueLabel: medianLabel }
-        : { value: derivedPercent(deltas.find(delta => delta.key === key)?.pct), valueLabel: deltaLabel };
+        : { value: printedChange(deltas.find(delta => delta.key === key)), valueLabel: deltaLabel };
     return makeRecord(ctx, owner, primary.value, {
       // The value is the creative's own, beside the account median: it carries the column's name.
       label: name, seriesLabel: name, categoryLabel: data.facts.name, valueLabel: primary.valueLabel, anchor: marks.metrics[key],
@@ -36,7 +42,7 @@ export function creativeRecords(ctx: RecordContext): InteractionRecord[] | undef
       fields: [
         ...(drawn.median && drawn.value ? [{ key: 'accountMedian', label: medianLabel, value: numericValue(metric.accountMedian, unit) }] : []),
         // A printed change keeps its source in the record once the value or the median it divides is hidden.
-        ...(drawn.delta && drawn.value !== drawn.median ? [{ key: 'delta', label: deltaLabel, value: derivedPercent(deltas.find(delta => delta.key === key)?.pct) }] : []),
+        ...(drawn.delta && drawn.value !== drawn.median ? [{ key: 'delta', label: deltaLabel, value: printedChange(deltas.find(delta => delta.key === key)) }] : []),
         ...(drawn.median || drawn.delta ? [
           { key: 'population', label: chartString(ctx.request.options, 'medianPopulation'), value: textValue(data.comparison.population) },
           { key: 'window', label: chartString(ctx.request.options, 'medianWindow'), value: textValue(`${data.comparison.startDate} to ${data.comparison.endDate}`) },

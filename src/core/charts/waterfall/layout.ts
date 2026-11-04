@@ -669,6 +669,8 @@ function layoutHorizontalWaterfall(
   pushAll(scene, labelsToNodes(theme, labels, fontForLabel, scene));
   const bandWarnings: LintWarning[] = [
     ...generatedIdWarnings('waterfall', 'columnOverrides', bands, ['label', 'value']),
+    ...((wantedName !== undefined && wantedName < wordFloor) || (wantedValue !== undefined && wantedValue < valueFloor) ? [{ code: 'generated-column-width-floored', severity: 'warn' as const, field: ['options', 'columnOverrides'],
+      message: 'an authored band is narrower than its text needs, so it was raised', suggest: 'Use a larger width, or leave the width out.' }] : []),
     ...(bandsCapped ? [{ code: 'generated-column-width-capped', severity: 'warn' as const, field: ['options', 'columnOverrides'],
       message: `the authored bands leave the bars under ${HORIZONTAL_BAR_FLOOR} px of the ${Math.round(plot.w)} px plot, so they were reduced`, suggest: 'Use smaller widths, or give the chart more width.' }] : []),
   ];

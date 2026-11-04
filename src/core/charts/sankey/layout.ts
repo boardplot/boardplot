@@ -26,7 +26,8 @@ import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelCtx, PRIORITY, solveLabels, type LabelRequest } from '../../label/solver';
 import { accessibleTitle, resolveHighlight, resolveSize } from '../../normalize/shared';
-import { chartSizing, resolveSizing } from '../../sizing';
+import { chartSizing, heightOmitted, resolveSizing } from '../../sizing';
+import { widthsThatFit } from '../../generatedWidths';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { spread1DResult } from '../../collide';
 import { defaultMeasurer, graphemes, type FontSpec, type TextMeasurer } from '../../text';
@@ -65,6 +66,14 @@ export function sankeyDefaultStrings(options: SankeyOptions): Record<string, str
 interface LabelText { lines: string[]; oneLine: boolean; w: number; h: number }
 
 export function layoutSankey(data: SankeyData, options: SankeyOptions = {}): Geometry<SankeyMarks, SankeyDerived> {
+  if (options.columnOverrides === undefined) return layoutSankeyPass(data, options);
+  const pinned = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height ?? !heightOmitted(options.size);
+  return widthsThatFit(options, (next) => layoutSankeyPass(data, next), pinned, {
+    hidden: (geometry) => geometry.labels.filter((label) => label.hidden !== undefined && label.hidden !== 'redundant').length,
+  })!;
+}
+
+function layoutSankeyPass(data: SankeyData, options: SankeyOptions): Geometry<SankeyMarks, SankeyDerived> {
   const warnings: LintWarning[] = [];
   const size = resolveSize(options.size, options.target);
   const theme = themeForWidth(resolveTheme(options.theme), panelTypeClass(options) ?? size.width);
@@ -226,6 +235,9 @@ export function layoutSankey(data: SankeyData, options: SankeyOptions = {}): Geo
   if (options.columnOverrides) {
     pushAll(warnings, generatedIdWarnings('sankey', 'columnOverrides', options.columnOverrides, [...(chosen.form.left ? ['first'] : []), ...(chosen.form.right ? ['last'] : [])]));
     const capped = (chosen.form.left && (authoredGutter('first') ?? 0) > gutterW(0)) || (chosen.form.right && (authoredGutter('last') ?? 0) > gutterW(last));
+    const floored = (chosen.form.left && (authoredGutter('first') ?? Infinity) < columnNeed[0]!) || (chosen.form.right && (authoredGutter('last') ?? Infinity) < columnNeed[last]!);
+    if (floored) warnings.push({ code: 'generated-column-width-floored', severity: 'warn', field: ['options', 'columnOverrides'],
+      message: 'an authored gutter width is narrower than its longest word, so it was raised', suggest: 'Use a larger width, or leave the width out.' });
     if (capped) warnings.push({ code: 'generated-column-width-capped', severity: 'warn', field: ['options', 'columnOverrides'],
       message: `the authored gutter widths leave too little of the ${Math.round(plot.w)} px plot for the flows, so they were reduced`, suggest: 'Use smaller widths, or give the chart more width.' });
   }
