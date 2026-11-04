@@ -9,6 +9,7 @@ import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
 import { solveLabels, PRIORITY, type LabelRequest } from '../../label/solver';
 import { accessibleTitle, NormalizeError, resolveSize } from '../../normalize/shared';
+import { generatedIdWarnings, type GeneratedIdKey } from '../../schema/generatedColumns';
 import type { JsonPatchOperation } from '../../diagnostics/jsonPatch';
 import { partialFootnotes, partialIds, saysToDate } from '../../partialPeriod';
 import { disclosureNote, disclosuresShown } from '../../notes';
@@ -17,7 +18,7 @@ import { structureCount } from '../../structureCounts';
 import { defaultMeasurer, wrapText, type FontSpec } from '../../text';
 import { dashToken, strokeToken, canvasMargin, HATCH_STRENGTH_DEFAULT, markRolePaint, resolveTheme, secondaryFont, seriesPaint, themeForWidth } from '../../theme';
 import type { Rect } from '../../geometry';
-import type { Geometry, Paint, SceneNode, TypographyRole } from '../../types/scene';
+import type { Geometry, LintWarning, Paint, SceneNode, TypographyRole } from '../../types/scene';
 import type { OwnerRef } from '../../types/cell';
 import type { GridLayoutOptions } from './normalize';
 import type { GridMarks, GridDerived } from './layout';
@@ -41,6 +42,8 @@ const wash = (base: Paint, weight: number, pageFloor?: number): Paint =>
 const NO_WIDER_SEARCH = Symbol('boardplot.metricStackNoWiderSearch');
 /** A fixed canvas too short for the readout gutter: unit beside name, headline and span on one line, tighter spacing. */
 const COMPACT_READOUT = Symbol('boardplot.metricStackCompactReadout');
+/** The widest authored gutter that still places every label, once a wider one lost a label. */
+const GUTTER_LIMIT = Symbol('boardplot.metricStackGutterLimit');
 
 /** The narrowest width up to 512 px wider that draws every label, at the same height; undefined when none does. */
 function widerThatPlaces(raw: MetricStackData, options: GridLayoutOptions, size: { width: number; height: number }, automatic: boolean): number | undefined {
@@ -65,6 +68,45 @@ function widerThatPlaces(raw: MetricStackData, options: GridLayoutOptions, size:
   return high;
 }
 
+/** A readout as far as it prints: a hidden seat leaves no claim, and an operand goes with the last figure that used it. */
+function printedReadout(readout: StackReadout, showHeadline: boolean, showSpan: boolean): StackReadout {
+  if (showHeadline && showSpan) return readout;
+  const byId = new Map(readout.claims.map(claim => [claim.id, claim]));
+  const kept = new Set<string>();
+  const keep = (id: string) => {
+    const claim = byId.get(id);
+    if (!claim || kept.has(id)) return;
+    kept.add(id);
+    claim.inputs.forEach(input => keep(input.ref));
+  };
+  const panel = `stack:${readout.panelId}`;
+  if (showHeadline) { keep(`${panel}:headline`); keep(`${panel}:rate`); }
+  if (showSpan) { keep(`${panel}:before`); keep(`${panel}:after`); }
+  return { ...readout, claims: readout.claims.filter(claim => kept.has(claim.id)),
+    ...(showHeadline ? {} : { headline: null, headlineText: '' }),
+    ...(showSpan ? {} : { before: null, after: null, spanText: '' }) };
+}
+
+/** What the column keys warn on one draw. */
+function stackColumnWarnings(stack: NonNullable<GridLayoutOptions['stack']>, narrow: boolean, floored: boolean, capped: boolean): LintWarning[] {
+  const inStack = (key: GeneratedIdKey, authored: Parameters<typeof generatedIdWarnings>[2], drawn: readonly string[]): LintWarning[] =>
+    generatedIdWarnings('grid', key, authored, drawn).map(warning => ({ ...warning, field: ['options', 'stack', ...(warning.field ?? []).slice(1)] }));
+  const warnings = [
+    ...inStack('columnVisibility', stack.columnVisibility, ['name', 'unit', 'headline', 'span']),
+    ...inStack('columnOverrides', stack.columnOverrides, ['gutter']),
+    ...inStack('columnOrder', stack.columnOrder, ['gutter', 'plot']),
+  ];
+  const ignored = (key: string, what: string): LintWarning => ({ code: 'option-ignored', severity: 'warn', field: ['options', 'stack', key],
+    message: `this canvas seats each readout above its panel, with no gutter track, so ${what} does nothing here`, suggest: 'Widen the chart to draw the gutter.' });
+  if (narrow && stack.columnOverrides?.gutter) warnings.push(ignored('columnOverrides', 'the gutter override'));
+  if (narrow && stack.columnOrder?.length) warnings.push(ignored('columnOrder', 'columnOrder'));
+  if (floored) warnings.push({ code: 'generated-column-width-floored', severity: 'warn', field: ['options', 'stack', 'columnOverrides', 'gutter', 'width'],
+    message: 'the gutter width is under what its readouts need, so the gutter stays as wide as they need', suggest: 'Raise the width, or shorten the panel titles.' });
+  if (capped) warnings.push({ code: 'generated-column-width-capped', severity: 'warn', field: ['options', 'stack', 'columnOverrides', 'gutter', 'width'],
+    message: 'the gutter width leaves too little room for the values on this canvas, so it gave way', suggest: 'Lower the width, or widen the chart.' });
+  return warnings;
+}
+
 export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptions): Geometry<GridMarks, GridDerived> {
   const data = normalizeMetricStack(raw);
   if (!options.stack) stackError('options.stack', 'Shared measures require options.stack: {}');
@@ -73,6 +115,8 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
     stackError('options', 'A metric stack owns top-down order, shared categories, spacing and independent scales; remove conflicting grid controls');
   }
   const stack = options.stack;
+  const showUnit = stack.columnVisibility?.unit !== false, showHeadline = stack.columnVisibility?.headline !== false, showSpan = stack.columnVisibility?.span !== false;
+  const gutterAfter = (() => { const order = stack.columnOrder ?? [], plotAt = order.indexOf('plot'), gutterAt = order.indexOf('gutter'); return plotAt >= 0 && (gutterAt < 0 || plotAt < gutterAt); })();
   if (stack.heights && options.rows) stackError('options', 'Use stack.heights or rows, not both');
   if (stack.heights && stack.heights.length !== data.panels.length || options.rows && options.rows.length !== data.panels.length) stackError('options', 'Supply one height or row weight per panel');
   const theme = themeForWidth(resolveTheme(options.theme), resolveSize(options.size).width);
@@ -98,14 +142,15 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const arrowWidth = Math.max(unitFont.size, measure('→', unitFont).width);
   const spanSpace = measure(' ', unitFont).width;
   const spanWidths = computed.panels.map(p => measure(p.readout.spanText, unitFont).width + arrowWidth - measure('→', unitFont).width);
-  const minGutter = Math.ceil(Math.max(120, maxOf(computed.panels.map((p,i) => Math.max(spanWidths[i]!, measure(p.readout.headlineText, heroFont).width,
-    ...`${p.panel.title} ${p.panel.unit}`.split(/\s+/).map(word => measure(word, nameFont).width))))) + 4);
+  const minGutter = Math.ceil(Math.max(120, maxOf(computed.panels.map((p,i) => Math.max(showSpan ? spanWidths[i]! : 0, showHeadline ? measure(p.readout.headlineText, heroFont).width : 0,
+    ...(showUnit ? `${p.panel.title} ${p.panel.unit}` : p.panel.title).split(/\s+/).map(word => measure(word, nameFont).width))))) + 4);
   const nameWidth = Math.ceil(maxOf(computed.panels.flatMap(p => p.panel.title.split('\n').map(line => measure(line, nameFont).width)))) + 4;
   // Keep normal names on one line; cap name-driven growth so prose still wraps.
   // A compact readout holds the headline and the span on one line; the span sits on the headline's baseline and ends below the headline's own height.
-  const heroBlock = Math.max(heroFont.size, heightOf(heroFont) / 2 + heightOf(unitFont) / 2 + 0.36 * (heroFont.size - unitFont.size));
-  const oneLine = (p: ComputedStackPanel, i: number) => measure(p.readout.headlineText, heroFont).width + 3 * spanSpace + spanWidths[i]!;
-  const gutter = Math.max(170, minGutter, Math.min(320, nameWidth), compactReadout ? Math.ceil(maxOf(computed.panels.map(oneLine)) + 4) : 0);
+  const heroBlock = !showHeadline ? (showSpan ? heightOf(unitFont) : 0) : !showSpan ? heroFont.size : Math.max(heroFont.size, heightOf(heroFont) / 2 + heightOf(unitFont) / 2 + 0.36 * (heroFont.size - unitFont.size));
+  const oneLine = (p: ComputedStackPanel, i: number) => !showHeadline ? (showSpan ? spanWidths[i]! : 0) : !showSpan ? measure(p.readout.headlineText, heroFont).width : measure(p.readout.headlineText, heroFont).width + 3 * spanSpace + spanWidths[i]!;
+  const compactFloor = compactReadout ? Math.ceil(maxOf(computed.panels.map(oneLine)) + 4) : 0;
+  const defaultGutter = Math.max(170, minGutter, Math.min(320, nameWidth), compactFloor);
   const gutterGap = Math.max(28, heightOf(axisFont));
   const partial = partialIds(data.categories);
   const notes = [...(options.footnotes || [])];
@@ -226,23 +271,54 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const valueRoom = Math.max(20, valueWidth, categoryWidth) * data.categories.length;
   // Where the readout gutter leaves too little room for the values, each
   // readout moves above its panel and the plot takes the full width.
-  const gutterBoxes = computed.panels.map(p => {
-    const name = textBox(p.panel.title, nameFont, gutter), unit = textBox(p.panel.unit, keyFont, gutter);
-    // A compact readout puts the unit beside the name where both stay on one line.
-    const beside = compactReadout && name.lines.length === 1 && unit.lines.length === 1 && name.w + 2 * spanSpace + unit.w <= gutter;
-    return { name, unit, beside, top: beside ? Math.max(name.h, unit.h) : name.h + 2 + unit.h };
-  });
-  const gutterKeys = computed.panels.map((_, i) => keyLayout(i, gutter, !compactReadout));
-  const gutterHeights = gutterBoxes.map((box, i) => (compactReadout ? box.top + 4 + heroBlock + gutterKeys[i]!.h
-    : box.name.h + box.unit.h + heightOf(heroFont) + heightOf(unitFont) + 18 + (gutterKeys[i]!.h ? gutterKeys[i]!.h + 6 : 0)));
+  const NO_BOX = { lines: [] as string[], w: 0, h: 0 };
+  const unitBox = (p: ComputedStackPanel, width: number) => (showUnit ? textBox(p.panel.unit, keyFont, width) : NO_BOX);
+  const gutterAt = (width: number) => {
+    const boxes = computed.panels.map(p => {
+      const name = textBox(p.panel.title, nameFont, width), unit = unitBox(p, width);
+      // A compact readout puts the unit beside the name where both stay on one line.
+      const beside = showUnit && compactReadout && name.lines.length === 1 && unit.lines.length === 1 && name.w + 2 * spanSpace + unit.w <= width;
+      return { name, unit, beside, top: beside ? Math.max(name.h, unit.h) : showUnit ? name.h + 2 + unit.h : name.h };
+    });
+    const keys = computed.panels.map((_, i) => keyLayout(i, width, !compactReadout));
+    const heights = boxes.map((box, i) => {
+      if (compactReadout) return box.top + 4 + heroBlock + keys[i]!.h - (heroBlock ? 0 : 4);
+      const keyed = keys[i]!.h ? keys[i]!.h + 6 : 0;
+      if (showUnit && showHeadline && showSpan) return box.name.h + box.unit.h + heightOf(heroFont) + heightOf(unitFont) + 18 + keyed;
+      return box.top + (showHeadline ? 10 + heightOf(heroFont) : 0) + (showSpan ? (showHeadline ? 6 : 10) + heightOf(unitFont) : 0) + keyed;
+    });
+    return { boxes, keys, heights };
+  };
+  const atDefault = gutterAt(defaultGutter);
   // A readout also moves above its panel where its gutter block is taller than an authored plot height.
-  const narrow = frame.plot.w - gutter - gutterGap < valueRoom || gutterHeights.some((h, i) => stack.heights !== undefined && Math.ceil(h) > stack.heights[i]!);
+  // The authored gutter does not change this choice.
+  const narrow = frame.plot.w - defaultGutter - gutterGap < valueRoom || atDefault.heights.some((h, i) => stack.heights !== undefined && Math.ceil(h) > stack.heights[i]!);
+  const authoredGutter = narrow ? undefined : stack.columnOverrides?.gutter?.width;
+  const widest = frame.plot.w - gutterGap - valueRoom;
+  // A narrower gutter that makes a readout taller gives way on a canvas or plot that cannot grow.
+  const heldHeight = !automatic || stack.heights !== undefined || options.rows !== undefined;
+  const fitGutter = (width: number) => {
+    const at = gutterAt(width);
+    return !heldHeight || at.heights.every((h, i) => h <= atDefault.heights[i]!) ? at : undefined;
+  };
+  const wanted = authoredGutter === undefined ? defaultGutter : Math.min(Math.max(authoredGutter, minGutter, compactFloor), widest, (options as { [GUTTER_LIMIT]?: number })[GUTTER_LIMIT] ?? Infinity);
+  const fitted = wanted === defaultGutter ? atDefault : fitGutter(wanted);
+  const gutter = fitted ? wanted : defaultGutter;
+  const { boxes: gutterBoxes, keys: gutterKeys, heights: gutterHeights } = fitted ?? atDefault;
+  const gutterFloored = authoredGutter !== undefined && gutter > authoredGutter;
+  const gutterCapped = authoredGutter !== undefined && gutter < authoredGutter;
   // Where even the full width is too little, values and category names thin
   // to every second category, counted back from the latest one.
   const thin = narrow && frame.plot.w < valueRoom;
   const lastIndex = data.categories.length - 1;
   const named = (ci: number) => !thin || ci % 2 === lastIndex % 2;
-  const plotX = narrow ? frame.plot.x : frame.plot.x + gutter + gutterGap, plotW = narrow ? frame.plot.w : frame.plot.w - gutter - gutterGap;
+  const onRight = gutterAfter && !narrow;
+  const plotX = narrow || onRight ? frame.plot.x : frame.plot.x + gutter + gutterGap, plotW = narrow ? frame.plot.w : frame.plot.w - gutter - gutterGap;
+  // Where the readout text sits: the gutter track, or the full width above a panel, which reads no gutter setting.
+  const trackX = onRight ? frame.plot.x + plotW + gutterGap : frame.plot.x;
+  const trackW = narrow ? frame.plot.w : gutter;
+  const trackAlign = narrow ? undefined : stack.columnOverrides?.gutter?.align;
+  const seat = (w: number) => (trackAlign === 'right' ? trackX + trackW - w : trackAlign === 'center' ? trackX + (trackW - w) / 2 : trackX);
   const step = plotW / data.categories.length;
   const minimumWidth = Math.ceil(size.width - plotW + (thin ? valueRoom / 2 : valueRoom));
   // Let the shared sizing pass verify the wider frame and return its size fix.
@@ -252,12 +328,13 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   if (size.width < minimumWidth) return needsWidth(minimumWidth);
   // A narrow readout: name and unit on one row, headline and span on the next, each pair side by side where it fits.
   const heads = !narrow ? undefined : computed.panels.map((p,i) => {
-    const name = textBox(p.panel.title, nameFont, frame.plot.w), unit = textBox(p.panel.unit, keyFont, frame.plot.w);
-    const unitBeside = name.lines.length === 1 && unit.lines.length === 1 && name.w + 2 * spanSpace + unit.w <= frame.plot.w;
+    const name = textBox(p.panel.title, nameFont, frame.plot.w), unit = unitBox(p, frame.plot.w);
+    const unitBeside = showUnit && name.lines.length === 1 && unit.lines.length === 1 && name.w + 2 * spanSpace + unit.w <= frame.plot.w;
     const hero = measure(p.readout.headlineText, heroFont).width;
-    const spanBeside = hero + 3 * spanSpace + spanWidths[i]! + 2 * spanSpace <= frame.plot.w;
-    const top = unitBeside ? Math.max(name.h, unit.h) : name.h + 2 + unit.h;
-    const key = keyLayout(i, frame.plot.w, false), body = top + 8 + heightOf(heroFont) + (spanBeside ? 0 : 6 + heightOf(unitFont)) + 6;
+    const spanBeside = showHeadline && showSpan && hero + 3 * spanSpace + spanWidths[i]! + 2 * spanSpace <= frame.plot.w;
+    const top = unitBeside ? Math.max(name.h, unit.h) : showUnit ? name.h + 2 + unit.h : name.h;
+    const block = !showHeadline ? (showSpan ? heightOf(unitFont) : 0) : !showSpan ? heightOf(heroFont) : heightOf(heroFont) + (spanBeside ? 0 : 6 + heightOf(unitFont));
+    const key = keyLayout(i, frame.plot.w, false), body = !block ? top + 6 : showHeadline && showSpan ? top + 8 + heightOf(heroFont) + (spanBeside ? 0 : 6 + heightOf(unitFont)) + 6 : top + 8 + block + 6;
     return { name, unit, unitBeside, spanBeside, top, key, body, h: body + (key.h ? key.h + 4 : 0) };
   });
   const minimumHeights = gutterHeights.map(h => Math.ceil(Math.max(narrow ? 0 : h, 3 * heightOf(valueFont) + 20)));
@@ -285,11 +362,13 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const axisHeight = (compactReadout ? 8 : 12) + categoryHeight + (periodBoxes ? 10 + maxOf(periodBoxes.map(b=>b.h)) : 0) + (compactReadout ? 4 : 10);
   const bandFirstIndex = data.states?.maturing ? data.panels.findIndex(p=>data.states!.maturing!.panels.includes(p.id)) : -1;
   const firstOverhang = computed.maturing.length ? gap : 0;
+  // The method line explains the headline and the span: it goes with the last of them.
+  const hasMethod = showHeadline || showSpan;
   const readLogic = data.panels.some(p => p.readout === 'change') && data.windows
-    ? chartString(options, 'stackChangeMethod', { v1: metricStackGrain(data), v2: data.windows.base.label, v3: data.windows.compare.label })
-    : chartString(options, narrow ? 'stackAboveMethod' : 'stackLeftMethod');
-  const readLogicBox = textBox(readLogic, keyFont, frame.plot.w);
-  const headerRoom = readLogicBox.h + 12 + (compactReadout ? 4 : 30);
+    ? chartString(options, showHeadline ? 'stackChangeMethod' : 'stackAverageMethod', { v1: metricStackGrain(data), v2: data.windows.base.label, v3: data.windows.compare.label })
+    : chartString(options, `stack${narrow ? 'Above' : onRight ? 'Right' : 'Left'}${!showSpan ? 'Rates' : !showHeadline ? 'Remaining' : 'Method'}` as const);
+  const readLogicBox = hasMethod ? textBox(readLogic, keyFont, frame.plot.w) : NO_BOX;
+  const headerRoom = hasMethod ? readLogicBox.h + 12 + (compactReadout ? 4 : 30) : 0;
   const topRoom = headerRoom + (bandFirstIndex === 0 ? firstOverhang : 0);
   const neededPlotHeight = topRoom + headRoom + heights.reduce((a,b)=>a+b,0) + gap*(heights.length-1) + axisHeight;
   const overhead = size.height-frame.plot.h;
@@ -340,13 +419,13 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
     const box=measure(text,f); put(id,text,f,{x:x-box.width/2,y,w:box.width,h:heightOf(f)},owner,ink,role,kind,[text],claimId,below);
   };
   put('stack:read-logic', readLogic, keyFont, {x:frame.plot.x,y:frame.plot.y,w:readLogicBox.w,h:readLogicBox.h}, {}, muted, 'secondary', 'annotation', readLogicBox.lines);
-  scene.push({t:'line',id:'stack:header-rule',x1:frame.plot.x,x2:frame.plot.x+frame.plot.w,y1:frame.plot.y+readLogicBox.h+10,y2:frame.plot.y+readLogicBox.h+10,stroke:{token:'grid'},width:strokeToken(theme, 'hair'),owner:{},part:'headerRule'});
+  if (hasMethod) scene.push({t:'line',id:'stack:header-rule',x1:frame.plot.x,x2:frame.plot.x+frame.plot.w,y1:frame.plot.y+readLogicBox.h+10,y2:frame.plot.y+readLogicBox.h+10,stroke:{token:'grid'},width:strokeToken(theme, 'hair'),owner:{},part:'headerRule'});
   const plots: Rect[] = [];
   // A panel's top: its plot, or its readout where that sits above the plot.
   const tops: number[] = [];
   let y = frame.plot.y + topRoom;
   heights.forEach((h,i) => { tops.push(y); y += heads?.[i]!.h ?? 0; plots.push({ x:plotX,y,w:plotW,h }); y+=h+gap; });
-  const derived: MetricStackDerived = { gap,gutterWidth:narrow?0:gutter,axisOwner:data.panels.at(-1)!.id,readouts:computed.panels.map(p=>p.readout),panels:[] };
+  const derived: MetricStackDerived = { gap,gutterWidth:narrow?0:gutter,axisOwner:data.panels.at(-1)!.id,readouts:computed.panels.map(p=>printedReadout(p.readout,showHeadline,showSpan)),panels:[] };
   let bandLabelHeight = 0;
   if (computed.maturing.length) {
     const scope = data.states!.maturing!;
@@ -386,21 +465,28 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
     derived.panels.push({id:p.panel.id,domain:[0,domainMax],plot,values:p.values,states:p.states,displayed,nodeIds});
     const boxes=heads?.[pi] ?? gutterBoxes[pi]!, head=heads?.[pi];
     let gy=tops[pi]!;
-    put(`${p.panel.id}:name`,p.panel.title,nameFont,{x:frame.plot.x,y:gy,w:boxes.name.w,h:boxes.name.h},owner,{token:'ink'},'label','category',boxes.name.lines);
+    // A multi-line part keeps its lines on the track's alignment.
+    const lineAlign = trackAlign === 'right' ? 'end' as const : trackAlign === 'center' ? 'middle' as const : undefined;
+    const putLines = (...args: Parameters<typeof put>) => { put(...args); const last = requests.at(-1); if (lineAlign && last?.id === args[0]) last.align = lineAlign; };
     const unitBeside = head ? head.unitBeside : gutterBoxes[pi]!.beside;
-    if (unitBeside) put(`${p.panel.id}:unit`,p.panel.unit,keyFont,{x:frame.plot.x+boxes.name.w+2*spanSpace,y:gy+boxes.name.h-boxes.unit.h,w:boxes.unit.w,h:boxes.unit.h},owner,muted,'secondary','category',boxes.unit.lines);
-    else { gy+=boxes.name.h+2; put(`${p.panel.id}:unit`,p.panel.unit,keyFont,{x:frame.plot.x,y:gy,w:boxes.unit.w,h:boxes.unit.h},owner,muted,'secondary','category',boxes.unit.lines); }
+    const nameX = seat(unitBeside ? boxes.name.w + 2*spanSpace + boxes.unit.w : boxes.name.w);
+    putLines(`${p.panel.id}:name`,p.panel.title,nameFont,{x:nameX,y:gy,w:boxes.name.w,h:boxes.name.h},owner,{token:'ink'},'label','category',boxes.name.lines);
+    if (unitBeside) put(`${p.panel.id}:unit`,p.panel.unit,keyFont,{x:nameX+boxes.name.w+2*spanSpace,y:gy+boxes.name.h-boxes.unit.h,w:boxes.unit.w,h:boxes.unit.h},owner,muted,'secondary','category',boxes.unit.lines);
+    else if (!showUnit) gy+=boxes.name.h;
+    else { gy+=boxes.name.h+2; putLines(`${p.panel.id}:unit`,p.panel.unit,keyFont,{x:seat(boxes.unit.w),y:gy,w:boxes.unit.w,h:boxes.unit.h},owner,muted,'secondary','category',boxes.unit.lines); }
     gy = head ? tops[pi]!+head.top+8 : unitBeside ? tops[pi]!+gutterBoxes[pi]!.top+4 : gy+boxes.unit.h+(compactReadout ? 4 : 10);
     const hero=measure(p.readout.headlineText,heroFont);
     const headlineClaim=p.readout.claims.find(c=>c.id===`stack:${p.panel.id}:headline`||c.id===`stack:${p.panel.id}:rate`)!;
-    put(`${p.panel.id}:headline`,p.readout.headlineText,heroFont,{x:frame.plot.x,y:gy,w:hero.width,h:compactReadout ? heroFont.size : heightOf(heroFont)},owner,color,'title','point',[p.readout.headlineText],headlineClaim.id);
+    const sideBySide = showHeadline && showSpan && (head?.spanBeside || !head && compactReadout);
+    const heroX = seat(sideBySide ? hero.width + 3*spanSpace + spanWidths[pi]! : hero.width);
+    if (showHeadline) put(`${p.panel.id}:headline`,p.readout.headlineText,heroFont,{x:heroX,y:gy,w:hero.width,h:compactReadout ? heroFont.size : heightOf(heroFont)},owner,color,'title','point',[p.readout.headlineText],headlineClaim.id);
     const before=p.readout.claims.find(c=>c.id===`stack:${p.panel.id}:before`)!,after=p.readout.claims.find(c=>c.id===`stack:${p.panel.id}:after`)!;
-    let gx=frame.plot.x;
+    let gx=sideBySide ? heroX : seat(spanWidths[pi]!);
     // Beside the headline the span shares its baseline: half a cap height (about 0.36 em) per size step.
     const heroTop = gy;
-    if (head?.spanBeside || !head && compactReadout) { gx += hero.width + 3*spanSpace; gy += heightOf(heroFont)/2 - heightOf(unitFont)/2 + 0.36*(heroFont.size-unitFont.size); }
-    else gy += heightOf(heroFont)+6;
-    for(const [suffix,text,claim] of [['before',before.output.displayed,before.id],['arrow','→',undefined],['after',after.output.displayed,after.id]] as const) {
+    if (sideBySide) { gx += hero.width + 3*spanSpace; gy += heightOf(heroFont)/2 - heightOf(unitFont)/2 + 0.36*(heroFont.size-unitFont.size); }
+    else if (showHeadline) gy += heightOf(heroFont)+6;
+    if (showSpan) for(const [suffix,text,claim] of [['before',before.output.displayed,before.id],['arrow','→',undefined],['after',after.output.displayed,after.id]] as const) {
       if (suffix === 'arrow') gx += spanSpace;
       const width = suffix === 'arrow' ? arrowWidth : measure(text,unitFont).width;
       put(`${p.panel.id}:${suffix}`,text,unitFont,{x:gx,y:gy,w:width,h:heightOf(unitFont)},owner,muted,'axis','point',[text],claim);
@@ -413,10 +499,12 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
       const part = p.parts[0]![ci];
       return !visible(ci) || !part || part/domainMax*plot.h >= heightOf(valueFont)+10 && measure(formatValue(part),valueFont).width < barWidth-6;
     });
-    const key = head ? head.key : gutterKeys[pi]!, keyTop = head ? tops[pi]!+head.body : compactReadout ? heroTop+heroBlock : gy+heightOf(unitFont)+6;
+    const key = head ? head.key : gutterKeys[pi]!, keyTop = head ? tops[pi]!+head.body : compactReadout ? heroTop+heroBlock : gy+(showSpan ? heightOf(unitFont)+6 : 0);
     for (const item of key.placed) {
       if (item.id === 'stack:totals' && segmentLabels) continue;
-      const kx = frame.plot.x+item.dx, ky = keyTop+item.dy;
+      // A key row sits on the track's alignment as one line.
+      const rowW = maxOf(key.placed.filter(other => other.dy === item.dy && !(other.id === 'stack:totals' && segmentLabels)).map(other => other.dx + other.w));
+      const kx = seat(rowW)+item.dx, ky = keyTop+item.dy;
       if (item.paint) scene.push({t:'rect',id:`${p.panel.id}:key:${item.id}`,rect:{x:kx,y:ky+(keyRow-keySwatch)/2,w:keySwatch,h:keySwatch},fill:item.paint,owner:{seriesId:item.id},part:'swatch'});
       const tx = item.paint ? kx+keySwatch+5 : kx;
       put(`${p.panel.id}:key:${item.id}:label`,item.label,keyFont,{x:tx,y:ky+(keyRow-heightOf(keyFont))/2,w:item.textW,h:heightOf(keyFont)*item.lines.length},{seriesId:item.id},muted,'secondary','category',item.lines);
@@ -498,6 +586,16 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const fonts = new Map(requests.map(request => [request.id, request.font]));
   for(const label of solved.placed) { label.ink=inks.get(label.id)??label.ink; label.font=fonts.get(label.id); }
   const hidden=solved.placed.filter(l=>l.hidden&&!yielding.has(l.id));  if(hidden.length){
+    // An authored gutter wider than the default never refuses: it gives way to the widest gutter that places every label.
+    if(gutter>defaultGutter&&!(options as { [NO_WIDER_SEARCH]?: boolean })[NO_WIDER_SEARCH]){
+      const places=(width:number)=>{
+        try { return layoutMetricStack(raw,{...options,[GUTTER_LIMIT]:width,[NO_WIDER_SEARCH]:true} as GridLayoutOptions).scene.length>0; }
+        catch(error){ if(error instanceof NormalizeError)return false; throw error; }
+      };
+      let low=defaultGutter,high=gutter;
+      while(high-low>1){ const mid=Math.floor((low+high)/2); if(places(mid))low=mid; else high=mid; }
+      return layoutMetricStack(raw,{...options,[GUTTER_LIMIT]:low} as GridLayoutOptions);
+    }
     // A value that finds no room on a narrow card needs width: refuse with the narrowest width that places every label.
     const width=(options as { [NO_WIDER_SEARCH]?: boolean })[NO_WIDER_SEARCH]?undefined:widerThatPlaces(raw,options,size,automatic);
     if(width!==undefined)return needsWidth(width);
@@ -507,5 +605,5 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const counts=[structureCount('panels',data.panels.length, undefined, options),structureCount('categories',data.categories.length, undefined, options),structureCount('series',data.measures.length,chartString(options, 'sourceMeasures', { v1: data.measures.length }))];
   return {type:'grid',size,plot:frame.plot,scene,labels:solved.placed,axes:[{axis:'x',baselineNodeId:`${data.panels.at(-1)!.id}:baseline`,ticks:data.categories.map((c,i)=>({at:c.id,pos:plotX+(i+0.5)*step,labelId:`stack:category:${c.id}`}))}],annotations:[],frame:frame.frame,legend:frame.legend,marks,derived:{metricStack:derived,sharedPlotX:plotX,sharedPlotW:plotW,tierGap:gap},
     sizing:{aspect:'content',fit:'content',minWidth:size.width,minHeight,measuredMinWidth:size.width,measuredMinHeight:minHeight,naturalWidth:size.width,naturalHeight,comfortableWidth:size.width,comfortableHeight:naturalHeight},
-    a11y:{title:accessibleTitle(options.title,chartString(options, 'metricStackTitle', { v1: data.panels.length })),counts,desc:chartString(options, 'metricStackDesc', { v1: counts.map(c=>c.text).join(', '), v2: data.panels.map(p=>p.title).join('; '), v3: computed.panels.map(p=>`${p.panel.title}: ${p.readout.headlineText}; ${p.readout.spanText}.`).join(' ') })},warnings:solved.warnings,debug:{occupied:occupied.snapshot(),decisions:solved.decisions}};
+    a11y:{title:accessibleTitle(options.title,chartString(options, 'metricStackTitle', { v1: data.panels.length })),counts,desc:chartString(options, 'metricStackDesc', { v1: counts.map(c=>c.text).join(', '), v2: data.panels.map(p=>p.title).join('; '), v3: !hasMethod ? '' : computed.panels.map(p=>`${p.panel.title}: ${[...(showHeadline?[p.readout.headlineText]:[]),...(showSpan?[p.readout.spanText]:[])].join('; ')}.`).join(' ') })},warnings:[...solved.warnings,...stackColumnWarnings(stack,narrow,gutterFloored,gutterCapped)],debug:{occupied:occupied.snapshot(),decisions:solved.decisions}};
 }
