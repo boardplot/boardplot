@@ -2135,10 +2135,11 @@ function layoutTableOnce(authoredData: TableData, options: LayoutOptions, initia
         nodes.push({
           t: 'text', typeRole: 'label',
           id: tableCellNodeId('cellline', rowId, colId, line.id),
-          x: col.kind === 'rowLabel' ? contentX + indent + INLINE_LABEL_INDENT : cx + w - cellPadX,
+          // A line sits under its figure: a column's alignment seats both.
+          x: col.kind === 'rowLabel' && align === 'start' ? contentX + indent + INLINE_LABEL_INDENT : align === 'middle' ? cx + w / 2 : align === 'start' ? contentX + indent : cx + w - cellPadX,
           y,
           lines: [printed],
-          align: col.kind === 'rowLabel' ? 'start' : 'end',
+          align,
           font: lineFont,
           ink: groundInk(textGround, driverLine && !(toned && (row.driverTone === true || line.driverTone === true)) ? tableInk('driver') : toned && !(theme.table?.tones === 'fill' && lineCell!.tone === 'warn') ? toneInk(textGround, lineCell!.tone as 'good' | 'bad' | 'warn')
             : tableInk('secondary')),
