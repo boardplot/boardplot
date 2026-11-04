@@ -560,8 +560,8 @@ export interface TableOptions extends BaseOptionsFor<'table'> {
    * A label breaks at a space or after `_`, `-`, `/` or `.`, so a long
    * campaign name such as `Brand_Paid-Social_FB_Q4` wraps instead of ending
    * in "…". 1 keeps every label on one line. A higher count lets a row grow
-   * to its lines. Any positive whole number. The hover card always prints the
-   * full name.
+   * to its lines. Any positive whole number. A cut label keeps its full name in
+   * its title.
    */
   rowLabelLines?: number;
   /**

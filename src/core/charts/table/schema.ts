@@ -442,7 +442,7 @@ export const tableOptionsObject = baseOptionsSchema.safeExtend(refusedBaseOption
     .describe("Spare canvas height. 'rows' (default) spreads it over leaf rows as air, up to 16 px a side. 'none' leaves it empty."),
   rowLabelLines: z.number().int().positive().optional()
     .meta({ default: 2 })
-    .describe("Lines a row label may take before a cut (default 2). A label breaks at a space or after _ - / or a dot, so a long campaign name wraps instead of ending in '…'. 1 keeps every label on one line; a higher count lets a row grow to its lines. The hover card always prints the full name."),
+    .describe("Lines a row label may take before a cut (default 2). A label breaks at a space or after _ - / or a dot, so a long campaign name wraps instead of ending in '…'. 1 keeps every label on one line; a higher count lets a row grow to its lines. A cut label keeps its full name in its title."),
   lastTrackFlex: z.boolean().optional()
     .describe('Last unauthored track takes the spare frame width when rowExtent is tracks. Default false.'),
   rowExtent: z.enum(['tracks', 'frame']).optional()

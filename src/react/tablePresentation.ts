@@ -71,7 +71,7 @@ interface TableStyleFeatures {
   statement?: boolean;
   /** A cohort density: a row grows to hold its inline lines and bars instead of cutting them at the fixed pitch. */
   cohort?: boolean;
-  /** `rowLabelLines` above 2: the clamp reads the count from the grid, and every other grid keeps its stylesheet. */
+  /** `rowLabelLines` above 2: the clamp and a deferred row's reserved height read their counts from the grid and the row, and every other grid keeps its stylesheet. */
   manyLabelLines?: boolean;
   /** The object form of `stickyLabels` is in use: its page head, head switch and section rules come with it, and a 0.27 table draws none of them. */
   sticky?: boolean;
@@ -92,7 +92,8 @@ const COHORT_GROWTH = '\n.bp-table-grid[data-bp-density^="cohort"] [role="row"]>
   + '\n.bp-table-grid[data-bp-density^="cohort"] [role="row"]:not(.bp-total)>[role="rowheader"] .bp-value{line-height:round(up,1.2em,1px);margin-block:calc((var(--bp-row-h) - round(up,1.2em,1px) - var(--bp-rule-top,var(--bp-stroke-hair)))/2)}'
   + '\n.bp-table-grid[data-bp-density^="cohort"] :is([data-bp-rowgroup="body"],[data-bp-row-page="0"])>.bp-rowwrap:first-child>[role="row"]>*,.bp-table-grid[data-bp-density^="cohort"] [role="row"][data-bp-spacer]:not(.bp-total)>*,.bp-table-grid[data-bp-density^="cohort"] .bp-rowwrap:has(>.bp-total)+.bp-rowwrap>[role="row"]>*{--bp-rule-top:0px}';
 
-const MANY_LABEL_LINES = '\n.bp-table-grid[data-bp-label-lines]:not([data-bp-label-lines="1"]) [role="rowheader"] .bp-value{-webkit-line-clamp:var(--bp-label-lines)}';
+const MANY_LABEL_LINES = '\n.bp-table-grid[data-bp-label-lines]:not([data-bp-label-lines="1"]) [role="rowheader"] .bp-value{-webkit-line-clamp:var(--bp-label-lines)}'
+  + '\n.bp-table-grid[data-bp-label-lines] [data-bp-defer-row]{contain-intrinsic-size:auto calc(var(--bp-label-size)*var(--bp-line-ratio) + 2*var(--bp-pad-anchor) + 1px + var(--bp-defer-lines,0)*(var(--bp-inline-box) + var(--bp-inline-gap)) + var(--bp-defer-label-lines,0)*round(up,calc(var(--bp-label-size)*var(--bp-line-ratio)),1px))}';
 
 /** HTML framing shares notes and mode selection with the React table. */
 export function tableFrame(

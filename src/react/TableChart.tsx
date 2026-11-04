@@ -90,7 +90,7 @@ import { lastObservedIndex, type SparklineDomain } from '../core/charts/sparklin
 import { resolvePaint } from '../core/svg/paint';
 import { sceneAttributes } from './sceneAttributes';
 import type { LintWarning, Paint, RefusedLayout, SceneNode } from '../core/types/scene';
-import { defaultMeasurer, splitNameBreaks, type FontSpec, type TextMeasurer } from '../core/text';
+import { defaultMeasurer, splitNameBreaks, wrapText, type FontSpec, type TextMeasurer } from '../core/text';
 import type { Id } from '../core/types/cell';
 import type {
   ResolvedCell,
@@ -1671,6 +1671,13 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
       hidden={!headsShown}
     />
   );
+  const deferLabelLines = manyLabelLines && measured !== undefined ? (row: ResolvedRow) => {
+    const column = allColumns.find(candidate => candidate.kind === 'rowLabel');
+    const cell = column === undefined ? undefined : row.cells[column.id];
+    if (column === undefined || cell === undefined) return 0;
+    const room = (measured.widths.get(column.id) ?? 0) - 2 * padX - measured.rowIndent(measured.indentStep(cell));
+    return wrapText(cell.displayed, measured.cellFont(cell), Math.max(1, room), tableOptions.rowLabelLines, width.measure, true).lines.length - 1;
+  } : undefined;
   const rowShared: SharedRowProps = {
     palette: tableOptions.palette,
     rowIndices,
@@ -1682,6 +1689,8 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     closers,
     mountCollapsed: tableOptions.mountCollapsed !== false,
     paintOffscreenRows: tableOptions.paintOffscreenRows === true,
+    oneLineLabel: tableOptions.rowLabelLines === 1,
+    deferLabelLines,
     anchorWash: tableOptions.anchorWash === true,
     barMaxima: barMaxima!,
     grounds,
@@ -2207,6 +2216,10 @@ interface SharedRowProps {
   light?: boolean;
   mountCollapsed: boolean;
   paintOffscreenRows: boolean;
+  /** `rowLabelLines: 1`. */
+  oneLineLabel: boolean;
+  /** Label lines past the first that a deferred row reserves; only under `rowLabelLines` above 2. */
+  deferLabelLines: ((row: ResolvedRow) => number) | undefined;
   /** Rows that draw a closing rule (view.finalClosers). */
   closers: ReadonlySet<Id>;
   columns: readonly ResolvedColumn[];
@@ -2282,7 +2295,7 @@ function TableRowGroup({ node, hidden, ...shared }: SharedRowProps & {
   return (
     <div className="bp-rowwrap" data-bp-row-wrap={node.row.id}
       data-bp-defer-row={deferred ? '' : undefined}
-      style={deferred ? { '--bp-defer-lines': visibleInlineRows(node.row, shared.inlineVisibility).length } as CSSProperties : undefined}>
+      style={deferred ? { '--bp-defer-lines': visibleInlineRows(node.row, shared.inlineVisibility).length, ...(shared.deferLabelLines === undefined ? {} : { '--bp-defer-label-lines': shared.deferLabelLines(node.row) }) } as CSSProperties : undefined}>
       <TableGridRow row={node.row} collapsed={collapsed} hidden={hidden} {...shared} />
       {node.children.length > 0 && (shared.mountCollapsed || !collapsed || closing) ? (
         <TableChildren rowId={node.row.id} collapsed={collapsed} onClosed={closing ? closed : undefined}>
@@ -2369,6 +2382,7 @@ function TableChildren({ rowId, collapsed, onClosed, children }: {
  */
 function TableGridRow({
   palette,
+  oneLineLabel,
   row,
   rowIndices,
   columnIndices,
@@ -2540,6 +2554,7 @@ function TableGridRow({
               column={rowLabel}
               row={row}
               mark={mark}
+              oneLineLabel={oneLineLabel}
               after={<CollapsedHint row={row} collapsed={collapsed} count={childCount} levelNouns={levelNouns} />}
             />
           ) : (
@@ -2548,7 +2563,7 @@ function TableGridRow({
             // The line carries the mark too, so mark, heading and chip share one centre.
             <span className="bp-section-line">
               {mark}
-              <CellContent cell={row.cells[rowLabel.id]!} column={rowLabel} row={row} />
+              <CellContent cell={row.cells[rowLabel.id]!} column={rowLabel} row={row} oneLineLabel={oneLineLabel} />
               <span className="bp-section-badge" data-tone={row.badge.tone === 'neutral' ? undefined : row.badge.tone}>
                 <span className="bp-chip">{row.badge.text}</span>
               </span>
@@ -2612,6 +2627,7 @@ function TableGridRow({
                 column={column}
                 row={row}
                 mark={mark}
+                oneLineLabel={oneLineLabel}
                 before={labelLead === undefined ? undefined : leadBox(labelLead, row)}
                 barMaximum={barMaxima.get(column.id)}
                 spark={{
@@ -3064,6 +3080,8 @@ interface SparkContext {
 
 interface CellContentProps {
   cell: ResolvedCell;
+  /** `rowLabelLines: 1`. */
+  oneLineLabel?: boolean;
   column: ResolvedColumn;
   row?: ResolvedRow;
   barMaximum?: number;
@@ -3197,6 +3215,7 @@ function CellContent({
   after,
   before,
   mark,
+  oneLineLabel = false,
 }: CellContentProps): ReactElement {
   let main: ReactNode;
   if (column.kind === 'encoding' && row !== undefined && spark !== undefined) {
@@ -3243,7 +3262,8 @@ function CellContent({
     main = <><span className="bp-arrow" aria-hidden="true">{arrowGlyph(printedNumber(cell), barMaximum, column.cellEncoding.scale)}</span>{cell.displayed}</>;
   } else if (column.kind === 'rowLabel') {
     // The breaks the SVG may take after _ - / . (NAME_BREAK), so a long name wraps at the same places.
-    main = splitNameBreaks(cell.displayed).flatMap((piece, index) => index === 0 ? [piece] : [<wbr key={index} />, piece]);
+    // A <wbr> breaks under `white-space: nowrap` too, so a one-line label has none.
+    main = oneLineLabel ? cell.displayed : splitNameBreaks(cell.displayed).flatMap((piece, index) => index === 0 ? [piece] : [<wbr key={index} />, piece]);
   } else {
     main = cell.displayed;
   }

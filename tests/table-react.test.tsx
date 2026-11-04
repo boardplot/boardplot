@@ -131,6 +131,20 @@ it('keeps bold automatic value tracks safe when browser measurement is unavailab
   }
 });
 
+// A <wbr> breaks under white-space: nowrap, so a one-line label would still draw on several lines in the browser.
+it('emits no break opportunity in a label under rowLabelLines 1', () => {
+  const fixture = getFixtures('table').find(item => item.id === 'row-label-three-lines')!;
+  const breaks = (rowLabelLines: number) => {
+    act(() => root.render(<TableChart data={fixture.data as TableData} size={{ width: 480 }} rowLabelLines={rowLabelLines} />));
+    return container.querySelectorAll('[role="rowheader"] wbr').length;
+  };
+  expect(breaks(1)).toBe(0);
+  expect(breaks(2)).toBeGreaterThan(0);
+  const member = getFixtures('dimswitch').find(item => item.id === 'by-member')!;
+  act(() => root.render(<DimSwitchChart {...member.options as object} data={member.data as never} size={{ width: 480 }} rowLabelLines={1} />));
+  expect(container.querySelectorAll('[role="rowheader"] wbr').length).toBe(0);
+});
+
 // A capture of a long table must not show blank rows where the browser skipped the paint.
 it('paints offscreen rows at once with paintOffscreenRows', () => {
   const rows = Array.from({ length: 501 }, (_, index) => ({ id: `r${index}`, label: `Row ${index}`, cells: { v: index } }));
