@@ -2,7 +2,7 @@
 import { resolveCanvasOptions, resolveSize } from '../../normalize/shared';
 import { canvasMargin } from '../../theme';
 import { chartSizing, fitsSize, resolveSizing } from '../../sizing';
-import { twoLineWidth, type FontSpec, type TextMeasurer } from '../../text';
+import { lineBlockWidth, type FontSpec, type TextMeasurer } from '../../text';
 import type { Id } from '../../types/cell';
 import type { LintWarning } from '../../types/scene';
 import type { Theme } from '../../types/theme';
@@ -219,8 +219,8 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
       // width is a floor there (`authoredTrackWidth`); a text column keeps it fixed.
       const wrapped = view.scroll && col.wrap && col.width === undefined && (figures || !heatColumn(col));
       // An authored label track grows to the labels as they wrap (`authoredTrackWidth`).
-      // Labels that fit the authored width on one line skip the two-line measure.
-      const authoredContext = col.kind === 'rowLabel' ? { ...context, twoLineLabels: options.rowLabelLines !== 1 } : context;
+      // Labels that fit the authored width on one line skip the wrapped measure.
+      const authoredContext = col.kind === 'rowLabel' ? { ...context, labelLines: options.rowLabelLines ?? 2 } : context;
       const authored = col.kind === 'rowLabel' && col.width !== undefined && intrinsicWidth <= col.width ? col.width
         : authoredTrackWidth(col, widthRows, authoredContext);
       widths.set(col.id, figures || !heatColumn(col) ? authored ?? (wrapped ? minimumWidth : intrinsicWidth) : heatOnlyWidth);
@@ -256,14 +256,14 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
         if (span < floor) target.set(labelColumn.id, target.get(labelColumn.id)! + floor - span);
       }
     }
-    // LABEL_WRAP_FLOOR: the label track holds every label whole on two lines, its unit and its inline
+    // LABEL_WRAP_FLOOR: the label track holds every label whole on its `rowLabelLines` lines, its unit and its inline
     // lines on their own lines, and every head word, over a hard maxWidth too.
     let labelFloor = options[LABEL_WRAP_FLOOR] === true && labelColumn !== undefined
       ? labelWrapFloor(labelColumn, faces) + labelLead : 0;
     if (labelFloor > 0) for (const target of [widths, minimumWidths]) target.set(labelColumn!.id, Math.max(target.get(labelColumn!.id)!, labelFloor));
     if (view.scroll && labelColumn?.width === undefined && labelColumn !== undefined) {
       labelFloor = Math.max(labelFloor, view.labelKeep ?? 0, intrinsicColumnWidth(labelColumn, widthRows, {
-        ...context, hint: undefined, twoLineLabels: options.rowLabelLines !== 1,
+        ...context, hint: undefined, labelLines: options.rowLabelLines ?? 2,
       }) + labelLead + (view.groupEnd?.has(labelColumn.id) ? 1 : 0));
     }
     // Prose columns that set the width with their one-line text, where
@@ -292,7 +292,7 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
       if (row.role === 'section' || row.inline === true || !cell?.displayed) continue;
       const font = cellFont(cell);
       const indent = rowIndent(indentStep(cell));
-      text = Math.max(text, indent + (options.rowLabelLines === 1 ? measure(cell.displayed, font).width : twoLineWidth(cell.displayed, font, measure, true)));
+      text = Math.max(text, indent + lineBlockWidth(cell.displayed, options.rowLabelLines ?? 2, font, measure, true));
       if (row.unitAffix !== undefined && !(row.kind === 'member' && open.has(row.id))) {
         const unitFont = theme.table?.qualifier === undefined ? { ...inlineFont(row.step, false), ...(font.style ? { style: font.style } : {}) } : qualifierFont(font, theme);
         unit = Math.max(unit, indent + measure(row.unitAffix, unitFont).width);
@@ -425,7 +425,7 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
     // A text column the shrink cut while another keeps width above what prints it uncut takes that
     // width: the cut column is the one that loses text, and the slack column only wraps more.
     const printsUncut = (col: ResolvedColumn) => col.wrap ? minimumWidths.get(col.id)!
-      : intrinsicColumnWidth(col, widthRows, { ...chosen.context, hint: undefined, twoLineLabels: true });
+      : intrinsicColumnWidth(col, widthRows, { ...chosen.context, hint: undefined, labelLines: 2 });
     const flexText = cols.filter((col) => canShrink(col) && col.kind === 'text' && col.width === undefined);
     // Only a column the shrink cut can want width, and the uncut width of the others is measured
     // only when one does: the two-line measure costs a cell-by-cell pass over each text column.
@@ -541,7 +541,7 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
     // A label cut is measured as the labels wrap, not on one line; labels that fit on one line are not cut.
     const track = grown ?? widths.get(col.id)!;
     const minimum = col.kind === 'rowLabel' && col.width !== undefined && minimumWidths.get(col.id)! > track
-      ? intrinsicColumnWidth(col, widthRows, { ...chosen.context, twoLineLabels: options.rowLabelLines !== 1 }) : minimumWidths.get(col.id)!;
+      ? intrinsicColumnWidth(col, widthRows, { ...chosen.context, labelLines: options.rowLabelLines ?? 2 }) : minimumWidths.get(col.id)!;
     const found = authoredWidthWarnings(col, table.columns.findIndex(authored => authored.id === col.id), track, minimum, chosen.context);
     warnings.push(...(grown === undefined ? found : found.filter(warning => warning.code === 'table-column-widened'
       || widths.get(col.id)! < minimumWidths.get(col.id)!)));

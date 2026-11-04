@@ -9,7 +9,7 @@
  */
 
 import { tableEmphasis } from '../../theme';
-import { twoLineWidth, type FontSpec, type TextMeasurer } from '../../text';
+import { lineBlockWidth, twoLineWidth, type FontSpec, type TextMeasurer } from '../../text';
 import type { Theme } from '../../types/theme';
 import type { Id } from '../../types/cell';
 import type { LintWarning } from '../../types/scene';
@@ -257,8 +257,8 @@ export interface WidthContext {
   headerTrailingTracking?: boolean;
   /** Extra a browser needs over the measured width; `browserSlack` on React. */
   slack?: (font: FontSpec, width: number) => number;
-  /** A row label or a text cell counts at its two-line width (`twoLineWidth`, a label broken as a name breaks): the width that prints it uncut. */
-  twoLineLabels?: boolean;
+  /** Above 1, a row label or a text cell counts at its width on this many lines (`lineBlockWidth`, a label broken as a name breaks): the width that prints it uncut. */
+  labelLines?: number;
   /**
    * Whether the surface draws a cell's string, or a line inside that cell,
    * with tabular figures. Absent means the face's own digits.
@@ -399,8 +399,8 @@ export function intrinsicColumnWidth(
     const cell = row.cells[column.id];
     if (!cell) continue;
     const font = ctx.cellFont(cell);
-    let width = (isRowLabel || column.kind === 'text') && ctx.twoLineLabels === true
-      ? twoLineWidth(cell.displayed, font, ctx.measure, isRowLabel)
+    let width = (isRowLabel || column.kind === 'text') && ctx.labelLines !== undefined && ctx.labelLines > 1
+      ? lineBlockWidth(cell.displayed, ctx.labelLines, font, ctx.measure, isRowLabel)
       : ctx.measure(cell.displayed, figureFont(font, ctx.figures?.(column, cell.displayed))).width;
     width += ctx.slack?.(font, width) ?? 0;
     // Only what the text adds is capped here: the indent, the affix and the hint come on top, and a wider column from other content gives labels the room.
@@ -457,7 +457,7 @@ export const LABEL_WIDTH_GROWTH_CAP = 180;
  * widest printed value needs, with the cell air. A note beside the value and an
  * encoding reserve do not count: they may still clip. A row label is not cut
  * either, up to LABEL_WIDTH_GROWTH_CAP (or a smaller maxWidth): the track grows
- * to the labels' own width, on two lines where `ctx.twoLineLabels` allows them.
+ * to the labels' own width, on the lines `ctx.labelLines` allows them.
  * Any other column keeps the width as authored.
  */
 export function authoredTrackWidth(column: ResolvedColumn, rows: readonly ResolvedRow[], ctx: WidthContext): number | undefined {

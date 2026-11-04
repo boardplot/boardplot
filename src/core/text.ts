@@ -311,6 +311,47 @@ function twoLineWidthOf(text: string, font: FontSpec, measure: TextMeasurer, bre
 }
 
 /**
+ * `twoLineWidth` for any line count: the narrowest width at which `wrapText`
+ * holds a text on `lines` lines without a cut. More paragraphs than lines join,
+ * as `fitText` joins them.
+ */
+export function lineBlockWidth(text: string, lines: number, font: FontSpec, measure: TextMeasurer, breakAfter = false): number {
+  if (lines <= 1) return measure(text, font).width;
+  if (lines === 2) return twoLineWidth(text, font, measure, breakAfter);
+  const split = String(text).split('\n').map(wordsOf).filter((words) => words.length > 0);
+  const paragraphs = (split.length > lines ? [split.flat()] : split)
+    .map((words) => breakAfter ? namePieces(words) : { words, glued: undefined });
+  if (paragraphs.length === 0) return measure(text, font).width;
+  // The answer is the width of some span of pieces: the narrowest span width at which a greedy wrap fits.
+  const spans = paragraphs.flatMap(({ words, glued }) => words.flatMap((_, from) =>
+    words.slice(from).map((__, length) => measure(joinPieces(words, glued, from, from + length + 1), font).width)));
+  const candidates = [...new Set(spans)].sort((a, b) => a - b);
+  let low = 0;
+  let high = candidates.length - 1;
+  while (low < high) {
+    const mid = (low + high) >> 1;
+    const taken = paragraphs.reduce((sum, { words, glued }) => sum + linesAt(words, glued, candidates[mid]!, font, measure), 0);
+    if (taken <= lines) high = mid;
+    else low = mid + 1;
+  }
+  return candidates[high]!;
+}
+
+/** The lines a greedy wrap takes at `width`; a piece wider than `width` counts as more than any limit. */
+function linesAt(words: readonly string[], glued: readonly boolean[] | undefined, width: number, font: FontSpec, measure: TextMeasurer): number {
+  let count = 1;
+  let from = 0;
+  for (let i = 0; i < words.length; i++) {
+    if (measure(words[i]!, font).width > width) return Infinity;
+    if (i > from && measure(joinPieces(words, glued, from, i + 1), font).width > width) {
+      count++;
+      from = i;
+    }
+  }
+  return count;
+}
+
+/**
  * Where a name may break besides a space (`breakAfter`): after `_`, `-` or
  * `/`, and after a dot that no digit follows, so "v2.1" stays whole.
  */
