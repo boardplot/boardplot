@@ -104,6 +104,8 @@ export interface ChartCore<
   /** Alias-specific values for existing options, applied before authored options. */
   aliasDefaults?: Record<string, Partial<O>>;
   layout: LayoutFn<D, O, M, DV>;
+  /** Wraps the finished layout, for a check that must see the chart the registry accepts. */
+  finishLayout?: (layout: LayoutFn<D, O, M, DV>) => LayoutFn<D, O, M, DV>;
   defaults: Partial<O>;
   annotationKinds: AnnotationKind[];
   lint?(data: D, options: O): LintWarning[];
@@ -770,7 +772,7 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
       return geo;
     });
   };
-  registry.set(def.type, { ...def, sizing, layout: layoutWithFooter, [LAYOUT_CALL]: createLayout } as RegisteredChart<any, any, any, any>);
+  registry.set(def.type, { ...def, sizing, layout: def.finishLayout?.(layoutWithFooter) ?? layoutWithFooter, [LAYOUT_CALL]: createLayout } as RegisteredChart<any, any, any, any>);
   for (const alias of aliases) {
     aliasIndex.set(alias, def.type);
   }

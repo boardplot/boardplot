@@ -1,50 +1,100 @@
 import { describe, expect, it } from 'vitest';
+import '../src/core/charts';
+import { interactionRecords } from '../src/core/a11y/records';
 import { bartableCore } from '../src/core/charts/bartable/core';
+import { getChart } from '../src/core/registry';
+import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
+import { requireGeometry } from '../src/core/sizing';
 import { getFixtures } from '../src/fixtures';
 import { heatmapCore } from '../src/core/charts/heatmap/core';
-import { statusCore } from '../src/core/charts/status/core';
 import type { Geometry } from '../src/core/types/scene';
 
 const fixture = (type: string, id: string) => getFixtures(type).find(item => item.id === id)! as unknown as { data: never; options: Record<string, unknown> };
 const codes = (geometry: { warnings: { code: string }[] }) => geometry.warnings.map(warning => warning.code);
 const stores = fixture('bartable', 'total-top');
+const chart = (type: string) => getChart(type)!;
+const drawn = (type: string, id: string, columnOverrides: object | undefined, size?: object) => {
+  const { data, options } = fixture(type, id);
+  return chart(type).layout(data, { ...options, columnOverrides, ...(size ? { size } : {}) }) as Geometry<any, any>;
+};
 const bartable = (options: Record<string, unknown>) => bartableCore.layout(stores.data, { size: { width: 760 }, ...options } as never) as Geometry<any, any>;
 
 describe('authored column settings', () => {
   // An authored width must never refuse: a wide one stops at the floor of the other parts and says so.
-  it.each([
-    ['bartable', bartableCore, 'column-widths'],
-    ['heatmap', heatmapCore, 'column-widths'],
-    ['status', statusCore, 'column-widths'],
-  ] as const)('%s caps a width wider than its plot and still draws', (type, core, id) => {
-    const { data, options } = fixture(type, id);
-    const geometry = (core.layout as (d: never, o: never) => Geometry<any, any>)(data, { ...options, columnOverrides: { label: { width: 4000 } }, size: { width: 620 } } as never);
+  it.each(['bartable', 'heatmap', 'status'])('%s caps a width wider than its plot and still draws', type => {
+    const geometry = drawn(type, 'column-widths', { label: { width: 4000 } }, { width: 620 });
     expect(geometry.refused).toBeFalsy();
     expect(codes(geometry)).toContain('generated-column-width-capped');
     expect(geometry.sizing!.minWidth).toBeLessThanOrEqual(620);
   });
 
   // A narrow width must draw too, and say that it gave way, because the column on the page is not the one asked for.
-  it.each([
-    ['bartable', bartableCore, 'column-widths'],
-    ['heatmap', heatmapCore, 'column-widths'],
-    ['status', statusCore, 'column-widths'],
-  ] as const)('%s floors a width under its minimum and still draws', (type, core, id) => {
-    const { data, options } = fixture(type, id);
-    const geometry = (core.layout as (d: never, o: never) => Geometry<any, any>)(data, { ...options, columnOverrides: { label: { width: 1 } }, size: { width: 620 } } as never);
+  it.each(['bartable', 'heatmap', 'status'])('%s floors a width under its minimum and keeps every name', type => {
+    const geometry = drawn(type, 'column-widths', { label: { width: 1 } }, { width: 620 });
     expect(geometry.refused).toBeFalsy();
     expect(codes(geometry)).toContain('generated-column-width-floored');
     expect(geometry.labels.filter(label => label.title !== undefined)).toEqual([]);
   });
 
-  // A width changes how many lines the names take, so it can cost text that the same chart keeps without it.
-  it('gives a width up where it would hide labels the chart draws without it', () => {
-    const { data, options } = fixture('status', 'programme-rollout-rag');
-    const layout = (extra: object) => (statusCore.layout as (d: never, o: never) => Geometry<any, any>)(data, { ...options, ...extra, size: { width: 400, height: 300 } } as never);
-    const geometry = layout({ columnOverrides: { label: { width: 300 } } });
-    expect(codes(geometry)).toContain('generated-column-width-capped');
-    expect(codes(geometry)).not.toContain('label-hidden');
-    expect(codes(layout({}))).not.toContain('label-hidden');
+  // A width that costs printed numbers would misreport the data with no sign of it, whatever a label count says.
+  it.each([
+    ['heatmap', 'series-formats', { a: { width: 1 } }, { width: 650, height: 350 }],
+    ['heatmap', 'series-formats', { label: { width: 1000 } }, { width: 650, height: 350 }],
+    ['bartable', 'column-widths', { sales: { width: 1 } }, { width: 760 }],
+    ['bartable', 'null-and-long-labels', { label: { width: 300 } }, { width: 480 }],
+  ] as const)('%s/%s gives a width up where it would cost text', (type, id, overrides, size) => {
+    const geometry = drawn(type, id, overrides, size);
+    const plain = drawn(type, id, undefined, size);
+    const texts = (result: Geometry<any, any>) => result.scene.flatMap(node => (node.t === 'text' && node.id.startsWith('label:') ? [`${node.id}=${node.lines.join(' ')}`] : []));
+    expect(texts(geometry)).toEqual(texts(plain));
+    expect(codes(geometry).some(code => code === 'generated-column-width-capped' || code === 'generated-column-width-floored')).toBe(true);
+  });
+
+  // A wrong id gave a floored warning for a column that does not exist, which sends the author to the wrong key.
+  it('warns only the unknown id for a width on a column the chart does not draw', () => {
+    const found = codes(drawn('status', 'programme-rollout-rag', { nope: { width: 1 } }, { width: 400 }));
+    expect(found).toContain('generated-id-unknown');
+    expect(found).not.toContain('generated-column-width-floored');
+  });
+
+  // The row names print no head, so these two keys have no reader unless a real column carries the id.
+  it.each(['bartable', 'heatmap', 'status'])('%s refuses a head setting on the row names', type => {
+    for (const key of [{ label: 'Names' }, { headAlign: 'left' }]) {
+      expect(drawn(type, 'column-widths', { label: key }).warnings.find(warning => warning.severity === 'error')?.code).toBe('invalid-options');
+    }
+  });
+
+  // A heatmap column can be called label, and its head must stay renameable.
+  it('keeps a head setting on a real column with the id label', () => {
+    const data = { categories: [{ id: 'label', label: 'Tag' }, { id: 'b', label: 'B' }], series: [{ id: 'r', label: 'Row', values: [1, 2] }] };
+    const geometry = chart('heatmap').layout(data, { variant: 'value', columnOverrides: { label: { label: 'Renamed' } }, size: { width: 480 } }) as Geometry<any, any>;
+    expect(geometry.warnings.some(warning => warning.severity === 'error')).toBe(false);
+    expect(geometry.scene.some(node => node.t === 'text' && node.lines.join(' ') === 'Renamed')).toBe(true);
+  });
+
+  // An accepted key that changes nothing is dead: panel align feeds the panel head, as the docs say.
+  it('aligns a panel head with align', () => {
+    const headX = (align?: string) => (drawn('bartable', 'total-top', align ? { sales: { align } } : undefined, { width: 760 }).labels.find(label => label.id === 'head:sales') as { rect: { x: number } }).rect.x;
+    expect(headX('right')).toBeGreaterThan(headX());
+  });
+
+  // A head alignment must not hide a head the chart prints without it.
+  it('gives up a head alignment that would hide a head', () => {
+    const geometry = drawn('heatmap', 'harvey-quarter-steps', { zero: { headAlign: 'right' } }, { width: 340 });
+    expect(geometry.scene.some(node => node.t === 'text' && node.lines.join(' ') === 'Absent')).toBe(true);
+    expect(geometry.warnings.find(warning => warning.code === 'option-ignored')?.field).toEqual(['options', 'columnOverrides', 'zero', 'headAlign']);
+  });
+
+  // A rename that stops at the head leaves the hover calling the column by another name.
+  it.each([
+    ['bartable', 'total-top', 'sales'],
+    ['heatmap', 'column-widths', 'q2'],
+    ['status', 'column-widths', 'design'],
+  ])('%s carries a renamed column into the records', (type, id, column) => {
+    const { data, options } = fixture(type, id);
+    const request = resolveChartRequest({ type, data, options: { ...options, columnOverrides: { [column]: { label: 'Renamed' } } } } as never);
+    const records = interactionRecords({ request, geometry: requireGeometry(layoutResolvedRequest(request)), scope: request.scope, claims: [] });
+    expect(records.some(record => record.label.includes('Renamed'))).toBe(true);
   });
 
   // A wrong id must say which ids exist, because a silent no-op looks like a broken option.
@@ -92,10 +142,12 @@ describe('authored column settings', () => {
     expect(geometry.labels.filter(label => label.id.startsWith('end:')).map(label => label.id)).toEqual(['end:sales:east']);
   });
 
-  // A glyph stands in the middle of its cell, so aligning it must warn instead of doing nothing.
-  it('warns on a cell alignment a glyph matrix has no text for', () => {
+  // A glyph stands in the middle of its cell, but its head reads align: warn only where no head does.
+  it('warns on a glyph column align only where no head reads it', () => {
     const { data, options } = fixture('heatmap', 'column-widths');
     expect(codes(heatmapCore.layout(data, options as never) as Geometry<any, any>)).not.toContain('option-ignored');
-    expect(codes(heatmapCore.layout(data, { ...options, variant: 'bubble' } as never) as Geometry<any, any>)).toContain('option-ignored');
+    const bubble = (columnOverrides: object) => codes(heatmapCore.layout(data, { ...options, variant: 'bubble', columnOverrides } as never) as Geometry<any, any>);
+    expect(bubble({ q2: { align: 'right' } })).not.toContain('option-ignored');
+    expect(bubble({ q2: { align: 'right', headAlign: 'left' } })).toContain('option-ignored');
   });
 });

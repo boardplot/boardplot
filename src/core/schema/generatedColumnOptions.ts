@@ -13,7 +13,7 @@ const alignment = z.enum(['left', 'right', 'center']);
 
 const overrideFields = {
   width: z.number().positive().optional().describe('Track width in px. It beats the width the type would pick.'),
-  align: alignment.optional().describe('Cell alignment.'),
+  align: alignment.optional().describe('Alignment of the column: its cell text and, unless headAlign is set, its head. Bars keep starting at the panel origin.'),
   headAlign: alignment.optional().describe('Head alignment; defaults to align.'),
   label: z.string().optional().describe('Head text.'),
 };

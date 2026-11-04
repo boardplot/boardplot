@@ -281,10 +281,10 @@ fixtures.push(
     options: {
       ...storeOptions,
       columnOverrides: {
-        label: { width: 170, align: 'right' },
-        count: { width: 90, align: 'center', label: 'Open' },
-        staff: { width: 80, align: 'left', headAlign: 'right' },
-        sales: { width: 260, headAlign: 'right' },
+        label: { width: 150, align: 'right' },
+        count: { width: 70, align: 'center', label: 'Open' },
+        staff: { width: 70, align: 'left', headAlign: 'right' },
+        sales: { width: 240, align: 'right' },
       },
     },
   },

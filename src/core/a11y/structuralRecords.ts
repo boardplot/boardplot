@@ -166,9 +166,10 @@ function statusRecords(ctx: RecordContext): InteractionRecord[] {
     const state = options.states.find(item => item.id === mark.state);
     const row = data.rows.find(item => item.id === mark.row);
     const col = data.columns.find(item => item.id === mark.col);
+    const colName = options.columnOverrides?.[mark.col]?.label ?? col?.label ?? mark.col;
     return makeRecord(ctx, { seriesId: mark.row, categoryId: mark.col },
       textValue(mark.sourceState ?? (mark.missing ? null : mark.state)), {
-        label: `${row?.label ?? mark.row} / ${col?.label ?? mark.col}`,
+        label: `${row?.label ?? mark.row} / ${colName}`,
         fields: state ? [{ key: 'stateLabel', label: chartString(ctx.request.options, 'state'), value: textValue(state.label) }] : [],
         nodeIds: [mark.nodeId], anchor: mark.rect,
       });
@@ -190,12 +191,13 @@ function bartableRecords(ctx: RecordContext): InteractionRecord[] {
   const data = ctx.request.data as BarTableData;
   const marks = ctx.geometry.marks as unknown as BarTableMarks;
   const options = ctx.request.options as BarTableOptions;
+  const overrides = options.columnOverrides;
   const tracks: { id: string; name: string; unit?: string; format?: string; computed?: true }[] = [
-    ...(data.columns ?? []).map(column => ({ id: column.id, name: column.label ?? column.id, format: column.format })),
+    ...(data.columns ?? []).map(column => ({ id: column.id, name: overrides?.[column.id]?.label ?? column.label ?? column.id, format: column.format })),
     ...data.panels.flatMap(panel => [
-      { id: panel.id, name: panel.label ?? panel.id, unit: panel.unit, format: panel.format ?? options.format },
+      { id: panel.id, name: overrides?.[panel.id]?.label ?? panel.label ?? panel.id, unit: panel.unit, format: panel.format ?? options.format },
       // Under cascade: the computed share column of each panel.
-      ...(options.variant === 'cascade' ? [{ id: `share:${panel.id}`, name: `${panel.label ?? panel.id} share`, unit: '%', computed: true as const }] : []),
+      ...(options.variant === 'cascade' ? [{ id: `share:${panel.id}`, name: `${overrides?.[panel.id]?.label ?? panel.label ?? panel.id} share`, unit: '%', computed: true as const }] : []),
     ]),
     ...(options.variant === 'cascade' && options.cascade?.growth
       ? [{ id: 'growth', name: options.cascade.growth.label ?? (options.cascade.growth.measure === 'cagr' ? 'CAGR' : 'Share change'), unit: options.cascade.growth.measure === 'cagr' ? '%' : 'pp', computed: true as const }]

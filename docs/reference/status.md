@@ -75,7 +75,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | columnLabels | string | `'top'`, `'bottom'` | `'top'` | Column-caption position; defaults to top. |
 | columnOverrides | object |  |  | Settings per generated column. Ids: label, each data.columns id. |
 | columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
-| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Cell alignment. |
+| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Alignment of the column: its cell text and, unless headAlign is set, its head. Bars keep starting at the panel origin. |
 | columnOverrides.*.headAlign | string | `'left'`, `'right'`, `'center'` |  | Head alignment; defaults to align. |
 | columnOverrides.*.label | string |  |  | Head text. |
 

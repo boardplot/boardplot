@@ -73,7 +73,7 @@ import { disclosureNote } from '../../notes';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { headInk as tableHeadInk, plainInk } from '../table/headFace';
 import { emptyIdRecord } from '../../idRecords';
-import { matrixTracks, overrideIgnored, widthCapped, widthFloored } from './columnTracks';
+import { matrixTracks, nameTrackRefusals, overrideIgnored, widthCapped, widthFloored } from './columnTracks';
 import { generatedIdWarnings } from '../../schema/generatedColumns';
 
 export interface HeatmapMarks {
@@ -255,7 +255,7 @@ export function layoutHeatmap(
   const overrides = options.columnOverrides ?? {};
   const nameTrack = overrides.label;
   pushAll(warnings, generatedIdWarnings('heatmap', 'columnOverrides', options.columnOverrides, ['label', ...rawCats.map((c) => c.id)]));
-  for (const key of ['headAlign', 'label'] as const) if (nameTrack?.[key] !== undefined) warnings.push(overrideIgnored('label', key, 'the row names have no head'));
+  pushAll(warnings, nameTrackRefusals(overrides, rawCats.map((c) => c.id)));
   // The name of a category follows it into a turned matrix.
   let cols: NormCol[] = rawCats.map((c) => ({ id: c.id, label: overrides[c.id]?.label ?? c.label ?? c.id, date: c.date, ...(c.footnote === undefined ? {} : { footnote: c.footnote }) }));
   let rows: NormRow[] = data.series.map((s, i) => {
@@ -749,8 +749,6 @@ export function layoutHeatmap(
     for (const c of rawCats) for (const key of ['width', 'align', 'headAlign'] as const) {
       if (overrides[c.id]?.[key] !== undefined) warnings.push(overrideIgnored(c.id, key, 'this matrix draws its categories as rows'));
     }
-  } else if (glyph !== 'value') {
-    for (const c of cols) if (overrides[c.id]?.align !== undefined) warnings.push(overrideIgnored(c.id, 'align', 'a glyph stands in the middle of its cell'));
   }
   const gridW = tracks?.gridW ?? gridRoom;
   // With authored widths the narrowest column sets what every cell shares: the glyph radius, the row pitch and the header pitch.
@@ -1383,6 +1381,17 @@ export function layoutHeatmap(
       });
     });
   }
+
+  // A head reads its alignment unless it is rotated, tiered, left out or a list's. A glyph's cell never does.
+  if (!turned) {
+    const headReads = showHeaderRow && !harveyList && !headerRotated && tierTicks.length === 0;
+    for (const c of cols) {
+      const override = overrides[c.id];
+      if (override?.headAlign !== undefined && !headReads) warnings.push(overrideIgnored(c.id, 'headAlign', 'these heads keep their own place at this size'));
+      if (override?.align !== undefined && glyph !== 'value' && (!headReads || override.headAlign !== undefined)) warnings.push(overrideIgnored(c.id, 'align', 'a glyph stands in the middle of its cell, and no head reads this align'));
+    }
+  }
+  if (harveyList && nameTrack?.align !== undefined) warnings.push(overrideIgnored('label', 'align', 'a list form places the names after its glyphs'));
 
   // ---- column headers ----
   if (showHeaderRow) {

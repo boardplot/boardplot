@@ -3,7 +3,7 @@
  * table shares). One cell width becomes one width per column only when an
  * author sets one, so a spec without `columnOverrides` keeps its arithmetic.
  */
-import type { Geometry, LintWarning } from '../../types/scene';
+import type { Geometry, LayoutResult, LintWarning } from '../../types/scene';
 
 export interface MatrixTracks {
   /** Width of each column, in column order. */
@@ -84,43 +84,104 @@ export function overrideIgnored(id: string, key: string, reason: string): LintWa
   };
 }
 
-/** The labels the chart hid or cut. A label's title holds the full text of a cut one. */
-const textLost = (geometry: Geometry<any, any>) => (geometry.refused ? Infinity : geometry.labels.filter((label) => label.hidden || label.title !== undefined).length);
+/** The text a width can cost: labels and key entries. Note rows report what the rest lost, and may leave when a value returns. */
+const bodyText = (geometry: Geometry<object, object>) => new Map(geometry.scene.flatMap((node) => (
+  node.t === 'text' && (node.id.startsWith('label:') || node.id.startsWith('frame:legendLabel')) ? [[node.id, node.lines.join('').replace(/\s+/g, '')] as const] : [])));
+const cutIds = (geometry: Geometry<object, object>) => geometry.labels.filter((label) => !label.hidden && label.title !== undefined).map((label) => label.id);
 
-type WidthOptions = { columnOverrides?: Readonly<Record<string, { width?: number } | undefined>>; size?: { width?: number } };
+type Drawn = LayoutResult<any, any>;
+/** A layout's error lint refuses the chart as a refused layout does. */
+const refuses = (drawn: Drawn) => drawn.refused === true || drawn.warnings.some((warning) => warning.severity === 'error');
 
 /**
- * An authored width never costs what the chart draws without it: a width that
- * refuses, cuts or hides text gives way to the unset width and warns. It changes
- * how many lines the names take, so only a drawn layout can tell. A spec with no
- * width runs one layout.
+ * Whether a layout refuses, drops, rewords or newly cuts what the same chart
+ * prints without a setting. A cut name that reads further in `drawn` is no loss.
  */
-export function yieldingWidths<D, O extends object, G extends Geometry<any, any>>(type: string, layout: (data: D, options?: O) => G, trackCount: (data: D) => number): (data: D, options?: O) => G {
+function losesText(drawn: Drawn, natural: Drawn): boolean {
+  if (refuses(natural)) return false;
+  if (refuses(drawn)) return true;
+  const printed = bodyText(drawn as Geometry<object, object>);
+  for (const [id, words] of bodyText(natural as Geometry<object, object>)) {
+    const now = printed.get(id);
+    if (now !== words && !(now !== undefined && words.endsWith('\u2026') && now.startsWith(words.slice(0, -1)))) return true;
+  }
+  const cut = new Set(cutIds(natural as Geometry<object, object>));
+  return cutIds(drawn as Geometry<object, object>).some((id) => !cut.has(id));
+}
+
+const hidesLabel = (drawn: Drawn) => (drawn as Geometry<object, object>).labels.some((label) => label.hidden) || drawn.warnings.some((warning) => warning.code === 'label-hidden');
+
+type ColumnSetting = { width?: number; align?: string; headAlign?: string };
+type WidthOptions = { columnOverrides?: Readonly<Record<string, ColumnSetting | undefined>>; size?: { width?: number } };
+
+/**
+ * A column setting never costs text the chart prints without it. This wraps the
+ * finished layout, so it compares the chart the registry really accepts, compact
+ * step and all. A width that loses text gives way to the unset width, and a head
+ * alignment that hides a head gives way too, each with a warning. A spec with no
+ * settings runs one layout, one whose widths fit runs two, and head keys alone
+ * run a second layout only when a head is hidden.
+ */
+export function yieldingWidths<D, O extends object, G extends LayoutResult<any, any>>(type: string, layout: (data: D, options?: O) => G, trackIds: (data: D) => readonly string[]): (data: D, options?: O) => G {
   return (data, options) => {
     const drawn = layout(data, options);
     const read = (options ?? {}) as WidthOptions;
-    const overrides = read.columnOverrides ?? {};
-    const ids = Object.keys(overrides).filter((id) => overrides[id]?.width !== undefined);
-    if (ids.length === 0) return drawn;
-    const without = (gone: readonly string[]) => ({
+    const overrides = read.columnOverrides;
+    if (overrides === undefined || drawn.warnings.some((warning) => warning.code === 'invalid-options')) return drawn;
+    const tracks = new Set(trackIds(data));
+    const without = (widths: readonly string[], heads: readonly string[]) => ({
       ...read,
       columnOverrides: Object.fromEntries(Object.entries(overrides).map(([id, override]) => {
-        if (!gone.includes(id)) return [id, override];
-        const { width: _width, ...rest } = override!;
-        return [id, rest];
+        const { width, align, headAlign, ...rest } = override ?? {};
+        return [id, { ...rest,
+          ...(width === undefined || widths.includes(id) ? {} : { width }),
+          ...(align === undefined || heads.includes(id) ? {} : { align }),
+          ...(headAlign === undefined || heads.includes(id) ? {} : { headAlign }) }];
       })),
-    }) as O;
-    const natural = textLost(layout(data, without(ids)));
-    if (textLost(drawn) <= natural) return drawn;
-    const gone: string[] = [];
+    }) as unknown as O;
     let result = drawn;
-    for (const id of ids) {
-      gone.push(id);
-      result = layout(data, without(gone));
-      if (textLost(result) <= natural) break;
+    const warnings: LintWarning[] = [];
+    const widthIds = Object.keys(overrides).filter((id) => overrides[id]?.width !== undefined && (id === 'label' || tracks.has(id)));
+    const gone: string[] = [];
+    const natural = widthIds.length > 0 ? layout(data, without(widthIds, [])) : drawn;
+    if (losesText(drawn, natural)) {
+      for (const id of widthIds) {
+        gone.push(id);
+        result = layout(data, without(gone, []));
+        if (!losesText(result, natural)) break;
+      }
+      // An equal share stands for the unset width, which no layout reports.
+      const share = (read.size?.width ?? 720) / (tracks.size + 1);
+      for (const id of gone) warnings.push(overrides[id]!.width! < share ? widthFloored(type, id) : widthCapped(type, id));
     }
-    // An equal share stands for the unset width, which no layout reports.
-    const share = (read.size?.width ?? 720) / Math.max(1, trackCount(data));
-    return { ...result, warnings: [...result.warnings, ...gone.map((id) => (overrides[id]!.width! < share ? widthFloored(type, id) : widthCapped(type, id)))] };
+    const headIds = Object.keys(overrides).filter((id) => tracks.has(id) && (overrides[id]?.headAlign !== undefined || overrides[id]?.align !== undefined));
+    if (headIds.length > 0 && !refuses(result) && hidesLabel(result)) {
+      const plainHeads = layout(data, without(gone, headIds));
+      if (losesText(result, plainHeads)) {
+        const stripped: string[] = [];
+        for (const id of headIds) {
+          stripped.push(id);
+          result = layout(data, without(gone, stripped));
+          for (const key of ['headAlign', 'align'] as const) if (overrides[id]?.[key] !== undefined) warnings.push(overrideIgnored(id, key, 'at this size it would hide a head'));
+          if (!losesText(result, plainHeads)) break;
+        }
+      }
+    }
+    return warnings.length === 0 ? result : { ...result, warnings: [...result.warnings, ...warnings] } as G;
   };
+}
+
+/**
+ * The row-name track prints no head, so a head text or head alignment on it has
+ * no reader. A real column with the id `label` has a head and keeps both. This
+ * path has no zod, so it refuses in React too.
+ */
+export function nameTrackRefusals(overrides: Readonly<Record<string, { label?: string; headAlign?: string } | undefined>> | undefined, columnIds: readonly string[]): LintWarning[] {
+  if (overrides?.label === undefined || columnIds.includes('label')) return [];
+  return (['label', 'headAlign'] as const).flatMap((key) => (overrides.label![key] === undefined ? [] : [{
+    code: 'invalid-options', severity: 'error' as const, field: ['options', 'columnOverrides', 'label', key],
+    message: `columnOverrides.label.${key} has no head to set: the row names print no head`,
+    suggest: `Remove columnOverrides.label.${key}.`,
+    fix: [{ op: 'remove' as const, path: `/options/columnOverrides/label/${key}` }],
+  }]));
 }

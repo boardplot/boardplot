@@ -71,7 +71,7 @@ import { shareRoundingNotes } from '../../shareRounding';
 import { footerType } from '../../footer';
 import { textScaleOf } from '../../typeFloors';
 import { maxOf, minOf, pushAll } from '../../arrays';
-import { overrideIgnored, widthCapped, widthFloored } from '../heatmap/columnTracks';
+import { nameTrackRefusals, overrideIgnored, widthCapped, widthFloored } from '../heatmap/columnTracks';
 import { generatedIdWarnings } from '../../schema/generatedColumns';
 
 const LABEL_GAP = 12;
@@ -322,12 +322,11 @@ function columnKeyWarnings(data: BarTablePlainData, options: BarTableOptions, co
   const overrides = options.columnOverrides ?? {};
   pushAll(warnings, generatedIdWarnings('bartable', 'columnOverrides', options.columnOverrides, ['label', ...columnIds, ...panelIds]));
   pushAll(warnings, generatedIdWarnings('bartable', 'columnOrder', options.columnOrder, [...(columnIds.length > 0 ? ['numbers'] : []), 'panels']));
-  for (const key of ['headAlign', 'label'] as const) if (overrides.label?.[key] !== undefined) warnings.push(overrideIgnored('label', key, 'the row names have no head'));
+  pushAll(warnings, nameTrackRefusals(overrides, [...columnIds, ...panelIds]));
   for (const id of panelIds) {
-    if (overrides[id]?.align !== undefined) warnings.push(overrideIgnored(id, 'align', 'bars start at the panel origin, so a panel aligns its head with headAlign'));
     if (overrides[id]?.width !== undefined && sharedScale) warnings.push(overrideIgnored(id, 'width', 'under sharedScale or a cascade the one scale sets the panel width'));
     else if (overrides[id]?.width !== undefined && compact) warnings.push(overrideIgnored(id, 'width', 'the compact form draws each panel across the whole width'));
-    if (overrides[id]?.headAlign !== undefined && compact && panelIds.length > 1) warnings.push(overrideIgnored(id, 'headAlign', 'the compact form names several panels in a key'));
+    if (compact && panelIds.length > 1) for (const key of ['headAlign', 'align'] as const) if (overrides[id]?.[key] !== undefined) warnings.push(overrideIgnored(id, key, 'the compact form names several panels in a key'));
   }
   if (compact) {
     for (const key of ['width', 'align'] as const) if (overrides.label?.[key] !== undefined) warnings.push(overrideIgnored('label', key, 'the compact form sets each row name above its bar'));
@@ -1125,7 +1124,7 @@ function layoutBarTableOnce(
       return;
     }
     const headBottom = blockTop(p) + headH;
-    const headAlign = overrides[track.panel.id]?.headAlign;
+    const headAlign = overrides[track.panel.id]?.headAlign ?? overrides[track.panel.id]?.align;
     label(`head:${track.panel.id}`, 'axisTitle', { colId: track.panel.id }, track.head, track.face,
       { x: headAlign === undefined ? track.origin : alignedIn(track.origin, track.origin + track.headW, track.headFit.w, headAlign), y: headBottom - track.headFit.h, w: track.headFit.w, h: track.headFit.h }, track.headFit, headAlign);
     // A period head ("2024") reads as an axis label, not as a caption.

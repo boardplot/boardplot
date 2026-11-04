@@ -13,7 +13,7 @@ import { formatNonzeroWithSpec, formatterFromExample, seriesRasterFormatter } fr
 
 import { sweepHide } from '../../collide';
 import { bareGridPlot } from '../heatmap/layout';
-import { matrixTracks, overrideIgnored, widthCapped, widthFloored } from '../heatmap/columnTracks';
+import { matrixTracks, nameTrackRefusals, widthCapped, widthFloored } from '../heatmap/columnTracks';
 import { generatedIdWarnings, type ColumnOverride } from '../../schema/generatedColumns';
 import { frameTextOptions, legendRequired, normalizeLegendOption, solveFrame, type FrameInput, type LegendItemInput, authoredFootnoteCount } from '../../frame';
 import type { Rect } from '../../geometry';
@@ -204,7 +204,7 @@ export function layoutStatus(
   const overrides = options.columnOverrides ?? {};
   const nameTrack = overrides.label;
   pushAll(warnings, generatedIdWarnings('status', 'columnOverrides', options.columnOverrides, ['label', ...columns.map((column) => column.id)]));
-  for (const key of ['headAlign', 'label'] as const) if (nameTrack?.[key] !== undefined) warnings.push(overrideIgnored('label', key, 'the row names have no head'));
+  pushAll(warnings, nameTrackRefusals(overrides, columns.map((column) => column.id)));
 
   const theme = resolveSemanticPaletteTheme(
     chartTheme(options),

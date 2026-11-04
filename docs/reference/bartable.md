@@ -107,7 +107,7 @@ Table rows with number columns and stacked bars. One panel when the rows compare
 | totalPosition | string | `'top'`, `'bottom'` |  | Where the Total row stands, with its rule and ground; default 'bottom'. Works under cascade. With total false it warns option-ignored. |
 | columnOverrides | object |  |  | Settings per generated column. Ids: label, each data.columns id and each data.panels id. |
 | columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
-| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Cell alignment. |
+| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Alignment of the column: its cell text and, unless headAlign is set, its head. Bars keep starting at the panel origin. |
 | columnOverrides.*.headAlign | string | `'left'`, `'right'`, `'center'` |  | Head alignment; defaults to align. |
 | columnOverrides.*.label | string |  |  | Head text. |
 | columnOrder | array |  |  | Order of whole blocks; blocks left out follow in default order. Ids: numbers, panels. |

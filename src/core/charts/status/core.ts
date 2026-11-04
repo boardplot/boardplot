@@ -23,7 +23,8 @@ export const statusCore: ChartCore<
   title: 'Categorical status matrix',
   summary:
     'Entity × period matrix with discrete semantic states, visible sparse cells, and truthful state keys',
-  layout: yieldingWidths('status', (data: StatusData, options?: StatusOptions) => layoutStatus(data, options), (data) => (data.columns?.length ?? 0) + 1),
+  layout: layoutStatus,
+  finishLayout: (layout) => yieldingWidths('status', layout, (data) => data.columns.map((column) => column.id)),
   defaults: { columnLabels: 'top' },
   annotationKinds: [],
   lint: lintStatus

@@ -81,7 +81,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | bubble.track | boolean |  |  | Row track. A line with an arrow through each row; implies ordered columns. Default false. |
 | columnOverrides | object |  |  | Settings per generated column. Ids: label, each data.categories id. |
 | columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
-| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Cell alignment. |
+| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Alignment of the column: its cell text and, unless headAlign is set, its head. Bars keep starting at the panel origin. |
 | columnOverrides.*.headAlign | string | `'left'`, `'right'`, `'center'` |  | Head alignment; defaults to align. |
 | columnOverrides.*.label | string |  |  | Head text. |
 | minBase | number |  |  | Low-base threshold. Cells whose series bases entry is below it draw hatched, with a note. |
