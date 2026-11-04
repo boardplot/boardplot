@@ -56,7 +56,7 @@ export function matrixTracks(ids: readonly string[], room: number, gap: number, 
 /** A wide authored width stops where the rest of the chart keeps its floor. */
 export function widthCapped(type: string, id: string): LintWarning {
   return {
-    code: 'column-width-capped', severity: 'warn', field: ['options', 'columnOverrides', id, 'width'],
+    code: 'generated-column-width-capped', severity: 'warn', field: ['options', 'columnOverrides', id, 'width'],
     message: `columnOverrides.${id}.width is wider than this ${type} has room for, so the column stops where the other columns keep their minimum`,
     suggest: 'Set a smaller width, or draw the chart wider.',
   };

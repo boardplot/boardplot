@@ -20,7 +20,7 @@ describe('authored column settings', () => {
     const { data, options } = fixture(type, id);
     const geometry = (core.layout as (d: never, o: never) => Geometry<any, any>)(data, { ...options, columnOverrides: { label: { width: 4000 } }, size: { width: 620 } } as never);
     expect(geometry.refused).toBeFalsy();
-    expect(codes(geometry)).toContain('column-width-capped');
+    expect(codes(geometry)).toContain('generated-column-width-capped');
     expect(geometry.sizing!.minWidth).toBeLessThanOrEqual(620);
   });
 
@@ -28,6 +28,8 @@ describe('authored column settings', () => {
   it('warns with the id list on an id the chart does not draw', () => {
     const warning = bartable({ columnOrder: ['bars'] }).warnings.find(item => item.code === 'generated-id-unknown');
     expect(warning?.message).toContain('numbers, panels');
+    // A list key takes a numeric index: the CLI resolves this path against the spec and crashed on a name.
+    expect(warning?.field).toEqual(['options', 'columnOrder', 0]);
   });
 
   // Under one scale the scale sets the panel width, and the old panel weight refusal must not come back for a width.
