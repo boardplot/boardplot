@@ -54,10 +54,10 @@ import { resolveGanttDomain, resolveGanttEnv } from './domain';
 import { badgeFill, badgeLevels, layoutGanttAnnotations, ruleNodes, type GanttAnnotationLayer } from './events';
 import { flagRowPitch, ganttSpanBlockers, planGanttLabels, planRowFlags } from './labels';
 import { fmtDay, ganttPaints, layoutGanttMarks, type GanttMarkGeometry } from './marks';
-import { ganttColumnWarnings, type GanttColumnOverride } from './columns';
+import { COLUMN_PLAN, columnPlan, ganttColumnWarnings, resolveGanttColumns, type GanttColumnOverride, type GanttColumnPlan } from './columns';
 import { BADGE_LEVELS, LABEL_PAD, MIN_ROW_H, NO_LANE, rowTextFloor, RULE_LABEL_GAP, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv } from './model';
 import { formatDate } from '../../dateFormat';
-import { ganttBody, ganttFrame, STACKED_LANE_FLOOR } from './plot';
+import { ganttBody, ganttFrame, MINIMUM_TIMELINE, STACKED_LANE_FLOOR } from './plot';
 import { maxOf, minOf, pushAll } from '../../arrays';
 
 /** Per-chart options, declared through optionsSchema. */
@@ -159,6 +159,9 @@ function labelNodes(env: GanttEnv, domain: GanttDomain, labels: PlacedLabel[]) {
 const spills = (label: PlacedLabel, bar: Rect): boolean => label.slot === 'insideBacked' && !rectContains(bar, label.rect);
 
 /** Phase 5: the scene in paint order, the sizing record, the axis ticks and the accessible description. */
+/** The draws in the stacked form: layoutAuthoredColumns reads which form the spec without its settings takes. */
+const stackedForms = new WeakSet<Geometry<GanttMarks, GanttDerived>>();
+
 function assembleGanttGeometry(input: {
   env: GanttEnv;
   domain: GanttDomain;
@@ -237,7 +240,7 @@ function assembleGanttGeometry(input: {
   const n = rows.length;
   const { colWs } = body.columns;
   const laneLabelW = milestones.laneLabelW;
-  return {
+  const assembled: Geometry<GanttMarks, GanttDerived> = {
     type: 'gantt',
     size,
     sizing: rowSizing('gantt', size, {
@@ -280,6 +283,8 @@ function assembleGanttGeometry(input: {
     warnings: input.warnings,
     debug: { occupied: input.occupied.snapshot(), decisions: solved.decisions },
   };
+  if (band.stacked) stackedForms.add(assembled);
+  return assembled;
 }
 
 /**
@@ -474,8 +479,70 @@ function layoutGanttPass(data: GanttData, options: GanttOptions = {}, keyed: Rea
   return assembleGanttGeometry({ env, domain, frame, band, body, geometry, annotated, solved, occupied, warnings, keyRowHeight, cardHeight, flagRows: flags.rows });
 }
 
-/** Keep clear layouts unchanged; retry only rows whose final layout loses a milestone's identity. */
+/** The labels a column setting must not hide: metadata cells, bar and milestone labels, row names. A stacked cell carries its separator. */
+const printedKey = (label: PlacedLabel): string => `${label.owner.categoryId}|${label.owner.segmentId}|${label.text.replace(/ ·$/, '')}`;
+const isPrinted = (label: PlacedLabel): boolean => !label.hidden && /^(item|col|activity|sublabel):/.test(label.id);
+/** A numbered key's number stands for a milestone label. Printing that label in full loses nothing. */
+const isKeyNumber = (label: PlacedLabel): boolean => label.id.startsWith('item:') && /^\d+$/.test(label.text);
+
+/**
+ * A spec with a column width, alignment or order. Those settings never cost
+ * the reader: the draw must print every label the spec without them prints,
+ * and must fit wherever that spec fits. A setting that fails gives way.
+ */
+function layoutAuthoredColumns(data: GanttData, options: GanttOptions): Geometry<GanttMarks, GanttDerived> {
+  const draw = (plan: GanttColumnPlan): Geometry<GanttMarks, GanttDerived> => layoutGanttLabelled(data, { ...options, [COLUMN_PLAN]: plan } as GanttOptions);
+  const plain = draw({ plain: true });
+  const authored = draw({});
+  const fixedHeight = !heightOmitted(options.size) && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height !== false;
+  const fitsHeight = (geo: Geometry<GanttMarks, GanttDerived>): boolean => !fixedHeight || geo.size.height >= geo.sizing!.minHeight;
+  const fits = (geo: Geometry<GanttMarks, GanttDerived>): boolean => !geo.refused && geo.size.width >= geo.sizing!.minWidth && fitsHeight(geo);
+  if (!fits(plain)) return authored;
+  const printed = plain.labels.filter((label) => isPrinted(label) && !isKeyNumber(label)).map(printedKey);
+  const keeps = (geo: Geometry<GanttMarks, GanttDerived>): boolean => {
+    const drawn = new Set(geo.labels.filter(isPrinted).map(printedKey));
+    return !geo.refused && printed.every((key) => drawn.has(key));
+  };
+  const stands = (geo: Geometry<GanttMarks, GanttDerived>): boolean => fits(geo) && keeps(geo);
+  if (stands(authored)) return authored;
+  /** The least value in (low, high] whose draw passes; `high` passed already. */
+  const narrowest = (low: number, high: number, plan: (value: number) => GanttColumnPlan, passes: (geo: Geometry<GanttMarks, GanttDerived>) => boolean, last: Geometry<GanttMarks, GanttDerived>): Geometry<GanttMarks, GanttDerived> => {
+    let best = last;
+    while (high - low > 1) {
+      const middle = Math.floor((low + high) / 2);
+      const geo = draw(plan(middle));
+      if (passes(geo)) { high = middle; best = geo; } else low = middle;
+    }
+    return best;
+  };
+  const isStacked = stackedForms.has(plain);
+  // Wrapped names miss a fixed height: the narrowest width that unwraps enough rows, then the stacked form, then the default band.
+  if (options.columnOverrides?.name?.width !== undefined && !fitsHeight(authored)) {
+    const lastStep = data.rows.length - 1;
+    const widest = draw({ nameStep: lastStep });
+    if (fitsHeight(widest)) {
+      const step = narrowest(-1, lastStep, (nameStep) => ({ nameStep }), fitsHeight, widest);
+      if (stands(step)) return step;
+    }
+    if (isStacked) return plain;
+    const stacked = draw({ stacked: true });
+    return stands(stacked) ? stacked : plain;
+  }
+  // The stacked form draws all of it: the table form stands only if it hides nothing.
+  if (isStacked) return plain;
+  // A table that hides a label: the widths give way until the timeline holds every label.
+  const widest = draw({ minimumTimeline: authored.size.width });
+  if (!keeps(widest)) return plain;
+  const capped = narrowest(MINIMUM_TIMELINE, authored.size.width, (minimumTimeline) => ({ minimumTimeline }), keeps, widest);
+  return stands(capped) ? capped : plain;
+}
+
 export function layoutGantt(data: GanttData, options: GanttOptions = {}): Geometry<GanttMarks, GanttDerived> {
+  return columnPlan(options) === undefined && resolveGanttColumns(options).layoutAuthored ? layoutAuthoredColumns(data, options) : layoutGanttLabelled(data, options);
+}
+
+/** Keep clear layouts unchanged; retry only rows whose final layout loses a milestone's identity. */
+function layoutGanttLabelled(data: GanttData, options: GanttOptions = {}): Geometry<GanttMarks, GanttDerived> {
   const first = layoutGanttPass(data, options);
   if (options.labels === false || options.labels?.item === false) return first;
   // This open-height probe reads only width acceptance, not the repaired labels or height.

@@ -365,7 +365,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   // The method line explains the headline and the span: it goes with the last of them.
   const hasMethod = showHeadline || showSpan;
   const readLogic = data.panels.some(p => p.readout === 'change') && data.windows
-    ? chartString(options, 'stackChangeMethod', { v1: metricStackGrain(data), v2: data.windows.base.label, v3: data.windows.compare.label })
+    ? chartString(options, showHeadline ? 'stackChangeMethod' : 'stackAverageMethod', { v1: metricStackGrain(data), v2: data.windows.base.label, v3: data.windows.compare.label })
     : chartString(options, `stack${narrow ? 'Above' : onRight ? 'Right' : 'Left'}${!showSpan ? 'Rates' : !showHeadline ? 'Remaining' : 'Method'}` as const);
   const readLogicBox = hasMethod ? textBox(readLogic, keyFont, frame.plot.w) : NO_BOX;
   const headerRoom = hasMethod ? readLogicBox.h + 12 + (compactReadout ? 4 : 30) : 0;
