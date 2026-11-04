@@ -338,6 +338,8 @@ describe('published option behaviour census', () => {
     expansion: { depth: 0 }, columnVisibility: { actual: false },
     totalPosition: 'bottom', figures: false, magnitude: 'million',
     driverTones: 'never', judgements: 'exceptions', show: 'withData',
+    columnOverrides: { label: { width: 150 } }, columnOrder: ['plot'], columnHeads: false,
+    rowVisibility: { census: false }, rowOrder: ['census'], rowOverrides: { census: { label: 'Census row' } },
   };
 
   /** Options | companion settings | reason. Applied to both renders. */

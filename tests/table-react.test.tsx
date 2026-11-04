@@ -1923,3 +1923,31 @@ it('keeps the label track of the default columns when every column group is swit
   expect(columnIds().length).toBeGreaterThan(21);
   expect(labelTrack()).toBe(initial);
 });
+
+describe('columnHeads: false', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel', label: 'Item' }, { id: 'value', kind: 'value', label: 'Value', headAlign: 'left' }],
+    columnGroups: [{ id: 'all', label: 'All', columns: ['value'] }],
+    rows: [{ id: 'a', label: 'A', cells: { value: 30 } }, { id: 'b', label: 'B', cells: { value: 5 } }],
+  };
+  // Assistive technology must still read the column names, and a hidden head must not take height, keep a focusable sort control or a sticky offset.
+  it('keeps a hidden head for assistive technology and warns on sortable', () => {
+    const onWarnings = vi.fn();
+    act(() => root.render(<TableChart data={data} columnHeads={false} sortable stickyLabels={{ sections: true }} onWarnings={onWarnings} />));
+    const grid = gridElement();
+    const head = grid.querySelector<HTMLElement>('[data-bp-rowgroup="head"]')!;
+    expect(head.style.position).toBe('absolute');
+    expect(Array.from(head.querySelectorAll('[role="columnheader"]')).map(cell => cell.textContent)).toContain('VALUE');
+    expect(grid.getAttribute('aria-rowcount')).toBe('4');
+    expect(head.querySelector('button')).toBeNull();
+    expect(grid.style.getPropertyValue('--bp-head-h')).toBe('0px');
+    expect(onWarnings.mock.lastCall?.[0].map((warning: { code: string }) => warning.code)).toContain('column-heads-sortable');
+  });
+  // The head and its cells take separate alignments, and the SVG draws the same.
+  it('aligns a head apart from its cells', () => {
+    act(() => root.render(<TableChart data={data} />));
+    const grid = gridElement();
+    expect(grid.querySelector('[role="columnheader"][data-col-id="value"]')?.className).not.toContain('bp-num');
+    expect(grid.querySelector('[role="gridcell"][data-bp-column="value"]')?.className).toContain('bp-num');
+  });
+});

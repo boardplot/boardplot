@@ -406,6 +406,15 @@ it('keeps a DimSwitch column left out in its exported document', async () => {
   expect(document?.charts[0]!.options.columnVisibility).toEqual({ range: false, pp: false });
 });
 
+// A document must reopen as the chart on screen, so a table with no head stays without one.
+it('keeps columnHeads in an exported DimSwitch document', async () => {
+  const fixture = getFixtures('dimswitch').find(item => item.id === 'by-measure')!;
+  const handle = await exporterOf(exporter => <DimSwitchChart {...fixture.options as object} columnHeads={false} data={fixture.data as never} size={{ width: 720 }} exporter={exporter} />);
+  const result = await handle.svg();
+  const document = result.ok ? result.document as { charts: { options: { columnHeads?: boolean } }[] } : undefined;
+  expect(document?.charts[0]!.options.columnHeads).toBe(false);
+});
+
 // A theme switch repaints the table but keeps its layout request: the export must take the theme on screen.
 it('exports a table in the theme it shows after a theme switch', async () => {
   stubDigest();

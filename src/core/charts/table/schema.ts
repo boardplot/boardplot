@@ -8,6 +8,7 @@ import * as z from 'zod';
 import { valueBandsSchema } from '../../bands';
 import { boundedNumber, formatExample, MAGNITUDE_WORDS_DOC } from '../../schema/shared';
 import { addDuplicateIdIssues, idRecord, refusedBaseOptions } from '../../schema/shared';
+import { columnHeadsOption, columnVisibilityOption } from '../../schema/generatedColumnOptions';
 import type { TableData, TableOptions } from '../../types/table';
 import { heatOptionsWithoutEffect } from './encodings/heatOptions';
 import { baseOptionsSchema } from '../../schema/shared';
@@ -84,6 +85,8 @@ const columnBase = {
     .describe("Width in px. React keeps it and scrolls. SVG narrows authored tracks only when the fixed frame needs it, with table-overflow and a wider-size fix. Value and computed tracks widen for figures, and a row-label track for its labels up to 180 px (table-column-widened). Other content may cut (table-column-clipped); remove width for automatic content sizing."),
   align: z.enum(['left', 'right', 'center']).optional()
     .describe('Cell alignment. Numeric left alignment is accepted but linted.'),
+  headAlign: z.enum(['left', 'right', 'center']).optional()
+    .describe('Head alignment; defaults to align.'),
   emphasis: z.enum(['strong', 'muted']).optional()
     .describe("Header and cell emphasis. 'strong' sets the header and its cells to the emphasis weight (700 by default), 'muted' paints them in the muted ink. A strong column is measured in the bold weight; muted is paint only."),
   band: z.boolean().optional()
@@ -264,7 +267,7 @@ const baseTableDataSchema = z
       )
       .optional()
       .describe('Column toggle groups. Every member must exist, belong to one toggle, and stay inside one columnGroup.'),
-    columns: z.array(columnSchema).min(1).describe('Display order; exactly one rowLabel column.'),
+    columns: z.array(columnSchema).min(1).describe('Display order; exactly one rowLabel column. Width, alignment, label and order of a column are authored here, so table takes no columnOverrides or columnOrder.'),
     rows: z.array(rowSchema).min(1).describe('Row hierarchy; totalPosition determines resolved display order. Rows: optional label,id; each value, text, status or date column reads the source field named like its id.'),
     levelNouns: z
       .array(
@@ -400,8 +403,8 @@ export const tableOptionsObject = baseOptionsSchema.safeExtend(refusedBaseOption
         .describe('Hide level-0 data rows and subtrees. The totals and the section headings stay: this is the totals-only step of a depth control, which collapsing a parent cannot reach, because a collapsed parent still draws its own row.'),
     })
     .optional().describe('Expansion order: depth, collapsed, expanded.'),
-  columnVisibility: idRecord(idSchema.describe('Column-toggle group id.'), z.boolean().describe('True shows the group; false hides it.')).optional()
-    .describe('Visibility by column-toggle id.'),
+  columnVisibility: columnVisibilityOption('table'),
+  columnHeads: columnHeadsOption(),
   inlineVisibility: idRecord(idSchema.describe('Inline-line group id.'), z.boolean().describe('True shows the lines of that group; false hides them.')).optional()
     .describe("Visibility by inlineGroup. An absent group is visible, so a Changes control hides every MoM line of a table with one entry."),
   magnitude: z.enum(['auto', 'thousand', 'million']).optional()

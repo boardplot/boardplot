@@ -732,8 +732,8 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   const strings={...localeStrings(options.locale?.language),...options.strings};
   // The Range is a period too: a partial Range carries the star and enters the note.
   const partial=[...(rangeDrawn ? [range] : []),...periods].filter(p=>p.partial);
-  // The star points at its note, so it prints only where the note does (notes.show lists 'disclosure').
-  const star=disclosuresShown(options) ? '*' : '';
+  // The star points at its note, so it prints only where the note does (notes.show lists 'disclosure'), and it needs a head to sit on.
+  const star=disclosuresShown(options) && options.columnHeads!==false ? '*' : '';
   // Where the star's note does not print, a partial head says "to date" itself, unless its words already do.
   const headSub=(p:DimSwitchPeriod)=>star || !p.partial || saysToDate(`${p.label} ${p.subLabel ?? ''}`, strings.toDate) ? p.subLabel : p.subLabel ? `${p.subLabel} ${strings.toDate}` : strings.toDate;
   const omitted=hidden.map(p=>p.label), fullPeriodNote=stringFields(strings.hiddenPeriods,{periods:omitted.join(', ')});

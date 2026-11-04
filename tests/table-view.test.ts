@@ -15,6 +15,7 @@ import { renderSvg } from '../src/core/svg/renderSvg';
 import { resolveTheme } from '../src/core/theme';
 import type { TableData, TableOptions } from '../src/core/types/table';
 import { withNumberMarks } from '../src/core/numberMarks';
+import { generatedIdWarnings } from '../src/core/schema/generatedColumns';
 
 function managementFixture(id = 'management-report') {
   return getFixtures('table').find((fixture) => fixture.id === id)!;
@@ -588,4 +589,31 @@ it('sorts text with the digits in it as numbers', () => {
   const order = (direction: 'asc' | 'desc') => sortRows(table, { column: 'version', direction }, 'en').map((row) => row.cells.version!.displayed);
   expect(order('asc')).toEqual(['0.9.1', '0.10.0', '0.20.3', '1.0.0']);
   expect(order('desc')).toEqual(['1.0.0', '0.20.3', '0.10.0', '0.9.1']);
+});
+
+describe('generated-column warnings', () => {
+  // A wrong id must say which ids exist, and hiding a name column must not silently remove the names the marks need.
+  it('warns with the id list on an unknown id and keeps a name column', () => {
+    const [unknown] = generatedIdWarnings('dimswitch', 'columnVisibility', { rnage: false }, ['label', 'range']);
+    expect(unknown).toMatchObject({ code: 'generated-id-unknown', severity: 'warn' });
+    expect(unknown!.message).toContain('label, range, pp, pl, each displayed period id');
+    expect(generatedIdWarnings('creative', 'columnVisibility', { label: false }, ['label'])[0]!.code).toBe('generated-name-column-kept');
+    expect(generatedIdWarnings('creative', 'columnVisibility', { label: true }, ['label'])).toEqual([]);
+    expect(generatedIdWarnings('bullet', 'columnOrder', ['plot', 'gap'], ['plot'])[0]!.message).toContain('actual, share, delta, target, gap, plot');
+  });
+});
+
+describe('columnHeads: false', () => {
+  const data: TableData = {
+    columns: [{ id: 'name', kind: 'rowLabel', label: 'Name' },
+      { id: 'a', kind: 'value', label: 'A very long head that would widen its column', format: '$1.2m' }, { id: 'b', kind: 'value', label: 'B', format: '1.2%' }],
+    rows: [{ id: 'r1', label: 'One', cells: { a: 1200000, b: 3 } }, { id: 'r2', label: 'Two', cells: { a: 2400000, b: 4 } }],
+  };
+  // A head that no longer draws must not keep a wide track, and the unit it alone printed must not vanish in silence.
+  it('sizes tracks from cells alone and warns when the head held the only unit', () => {
+    const track = (options: TableOptions) => layoutTable(data, { size: { width: 900 }, frameFill: 'none', ...options }).marks!.columns.find((column) => column.id === 'a')!.w;
+    expect(track({ columnHeads: false })).toBeLessThan(track({}));
+    expect(resolveTable(data, { columnHeads: false }).warnings.map((warning) => warning.code)).toContain('column-heads-unit-hidden');
+    expect(resolveTable(data, {}).warnings.map((warning) => warning.code)).not.toContain('column-heads-unit-hidden');
+  });
 });
