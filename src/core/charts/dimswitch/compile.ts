@@ -9,7 +9,7 @@ import { saysToDate } from '../../partialPeriod';
 import { closestKey } from '../../schema/unknownKeyWords';
 import { cappedItems } from '../../frame';
 import { localeStrings, stringFields } from '../../strings';
-import { AUTOMATIC_FORMAT, MAGNITUDE_FIGURES, MAGNITUDE_GROUP, parseFormatExample, specUnitKind, unitMagnitude, type MagnitudeGroupSource } from '../../formatSpec';
+import { AUTOMATIC_FORMAT, LABEL_ONLY_ROW, MAGNITUDE_FIGURES, MAGNITUDE_GROUP, parseFormatExample, specUnitKind, unitMagnitude, type MagnitudeGroupSource } from '../../formatSpec';
 import type { CellState, CellTone, ComputedCellRecord, TableCell, TableRow } from '../../types/table';
 import type { LintWarning } from '../../types/scene';
 import type { CompiledDimSwitch, DimSwitchData, DimSwitchExpression, DimSwitchMeasure, DimSwitchMember, DimSwitchOptions, DimSwitchPeriod, DimSwitchSums, DimSwitchComparisonKind, DimSwitchJudgeBase } from './types';
@@ -496,6 +496,8 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     return new Map(ids.map((id, i) => [id, shares[i]!]));
   };
   const rows:TableRow[]=[]; const levels: Record<string, number> = {};
+  // A row that prints only its label has no value to report: hover and the accessible table skip it.
+  const labelOnly=(row:TableRow):TableRow=>Object.assign(row,{[LABEL_ONLY_ROW]:true});
   // The rows a hidden Total still builds: their figures set the precision the members print.
   const totalRows=new Set<TableRow>();
   // Size bars compare members of one measure; collected while the rows are built.
@@ -584,7 +586,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     // Every member's row of a scaled measure reads in one magnitude down a column: 1.17M over 0.25M, not over 254k.
     if (m.scale === 'money' || m.scale === 'count') Object.assign(row, { [MAGNITUDE_GROUP]: m.id });
     // A member's bar compares it with the other members in that column (the Total would always win).
-    if (sized && member!==totalId && options.bars!==false) for (const col of [...(rangeDrawn ? ['range'] : []),...periods.map(p=>p.id)]) {const value=values.get(col)?.raw; if (typeof value==='number') bars.push({row,measure:m.id,col,value});}
+    if (sized && member!==totalId) for (const col of [...(rangeDrawn ? ['range'] : []),...periods.map(p=>p.id)]) {const value=values.get(col)?.raw; if (typeof value==='number') bars.push({row,measure:m.id,col,value});}
     if (m.divider && (kind==='measure' || kind==='split')) row.divider=true;
     rows.push(row);
     // No displayed period has a ref: the change line would be empty, so it is left out.
@@ -679,7 +681,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
           let groupRow=groups.get(m.group);
           if (groupRow===undefined) {
             groupRow=`${dimswitchRowId(variant,member)}:group:${m.group}`;
-            rows.push({id:groupRow,label:m.group,parentId:parentRow,rung:rung+1,kind:'detail',foldable:false,relation:'displayOnly',totalPolicy:'source',missing:'blank'});
+            rows.push(labelOnly({id:groupRow,label:m.group,parentId:parentRow,rung:rung+1,kind:'detail',foldable:false,relation:'displayOnly',totalPolicy:'source',missing:'blank'}));
             groups.set(m.group,groupRow);
           }
           parent=groupRow; at=rung+2;
@@ -705,7 +707,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     };
     const totalHead=options.expansion?.collapsed?.includes(totalRow) ? headline(totalId) : undefined;
     if (totalHead) headRow(totalHead,totalId,totalRow,undefined,0,data.dimension.total.label);
-    else rows.push({id:totalRow,label:data.dimension.total.label,kind:'member',rung:0,totalPolicy:'source',relation:'displayOnly'});
+    else rows.push(labelOnly({id:totalRow,label:data.dimension.total.label,kind:'member',rung:0,totalPolicy:'source',relation:'displayOnly'}));
     block(totalId,totalRow,0);
     totalBlockEnd=rows.length;
     // No section row here: the label column's head already names the dimension, and a heading prints only for an authored group.
@@ -713,7 +715,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
       for (const member of ordered(parentMember)) {
         const h=headline(member.id), id=dimswitchRowId(variant,member.id);
         if (h) headRow(h,member.id,id,parentRow,rung,member.label);
-        else rows.push({id,label:member.label,parentId:parentRow,rung,kind:'member',totalPolicy:'source',relation:'displayOnly'});
+        else rows.push(labelOnly({id,label:member.label,parentId:parentRow,rung,kind:'member',totalPolicy:'source',relation:'displayOnly'}));
         block(member.id,id,rung);
         levels[id]=rung+2;
         walk(member.id,id,rung+1);
@@ -726,6 +728,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   const measureOrder=new Map(data.measures.map((m,i)=>[m.id,i]));
   // Grouped once by column, in first-seen order: a filter per column grew with columns x cells.
   const byCol=<T extends {col:string}>(entries:T[]) => {const groups=new Map<string,T[]>();for (const entry of entries) {const group=groups.get(entry.col);if (group) group.push(entry); else groups.set(entry.col,[entry]);}return groups;};
+  let barDrawn=false;
   for (const [col,inCol] of byCol(bars)) {
     const counts=new Map<string,number>();
     for (const bar of inCol) counts.set(bar.measure,(counts.get(bar.measure) ?? 0)+1);
@@ -733,14 +736,19 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     for (const parent of new Set(inCol.map(bar=>bar.row.parentId))) {
       const siblings=inCol.filter(bar=>bar.measure===chosen && bar.row.parentId===parent), max=Math.max(0,maxOf(siblings.map(bar=>bar.value)));
       if (max<=0 || siblings.every(bar=>bar.value/max>=0.9)) continue;
-      for (const bar of siblings) bar.row.cells![col]=withBar(bar.row.cells![col]!,bar.value/max);
+      barDrawn=true;
+      if (options.bars!==false) for (const bar of siblings) bar.row.cells![col]=withBar(bar.row.cells![col]!,bar.value/max);
     }
   }
+  if (options.bars===false && !barDrawn) warnings.push({code:'option-ignored',severity:'warn',field:['options','bars'],
+    message:'options.bars does nothing here, because this table draws no size bars.',suggest:'Remove options.bars.'});
   // In by-member the block moves as a whole. Its rule and ground are positional, so they follow the rows.
   if (variant==='by-member' && options.totalPosition==='bottom' && !totalHidden) rows.push(...rows.splice(0,totalBlockEnd));
   warnings.push(...generatedIdWarnings('dimswitch','rowVisibility',options.rowVisibility,[totalId,...headIds]));
   if (variant==='by-measure' && options.totalPosition!==undefined) warnings.push({code:'option-ignored',severity:'warn',field:['options','totalPosition'],
     message:'options.totalPosition does not apply in by-measure, because each Total row owns its members.',suggest:'Remove options.totalPosition, or use variant by-member.'});
+  if (variant==='by-member' && totalHidden && options.totalPosition==='bottom') warnings.push({code:'option-ignored',severity:'warn',field:['options','totalPosition'],
+    message:'options.totalPosition has nothing to move, because rowVisibility hides the Total block.',suggest:'Remove options.totalPosition, or show the Total.'});
   const parents=new Set(rows.filter(r=>!r.inline && r.parentId).map(r=>r.parentId!));
   for (const id of Object.keys(levels)) if (!parents.has(id)) delete levels[id];
   const maxDepth=Math.max(1,maxOf(Object.values(levels)));
@@ -772,7 +780,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     const format=formatAutomaticPercent(1.2,(shown.length>0 ? shown : entries).some(entry=>entry.rounded>0 && entry.rounded<5) ? 1 : 0,true);
     for (const entry of entries) (entry.cell as {format?:string}).format=format;
   }
-  // ---------- a hidden Total: everything above still read its rows, so the members print as they do with it ----------
+  // ---------- a hidden Total: everything above still read its rows, so the members keep the magnitude and decimals they print with it ----------
   const computedCells=totalHidden ? hideTotal() : records;
   function hideTotal():ComputedCellRecord[] {
     const hiddenIds=new Set<string>(), dropped=new Set<TableRow>();
@@ -794,7 +802,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     const kept=rows.filter(row=>!dropped.has(row));
     rows.length=0; rows.push(...kept);
     // The line keeps its label and fold levels, and prints nothing: it carries the KPI name and owns its members.
-    for (const row of lines) if (!dropped.has(row)) {row.cells=emptyIdRecord(); row.missing='blank';}
+    for (const row of lines) if (!dropped.has(row)) {row.cells=emptyIdRecord(); row.missing='blank'; labelOnly(row);}
     for (const row of rows) {
       const group=(row as MagnitudeGroupSource)[MAGNITUDE_GROUP], list=group===undefined ? undefined : figures.get(group);
       if (list) {Object.assign(row,{[MAGNITUDE_FIGURES]:list}); figures.delete(group!);}

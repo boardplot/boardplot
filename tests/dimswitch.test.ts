@@ -19,6 +19,8 @@ import { claimsForChart } from '../src/core/claims/browser';
 import { tableCellNodeId } from '../src/core/charts/table/cellKey';
 import { DERIVATION_KINDS, recomputeClaim } from './helpers/recompute';
 import { getFixtures } from '../src/fixtures';
+import { interactionRecords } from '../src/core/a11y/records';
+import { accessibleDataTable } from '../src/core/a11y/accessibility';
 // Wraps the real compile to count calls; the output is unchanged.
 vi.mock('../src/core/charts/dimswitch/compile', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/core/charts/dimswitch/compile')>();
@@ -553,6 +555,17 @@ describe('dimswitch rowVisibility', () => {
     expect(totalRows.filter(record => record.kind === 'calc')).toEqual([]);
     expect(compiled.computedCells.some(record => record.rowId === 'total' && record.op === 'dimswitch:partition-sum')).toBe(true);
   });
+  // A hidden value is not a missing one: hover and screen readers must not say "missing" on a row that prints nothing by design.
+  it('keeps no record and no "missing" on the blank Total lines', () => {
+    const request = resolveChartRequest({ type: 'dimswitch', data: exampleData, options: { variant: 'by-measure', depth: 2, rowVisibility: { total: false } }, size: { width: 900 } });
+    const records = interactionRecords({ request, geometry: requireGeometry(layoutResolvedRequest(request)), scope: request.scope, claims: [] });
+    const lines = new Set(exampleData.measures.map(measure => dimswitchRowId('by-measure', 'total', measure.id)));
+    expect(records.length).toBeGreaterThan(0);
+    expect(records.filter(record => lines.has(record.target.owner.rowId ?? ''))).toEqual([]);
+    const table = accessibleDataTable(records);
+    expect(table.columns.filter(column => lines.has(column.key))).toEqual([]);
+    expect(table.columns.filter((column, index) => !column.key.endsWith(':change') && table.rows.some(row => row.cells[index]?.state === 'missing'))).toEqual([]);
+  });
   // A note about a change no reader can see would point at nothing.
   it('prints no near-zero note for a hidden Total', () => {
     const data: DimSwitchData = { ...exampleData, facts: exampleData.facts.map(f => f.memberId === 'total' && f.periodId === 'prior' ? { ...f, sums: { ...f.sums, orders: 0 } } : f) };
@@ -567,6 +580,16 @@ describe('dimswitch rowVisibility', () => {
     expect(codes({ rowVisibility: { total: false } })).toContain('dimswitch-labels-only');
     expect(codes({ depth: 2, rowVisibility: { total: false } })).not.toContain('dimswitch-labels-only');
     expect(codes({ rowVisibility: { total: true, nope: true } })).not.toContain('generated-id-unknown');
+  });
+  // A key that changes nothing must say so, or the author believes the chart obeyed it.
+  it('warns on a key with no part to act on, and stays quiet where it acts', () => {
+    const ignored = (data: DimSwitchData, options: object) => layout(data, options).warnings.filter(warning => warning.code === 'option-ignored').map(warning => warning.field);
+    const statement = getFixtures('dimswitch').find(entry => entry.id === 'statement')!;
+    expect(ignored(statement.data as DimSwitchData, { ...statement.options, bars: false })).toEqual([['options', 'bars']]);
+    expect(ignored(exampleData, { variant: 'by-member', depth: 2, totalPosition: 'bottom', rowVisibility: { total: false } })).toEqual([['options', 'totalPosition']]);
+    expect(ignored(money, { depth: 2, bars: false })).toEqual([]);
+    const bars = (options: object) => JSON.stringify(layout(money, { depth: 2, ...options }).scene);
+    expect(bars({ bars: false })).not.toBe(bars({}));
   });
   // A Total whose id looks like a group id has to stay addressable.
   it('reads a key equal to the Total id as the Total', () => {

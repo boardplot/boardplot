@@ -46,6 +46,9 @@ export const MAGNITUDE_GROUP = Symbol('magnitude-group');
 /** Figures of a group that print nowhere, by column: they still set the group's magnitude and precision. */
 export const MAGNITUDE_FIGURES = Symbol('magnitude-figures');
 export type MagnitudeGroupSource = { [MAGNITUDE_GROUP]?: string; [MAGNITUDE_FIGURES]?: readonly (readonly [string, number])[] };
+/** A composing chart's row that prints a label and no value by design: its blank cells are no gap in the data, so it has no record. */
+export const LABEL_ONLY_ROW = Symbol('label-only-row');
+export type LabelOnlyRowSource = { [LABEL_ONLY_ROW]?: true };
 
 export interface NumberFormatSpec {
   decimals: number;
