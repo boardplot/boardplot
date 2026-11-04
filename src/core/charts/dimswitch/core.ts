@@ -235,6 +235,9 @@ function foldToFit(data: DimSwitchData, options: DimSwitchOptions, formsOf: (fol
   return last;
 }
 
+/** The folds of a drawn table. A sizing probe has no drawn rows to count, and this list holds there too. */
+const foldedRows=(geometry: Form) => geometry.derived.compiled.options.expansion?.collapsed?.length ?? 0;
+
 /** The registered layout: the forms above, then the height floor at card widths (320 >= 400 >= 480). */
 function layoutDimSwitchCard(data: DimSwitchData, options: DimSwitchOptions = {}): Geometry<TableMarks, DimSwitchDerived> {
   return memoLayout(data, options, () => {
@@ -242,9 +245,13 @@ function layoutDimSwitchCard(data: DimSwitchData, options: DimSwitchOptions = {}
     const formsOf=(fold:string)=>{let forms=folded.get(fold); if (!forms) folded.set(fold,forms=new Map()); return forms;};
     const layout=(input:DimSwitchData,step:DimSwitchOptions)=>{
       const drawn=foldToFit(input,step,formsOf);
-      // With no head, a partial window's note may print in the frame, but it never costs the table its draw: first it leaves the frame and warns.
-      if (step.columnHeads!==false || !(drawn.refused || missesFixedHeight(step,drawn))) return drawn;
-      return foldToFit(input,{...step,[PARTIAL_NOTE_OFF]:true} as DimSwitchOptions,fold=>formsOf(`off:${fold}`));
+      if (step.columnHeads!==false) return drawn;
+      // With no head, a partial window's note may print in the frame, but it never costs the table its draw or a row: first it leaves the frame and warns.
+      const misses=drawn.refused || missesFixedHeight(step,drawn);
+      if (!misses && !drawn.warnings.some(warning=>warning.code==='dimswitch-depth-folded')) return drawn;
+      const noteOff=foldToFit(input,{...step,[PARTIAL_NOTE_OFF]:true} as DimSwitchOptions,fold=>formsOf(`off:${fold}`));
+      if (misses) return noteOff;
+      return !noteOff.refused && !missesFixedHeight(step,noteOff) && foldedRows(noteOff)<foldedRows(drawn) ? noteOff : drawn;
     };
     return cardHeightFloor(layoutDimSwitchCard,data,options,classFloor(layout,data,options,layout(data,options)));
   });

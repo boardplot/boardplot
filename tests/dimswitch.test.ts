@@ -473,6 +473,10 @@ describe('dimswitch generated columns', () => {
     const tight = request(280);
     expect(tight.geometry?.warnings.map(warning => warning.code)).toContain('dimswitch-partial-note-off-frame');
     expect(tight.geometry?.frame?.noteList?.find(note => note.text === 'Week 2 to date')?.inFrame).toBe(false);
+    // A fit that only folds would cost the 6 channel rows that the same table with no note draws.
+    const fold = request(530);
+    expect((fold.geometry?.scene as { t: string; id?: string }[]).filter(node => node.t === 'text' && /^cell:.*:label$/.test(node.id ?? '')).length).toBe(10);
+    expect(fold.geometry?.warnings.map(warning => warning.code)).toContain('dimswitch-partial-note-off-frame');
     const roomy = request(600);
     expect(roomy.geometry?.warnings.map(warning => warning.code)).not.toContain('dimswitch-partial-note-off-frame');
     expect(roomy.geometry?.frame?.noteList?.find(note => note.text === 'Week 2 to date')?.inFrame).toBe(true);
