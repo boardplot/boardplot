@@ -57,7 +57,7 @@ import { resolveTable, ZERO_LIFT, type ZeroLiftOptions } from './resolve';
 import { DEFAULT_EMPTY_MESSAGE } from '../../emptyData';
 import { cellDrawsTabular, cellHoldsNumber, emptyMessageRow, expansionRootsHidden, finalClosers, hasNoDataRows, groupSpans, heatColumn, printsFigures, rowGrounds, tableFootnotes, visibleColumns, visibleInlineRows, visibleRows } from './view';
 import { fixedHeightCanvas, rowDrivenHeight, spareShare } from '../../rowCanvas';
-import { CARD_CLASS_WIDTH, heightOmitted, rowSizing, VERIFY_ADVICE } from '../../sizing';
+import { CARD_CLASS_WIDTH, heightOmitted, rowSizing, VERIFY_ADVICE, WIDTH_PROBE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { textScaleOf } from '../../typeFloors';
 import { currentSmallValues } from '../../formatPrecision';
@@ -150,7 +150,7 @@ function cutCount(geometry: Geometry<TableMarks, TableDerived>): number {
  * gutter is a rung, taken where the table would otherwise refuse or cut a
  * text.
  */
-export function layoutTable(authoredData: TableData, options: TableOptions = {}, resolved = resolveTable(authoredData, options)): Geometry<TableMarks, TableDerived> {
+export function layoutTable(authoredData: TableData, options: TableOptions = {}, resolved = resolvedForSize(authoredData, options)): Geometry<TableMarks, TableDerived> {
   // A nonzero figure lifted off "0.0" ("0.0005") is wider than the plain rounded text. Where that costs a refusal,
   // a cut or a compact step the rounded text does not take, it prints its bound ("<0.1"), also where the bound costs
   // one too: the automatic number rule never prints a nonzero figure as a bare "0.0". Only where the bound would
@@ -158,9 +158,28 @@ export function layoutTable(authoredData: TableData, options: TableOptions = {},
   return liftOrFallback((mode) => {
     if (mode === 'full') return layoutTableLadder(authoredData, options, resolved);
     const step = { ...options, [ZERO_LIFT]: mode } as TableOptions & ZeroLiftOptions;
-    return layoutTableLadder(authoredData, step, resolveTable(authoredData, step));
+    return layoutTableLadder(authoredData, step, resolvedForSize(authoredData, step));
   }, (lifted, plain) => costsWidth(lifted, plain, options), resolved.lifted,
   (bound, plain) => missesFrame(bound, options) && !missesFrame(plain, options));
+}
+
+const resolvedTables = new WeakMap<object, Map<string, ReturnType<typeof resolveTable>>>();
+
+/**
+ * The resolved table of one spec, shared by every frame a request tries: nothing
+ * in it reads the frame, and a layout only reads it. The key holds the data, so
+ * data changed in place resolves again. A theme named by string always resolves,
+ * as `memoLayout` lays it out again. The key leaves out only the frame's own size.
+ */
+function resolvedForSize(data: TableData, options: TableOptions): ReturnType<typeof resolveTable> {
+  if (typeof options.theme === 'string') return resolveTable(data, options);
+  const { size: _size, [TARGET_SIZE]: _target, [WIDTH_PROBE]: _probe, ...rest } = options as TableOptions & TargetSizeOptions & { [WIDTH_PROBE]?: unknown };
+  const key = layoutKey(data, rest);
+  let byKey = resolvedTables.get(data);
+  if (!byKey || byKey.size >= 32) resolvedTables.set(data, byKey = new Map());
+  let resolved = byKey.get(key);
+  if (resolved === undefined) byKey.set(key, resolved = resolveTable(data, options));
+  return resolved;
 }
 
 /** Whether a table layout misses the size its frame fixes. */
