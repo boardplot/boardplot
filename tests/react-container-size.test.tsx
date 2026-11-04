@@ -409,6 +409,24 @@ it('keeps a DimSwitch column left out in its exported document', async () => {
   expect(document?.charts[0]!.options.columnVisibility).toEqual({ range: false, pp: false });
 });
 
+// A default must hide columns as the prop does, and the document must reopen as the table on screen; the prop wins over the default.
+it('resolves defaultColumnVisibility before the DimSwitch compile and keeps it in the document', async () => {
+  const fixture = getFixtures('dimswitch').find(item => item.id === 'by-measure')!;
+  const columnsOf = async (props: object) => {
+    const handle = await exporterOf(exporter => <DimSwitchChart {...fixture.options as object} {...props} data={fixture.data as never} size={{ width: 720 }} exporter={exporter} />);
+    const result = await handle.svg();
+    return result.ok ? (result.document as { charts: { options: { columnVisibility?: object } }[] }).charts[0]!.options.columnVisibility : undefined;
+  };
+  expect(await columnsOf({ defaultColumnVisibility: { w1: false } })).toEqual({ w1: false });
+  expect(await columnsOf({ defaultColumnVisibility: { w1: false }, columnVisibility: { w2: false } })).toEqual({ w2: false });
+  const host = document.createElement('div');
+  const root = createRoot(host);
+  act(() => root.render(<DimSwitchChart {...fixture.options as object} defaultColumnVisibility={{ w1: false, pp: false }} data={fixture.data as never} size={{ width: 720 }} />));
+  expect(host.textContent).not.toContain('WEEK 1');
+  expect(host.textContent).toContain('WEEK 2');
+  act(() => root.unmount());
+});
+
 // A document must reopen as the chart on screen, so a table with no head stays without one.
 it('keeps columnHeads in an exported DimSwitch document', async () => {
   const fixture = getFixtures('dimswitch').find(item => item.id === 'by-measure')!;

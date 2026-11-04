@@ -3,7 +3,8 @@ import { NormalizeError } from '../../normalize/shared';
 import { bandFor } from '../../bandSelect';
 import { formatAutomaticPercent, formatPercentagePoints } from '../../format';
 import { ENGINE_NOTES, LABEL_WRAP_FLOOR, SOFT_LABEL_CAP } from '../table/tracks';
-import { disclosureNote, disclosuresShown, engineNote } from '../../notes';
+import { defaultNotePlacement, disclosureNote, disclosuresShown, engineNote, shownNoteKinds } from '../../notes';
+import { generatedIdWarnings } from '../../schema/generatedColumns';
 import { saysToDate } from '../../partialPeriod';
 import { closestKey } from '../../schema/unknownKeyWords';
 import { cappedItems } from '../../frame';
@@ -22,16 +23,27 @@ const key = (...parts: string[]) => JSON.stringify(parts);
 export const FOLDED = Symbol('dimswitchFolded');
 
 /** The caller edits dimswitch widths, not the columns made by this compiler. */
-export function dimSwitchTableWarnings(warnings: readonly LintWarning[]): LintWarning[] {
+export function dimSwitchTableWarnings(warnings: readonly LintWarning[], overrides?: DimSwitchOptions['columnOverrides']): LintWarning[] {
   return warnings.map(warning => {
     if ((warning.code !== 'table-column-clipped' && warning.code !== 'table-column-widened') || warning.owner?.colId === undefined) return warning;
     const id = warning.owner.colId;
     const width = id === 'label' || id === 'range' ? id : id === 'pp' || id === 'pl' ? 'change' : 'period';
     const need = warning.detail?.natural ?? warning.detail?.widened;
+    if (overrides?.[id]?.width !== undefined) return { ...warning, field: ['options', 'columnOverrides', id, 'width'],
+      suggest: `Set options.columnOverrides.${id}.width to ${need} px or more so this column fits.` };
     return { ...warning, field: ['options', 'widths', width],
       suggest: `Set options.widths.${width} to ${need} px or more so this column fits.` };
   });
 }
+/** The displayed periods the host keeps: the one filter of `columnVisibility`, for the compile and the card search. */
+export const hostPeriods = (data: DimSwitchData, options: DimSwitchOptions): DimSwitchPeriod[] => data.periods.filter(p => !p.kind && options.columnVisibility?.[p.id] !== false);
+/** Set where a fixed height has no room for the note of a partial window with no head: the note leaves the frame, so it never raises the floor. */
+export const PARTIAL_NOTE_OFF = Symbol('dimswitchPartialNoteOff');
+/** A partial window with no head to say so, where the frame cannot print the note. */
+export const PARTIAL_NOTE_OFF_FRAME = 'dimswitch-partial-note-off-frame';
+export const partialNoteWarning = (note: string): LintWarning => ({ code: PARTIAL_NOTE_OFF_FRAME, severity: 'warn', field: ['options', 'columnHeads'],
+  message: `columnHeads: false removes the head that says "${note}", and the frame has no place for that note.`,
+  suggest: 'Make room in options.footnotes, list note in options.notes.show, or keep the head.' });
 export const dimswitchRowId = (variant: string, member: string, measure?: string): string => key(variant, member, ...(measure ? [measure] : []));
 /** Fields of a resolved expression (measure references are inlined before this runs). */
 const fields = (expr: DimSwitchExpression): string[] => typeof expr === 'number' || 'measure' in expr ? [] : 'field' in expr ? [expr.field] : 'total' in expr ? [] : [...fields(expr.a), ...fields(expr.b)];
@@ -169,7 +181,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   if (!data.periods.length || !data.facts.length) throw new NormalizeError(EMPTY_DATA, !data.periods.length ? 'periods' : 'facts', `dimswitch requires at least one ${!data.periods.length ? 'period' : 'fact'}`);
   const range = data.periods.find(p=>p.kind === 'range')!, prior = data.periods.find(p=>p.kind === 'prior')!;
   if (!range || !prior) throw new NormalizeError('invalid-data', 'periods', 'dimswitch requires one range and one prior period', 'give periods exactly one period of kind range and one of kind prior');
-  const authoredPeriods = data.periods.filter(p=>!p.kind), plan = data.periods.find(p=>p.kind==='plan');
+  const authoredPeriods = hostPeriods(data, options), plan = data.periods.find(p=>p.kind==='plan');
   const hidden = authoredPeriods.slice(0, form.hide ?? 0), periods = authoredPeriods.slice(hidden.length);
   // options.columnVisibility takes a block column out. Range still orders and shows members, but nothing of the column prints.
   const blockColumns = ['range', 'pp', ...(plan ? ['pl'] : [])].filter(id => options.columnVisibility?.[id] !== false);
@@ -200,6 +212,15 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     return m;
   };
   const warnings: CompiledDimSwitch['warnings'] = [];
+  const hostHidEveryPeriod = !authoredPeriods.length && data.periods.some(p => !p.kind);
+  const generatedIds = ['label', 'range', 'pp', ...(plan ? ['pl'] : [])];
+  const allPeriodIds = data.periods.filter(p => !p.kind).map(p => p.id);
+  // A hidden column is known to columnVisibility, and no longer drawn for columnOverrides.
+  warnings.push(...generatedIdWarnings('dimswitch', 'columnVisibility', options.columnVisibility, [...generatedIds, ...allPeriodIds]),
+    ...generatedIdWarnings('dimswitch', 'columnOverrides', options.columnOverrides, ['label', ...blockColumns, ...authoredPeriods.map(p => p.id)]),
+    ...generatedIdWarnings('dimswitch', 'columnOrder', options.columnOrder, ['block', 'periods']));
+  if (!blockColumns.length && !authoredPeriods.length) warnings.push({ code: 'dimswitch-labels-only', severity: 'warn', field: ['options', 'columnVisibility'],
+    message: 'columnVisibility leaves out every value column, so the table draws its labels only.', suggest: 'Keep range or one period in the table.' });
   // The table resolver ignores an encodings key that names no column; here the columns are the drawn range, pp, pl (with a plan) and the displayed period ids.
   const columnIds = [...blockColumns, ...authoredPeriods.map(p => p.id)];
   for (const id of Object.keys(options.encodings ?? {})) if (!columnIds.includes(id)) {
@@ -476,7 +497,8 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   }
   // A displayed period whose facts carry no ref has no change to print: its change cell stays blank, never n/a.
   const withRef = new Set(data.facts.filter(f => f.ref).map(f => f.periodId));
-  const noChangeLine = periods.length > 0 && periods.every(p => !withRef.has(p.id));
+  // A card that left out every period keeps its lines. A host that hid every period has none to print.
+  const noChangeLine = hostHidEveryPeriod || (periods.length > 0 && periods.every(p => !withRef.has(p.id)));
   const addMeasure = (m:DimSwitchMeasure,member:string,parentId:string|undefined,rung:number,label=m.label,kind:TableRow['kind']='measure') => {
     const id=dimswitchRowId(variant,member,m.id);
     // Keyed by period id too: a period named __proto__ keeps its cell.
@@ -719,15 +741,24 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     const format=formatAutomaticPercent(1.2,(shown.length>0 ? shown : entries).some(entry=>entry.rounded>0 && entry.rounded<5) ? 1 : 0,true);
     for (const entry of entries) (entry.cell as {format?:string}).format=format;
   }
-  const {variant:_v,depth:_d,splits:_sp,order:_o,show:_sh,thresholds:_t,minimumSample:_m,expansion:_e,widths,...tableOptions}=options;
-  // The block columns left the table above. Any other key stays, and the table reports it as unknown.
-  if (tableOptions.columnVisibility) { const {range:_r,pp:_p,pl:_l,...rest}=tableOptions.columnVisibility; tableOptions.columnVisibility=rest; }
+  const {variant:_v,depth:_d,splits:_sp,order:_o,show:_sh,thresholds:_t,minimumSample:_m,expansion:_e,widths,columnOverrides:overrides,columnOrder:_co,...tableOptions}=options;
+  // The columns left the table above, and generatedIdWarnings reported any other id. An empty record also covers the raw options a layout spreads first.
+  if (tableOptions.columnVisibility) tableOptions.columnVisibility={};
   // A cohort density is a fixed one-line row and a dimswitch cell holds two lines: it is retired here and ignored (retired.ts).
   if ((tableOptions.density as string | undefined)?.startsWith('cohort')) delete tableOptions.density;
   const width={label:widths?.label ?? 320,range:widths?.range ?? 110,change:widths?.change ?? 92,period:widths?.period ?? 94};
   // The card form: value tracks as wide as their content, the label track at most 140 px (its labels wrap).
   const fixed=(w:number)=>form.card ? {} : {width:w};
-  const labelCap=form.card ? Math.min(widths?.label ?? CARD_LABEL_WIDTH, CARD_LABEL_WIDTH) : width.label;
+  const labelWidth=overrides?.label?.width ?? widths?.label;
+  const labelCap=form.card ? Math.min(labelWidth ?? CARD_LABEL_WIDTH, CARD_LABEL_WIDTH) : labelWidth ?? width.label;
+  const headOf=(id:string,fallback:string)=>overrides?.[id]?.label ?? fallback;
+  const aligned=(id:string)=>{const o=overrides?.[id];return {...(o?.align===undefined ? {} : {align:o.align}),...(o?.headAlign===undefined ? {} : {headAlign:o.headAlign})};};
+  const track=(id:string,fallback:number)=>({...fixed(overrides?.[id]?.width ?? fallback),...aligned(id)});
+  // An empty head still leaves the note naming its column.
+  const nameOf=(p:DimSwitchPeriod)=>headOf(p.kind ? 'range' : p.id,p.label);
+  const noteName=(p:DimSwitchPeriod)=>nameOf(p).trim() || p.label;
+  if (form.card) for (const [id,override] of Object.entries(overrides ?? {})) if (override.width!==undefined && (id==='label' ? override.width>CARD_LABEL_WIDTH : columnIds.includes(id))) warnings.push({code:'option-ignored',severity:'warn',field:['options','columnOverrides',id,'width'],
+    message:`The table does not fit at its authored widths, so the automatic card form sizes this track by content and ignores options.columnOverrides.${id}.width.`,suggest:`Give the table more width, or remove options.columnOverrides.${id}.width.`});
   // Engine notes (disclosures): a partial period's star, a near-zero change, the periods the card leaves out.
   const strings={...localeStrings(options.locale?.language),...options.strings};
   // The Range is a period too: a partial Range carries the star and enters the note.
@@ -735,34 +766,49 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   // The star points at its note, so it prints only where the note does (notes.show lists 'disclosure'), and it needs a head to sit on.
   const star=disclosuresShown(options) && options.columnHeads!==false ? '*' : '';
   // Where the star's note does not print, a partial head says "to date" itself, unless its words already do.
-  const headSub=(p:DimSwitchPeriod)=>star || !p.partial || saysToDate(`${p.label} ${p.subLabel ?? ''}`, strings.toDate) ? p.subLabel : p.subLabel ? `${p.subLabel} ${strings.toDate}` : strings.toDate;
+  const headSub=(p:DimSwitchPeriod)=>star || !p.partial || saysToDate(`${noteName(p)} ${p.subLabel ?? ''}`, strings.toDate) ? p.subLabel : p.subLabel ? `${p.subLabel} ${strings.toDate}` : strings.toDate;
   const omitted=hidden.map(p=>p.label), fullPeriodNote=stringFields(strings.hiddenPeriods,{periods:omitted.join(', ')});
   const listed=cappedItems(omitted,{notes:options.notes,strings});
   const shortPeriodNote=stringFields(strings.hiddenPeriods,{periods:listed.join(', ')});
+  const partialText=`${partial.map(noteName).join(', ')} ${strings.toDate}`;
+  // With no head, nothing in the drawing says a window is partial, so the note prints as a note where the author does not print disclosures.
+  const partialNote=partial.length && options.columnHeads===false && !disclosuresShown(options) ? partialText : undefined;
+  const shownKinds=shownNoteKinds(options);
+  const noteFits=partialNote!==undefined && !(options as {[PARTIAL_NOTE_OFF]?:boolean})[PARTIAL_NOTE_OFF] && options.footnotes!==false && (shownKinds===undefined || shownKinds.includes('note')) && (options.notes?.placement ?? defaultNotePlacement(options.target))!=='list';
+  if (partialNote!==undefined && !noteFits) warnings.push(partialNoteWarning(partialNote));
+  if (noteFits) tableOptions.footnotes=[...(tableOptions.footnotes || []),partialNote];
   const notes=[
-    ...(partial.length ? [disclosureNote(`${star ? `${star} ` : ''}${partial.map(p=>p.label).join(', ')} ${strings.toDate}`)] : []),
+    ...(partial.length && !noteFits ? [disclosureNote(`${star ? `${star} ` : ''}${partialText}`)] : []),
     ...(nearZeroSeen ? [disclosureNote(strings.nearZeroChange)] : []),
     ...(hidden.length ? [engineNote(fullPeriodNote,'disclosure',shortPeriodNote===fullPeriodNote?undefined:shortPeriodNote)] : []),
   ];
+  // The table seats a unit affix beside left-aligned text. Under another alignment the unit stays with its label as plain text.
+  if ((overrides?.label?.align ?? 'left')!=='left') for (const row of rows) if (row.unitAffix!==undefined) { row.label=`${row.label} ${row.unitAffix}`; delete row.unitAffix; }
+  const blockTracks=[
+    ...(rangeDrawn ? [{id:'range',kind:'value' as const,label:range.partial ? `${nameOf(range)}${star}` : nameOf(range),subLabel:headSub(range),...track('range',width.range),aggregate:'source' as const,emphasis:'strong' as const}] : []),
+    ...(drawnBlock.has('pp') ? [{id:'pp',kind:'value' as const,label:headOf('pp',prior.label),subLabel:prior.subLabel,format:'+1.2%',percentScale:'points' as const,...track('pp',width.change),aggregate:'none' as const,emphasis:'strong' as const}] : []),
+    ...(plan && drawnBlock.has('pl') ? [{id:'pl',kind:'value' as const,label:headOf('pl',plan.label),subLabel:plan.subLabel,format:'+1.2%',percentScale:'points' as const,...track('pl',width.change),aggregate:'none' as const,emphasis:'strong' as const}] : []),
+  ];
+  // A partial period carries a star in its head; the note says what it means.
+  const periodTracks=periods.map(p=>({id:p.id,kind:'value' as const,label:p.partial ? `${nameOf(p)}${star}` : nameOf(p),subLabel:headSub(p),...track(p.id,width.period),aggregate:'source' as const,...(p.partial ? {emphasis:'muted' as const} : {})}));
+  // Whole blocks move, so the block group stays contiguous. Only leading block columns pin.
+  const periodsFirst=options.columnOrder?.find(id=>id==='block' || id==='periods')==='periods';
+  const pinned=1+(periodsFirst ? 0 : blockColumns.length);
   return {
     data:{columns:[
-      {id:'label',kind:'rowLabel',label:variant==='by-measure'?'KPI':data.dimension.label,...(widths?.label===undefined && !form.card ? {maxTextWidth:labelCap} : {maxWidth:labelCap})},
-      ...(rangeDrawn ? [{id:'range',kind:'value' as const,label:range.partial ? `${range.label}${star}` : range.label,subLabel:headSub(range),...fixed(width.range),aggregate:'source' as const,emphasis:'strong' as const}] : []),
-      ...(drawnBlock.has('pp') ? [{id:'pp',kind:'value' as const,label:prior.label,subLabel:prior.subLabel,format:'+1.2%',percentScale:'points' as const,...fixed(width.change),aggregate:'none' as const,emphasis:'strong' as const}] : []),
-      ...(plan && drawnBlock.has('pl') ? [{id:'pl',kind:'value' as const,label:plan.label,subLabel:plan.subLabel,format:'+1.2%',percentScale:'points' as const,...fixed(width.change),aggregate:'none' as const,emphasis:'strong' as const}] : []),
-      // A partial period carries a star in its head; the note says what it means.
-      ...periods.map(p=>({id:p.id,kind:'value' as const,label:p.partial ? `${p.label}${star}` : p.label,subLabel:headSub(p),...fixed(width.period),aggregate:'source' as const,...(p.partial ? {emphasis:'muted' as const} : {})})),
+      {id:'label',kind:'rowLabel',label:headOf('label',variant==='by-measure'?'KPI':data.dimension.label),...aligned('label'),...(labelWidth===undefined && !form.card ? {maxTextWidth:labelCap} : {maxWidth:labelCap})},
+      ...(periodsFirst ? [...periodTracks,...blockTracks] : [...blockTracks,...periodTracks]),
     // Range and its comparisons form one block between labels and periods.
     ],columnGroups:[{id:'labels',label:'Labels',heading:false,columns:['label']},...(blockColumns.length ? [{id:'block',label:'Range',heading:false,columns:blockColumns}] : [])],rows},
     // No rowExtent: under the default the rules end at the last track.
-    options:{variant:'steering',stickyLabels:1+blockColumns.length,mountCollapsed:false,fitFormats:true,labelIndent:form.card ? {base:12,step:12} : {base:25,step:17},...(form.card ? {cellPadX:3} : {}),...tableOptions,
+    options:{variant:'steering',stickyLabels:pinned,mountCollapsed:false,fitFormats:true,labelIndent:form.card ? {base:12,step:12} : {base:25,step:17},...(form.card ? {cellPadX:3} : {}),...tableOptions,
       ...(notes.length ? {[ENGINE_NOTES]:notes} : {}),
-      ...(widths?.label!==undefined && !form.card ? {[SOFT_LABEL_CAP]:true} : {}),
+      ...(labelWidth!==undefined && !form.card ? {[SOFT_LABEL_CAP]:true} : {}),
       ...{[LABEL_WRAP_FLOOR]:true},
       // The object form of stickyLabels without `columns` keeps the compiled default: label, Range, vs prior (and vs plan).
-      ...(typeof tableOptions.stickyLabels==='object' && tableOptions.stickyLabels.columns===undefined ? {stickyLabels:{...tableOptions.stickyLabels,columns:1+blockColumns.length}} : {}),
+      ...(typeof tableOptions.stickyLabels==='object' && tableOptions.stickyLabels.columns===undefined ? {stickyLabels:{...tableOptions.stickyLabels,columns:pinned}} : {}),
       ...(data.effectLabel ? {inlineVisibility:{effect:false,...tableOptions.inlineVisibility}} : {}),
-      expansion:{collapsed:[...collapsed]}},computedCells:records,depthCollapsed:defaults,levels,maxDepth,warnings,omissions,
+      expansion:{collapsed:[...collapsed]}},computedCells:records,depthCollapsed:defaults,levels,maxDepth,warnings,omissions,...(partialNote===undefined ? {} : {partialNote}),
   };
 }
 
