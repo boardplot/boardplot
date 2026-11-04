@@ -409,6 +409,8 @@ export function layoutBullet(
   // small non-integers keep one, so a 0.4 sliver never prints as "0".
   const highlights = new Set(resolveHighlight(options.highlight));
   const labelOn = (kind: LabelKind): boolean => !compact && chartLabelOn(options, kind);
+  // The note lines stay until the author names them, so a labels preset such as 'none' keeps them as it always did.
+  const lineOn = (kind: 'position' | 'direction'): boolean => !(typeof options.labels === 'object' && options.labels[kind] === false);
 
   // ---- normalize ----
   if (!data || !Array.isArray(data.rows) || data.rows.length === 0) {
@@ -841,13 +843,13 @@ export function layoutBullet(
     const colTargets = rows.map((row) => (row.target === null || !shown('target') ? null : rowFmt(row)(row.target)));
     const colGaps = rows.map((row) => (deltaVsTarget[row.id] === undefined || !shown('gap') ? null : deltaBody(row, deltaVsTarget[row.id]!)));
     const colPositions = rows.map((row) => {
-      if (!labelOn('position') || !shown('gap')) return null;
+      if (!lineOn('position') || !shown('gap')) return null;
       const raw = deltaVsTarget[row.id];
       const d = raw === undefined ? undefined : shownDelta(row, raw);
       return d === undefined ? null : chartString(options, d < 0 ? 'gapBelow' : d > 0 ? 'gapAbove' : 'gapOn', { v1: targetWord(options) });
     });
     // Toned bands judge a row by its band, not its direction, so such a row names no direction.
-    const colDirections = rows.map((row) => (!labelOn('category') || !labelOn('direction') || row.direction === 'neutral' || row.bands.some((band) => band.tone) ? null
+    const colDirections = rows.map((row) => (!labelOn('category') || !lineOn('direction') || row.direction === 'neutral' || row.bands.some((band) => band.tone) ? null
       : chartString(options, row.direction === 'lowerIsBetter' ? 'lowerBetter' : 'higherBetter')));
     const widest = (texts: readonly (string | null)[], font: FontSpec) => Math.max(0, maxOf(texts.map((text) => (text ? measure(text, font).width : 0))));
     const headEnv = { target, textScale: textScaleOf(options) };
@@ -1828,7 +1830,7 @@ function layoutBulletOnTargetScale(
   // The note breaks after the target, before its hint (' · lower is better').
   const targetParts = (row: TargetScaleRow): string[] => [
     row.target === null ? `no ${targetWord(options)}` : `${targetWord(options)} ${rowFmt(row as NormRow)(row.target)}`,
-    ...(row.direction === 'lowerIsBetter' && ctx.labelOn('direction') && options.strings?.lowerBetter !== '' ? [chartString(options, 'lowerBetterHint')] : []),
+    ...(row.direction === 'lowerIsBetter' && !(typeof options.labels === 'object' && options.labels.direction === false) && options.strings?.lowerBetter !== '' ? [chartString(options, 'lowerBetterHint')] : []),
   ];
   pushAll(warnings, generatedIdWarnings('bullet', 'columnVisibility', options.columnVisibility, [...(ctx.labelOn('category') ? ['label'] : []), ...(ctx.labelOn('point') ? ['actual', 'share'] : []), ...(ctx.labelOn('annotation') ? ['delta'] : [])]));
   if (typeof options.labels === 'object' && options.labels.position === false) {
