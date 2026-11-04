@@ -100,7 +100,7 @@ One form; its chart ID is `choropleth`.
 | valueTable | string \| false | `'auto'`, `'side'`, `'below'`, `false` |  | The table of every region with its class swatch, code and value; the top values print bold and the map then prints codes only. 'auto' (default): beside the map when the map keeps most of the row, else under it; off above 20 regions, without numeric values, or when a pinned canvas is too short for it. 'side' or 'below' forces the place; false leaves it off. |
 | valueTableEmphasis | string \| false | `'top'`, `false` |  | 'top' (default) sets the top values bold in the value table and on the map, with a rule under them. The top group is ranked on all regions. false sets no row and no map label bold. |
 | columnVisibility | object |  |  | True shows a column and false leaves it out: the ids are data.columnToggles ids on table and column ids elsewhere. Ids: swatch, code, value. |
-| columnOverrides | object |  |  | Settings per generated column. Ids: swatch, code, value. |
+| columnOverrides | object |  |  | Settings per generated column. Ids: swatch, code, value. Only value prints a head, so label and headAlign are refused on swatch and code. |
 | columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
 | columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Cell alignment. |
 | columnOverrides.*.headAlign | string | `'left'`, `'right'`, `'center'` |  | Head alignment; defaults to align. |

@@ -4,6 +4,7 @@ import '../src/core/geo/packs';
 import { getFixtures } from '../src/fixtures';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { requireGeometry } from '../src/core/sizing';
+import { choroplethOptionsSchema } from '../src/core/charts/choropleth/schema';
 
 // On a wide slot a map or tile grid bound by the canvas height must not spend a key row of that
 // height: an unnamed key stands beside it, and legend 'top' brings the row back.
@@ -55,6 +56,18 @@ describe('choropleth lookup keys', () => {
     expect(rows(hidden)).toEqual(rows(all).slice(1));
     expect((hidden.marks as { regions: { id: string; value: number | null }[] }).regions.find((region) => region.id === 'DE-BY')?.value).toBe(80);
     expect(hidden.warnings.filter((warning) => warning.code === 'choropleth-lookup-partial')).toHaveLength(1);
+  });
+  // A warning must say what happened: an unknown id hides nothing, and a rename reaches the map with no table.
+  it('tells an unknown hidden id and a rename without a table the truth', () => {
+    expect(draw({ rowVisibility: { nope: false } }).warnings.map((warning) => warning.code)).not.toContain('choropleth-lookup-partial');
+    const renamed = draw({ valueTable: false, rowOverrides: { 'DE-BE': { label: 'Capital' } } });
+    expect(renamed.warnings.map((warning) => warning.code)).not.toContain('generated-id-unknown');
+    expect((renamed.marks as { regions: { id: string; name: string }[] }).regions.find((region) => region.id === 'DE-BE')?.name).toBe('Capital');
+  });
+  // Swatch and code print no head, so these fields would be accepted and do nothing.
+  it.each([['code', 'label'], ['code', 'headAlign'], ['swatch', 'label'], ['swatch', 'headAlign']])('refuses %s.%s', (id, field) => {
+    const parsed = choroplethOptionsSchema.safeParse({ columnOverrides: { [id]: { [field]: field === 'label' ? 'Name' : 'left' } } });
+    expect(parsed.success).toBe(false);
   });
   // The lookup and the map must print one name for a renamed region.
   it('renames a region in the lookup and on the map', () => {

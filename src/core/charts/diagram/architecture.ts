@@ -204,8 +204,10 @@ function insetPanel(inset: NonNullable<NormalizedDiagram['inset']>, box: { x: nu
     });
     y += tallest + 2 * u;
   }
+  // An aligned value column is as wide as its widest value, so the alignment shows without a width.
+  const widestValue = tracks?.value?.align === undefined ? 0 : Math.max(0, ...(inset.rows ?? []).map((row) => Math.ceil(measure(row.value, fonts.name).width) + 1));
   (inset.rows ?? []).forEach((row, index) => {
-    const value = Math.min(Math.max(Math.ceil(measure(row.value, fonts.name).width) + 1, tracks?.value?.width ?? 0), Math.floor(box.w / 2));
+    const value = Math.min(Math.max(Math.ceil(measure(row.value, fonts.name).width) + 1, tracks?.value?.width ?? 0, widestValue), Math.floor(box.w / 2));
     const room = box.w - value - 2 * u;
     const wordFloor = Math.max(0, ...row.label.split(/\s+/).map((word) => Math.ceil(measure(word, fonts.text).width) + 1));
     const nameW = tracks?.label?.width === undefined ? room : Math.min(room, Math.max(wordFloor, tracks.label.width));

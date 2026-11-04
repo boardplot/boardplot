@@ -1,8 +1,8 @@
 import { chartString } from '../strings/a11y-creativeRecords';
 import { chartString as creativeString } from '../strings/creative';
-import { creativeMetrics } from '../charts/creative/layout';
+import { tablePlan } from '../charts/creative/layout';
 import type { CreativeDerived, CreativeMarks } from '../charts/creative/layout';
-import type { CreativeData } from '../charts/creative/types';
+import type { CreativeData, CreativeOptions } from '../charts/creative/types';
 import { derivedPercent, makeRecord, numericValue, textValue, type RecordContext } from './recordsShared';
 import type { InteractionRecord } from './types';
 
@@ -11,19 +11,33 @@ export function creativeRecords(ctx: RecordContext): InteractionRecord[] | undef
   const data = ctx.request.data as CreativeData;
   const marks = ctx.geometry.marks as unknown as CreativeMarks;
   const fatigue = (ctx.geometry.derived as unknown as CreativeDerived).fatigue;
-  // A column or row the author left out has no node, and its record stays: hidden is display only.
+  const options = ctx.request.options as CreativeOptions;
+  const plan = tablePlan(options);
+  const overrides = options.columnOverrides;
+  const drawn = { value: plan.columns.includes('value'), median: plan.columns.includes('median'), delta: plan.columns.includes('delta') };
+  const medianLabel = overrides?.median?.label ?? chartString(ctx.request.options, 'accountMedian');
+  const deltas = (ctx.geometry.derived as unknown as CreativeDerived).deltas ?? [];
   const drawnIds = new Set(ctx.geometry.scene.map(node => node.id));
-  const records = creativeMetrics.map(([key, label, suffix]) => {
+  // A hidden row or column pushes no record and no hover field, as on a dimswitch. Medians and fatigue still read all six metrics.
+  const records = plan.columns.length === 0 ? [] : plan.rows.map(([key, label, suffix]) => {
     const unit = suffix === 'currency' ? data.facts.currency : suffix;
     const owner = { seriesId: key, categoryId: data.id };
-    return makeRecord(ctx, owner, numericValue(data.metrics[key].value, unit), {
+    const name = options.rowOverrides?.[key]?.label || label;
+    const metric = data.metrics[key];
+    // The record leads with the first number the row prints.
+    const primary = drawn.value ? { value: numericValue(metric.value, unit), valueLabel: overrides?.value?.label ?? creativeString(ctx.request.options, 'creativeColumn') }
+      : drawn.median ? { value: numericValue(metric.accountMedian, unit), valueLabel: medianLabel }
+        : { value: derivedPercent(deltas.find(delta => delta.key === key)?.pct), valueLabel: overrides?.delta?.label ?? creativeString(ctx.request.options, 'vsMedianColumn') };
+    return makeRecord(ctx, owner, primary.value, {
       // The value is the creative's own, beside the account median: it carries the column's name.
-      label, seriesLabel: label, categoryLabel: data.facts.name, valueLabel: creativeString(ctx.request.options, 'creativeColumn'), anchor: marks.metrics[key],
+      label: name, seriesLabel: name, categoryLabel: data.facts.name, valueLabel: primary.valueLabel, anchor: marks.metrics[key],
       nodeIds: [`creative:row:${key}`, `label:creative:metric:${key}`, `label:creative:value:${key}`, `label:creative:median:${key}`].filter(id => drawnIds.has(id)),
       fields: [
-        { key: 'accountMedian', label: chartString(ctx.request.options, 'accountMedian'), value: numericValue(data.metrics[key].accountMedian, unit) },
-        { key: 'population', label: chartString(ctx.request.options, 'medianPopulation'), value: textValue(data.comparison.population) },
-        { key: 'window', label: chartString(ctx.request.options, 'medianWindow'), value: textValue(`${data.comparison.startDate} to ${data.comparison.endDate}`) },
+        ...(drawn.median && drawn.value ? [{ key: 'accountMedian', label: medianLabel, value: numericValue(metric.accountMedian, unit) }] : []),
+        ...(drawn.median || drawn.delta ? [
+          { key: 'population', label: chartString(ctx.request.options, 'medianPopulation'), value: textValue(data.comparison.population) },
+          { key: 'window', label: chartString(ctx.request.options, 'medianWindow'), value: textValue(`${data.comparison.startDate} to ${data.comparison.endDate}`) },
+        ] : []),
       ],
     });
   });

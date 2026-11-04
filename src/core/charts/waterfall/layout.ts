@@ -72,6 +72,7 @@ import { cellMeta, cellValue, isPctCell, type Direction, type Id } from '../../t
 import type { WaterfallData, WaterfallItem } from '../../types/data';
 import type { WaterfallOptions } from '../../types/options';
 import { HEIGHT_STRUCTURE } from '../../types/sizing';
+import { widthsThatFit } from '../../generatedWidths';
 import type { Theme } from '../../types/theme';
 import type {
   Geometry,
@@ -256,12 +257,13 @@ export function layoutWaterfall(
   data: WaterfallData,
   options: WaterfallOptions = {},
 ): Geometry<WaterfallMarks, WaterfallDerived> {
-  if (options.variant === 'horizontal') return layoutHorizontalWaterfall(data, options);
+  const withBands = () => widthsThatFit(options, (next) => layoutHorizontalWaterfall(data, next), (options.size as { height?: number } | undefined)?.height !== undefined)!;
+  if (options.variant === 'horizontal') return options.columnOverrides === undefined ? layoutHorizontalWaterfall(data, options) : withBands();
   if (options.columnOverrides === undefined) return automaticWaterfall(data, options).geometry;
   // The bands never choose the variant: the choice runs without them, and only a horizontal result reads them.
   const { columnOverrides: _bands, ...plain } = options;
   const chosen = automaticWaterfall(data, plain);
-  if (chosen.horizontal) return layoutHorizontalWaterfall(data, options);
+  if (chosen.horizontal) return withBands();
   return { ...chosen.geometry, warnings: [...chosen.geometry.warnings, {
     code: 'option-ignored', severity: 'warn', field: ['options', 'columnOverrides'],
     message: 'columnOverrides sets the bands of a horizontal bridge, and this one draws vertical, so it changed nothing',
@@ -406,7 +408,21 @@ function layoutHorizontalWaterfall(
   const wantedValue = bands?.value?.width;
   // The longest word of a name is the name band's floor, so an authored width never cuts one.
   const wordFloor = wantedName === undefined ? 0 : Math.max(48, 20 + Math.ceil(Math.max(0, ...data.items.flatMap((item) => (item.label ?? item.id).split(/\s+/).map((word) => measure(word, nameFont).width)))));
-  const nameBand = wantedName === undefined ? undefined : Math.max(wordFloor, wantedName);
+  const valueLabelWidth = Math.max(
+    0,
+    maxOf(source.labels
+      .filter(
+        (label) =>
+          (label.kind === 'segment' || label.kind === 'total') &&
+          !label.hidden,
+      )
+      .map((label) => label.rect.w)),
+  );
+  const valuesOff = pointValuesOff(options);
+  const automaticRight = valuesOff ? 8 : Math.min(plot.w * 0.18, Math.max(32, valueLabelWidth + 20));
+  const valueFloor = valuesOff ? 8 : 32;
+  const barRoom = plot.w - HORIZONTAL_BAR_FLOOR;
+  const nameBand = wantedName === undefined ? undefined : Math.max(wordFloor, Math.min(wantedName, barRoom - automaticRight));
   const nameBudget = nameBand === undefined ? plot.w * 0.4 - 20 : nameBand - 20;
   const categoryLabels = source.labels.filter((label) => label.kind === 'category');
   // under a render target a name wraps only where its row has the
@@ -433,25 +449,10 @@ function layoutHorizontalWaterfall(
       .filter((label) => label.kind === 'category')
       .map((label) => names.get(label.id)!.w)),
   );
-  const valueLabelWidth = Math.max(
-    0,
-    maxOf(source.labels
-      .filter(
-        (label) =>
-          (label.kind === 'segment' || label.kind === 'total') &&
-          !label.hidden,
-      )
-      .map((label) => label.rect.w)),
-  );
-  const valuesOff = pointValuesOff(options);
-  const automaticRight = valuesOff ? 8 : Math.min(plot.w * 0.18, Math.max(32, valueLabelWidth + 20));
-  const valueFloor = valuesOff ? 8 : 32;
-  // An authored band beats the content, and the bars keep their floor: the value band gives way first.
-  const leftWanted = nameBand ?? Math.min(plot.w * GUTTER_MAX_SHARE, Math.max(48, categoryLabelWidth + 20));
-  const rightWanted = wantedValue === undefined ? automaticRight : Math.max(valueFloor, wantedValue);
-  const barRoom = plot.w - HORIZONTAL_BAR_FLOOR;
-  const rightReserve = Math.max(valueFloor, Math.min(rightWanted, barRoom - (wordFloor || Math.min(leftWanted, barRoom - valueFloor))));
-  const leftReserve = wantedName === undefined && wantedValue === undefined ? leftWanted : Math.max(wordFloor, Math.min(leftWanted, barRoom - rightReserve));
+  const automaticLeft = Math.min(plot.w * GUTTER_MAX_SHARE, Math.max(48, categoryLabelWidth + 20));
+  // The value band's unset width is its floor while a name band grows, and an authored value band takes only what the names leave.
+  const leftReserve = nameBand ?? automaticLeft;
+  const rightReserve = wantedValue === undefined ? automaticRight : Math.max(valueFloor, Math.min(wantedValue, Math.max(automaticRight, barRoom - leftReserve)));
   const bandsCapped = (wantedName !== undefined && leftReserve < wantedName && wantedName > wordFloor) || (wantedValue !== undefined && rightReserve < wantedValue && wantedValue > valueFloor);
   const horizontalPlot: Rect = {
     x: plot.x + leftReserve,

@@ -15,6 +15,7 @@ import { accessibleTitle, NormalizeError, resolveSize, resolveSubtitle } from '.
 import { rowDrivenHeight } from '../../rowCanvas';
 import { heightOmitted, resolveSizing, SIZE_TOLERANCE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
+import { widthsThatFit, withoutWidths } from '../../generatedWidths';
 import { defaultMeasurer, wrapText, type FontSpec, type TextMeasurer } from '../../text';
 import {
   strokeToken,
@@ -201,7 +202,7 @@ interface TablePlan {
   authored: boolean;
 }
 
-function tablePlan(options: CreativeOptions): TablePlan {
+export function tablePlan(options: CreativeOptions): TablePlan {
   const listed = (options.columnOrder ?? []).filter((id): id is NumberColumn => (NUMBER_COLUMNS as readonly string[]).includes(id));
   const columns = [...new Set([...listed, ...NUMBER_COLUMNS])].filter((id) => options.columnVisibility?.[id] !== false);
   const named = (options.rowOrder ?? []).flatMap((id) => creativeMetrics.filter(([key]) => key === id));
@@ -533,6 +534,19 @@ const THREE_COLUMNS_FROM = 900;
  * (as `footnotes: false`), and a table 2 px tighter per row. When none fits, the form with the lowest floor reports it.
  */
 export function layoutCreative(data: CreativeData, options: CreativeOptions & Pick<BaseOptions, 'measure'> = {}): Geometry<CreativeMarks, CreativeDerived> {
+  if (options.columnOverrides === undefined) return layoutFirstFit(data, options);
+  const pinned = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height ?? !heightOmitted(options.size);
+  const attempt = (next: typeof options) => {
+    try { return layoutFirstFit(data, next); } catch (error) {
+      if (error instanceof NormalizeError && error.code === 'creative-text-overflow') return undefined;
+      throw error;
+    }
+  };
+  // With no room even at the unset widths, that spec's own overflow reports.
+  return widthsThatFit(options, attempt, pinned) ?? layoutFirstFit(data, withoutWidths(options));
+}
+
+function layoutFirstFit(data: CreativeData, options: CreativeOptions & Pick<BaseOptions, 'measure'>): Geometry<CreativeMarks, CreativeDerived> {
   const first = layoutForm(data, options, {});
   const fits = (g: typeof first) => (g.sizing?.minHeight ?? 0) <= g.size.height + SIZE_TOLERANCE;
   // An unpinned card keeps its first form and takes the height it needs.

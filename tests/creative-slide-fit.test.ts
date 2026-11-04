@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import '../src/core/charts';
 import { render } from '../src/cli/render';
 import { getFixtures } from '../src/fixtures';
+import { interactionRecords } from '../src/core/a11y/records';
+import { claimsForChart } from '../src/core/claims';
+import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 
 // A creative card was refused with "size-below-floor" at a full and a half slide canvas (888 × 396 pt and
 // 432 × 396 pt), although its content fits once it takes three columns or moves its method lines to frame.notes.
@@ -37,6 +40,32 @@ describe('creative card on a short slide canvas', () => {
 });
 
 describe('creative columns and rows', () => {
+  const records = (extra: object) => {
+    const request = resolveChartRequest({ type: 'creative', data, options: { ...options, ...extra } } as never);
+    const geometry = layoutResolvedRequest(request);
+    const claims = claimsForChart('creative', geometry as never);
+    return interactionRecords({ request, geometry, claims } as never);
+  };
+  const metric = (list: ReturnType<typeof records>, id: string) => list.find((record) => record.id.includes(`\\"${id}\\"`));
+  // A hidden row must leave the records, because hover, keyboard order and the data table all read them.
+  it('pushes no record for a hidden row and keeps the fatigue record', () => {
+    const list = records({ rowVisibility: { ctr: false } });
+    expect(metric(list, 'ctr')).toBeUndefined();
+    expect(metric(list, 'fatigue')).toBeDefined();
+  });
+  // A hidden column must not come back in the hover card.
+  it('drops the hidden median from the hover fields, and leads with the median when the value is hidden', () => {
+    expect(metric(records({ columnVisibility: { median: false } }), 'cpa')!.fields.map((field) => field.key)).not.toContain('accountMedian');
+    const shown = metric(records({ columnVisibility: { value: false } }), 'cpa')!;
+    expect(shown.value.raw).toBe(data.metrics.cpa.accountMedian);
+    expect(shown.fields.map((field) => field.key)).not.toContain('accountMedian');
+  });
+  // A rename must read the same in the card and in the hover and data table.
+  it('carries renames into the record', () => {
+    const shown = metric(records({ rowOverrides: { cpa: { label: 'Cost' } }, columnOverrides: { value: { label: 'This ad' } } }), 'cpa')!;
+    expect(shown.label).toBe('Cost');
+    expect(shown.valueLabel).toBe('This ad');
+  });
   const layout = (extra: object) => {
     const body = render({ spec: { type: 'creative', data, options: { ...options, ...extra } }, format: 'svg' } as never).body as any;
     return { body, codes: body.warnings.map((warning: any) => warning.code) as string[] };

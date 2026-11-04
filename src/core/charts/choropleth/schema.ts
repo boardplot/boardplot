@@ -9,7 +9,7 @@ import {
   refusedBaseOptions,
 } from '../../schema/shared';
 import { isIconName, listIcons } from '../../icons';
-import { highlightRefused, LEGEND_NONE_REFUSED, regionValuesWithoutLabelsRefused } from './geoRefusals';
+import { headlessColumnFields, highlightRefused, LEGEND_NONE_REFUSED, regionValuesWithoutLabelsRefused } from './geoRefusals';
 import type { ChoroplethData, ChoroplethOptions } from './types';
 import type { GeoOverlay } from './overlayTypes';
 import { columnOverridesOption, columnVisibilityOption, rowOrderOption, rowOverridesOption, rowVisibilityOption } from '../../schema/generatedColumnOptions';
@@ -171,7 +171,9 @@ export const choroplethOptionsSchema = z
     valueTable: z.union([z.enum(['auto', 'side', 'below']), z.literal(false)]).optional().describe("The table of every region with its class swatch, code and value; the top values print bold and the map then prints codes only. 'auto' (default): beside the map when the map keeps most of the row, else under it; off above 20 regions, without numeric values, or when a pinned canvas is too short for it. 'side' or 'below' forces the place; false leaves it off."),
     valueTableEmphasis: z.union([z.literal('top'), z.literal(false)]).optional().describe("'top' (default) sets the top values bold in the value table and on the map, with a rule under them. The top group is ranked on all regions. false sets no row and no map label bold."),
     columnVisibility: columnVisibilityOption('choropleth'),
-    columnOverrides: columnOverridesOption('choropleth', ['width', 'align', 'headAlign', 'label']),
+    columnOverrides: columnOverridesOption('choropleth', ['width', 'align', 'headAlign', 'label']).superRefine((overrides, ctx) => {
+      for (const { path, message } of headlessColumnFields(overrides)) ctx.addIssue({ code: 'custom', path, message });
+    }).describe('Settings per generated column. Ids: swatch, code, value. Only value prints a head, so label and headAlign are refused on swatch and code.'),
     rowVisibility: rowVisibilityOption('choropleth'),
     rowOrder: rowOrderOption('choropleth'),
     rowOverrides: rowOverridesOption('choropleth'),
