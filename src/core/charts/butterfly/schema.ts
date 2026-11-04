@@ -1,6 +1,7 @@
 /** Butterfly data and options schemas, without the chart engine. */
 
 import * as z from 'zod';
+import { columnOverridesOption } from '../../schema/generatedColumnOptions';
 import {
   colorRoleField,
   addCategorySeriesIdIssues,
@@ -47,6 +48,7 @@ export const butterflyDataSchema = z
 
 export const butterflyOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions('butterfly')).safeExtend({
   sort: baseOptionsSchema.shape.sort.describe("Category ranking value: the sortBy measure (a, b, sum or diff), default sum. categories sets sheet, reverse, asc or desc with stable ties and missing values last. A rest row stays last. Dated rows keep authored order when a growth or difference annotation spans periods. sort.segments is ignored with an info warning unless sheet."),
+  columnOverrides: columnOverridesOption('butterfly', ['width', 'align', 'headAlign', 'label']),
   a: idSchema.describe("Series id displayed in the left pane."),
   b: idSchema.describe("Series id displayed in the right pane."),
   centerColumnWidth: z.number().positive().optional().describe("Width in pixels reserved between the panes for category labels; omission uses their measured width."),

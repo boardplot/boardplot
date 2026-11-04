@@ -89,6 +89,8 @@ import { chartSizing, heightOmitted, rowSizing } from '../../sizing';
 import { DEFAULT_TARGET, TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { compactBulletRefusals } from './refusals';
 import { asColumnHeads, columnHeadFont, fitHead, headRequest } from './columnHead';
+import { generatedIdWarnings } from '../../schema/generatedColumns';
+import { alignedLeft, alignedRight, authoredTrackWidth, columnOverrideWarnings, orderedBlocks } from '../columnOverrides';
 import { layoutTargetScale, targetBandLegendItems, targetWord, type TargetScaleRow } from './targetScale';
 import type { OccupiedIndex } from '../../label/occupied';
 import type { Margin } from '../../geometry';
@@ -379,6 +381,8 @@ const REGULAR_NAMES = Symbol('regularNames');
 const ROW_KEY_OFF = Symbol('rowKeyOff');
 /** Internal: the column heads take a line of their own, because the Actual head would meet the key. */
 const HEADS_OFF_KEY = Symbol('headsOffKey');
+/** The width the columns leave an authored name column, set by the pass that found the columns short of plot. */
+const NAME_ROOM = Symbol('nameRoom');
 
 export function layoutBullet(
   data: BulletData,
@@ -611,7 +615,7 @@ export function layoutBullet(
   // Set once the target and gap columns fit: the target then prints in its column, not by its tick.
   let cols = false;
   const targetPrints = (row: NormRow): boolean =>
-    !cols && labelOn('annotation') && row.target !== null && (!(sharedScale && targetValues.size === 1) || row.id === firstTargetRow);
+    !cols && labelOn('annotation') && options.columnVisibility?.target !== false && row.target !== null && (!(sharedScale && targetValues.size === 1) || row.id === firstTargetRow);
   let targetAir = rows.some((row, ri) => ri > 0 && targetPrints(row)) ? measure('0', targetFont).height + 2 : 0;
   // A full band (bandFraction 1) leaves no gap to size from; the target air
   // then takes up to half the pitch, as the row gap below allows.
@@ -747,10 +751,18 @@ export function layoutBullet(
   // Keep the bounded side-column fit if the stacked rows do not fit the height.
   const card = size.width < 480;
   const catMaxLines = card || stepEst >= 2 * lineH + 4 ? 2 : 1;
-  const capW = card ? Math.min(80, Math.max(24, plot0.w * 0.3)) : Math.max(24, plot0.w * 0.26);
+  // An authored name column keeps its width: the plot gives way first, down to the width these rows need.
+  const overrides = options.columnOverrides;
+  const shown = (id: string): boolean => options.columnVisibility?.[id] !== false;
+  const pointOn = labelOn('point') && shown('actual');
+  const plotKeeps = Math.max(80, 0.45 * size.width);
+  const nameRoom = (options as { [NAME_ROOM]?: number })[NAME_ROOM];
+  const nameTrack = compact || overrides?.label?.width === undefined || !labelOn('category') ? undefined
+    : authoredTrackWidth('label', overrides.label.width, 24, nameRoom ?? plot0.w - CAT_BAND_GAP - plotKeeps, warnings);
+  const capW = nameTrack ?? (card ? Math.min(80, Math.max(24, plot0.w * 0.3)) : Math.max(24, plot0.w * 0.26));
   const fitNames = (maxLines: number, font = catFont) => rowLabelBand(
     labelOn('category') ? rows : [], font, capW, maxLines, lineH, measure,
-    { wider: card ? capW : gutterBudget(24, plot0.w), shrink: stepDownFont(theme, font, 'axis', target, textScaleOf(options)), target, textScale: textScaleOf(options), typeRole: 'axis', footnoteRefs: { count: authoredFootnoteCount(options), warnings } },
+    { wider: nameTrack ?? (card ? capW : gutterBudget(24, plot0.w)), shrink: stepDownFont(theme, font, 'axis', target, textScaleOf(options)), target, textScale: textScaleOf(options), typeRole: 'axis', footnoteRefs: { count: authoredFootnoteCount(options), warnings } },
   );
   const sideNames = (font = catFont) => {
     const band = fitNames(catMaxLines, font);
@@ -760,7 +772,7 @@ export function layoutBullet(
   let { labels: catLines, width: catBandW } = fitted.labels.some((label) => label.title !== undefined) ? fitNames(2) : fitted;
 
   // ---- right delta-capsule column (reserved so capsules never collide) ----
-  const capsulesOn = labelOn('annotation');
+  const capsulesOn = labelOn('annotation') && shown('gap');
   const capsuleTexts = new Map<Id, string>();
   let capsuleColW = 0;
   if (capsulesOn) {
@@ -776,14 +788,15 @@ export function layoutBullet(
   const annotations = bulletAnnotations(options, sharedScale, warnings);
   const cagrColW = annotations.some(ann => ann.kind === 'cagr')
     ? measure('−100.0% p.a.', { ...labelFont, weight: emphasisWeight(theme) }).width + 48 : 0;
-  const valueW = labelOn('point') ? Math.max(0, maxOf(rows.map(row => {
+  const valueW = pointOn ? Math.max(0, maxOf(rows.map(row => {
     const text = valueTextOf(row);
     return text ? measure(text, valueBaseFont).width : 0;
   }))) : 0;
   const maxLines = Math.max(catMaxLines, ...rows.map(row => row.label.split(/\s+/).length));
   const cardBand = (font: FontSpec) => rowLabelBand(labelOn('category') ? rows : [], font, plot0.w - valueW - CAT_BAND_GAP, maxLines, lineH, measure,
     { target, textScale: textScaleOf(options), typeRole: 'axis', footnoteRefs: { count: authoredFootnoteCount(options), warnings } });
-  const cardNames = !compact && annotations.length === 0
+  // A card keeps its stacked rows under an authored name width that leaves no room, so the width never refuses.
+  const cardNames = !compact && annotations.length === 0 && (nameTrack === undefined || card)
     && (catLines.some(label => label.title !== undefined)
       || plot0.w - catBandW - CAT_BAND_GAP - capsuleColW - CAPSULE_GAP < size.width * 0.55)
     ? cardBand(catFont)
@@ -809,6 +822,7 @@ export function layoutBullet(
     || tallest(catLines) > 1 && tallest(catLines) > tallest((stacked ? cardBand : sideNames)({ ...catFont, weight: tickFont.weight }).labels))) {
     return layoutBullet(data, { ...options, [REGULAR_NAMES]: true } as BulletOptions);
   }
+  if (nameTrack !== undefined) catBandW = nameTrack;
   // Today's side-by-side plot: the minimum width and the fallback read it.
   const sidePlotW = Math.max(10, plot0.w - (catBandW ? catBandW + CAT_BAND_GAP : 0) - (capsuleColW ? capsuleColW + CAPSULE_GAP : 0) - cagrColW);
 
@@ -824,29 +838,60 @@ export function layoutBullet(
     && catLines.every((label) => label.title === undefined);
   const planColumns = () => {
     const headerFont = columnHeadFont(theme, target, textScaleOf(options));
-    const colTargets = rows.map((row) => (row.target === null ? null : rowFmt(row)(row.target)));
-    const colGaps = rows.map((row) => (deltaVsTarget[row.id] === undefined ? null : deltaBody(row, deltaVsTarget[row.id]!)));
+    const colTargets = rows.map((row) => (row.target === null || !shown('target') ? null : rowFmt(row)(row.target)));
+    const colGaps = rows.map((row) => (deltaVsTarget[row.id] === undefined || !shown('gap') ? null : deltaBody(row, deltaVsTarget[row.id]!)));
     const colPositions = rows.map((row) => {
+      if (!labelOn('position') || !shown('gap')) return null;
       const raw = deltaVsTarget[row.id];
       const d = raw === undefined ? undefined : shownDelta(row, raw);
       return d === undefined ? null : chartString(options, d < 0 ? 'gapBelow' : d > 0 ? 'gapAbove' : 'gapOn', { v1: targetWord(options) });
     });
     // Toned bands judge a row by its band, not its direction, so such a row names no direction.
-    const colDirections = rows.map((row) => (!labelOn('category') || row.direction === 'neutral' || row.bands.some((band) => band.tone) ? null
+    const colDirections = rows.map((row) => (!labelOn('category') || !labelOn('direction') || row.direction === 'neutral' || row.bands.some((band) => band.tone) ? null
       : chartString(options, row.direction === 'lowerIsBetter' ? 'lowerBetter' : 'higherBetter')));
     const widest = (texts: readonly (string | null)[], font: FontSpec) => Math.max(0, maxOf(texts.map((text) => (text ? measure(text, font).width : 0))));
     const headEnv = { target, textScale: textScaleOf(options) };
     const targetBodyW = widest(colTargets, labelFont);
     const gapBodyW = Math.max(widest(colGaps, valueBaseFont), widest(colPositions, noteFont));
     const colHeads = [
-      fitHead(targetHead, headerFont, targetBodyW, measure, headEnv),
-      fitHead(chartString(options, 'gapColumn', { v1: targetWord(options) }), headerFont, gapBodyW, measure, headEnv),
+      fitHead(overrides?.target?.label ?? targetHead, headerFont, targetBodyW, measure, headEnv),
+      fitHead(overrides?.gap?.label ?? chartString(options, 'gapColumn', { v1: targetWord(options) }), headerFont, gapBodyW, measure, headEnv),
     ] as const;
-    const targetColW = Math.max(colHeads[0].w, targetBodyW);
-    const gapColW = Math.max(colHeads[1].w, gapBodyW);
-    const colsW = targetColW + COLUMN_GAP + gapColW;
     const colLeftW = catBandW ? Math.max(catBandW, widest(colDirections, noteFont)) : 0;
-    const colPlotW = plot0.w - (colLeftW ? colLeftW + CAT_BAND_GAP : 0) - COLUMNS_GAP - colsW;
+    // The blocks in drawn order. Actual stands in the plot's end room while it follows the plot; anywhere else it takes a track of its own.
+    const hasTarget = shown('target');
+    const hasGap = shown('gap');
+    const actualFit = valueW > 0 ? fitHead(overrides?.actual?.label ?? chartString(options, 'actualColumn'), headerFont, valueW, measure, headEnv) : undefined;
+    const blocks = orderedBlocks<'plot' | 'actual' | 'target' | 'gap'>(['plot', ...(actualFit ? ['actual' as const] : []), ...(hasTarget ? ['target' as const] : []), ...(hasGap ? ['gap' as const] : [])], options.columnOrder);
+    const actualOwnTrack = actualFit !== undefined && blocks.indexOf('actual') !== blocks.indexOf('plot') + 1;
+    const naturalW = { target: Math.max(colHeads[0].w, targetBodyW), gap: Math.max(colHeads[1].w, gapBodyW), actual: actualFit ? Math.max(actualFit.w, valueW) : 0 };
+    const trackIds = blocks.filter((id): id is 'actual' | 'target' | 'gap' => id !== 'plot' && (id !== 'actual' || actualOwnTrack));
+    const sumOf = (ids: readonly ('actual' | 'target' | 'gap')[], widths: Record<'actual' | 'target' | 'gap', number>) => ids.reduce((sum, id) => sum + widths[id], 0) + COLUMN_GAP * Math.max(0, ids.length - 1);
+    const plotAt = blocks.indexOf('plot');
+    const before = trackIds.filter((id) => blocks.indexOf(id) < plotAt);
+    const after = trackIds.filter((id) => blocks.indexOf(id) > plotAt);
+    const edges = (widths: Record<'actual' | 'target' | 'gap', number>) => (before.length ? sumOf(before, widths) + COLUMNS_GAP : 0) + (after.length ? sumOf(after, widths) + COLUMNS_GAP : 0);
+    // Authored widths take what the plot can give, in drawn order.
+    const planWarnings: LintWarning[] = [];
+    const widths = { ...naturalW };
+    let room = plot0.w - (colLeftW ? colLeftW + CAT_BAND_GAP : 0) - edges(naturalW) - plotKeeps;
+    for (const id of trackIds) {
+      const authored = overrides?.[id]?.width;
+      if (authored === undefined) continue;
+      widths[id] = authoredTrackWidth(id, authored, naturalW[id], naturalW[id] + Math.max(0, room), planWarnings);
+      room -= widths[id] - naturalW[id];
+    }
+    const targetColW = widths.target;
+    const gapColW = widths.gap;
+    const colsW = after.length ? sumOf(after, widths) : 0;
+    const beforeW = before.length ? sumOf(before, widths) + COLUMNS_GAP : 0;
+    const colPlotW = plot0.w - (colLeftW ? colLeftW + CAT_BAND_GAP : 0) - edges(widths);
+    /** Each track's right edge. */
+    const rights: Partial<Record<'actual' | 'target' | 'gap', number>> = {};
+    let beforeAt = plot0.x + (colLeftW ? colLeftW + CAT_BAND_GAP : 0);
+    for (const id of before) { rights[id] = beforeAt + widths[id]; beforeAt += widths[id] + COLUMN_GAP; }
+    let afterAt = plot0.x + plot0.w;
+    for (const id of [...after].reverse()) { rights[id] = afterAt; afterAt -= widths[id] + COLUMN_GAP; }
     const headerH = measure('0', headerFont).height;
     const noteH = measure('0', noteFont).height;
     const colNameH = (ri: number) => (labelOn('category') ? catLines[ri]!.h : 0) + (colDirections[ri] ? LINE_GAP + noteH : 0);
@@ -858,21 +903,28 @@ export function layoutBullet(
     const legendLast = legendLabels.at(-1);
     const legendRight = Math.max(-Infinity, maxOf(legendLabels.map((node) => node.t === 'text' ? node.x + Math.max(...node.lines.map((line) => measure(line, node.font).width)) : -Infinity)));
     // Only a key above the rows can carry the heads.
-    const headsOnKey = (options as { [HEADS_OFF_KEY]?: true })[HEADS_OFF_KEY] !== true
+    const headsOnKey = (options as { [HEADS_OFF_KEY]?: true })[HEADS_OFF_KEY] !== true && before.length === 0
       && legendLast?.t === 'text' && legendLast.y < plot0.y && legendRight + 2 * COLUMN_GAP <= plot0.x + plot0.w - colsW;
-    const colTopAir = headsOnKey ? 0 : headerH + 4;
+    // No column left means no head and no line for one.
+    const colTopAir = headsOnKey || (trackIds.length === 0 && actualFit === undefined) ? 0 : headerH + 4;
     const colAvailH = plotHeightAfter(frameResult, size.height, plot0.h - axisH - 2 * inset - colTopAir);
     const colPitch = Math.max(44, minimumRowH, Math.ceil(maxOf(rows.map((_, ri) => colBlockH(ri))) + 12));
-    return { headerFont, noteFont, colTargets, colGaps, colPositions, colDirections, colHeads, targetColW, gapColW, colsW, colLeftW, colPlotW, headerH, noteH, colBlockH, legendLast, legendRight, headsOnKey, colTopAir, colAvailH, colPitch };
+    return { planWarnings, hasTarget, hasGap, actualOwnTrack, actualW: widths.actual, rights, beforeW, headerFont, noteFont, colTargets, colGaps, colPositions, colDirections, colHeads, targetColW, gapColW, colsW, colLeftW, colPlotW, headerH, noteH, colBlockH, legendLast, legendRight, headsOnKey, colTopAir, colAvailH, colPitch };
   };
   const colPlan = colsEligible ? planColumns() : undefined;
   const colBlockMax = colPlan ? maxOf(rows.map((_, ri) => colPlan.colBlockH(ri))) : 0;
+  // A wide name column gives way to the columns before the rows lose them.
+  if (colPlan && nameTrack !== undefined && colPlan.colPlotW < plotKeeps) {
+    const less = nameTrack - (plotKeeps - colPlan.colPlotW);
+    if (less >= Math.max(24, widestWord(rows, catFont, measure))) return layoutBullet(data, { ...options, [NAME_ROOM]: less } as BulletOptions);
+  }
   if (colPlan && colPlan.colPlotW >= Math.max(80, 0.45 * size.width) && (!fixedHeight || colPlan.colAvailH / rows.length >= colBlockMax + 4)) {
     cols = true;
     targetAir = 0;
     topAir = colPlan.colTopAir;
     availH = colPlan.colAvailH;
     naturalRowH = colPlan.colPitch;
+    pushAll(warnings, colPlan.planWarnings);
   }
   // Read only where the columns show.
   const cp = colPlan as NonNullable<typeof colPlan>;
@@ -908,7 +960,7 @@ export function layoutBullet(
   const rawBandPad = (options as { [BAND_PAD]?: number })[BAND_PAD] ?? 0;
   const bandPad = rawBandPad > 0 ? Math.max(0, Math.min(rawBandPad, Math.floor(availH - 10))) : 0;
   const plot: Rect = {
-    x: stacked ? plot0.x : plot0.x + (cols ? (cp.colLeftW ? cp.colLeftW + CAT_BAND_GAP : 0) : catBandW ? catBandW + CAT_BAND_GAP : 0),
+    x: stacked ? plot0.x : plot0.x + (cols ? (cp.colLeftW ? cp.colLeftW + CAT_BAND_GAP : 0) + cp.beforeW : catBandW ? catBandW + CAT_BAND_GAP : 0),
     y: plot0.y + inset + topAir + bandPad,
     w: stacked ? plot0.w : cols ? cp.colPlotW : sidePlotW,
     h: Math.min(availH - bandPad, rows.length * naturalRowH),
@@ -945,7 +997,7 @@ export function layoutBullet(
   // ---- value texts (measured BEFORE the scale for outside-end headroom) ----
   let maxPosW = 0;
   let maxNegW = 0;
-  if (labelOn('point')) {
+  if (pointOn) {
     for (const row of rows) {
       const text = valueTextOf(row);
       if (!text || row.value === null) continue;
@@ -985,12 +1037,17 @@ export function layoutBullet(
   // Every value prints in one right-aligned column in that headroom, under the head Actual beside
   // the target columns. A negative row keeps its room on the left as well: a bar that started at the
   // plot edge, where the other rows have their zero, would read as a short positive bar.
-  const actualHead = cols && labelOn('point') && Math.max(maxPosW, maxNegW) > 0
-    ? fitHead(chartString(options, 'actualColumn'), cp.headerFont, Math.max(maxPosW, maxNegW), measure, { target, textScale: textScaleOf(options) })
+  const actualHead = cols && pointOn && Math.max(maxPosW, maxNegW) > 0
+    ? fitHead(overrides?.actual?.label ?? chartString(options, 'actualColumn'), cp.headerFont, Math.max(maxPosW, maxNegW), measure, { target, textScale: textScaleOf(options) })
     : undefined;
-  const valueColW = Math.max(maxPosW, maxNegW, actualHead?.w ?? 0);
-  const fP = compact || stacked ? 0 : Math.min(0.35, (valueColW + LABEL_GAP + 8) / plot.w);
-  const fN = lo < 0 && !compact && !stacked ? Math.min(0.35, (maxNegW + LABEL_GAP + 8) / plot.w) : 0;
+  const actualOwnTrack = cols && cp.actualOwnTrack;
+  const valueNaturalW = Math.max(maxPosW, maxNegW, actualHead?.w ?? 0);
+  // In the plot's end room an authored width keeps the 35% that room may take.
+  const valueColW = actualOwnTrack ? cp.actualW
+    : overrides?.actual?.width === undefined || stacked || compact || valueNaturalW === 0 ? valueNaturalW
+    : authoredTrackWidth('actual', overrides.actual.width, valueNaturalW, plot.w * 0.35 - LABEL_GAP - 8, warnings);
+  const fP = compact || stacked || actualOwnTrack ? 0 : Math.min(0.35, (valueColW + LABEL_GAP + 8) / plot.w);
+  const fN = lo < 0 && !compact && !stacked && !actualOwnTrack ? Math.min(0.35, (maxNegW + LABEL_GAP + 8) / plot.w) : 0;
   const extend = (extentLo: number, extentHi: number): [number, number] => {
     const span = extentHi - extentLo || 1;
     const denom = Math.max(0.3, 1 - fP - (extentLo < 0 ? fN : 0));
@@ -1031,9 +1088,10 @@ export function layoutBullet(
   // The value column ends one value width past the rightmost band, bar or target of all rows, inside the
   // plot. No value starts over the marks: one wider than the headroom runs past the column, where the
   // columns beside it or the solver take it, as on any outside seat.
-  const valueColLeft = maxOf(extents.map((extent, ri) => scaleAt(ri)(extent.hi))) + VALUE_COL_GAP;
-  const valueColRight = Math.min(plot.x + plot.w, valueColLeft + valueColW);
-  const valueX = (width: number) => Math.max(valueColLeft, valueColRight - width);
+  const valueColLeft = actualOwnTrack ? cp.rights.actual! - valueColW : maxOf(extents.map((extent, ri) => scaleAt(ri)(extent.hi))) + VALUE_COL_GAP;
+  const valueColRight = actualOwnTrack ? cp.rights.actual! : Math.min(plot.x + plot.w, valueColLeft + valueColW);
+  const valueAlign = overrides?.actual?.align;
+  const valueX = (width: number) => valueAlign === undefined ? Math.max(valueColLeft, valueColRight - width) : alignedLeft(valueColLeft, valueColRight - valueColLeft, width, valueAlign);
   // The heads share the key line only where the Actual head clears the key too.
   if (actualHead && cp.headsOnKey && cp.legendRight + 2 * COLUMN_GAP > valueColRight - actualHead.w) {
     return layoutBullet(data, { ...options, [HEADS_OFF_KEY]: true } as BulletOptions);
@@ -1143,8 +1201,14 @@ export function layoutBullet(
     const legendFontH = cp.legendLast?.t === 'text' ? measure('0', cp.legendLast.font).height : cp.headerH;
     const headY = rowMode ? band.position(0) - 2 - cp.headerH
       : cp.headsOnKey && cp.legendLast?.t === 'text' ? cp.legendLast.y + (legendFontH - cp.headerH) / 2 : plot0.y + inset;
-    const gapRight = plot0.x + plot0.w;
-    ([...(actualHead ? [[actualHead, 'actual', valueColRight]] as const : []), [cp.colHeads[0], 'target', gapRight - cp.gapColW - COLUMN_GAP], [cp.colHeads[1], 'gap', gapRight]] as const).forEach(([head, key, right], order) => {
+    const headAt = (key: 'actual' | 'target' | 'gap', head: { w: number }, right: number, trackW: number): number =>
+      alignedRight(right, trackW, head.w, overrides?.[key]?.headAlign ?? overrides?.[key]?.align ?? 'right');
+    // Labels keep id order, so the heads go in the order they read, left to right.
+    ([...(actualHead ? [[actualHead, 'actual', headAt('actual', actualHead, valueColRight, valueColW), valueColRight]] as const : []),
+      ...(cp.hasTarget ? [[cp.colHeads[0], 'target', headAt('target', cp.colHeads[0], cp.rights.target!, cp.targetColW), cp.rights.target!]] as const : []),
+      ...(cp.hasGap ? [[cp.colHeads[1], 'gap', headAt('gap', cp.colHeads[1], cp.rights.gap!, cp.gapColW), cp.rights.gap!]] as const : [])] as const)
+      .filter(([head]) => head.lines[0])
+      .sort((a, b) => a[3] - b[3]).forEach(([head, key, right], order) => {
       const request = headRequest(key, order, head, right, headY, cp.headerH, cp.headsOnKey && !rowMode);
       columnFonts.set(request.id, cp.headerFont);
       columnInks.set(request.id, { token: 'inkMuted' });
@@ -1264,7 +1328,7 @@ export function layoutBullet(
 
       // value label: right-aligned in the value column right of the bands, one seat on every row,
       // so the values read down one column on their last digit
-      if (labelOn('point')) {
+      if (pointOn) {
         const text = valueTextOf(row);
         if (text) {
           const tsize = measure(text, valueFont);
@@ -1310,7 +1374,9 @@ export function layoutBullet(
       occupied.claim({ x: tx - Math.max(1.5, targetStroke / 2 + 0.5), y: rowY + bw * 0.08, w: Math.max(3, targetStroke + 1), h: bw * 0.84 }, 'mark', owner);
       // The target prints by its tick, in the air above the row:
       // a tick alone leaves the number the delta is taken from to a guess.
-      if (cols) {
+      if (cols && cp.colTargets[ri] === null) {
+        // The column is left out: the tick stays, with its value in the hover.
+      } else if (cols) {
         const text = cp.colTargets[ri]!;
         const tsize = measure(text, labelFont);
         const id = `target-value:${row.id}`;
@@ -1318,7 +1384,7 @@ export function layoutBullet(
         columnInks.set(id, { token: 'ink' });
         labelRequests.push({
           id, kind: 'annotation', owner, text, lines: [text], font: labelFont, role: 'value', priority: PRIORITY.interior, pad: 0,
-          candidates: [{ slot: 'targetColumn', rect: { x: plot0.x + plot0.w - cp.gapColW - COLUMN_GAP - tsize.width, y: rowCenter - cp.colBlockH(ri) / 2, w: tsize.width, h: tsize.height }, penalty: 0 }],
+          candidates: [{ slot: 'targetColumn', rect: { x: alignedLeft(cp.rights.target! - cp.targetColW, cp.targetColW, tsize.width, overrides?.target?.align ?? 'right'), y: rowCenter - cp.colBlockH(ri) / 2, w: tsize.width, h: tsize.height }, penalty: 0 }],
         });
       } else if (targetPrints(row)) {
         const text = `${stacked ? `${targetWord(options)} ` : ''}${rowFmt(row)(row.target)}`;
@@ -1352,12 +1418,13 @@ export function layoutBullet(
     if (capsuleText !== undefined && cols) {
       const tsize = measure(capsuleText, valueBaseFont);
       const top = rowCenter - cp.colBlockH(ri) / 2;
-      const right = plot0.x + plot0.w;
+      const gapRight = cp.rights.gap!;
+      const gapAlign = overrides?.gap?.align ?? 'right';
       columnFonts.set(`delta:${row.id}`, valueBaseFont);
       labelRequests.push({
         id: `delta:${row.id}`, kind: 'annotation', role: composedTextRole(capsuleText, 'note'), owner, text: capsuleText, lines: [capsuleText],
         font: valueBaseFont, priority: PRIORITY.extreme,
-        candidates: [{ slot: 'gapColumn', rect: { x: right - tsize.width, y: top, w: tsize.width, h: tsize.height }, penalty: 0 }],
+        candidates: [{ slot: 'gapColumn', rect: { x: alignedLeft(gapRight - cp.gapColW, cp.gapColW, tsize.width, gapAlign), y: top, w: tsize.width, h: tsize.height }, penalty: 0 }],
       });
       const position = cp.colPositions[ri];
       if (position) {
@@ -1367,7 +1434,7 @@ export function layoutBullet(
         columnInks.set(id, { token: 'inkMuted' });
         labelRequests.push({
           id, kind: 'annotation', role: 'note', owner, text: position, lines: [position], font: cp.noteFont, priority: PRIORITY.interior, pad: 0,
-          candidates: [{ slot: 'gapColumn', rect: { x: right - psize.width, y: top + tsize.height + LINE_GAP, w: psize.width, h: psize.height }, penalty: 0 }],
+          candidates: [{ slot: 'gapColumn', rect: { x: alignedLeft(gapRight - cp.gapColW, cp.gapColW, psize.width, gapAlign), y: top + tsize.height + LINE_GAP, w: psize.width, h: psize.height }, penalty: 0 }],
         });
       }
     }
@@ -1436,7 +1503,7 @@ export function layoutBullet(
           {
             slot: 'left',
             rect: {
-              x: stacked ? plot.x : rowLabelX(plot0.x, cols ? cp.colLeftW : catBandW, cl.w, options.rowLabels?.align ?? 'left'),
+              x: stacked ? plot.x : rowLabelX(plot0.x, cols ? cp.colLeftW : catBandW, cl.w, overrides?.label?.align ?? options.rowLabels?.align ?? 'left'),
               y: stacked ? cardTop : cols ? rowCenter - cp.colBlockH(ri) / 2 : rowCenter - cl.h / 2,
               w: cl.w,
               h: cl.h,
@@ -1453,13 +1520,29 @@ export function layoutBullet(
         columnInks.set(id, { token: 'inkMuted' });
         labelRequests.push({
           id, kind: 'annotation', role: 'note', owner, text: direction, lines: [direction], font: cp.noteFont, priority: PRIORITY.interior, pad: 0,
-          candidates: [{ slot: 'left', rect: { x: rowLabelX(plot0.x, cp.colLeftW, dsize.width, options.rowLabels?.align ?? 'left'), y: rowCenter - cp.colBlockH(ri) / 2 + cl.h + LINE_GAP, w: dsize.width, h: dsize.height }, penalty: 0 }],
+          candidates: [{ slot: 'left', rect: { x: rowLabelX(plot0.x, cp.colLeftW, dsize.width, overrides?.label?.align ?? options.rowLabels?.align ?? 'left'), y: rowCenter - cp.colBlockH(ri) / 2 + cl.h + LINE_GAP, w: dsize.width, h: dsize.height }, penalty: 0 }],
         });
       }
     }
 
     marks.rows.push({ id: row.id, bandNodeIds, barNodeId, targetNodeId, rect: rowRect });
   });
+
+  // ---- what the column options name, now that the form is known ----
+  const hasValues = labelOn('point') && rows.some((row) => valueTextOf(row) !== null);
+  const hasTargets = labelOn('annotation') && rows.some((row) => row.target !== null);
+  if (!compact) {
+    pushAll(warnings, generatedIdWarnings('bullet', 'columnVisibility', options.columnVisibility, [...(labelOn('category') ? ['label'] : []), ...(hasValues ? ['actual'] : []), ...(hasTargets ? ['target', 'gap'] : [])]));
+    if (hasTargets && !shown('target')) warnings.push({ code: 'bullet-target-column-hidden', severity: 'info', field: ['options', 'columnVisibility', 'target'], message: 'columnVisibility leaves the target out, so no number explains the target tick on the page; its value stays in the hover' });
+  }
+  const trackIds = cols ? [...(cp.hasTarget ? ['target'] : []), ...(cp.hasGap ? ['gap'] : [])] : [];
+  const valueTrack = !compact && !stacked && valueColW > 0 ? ['actual'] : [];
+  columnOverrideWarnings('bullet', overrides, stacked || compact ? [] : [...(catBandW > 0 ? ['label'] : []), ...valueTrack, ...trackIds], cols ? [...(actualHead ? ['actual'] : []), ...trackIds] : [], warnings);
+  pushAll(warnings, generatedIdWarnings('bullet', 'columnOrder', options.columnOrder, cols ? ['plot', ...(valueColW > 0 ? ['actual'] : []), ...trackIds] : ['plot']));
+  for (const kind of ['position', 'direction'] as const) {
+    if (typeof options.labels !== 'object' || options.labels[kind] !== false || cols) continue;
+    warnings.push({ code: 'bullet-label-line-not-drawn', severity: 'info', field: ['options', 'labels', kind], message: `labels.${kind} sets a line of the target columns, which this form does not draw, so nothing changed`, suggest: 'Give the chart the width the target columns need, or remove the setting.' });
+  }
 
   // ---- solve labels ----
   const solveCtx: SolveCtx = labelCtx(theme, size, options, {
@@ -1639,7 +1722,7 @@ export function layoutBullet(
       // The type floor moved to 320 for the percent-of-target rows (core.ts); these layouts keep 480.
       // The columns give way below their fit, so the side-by-side rows set the floor.
       minWidth: compact ? 0 : Math.max(0, stacked ? size.width - plot.w + Math.max(160, catBandW + Math.max(maxPosW, maxNegW) + CAT_BAND_GAP) : size.width - sidePlotW + Math.max(80, maxOf(rows.map(row => {
-        const text = labelOn('point') ? valueTextOf(row) : undefined;
+        const text = pointOn ? valueTextOf(row) : undefined;
         return text ? measure(text, valueFont).width + 2 * LABEL_GAP : 0;
       })))),
     }),
@@ -1683,6 +1766,11 @@ export function layoutBullet(
  * rows in targetScale.ts. Authored bands, a value axis and annotations name
  * value units, which this scale does not draw, so each says so and is left out.
  */
+/** The widest word of the row names: a name column under it would cut a word. */
+function widestWord(rows: readonly { label: string }[], font: FontSpec, measure: TextMeasurer): number {
+  return maxOf(rows.flatMap((row) => row.label.split(/\s+/).map((word) => measure(word, font).width)));
+}
+
 function layoutBulletOnTargetScale(
   data: BulletData,
   options: BulletOptions,
@@ -1740,8 +1828,12 @@ function layoutBulletOnTargetScale(
   // The note breaks after the target, before its hint (' · lower is better').
   const targetParts = (row: TargetScaleRow): string[] => [
     row.target === null ? `no ${targetWord(options)}` : `${targetWord(options)} ${rowFmt(row as NormRow)(row.target)}`,
-    ...(row.direction === 'lowerIsBetter' ? [chartString(options, 'lowerBetterHint')] : []),
+    ...(row.direction === 'lowerIsBetter' && ctx.labelOn('direction') && options.strings?.lowerBetter !== '' ? [chartString(options, 'lowerBetterHint')] : []),
   ];
+  pushAll(warnings, generatedIdWarnings('bullet', 'columnVisibility', options.columnVisibility, [...(ctx.labelOn('category') ? ['label'] : []), ...(ctx.labelOn('point') ? ['actual', 'share'] : []), ...(ctx.labelOn('annotation') ? ['delta'] : [])]));
+  if (typeof options.labels === 'object' && options.labels.position === false) {
+    warnings.push({ code: 'bullet-label-line-not-drawn', severity: 'info', field: ['options', 'labels', 'position'], message: 'labels.position sets a line of the target columns, which the percent-of-target scale does not draw, so nothing changed', suggest: 'Remove labels.position.' });
+  }
   return layoutTargetScale({
     rows, options, theme, size, measure, frame, occupied, warnings,
     highlights: ctx.highlights,

@@ -43,6 +43,12 @@ export const RIGHT_ROOM = Symbol('rightRoom');
  * at the content edge. Authored JSON cannot set it.
  */
 export const NO_NAME_COLUMN = Symbol('noNameColumn');
+/** The width of the name column, when a caller has shared the row among its own tracks. Authored JSON cannot set it. */
+export const NAME_TRACK = Symbol('nameTrack');
+/** Room a caller keeps between the name column and the plot, for tracks of its own. */
+export const LEFT_ROOM = Symbol('leftRoom');
+/** The caller seats the totals in a track of its own (TOTAL_COLUMN), so the plot keeps no room for them past the bars. */
+export const TOTAL_TRACK = Symbol('totalTrack');
 /**
  * Internal option: the right edge of a column where the caller sets every
  * grand total (likert's net column). The solver seats the totals there, so

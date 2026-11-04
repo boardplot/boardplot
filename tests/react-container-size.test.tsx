@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, type ReactElement } from 'react';
+import { act, type ComponentProps, type ReactElement } from 'react';
 import { createRoot, hydrateRoot, type Root } from 'react-dom/client';
 import { renderToPipeableStream, renderToStaticMarkup } from 'react-dom/server';
 import { Writable } from 'node:stream';
@@ -17,6 +17,7 @@ import { TableChart } from '../src/react/charts/table';
 import { DimSwitchChart } from '../src/react/charts/dimswitch';
 import { BarTableChart } from '../src/react/charts/bartable';
 import { LikertChart } from '../src/react/charts/likert';
+import { BulletChart } from '../src/react/charts/bullet';
 import { ChoroplethChart } from '../src/react/charts/choropleth';
 import '../src/core/geo/packs/all';
 import { SparklineChart } from '../src/react/charts/sparkline';
@@ -395,6 +396,23 @@ it('exports a DimSwitch whose document opens again', async () => {
   expect(document?.charts[0]!.type).toBe('dimswitch');
   const again = await exportSvg({ spec: document!.charts[0] });
   expect(again.ok ? '' : again.message).toBe('');
+});
+
+// The document must reopen as the chart on screen, with the columns as the host set them.
+it('keeps bullet and likert column settings in the exported document', async () => {
+  const bullet = getFixtures('bullet').find(item => item.id === 'plot-first')!;
+  const options = { columnVisibility: { share: false }, columnOverrides: { actual: { width: 80 } } };
+  const handle = await exporterOf(exporter => <BulletChart {...bullet.options as object} {...options} data={bullet.data as never} size={{ width: 720 }} exporter={exporter} />);
+  const drawn = host.querySelector('svg')!.textContent;
+  const result = await handle.svg();
+  const document = result.ok ? result.document as { charts: { options: Record<string, unknown> }[] } : undefined;
+  expect(document?.charts[0]!.options).toMatchObject({ ...options, columnOrder: (bullet.options as { columnOrder: unknown }).columnOrder });
+  expect(result.ok && result.artifact.text).toContain(drawn.slice(0, 12));
+  const likert = getFixtures('likert').find(item => item.id === 'columns-after-plot')!;
+  const second = await exporterOf(exporter => <LikertChart {...{ ...likert.options, data: likert.data, size: { width: 720 }, exporter } as never as ComponentProps<typeof LikertChart>} />);
+  const again = await second.svg();
+  const reopened = again.ok ? again.document as { charts: { options: Record<string, unknown> }[] } : undefined;
+  expect(reopened?.charts[0]!.options.columnOrder).toEqual((likert.options as { columnOrder: unknown }).columnOrder);
 });
 
 // The document must reopen as the table on screen, without the columns the host left out.

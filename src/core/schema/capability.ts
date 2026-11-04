@@ -326,7 +326,7 @@ export function schemaRefusedKeys(type: string): { options: string[]; valueAxis:
 export const LABEL_KINDS: Readonly<Record<string, readonly string[]>> = {
   bar: ['category', 'segment', 'restSeries', 'point', 'grandTotal', 'percentIndicator', 'tick', 'axisTitle', 'valueLine'],
   box: ['category', 'point', 'axisTitle'],
-  bullet: ['category', 'point', 'axisTitle', 'annotation'],
+  bullet: ['category', 'point', 'axisTitle', 'annotation', 'position', 'direction'],
   butterfly: ['category', 'series', 'point', 'tick'],
   cohort: ['category', 'series', 'point'],
   column: ['category', 'segment', 'restSeries', 'point', 'grandTotal', 'percentIndicator', 'tick', 'axisTitle', 'valueLine', 'annotation', 'growth'],

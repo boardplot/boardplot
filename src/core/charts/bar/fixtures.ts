@@ -1353,4 +1353,13 @@ fixtures.push({
   },
 });
 
+fixtures.push({
+  id: 'column-overrides', title: 'columnOverrides sets the width of the name column', kind: 'example',
+  data: {
+    categories: [{ id: 'north', label: 'North region' }, { id: 'south', label: 'South region' }, { id: 'east', label: 'East region' }],
+    series: [{ id: 'revenue', label: 'Revenue', values: [42, 55, 31] }],
+  },
+  options: { title: 'South leads', unit: '$m', source: 'Illustrative data', size: { width: 640 }, columnOverrides: { label: { width: 200 } } },
+});
+
 registerFixtures('bar', fixtures);

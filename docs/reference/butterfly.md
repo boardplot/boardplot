@@ -67,6 +67,11 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
 | sort | object \| string \| true | `'sheet'`, `'asc'`, `'desc'`, `'reverse'`, `true` (or another value of its type) |  | Category ranking value: the sortBy measure (a, b, sum or diff), default sum. categories sets sheet, reverse, asc or desc with stable ties and missing values last. A rest row stays last. Dated rows keep authored order when a growth or difference annotation spans periods. sort.segments is ignored with an info warning unless sheet. |
+| columnOverrides | object |  |  | Settings per generated column. Ids: label, diff. |
+| columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
+| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Cell alignment. |
+| columnOverrides.*.headAlign | string | `'left'`, `'right'`, `'center'` |  | Head alignment; defaults to align. |
+| columnOverrides.*.label | string |  |  | Head text. |
 | a | string |  |  | Series id displayed in the left pane. |
 | b | string |  |  | Series id displayed in the right pane. |
 | centerColumnWidth | number |  |  | Width in pixels reserved between the panes for category labels; omission uses their measured width. |
@@ -118,6 +123,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | negatives-magnitude | torture | The lighter bar of \|value\| for negative values, from negatives: magnitude |
 | blank-values | torture | A value the data lacks prints the not-applicable mark at the pane start |
 | own-scales-mixed | torture | Panes of very different size on their own scales each draw a value axis |
+| column-overrides | example | columnOverrides sets the name column and the difference column, beating centerColumnWidth |
 
 ## Not for
 

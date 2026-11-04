@@ -37,12 +37,14 @@ import { REFERENCE_LABEL_CLEARANCE, separationStroke } from '../../markVisibilit
 import { readerFloorPx, tableHeadFloorPx, textScaleOf } from '../../typeFloors';
 import { plotHeightAfter, type FrameResult, type LegendItemInput } from '../../frame';
 import type { CellMeta, ComparisonDirection, Id } from '../../types/cell';
-import type { BulletOptions } from '../../types/options';
+import type { BulletOptions, LabelKind } from '../../types/options';
 import type { Geometry, LintWarning, Paint, PlacedAnnotation, SceneNode } from '../../types/scene';
 import type { Theme } from '../../types/theme';
 import { asColumnHeads, fitHead, headRequest } from './columnHead';
 import type { BulletDerived, BulletMarks } from './layout';
 import { maxOf, pushAll } from '../../arrays';
+import { generatedIdWarnings } from '../../schema/generatedColumns';
+import { alignedLeft, alignedRight, authoredTrackWidth, columnOverrideWarnings, orderedBlocks } from '../columnOverrides';
 import { emptyIdRecord } from '../../idRecords';
 
 /** A normalized row, as layoutBullet hands it over. */
@@ -173,7 +175,7 @@ export interface TargetScaleInput {
   occupied: OccupiedIndex;
   warnings: LintWarning[];
   highlights: ReadonlySet<Id>;
-  labelOn: (kind: 'category' | 'point' | 'annotation') => boolean;
+  labelOn: (kind: LabelKind) => boolean;
   valueText: (row: TargetScaleRow) => string | null;
   targetText: (row: TargetScaleRow) => string;
   /** The target note in the parts it wraps at: the target, then the lower-is-better hint. */
@@ -218,10 +220,12 @@ export function layoutTargetScale(input: TargetScaleInput): Geometry<BulletMarks
   // ---- texts ----
   const shares = rows.map((row) => percentOfTarget(row));
   const shareText = (share: number) => share > 0 && share < 0.5 ? '<1%' : formatAutomaticPercent(share, 0, false, locale);
-  const valueTexts = rows.map((row) => (labelOn('point') ? input.valueText(row) : null));
+  const hidden = (id: string): boolean => options.columnVisibility?.[id] === false;
+  const overrides = options.columnOverrides;
+  const valueTexts = rows.map((row) => (labelOn('point') && !hidden('actual') ? input.valueText(row) : null));
   // One share phrase: the column head says "% of target", each row its number.
-  const shareTexts = shares.map((share) => (share === undefined || !labelOn('point') ? null : shareText(share)));
-  const deltas = rows.map((row) => (labelOn('annotation') ? input.deltaVsTarget[row.id] : undefined));
+  const shareTexts = shares.map((share) => (share === undefined || !labelOn('point') || hidden('share') ? null : shareText(share)));
+  const deltas = rows.map((row) => (labelOn('annotation') && !hidden('delta') ? input.deltaVsTarget[row.id] : undefined));
   const deltaTexts = rows.map((row, index) => (deltas[index] === undefined ? null : input.deltaText(row, deltas[index]!)));
   const deltaBodies = rows.map((row, index) => (deltas[index] === undefined ? null : input.deltaBody(row, deltas[index]!)));
   const widest = (texts: (string | null)[], font: FontSpec) => Math.max(0, maxOf(texts.map(text => text ? measure(text, font).width : 0)));
@@ -232,15 +236,22 @@ export function layoutTargetScale(input: TargetScaleInput): Geometry<BulletMarks
 
   // ---- side-by-side columns: actual, share, delta, each right-aligned under its head ----
   const headEnv = { target: renderTarget, textScale };
-  const columns = [
+  const naturalColumns = [
     { key: 'actual', head: chartString(options, 'actualColumn'), w: valueW },
     { key: 'share', head: chartString(options, 'shareColumn', { v1: target }), w: shareW },
     { key: 'delta', head: chartString(options, 'deltaColumn', { v1: target }), w: deltaBodyW },
   ].filter((column) => column.w > 0).map((column) => {
-    const fitted = fitHead(column.head, headerFont, column.w, measure, headEnv);
-    return { ...column, fitted, w: Math.max(column.w, fitted.w) };
+    // The head a stacked row keeps: its share head has no track to override.
+    const stackFitted = fitHead(column.head, headerFont, column.w, measure, headEnv);
+    const fitted = fitHead(overrides?.[column.key]?.label ?? column.head, headerFont, column.w, measure, headEnv);
+    return { ...column, fitted, stackFitted, w: Math.max(column.w, fitted.w) };
   });
-  const rightW = columns.reduce((sum, column) => sum + column.w, 0) + COLUMN_GAP * Math.max(0, columns.length - 1);
+  const blocks = orderedBlocks(['plot', ...naturalColumns.map((column) => column.key)], options.columnOrder);
+  const plotAt = blocks.indexOf('plot');
+  /** The columns in drawn order, on either side of the plot. */
+  const inOrder = (ids: readonly string[]) => ids.map((id) => naturalColumns.find((column) => column.key === id)!);
+  const naturalWidth = (list: readonly { w: number }[]) => list.reduce((sum, column) => sum + column.w, 0) + COLUMN_GAP * Math.max(0, list.length - 1);
+  const trackWarnings: LintWarning[] = [];
 
   // ---- left column: name over target note ----
   const wider = { wider: gutterBudget(plot0.w * 0.3, plot0.w) };
@@ -259,11 +270,35 @@ export function layoutTargetScale(input: TargetScaleInput): Geometry<BulletMarks
   });
   const sideNamesAt = (cap: number, maxLines: number) => rowLabelBand(rows, nameFont, cap, maxLines, nameLineH, measure, { target: renderTarget, typeRole: 'axis', ...(maxLines === 1 ? wider : { wider: cap }) });
   const leftOf = (names: { width: number }, notes: { w: number }[]) => labelOn('category') ? Math.max(names.width, maxOf(notes.map((note) => note.w))) : 0;
-  const sidePlotW = (leftW: number) => plot0.w - (leftW ? leftW + LEFT_GAP : 0) - (rightW ? rightW + RIGHT_GAP : 0);
+  const sidePlotW = (leftW: number) => plot0.w - (leftW ? leftW + LEFT_GAP : 0) - (beforeW ? beforeW + RIGHT_GAP : 0) - (rightW ? rightW + RIGHT_GAP : 0);
   let sideNames = sideNamesAt(plot0.w * 0.3, 1);
   let sideNotes = notesAt(gutterBudget(plot0.w * 0.3, plot0.w));
   let sideLeft = leftOf(sideNames, sideNotes);
-  if (labelOn('category') && sidePlotW(sideLeft) < SIDE_PLOT_SHARE * size.width) {
+  // An authored width sets a column. The plot gives way first, down to the width these rows need to stay side by side.
+  const plotKeeps = Math.max(80, SIDE_PLOT_FLOOR * size.width);
+  const authoredLabel = overrides?.label?.width;
+  const gapsOf = (list: readonly unknown[], outer: number) => (list.length > 0 ? outer : 0);
+  const namedLeft = authoredLabel === undefined || !labelOn('category') ? undefined
+    : authoredTrackWidth('label', authoredLabel, 24, plot0.w - LEFT_GAP - naturalWidth(naturalColumns) - gapsOf(naturalColumns, RIGHT_GAP) - plotKeeps, trackWarnings);
+  if (namedLeft !== undefined) {
+    sideNames = sideNamesAt(namedLeft, Math.max(2, maxOf(rows.map((row) => row.label.split(/\s+/).length))));
+    sideNotes = notesAt(namedLeft);
+    sideLeft = namedLeft;
+  }
+  let columnRoom = plot0.w - (sideLeft ? sideLeft + LEFT_GAP : 0) - naturalWidth(naturalColumns) - gapsOf(naturalColumns, RIGHT_GAP) - plotKeeps;
+  const columns = naturalColumns.map((column) => {
+    const authored = overrides?.[column.key]?.width;
+    if (authored === undefined) return column;
+    const w = authoredTrackWidth(column.key, authored, column.w, column.w + Math.max(0, columnRoom), trackWarnings);
+    columnRoom -= w - column.w;
+    return { ...column, w };
+  });
+  const placedColumns = inOrder(blocks.filter((id) => id !== 'plot')).map((column) => columns.find((sized) => sized.key === column.key)!);
+  const beforePlot = placedColumns.slice(0, plotAt);
+  const afterPlot = placedColumns.slice(plotAt);
+  const beforeW = naturalWidth(beforePlot);
+  const rightW = naturalWidth(afterPlot);
+  if (namedLeft === undefined && labelOn('category') && sidePlotW(sideLeft) < SIDE_PLOT_SHARE * size.width) {
     // The label column gives up width to the plot and wraps, down to a sixth of the width, its longest name word or note part.
     const longestWord = Math.max(0, maxOf(rows.flatMap((row) => row.label.split(/\s+/).map((word) => measure(word, nameFont).width))),
       maxOf(parts.flatMap((split) => split.map((part, at) => measure(at === 0 ? part : part.replace(/^\s*·\s*/, ''), noteFont).width))));
@@ -321,12 +356,13 @@ export function layoutTargetScale(input: TargetScaleInput): Geometry<BulletMarks
   const legendRight = Math.max(-Infinity, maxOf(frameResult.nodes.filter((node) => node.t === 'text' && node.part === 'legendLabel')
     .map((node) => node.t === 'text' ? node.x + Math.max(...node.lines.map((line) => measure(line, node.font).width)) : -Infinity)));
   const legendLast = frameResult.nodes.filter((node) => node.t === 'text' && node.part === 'legendLabel').at(-1);
-  const headsFor = (stacked: boolean) => stacked ? columns.filter((column) => column.key === 'share') : columns;
+  const headsFor = (stacked: boolean) => stacked ? columns.filter((column) => column.key === 'share').map((column) => ({ ...column, fitted: column.stackFitted })) : placedColumns;
   const headsW = (stacked: boolean) => {
     const heads = headsFor(stacked);
     return stacked ? Math.max(0, maxOf(heads.map((column) => column.fitted.w))) : rightW;
   };
-  const headsOnKey = (stacked: boolean) => legendRect !== undefined && legendLast !== undefined
+  // A head left of the plot would stand on the key's entries.
+  const headsOnKey = (stacked: boolean) => (stacked || beforeW === 0) && legendRect !== undefined && legendLast !== undefined
     && legendRight + 2 * COLUMN_GAP <= plot0.x + plot0.w - headsW(stacked);
   const headLineH = (stacked: boolean) => headsFor(stacked).length > 0 && !headsOnKey(stacked) ? headerH + BAND_GAP : 0;
 
@@ -356,10 +392,28 @@ export function layoutTargetScale(input: TargetScaleInput): Geometry<BulletMarks
   const rowsH = rowTops.at(-1)! + rowHeights.at(-1)!;
   const grown = input.grow(size.height - availH, span(naturalPitch));
   if (grown) return grown;
+  // Stacked rows have no tracks, so an authored setting has nothing to set there.
+  columnOverrideWarnings('bullet', overrides, stacked ? [] : ['label', ...placedColumns.map((column) => column.key)], stacked ? [] : placedColumns.map((column) => column.key), warnings);
+  if (!stacked) pushAll(warnings, trackWarnings);
+  pushAll(warnings, generatedIdWarnings('bullet', 'columnOrder', options.columnOrder, stacked ? ['plot'] : blocks));
   const leftW = stacked ? stackLeftW : sideLeft;
+  /** Each column's right edge, side by side, in drawn order round the plot. */
+  const columnRight = new Map<string, number>();
+  if (!stacked) {
+    let before = plot0.x + (leftW ? leftW + LEFT_GAP : 0);
+    for (const column of beforePlot) { columnRight.set(column.key, before + column.w); before += column.w + COLUMN_GAP; }
+    let after = plot0.x + plot0.w;
+    for (const column of [...afterPlot].reverse()) { columnRight.set(column.key, after); after -= column.w + COLUMN_GAP; }
+  }
+  const columnOf = (key: string) => columns.find((column) => column.key === key);
+  /** A cell's left edge in its column: right-aligned unless authored. */
+  const cellX = (key: string, w: number): number => {
+    const column = columnOf(key)!;
+    return alignedLeft(columnRight.get(key)! - column.w, column.w, w, overrides?.[key]?.align ?? 'right');
+  };
   const rowsTop = plot0.y + headLineH(stacked) + (stacked ? 0 : TARGET_REACH);
   const plot: Rect = {
-    x: stacked ? plot0.x : plot0.x + (leftW ? leftW + LEFT_GAP : 0),
+    x: stacked ? plot0.x : plot0.x + (leftW ? leftW + LEFT_GAP : 0) + (beforeW ? beforeW + RIGHT_GAP : 0),
     y: rowsTop,
     w: stacked ? plot0.w : Math.max(10, sidePlotW(leftW)),
     h: rowsH,
@@ -389,10 +443,12 @@ export function layoutTargetScale(input: TargetScaleInput): Geometry<BulletMarks
     const onKey = headsOnKey(stacked);
     const legendFontH = legendLast?.t === 'text' ? measure('0', legendLast.font).height : headerH;
     const headY = onKey && legendLast?.t === 'text' ? legendLast.y + (legendFontH - headerH) / 2 : plot0.y;
-    let right = plot0.x + plot0.w;
-    const placed = stacked ? heads.map((column) => ({ column, right }))
-      : [...heads].reverse().map((column) => { const at = { column, right }; right -= column.w + COLUMN_GAP; return at; }).reverse();
-    placed.forEach(({ column, right: end }, order) => headRequests.push(headRequest(column.key, order, column.fitted, end, headY, headerH, onKey)));
+    heads.forEach((column, order) => {
+      if (!column.fitted.lines[0]) return;
+      const override = overrides?.[column.key];
+      const end = stacked ? plot0.x + plot0.w : alignedRight(columnRight.get(column.key)!, column.w, column.fitted.w, override?.headAlign ?? override?.align ?? 'right');
+      headRequests.push(headRequest(column.key, order, column.fitted, end, headY, headerH, onKey));
+    });
   }
 
   // ---- bands and the target line, one seat per row ----
@@ -472,18 +528,10 @@ export function layoutTargetScale(input: TargetScaleInput): Geometry<BulletMarks
   const placedAnnotations: PlacedAnnotation[] = [];
   const inks = new Map<string, Paint>();
   const fonts = new Map<string, FontSpec>();
-  const columnRight = new Map<string, number>();
   for (const head of headRequests) {
     fonts.set(head.id, headerFont);
     inks.set(head.id, { token: 'inkMuted' });
     requests.push(head);
-  }
-  {
-    let right = plot0.x + plot0.w;
-    for (const column of [...columns].reverse()) {
-      columnRight.set(column.key, right);
-      right -= column.w + COLUMN_GAP;
-    }
   }
   const measurePaint = (row: TargetScaleRow): Paint =>
     row.meta?.fill ? { css: row.meta.fill } : highlights.has(row.id) ? { token: 'focus' } : { token: 'markInk' };
@@ -546,27 +594,27 @@ export function layoutTargetScale(input: TargetScaleInput): Geometry<BulletMarks
     const noteTop = stacked ? top + stackNoteTop : top + (labelOn('category') ? sideNames.labels[index]!.h : 0) + LINE_GAP;
     if (labelOn('category')) {
       const name = (stacked ? stackNames : sideNames).labels[index]!;
+      const labelAlign = stacked ? 'left' : overrides?.label?.align ?? 'left';
       request(`category:${row.id}`, 'category', owner, row.label, nameFont,
-        { x: plot0.x, y: top, w: name.w, h: name.h },
+        { x: alignedLeft(plot0.x, leftW, name.w, labelAlign), y: top, w: name.w, h: name.h },
         { ...fittedLabel(name, nameFont), priority: PRIORITY.endpoint + (highlights.has(row.id) ? PRIORITY.highlightBonus : 0) });
       const note = (stacked ? stackNotes : sideNotes)[index]!;
       request(`target:${row.id}`, 'annotation', owner, note.text, noteFont,
-        { x: plot0.x, y: noteTop, w: note.w, h: note.h }, { ...fittedLabel(note as Parameters<typeof fittedLabel>[0], noteFont), role: 'note' });
+        { x: alignedLeft(plot0.x, leftW, note.w, labelAlign), y: noteTop, w: note.w, h: note.h }, { ...fittedLabel(note as Parameters<typeof fittedLabel>[0], noteFont), role: 'note' });
       inks.set(`target:${row.id}`, { token: 'inkMuted' });
     }
-    const shareRight = stacked ? plot0.x + plot0.w : columnRight.get('share');
     const valueText = valueTexts[index];
     if (valueText) {
       const size1 = measure(valueText, valueFont);
-      const right = stacked ? plot0.x + plot0.w - (shareW ? shareW + VALUE_GAP : 0) : columnRight.get('actual')!;
+      const left = stacked ? plot0.x + plot0.w - (shareW ? shareW + VALUE_GAP : 0) - size1.width : cellX('actual', size1.width);
       request(`point:${row.id}`, 'point', owner, valueText, valueFont,
-        { x: right - size1.width, y: valueCenter - size1.height / 2, w: size1.width, h: size1.height });
+        { x: left, y: valueCenter - size1.height / 2, w: size1.width, h: size1.height });
     }
     const shareLabel = shareTexts[index];
-    if (shareLabel && shareRight !== undefined) {
+    if (shareLabel) {
       const size2 = measure(shareLabel, shareFont);
       request(`share:${row.id}`, 'annotation', owner, shareLabel, shareFont,
-        { x: shareRight - size2.width, y: valueCenter - size2.height / 2, w: size2.width, h: size2.height }, { role: 'value' });
+        { x: stacked ? plot0.x + plot0.w - size2.width : cellX('share', size2.width), y: valueCenter - size2.height / 2, w: size2.width, h: size2.height }, { role: 'value' });
       inks.set(`share:${row.id}`, { token: 'ink' });
     }
     const delta = deltas[index];
@@ -575,10 +623,10 @@ export function layoutTargetScale(input: TargetScaleInput): Geometry<BulletMarks
       const size3 = measure(deltaLabel, deltaFont);
       const labelId = `delta:${row.id}`;
       const tone = input.deltaTone(row, delta);
-      const right = stacked ? plot0.x + plot0.w : columnRight.get('delta')!;
+      const left = stacked ? plot0.x + plot0.w - size3.width : cellX('delta', size3.width);
       const y = stacked ? noteTop + (deltaSeparate ? stackNoteH + 2 : 0) : valueCenter - size3.height / 2;
       request(labelId, 'annotation', owner, deltaLabel, deltaFont,
-        { x: right - size3.width, y, w: size3.width, h: size3.height }, { role: composedTextRole(deltaLabel, 'note'), priority: PRIORITY.extreme });
+        { x: left, y, w: size3.width, h: size3.height }, { role: composedTextRole(deltaLabel, 'note'), priority: PRIORITY.extreme });
       inks.set(labelId, { token: tone === 'neutral' ? 'ink' : tone });
       placedAnnotations.push({
         id: `delta-target:${row.id}`,
@@ -633,8 +681,8 @@ export function layoutTargetScale(input: TargetScaleInput): Geometry<BulletMarks
     const value = input.valueText(row) ?? 'n/a';
     const delta = input.deltaVsTarget[row.id];
     return `${row.label} ${value}` +
-      (share === undefined ? '' : `, ${shareText(share)} ${chartString(options, 'ofTarget', { v1: target })}, ${input.targetText(row)}`) +
-      (delta === undefined ? '' : ` (${input.deltaText(row, delta)}, ${chartString(options, ({good: 'toneGood', bad: 'toneBad', warn: 'toneWarn', neutral: 'toneNeutral'} as const)[input.deltaTone(row, delta)])})`);
+      (share === undefined ? '' : `,${hidden('share') ? '' : ` ${shareText(share)} ${chartString(options, 'ofTarget', { v1: target })},`} ${input.targetText(row)}`) +
+      (delta === undefined || hidden('delta') ? '' : ` (${input.deltaText(row, delta)}, ${chartString(options, ({good: 'toneGood', bad: 'toneBad', warn: 'toneWarn', neutral: 'toneNeutral'} as const)[input.deltaTone(row, delta)])})`);
   };
 
   return {

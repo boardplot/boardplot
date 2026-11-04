@@ -462,4 +462,16 @@ fixtures.push({
   },
 });
 
+fixtures.push({
+  id: 'column-overrides', title: 'columnOverrides sets the width and head word of the cumulative conversion column', kind: 'example',
+  data: {
+    categories: [{ id: 'visits', label: 'Visits' }, { id: 'carts', label: 'Carts' }, { id: 'orders', label: 'Orders' }],
+    series: [{ id: 'sessions', label: 'Sessions', values: [12000, 4200, 1800] }],
+  },
+  options: {
+    variant: 'centered', totalCvr: 'column', title: 'One visit in seven ends in an order', source: 'Illustrative data', size: { width: 720, height: 360 },
+    columnOverrides: { totalCvr: { width: 130, label: 'Of all visits', headAlign: 'right' } },
+  },
+});
+
 registerFixtures('funnel', fixtures);

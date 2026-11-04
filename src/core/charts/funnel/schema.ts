@@ -1,6 +1,7 @@
 /** Funnel data and options schemas, without the chart engine. */
 
 import * as z from 'zod';
+import { columnOverridesOption } from '../../schema/generatedColumnOptions';
 import {
   colorRoleField,
   addCategorySeriesIdIssues,
@@ -54,6 +55,7 @@ export const funnelDataSchema = z
   }) as unknown as z.ZodType<ChartData>;
 
 export const funnelOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions('funnel')).safeExtend({
+  columnOverrides: columnOverridesOption('funnel', ['width', 'headAlign', 'label']),
   variant: z
     .enum(['rows', 'centered'])
     .optional()

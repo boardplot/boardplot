@@ -64,6 +64,12 @@ One form; its chart ID is `likert`.
 |---|---|---|---|---|
 | sort | object \| string \| true | `'sheet'`, `'asc'`, `'desc'`, `'reverse'`, `true` (or another value of its type) |  | Order statements by net score without changing the ordered response scale. |
 | sort.categories | string | `'sheet'`, `'asc'`, `'desc'`, `'reverse'` |  | Statement order: sheet keeps authored order, reverse reverses it, asc and desc rank by net score with stable ties. Overrides sortBy direction. |
+| columnOverrides | object |  |  | Settings per generated column. Ids: label, net, base. |
+| columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
+| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Cell alignment. |
+| columnOverrides.*.headAlign | string | `'left'`, `'right'`, `'center'` |  | Head alignment; defaults to align. |
+| columnOverrides.*.label | string |  |  | Head text. |
+| columnOrder | array |  |  | Order of whole blocks; blocks left out follow in default order. Ids: plot, net, base. |
 | values | string | `'counts'`, `'percent'` |  | REQUIRED. A 5-point row of counts 20/20/20/20/20 also sums to 100, so counts-vs-percent cannot be sniffed from the data. |
 | neutral | string | `'split'`, `'positive'`, `'negative'`, `'exclude'` | `'split'` | Where the midpoint's share goes. Default 'split' (half each side, the published convention for diverging Likert charts); 'exclude' drops it and warns that the bars no longer sum to the base. |
 | summary | string | `'net'`, `'none'` | `'net'` | Net column (% agree − % disagree). Default 'net'; refused with neutral 'positive'/'negative', where the signed stack sum is not the net score. |
@@ -111,6 +117,8 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | engagement-notes-pinned | torture | The engagement survey with its net and base pinned as one-line method notes under the author note |
 | engagement-dashboard-notes | torture | The engagement survey on a dashboard with its notes in the info panel |
 | twelve-statements-slide | torture | Twelve statements on a full slide print their shares inside the bars |
+| column-overrides | example | columnOverrides sets the widths, alignment and head words of the name, net and base columns |
+| columns-after-plot | example | columnOrder moves the net and base columns to the other side of the marks |
 
 ## Not for
 

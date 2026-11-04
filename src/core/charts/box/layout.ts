@@ -1,5 +1,6 @@
 import { chartString as boxString } from '../../strings/box';
 import { chartTheme } from '../chartEnv';
+import { alignedRight, authoredTrackWidth, columnOverrideWarnings, trackPlotFloor } from '../columnOverrides';
 import { labelOn as chartLabelOn } from '../labelOn';
 import { splitNumberMarks } from '../../numberMarks';
 
@@ -515,7 +516,12 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   let nBandTotal = labelsOff ? 0 : maxOf(nTexts.map((text) => measure(text, tickFont).width)) + N_BAND_GAP;
 
   // the n column gave way to the name column; the name column may take 30%.
-  const catCap = Math.max(24, plot0.w * 0.3);
+  const overrides = options.columnOverrides;
+  const plotKeeps = Math.max(MIN_VALUE_RUN, trackPlotFloor(plot0.w));
+  // An authored name column keeps its width; the plot gives way first, down to its floor.
+  const nameTrack = overrides?.label?.width === undefined || !labelOn('category') ? undefined
+    : authoredTrackWidth('label', overrides.label.width, 24, plot0.w - CAT_BAND_GAP - nBandTotal - bracketRoom - plotKeeps, warnings);
+  const catCap = nameTrack ?? Math.max(24, plot0.w * 0.3);
   // N UNDER THE NAME. The n of a row is a second, muted line
   // under its name, so it sits next to the row it counts and the far-right
   // column's width goes to the plot. A qualifier ("n = 3 · too few for a box")
@@ -526,7 +532,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   const underLines = nTexts.map((text, index) => (measure(text, nFont).width <= catCap ? [text] : nSplit[index]!));
   const underW = Math.max(0, maxOf(underLines.flat().map((line) => measure(line, nFont).width)));
   const catBand = rowLabelBand(rows, tickFont, catCap, availH / rows.length >= 30 ? 2 : 1, lineH, measure, {
-    wider: gutterBudget(24, plot0.w),
+    wider: nameTrack ?? gutterBudget(24, plot0.w),
     shrink: stepDownFont(theme, tickFont, 'axis', options.target, textScaleOf(options)),
     target: options.target, textScale: textScaleOf(options),
     typeRole: 'axis',
@@ -535,7 +541,8 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   const catLines = catBand.labels;
   // A frame too short for a name and its n on two lines keeps n in the right-hand column.
   const underFits = catLines.every((label, index) => label.h + underLines[index]!.length * nLineH + 2 <= availH / rows.length);
-  const nUnder = !labelsOff && labelOn('category') && underW <= catCap && underFits;
+  // An authored n column is a column: n stays out of the name column.
+  const nUnder = !labelsOff && labelOn('category') && underW <= catCap && underFits && overrides?.n?.width === undefined;
   if (nUnder) {
     nLines = underLines;
     nBandTotal = 0;
@@ -553,11 +560,11 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
     const rawH = plot0.h - topPad - axisH;
     frameResult.frame.plotMinHeight = Math.max(frameResult.frame.plotMinHeight ?? 0, size.height + (frameResult.deficit ?? 0) - rawH + rowsNeed);
   }
-  const catBandW = labelOn('category') ? Math.max(catBand.width, nUnder ? underW : 0) : 0;
+  const catBandW = labelOn('category') ? nameTrack ?? Math.max(catBand.width, nUnder ? underW : 0) : 0;
   const catBandTotal = labelOn('category') ? catBandW + CAT_BAND_GAP : 0;
   // The rows grow to hold the second line of a wrapped n.
   const nWraps = !nUnder && !labelsOff && nSplit.some((lines) => lines.length > 1);
-  const nFloorTotal = nWraps ? maxOf(nSplit.map(nWidth)) + N_BAND_GAP : nBandTotal;
+  let nFloorTotal = nWraps ? maxOf(nSplit.map(nWidth)) + N_BAND_GAP : nBandTotal;
   if (nWraps && plot0.w - catBandTotal - nBandTotal - bracketRoom < MIN_VALUE_RUN) {
     nLines = nSplit;
     nBandTotal = nFloorTotal;
@@ -569,6 +576,10 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   const parkLabel = parked === undefined ? '' : axisFmt(parked);
   const parkRoom = parked === undefined ? 0 : PARK_GAP + Math.max(POINT_R, measure(parkLabel, tickFont).width / 2);
 
+  if (overrides?.n?.width !== undefined && !nUnder && !labelsOff) {
+    nBandTotal = authoredTrackWidth('n', overrides.n.width, nBandTotal - N_BAND_GAP, plot0.w - catBandTotal - bracketRoom - parkRoom - N_BAND_GAP - plotKeeps, warnings) + N_BAND_GAP;
+    nFloorTotal = nBandTotal;
+  }
   // DENSE ROWS. A row too low to hold its median over the box (label height + 19 px) would push
   // the median to a whisker end or beside a dot, where it reads as that mark's value. Such rows print
   // every median right-aligned in one column beside n, under the head Median.
@@ -579,12 +590,15 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   const medianWanted = denseRows && labelOn('point') && options.boxValues !== 'all' && medianRows.length > 0;
   const headFont = columnHeadFont(theme, options.target ?? DEFAULT_TARGET, textScaleOf(options));
   const medianBodyW = medianWanted ? maxOf(medianRows.map((row) => measure(fmtMedian(row.median!), labelFont).width)) : 0;
-  const medianHeadFit = medianWanted ? fitHead('Median', headFont, medianBodyW, measure, { target: options.target ?? DEFAULT_TARGET, textScale: textScaleOf(options) }) : undefined;
-  const medianColW = medianHeadFit ? Math.max(medianHeadFit.w, medianBodyW) + N_BAND_GAP : 0;
+  const medianHeadFit = medianWanted ? fitHead(overrides?.median?.label ?? 'Median', headFont, medianBodyW, measure, { target: options.target ?? DEFAULT_TARGET, textScale: textScaleOf(options) }) : undefined;
+  const medianNaturalW = medianHeadFit ? Math.max(medianHeadFit.w, medianBodyW) : 0;
+  const medianColW = !medianHeadFit ? 0 : N_BAND_GAP + (overrides?.median?.width === undefined ? medianNaturalW
+    : authoredTrackWidth('median', overrides.median.width, medianNaturalW, plot0.w - catBandTotal - nBandTotal - N_BAND_GAP - bracketRoom - parkRoom - plotKeeps, warnings));
   const medianCol = medianWanted && plot0.w - catBandTotal - nBandTotal - medianColW - bracketRoom - parkRoom >= MIN_VALUE_RUN;
   const medianHead = medianCol ? medianHeadFit : undefined;
   const medianColRight = plot0.x + plot0.w - nBandTotal;
   const medianColTotal = medianCol ? medianColW : 0;
+  columnOverrideWarnings('box', overrides, [...(labelOn('category') ? ['label'] : []), ...(!nUnder && !labelsOff ? ['n'] : []), ...(medianCol ? ['median'] : [])], medianCol ? ['median'] : [], warnings);
   nBandTotal += medianColTotal;
 
   // A box chart is a row form. Its narrowest canvas holds the name column, the n column,
@@ -1244,9 +1258,9 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
     }
   });
 
-  if (medianHead) {
+  if (medianHead && medianHead.lines[0]) {
     const headH = measure('0', headFont).height;
-    labelRequests.push(headRequest('median', 0, medianHead, medianColRight, plot.y - headH - 2, headH, false));
+    labelRequests.push(headRequest('median', 0, medianHead, alignedRight(medianColRight, medianColW - N_BAND_GAP, medianHead.w, overrides?.median?.headAlign ?? 'right'), plot.y - headH - 2, headH, false));
   }
   const solveCtx: SolveCtx = labelCtx(theme, size, options, {
     measure,

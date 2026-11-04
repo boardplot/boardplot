@@ -66,6 +66,10 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
+| columnOverrides | object |  |  | Settings per generated column. Ids: label, value, totalCvr. |
+| columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
+| columnOverrides.*.headAlign | string | `'left'`, `'right'`, `'center'` |  | Head alignment; defaults to align. |
+| columnOverrides.*.label | string |  |  | Head text. |
 | variant | string | `'rows'`, `'centered'` |  | Funnel geometry; default 'rows' bounds automatic callout leaders to three text widths. 'centered' uses symmetric stages and three centered label lines. |
 | totalCvr | string | `'none'`, `'column'` |  | Centered-only cumulative conversion column versus stage 1; default 'none'. |
 | stageShade | string | `'darken'`, `'lighten'` |  | Centered single-series stage shading; default 'darken'. Authored paints and palettes take priority. |
@@ -116,6 +120,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | ramp-outcomes | example | Outcome funnel filled from the series ramp, the lost share in badFill at 45 % |
 | signup-options | example | The sign-up funnel with an authored format, a named palette, narrower bands and explicit label kinds |
 | centered-eight-stages-slide | example | Eight-stage centered funnel on a full slide, stage name and value on one line |
+| column-overrides | example | columnOverrides sets the width and head word of the cumulative conversion column |
 
 ## Not for
 

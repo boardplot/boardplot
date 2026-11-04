@@ -72,6 +72,7 @@ import type {
   PlacedLabel,
   SceneNode,
 } from '../../types/scene';
+import { authoredTrackWidth, columnOverrideWarnings, trackPlotFloor } from '../columnOverrides';
 import { layoutCenteredFunnel, rampFunnelPaint, shadeStage } from './centered';
 import { funnelComparisonLayout } from './comparisons';
 import { clampedNote, deriveFunnel, funnelValueFormats, missingGlyph } from './derive';
@@ -258,7 +259,13 @@ export function layoutFunnel(
   // The compact form (a card narrower than the full chart measures)
   // narrows the label column, so stage names wrap sooner.
   const compactForm = options.mode === 'compact';
-  const catCap = compactForm ? Math.max(40, inner.w * 0.18) : Math.max(50, inner.w * 0.24);
+  // An authored name or value column keeps its width; the bars give way first, down to the plot floor.
+  const overrides = options.columnOverrides;
+  const barsKeep = Math.max(MIN_LONGEST_BAR, trackPlotFloor(inner.w));
+  columnOverrideWarnings('funnel', overrides, [...(labelOn('category') ? ['label'] : []), ...(labelOn('total') ? ['value'] : [])], [], warnings);
+  const nameTrack = overrides?.label?.width === undefined || !labelOn('category') ? undefined
+    : authoredTrackWidth('label', overrides.label.width, 40, inner.w - barsKeep - 28, warnings);
+  const catCap = nameTrack ?? (compactForm ? Math.max(40, inner.w * 0.18) : Math.max(50, inner.w * 0.24));
   // The stage name is fitted to its band MINUS the footnote mark, and the
   // mark goes on after: an ellipsis takes the tail of the name and never
   // the reference the reader follows.
@@ -278,11 +285,14 @@ export function layoutFunnel(
   const fitCatName = (c: (typeof stages)[number], maxWidth: number, maxLines: number): FittedText =>
     withCatMark(fitText(catNameOf(c), catFont(c), Math.max(1, maxWidth - (catMarkOf(c) ? measure(catMarkOf(c), catFont(c)).width : 0)), maxLines, measure, { target: options.target, typeRole: 'axis' }), c);
   const catInfo = stages.map((c) => fitCatName(c, catCap, CAT_LABEL_LINES));
-  const bandW = labelOn('category') ? maxOf(catInfo.map((c) => c.w)) + 14 : 0;
+  const bandW = labelOn('category') ? (nameTrack ?? maxOf(catInfo.map((c) => c.w))) + 14 : 0;
   const totalTexts = stages.map((c, ci) => { const total = shownTotals[c.id] ?? null; return total === null ? glyph : plotted.length === 1 ? cellText(0, ci, total) ?? '' : totalFmt(total); });
   const totalSizes = totalTexts.map((t) => measure(t, strongFont));
+  const totalNaturalW = maxOf(totalSizes.map((t) => t.width));
+  // The floor counts the columns as they fit unset: an authored width gives way, so it never raises the floor.
+  const naturalBandW = nameTrack === undefined ? bandW : maxOf(stages.map((c) => fitCatName(c, compactForm ? Math.max(40, inner.w * 0.18) : Math.max(50, inner.w * 0.24), CAT_LABEL_LINES).w)) + 14;
   const totalReserve = labelOn('total')
-    ? maxOf(totalSizes.map((t) => t.width)) + 14
+    ? (overrides?.value?.width === undefined ? totalNaturalW : authoredTrackWidth('value', overrides.value.width, totalNaturalW, inner.w - bandW - barsKeep - 14, warnings)) + 14
     : 8;
 
   // "Biggest drop" callout, opt-in through worstDropCallout: the
@@ -1083,7 +1093,7 @@ export function layoutFunnel(
       naturalRowsH,
       // The frame around the rows, the stage-name column, the longest bar
       // at its shortest readable length, and the stage totals after it.
-      minWidth: size.width - inner.w + bandW + MIN_LONGEST_BAR + totalReserve,
+      minWidth: size.width - inner.w + naturalBandW + MIN_LONGEST_BAR + (labelOn('total') ? totalNaturalW + 14 : 8),
     }),
     plot,
     scene: withSegmentSeams(nodes, theme),

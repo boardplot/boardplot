@@ -402,4 +402,16 @@ fixtures.push({
   options: { a: 'emails', b: 'public', sharedScale: false, title: 'Each pane reads against its own axis' },
 });
 
+fixtures.push({
+  id: 'column-overrides', title: 'columnOverrides sets the name column and the difference column, beating centerColumnWidth', kind: 'example',
+  data: {
+    categories: [{ id: 'north', label: 'North' }, { id: 'south', label: 'South' }, { id: 'east', label: 'East' }],
+    series: [{ id: 'fy25', label: 'FY25', values: [42, 55, 31] }, { id: 'fy26', label: 'FY26', values: [48, 51, 39] }],
+  },
+  options: {
+    a: 'fy25', b: 'fy26', diffColumn: true, centerColumnWidth: 60, title: 'East gained the most', source: 'Illustrative data', size: { width: 720 },
+    columnOverrides: { label: { width: 130, align: 'left' }, diff: { width: 80, label: 'Change', align: 'center' } },
+  },
+});
+
 registerFixtures('butterfly', fixtures);

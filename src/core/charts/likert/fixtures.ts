@@ -389,4 +389,29 @@ fixtures.push({
   },
 });
 
+const pulse: LikertData = {
+  scale: [
+    { id: 'sd', label: 'Strongly disagree' }, { id: 'd', label: 'Disagree' }, { id: 'n', label: 'Neutral', role: 'neutral' },
+    { id: 'a', label: 'Agree' }, { id: 'sa', label: 'Strongly agree' },
+  ],
+  items: [
+    { id: 'tools', label: 'I have the tools I need', values: [12, 24, 40, 88, 36] },
+    { id: 'goals', label: 'My goals are clear', values: [8, 18, 34, 92, 48] },
+    { id: 'growth', label: 'I can grow here', values: [20, 32, 44, 70, 24] },
+  ],
+};
+fixtures.push({
+  id: 'column-overrides', title: 'columnOverrides sets the widths, alignment and head words of the name, net and base columns', kind: 'example',
+  data: pulse,
+  options: {
+    title: 'Clear goals earn the strongest agreement', values: 'counts', source: 'Pulse survey, invented data', size: { width: 800 },
+    columnOverrides: { label: { width: 240, align: 'right' }, net: { width: 80, label: 'Net score' }, base: { width: 70, label: 'Answers', align: 'center' } },
+  },
+});
+fixtures.push({
+  id: 'columns-after-plot', title: 'columnOrder moves the net and base columns to the other side of the marks', kind: 'example',
+  data: pulse,
+  options: { title: 'Clear goals earn the strongest agreement', values: 'counts', source: 'Pulse survey, invented data', size: { width: 800 }, columnOrder: ['base', 'net', 'plot'] },
+});
+
 registerFixtures('likert', fixtures);
