@@ -9,6 +9,8 @@ import { EMPTY_DATA, hasNoDataRows } from './emptyData';
 import { NormalizeError, canonicalLanguage } from './normalize/shared';
 import { withNumberMarks } from './numberMarks';
 import { chartRefusals, isRefused } from './schema/refusals';
+import { movedWidthWarnings, TRACK_WIDTH_TYPES, widthsThatDraw } from './charts/columnOverrides';
+import type { ColumnOverride } from './types/options';
 import { DEFAULT_PRESET, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, resolveTheme } from './theme';
 import { DEFAULT_TARGET, floorTextScale, resolveTargetSize } from './target';
 import { textScaleOf, textSizeOf } from './typeFloors';
@@ -286,10 +288,32 @@ function prepared(def: { prepare?: (data: any, options?: any) => any }, data: un
 /** The same registered layout used by components, measurement and artifacts. */
 export function layoutResolvedRequest(request: ResolvedChartRequest): LayoutResult {
   const first = layoutOnce(request);
+  const fitted = widthsGiveWay(request, first, layoutOnce);
+  if (fitted) return withClipWarnings(fitted[1], request.fontMetrics);
   const [asked, result] = steppedType(request, first) ?? [request, first];
   const plainRequest = withoutAskedNotes(asked, result);
   const plain = plainRequest && layoutOnce(plainRequest);
-  return withClipWarnings(plain && !plain.refused ? askedNotesOff(plain, result) : result, request.fontMetrics);
+  const drawn = plain && !plain.refused ? askedNotesOff(plain, result) : result;
+  const fittedLate = widthsGiveWay(asked, drawn, layoutOnce);
+  return withClipWarnings(fittedLate ? fittedLate[1] : drawn, request.fontMetrics);
+}
+
+/**
+ * Nothing refuses because of an authored column width: where the chart draws with the width unset,
+ * the width gives way toward it and warns. A refusal with every width unset stays as it is.
+ */
+function widthsGiveWay(
+  request: ResolvedChartRequest, result: LayoutResult, layout: (asked: ResolvedChartRequest) => LayoutResult,
+): [ResolvedChartRequest, LayoutResult] | undefined {
+  if (!result.refused || result.warnings[0]?.code !== 'size-below-floor' || !TRACK_WIDTH_TYPES.has(request.type)) return undefined;
+  const overrides = (request.options as { columnOverrides?: Record<string, ColumnOverride> }).columnOverrides;
+  if (overrides === undefined) return undefined;
+  const asking = (columnOverrides: Record<string, ColumnOverride>): ResolvedChartRequest => ({ ...request, options: { ...request.options, columnOverrides } as typeof request.options });
+  const fit = widthsThatDraw(overrides, request.size.width, (columnOverrides) => !layout(asking(columnOverrides)).refused);
+  if (!fit) return undefined;
+  const asked = asking(fit.overrides);
+  const drawn = layout(asked);
+  return [asked, { ...drawn, warnings: movedWidthWarnings(drawn.warnings, fit) }];
 }
 
 /**
@@ -814,6 +838,9 @@ export function measureResolvedRequest(request: ResolvedChartRequest): ChartMeas
     let first = layoutAt(request.options);
     // The same step as layoutResolvedRequest, so measure agrees with render and canDraw; the sizing probes then use the stepped text.
     const stepped = steppedType(request, first, steppedRequest => { layoutAt = open(steppedRequest); return layoutAt(steppedRequest.options); });
+    const drawnBy = (opened: ResolvedChartRequest) => open(opened)(opened.options);
+    const fitted = widthsGiveWay(request, first, drawnBy);
+    if (fitted) return measureWithLayout(fitted[0], fitted[1], open(fitted[0]));
     if (stepped) [asked, first] = stepped;
     const plainRequest = withoutAskedNotes(asked, first);
     if (plainRequest) {
@@ -821,6 +848,8 @@ export function measureResolvedRequest(request: ResolvedChartRequest): ChartMeas
       const plain = plainAt(plainRequest.options);
       if (!plain.refused) return measureWithLayout(plainRequest, askedNotesOff(plain, first), plainAt);
     }
+    const fittedLate = widthsGiveWay(asked, first, drawnBy);
+    if (fittedLate) return measureWithLayout(fittedLate[0], fittedLate[1], open(fittedLate[0]));
     return measureWithLayout(asked, first, layoutAt);
   } finally { for (const run of runs) run.finish(); }
 }

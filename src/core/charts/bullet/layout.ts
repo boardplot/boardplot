@@ -1323,7 +1323,7 @@ export function layoutBullet(
         })),
         owner,
         part: 'bar',
-        display: { value: rowFmt(row)(row.value) },
+        ...(shown('actual') ? { display: { value: rowFmt(row)(row.value) } } : {}),
       });
       occupied.claim(rect, 'mark', owner);
       anchorByRow.set(row.id, { x: vx, y: rowCenter, value: row.value, date: row.date, label: row.label, owner });
@@ -1371,13 +1371,13 @@ export function layoutBullet(
         width: targetStroke,
         owner,
         part: 'target',
-        display: { value: rowFmt(row)(row.target) },
+        ...(shown('target') ? { display: { value: rowFmt(row)(row.target) } } : {}),
       });
       occupied.claim({ x: tx - Math.max(1.5, targetStroke / 2 + 0.5), y: rowY + bw * 0.08, w: Math.max(3, targetStroke + 1), h: bw * 0.84 }, 'mark', owner);
       // The target prints by its tick, in the air above the row:
       // a tick alone leaves the number the delta is taken from to a guess.
       if (cols && cp.colTargets[ri] === null) {
-        // The column is left out: the tick stays, with its value in the hover.
+        // The column is left out, so nothing prints: the tick stays as a mark.
       } else if (cols) {
         const text = cp.colTargets[ri]!;
         const tsize = measure(text, labelFont);
@@ -1535,12 +1535,16 @@ export function layoutBullet(
   const hasTargets = labelOn('annotation') && rows.some((row) => row.target !== null);
   if (!compact) {
     pushAll(warnings, generatedIdWarnings('bullet', 'columnVisibility', options.columnVisibility, [...(labelOn('category') ? ['label'] : []), ...(hasValues ? ['actual'] : []), ...(hasTargets ? ['target', 'gap'] : [])]));
-    if (hasTargets && !shown('target')) warnings.push({ code: 'bullet-target-column-hidden', severity: 'info', field: ['options', 'columnVisibility', 'target'], message: 'columnVisibility leaves the target out, so no number explains the target tick on the page; its value stays in the hover' });
+    if (hasTargets && !shown('target')) warnings.push({ code: 'bullet-target-column-hidden', severity: 'info', field: ['options', 'columnVisibility', 'target'], message: 'columnVisibility leaves the target out, so no number explains the target tick' });
   }
   const trackIds = cols ? [...(cp.hasTarget ? ['target'] : []), ...(cp.hasGap ? ['gap'] : [])] : [];
   const valueTrack = !compact && !stacked && valueColW > 0 ? ['actual'] : [];
   columnOverrideWarnings('bullet', overrides, stacked || compact ? [] : [...(catBandW > 0 ? ['label'] : []), ...valueTrack, ...trackIds], cols ? [...(actualHead ? ['actual'] : []), ...trackIds] : [], warnings);
-  pushAll(warnings, generatedIdWarnings('bullet', 'columnOrder', options.columnOrder, cols ? ['plot', ...(valueColW > 0 ? ['actual'] : []), ...trackIds] : ['plot']));
+  pushAll(warnings, generatedIdWarnings('bullet', 'columnOrder', options.columnOrder, cols ? ['plot', ...(valueColW > 0 ? ['actual'] : []), ...trackIds] : ['plot', ...(hasValues ? ['actual'] : []), ...(hasTargets ? ['target', 'gap'] : [])]));
+  // This form prints its values on the rows, with no tracks to move.
+  if (!cols && !compact && options.columnOrder?.some((id) => id !== 'plot' && (id === 'actual' ? hasValues : hasTargets && (id === 'target' || id === 'gap')))) {
+    warnings.push({ code: 'bullet-column-order-not-applied', severity: 'warn', field: ['options', 'columnOrder'], message: 'columnOrder moves columns, and this form prints its values on the rows, so nothing moved', suggest: 'Give the chart the width the target columns need, or remove columnOrder.' });
+  }
   for (const kind of ['position', 'direction'] as const) {
     if (typeof options.labels !== 'object' || options.labels[kind] !== false || cols) continue;
     warnings.push({ code: 'bullet-label-line-not-drawn', severity: 'info', field: ['options', 'labels', kind], message: `labels.${kind} sets a line of the target columns, which this form does not draw, so nothing changed`, suggest: 'Give the chart the width the target columns need, or remove the setting.' });
@@ -1684,15 +1688,15 @@ export function layoutBullet(
   const a11yRows = rows
     .map((row) => {
       const f = rowFmt(row);
-      const v = row.value !== null ? f(row.value) : 'n/a';
+      const v = !shown('actual') ? '' : row.value !== null ? ` ${f(row.value)}` : ' n/a';
       const t =
         row.target !== null
-          ? ` vs ${targetWord(options)} ${f(row.target)}` +
-            (deltaVsTarget[row.id] !== undefined
+          ? (shown('target') ? ` vs ${targetWord(options)} ${f(row.target)}` : '') +
+            (deltaVsTarget[row.id] !== undefined && shown('gap')
               ? ` (${deltaText(row, deltaVsTarget[row.id]!)}, ${chartString(options, ({good: 'toneGood', bad: 'toneBad', warn: 'toneWarn', neutral: 'toneNeutral'} as const)[deltaTone(row, deltaVsTarget[row.id]!)])})`
               : '')
           : '';
-      return `${row.label} ${v}${t}`;
+      return `${row.label}${v}${t}`;
     })
     .join('; ');
   const a11yDesc =

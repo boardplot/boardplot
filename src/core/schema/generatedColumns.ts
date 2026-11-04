@@ -104,8 +104,8 @@ export function generatedIdWarnings(type: GeneratedColumnType, key: GeneratedIdK
   const ids = Array.isArray(authored) ? authored as readonly string[]
     : Object.entries(authored).filter(([, value]) => key !== 'columnVisibility' && key !== 'rowVisibility' || value === false).map(([id]) => id);
   const list = generatedIdList(type, key);
-  // A list entry is addressed by its index, a record entry by its id.
-  const fieldOf = (id: string, index: number) => ['options', key, Array.isArray(authored) ? String(index) : id];
+  // A list takes its position in the field path: a warning's path resolves against the spec.
+  const fieldOf = (id: string, index: number) => ['options', key, Array.isArray(authored) ? index : id];
   return ids.flatMap((id, index): LintWarning[] => {
     const shown = drawn.includes(id);
     if (key === 'columnVisibility' && shown && NAME_COLUMNS.has(id)) {

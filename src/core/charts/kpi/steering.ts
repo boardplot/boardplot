@@ -260,7 +260,9 @@ export function planSteering(input: SteeringInput): SteeringPlan | undefined {
     muted.add(labelId);
     if (comparison.caretDir) {
       const capCy = baseline - rowCap / 2;
-      const tip = { x: left + caretW / 2, y: comparison.caretDir === 'up' ? capCy - caretH / 2 : capCy + caretH / 2 };
+      // The caret goes with its number, wherever the column seats it.
+      const caretLeft = body.x === x ? left : body.x - textInset;
+      const tip = { x: caretLeft + caretW / 2, y: comparison.caretDir === 'up' ? capCy - caretH / 2 : capCy + caretH / 2 };
       marks.push({
         t: 'path', id: `mark:compare:${index}:caret`,
         d: arrowHeadPath(tip, comparison.caretDir === 'up' ? -Math.PI / 2 : Math.PI / 2, caretSize),

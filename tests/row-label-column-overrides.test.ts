@@ -14,6 +14,20 @@ const codes = (type: string, id: string, options: object) => draw(type, id, opti
 const wide = (ids: readonly string[]) => Object.fromEntries(ids.map((id) => [id, { width: 5000 }]));
 
 describe('authored column widths', () => {
+  // On a fixed height a width changes how many lines the names take, so a chart that draws unset refused with the width.
+  it('gives way on a fixed height and warns', () => {
+    const cases: [string, string, number, number, Record<string, { width: number }>][] = [
+      ['funnel', 'lead-funnel-full', 1051, 292, { value: { width: 5000 } }],
+      ['bullet', 'ops-dashboard', 320, 500, { label: { width: 100 } }],
+      ['box', 'twelve-teams-median-column', 800, 528, { label: { width: 20 } }],
+    ];
+    for (const [type, id, width, height, columnOverrides] of cases) {
+      const drawn = draw(type, id, { size: { width, height }, columnOverrides });
+      expect(`${type} ${Boolean(drawn.refused)}`).toBe(`${type} false`);
+      expect(drawn.warnings.some((warning) => /^generated-column-width-(capped|floored)$/.test(warning.code))).toBe(true);
+    }
+  });
+
   // Widths that fit one by one squeezed the likert bars out together, and the chart asked for a canvas 10,000 px wide.
   it('never refuses a chart for a wide width, alone or together', () => {
     const cases: [string, string, string[], object][] = [
@@ -33,7 +47,7 @@ describe('authored column widths', () => {
 
   // A cap the author does not hear about looks like the option did nothing.
   it('warns when a wide width stops at the plot floor', () => {
-    expect(codes('dot', 'column-overrides', { columnOverrides: { label: { width: 5000 } } })).toContain('column-width-capped');
+    expect(codes('dot', 'column-overrides', { columnOverrides: { label: { width: 5000 } } })).toContain('generated-column-width-capped');
   });
 
   // The diverging slope has no change column, so a width there would do nothing without a word.
@@ -46,6 +60,29 @@ describe('authored column widths', () => {
 });
 
 describe('bullet columns', () => {
+  // The compact mark has no columns or lines, so these keys would otherwise do nothing without a word.
+  it('refuses the column keys and label lines on density compact', () => {
+    for (const options of [{ columnVisibility: { target: false } }, { columnOrder: ['plot'] }, { columnOverrides: { label: { width: 60 } } }, { labels: { direction: false } }]) {
+      const result = draw('bullet', 'compact-120', options);
+      expect(result.warnings.some((warning) => warning.code === 'invalid-options')).toBe(true);
+    }
+  });
+
+  // A hidden column takes its hover value with it; hiding a printed label alone does not.
+  it('drops the hover value of a hidden column', () => {
+    const displayed = (options: object, part: string) => (draw('bullet', 'column-overrides', { columnOverrides: undefined, ...options }) as Geometry).scene.filter((node) => (node as { part?: string }).part === part).some((node) => (node as { display?: unknown }).display !== undefined);
+    expect(displayed({}, 'target')).toBe(true);
+    expect(displayed({ columnVisibility: { target: false } }, 'target')).toBe(false);
+    expect(displayed({ columnVisibility: { actual: false } }, 'bar')).toBe(false);
+  });
+
+  // The values print on the rows here, so saying the chart does not draw them would be false.
+  it('says a form without tracks cannot move a printed column', () => {
+    const found = codes('bullet', 'column-overrides', { columnOverrides: undefined, targetColumns: false, columnOrder: ['actual', 'plot'] });
+    expect(found).toContain('bullet-column-order-not-applied');
+    expect(found).not.toContain('generated-id-unknown');
+  });
+
   // An id in the warning's field path crashed the render as an invalid JSON array index.
   it('warns with the list for ids the current form does not draw', () => {
     const result = draw('bullet', 'column-overrides', { columnOverrides: undefined, columnVisibility: { share: false }, columnOrder: ['delta', 'plot'] });

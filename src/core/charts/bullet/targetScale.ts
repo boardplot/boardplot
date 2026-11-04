@@ -567,7 +567,7 @@ export function layoutTargetScale(input: TargetScaleInput): Geometry<BulletMarks
       barNodeId = `bar:${row.id}`;
       if (share <= hi) {
         const rect: Rect = { x: x(0), y, w: Math.max(0.5, x(share) - x(0)), h: barH };
-        nodes.push({ t: 'rect', id: barNodeId, rect, ...barStyle, owner, part: 'bar', display });
+        nodes.push({ t: 'rect', id: barNodeId, rect, ...barStyle, owner, part: 'bar', ...(hidden('actual') ? {} : { display }) });
         occupied.claim(rect, 'mark', owner);
       } else {
         // Beyond the scale: the bar runs to the axis end with a break mark in it.
@@ -575,7 +575,7 @@ export function layoutTargetScale(input: TargetScaleInput): Geometry<BulletMarks
         const cut = end - OVERFLOW_BREAK_INSET;
         const rect: Rect = { x: x(0), y, w: Math.max(0.5, cut - 2 - x(0)), h: barH };
         const tail: Rect = { x: cut + 2, y, w: end - cut - 2, h: barH };
-        nodes.push({ t: 'rect', id: barNodeId, rect, ...barStyle, owner, part: 'bar', display });
+        nodes.push({ t: 'rect', id: barNodeId, rect, ...barStyle, owner, part: 'bar', ...(hidden('actual') ? {} : { display }) });
         nodes.push({ t: 'rect', id: `${barNodeId}:beyond`, rect: tail, ...barStyle, owner, part: 'barBeyondBreak' });
         const glyph = straightBreakGlyph(theme, { x: cut, y: barCenter }, `${barNodeId}:break`, owner, { token: 'axis' }, 'barBreak');
         nodes.push(...glyph.nodes);
@@ -680,7 +680,7 @@ export function layoutTargetScale(input: TargetScaleInput): Geometry<BulletMarks
     const share = shares[index];
     const value = input.valueText(row) ?? 'n/a';
     const delta = input.deltaVsTarget[row.id];
-    return `${row.label} ${value}` +
+    return `${row.label}${hidden('actual') ? '' : ` ${value}`}` +
       (share === undefined ? '' : `,${hidden('share') ? '' : ` ${shareText(share)} ${chartString(options, 'ofTarget', { v1: target })},`} ${input.targetText(row)}`) +
       (delta === undefined || hidden('delta') ? '' : ` (${input.deltaText(row, delta)}, ${chartString(options, ({good: 'toneGood', bad: 'toneBad', warn: 'toneWarn', neutral: 'toneNeutral'} as const)[input.deltaTone(row, delta)])})`);
   };
