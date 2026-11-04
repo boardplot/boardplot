@@ -375,12 +375,16 @@ const OUTSIDE_CHART_WEIGHT = 1;
 const TEXT_GAP = 4;
 /** Space a card keeps from the edge of the chart frame, as the viewport boundary keeps from the window edge. */
 const FRAME_INSET = 8;
+/** The farthest a clear seat sits from the hovered mark, unless no seat nearer is safe. */
+const CLEAR_REACH = 48;
 
 interface CardSlot extends SlotCandidate { side?: CardSide; fits?: boolean; phase?: number }
 interface CardSlots extends Array<CardSlot> {
   expand?: () => CardSlot[];
   /** Seats clear of every text, nearest first: tried only when no seat beside the mark is `clean`. */
   clear?: () => CardSlot[];
+  /** A clear seat too far from the mark to read as its card: tried only when no nearer seat is safe. */
+  far?: (slot: CardSlot) => boolean;
   /** A seat that covers no mark and no text: with one, the clear seats are not searched. */
   clean?: (slot: CardSlot) => boolean;
   /** A cheap lower bound of a seat's cost, to skip a clear seat before it is scored. */
@@ -445,7 +449,8 @@ export function tableCardSlots(target: Rect, boundary: Rect, width: number, heig
  * seat is safe only when it is clear of `forbidden` and of the pointer. A
  * direct seat, which wins before cost is compared, must also pass `clear`.
  * A safe seat that covers fewer texts (`hidden`) wins over one that covers
- * more, whatever its phase: a covered number is lost to the reader.
+ * more, whatever its phase: a covered number is lost to the reader. Only a
+ * clear seat beyond its reach loses to any safe seat, whatever that seat hides.
  */
 export function selectCardSlot(candidates: CardSlots, forbidden: readonly Rect[], cost: (slot: CardSlot) => number,
   pointer?: Point, clear?: (slot: CardSlot) => boolean, hidden?: (slot: CardSlot) => number): CardSlot {
@@ -486,13 +491,18 @@ export function selectCardSlot(candidates: CardSlots, forbidden: readonly Rect[]
     candidates.push(...shifted);
   }
   if (!(best?.safe && best.hidden === 0 && candidates.clean?.(best.slot)) && candidates.clear) {
-    // Nearest first: a seat farther from the pointer than the best cost cannot win, since distance is part of the cost.
-    for (const slot of candidates.clear()) {
-      if (best?.safe && best.hidden === 0 && slot.penalty > best.cost) break;
-      if (best?.safe && best.hidden === 0 && (candidates.floor?.(slot) ?? 0) > best.cost) continue;
-      const entry = score(slot);
-      if (!best || better(entry, best)) best = entry;
-    }
+    const clear = candidates.clear();
+    const search = (slots: CardSlot[]) => {
+      // Nearest first: a seat farther from the pointer than the best cost cannot win, since distance is part of the cost.
+      for (const slot of slots) {
+        if (best?.safe && best.hidden === 0 && slot.penalty > best.cost) break;
+        if (best?.safe && best.hidden === 0 && (candidates.floor?.(slot) ?? 0) > best.cost) continue;
+        const entry = score(slot);
+        if (!best || better(entry, best)) best = entry;
+      }
+    };
+    search(clear.filter(slot => !candidates.far?.(slot)));
+    if (!best?.safe) search(clear.filter(slot => candidates.far?.(slot)));
   }
   // Record only unique tested seats, not duplicate edge clamps.
   candidates.splice(0, candidates.length, ...Array.from(scores.values(), entry => entry.slot));
@@ -787,7 +797,13 @@ interface SeatSearch { readable: readonly Rect[] }
  * improved search also keeps the chart's own words clear, ignores claims that
  * draw nothing, tries more seats near the mark and prefers the seat that hides
  * fewest texts. Its seat wins only when it hides no text the base seat leaves
- * readable, so a better seat never trades one hidden label for another.
+ * readable, so a better seat never trades one hidden label for another. The one
+ * exception frees the chart's words: where the base seat hides them, a seat clear
+ * of them may hide other records' labels instead.
+ *
+ * Both searches stay near the mark. A card far from its mark reads as no card of
+ * that mark, which is worse than a hidden label, so a clear seat beyond
+ * `CLEAR_REACH` is taken only when no nearer seat is safe.
  */
 export function placeLabelCard(input: LabelCardInput, width: number, height: number): Pick<LabelCardLayout, 'placement' | 'rect' | 'side' | 'decisions'> {
   // Text the card would hide: labels, notes, axis and frame text. A rule of an axis is no text.
@@ -796,14 +812,25 @@ export function placeLabelCard(input: LabelCardInput, width: number, height: num
   let seat = seatCard(input, width, height, texts);
   if (texts.length) {
     const before = new Set(hidden(seat.slot.rect));
-    const improved = seatCard(input, width, height, texts, { readable: texts.filter(item => !before.has(item)).map(item => item.rect) });
-    if (hidden(improved.slot.rect).every(item => before.has(item))) seat = improved;
+    // A seat that frees the chart's words may hide labels of other records instead.
+    const freed = [...before].some(chartWord) ? seatCard(input, width, height, texts, { readable: [] }) : undefined;
+    if (freed && !hidden(freed.slot.rect).some(item => chartWord(item) || ownerContains(item.owner, input.record.target.owner))
+      && !(input.pointer && rectContains(freed.slot.rect, { ...input.pointer, w: 0, h: 0 }, 0))) seat = freed;
+    else {
+      const improved = seatCard(input, width, height, texts, { readable: texts.filter(item => !before.has(item)).map(item => item.rect) });
+      if (hidden(improved.slot.rect).every(item => before.has(item))) seat = improved;
+    }
   }
   // Cost and side memory own the card seat. A second box solver would undo
   // that choice. Rows use the shared text fitting policy above.
   const decisions: PlaceDecision[] = [{ labelId: input.idPrefix ?? `card:${input.record.id}`, strategy: 'candidatesOccupied',
     tried: seat.tried, chose: seat.slot.slot, reason: seat.placement }];
   return { placement: seat.placement, rect: seat.slot.rect, side: seat.slot.side, decisions };
+}
+
+/** The chart's own words, which no record owns: its title, notes, headers and legend. */
+function chartWord(item: OccupiedRect): boolean {
+  return item.kind === 'frame' || item.kind === 'legend' || Object.keys(item.owner).length === 0;
 }
 
 function seatCard(input: LabelCardInput, width: number, height: number, texts: readonly (OccupiedRect & { filled?: boolean })[], search?: SeatSearch): CardSeat {
@@ -832,8 +859,7 @@ function seatCard(input: LabelCardInput, width: number, height: number, texts: r
   // The hovered record's own labels stay readable beside its card, as the engine's active labels do. In the
   // improved search so do the chart's own words, which no record owns (its title, notes, headers and legend),
   // and every text the base seat leaves readable.
-  const own = texts.filter(item => ownerContains(item.owner, input.record.target.owner) || (search !== undefined
-    && (item.kind === 'frame' || item.kind === 'legend' || Object.keys(item.owner).length === 0))).map(item => item.rect);
+  const own = texts.filter(item => ownerContains(item.owner, input.record.target.owner) || (search !== undefined && chartWord(item))).map(item => item.rect);
   const active = [...(input.forbidden ?? []), ...own, ...(search?.readable ?? [])];
   const exclusion = target ? { ...target, w: target.w || 0.001, h: target.h || 0.001 } : undefined;
   const forbidden = [...(exclusion ? [exclusion] : []), ...(table ? [] : active)];
@@ -846,6 +872,7 @@ function seatCard(input: LabelCardInput, width: number, height: number, texts: r
     // Inside the boundary and at most one card size beyond the chart: the seats clear of text that the seats beside the mark could not find.
     const area = intersect({ x: chart.x - width, y: chart.y - height, w: chart.w + 2 * width, h: chart.h + 2 * height }, frame);
     (candidates as CardSlots).clear = () => area ? clearSlots(area, width, height, texts.map(item => item.rect), pointer, search ? target : undefined) : [];
+    (candidates as CardSlots).far = slot => boxGap(slot.rect, target) > CLEAR_REACH;
     (candidates as CardSlots).clean = slot => covered(slot.rect) === 0 && !coversText(slot.rect);
     (candidates as CardSlots).floor = slot => slot.penalty + outsideChart(slot.rect);
   }
