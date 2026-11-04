@@ -438,6 +438,13 @@ export interface TableOptions extends BaseOptionsFor<'table'> {
   judgements?: 'all' | 'exceptions';
   /** Mount closed descendants. false removes them from the DOM. */
   mountCollapsed?: boolean;
+  /**
+   * React only. Paint every mounted row at once: no `content-visibility`
+   * deferral and no row paging over 500 rows, so a capture of a long table has
+   * no blank rows. A long table paints slower. Closed rows still follow
+   * `mountCollapsed`. Default false.
+   */
+  paintOffscreenRows?: boolean;
   variant?: TableVariant; // default 'hierarchy'
   encodings?: Record<Id, TableCellEncoding>; // per column, opt-in
   totalPosition?: 'top' | 'bottom'; // variant supplies default
@@ -552,10 +559,11 @@ export interface TableOptions extends BaseOptionsFor<'table'> {
    * Lines a row label may take before it is cut with an ellipsis (default 2).
    * A label breaks at a space or after `_`, `-`, `/` or `.`, so a long
    * campaign name such as `Brand_Paid-Social_FB_Q4` wraps instead of ending
-   * in "…". 1 keeps every label on one line. The hover card always prints
-   * the full name.
+   * in "…". 1 keeps every label on one line. A higher count lets a row grow
+   * to its lines. Any positive whole number. A cut label keeps its full name in
+   * its title.
    */
-  rowLabelLines?: 1 | 2;
+  rowLabelLines?: number;
   /**
    * Let the last drawn track take the remaining frame width when it has no
    * authored width. Both renderers use the same final pixel width. Default false.
