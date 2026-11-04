@@ -16,6 +16,7 @@ export function creativeRecords(ctx: RecordContext): InteractionRecord[] | undef
   const overrides = options.columnOverrides;
   const drawn = { value: plan.columns.includes('value'), median: plan.columns.includes('median'), delta: plan.columns.includes('delta') };
   const medianLabel = overrides?.median?.label ?? chartString(ctx.request.options, 'accountMedian');
+  const deltaLabel = overrides?.delta?.label ?? creativeString(ctx.request.options, 'vsMedianColumn');
   const deltas = (ctx.geometry.derived as unknown as CreativeDerived).deltas ?? [];
   const drawnIds = new Set(ctx.geometry.scene.map(node => node.id));
   // A hidden row or column pushes no record and no hover field, as on a dimswitch. Medians and fatigue still read all six metrics.
@@ -27,13 +28,15 @@ export function creativeRecords(ctx: RecordContext): InteractionRecord[] | undef
     // The record leads with the first number the row prints.
     const primary = drawn.value ? { value: numericValue(metric.value, unit), valueLabel: overrides?.value?.label ?? creativeString(ctx.request.options, 'creativeColumn') }
       : drawn.median ? { value: numericValue(metric.accountMedian, unit), valueLabel: medianLabel }
-        : { value: derivedPercent(deltas.find(delta => delta.key === key)?.pct), valueLabel: overrides?.delta?.label ?? creativeString(ctx.request.options, 'vsMedianColumn') };
+        : { value: derivedPercent(deltas.find(delta => delta.key === key)?.pct), valueLabel: deltaLabel };
     return makeRecord(ctx, owner, primary.value, {
       // The value is the creative's own, beside the account median: it carries the column's name.
       label: name, seriesLabel: name, categoryLabel: data.facts.name, valueLabel: primary.valueLabel, anchor: marks.metrics[key],
       nodeIds: [`creative:row:${key}`, `label:creative:metric:${key}`, `label:creative:value:${key}`, `label:creative:median:${key}`].filter(id => drawnIds.has(id)),
       fields: [
         ...(drawn.median && drawn.value ? [{ key: 'accountMedian', label: medianLabel, value: numericValue(metric.accountMedian, unit) }] : []),
+        // A printed change keeps its source in the record once the value or the median it divides is hidden.
+        ...(drawn.delta && drawn.value !== drawn.median ? [{ key: 'delta', label: deltaLabel, value: derivedPercent(deltas.find(delta => delta.key === key)?.pct) }] : []),
         ...(drawn.median || drawn.delta ? [
           { key: 'population', label: chartString(ctx.request.options, 'medianPopulation'), value: textValue(data.comparison.population) },
           { key: 'window', label: chartString(ctx.request.options, 'medianWindow'), value: textValue(`${data.comparison.startDate} to ${data.comparison.endDate}`) },
