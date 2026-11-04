@@ -1565,7 +1565,9 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     // A DimSwitch's document is its own spec at the view on screen: the compiled table is internal.
     ...(originalFloorRequest === undefined ? {} : { source: { type: originalFloorRequest.type, data: originalFloorRequest.data,
       options: Object.fromEntries(Object.entries({ ...originalFloorRequest.options as Record<string, unknown>,
-        expansion: { expanded: openParents(table, collapsedSet), collapsed: [...collapsedSet] }, columnVisibility, inlineVisibility })
+        expansion: { expanded: openParents(table, collapsedSet), collapsed: [...collapsedSet] },
+        // A DimSwitch's own columns left the compiled table, so the table's toggle state does not name them.
+        columnVisibility: { ...(originalFloorRequest.options as { columnVisibility?: Record<Id, boolean> }).columnVisibility, ...columnVisibility }, inlineVisibility })
         .filter(([, value]) => value !== undefined)) } }),
   } : undefined, [exporter, drew, request, data, table, collapsedSet, rootsHidden, columnVisibility, inlineVisibility, contentWidth, originalFloorRequest]);
   useExportLink(exporter, exported);
