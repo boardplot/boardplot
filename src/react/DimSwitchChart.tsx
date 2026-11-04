@@ -2,7 +2,8 @@
 import type { OptionsInput } from '../core/types/optionInput';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { LintWarning } from '../core/types/scene';
-import { compileDimSwitch, dimSwitchTableWarnings, foreignRowId } from '../core/charts/dimswitch/compile';
+import { compileDimSwitch, dimSwitchTableWarnings, foreignRowId, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning } from '../core/charts/dimswitch/compile';
+import { defaultNotePlacement } from '../core/notes';
 import type { DimSwitchData, DimSwitchOptions, DimSwitchVariant } from '../core/charts/dimswitch/types';
 import type { OptionKeyCheck } from '../core/schema/unknownKeys';
 import { TableChart, type TableChartProps } from './charts/table';
@@ -61,7 +62,9 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
   const [initial] = useState(()=>({variant:defaultVariant,depth:defaultDepth,splits:defaultSplits}));
   const variant=controlledVariant ?? initial.variant, depth=controlledDepth ?? initial.depth, splits=controlledSplits ?? initial.splits;
   const stableData=useStableValue(data);
-  const authoredOptions=useStableValue(options);
+  // Resolved before the compile, so a default does what the prop does. The controlled prop wins.
+  const [initialColumns]=useState(defaultColumnVisibility);
+  const authoredOptions=useStableValue(options.columnVisibility===undefined && initialColumns!==undefined ? {...options,columnVisibility:initialColumns} : options);
   // A retired setting is compiled as its successor (or dropped) and reported with the compile warnings.
   const retired=useMemo(()=>{const shaped=normalizeOptionShapes('dimswitch',{options:authoredOptions});const retired=retireChartSettings('dimswitch',{options:shaped.chart.options as DimSwitchOptions});return {...retired,warnings:[...shaped.warnings,...retired.warnings]};},[authoredOptions]);
   const stableOptions=retired.chart.options;
@@ -109,15 +112,18 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
   const wantsWarnings=onWarnings!==undefined;
   useEffect(()=>{
     if(!wantsWarnings || tableWarnings===undefined) return;
-    const all=[...retired.warnings,...compiled.warnings,...dimSwitchTableWarnings(tableWarnings)];
+    // The info footer keeps an in-frame note behind its button, so the partial note has no place on the chart there.
+    const placement=stableOptions.notes?.placement ?? defaultNotePlacement(stableOptions.target);
+    const inPanel=compiled.partialNote!==undefined && placement==='info' && !compiled.warnings.some(warning=>warning.code===PARTIAL_NOTE_OFF_FRAME);
+    const all=[...retired.warnings,...compiled.warnings,...(inPanel ? [partialNoteWarning(compiled.partialNote!)] : []),...dimSwitchTableWarnings(tableWarnings,stableOptions.columnOverrides)];
     const key=JSON.stringify(all);
     if(reported.current===key) return;
     reported.current=key;
     warningsCallback.current?.(all);
-  },[wantsWarnings,retired.warnings,compiled.warnings,tableWarnings]);
+  },[wantsWarnings,retired.warnings,compiled,stableOptions,tableWarnings]);
   if(refusals.length) return <LayoutRefusal refusals={refusals} theme={options.theme} options={{...options,size:size==='container'?fallbackSize:size}}/>;
   return <TableFloorRequestContext.Provider value={tableRequest}><Table {...compiled.options} exporter={exporter} data={compiled.data} collapsed={collapsed} onCollapsedChange={toggle}
-   defaultColumnVisibility={defaultColumnVisibility} onColumnVisibilityChange={onColumnVisibilityChange} sortable={sortable} defaultSort={defaultSort} onSortChange={onSortChange} rootsHidden={rootsHidden}
+   onColumnVisibilityChange={onColumnVisibilityChange} sortable={sortable} defaultSort={defaultSort} onSortChange={onSortChange} rootsHidden={rootsHidden}
    inlineVisibility={inlineVisibility} defaultInlineVisibility={defaultInlineVisibility} onInlineVisibilityChange={onInlineVisibilityChange}
    size={size} fit={fit} fallbackSize={fallbackSize} measureWidths={measureWidths} hover={hover} onWarnings={wantsWarnings ? readTable : undefined} onRefused={onRefused} renderRefused={renderRefused}
    scope={scope} fontMetrics={fontMetrics} styleNonce={styleNonce} idPrefix={idPrefix} handleRef={handleRef} onContentWidth={onContentWidth} onScrollChange={onScrollChange} fillHeight={fillHeight}

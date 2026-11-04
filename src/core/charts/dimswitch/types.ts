@@ -64,8 +64,12 @@ export interface DimSwitchData {
 export type DimSwitchVariant = 'by-measure' | 'by-member';
 export interface DimSwitchOptions extends Omit<TableOptions, 'expansion' | 'topN' | 'variant'> {
   topN?: never;
-  /** False leaves a column out: range, pp (vs prior) or pl (vs plan). The data still needs its range and prior periods, and order and show still read Range. */
+  /** False leaves a column out: range, pp (vs prior), pl (vs plan) or a displayed period id. The label column stays. The data still needs its range and prior periods, and order and show still read Range. */
   columnVisibility?: Record<string, boolean>;
+  /** Per-column settings on label, range, pp, pl and each period id. `width` beats `widths`, and the automatic card form ignores it. */
+  columnOverrides?: Record<string, { width?: number; align?: 'left' | 'right' | 'center'; headAlign?: 'left' | 'right' | 'center'; label?: string }>;
+  /** Order of the whole blocks after the label column: 'block' (Range and its comparisons) and 'periods'. */
+  columnOrder?: string[];
   /** 'cohort' and 'cohort-small' are refused on dimswitch; use 'compact'. */
   density?: Exclude<TableOptions['density'], 'cohort' | 'cohort-small'>;
   variant?: DimSwitchVariant;
@@ -92,6 +96,8 @@ export interface CompiledDimSwitch {
   warnings: LintWarning[];
   /** Measures left out of the table, for reading.omissions. */
   omissions: { labelId: string; text: string; reason: string; destination: string }[];
+  /** The note that says a drawn window is partial where no head does. */
+  partialNote?: string;
 }
 
 export interface DimSwitchDerived extends TableDerived { compiled: {data: TableData; options: TableOptions}; omissions: CompiledDimSwitch['omissions'] }

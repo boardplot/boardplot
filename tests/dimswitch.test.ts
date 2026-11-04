@@ -440,3 +440,73 @@ describe('dimswitch columnHeads', () => {
     expect(svg({})).toContain('tableHeader');
   });
 });
+
+describe('dimswitch generated columns', () => {
+  const partialData: DimSwitchData = { ...exampleData, periods: exampleData.periods.map(p => p.kind === 'range' || p.id === 'w2' ? { ...p, partial: true } : p) };
+  const layout = (data: DimSwitchData, options: object) => requireGeometry(dimswitchCore.layout(data, { size: { width: 900 }, ...options }));
+  // With no head, nothing else in the drawing says a window is partial, so a reader would take the cut week for a whole one.
+  it('prints the partial disclosure in the frame when the head is gone, and warns where the frame has no place', () => {
+    const inFrame = layout(partialData, { columnHeads: false });
+    expect(inFrame.frame?.noteList?.find(note => note.text === 'Range, Week 2 to date')?.inFrame).toBe(true);
+    expect(inFrame.warnings.map(warning => warning.code)).not.toContain('dimswitch-partial-note-off-frame');
+    const noPlace = layout(partialData, { columnHeads: false, notes: { show: [] } });
+    expect(noPlace.refused).toBeFalsy();
+    expect(noPlace.warnings.map(warning => warning.code)).toContain('dimswitch-partial-note-off-frame');
+    expect(noPlace.frame?.noteList?.find(note => note.text === 'Range, Week 2 to date')?.inFrame).toBe(false);
+  });
+  // A period the host hid must not read as one the card left out, and hiding all value columns must still draw the labels.
+  it('counts a hidden period as gone, never as left out by the card, and draws labels only without refusing', () => {
+    const noted = layout(exampleData, { size: { width: 320 }, columnVisibility: { w1: false } });
+    expect(noted.frame?.noteList?.some(note => note.text.includes('Week 1'))).toBe(false);
+    const labels = layout(exampleData, { columnVisibility: { range: false, pp: false, w1: false, w2: false } });
+    expect(labels.refused).toBeFalsy();
+    expect(labels.warnings.map(warning => warning.code)).toContain('dimswitch-labels-only');
+  });
+  // Pinned period tracks would not sit next to the label, so a periods-first table pins the label alone.
+  it('pins only the label when the periods lead', () => {
+    expect(compileDimSwitch(exampleData, { columnOrder: ['periods', 'block'] }).options.stickyLabels).toBe(1);
+    expect(compileDimSwitch(exampleData, { columnOrder: ['block'] }).options.stickyLabels).toBe(3);
+  });
+  // The note must not cost a table its draw: without this, a head-less table refused at a height where the same table with a head drew.
+  it('moves the partial note out of a fixed frame before the floor refuses', () => {
+    const request = (height: number, extra: object = {}) => measure({ type: 'dimswitch', data: exampleData, options: { title: 'Channel performance', variant: 'by-measure', depth: 2, columnHeads: false, target: 'dashboard', size: { width: 400, height }, ...extra } as never });
+    const tight = request(280);
+    expect(tight.geometry?.warnings.map(warning => warning.code)).toContain('dimswitch-partial-note-off-frame');
+    expect(tight.geometry?.frame?.noteList?.find(note => note.text === 'Week 2 to date')?.inFrame).toBe(false);
+    // A fit that only folds would cost the 6 channel rows that the same table with no note draws.
+    const fold = request(530);
+    expect((fold.geometry?.scene as { t: string; id?: string }[]).filter(node => node.t === 'text' && /^cell:.*:label$/.test(node.id ?? '')).length).toBe(10);
+    expect(fold.geometry?.warnings.map(warning => warning.code)).toContain('dimswitch-partial-note-off-frame');
+    const roomy = request(600);
+    expect(roomy.geometry?.warnings.map(warning => warning.code)).not.toContain('dimswitch-partial-note-off-frame');
+    expect(roomy.geometry?.frame?.noteList?.find(note => note.text === 'Week 2 to date')?.inFrame).toBe(true);
+  });
+  // One cell with two alignments reads as two columns: the change line must sit under its value.
+  it('seats the change line by the alignment of its column', () => {
+    const geometry = layout(exampleData, { columnOverrides: { w1: { align: 'center' }, w2: { align: 'left' } } });
+    const text = (geometry.scene as unknown as { t: string; id?: string; part?: string; x?: number; align?: string }[]).filter(node => node.t === 'text');
+    const row = dimswitchRowId('by-measure', 'total', 'orders');
+    for (const [column, align] of [['w1', 'middle'], ['w2', 'start']] as const) {
+      const value = text.find(node => node.id === tableCellNodeId('cell', row, column));
+      const line = text.find(node => node.part === 'tableCellLine' && node.id === tableCellNodeId('cellline', row, column, `${row}:change`));
+      expect([value?.align, line?.align]).toEqual([align, align]);
+      expect(line?.x).toBe(value?.x);
+    }
+  });
+  // An authored width the card form drops would otherwise vanish in silence.
+  it('warns when the card form ignores an authored width', () => {
+    const geometry = layout(exampleData, { columnOverrides: { range: { width: 5000 } } });
+    expect(geometry.warnings.find(warning => warning.code === 'option-ignored')?.field).toEqual(['options', 'columnOverrides', 'range', 'width']);
+    expect(layout(exampleData, { columnOverrides: { range: { width: 120 } } }).warnings.map(warning => warning.code)).not.toContain('option-ignored');
+  });
+  // An empty head leaves only the star, so the note must still name the column.
+  it('names a partial column from its default label under an empty head', () => {
+    const geometry = layout(partialData, { notes: { show: ['disclosure'] }, columnOverrides: { w2: { label: '' } } });
+    expect(geometry.frame?.noteList?.map(note => note.text)).toContain('* Range, Week 2 to date');
+  });
+  // A wrong id must warn with the real ids: a list key's path once failed the whole render as an internal error.
+  it('warns on a wrong id in every key and draws', () => {
+    const geometry = layout(exampleData, { columnVisibility: { nope: false }, columnOverrides: { nope: { width: 10 } }, columnOrder: ['nope'] });
+    expect(geometry.warnings.filter(warning => warning.code === 'generated-id-unknown').map(warning => warning.field)).toEqual([['options', 'columnVisibility', 'nope'], ['options', 'columnOverrides', 'nope'], ['options', 'columnOrder', 0]]);
+  });
+});
