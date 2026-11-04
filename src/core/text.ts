@@ -243,23 +243,25 @@ const WIDTH_CACHE_LIMIT = 65536;
  * a new object, which the caller may change.
  */
 export function cachedMeasurer(rawWidth: (text: string, font: FontSpec) => number): TextMeasurer {
-  const families = new Map<FontSpec['family'], Map<string, Map<string, number>>>();
+  // Family, then size and weight as one number, then a short list. Fonts alternate from cell to cell, so a joined string key here cost more than the lookup it saved.
+  const families = new Map<FontSpec['family'], Map<number, FontPlan[]>>();
   let widthCount = 0;
-  // The last font's plan: a run of measurements in one font skips the key and the box arithmetic.
-  let last: { family: FontSpec['family']; size: number; weight: number; style: FontSpec['style']; letterSpacing: FontSpec['letterSpacing']; tabular: FontSpec['tabular']; lineHeight: FontSpec['lineHeight']; widths: Map<string, number>; height: number; ascent: number } | undefined;
-  const plan = (font: FontSpec) => {
-    if (last !== undefined && last.family === font.family && last.size === font.size && last.weight === font.weight && last.style === font.style
-      && last.letterSpacing === font.letterSpacing && last.tabular === font.tabular && last.lineHeight === font.lineHeight) return last;
-    // Family and text stay separate keys; only numeric and boolean fields are joined.
-    const key = `${font.size}:${font.weight}:${font.style}:${font.letterSpacing}:${font.tabular}`;
-    let faces = families.get(font.family);
-    if (!faces) families.set(font.family, faces = new Map());
-    let widths = faces.get(key);
-    if (!widths) faces.set(key, widths = new Map());
-    return last = {
+  // The last font's plan: a run of measurements in one font skips the lookups.
+  let last: FontPlan | undefined;
+  const plan = (font: FontSpec): FontPlan => {
+    if (last !== undefined && samePlan(last, font)) return last;
+    let bySize = families.get(font.family);
+    if (!bySize) families.set(font.family, bySize = new Map());
+    const key = font.size * 4096 + font.weight;
+    let plans = bySize.get(key);
+    if (!plans) bySize.set(key, plans = []);
+    for (const known of plans) if (samePlan(known, font)) return last = known;
+    const next: FontPlan = {
       family: font.family, size: font.size, weight: font.weight, style: font.style, letterSpacing: font.letterSpacing, tabular: font.tabular, lineHeight: font.lineHeight,
-      widths, height: quantize(font.size * (font.lineHeight ?? 1.2)), ascent: quantize(font.size * 0.8),
+      widths: new Map(), height: quantize(font.size * (font.lineHeight ?? 1.2)), ascent: quantize(font.size * 0.8),
     };
+    plans.push(next);
+    return last = next;
   };
   return (text, font) => {
     let current = plan(font);
@@ -273,6 +275,17 @@ export function cachedMeasurer(rawWidth: (text: string, font: FontSpec) => numbe
     }
     return { width, height: current.height, ascent: current.ascent };
   };
+}
+
+interface FontPlan extends Pick<FontSpec, 'family' | 'size' | 'weight' | 'style' | 'letterSpacing' | 'tabular' | 'lineHeight'> {
+  widths: Map<string, number>;
+  height: number;
+  ascent: number;
+}
+
+function samePlan(plan: FontPlan, font: FontSpec): boolean {
+  return plan.family === font.family && plan.size === font.size && plan.weight === font.weight && plan.style === font.style
+    && plan.letterSpacing === font.letterSpacing && plan.tabular === font.tabular && plan.lineHeight === font.lineHeight;
 }
 
 /** Cap height in px of a resolved face (tables hold it in 1/1000 em). */
