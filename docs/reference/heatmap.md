@@ -79,6 +79,11 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | bubble.sizeLabel | string |  |  | Size key title. |
 | bubble.colorLabel | string |  |  | Colour key title. |
 | bubble.track | boolean |  |  | Row track. A line with an arrow through each row; implies ordered columns. Default false. |
+| columnOverrides | object |  |  | Settings per generated column. Ids: label, each data.categories id. |
+| columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
+| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Cell alignment. |
+| columnOverrides.*.headAlign | string | `'left'`, `'right'`, `'center'` |  | Head alignment; defaults to align. |
+| columnOverrides.*.label | string |  |  | Head text. |
 | minBase | number |  |  | Low-base threshold. Cells whose series bases entry is below it draw hatched, with a note. |
 | missing | string | `'hatch'`, `'blank'` |  | How a cell with no value is drawn. 'hatch' (the default) stripes the cell and names it in the key. 'blank' draws no fill and no stripe; the same key entry or note still says that a blank cell is no data. A blank cell keeps its grid line and dash, so it does not read as the palest value. A low base (bases and minBase) stays hatched. |
 
@@ -127,3 +132,4 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | survey-journey-bubbles | example | Survey bubble matrix: 6 segments × 12 touchpoints, importance as size, binned satisfaction as colour, two low-base cells |
 | survey-journey-long-names | example | Survey bubble matrix with long touchpoint names: the matrix turns instead of rotating or thinning the names |
 | survey-journey-track | example | Survey bubble matrix with a row track: the touchpoints are ordered journey steps |
+| column-widths | example | A wider first column, aligned values and a renamed head |

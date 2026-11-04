@@ -440,4 +440,31 @@ fixtures.push({
   options: { ...capability.options!, theme: { preset: 'standard', overrides: { marks: { statusFill: 'full' } } } },
 });
 
+fixtures.push({
+  id: 'column-widths',
+  kind: 'example',
+  title: 'A wider last column, aligned heads and a renamed head',
+  tags: [],
+  data: {
+    rows: [{ id: 'web', label: 'Web shop' }, { id: 'app', label: 'Mobile app' }, { id: 'pos', label: 'Store tills' }],
+    columns: [{ id: 'design', label: 'Design' }, { id: 'build', label: 'Build' }, { id: 'test', label: 'Test' }, { id: 'ship', label: 'Ship' }],
+    cells: [
+      { row: 'web', col: 'design', state: 'done' }, { row: 'web', col: 'build', state: 'done' }, { row: 'web', col: 'test', state: 'late' }, { row: 'web', col: 'ship', state: 'open' },
+      { row: 'app', col: 'design', state: 'done' }, { row: 'app', col: 'build', state: 'late' }, { row: 'app', col: 'test', state: 'open' }, { row: 'app', col: 'ship', state: 'open' },
+      { row: 'pos', col: 'design', state: 'done' }, { row: 'pos', col: 'build', state: 'done' }, { row: 'pos', col: 'test', state: 'done' }, { row: 'pos', col: 'ship', state: 'late' },
+    ],
+  },
+  options: {
+    title: 'Release stages by product',
+    source: 'Invented project data',
+    size: { width: 720 },
+    states: [{ id: 'done', label: 'Done', tone: 'good' }, { id: 'late', label: 'Late', tone: 'bad' }, { id: 'open', label: 'Open', tone: 'neutral' }],
+    columnOverrides: {
+      label: { width: 170, align: 'left' },
+      design: { headAlign: 'left' },
+      ship: { width: 220, label: 'Ship to customers', headAlign: 'right' },
+    },
+  },
+});
+
 registerFixtures('status', fixtures);

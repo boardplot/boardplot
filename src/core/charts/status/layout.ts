@@ -13,6 +13,8 @@ import { formatNonzeroWithSpec, formatterFromExample, seriesRasterFormatter } fr
 
 import { sweepHide } from '../../collide';
 import { bareGridPlot } from '../heatmap/layout';
+import { matrixTracks, overrideIgnored, widthCapped } from '../heatmap/columnTracks';
+import { generatedIdWarnings, type ColumnOverride } from '../../schema/generatedColumns';
 import { frameTextOptions, legendRequired, normalizeLegendOption, solveFrame, type FrameInput, type LegendItemInput, authoredFootnoteCount } from '../../frame';
 import type { Rect } from '../../geometry';
 import { linePath } from '../../svgPath';
@@ -36,7 +38,7 @@ import { fittedLabel, gutterBudget, pinnedRowFont, stepDownFont } from '../../la
 import { heightOmitted, matrixWidths, rowSizing } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { textScaleOf } from '../../typeFloors';
-import { maxOf, pushAll } from '../../arrays';
+import { maxOf, minOf, pushAll } from '../../arrays';
 import { headInk as tableHeadInk, plainInk } from '../table/headFace';
 
 export interface StatusRow {
@@ -80,6 +82,8 @@ export interface StatusState {
 export interface StatusOptions extends Omit<BaseOptionsFor<'status'>, 'legend'> {
   states: StatusState[];
   columnLabels?: 'top' | 'bottom';
+  /** Width, alignment and head text per column: `label` or a `data.columns` id. */
+  columnOverrides?: Record<string, ColumnOverride>;
   /**
    * status omits BaseOptions' legend and re-declares it: its own legendSchema
    * is a strictObject with `position` only, so `legend: { position, order }` —
@@ -197,6 +201,10 @@ export function layoutStatus(
   );
   const usedStates = states.filter((state) => usedStateIds.has(state.id));
   const warnings = lintStatus(data, options);
+  const overrides = options.columnOverrides ?? {};
+  const nameTrack = overrides.label;
+  pushAll(warnings, generatedIdWarnings('status', 'columnOverrides', options.columnOverrides, ['label', ...columns.map((column) => column.id)]));
+  for (const key of ['headAlign', 'label'] as const) if (nameTrack?.[key] !== undefined) warnings.push(overrideIgnored('label', key, 'the row names have no head'));
 
   const theme = resolveSemanticPaletteTheme(
     chartTheme(options),
@@ -297,7 +305,12 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
   const cellFont: FontSpec = { family: theme.type.family, ...theme.type.label };
   const axisLineH = axisFont.size * (axisFont.lineHeight ?? 1.2);
 
-  const rowBandCap = Math.max(24, framePlot.w * 0.3);
+  // Authored widths stop where each column keeps its cell and the longest word of its head, so no head breaks inside a word for them.
+  const columnKeep = new Map(columns.map((column) => [column.id, Math.max(MIN_CELL_W, 2 + maxOf(column.label.split(/\s+/).map((word) => measure(word, axisFont).width)))]));
+  const bandRoom = framePlot.w - LABEL_GAP - [...columnKeep.values()].reduce((sum, keep) => sum + keep, 0) - (columns.length - 1) * CELL_GAP;
+  const authoredBand = nameTrack?.width === undefined ? undefined : Math.max(24, Math.min(nameTrack.width - LABEL_GAP, bandRoom));
+  if (nameTrack?.width !== undefined && nameTrack.width - LABEL_GAP > Math.max(24, bandRoom)) warnings.push(widthCapped('status', 'label'));
+  const rowBandCap = authoredBand ?? Math.max(24, framePlot.w * 0.3);
   const estimatedCellH = Math.max(
     1,
     (framePlot.h - axisLineH - COLUMN_GAP - (rows.length - 1) * CELL_GAP) / rows.length,
@@ -321,7 +334,7 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
   // name would still be cut, the grid gives the band room down to MIN_CELL_W per column, so a
   // narrow card wraps its row names whole and its stage heads stagger.
   const fitRows = (cellFloor: number, refWarnings: LintWarning[]) => rowLabelBand(rows, rowFont, rowBandCap, rowMaxLines, rowLineH, measure, {
-    wider: gutterBudget(rowBandCap, framePlot.w, LABEL_GAP + columns.length * cellFloor + (columns.length - 1) * CELL_GAP),
+    ...(authoredBand === undefined ? { wider: gutterBudget(rowBandCap, framePlot.w, LABEL_GAP + columns.length * cellFloor + (columns.length - 1) * CELL_GAP) } : {}),
     target: options.target, textScale: textScaleOf(options), typeRole: 'axis', shrink: axisStep,
     footnoteRefs: { count: authoredFootnoteCount(options), warnings: refWarnings },
   });
@@ -336,7 +349,7 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
   // hold one line. Under narrow columns (below 48 px), a
   // wider band that keeps every name on one line and every cell at least 32 px wide wins.
   const cellWFor = (bandW: number) => (framePlot.w - bandW - LABEL_GAP - (columns.length - 1) * CELL_GAP) / columns.length;
-  if (keyNamesStates && rowText.some(text => text.lines.length > 1) && cellWFor(rowBandW) < 48) {
+  if (authoredBand === undefined && keyNamesStates && rowText.some(text => text.lines.length > 1) && cellWFor(rowBandW) < 48) {
     const oneLine = rowLabelBand(rows, axisFont, framePlot.w, 1, axisLineH, measure,
       { target: options.target, textScale: textScaleOf(options), typeRole: 'axis', footnoteRefs: { count: authoredFootnoteCount(options), warnings: [] } });
     if (oneLine.labels.every(text => text.title === undefined && text.lines.length === 1 && text.font === axisFont) && cellWFor(oneLine.width) >= 32) {
@@ -346,17 +359,33 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
   if (rowLines === undefined && rowMaxLines === 1 && tightFont && rowText.some(text => text.title !== undefined)) {
     return layoutStatus(data, options, 'tight');
   }
+  // The names set the width the chart can never go under; the band itself stays as authored.
+  const rowBandFloor = rowBandW;
+  if (authoredBand !== undefined) rowBandW = Math.max(rowBandW, authoredBand);
   const gridX = framePlot.x + rowBandW + LABEL_GAP;
-  const gridW = Math.max(10, framePlot.w - rowBandW - LABEL_GAP);
-  const cellW = Math.max(1, (gridW - (columns.length - 1) * CELL_GAP) / columns.length);
+  const gridRoom = Math.max(10, framePlot.w - rowBandW - LABEL_GAP);
+  const tracks = matrixTracks(columns.map((column) => column.id), gridRoom, CELL_GAP, (id) => overrides[id]?.width, MIN_CELL_W, (id) => columnKeep.get(id)!);
+  if (tracks) for (const id of tracks.capped) warnings.push(widthCapped('status', id));
+  const gridW = tracks?.gridW ?? gridRoom;
+  // With authored widths the narrowest column sets the row pitch and the choices all cells share.
+  const cellW = tracks ? minOf(tracks.widths) : Math.max(1, (gridW - (columns.length - 1) * CELL_GAP) / columns.length);
   const columnStep = cellW + CELL_GAP;
-  const columnCenter = (index: number) => gridX + index * columnStep + cellW / 2;
+  const columnWidth = (index: number) => tracks ? tracks.widths[index]! : cellW;
+  const columnLeft = (index: number) => tracks ? gridX + tracks.lefts[index]! : gridX + index * columnStep;
+  const columnCenter = (index: number) => columnLeft(index) + columnWidth(index) / 2;
+  const columnIndex = new Map(columns.map((column, index) => [column.id, index]));
+  const bindingWidth = (col: Id) => columnWidth(columnIndex.get(col)!);
+  const headAlignOf = (index: number) => { const override = overrides[columns[index]!.id]; return override?.headAlign ?? override?.align; };
+  const headLeft = (index: number, w: number) => {
+    const align = headAlignOf(index);
+    return align === 'left' ? columnLeft(index) : align === 'right' ? columnLeft(index) + columnWidth(index) - w : columnCenter(index) - w / 2;
+  };
 
   const columnTextCap = Math.max(calendarHeaders ? 40 : 12, cellW - 2);
   // Try the complete header in the air left by its neighbours before wrapping.
   const headerWidths = columns.map(column => measure(column.label, axisFont).width);
   const headerLeft = columns.map((_, index) => Math.max(framePlot.x,
-    Math.min(columnCenter(index) - headerWidths[index]! / 2, framePlot.x + framePlot.w - headerWidths[index]!)));
+    Math.min(headLeft(index, headerWidths[index]!), framePlot.x + framePlot.w - headerWidths[index]!)));
   const headerFits = columns.map((_, index) => headerWidths[index]! <= framePlot.w
     && (index === 0 || headerLeft[index]! >= headerLeft[index - 1]! + headerWidths[index - 1]! + 4)
     && (index === columns.length - 1 || headerLeft[index]! + headerWidths[index]! + 4 <= headerLeft[index + 1]!));
@@ -417,7 +446,7 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
     if (!state) return [];
     const value = binding.value === undefined ? undefined : valueForStatus(binding.value, raster, options.format !== undefined);
     const sizes = [state.label, ...(value ? [value] : [])].map(line => measure(line, cellFont));
-    return Math.max(...sizes.map(size => size.width)) + 8 <= cellW
+    return Math.max(...sizes.map(size => size.width)) + 8 <= bindingWidth(binding.col)
       ? [sizes.reduce((height, size) => height + size.height, 0) + 4] : [];
   }) : [];
   // The natural height keeps state names and values that fit at this width.
@@ -477,7 +506,7 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
     if (!state) return true;
     const value = binding.value === undefined ? undefined : valueForStatus(binding.value, raster, options.format !== undefined);
     const lines = [state.label, ...(value ? [value] : [])];
-    return Math.max(...lines.map(line => measure(line, font).width)) + 8 <= cellW
+    return Math.max(...lines.map(line => measure(line, font).width)) + 8 <= bindingWidth(binding.col)
       && lines.reduce((height, line) => height + measure(line, font).height, 0) + 4 <= cellH;
   });
   const namesRequested = labelOn('point') && !keyNamesStates && (options.labelDensity ?? 'smart') === 'full';
@@ -491,15 +520,15 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
   const textFont = nameFont ?? cellFont;
 
   rows.forEach((row, rowIndex) => {
-    columns.forEach((column, columnIndex) => {
+    columns.forEach((column, colIndex) => {
       const binding = cellByBinding.get(`${row.id}\u0000${column.id}`);
       const state = binding ? stateById.get(binding.state) : undefined;
       const missing = state === undefined;
       const owner: OwnerRef = { seriesId: row.id, categoryId: column.id };
       const rect: Rect = {
-        x: gridX + columnIndex * columnStep,
+        x: columnLeft(colIndex),
         y: gridY + rowIndex * rowStep,
-        w: cellW,
+        w: columnWidth(colIndex),
         h: cellH,
       };
       const nodeId = `cell:${row.id}:${column.id}`;
@@ -547,6 +576,7 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
         const { lines, size, fits } = named.fits || valueText === undefined ? named : fit([valueText]);
         const text = lines.join('\n');
         if (lines.length > 0 && (fits || valueText !== undefined)) {
+          const cellAlign = overrides[column.id]?.align;
           labelRequests.push({
             id: `state:${row.id}:${column.id}`,
             kind: 'point',
@@ -557,12 +587,13 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
             ...(lines.includes(state.label) ? {} : { printsFor: [] }),
             text,
             lines,
+            ...(cellAlign === 'left' ? { align: 'start' as const } : cellAlign === 'right' ? { align: 'end' as const } : cellAlign === 'center' ? { align: 'middle' as const } : {}),
             font: textFont,
             ...(textFont !== cellFont ? { fontStep: textFont } : {}),
             priority: fits ? PRIORITY.interior : PRIORITY.valueLine,
             candidates: fits ? [{
               slot: 'inside',
-              rect: { x: rect.x + (rect.w - size.width) / 2, y: rect.y + (rect.h - size.height) / 2, w: size.width, h: size.height },
+              rect: { x: cellAlign === 'left' ? rect.x + 4 : cellAlign === 'right' ? rect.x + rect.w - size.width - 4 : rect.x + (rect.w - size.width) / 2, y: rect.y + (rect.h - size.height) / 2, w: size.width, h: size.height },
               penalty: 0,
               insideFill: paintColor(theme, paintForState(state)),
               insidePaint: paintForState(state),
@@ -585,7 +616,7 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
   if (months) {
     months.forEach((month, index) => {
       if (month !== 1 || index === 0) return;
-      const x = gridX + index * columnStep - CELL_GAP / 2;
+      const x = columnLeft(index) - CELL_GAP / 2;
       scene.push({
         t: 'line', id: `yearRule:${columns[index]!.id}`, x1: x, y1: gridY, x2: x, y2: gridY + gridH + (columnPosition === 'bottom' ? 4 : 0),
         stroke: { token: 'axis' }, width: strokeToken(theme, 'rule'), owner: { categoryId: columns[index]!.id }, part: 'yearRule',
@@ -612,6 +643,7 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
         text: row.label,
         ...fittedLabel(text, axisFont),
         font: axisFont,
+        ...(nameTrack?.align === 'left' ? { align: 'start' as const } : nameTrack?.align === 'center' ? { align: 'middle' as const } : nameTrack?.align === 'right' ? { align: 'end' as const } : {}),
         priority:
           PRIORITY.endpoint +
           (highlights.has(row.id) ? PRIORITY.highlightBonus : 0),
@@ -619,7 +651,7 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
           {
             slot: 'left',
             rect: {
-              x: framePlot.x + rowBandW - text.w,
+              x: nameTrack?.align === 'left' ? framePlot.x : nameTrack?.align === 'center' ? framePlot.x + (rowBandW - text.w) / 2 : framePlot.x + rowBandW - text.w,
               y: rowCenter(index) - text.h / 2,
               w: text.w,
               h: text.h,
@@ -637,6 +669,7 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
       const kept = headerKeep[index]!;
       // Off-stride months stay unnamed; the stride and the year rules carry them.
       if (monthlyKeep && !kept) return;
+      const headAlign = headAlignOf(index);
       const y =
         columnPosition === 'top'
           ? framePlot.y + (staggerHeaders ? (index % headerTiers) * (axisLineH + 2 * LABEL_PAD) : columnLabelH - text.h)
@@ -647,6 +680,7 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
         owner: { categoryId: column.id },
         text: column.label,
         ...fittedLabel(text, axisFont),
+        ...(headAlign === 'left' ? { align: 'start' as const } : headAlign === 'right' ? { align: 'end' as const } : headAlign === 'center' ? { align: 'middle' as const } : {}),
         font: axisFont,
         priority: kept
           ? PRIORITY.endpoint +
@@ -656,7 +690,7 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
           {
             slot: columnPosition,
             rect: {
-              x: staggerHeaders || headerFits[index] ? headerLeft[index]! : columnCenter(index) - text.w / 2,
+              x: staggerHeaders || headerFits[index] ? headerLeft[index]! : headLeft(index, text.w),
               y,
               w: text.w,
               h: text.h,
@@ -710,9 +744,9 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
   }
   // A wrapped cell label ("On plan" over "97.5%") centres each line on its cell; anchored at the box start the lines sat right of centre.
   pushAll(scene, labelsToNodes(theme, solved.placed, label => label.kind === 'point' ? cellFont : axisFont, scene)
-    .map((node): SceneNode => node.t === 'text' && node.part === 'series' && node.lines.length > 1 && node.align === 'start'
+    .map((node): SceneNode => node.t === 'text' && node.part === 'series' && node.lines.length > 1 && node.align === 'start' && nameTrack?.align === undefined
       ? { ...node, align: 'end', x: labelRects.get(node.id)!.x + labelRects.get(node.id)!.w }
-      : node.t === 'text' && node.id.startsWith('label:state:') && node.lines.length > 1 && node.align === 'start' && labelRects.has(node.id)
+      : node.t === 'text' && node.id.startsWith('label:state:') && node.lines.length > 1 && node.align === 'start' && labelRects.has(node.id) && overrides[node.owner.categoryId ?? '']?.align === undefined
         ? { ...node, align: 'middle', x: labelRects.get(node.id)!.x + labelRects.get(node.id)!.w / 2 } : node));
 
   const stateCounts = new Map<Id, number>();
@@ -736,7 +770,7 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
       minimumRowsH: rows.length * Math.max(rowFloorH, maxOf(!legend ? namedCellHeights : [])) + (rows.length - 1) * CELL_GAP,
       // The natural height keeps the 28 px row the floor used to set, so an unpinned board is as tall as before.
       naturalRowsH: rows.length * Math.max(naturalCellH, 28) + (rows.length - 1) * CELL_GAP,
-      ...matrixWidths(size.width - gridW, columns.length, CELL_GAP, columnText.map((label) => label.w / headerTiers)),
+      ...authoredMatrixWidths(matrixWidths(size.width - gridRoom - (rowBandW - rowBandFloor), columns.length, CELL_GAP, columnText.map((label) => label.w / headerTiers)), tracks, size.width - gridRoom, columns.length, CELL_GAP, columnText.map((label) => label.w / headerTiers)),
     }),
     plot,
     scene,
@@ -792,6 +826,13 @@ function wrapHeader(text: string, width: number, font: FontSpec, measure: import
   return words.join('\n');
 }
 
+/** The natural width with the authored columns at their widths. */
+function authoredMatrixWidths(widths: { minWidth: number; naturalWidth: number }, tracks: ReturnType<typeof matrixTracks>, chromeW: number, columns: number, gap: number, headers: readonly number[]) {
+  if (!tracks) return widths;
+  const free = Math.max(28, maxOf(headers));
+  return { ...widths, naturalWidth: chromeW + tracks.widths.reduce((sum, width, i) => sum + (tracks.authored[i] ? width : free), 0) + (columns - 1) * gap };
+}
+
 function normalizeStatusInput(
   data: StatusData,
   options: StatusOptions,
@@ -840,7 +881,7 @@ function normalizeStatusInput(
         'status column requires an id',
       );
     }
-    return { id: column.id, label: column.label ?? column.id };
+    return { id: column.id, label: options.columnOverrides?.[column.id]?.label ?? column.label ?? column.id };
   });
   const rowIds = new Set(rows.map((row) => row.id));
   const columnIds = new Set(columns.map((column) => column.id));

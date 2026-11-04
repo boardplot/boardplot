@@ -28,7 +28,7 @@ export interface GeneratedIds {
 export const GENERATED_COLUMNS = {
   // bar/layout.ts:1087 caps the name band.
   bar: { columns: ['label'], blocks: [], rows: [] },
-  // bartable/layout.ts:624 is the name track and :626 the number tracks. A panel takes its share of the rest.
+  // bartable/layout.ts places the name track, then the number tracks and the panels in columnOrder.
   bartable: { columns: ['label'], columnsFromData: 'each data.columns id and each data.panels id', blocks: ['numbers', 'panels'], rows: [] },
   // box/layout.ts:528 is the name band and :579 the median band. `n` prints the sample sizes.
   box: { columns: ['label', 'n', 'median'], blocks: [], rows: [] },
@@ -57,7 +57,7 @@ export const GENERATED_COLUMNS = {
   gantt: { columns: ['name', 'meta0', 'meta1', 'meta2'], blocks: ['meta', 'plot'], rows: [] },
   // grid/metricStackLayout.ts:108 sizes the one track, and :389 seats the parts in it.
   grid: { columns: ['unit', 'headline', 'span'], tracks: ['gutter'], blocks: ['gutter', 'plot'], rows: [] },
-  // heatmap/layout.ts:658 is the name band and :725 the one cell width.
+  // heatmap/layout.ts places the name band and one width per column. An id that the turned form has no column for warns.
   heatmap: { columns: ['label'], columnsFromData: 'each data.categories id', blocks: [], rows: [] },
   // kpi/steering.ts:133 measures the comparison values and :237 seats them.
   kpi: { columns: ['label', 'value'], blocks: [], rows: [] },
@@ -71,11 +71,19 @@ export const GENERATED_COLUMNS = {
   sankey: { columns: ['first', 'last'], blocks: [], rows: [] },
   // slope/layout.ts:402 is the change column.
   slope: { columns: ['change'], blocks: [], rows: [] },
-  // status/layout.ts:338 sets the one cell width.
+  // status/layout.ts places the name band and one width per column.
   status: { columns: ['label'], columnsFromData: 'each data.columns id', blocks: [], rows: [] },
   // waterfall/layout.ts:379 is the name band and :404 the value reserve of the horizontal form.
   waterfall: { columns: ['label', 'value'], blocks: [], rows: [] },
 } as const satisfies Record<string, GeneratedIds>;
+
+/** One entry of `columnOverrides`: the fields a type reads are in its schema. */
+export interface ColumnOverride {
+  width?: number;
+  align?: 'left' | 'right' | 'center';
+  headAlign?: 'left' | 'right' | 'center';
+  label?: string;
+}
 
 export type GeneratedColumnType = keyof typeof GENERATED_COLUMNS;
 
