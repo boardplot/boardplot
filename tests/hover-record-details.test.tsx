@@ -20,6 +20,7 @@ import { labelCardContent, sharedLabelCardContent, layoutLabelCardContent } from
 import { categorySiblings, hoverModel, hoverTargets, hoverView } from '../src/react/hover/engine';
 import { highlightScene } from '../src/react/hover/highlight';
 import { getFixtures } from '../src/fixtures';
+import { boxGap } from '../src/core/geometry';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -324,4 +325,30 @@ it('seats a card clear of the chart text when the chart has a clear seat', () =>
   expect(covered).toEqual([]);
   expect(rect.x).toBeGreaterThanOrEqual(8);
   expect(rect.x + rect.w).toBeLessThanOrEqual(geometry.size.width - 8);
+});
+
+// A tall card on a rising stacked column chart found no seat clear of all text near the bar, so it sat in the chart's far corner, hundreds of px from the bar.
+it('seats a tall card next to its column', () => {
+  const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  const { request, geometry } = build({ type: 'column', data: { categories: months.map(id => ({ id, label: id.toUpperCase() })),
+    series: months.map((_, layer) => ({ id: `layer${layer}`, label: `Layer ${layer + 1}`,
+      values: months.map((__, column) => column < layer ? null : 300 + 40 * layer + 25 * (column - layer)) })) },
+  options: { variant: 'stacked', size: { width: 560, height: 280 } } });
+  const model = hoverModel(request, geometry);
+  // The viewport reaches far past the chart, as on a long page.
+  const boundary = { x: -152, y: -436, w: 1424, h: 884 };
+  months.forEach(month => {
+    const base = model.records.find(record => record.target.owner.categoryId === month && record.anchor)!;
+    const anchor = base.anchor as { x: number; y: number; w: number; h: number };
+    const pointer = { x: anchor.x + anchor.w / 2, y: anchor.y + anchor.h / 2 };
+    const ids = hoverTargets(model, request, { point: pointer }, false).map(record => record.id);
+    const view = hoverView(model, request, geometry, ids, { card: true, highlight: false, keyboard: false },
+      { viewport: { scale: 1, origin: { x: 0, y: 0 }, boundary, pointer } });
+    const { rect } = view.card!;
+    expect(boxGap(rect, anchor)).toBeLessThanOrEqual(48);
+    expect(pointer.x >= rect.x && pointer.x <= rect.x + rect.w && pointer.y >= rect.y && pointer.y <= rect.y + rect.h).toBe(false);
+    const own = view.cardInput!.occupied.filter(item => item.kind !== 'mark' && item.owner.categoryId === month && item.owner.seriesId === undefined
+      && item.rect.x < rect.x + rect.w && rect.x < item.rect.x + item.rect.w && item.rect.y < rect.y + rect.h && rect.y < item.rect.y + item.rect.h);
+    expect(own).toEqual([]);
+  });
 });
