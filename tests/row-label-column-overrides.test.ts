@@ -237,12 +237,12 @@ describe('hidden bullet columns in records', () => {
     const noActual = first({ targetColumns: true, columnVisibility: { actual: false } });
     expect(noActual.value.raw).toBe(60);
     expect(noActual.valueLabel).toBe('Target');
-    expect(noActual.fields).toEqual([]);
+    expect(noActual.fields.map((field) => field.key)).toEqual(['gap']);
     expect(numbers(noActual)).not.toContain(42);
 
     const noTarget = first({ targetColumns: true, columnVisibility: { target: false } });
     expect(noTarget.value.raw).toBe(42);
-    expect(noTarget.fields).toEqual([]);
+    expect(noTarget.fields.map((field) => field.key)).toEqual(['gap']);
     expect(noTarget.comparisons).toEqual([]);
 
     const noGap = first({ targetColumns: true, columnVisibility: { gap: false } });
@@ -261,7 +261,10 @@ describe('hidden bullet columns in records', () => {
     expect(numbers(shareLeads)).not.toContain(42);
     const deltaLeads = first({ ...percent, columnVisibility: { actual: false, share: false } });
     expect(deltaLeads.value.raw).toBe(-18);
-    expect(first({ ...percent, columnVisibility: { share: false } }).comparisons).toEqual([]);
+    // The delta column still prints, so its number stays in the record for the hover card and the data table.
+    const noShare = first({ ...percent, columnVisibility: { share: false } });
+    expect(noShare.comparisons).toEqual([]);
+    expect(noShare.fields.find((field) => field.key === 'delta')?.value.raw).toBe(-18);
     expect(first({ ...percent, columnVisibility: { delta: false } }).comparisons).toEqual([]);
     expect(records({ ...percent, columnVisibility: { actual: false, share: false, delta: false } })).toEqual([]);
   });

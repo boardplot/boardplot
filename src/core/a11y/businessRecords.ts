@@ -262,20 +262,31 @@ function bullet(ctx: RecordContext): InteractionRecord[] {
     const { row, value, target } = cells.find(({ row }) => row.id === mark.id)!;
     const word = options.strings?.target ?? 'target';
     const name = word[0]!.toUpperCase() + word.slice(1);
-    const delta = typeof value.raw === 'number' && typeof target.raw === 'number'
-      ? numericValue(value.raw - target.raw, isPercentLevel(value) && isPercentLevel(target) ? 'pp' : value.unit, value.format) : unavailable('Value or target missing');
+    const deltaOf = (raw: number) => numericValue(raw, isPercentLevel(value) && isPercentLevel(target) ? 'pp' : value.unit, value.format);
+    const delta = typeof value.raw === 'number' && typeof target.raw === 'number' ? deltaOf(value.raw - target.raw) : unavailable('Value or target missing');
+    // The column prints the chart's own clean difference, without the float residue of a subtraction.
+    const gapShown = geo.derived.deltaVsTarget[row.id];
+    const drawnDelta = gapShown === undefined ? delta : deltaOf(gapShown);
     const share = geo.derived.percentOfTarget?.[row.id];
+    const shareValue = share === undefined ? unavailable('Positive reference and value required') : derivedPercent(share);
+    const printed = ([
+      { id: 'gap', label: head('gap', 'gapColumn'), value: drawnDelta },
+      { id: 'share', label: head('share', 'shareColumn'), value: shareValue },
+      { id: 'delta', label: head('delta', 'deltaColumn'), value: drawnDelta },
+    ] as const).filter(column => shown.includes(column.id));
+    const led = printed.find(column => column.id === leads);
     const lead = leads === 'target' ? { value: target, valueLabel: head('target', 'targetColumn') }
-      : leads === 'gap' ? { value: delta, valueLabel: head('gap', 'gapColumn') }
-        : leads === 'share' ? { value: share === undefined ? unavailable('Positive reference and value required') : derivedPercent(share), valueLabel: head('share', 'shareColumn') }
-          : leads === 'delta' ? { value: delta, valueLabel: head('delta', 'deltaColumn') }
-            : { value };
+      : led ? { value: led.value, valueLabel: led.label } : { value };
     // A comparison holds the actual value, the target and what lies between them, so it needs all of their columns.
     const compares = !(['actual', 'target', 'gap', 'share', 'delta'] as const).some(removed);
     return makeRecord(ctx, { categoryId: row.id }, lead.value, {
       label: row.label ?? row.id, anchor: mark.rect,
       ...('valueLabel' in lead ? { valueLabel: lead.valueLabel } : {}),
-      fields: removed('target') || leads === 'target' ? [] : [field('target', name, target)],
+      fields: [
+        ...(removed('target') || leads === 'target' ? [] : [field('target', name, target)]),
+        // With the comparison gone, a column that still prints its number keeps it here.
+        ...(compares ? [] : printed.flatMap(column => (column.id === leads || column.value.raw === null ? [] : [field(column.id, column.label, column.value)]))),
+      ],
       comparisons: compares ? [{ label: name, current: value, reference: target, delta,
         percent: typeof value.raw === 'number' && typeof target.raw === 'number' && target.raw > 0 ? derivedPercent((value.raw - target.raw) / target.raw * 100) : unavailable('Positive reference and value required') }] : [],
     });
