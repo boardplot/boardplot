@@ -38,6 +38,19 @@ describe('a value in the spec does not set the length of a layout loop', () => {
     expect(svg).toContain('North');
   });
 
+  // A rung is a level, not a value: past the rows of the table it refused the chart, and at the largest integer the draw never ended.
+  it('gives way on a table rung deeper than the rows', () => {
+    const { svg, codes } = drawn({
+      type: 'table',
+      data: {
+        columns: [{ id: 'name', kind: 'rowLabel', label: 'Name' }, { id: 'sales', kind: 'value', label: 'Sales' }],
+        rows: [{ id: 'north', label: 'North', rung: Number.MAX_SAFE_INTEGER, cells: { sales: 1 } }, { id: 'south', label: 'South', cells: { sales: 2 } }],
+      },
+    });
+    expect(svg).toContain('North');
+    expect(codes).toContain('table-rung-capped');
+  });
+
   // A month step past the last date a Date holds never reached the end of the range, so the tick list grew until the array length ran out.
   it('draws a time axis with a month step longer than any date', () => {
     const { svg, codes } = drawn({

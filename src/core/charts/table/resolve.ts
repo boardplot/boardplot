@@ -474,6 +474,16 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
       });
     }
   }
+  const deepRung = flat.find((row) => row.rung !== undefined && row.rung >= flat.length);
+  if (deepRung) {
+    warnings.push({
+      code: 'table-rung-capped',
+      severity: 'warn',
+      message: `row '${deepRung.id}' sets rung ${deepRung.rung}, past the ${flat.length} rows of this table, so it takes the deepest rung the rows can hold`,
+      owner: { rowId: deepRung.id },
+      suggest: 'Set a rung below the row count, or leave it out.',
+    });
+  }
   // The rung shift a board authors: the ladder's own steps stay
   // where they are and every row moves together.
   const levelOffset = Math.trunc(options.levelOffset ?? 0);
@@ -2149,7 +2159,8 @@ function readNumeric(c: TableCell | undefined): {
  * total's own on both surfaces.
  */
 function ladderStep(row: FlatRow, byId: Map<Id, FlatRow>, offset: number): number {
-  if (row.rung !== undefined) return Math.max(0, row.rung + offset);
+  // A table's tree is at most as deep as its rows, so a rung past that gives way to the deepest one.
+  if (row.rung !== undefined) return Math.max(0, Math.min(row.rung, Math.max(0, byId.size - 1)) + offset);
   let depth = 0;
   let parentId = row.parentId;
   while (parentId !== null && parentId !== undefined) {
