@@ -495,4 +495,28 @@ fixtures.push({
     size: { width: 820, height: 420 },
   },
 });
+fixtures.push({
+  id: 'column-widths',
+  kind: 'example',
+  title: 'A wider first column, aligned values and a renamed head',
+  tags: [],
+  data: {
+    categories: [{ id: 'q1', label: 'Q1' }, { id: 'q2', label: 'Q2' }, { id: 'q3', label: 'Q3' }, { id: 'fy', label: 'FY' }],
+    series: [
+      { id: 'north', label: 'Northern region', values: [12, 18, 21, 51] },
+      { id: 'east', label: 'Eastern region', values: [9, 11, 14, 34] },
+      { id: 'south', label: 'Southern region', values: [15, 13, 10, 38] },
+    ],
+  },
+  options: {
+    title: 'Support tickets by region and quarter',
+    source: 'Invented support data',
+    size: { width: 720 },
+    columnOverrides: {
+      label: { width: 170, align: 'left' },
+      q2: { align: 'right', headAlign: 'right' },
+      fy: { width: 150, label: 'Full year' },
+    },
+  },
+});
 registerFixtures('heatmap', fixtures);

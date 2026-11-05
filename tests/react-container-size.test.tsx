@@ -484,6 +484,15 @@ it('keeps columnHeads in an exported DimSwitch document', async () => {
   expect(document?.charts[0]!.options.columnHeads).toBe(false);
 });
 
+// The document must reopen as the bar table on screen, with its authored column settings.
+it('keeps authored bar table columns in its exported document', async () => {
+  const fixture = getFixtures('bartable').find(item => item.id === 'column-widths')!;
+  const handle = await exporterOf(exporter => <BarTableChart {...fixture.options as object} data={fixture.data as never} size={{ width: 760 }} exporter={exporter} />);
+  const result = await handle.svg();
+  const document = result.ok ? result.document as { charts: { options: { columnOverrides?: object } }[] } : undefined;
+  expect(document?.charts[0]!.options.columnOverrides).toEqual((fixture.options as { columnOverrides: object }).columnOverrides);
+});
+
 // A theme switch repaints the table but keeps its layout request: the export must take the theme on screen.
 it('exports a table in the theme it shows after a theme switch', async () => {
   stubDigest();

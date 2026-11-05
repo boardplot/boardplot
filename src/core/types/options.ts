@@ -1497,6 +1497,8 @@ export interface SlopeOptions extends BaseOptionsFor<'slope'> {
   };
 }
 export interface HeatmapOptions extends BaseOptionsFor<'heatmap'> {
+  /** Width, alignment and head text per column: `label` or a `data.categories` id. */
+  columnOverrides?: Record<string, import('../schema/generatedColumns').ColumnOverride>;
   scale?: 'continuous' | 'discrete'; // default 'continuous'
   /** Automatic values share one fit decision per row; authored labels and valid pins retain precedence. */
   variant?: 'value' | 'harvey' | 'bubble';

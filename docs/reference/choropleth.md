@@ -102,7 +102,7 @@ One form; its chart ID is `choropleth`.
 | columnVisibility | object |  |  | True shows a column and false leaves it out: the ids are data.columnToggles ids on table and column ids elsewhere. Ids: swatch, code, value. |
 | columnOverrides | object |  |  | Settings per generated column. Ids: swatch, code, value. Only value prints a head, so label and headAlign are refused on swatch and code. |
 | columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
-| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Cell alignment. |
+| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Alignment of the column: its cell text and, unless headAlign is set, its head. Bars keep starting at the panel origin. |
 | columnOverrides.*.headAlign | string | `'left'`, `'right'`, `'center'` |  | Head alignment; defaults to align. |
 | columnOverrides.*.label | string |  |  | Head text. |
 | rowVisibility | object |  |  | False leaves a generated row out. Ids: each region id, through the aliases of the map pack. |

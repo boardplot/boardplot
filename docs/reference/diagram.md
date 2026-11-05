@@ -204,7 +204,7 @@ Set protected only where the claim is true: the lock states that the zone is pro
 | inset.heading | false |  | false draws no panel title, with its height and gap gone. The title stays the accessible name. One of `false`. |
 | inset.columnOverrides | object |  | Settings of the rows' two columns: label, value. |
 | inset.columnOverrides.*.width | number |  | Track width in px. It beats the width the type would pick. |
-| inset.columnOverrides.*.align | string |  | Cell alignment. One of `'left'`, `'right'`, `'center'`. |
+| inset.columnOverrides.*.align | string |  | Alignment of the column: its cell text and, unless headAlign is set, its head. Bars keep starting at the panel origin. One of `'left'`, `'right'`, `'center'`. |
 
 ## Options
 

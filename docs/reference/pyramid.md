@@ -64,7 +64,7 @@ One form; its chart ID is `pyramid`.
 |---|---|---|---|---|
 | columnOverrides | object |  |  | Settings per generated column. Ids: label. |
 | columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
-| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Cell alignment. |
+| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Alignment of the column: its cell text and, unless headAlign is set, its head. Bars keep starting at the panel origin. |
 | basis | string | `'count'`, `'shareOfTotal'`, `'shareOfGroup'` | `'count'` | Default 'count'. 'shareOfTotal' divides by the grand total across BOTH groups and all bands — never per group, which would hide the group-size imbalance a pyramid is read for. 'shareOfGroup' divides each side by its own total, so each side sums to 100%; 'shareOfTotal' on two groups that both carry a date draws 'shareOfGroup', because two snapshots have no common whole. |
 | methodNote | boolean |  |  | Default false. true adds the method footnote stating the band convention: [from, to), youngest at the bottom, equal widths. An open-ended top band and the share base are required for interpretation and print regardless. |
 

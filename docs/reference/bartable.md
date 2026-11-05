@@ -101,7 +101,17 @@ Table rows with number columns and stacked bars. One panel when the rows compare
 
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
+| labels | object |  |  | Which printed values stay. |
+| labels.point | false | `false` |  | false stops the values in the segments and at the bar ends, in panels and in a cascade. Number columns, shares, growth and the Total row keep their numbers; hover and records keep the values. A missing row keeps its mark. |
 | total | boolean |  | `true` | Closing Total row, labelled with strings.total; default true. Summed number columns print their sum; a panel prints the summed ranges when a row has one (a row without counts its sum at both ends), else the sum of the bars, as text without a bar. |
+| totalPosition | string | `'top'`, `'bottom'` |  | Where the Total row stands, with its rule and ground; default 'bottom'. Works under cascade. With total false it warns option-ignored. |
+| columnOverrides | object |  |  | Settings per generated column. Ids: label, each data.columns id and each data.panels id. |
+| columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
+| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Alignment of the column: its cell text and, unless headAlign is set, its head. Bars keep starting at the panel origin. |
+| columnOverrides.*.headAlign | string | `'left'`, `'right'`, `'center'` |  | Head alignment; defaults to align. |
+| columnOverrides.*.label | string |  |  | Head text. |
+| columnOrder | array |  |  | Order of whole blocks; blocks left out follow in default order. Ids: numbers, panels. |
+| columnHeads | false | `false` |  | false: no visible head row and no group heads, with their height and rule. Assistive technology still reads the head in React, and sortable warns there. |
 | combinedShare | object |  |  | A note with the combined share of these rows in each summed panel: their sum over the panel's, at the low and the high end where rows carry ranges ('Core segments: 120 of 300 $bn at the low end, 40%; 210 of 500 at the high end, 42%'). A row id that names no row is refused. |
 | combinedShare.rows | array |  |  | Row ids whose combined share prints; at least two, each once. |
 | combinedShare.label | string |  |  | What the rows are called together in the note; default their labels joined with 'and'. |
@@ -117,7 +127,7 @@ Table rows with number columns and stacked bars. One panel when the rows compare
 | sharedScale | boolean |  |  | false: each panel its own scale. true: one scale, panel width follows its longest bar; weights refused. Default false, true under cascade. |
 | heightFill | string | `'rows'`, `'none'` | `'rows'` | Spare canvas height. 'rows' (default): a pinned canvas stretches the rows up to 1.25 times their pitch and thickens the bars. 'none': natural pitch. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `labels`, `valueAxis`, `hatchStrength`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis`, `hatchStrength`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 
@@ -141,6 +151,11 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | cascade-two-periods | example | Share cascade over two periods: rows coloured by a row group, two residual rows pinned last, share columns, a bracket and a CAGR column |
 | cascade-two-periods-theme-total | example | Share cascade over two periods with the Total bar in the theme total colour, even where it equals a group colour |
 | cascade-four-years | example | Share cascade over four years: product-category revenue share with the share change in pp |
+| columns-reordered | example | Panels before the number columns |
+| total-top | example | The Total row above the rows, with its rule and ground |
+| no-values | example | No values at the bars: number columns and the Total keep theirs |
+| column-widths | example | Authored widths, alignment and heads per column |
+| no-column-heads | example | No head row: the first row starts at the top of the table |
 
 ## Not for
 

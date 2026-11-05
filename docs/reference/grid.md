@@ -146,7 +146,7 @@ Facets, variance tiers and metric stacks with shared categories and computed rea
 | stack.columnVisibility | object |  |  | False leaves a seat of the one gutter track out, with its height: unit, headline or span. The panel name stays. Hiding headline and span also drops the method line. The values stay in the marks. |
 | stack.columnOverrides | object |  |  | Settings per generated column. Ids: gutter. |
 | stack.columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
-| stack.columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Cell alignment. |
+| stack.columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Alignment of the column: its cell text and, unless headAlign is set, its head. Bars keep starting at the panel origin. |
 | stack.columnOrder | array |  |  | Order of whole blocks; blocks left out follow in default order. Ids: gutter, plot. |
 | columns | integer \| array |  |  | Legacy facet column count, or authored positive column-track weights. At most 50 rows and columns. |
 | rows | array |  |  | Positive row weights override content fitting. Omitted: content-fit rows use their natural height; other rows share the rest. Without columns, the row count sets placement. With category sharing, rows[i] follows panels[i] in bottom-up order; metric stacks use top-down order. |

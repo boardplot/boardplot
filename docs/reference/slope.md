@@ -79,7 +79,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | diverging.minBase | number |  |  | Base n below which a panel is hatched and noted. Default 30. |
 | columnOverrides | object |  |  | Settings per generated column. Ids: change. |
 | columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
-| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Cell alignment. |
+| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Alignment of the column: its cell text and, unless headAlign is set, its head. Bars keep starting at the panel origin. |
 | columnOverrides.*.headAlign | string | `'left'`, `'right'`, `'center'` |  | Head alignment; defaults to align. |
 | columnOverrides.*.label | string |  |  | Head text. |
 

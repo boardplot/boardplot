@@ -73,6 +73,11 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | states[].tone.role | string |  |  | Named semantic theme color role for this state. |
 | states[].pattern | string | `'hatch45'` |  | Optional 45-degree hatching to distinguish this state beyond color. |
 | columnLabels | string | `'top'`, `'bottom'` | `'top'` | Column-caption position; defaults to top. |
+| columnOverrides | object |  |  | Settings per generated column. Ids: label, each data.columns id. |
+| columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
+| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Alignment of the column: its cell text and, unless headAlign is set, its head. Bars keep starting at the panel origin. |
+| columnOverrides.*.headAlign | string | `'left'`, `'right'`, `'center'` |  | Head alignment; defaults to align. |
+| columnOverrides.*.label | string |  |  | Head text. |
 
 Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
@@ -103,6 +108,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | review-status-legend-object | torture | Review status with the legend placed above through a position object |
 | status-with-values | torture | State cells include their measured values |
 | capability-assessment-full-fill | torture | Capability board with good and neutral cells in their full colours |
+| column-widths | example | A wider last column, aligned heads and a renamed head |
 
 ## Not for
 

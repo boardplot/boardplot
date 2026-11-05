@@ -54,10 +54,11 @@ import { qualifierFont, tableInk, tableRuleInk } from './statement';
 import { chipHeight, chipPaints, hasPolarityBadge, isFigureCell, polarityBadgeInk, onTableGround, statusSquare, statusSquarePaint, tableGround, toneTextPaint } from './chips';
 import { lastObservedIndex, type SparklineDomain } from '../sparkline/layout';
 import { resolveTable, ZERO_LIFT, type ZeroLiftOptions } from './resolve';
+import type { ResolvedTable } from '../../types/table';
 import { DEFAULT_EMPTY_MESSAGE } from '../../emptyData';
 import { cellDrawsTabular, cellHoldsNumber, emptyMessageRow, expansionRootsHidden, finalClosers, hasNoDataRows, groupSpans, heatColumn, printsFigures, rowGrounds, tableFootnotes, visibleColumns, visibleInlineRows, visibleRows } from './view';
 import { fixedHeightCanvas, rowDrivenHeight, spareShare } from '../../rowCanvas';
-import { CARD_CLASS_WIDTH, heightOmitted, rowSizing, VERIFY_ADVICE } from '../../sizing';
+import { CARD_CLASS_WIDTH, heightOmitted, rowSizing, VERIFY_ADVICE, WIDTH_PROBE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { textScaleOf } from '../../typeFloors';
 import { currentSmallValues } from '../../formatPrecision';
@@ -150,7 +151,7 @@ function cutCount(geometry: Geometry<TableMarks, TableDerived>): number {
  * gutter is a rung, taken where the table would otherwise refuse or cut a
  * text.
  */
-export function layoutTable(authoredData: TableData, options: TableOptions = {}, resolved = resolveTable(authoredData, options)): Geometry<TableMarks, TableDerived> {
+export function layoutTable(authoredData: TableData, options: TableOptions = {}, resolved = resolvedForSize(authoredData, options)): Geometry<TableMarks, TableDerived> {
   // A nonzero figure lifted off "0.0" ("0.0005") is wider than the plain rounded text. Where that costs a refusal,
   // a cut or a compact step the rounded text does not take, it prints its bound ("<0.1"), also where the bound costs
   // one too: the automatic number rule never prints a nonzero figure as a bare "0.0". Only where the bound would
@@ -158,9 +159,52 @@ export function layoutTable(authoredData: TableData, options: TableOptions = {},
   return liftOrFallback((mode) => {
     if (mode === 'full') return layoutTableLadder(authoredData, options, resolved);
     const step = { ...options, [ZERO_LIFT]: mode } as TableOptions & ZeroLiftOptions;
-    return layoutTableLadder(authoredData, step, resolveTable(authoredData, step));
+    return layoutTableLadder(authoredData, step, resolvedForSize(authoredData, step));
   }, (lifted, plain) => costsWidth(lifted, plain, options), resolved.lifted,
   (bound, plain) => missesFrame(bound, options) && !missesFrame(plain, options));
+}
+
+const resolvedTables = new WeakMap<object, Map<string, ReturnType<typeof resolveTable>>>();
+
+/**
+ * The resolved table of one spec, shared by every frame a request tries: nothing
+ * in it reads the frame, and a layout only reads it. The key holds the data, so
+ * data changed in place resolves again. A theme named by string always resolves,
+ * as `memoLayout` lays it out again. The key leaves out only the frame's own size.
+ */
+function resolvedForSize(data: TableData, options: TableOptions): ReturnType<typeof resolveTable> {
+  if (typeof options.theme === 'string') return resolveTable(data, options);
+  const { size: _size, [TARGET_SIZE]: _target, [WIDTH_PROBE]: _probe, ...rest } = options as TableOptions & TargetSizeOptions & { [WIDTH_PROBE]?: unknown };
+  const key = layoutKey(data, rest);
+  let byKey = resolvedTables.get(data);
+  if (!byKey || byKey.size >= 32) resolvedTables.set(data, byKey = new Map());
+  let resolved = byKey.get(key);
+  if (resolved === undefined) byKey.set(key, resolved = resolveTable(data, options));
+  return resolved;
+}
+
+const widthPlans = new WeakMap<object, Map<string, ReturnType<typeof tableWidths>>>();
+
+/**
+ * The tracks of one resolved table, shared by the passes that try other heights
+ * at one width. The plan reads the height only for the size a `table-overflow`
+ * patch names, so an open height leaves it out of the key. A layout only reads
+ * the plan. A theme named by string always measures again, as `memoLayout` does.
+ */
+function sharedWidthPlan(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: LayoutOptions, view: Parameters<typeof tableWidths>[4] & object): ReturnType<typeof tableWidths> {
+  if (typeof options.theme === 'string') return tableWidths(table, theme, measure, options, view);
+  const { size, [TARGET_SIZE]: target, [WIDTH_PROBE]: _probe, [COMPACT_RETRY]: _retry, ...rest } = options as LayoutOptions & TargetSizeOptions & { [WIDTH_PROBE]?: unknown };
+  const heightOpen = target?.fixed.height === false || (typeof size === 'object' && size.height === undefined);
+  const key = layoutKey({ rows: view.rows!.map((row) => row.id), widthRows: view.widthRows!.map((row) => row.id), columns: view.columns!.map((col) => col.id),
+    available: view.available, spacerTotal: view.spacerTotal, headLines: view.headLines, subLines: view.subLines, headGlue: view.headGlue,
+    height: heightOpen || size === undefined ? undefined : resolveSize(size).height,
+    // The theme's fonts follow the frame's type class, and two classes can share one plot width.
+    typeClass: panelTypeClass(options) ?? typeWidthClass(resolveSize(size).width) }, rest);
+  let byKey = widthPlans.get(table);
+  if (!byKey || byKey.size >= 32) widthPlans.set(table, byKey = new Map());
+  let plan = byKey.get(key);
+  if (plan === undefined) byKey.set(key, plan = tableWidths(table, theme, measure, options, view));
+  return plan;
 }
 
 /** Whether a table layout misses the size its frame fixes. */
@@ -208,11 +252,18 @@ function layoutTableLadder(authoredData: TableData, options: TableOptions, resol
   const base = options;
   const sizingOnly = (options as LayoutOptions)[SIZING_ONLY] === true;
   const formatFits: FormatFits = new Map();
-  const once = (step: LayoutOptions) => layoutTableOnce(authoredData, step, resolved, sizingOnly, formatFits);
+  const once = (step: LayoutOptions) => layoutTableOnce(authoredData, step, resolved, sizingOnly, formatFits, fits);
   const targetSize = (options as TargetSizeOptions)[TARGET_SIZE];
   // A floor that misses full width never reads its scene. Keep the initial height pass intact.
   const fullSizingOnly = sizingOnly && resolveSize(options.size).width !== targetSize?.sizePx.width;
-  let full = layoutTableOnce(authoredData, base, resolved, fullSizingOnly, formatFits);
+  // A side the caller left open is no limit: the frame grows there, so only a fixed side can miss.
+  // The registry lays an open side out at a provisional size and names it open in TARGET_SIZE.
+  const open = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed;
+  const widthFits = (geometry: Geometry<TableMarks, TableDerived>) => open?.width === false || geometry.size.width >= (geometry.sizing?.minWidth ?? 0);
+  const heightFits = (geometry: Geometry<TableMarks, TableDerived>) => options.size === undefined || open?.height === false || geometry.size.height >= (geometry.sizing?.minHeight ?? 0);
+  const fits = (geometry: Geometry<TableMarks, TableDerived>) => widthFits(geometry) && heightFits(geometry);
+  // A rung that misses is read for its size, plot and floor only, so it stops before its scene.
+  let full = layoutTableOnce(authoredData, base, resolved, fullSizingOnly, formatFits, options.belowMinimum === 'refuse' ? undefined : fits);
   // A wider-size patch reruns the original spacing. A compact rung must not
   // advertise a width that fits only its temporary margins or cell padding.
   const widthRepair = full.warnings.find(warning => warning.code === 'table-overflow' && warning.fix?.length);
@@ -221,16 +272,10 @@ function layoutTableLadder(authoredData: TableData, options: TableOptions, resol
       warning.code === 'table-overflow' && warning.fix?.length ? widthRepair : warning);
     return drawn;
   };
-  // A side the caller left open is no limit: the frame grows there, so only a fixed side can miss.
-  // The registry lays an open side out at a provisional size and names it open in TARGET_SIZE.
-  const open = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed;
-  const widthFits = (geometry: Geometry<TableMarks, TableDerived>) => open?.width === false || geometry.size.width >= (geometry.sizing?.minWidth ?? 0);
-  const heightFits = (geometry: Geometry<TableMarks, TableDerived>) => options.size === undefined || open?.height === false || geometry.size.height >= (geometry.sizing?.minHeight ?? 0);
   const pad = options.cellPadX ?? trackCellPadX(full.marks.columns.length);
   const margin = { ...base.margin, left: Math.min(base.margin?.left ?? CARD_GUTTER, CARD_GUTTER), right: Math.min(base.margin?.right ?? CARD_GUTTER, CARD_GUTTER) };
   // The gutter rung: the full table with 12 px sides, where the frame's own margin is wider.
   const gutterHelps = full.plot.x > margin.left + 0.5 || full.size.width - (full.plot.x + full.plot.w) > margin.right + 0.5;
-  const fits = (geometry: Geometry<TableMarks, TableDerived>) => widthFits(geometry) && heightFits(geometry);
   // An open height keeps a rung's own: the frame grows to the rows that rung draws.
   const fixedHeight = !heightOmitted(options.size) && open?.height !== false;
   /** The floor is the last rung's: the compact table draws where this rung's tracks or rows no longer fit. */
@@ -364,7 +409,8 @@ export function layoutKey(data: object, options: object): string {
 /** Copy shared fonts and cells once per result. A copy of every array, Map, Set and plain object; a function and any other value is shared (the compiled options hold the measurer). */
 function deepCopy<T>(value: T, copies = new Map<object, unknown>()): T {
   if (value === null || typeof value !== 'object') return value;
-  if (copies.has(value)) return copies.get(value) as T;
+  const known = copies.get(value);
+  if (known !== undefined) return known as T;
   if (Array.isArray(value)) {
     const copy: unknown[] = [];
     copies.set(value, copy);
@@ -476,7 +522,6 @@ function compactTable(
     [COMPACT_RETRY]: full.size.height,
     ...(heads === undefined ? {} : { [HEAD_LINES]: heads }),
   };
-  let compact = layoutTableOnce(authoredData, compactOptions, resolved, sizingOnly, formatFits);
   // Refuse-less: comfort air is a preference. Where the compact table still misses
   // a fixed side, the side margins, cell air and spacers shrink to a readable floor, and the row air
   // too where the height misses. Text, numbers and columns stay as they are; the warning names the
@@ -484,15 +529,21 @@ function compactTable(
   // The most the tight rung can take across: cell air on both sides of each track, the side margins,
   // the spacers and the label indents. A miss wider than that skips the futile layout (a dimswitch
   // period search probes many such widths).
-  const across = 2 * Math.max(0, cellPadX - TIGHT_PAD) * compact.marks.columns.length
-    + Math.max(0, compact.plot.x - TIGHT_PAD * 2) + Math.max(0, compact.size.width - compact.plot.x - compact.plot.w - TIGHT_PAD * 2)
-    + (authoredData.columnGroups ?? []).reduce((sum, group) => sum + Math.max(0, (group.spacer ?? 0) - TIGHT_PAD * 2), 0)
-    + 6 + 4 * Math.max(0, maxOf(resolved.table.rows.map((row) => row.level))) + 4;
+  const tightens = (geometry: Geometry<TableMarks, TableDerived>) => {
+    const across = 2 * Math.max(0, cellPadX - TIGHT_PAD) * geometry.marks.columns.length
+      + Math.max(0, geometry.plot.x - TIGHT_PAD * 2) + Math.max(0, geometry.size.width - geometry.plot.x - geometry.plot.w - TIGHT_PAD * 2)
+      + (authoredData.columnGroups ?? []).reduce((sum, group) => sum + Math.max(0, (group.spacer ?? 0) - TIGHT_PAD * 2), 0)
+      + 6 + 4 * Math.max(0, maxOf(resolved.table.rows.map((row) => row.level))) + 4;
+    const missed = missesSize(geometry, options);
+    const reachable = !missed.width || (geometry.sizing?.minWidth ?? 0) - geometry.size.width <= across;
+    return !(options as LayoutOptions)[REGULAR_SPACING] && geometry.sizing !== undefined && (missed.width || missed.height) && reachable;
+  };
+  // A table the tight rung replaces is read for its size and floor only, so it stops before its scene.
+  let compact = layoutTableOnce(authoredData, compactOptions, resolved, sizingOnly, formatFits, (geometry) => !tightens(geometry));
   const misses = missesSize(compact, options);
   const { width: missesWidth, height: missesHeight } = misses;
-  const reachable = !missesWidth || (compact.sizing?.minWidth ?? 0) - compact.size.width <= across;
   let lastOptions = compactOptions;
-  if (!(options as LayoutOptions)[REGULAR_SPACING] && compact.sizing && (missesWidth || missesHeight) && reachable) {
+  if (tightens(compact) && compact.sizing) {
     const tightWarning = tightSpacingWarning(misses, { width: 'cell air, column gaps and side margins', height: 'row air and top and bottom margins' }, 'the table', 'compact', { ...compact, sizing: compact.sizing }, options);
     compact = layoutTableOnce(authoredData, lastOptions = {
       ...compactOptions, [TIGHT_SPACING]: { columns: missesWidth, rows: missesHeight },
@@ -526,7 +577,11 @@ function compactTable(
   return compact;
 }
 
-function layoutTableOnce(authoredData: TableData, options: LayoutOptions, initialResolved: ReturnType<typeof resolveTable>, sizingOnly: boolean, formatFits: FormatFits): Geometry<TableMarks, TableDerived> {
+function layoutTableOnce(
+  authoredData: TableData, options: LayoutOptions, initialResolved: ReturnType<typeof resolveTable>, sizingOnly: boolean, formatFits: FormatFits,
+  /** Given a pass's sizing, whether its caller reads the scene. A pass without one always draws. */
+  wantsScene?: (probe: Geometry<TableMarks, TableDerived>) => boolean,
+): Geometry<TableMarks, TableDerived> {
   const tight = options[TIGHT_SPACING]?.columns === true;
   const tightRows = options[TIGHT_SPACING]?.rows === true;
   let size = resolveSize(options.size);
@@ -731,7 +786,7 @@ function layoutTableOnce(authoredData: TableData, options: LayoutOptions, initia
     if (ladder.rowHeight !== undefined) ladder.rowHeight = ladder.lineBox(ladder.label) + 2;
   }
   const { lineBox, pad: levelPad } = ladder;
-  const widthPlan = tableWidths(table, theme, measure, options, {
+  const widthPlan = sharedWidthPlan(table, theme, measure, options, {
     columns: cols, rows, widthRows, fullRows, available: plot.w, spacerTotal, headLines: options[HEAD_LINES], subLines: options[SUB_LINES], headGlue: options[HEAD_LOOSE] !== true,
   });
   cellPadX = widthPlan.cellPadX;
@@ -1076,7 +1131,7 @@ function layoutTableOnce(authoredData: TableData, options: LayoutOptions, initia
     const callerH = options[COMPACT_RETRY];
     const grow = rowDrivenHeight({ options: callerH === undefined || !heightOmitted(options.size) ? options : {}, width: size.width, height: size.height, chromeH: size.height - plot.h, rowsH: y - plot.y + 4,
       ...(callerH === undefined ? {} : { ceiling: callerH }) });
-    if (grow !== undefined) return layoutTableOnce(authoredData, { ...options, size: { width: size.width, height: grow } }, initialResolved, sizingOnly, formatFits);
+    if (grow !== undefined) return layoutTableOnce(authoredData, { ...options, size: { width: size.width, height: grow } }, initialResolved, sizingOnly, formatFits, wantsScene);
   }
   // The first open-height pass already measured the rows. Move only the frame
   // when its top and width stay fixed; otherwise the normal height retry handles it.
@@ -1126,7 +1181,11 @@ function layoutTableOnce(authoredData: TableData, options: LayoutOptions, initia
         : {}),
     };
   // A floor probe only reads sizing; its tracks and wrapped rows are already measured.
-  if (sizingOnly) return sizingProbe(sizing, { table: { x: gridX, y: gridY, w: tableW, h: naturalTableH }, columns: cols.map(col => ({ id: col.id, ...colX.get(col.id)! })), rows: [], headerBand: { x: gridX, y: gridY, w: tableW, h: headerH } });
+  if (sizingOnly || wantsScene !== undefined) {
+    const probe = sizingProbe(sizing, { table: { x: gridX, y: gridY, w: tableW, h: naturalTableH }, columns: cols.map(col => ({ id: col.id, ...colX.get(col.id)! })), rows: [], headerBand: { x: gridX, y: gridY, w: tableW, h: headerH } });
+    // A status label cut in the scene adds a note and a second pass, so that pass alone knows its final size.
+    if (sizingOnly || (!cols.some((col) => col.kind === 'status') && !wantsScene!(probe))) return probe;
+  }
 
   // A pinned canvas with height to spare gives it to the leaf rows as air, up to the theme's 16 px a side.
   // The sizing above keeps the natural height, so the table still reports the least it needs.
@@ -2327,7 +2386,7 @@ function layoutTableOnce(authoredData: TableData, options: LayoutOptions, initia
     const entry = ({ shown, full, rows: named }: { shown: string; full: string; rows: string[] }) => `${shown !== '' ? shown : named.join(', ')} = ${full}`;
     return cuts ? [disclosureNote(`${col.label}: ${[...cuts.values()].map(entry).join('; ')}`)] : [];
   }).filter((note) => !(options[ENGINE_NOTES] ?? []).includes(note));
-  if (cutNotes.length > 0) return layoutTableOnce(authoredData, { ...options, [ENGINE_NOTES]: [...(options[ENGINE_NOTES] ?? []), ...cutNotes] }, initialResolved, sizingOnly, formatFits);
+  if (cutNotes.length > 0) return layoutTableOnce(authoredData, { ...options, [ENGINE_NOTES]: [...(options[ENGINE_NOTES] ?? []), ...cutNotes] }, initialResolved, sizingOnly, formatFits, wantsScene);
 
   return {
     type: 'table',

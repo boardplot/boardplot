@@ -8,6 +8,7 @@ import type { Rect } from '../../geometry';
 import type { Id } from '../../types/cell';
 import type { BaseOptionsFor } from '../../types/options';
 import type { RoundingAdjustment } from '../../shareRounding';
+import type { ColumnOverride } from '../../schema/generatedColumns';
 
 interface BarTableRow {
   id: Id;
@@ -107,9 +108,19 @@ interface BarTableCascade {
   growth?: BarTableGrowth;
 }
 
-export interface BarTableOptions extends BaseOptionsFor<'bartable'> {
+export interface BarTableOptions extends Omit<BaseOptionsFor<'bartable'>, 'labels'> {
   /** Closing Total row; default true. */
   total?: boolean;
+  /** Where the Total row stands; default 'bottom'. */
+  totalPosition?: 'top' | 'bottom';
+  /** `point: false` stops the values in the segments and at the bar ends. Number columns, shares, growth and the Total stay. */
+  labels?: { point?: false };
+  /** Width, alignment and head text per column: `label`, a `data.columns` id or a `data.panels` id. */
+  columnOverrides?: Record<string, ColumnOverride>;
+  /** Order of the blocks `numbers` and `panels`. */
+  columnOrder?: string[];
+  /** false: no visible head row, with its height and rule. */
+  columnHeads?: false;
   /**
    * Rows whose combined share of each summed panel prints in a note: the
    * rows' sum over the panel's, at each range end where rows carry ranges.

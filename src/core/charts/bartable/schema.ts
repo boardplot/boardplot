@@ -3,6 +3,7 @@
 import * as z from 'zod';
 import { formatExample } from '../../schema/shared';
 import { addDuplicateIdIssues, baseOptionsSchema, colorRoleField, idRecord, idSchema, refusedBaseOptions } from '../../schema/shared';
+import { columnHeadsOption, columnOrderOption, columnOverridesOption } from '../../schema/generatedColumnOptions';
 import type { BarTableData, BarTableOptions } from './types';
 
 // The states a table cell takes that make sense for a bar: n/a and n.m. print as the table prints them.
@@ -158,6 +159,13 @@ export const bartableDataSchema = z
 
 export const bartableOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions('bartable')).safeExtend({
   total: z.boolean().optional().describe("Closing Total row, labelled with strings.total; default true. Summed number columns print their sum; a panel prints the summed ranges when a row has one (a row without counts its sum at both ends), else the sum of the bars, as text without a bar."),
+  totalPosition: z.enum(['top', 'bottom']).optional().describe("Where the Total row stands, with its rule and ground; default 'bottom'. Works under cascade. With total false it warns option-ignored."),
+  labels: z.strictObject({
+    point: z.literal(false).optional().describe("false stops the values in the segments and at the bar ends, in panels and in a cascade. Number columns, shares, growth and the Total row keep their numbers; hover and records keep the values. A missing row keeps its mark."),
+  }).optional().describe('Which printed values stay.'),
+  columnOverrides: columnOverridesOption('bartable', ['width', 'align', 'headAlign', 'label']),
+  columnOrder: columnOrderOption('bartable'),
+  columnHeads: columnHeadsOption(),
   combinedShare: z.strictObject({
     rows: z.array(idSchema).min(2).describe('Row ids whose combined share prints; at least two, each once.'),
     label: z.string().trim().min(1).optional().describe("What the rows are called together in the note; default their labels joined with 'and'."),

@@ -56,7 +56,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | sort | object \| string \| true | `'sheet'`, `'asc'`, `'desc'`, `'reverse'`, `true` (or another value of its type) |  | Category ranking value: value divided by target when every row has a positive target, otherwise raw value. desc puts the highest ranking value first even on lower-is-better rows. Ties keep authored order and null values sort last. sheet keeps authored order and reverse reverses it. Dated rows keep authored order when a growth or difference annotation spans periods. |
 | columnOverrides | object |  |  | Settings per generated column. Ids: label, actual, share, delta, target, gap. |
 | columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
-| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Cell alignment. |
+| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Alignment of the column: its cell text and, unless headAlign is set, its head. Bars keep starting at the panel origin. |
 | columnOverrides.*.headAlign | string | `'left'`, `'right'`, `'center'` |  | Head alignment; defaults to align. |
 | columnOverrides.*.label | string |  |  | Head text. |
 | columnVisibility | object |  |  | True shows a column and false leaves it out: the ids are data.columnToggles ids on table and column ids elsewhere. Ids: label, actual, share, delta, target, gap. |

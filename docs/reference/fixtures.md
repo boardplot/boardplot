@@ -613,6 +613,11 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | cascade-two-periods | bartable.cascade | example | Share cascade over two periods: rows coloured by a row group, two residual rows pinned last, share columns, a bracket and a CAGR column |
 | cascade-two-periods-theme-total | bartable.cascade | example | Share cascade over two periods with the Total bar in the theme total colour, even where it equals a group colour |
 | cascade-four-years | bartable.cascade | example | Share cascade over four years: product-category revenue share with the share change in pp |
+| columns-reordered | bartable.panels | example | Panels before the number columns |
+| total-top | bartable.panels | example | The Total row above the rows, with its rule and ground |
+| no-values | bartable.panels | example | No values at the bars: number columns and the Total keep theirs |
+| column-widths | bartable.panels | example | Authored widths, alignment and heads per column |
+| no-column-heads | bartable.panels | example | No head row: the first row starts at the top of the table |
 
 ## pvm
 
@@ -669,6 +674,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | review-status-legend-object | status | torture | Review status with the legend placed above through a position object |
 | status-with-values | status | torture | State cells include their measured values |
 | capability-assessment-full-fill | status | torture | Capability board with good and neutral cells in their full colours |
+| column-widths | status | example | A wider last column, aligned heads and a renamed head |
 
 ## heatmap
 
@@ -694,6 +700,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | survey-journey-bubbles | heatmap.bubble | example | Survey bubble matrix: 6 segments × 12 touchpoints, importance as size, binned satisfaction as colour, two low-base cells |
 | survey-journey-long-names | heatmap.bubble | example | Survey bubble matrix with long touchpoint names: the matrix turns instead of rotating or thinning the names |
 | survey-journey-track | heatmap.bubble | example | Survey bubble matrix with a row track: the touchpoints are ordered journey steps |
+| column-widths | heatmap.value | example | A wider first column, aligned values and a renamed head |
 
 ## gantt
 
