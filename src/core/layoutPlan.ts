@@ -63,6 +63,7 @@ export function tableTextMeasure(raw: TextMeasurer): TextMeasurer {
       if (!result) plan.texts.set(text, result = { ...raw(text, font) });
       return result;
     };
+    Object.defineProperty(wrapped, 'capHeight', { get: () => raw.capHeight });
     measurers.set(raw, wrapped);
     wrappedMeasurers.add(wrapped);
   }
