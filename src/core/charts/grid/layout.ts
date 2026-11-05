@@ -1345,6 +1345,7 @@ function layoutAuthoredGrid(
       }
     }
     rowWeights = rowWeights.map((_, row) => tierSlots[provisional.findIndex(p => p.row === row)]!.h);
+    sizingRows = rowWeights;
     // A packed tier takes the height its content needs, not its slot: the slots can add up to more
     // than the canvas, and a minimum scaled by them refuses a canvas where every tier fits.
     if (packed) {
