@@ -973,6 +973,16 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | fractional-step-key | cohort.stepped | torture | Cohort classes keep fractional open upper bounds |
 | cumulative-conversion-pure | cohort.pure | example | Count-derived cumulative conversion with its own wording |
 | cumulative-conversion-stepped | cohort.stepped | example | Count-derived cumulative conversion with its own wording |
+| no-size-column | cohort.pure | example | Pure exhibit without the size column, whose bases stay in the weighted total |
+| column-tracks | cohort.pure | example | Pure exhibit with authored track widths, alignment and heads |
+| size-after-periods | cohort.stepped | example | Stepped exhibit with the size column after the periods |
+| no-column-heads | cohort.pure | example | Pure exhibit without its head row, with the periods named in the subtitle |
+| no-column-heads-stepped | cohort.stepped | example | Stepped exhibit without heads or the range lines under them |
+| total-top | cohort.stepped | example | Stepped exhibit with the weighted average above the cohorts |
+| no-designated-period | cohort.pure | example | Pure exhibit with no tinted column |
+| stepped-no-figures | cohort.stepped | example | Stepped exhibit whose fills carry the rates without printed numbers |
+| heatmap-weighted-total | cohort.heatmap | example | Heatmap with the weighted average row set by total |
+| heatmap-visible-periods | cohort.heatmap | example | Heatmap showing the later periods only, with no trace of the hidden ones |
 
 ## choropleth
 

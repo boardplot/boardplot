@@ -272,4 +272,41 @@ for (const variant of ['pure', 'stepped'] as const) fixtures.push({
     basis: 'cohort', unit: '%', visiblePeriods: [1, 2], methodNote: true, threshold: 0, size: { width: 1100 },
     strings: { cohortMeasure: 'Cumulative conversion', cohortFormula: 'Cumulative conversion = converted so far / cohort base.' } },
 });
+
+// Exhibit columns and single settings: the same invented customers in each.
+const SIGNUPS: CohortData = {
+  periodLabel: 'Month',
+  cohorts: [
+    { id: 'jan', label: 'January signups', active: [1200, 780, 690, 636, 590] },
+    { id: 'feb', label: 'February signups', active: [900, 603, 531, 495] },
+    { id: 'mar', label: 'March signups', active: [1050, 735, 640] },
+    { id: 'apr', label: 'April signups', active: [800, 584] },
+    { id: 'may', label: 'May signups', active: [760] },
+  ],
+};
+const SIGNUP_OPTIONS: CohortOptions = { title: 'Later signups keep more customers after one month', unit: '% of cohort base', source: 'Invented subscription ledger' };
+const exhibit = (id: string, title: string, options: CohortOptions, data: CohortData = SIGNUPS): Fixture<CohortData, CohortOptions> => ({
+  id, title, kind: 'example', tags: ['coverage'], data, options: { ...SIGNUP_OPTIONS, ...options } as CohortOptions,
+});
+fixtures.push(
+  exhibit('no-size-column', 'Pure exhibit without the size column, whose bases stay in the weighted total', { variant: 'pure', columnVisibility: { size: false }, size: { width: 760 } }),
+  exhibit('column-tracks', 'Pure exhibit with authored track widths, alignment and heads', {
+    variant: 'pure', size: { width: 900 },
+    columnOverrides: {
+      label: { width: 190, label: 'Signup month', align: 'right' },
+      size: { width: 110, align: 'left', label: 'Customers' },
+      periods: { width: 80, align: 'right', headAlign: 'center' },
+    },
+  }),
+  exhibit('size-after-periods', 'Stepped exhibit with the size column after the periods', { variant: 'stepped', columnOrder: ['periods', 'size'], size: { width: 820 } }),
+  exhibit('no-column-heads', 'Pure exhibit without its head row, with the periods named in the subtitle', {
+    variant: 'pure', columnHeads: false, size: { width: 760 }, subtitle: { measure: 'Customers retained, months 0 to 4 from the left' },
+  }),
+  exhibit('no-column-heads-stepped', 'Stepped exhibit without heads or the range lines under them', { variant: 'stepped', formatScope: 'column', columnHeads: false, size: { width: 760 }, subtitle: { measure: 'Customers retained, months 0 to 4 from the left' } }),
+  exhibit('total-top', 'Stepped exhibit with the weighted average above the cohorts', { variant: 'stepped', totalPosition: 'top', size: { width: 760 } }),
+  exhibit('no-designated-period', 'Pure exhibit with no tinted column', { variant: 'pure', designatedPeriod: false, size: { width: 760 } }),
+  exhibit('stepped-no-figures', 'Stepped exhibit whose fills carry the rates without printed numbers', { variant: 'stepped', formatScope: 'classic', figures: false, size: { width: 760 } }),
+  exhibit('heatmap-weighted-total', 'Heatmap with the weighted average row set by total', { total: 'weighted', size: { width: 720, height: 460 } }),
+  exhibit('heatmap-visible-periods', 'Heatmap showing the later periods only, with no trace of the hidden ones', { averages: 'weighted', methodNote: true, visiblePeriods: [1, 2, 4], size: { width: 720, height: 480 } }),
+);
 registerFixtures('cohort', fixtures);

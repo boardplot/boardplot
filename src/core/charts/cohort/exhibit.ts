@@ -48,9 +48,12 @@ import { heightOmitted, rowSizing, SIZE_TOLERANCE, VERIFY_ADVICE } from '../../s
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { disclosureNote } from '../../notes';
 import { fitColumn, fittedLabel, gutterBudget, stepDownFont } from '../../label/rowFit';
-import type { FittedText } from '../../label/fitText';
 import { textScaleOf } from '../../typeFloors';
 import { maxOf, minOf, pushAll } from '../../arrays';
+import { fitsRoom, widthsThatFit, withoutWidths } from '../../generatedWidths';
+import { generatedIdWarnings } from '../../schema/generatedColumns';
+import { fitText, type FittedText } from '../../label/fitText';
+import { overrideIgnored, widthFloored } from '../heatmap/columnTracks';
 
 const LABEL_TRACK = 118;
 const SIZE_TRACK = 96;
@@ -74,10 +77,12 @@ const REGULAR_WIDTH = Symbol('cohortRegularWidth');
 const STACKED_TEXT = Symbol('cohortStackedText');
 /** Periods the compact form leaves out for room; a note names them. */
 const HIDDEN_PERIODS = Symbol('cohortHiddenPeriods');
+/** Tracks make room for the default heads only, and an authored head wraps inside them, or stays on one line and is cut. */
+const DEFAULT_HEAD_ROOM = Symbol('cohortDefaultHeadRoom');
 /** A canvas tall enough that no row or note of the compact form misses it: the column search reads the width alone. */
 const PROBE_HEIGHT = 4000;
 type ExhibitOptions = CohortOptions & { [TIGHT_SPACING]?: { columns: boolean; rows: boolean; names?: boolean }; [COHORT_LIFT]?: 'none' | 'compact';
-  [STACKED_TEXT]?: boolean; [HIDDEN_PERIODS]?: number[] };
+  [STACKED_TEXT]?: boolean; [HIDDEN_PERIODS]?: number[]; [DEFAULT_HEAD_ROOM]?: 'wrap' | 'oneLine' };
 
 interface ExhibitRow {
   id: Id;
@@ -89,6 +94,35 @@ interface ExhibitRow {
 }
 
 export function layoutCohortExhibit(
+  sourceData: CohortData,
+  options: CohortOptions,
+): ReturnType<typeof buildExhibit> {
+  if (options.columnOverrides === undefined) return layoutLifted(sourceData, options);
+  // An authored width never refuses and never removes a period: it gives way to the spec without it.
+  const pinned = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height ?? !heightOmitted(options.size);
+  const hidden = (geometry: ExhibitGeometry) => geometry.labels.filter((label) => (label.hidden !== undefined && label.hidden !== 'redundant') || label.title !== undefined).length;
+  // An authored head gets the room it asks for only where that costs nothing the default heads keep.
+  const withHeads = (next: CohortOptions) => {
+    const asked = layoutLifted(sourceData, next);
+    if (next.columnOverrides?.label?.label === undefined && next.columnOverrides?.size?.label === undefined) return asked;
+    const room = layoutLifted(sourceData, { ...next, [DEFAULT_HEAD_ROOM]: 'wrap' } as ExhibitOptions);
+    if (fitsRoom(asked, pinned) && hidden(asked) === 0 && (asked.derived.visiblePeriods?.length ?? 0) >= (room.derived.visiblePeriods?.length ?? 0)) return asked;
+    return fitsRoom(room, pinned) ? room : layoutLifted(sourceData, { ...next, [DEFAULT_HEAD_ROOM]: 'oneLine' } as ExhibitOptions);
+  };
+  const first = withHeads(options);
+  const fitted = widthsThatFit(options, (next) => (next === options ? first : withHeads(next)), pinned, { hidden })!;
+  // Where the spec without widths has no room either, a first draw that fits and hides nothing stands.
+  if (!fitsRoom(fitted, pinned) && fitsRoom(first, pinned) && !first.labels.some((label) => label.hidden !== undefined && label.hidden !== 'redundant')) return first;
+  // The give-way compares counts, so a width could print one label and hide another of the same number.
+  if (!fitted.labels.some((label) => label.hidden !== undefined && label.hidden !== 'redundant')) return fitted;
+  const plain = withHeads(withoutWidths(options));
+  const printed = new Set(fitted.labels.filter((label) => label.hidden === undefined).map((label) => label.id));
+  if (!fitsRoom(plain, pinned) || !plain.labels.some((label) => label.hidden === undefined && !printed.has(label.id))) return fitted;
+  const narrowed = Object.keys(options.columnOverrides).filter((id) => options.columnOverrides![id]!.width !== undefined);
+  return { ...plain, warnings: [...plain.warnings, ...narrowed.map((id) => widthFloored('cohort', id))] };
+}
+
+function layoutLifted(
   sourceData: CohortData,
   options: CohortOptions,
 ): ReturnType<typeof buildExhibit> {
@@ -127,7 +161,7 @@ function layoutCohortExhibitOnce(
   const available = Array.from({ length: derived.periodCount }, (_, index) => index);
   const visible = normalizeVisiblePeriods(options.visiblePeriods, available, warnings);
   // An authored period the exhibit does not show would tint nothing, silently.
-  if (options.designatedPeriod !== undefined && options.variant === 'pure' && !visible.includes(options.designatedPeriod)) {
+  if (options.designatedPeriod !== undefined && options.designatedPeriod !== false && options.variant === 'pure' && !visible.includes(options.designatedPeriod)) {
     warnings.push({
       code: 'designated-period-out-of-range',
       severity: 'warn',
@@ -135,6 +169,7 @@ function layoutCohortExhibitOnce(
       suggest: 'pick a zero-based period index the exhibit shows',
     });
   }
+  pushAll(warnings, exhibitKeyWarnings(options, totals === 'weighted'));
   const total = totals === 'weighted' ? deriveExhibitTotal(derived) : undefined;
   const outputDerived: CohortDerived = {
     ...derived,
@@ -156,8 +191,16 @@ function layoutCohortExhibitOnce(
   const misses = missesSize(full, options);
   const { width: missesWidth, height: missesHeight } = misses;
   if (options.belowMinimum === 'refuse' || !full.sizing || !(missesWidth || missesHeight)) return full;
-  const tightWith = (names: boolean) => buildExhibit(data, outputDerived, visible, { ...options, [TIGHT_SPACING]: { columns: missesWidth, rows: missesHeight, names } }, [...warnings], exclusion);
+  let rowsTight = missesHeight;
+  const tightWith = (names: boolean) => buildExhibit(data, outputDerived, visible, { ...options, [TIGHT_SPACING]: { columns: missesWidth, rows: rowsTight, names } }, [...warnings], exclusion);
   let tight = tightWith(false);
+  // A table with these settings can meet a pinned height on regular rows and then pass it on the tight or compact
+  // tracks, where text takes a second line. Its rows then tighten too, where the default table's already did.
+  const keyed = options.columnOverrides !== undefined || options.columnHeads === false || options.columnVisibility?.size === false || options.columnOrder !== undefined;
+  if (!rowsTight && keyed && missesSize(tight, options).height) {
+    rowsTight = true;
+    tight = tightWith(false);
+  }
   // One step tighter, only where the tight table still misses the width by no more than the 8 px it saves:
   // the name track keeps a 4 px gap, as every other track does. It counts only when it hides no label.
   if (missesWidth && tight.sizing && tight.size.width + 0.5 < tight.sizing.minWidth && tight.sizing.minWidth - tight.size.width <= 8) {
@@ -177,7 +220,7 @@ function layoutCohortExhibitOnce(
       const hidden = visible.filter((period) => !periods.includes(period));
       const leftOut = hidden.filter((period) => period !== 0);
       return buildExhibit(data, { ...outputDerived, visiblePeriods: periods, ...(leftOut.length > 0 ? { periodsLeftOut: leftOut } : {}) }, periods, {
-        ...options, [TIGHT_SPACING]: { columns: true, rows: missesHeight, names: true }, [STACKED_TEXT]: true,
+        ...options, [TIGHT_SPACING]: { columns: true, rows: rowsTight, names: true }, [STACKED_TEXT]: true,
         ...(widthOnly ? { size: { width: full.size.width, height: Math.max(full.size.height, PROBE_HEIGHT) } } : {}),
         ...(hidden.length > 0 ? { [HIDDEN_PERIODS]: hidden } : {}),
       }, [...warnings], exclusion);
@@ -186,8 +229,12 @@ function layoutCohortExhibitOnce(
     let columns = visible;
     // The period-0 column prints 100 in every row by construction, so leaving it out loses no number.
     const anchorFull = visible[0] === 0 && visible.length > 1 && derived.cohorts.every((row) => row.observedPeriods === 0 || row.retention[0] === 1);
-    let fits = draws(at(visible, true));
-    if (!fits && anchorFull) {
+    // An authored width plays no part in the choice, so it cannot drop a period: the spec without it chooses.
+    const widthFree = Object.values(options.columnOverrides ?? {}).some((override) => override.width !== undefined)
+      ? layoutCohortExhibitOnce(sourceData, withoutWidths(options)).derived.visiblePeriods : undefined;
+    let fits = widthFree !== undefined || draws(at(visible, true));
+    if (widthFree !== undefined) columns = widthFree;
+    else if (!fits && anchorFull) {
       columns = visible.slice(1);
       fits = draws(at(columns, true));
     }
@@ -197,7 +244,7 @@ function layoutCohortExhibitOnce(
       const kept = (count: number) => {
         const first = candidates.slice(0, count);
         const designated = options.variant === 'pure' ? options.designatedPeriod : undefined;
-        return designated === undefined || first.includes(designated) || !candidates.includes(designated)
+        return designated === undefined || designated === false || first.includes(designated) || !candidates.includes(designated)
           ? first : [...first.slice(0, count - 1), designated];
       };
       let low = 0;
@@ -210,6 +257,10 @@ function layoutCohortExhibitOnce(
       columns = kept(Math.max(1, low));
     }
     tight = at(columns);
+    if (!rowsTight && keyed && missesSize(tight, options).height) {
+      rowsTight = true;
+      tight = at(columns);
+    }
     // Labels lost to a height that the compact table misses: a pinned height gets the size refusal
     // that names it, a height the chart takes is laid out again at the compact table's natural height.
     if (hides(tight) && (missesSize(tight, options).height || (tight.sizing?.naturalHeight ?? 0) > tight.size.height + SIZE_TOLERANCE)) return tight;
@@ -303,7 +354,7 @@ function withoutCurrentPeriod(data: CohortData): CohortData {
   };
 }
 
-function normalizeVisiblePeriods(
+export function normalizeVisiblePeriods(
   requested: number[] | undefined,
   available: number[],
   warnings: LintWarning[],
@@ -403,7 +454,58 @@ function retentionFormatter(options: CohortOptions, rows: readonly ExhibitRow[],
   };
 }
 
+/** What the key warns on every draw of one spec: wrong ids, a hidden size column and settings with no reader. */
+function exhibitKeyWarnings(options: CohortOptions, hasTotal: boolean): LintWarning[] {
+  const parts = exhibitParts(options);
+  const overrides = options.columnOverrides ?? {};
+  const shownBlocks = [...(parts.showSize ? ['size'] : []), 'periods'];
+  return [
+    ...generatedIdWarnings('cohort', 'columnVisibility', options.columnVisibility, ['label', 'size']),
+    ...generatedIdWarnings('cohort', 'columnOverrides', options.columnOverrides, ['label', ...shownBlocks]),
+    ...generatedIdWarnings('cohort', 'columnOrder', options.columnOrder, shownBlocks),
+    ...(parts.showSize ? [] : [{
+      code: 'cohort-size-hidden', severity: 'warn' as const, field: ['options', 'columnVisibility', 'size'],
+      message: 'the size column is hidden, so no row states its cohort size — a cohort of 40 next to a cohort of 4,000 reads as an equal comparison',
+      suggest: 'keep the size column, or state the cohort sizes in the subtitle or a note',
+    }]),
+    ...(overrides.periods?.label !== undefined ? [overrideIgnored('periods', 'label', 'each period keeps its own head')] : []),
+    ...(parts.heads ? [] : Object.keys(overrides).flatMap((id) => (id === 'size' && !parts.showSize) || !['label', 'size', 'periods'].includes(id) ? [] : (['headAlign', 'label'] as const)
+      .filter((field) => overrides[id]![field] !== undefined && !(id === 'periods' && field === 'label'))
+      .map((field) => overrideIgnored(id, field, 'columnHeads false draws no head')))),
+    ...(options.totalPosition !== undefined && !hasTotal ? [{
+      code: 'option-ignored', severity: 'warn' as const, field: ['options', 'totalPosition'],
+      message: 'totalPosition has no effect: total is false, so no summary row is drawn',
+      suggest: 'Remove totalPosition, or remove total: false.',
+      fix: [{ op: 'remove' as const, path: '/options/totalPosition' }],
+    }] : []),
+  ];
+}
+
+/** The parts of the table one spec draws. Blocks left out of columnOrder follow in default order: size, then periods. */
+function exhibitParts(options: CohortOptions) {
+  const showSize = options.columnVisibility?.size !== false;
+  const firstBlock = options.columnOrder?.find((id) => id === 'periods' || (id === 'size' && showSize));
+  return { showSize, sizeAfterPeriods: showSize && firstBlock === 'periods', heads: options.columnHeads !== false };
+}
+
+const TEXT_ALIGN = { left: 'start', center: 'middle', right: 'end' } as const;
+/** How far aligned text keeps from the edge of a track it does not centre in. */
+const TRACK_INSET = 4;
+/** Where text of `align` anchors in the track from `left`, `width` wide. */
+const anchorIn = (align: 'start' | 'middle' | 'end', left: number, width: number) =>
+  align === 'start' ? left + TRACK_INSET : align === 'end' ? left + width - TRACK_INSET : left + width / 2;
+/** The left edge of text `width` wide, anchored at `x`. */
+const leftOf = (align: 'start' | 'middle' | 'end', x: number, width: number) => (align === 'start' ? x : align === 'middle' ? x - width / 2 : x - width);
+
+/** The size head's words: an override beats `cohortSizeLabel`, which beats the default. */
+const sizeHeadWords = (options: CohortOptions) => options.columnOverrides?.size?.label ?? options.cohortSizeLabel ?? chartString(options, 'cohortSize');
+/** The words the size track makes room for. */
+const sizeHeadRoom = (options: ExhibitOptions) => (options[DEFAULT_HEAD_ROOM] ? options.cohortSizeLabel ?? chartString(options, 'cohortSize') : sizeHeadWords(options));
+
 function exhibitTracks(rows: ExhibitRow[], visible: number[], data: CohortData, options: ExhibitOptions, font: FontSpec, measure: TextMeasurer, format = retentionFormatter(options, rows), stackFont = font, head?: { font: FontSpec; text: string }) {
+  const { showSize, heads } = exhibitParts(options);
+  const authored = options.columnOverrides;
+  const stopsFigures = options.figures === false && options.variant === 'stepped';
   const tight = options[TIGHT_SPACING]?.columns === true;
   // Tight tracks keep 4 px of air; the compact form keeps the 6 px gap between value labels.
   const air = options[STACKED_TEXT] ? 6 : 4;
@@ -411,13 +513,14 @@ function exhibitTracks(rows: ExhibitRow[], visible: number[], data: CohortData, 
   const width = (text: string, wrapFont = stackFont) => options[STACKED_TEXT] ? maxOf(twoLines(text, wrapFont, measure).map((line) => measure(line, wrapFont).width)) : measure(text, font).width;
   const label = Math.max(tight ? 0 : LABEL_TRACK, maxOf(rows.map((row) => measure(row.label, font).width + (tight ? 4 : 12))));
   // The size head prints in the field-head face; it is measured in both faces, so a theme switch keeps the track.
-  const sizeHead = Math.max(width(options.cohortSizeLabel ?? chartString(options, 'cohortSize'), font),
+  const sizeHead = !heads ? 0 : Math.max(width(sizeHeadRoom(options), font),
     head ? (options[STACKED_TEXT] ? width(head.text, head.font) : measure(head.text, head.font).width) : 0);
-  const size = Math.max(tight ? 0 : SIZE_TRACK, sizeHead + (tight ? air : 18),
+  const size = !showSize ? 0 : authored?.size?.width ?? Math.max(tight ? 0 : SIZE_TRACK, sizeHead + (tight ? air : 18),
     maxOf(rows.map((row) => measure(formatAutomaticNumber(row.base, { locale: options.locale?.language, ...{ decimals: 0 } }), font).width + (tight ? air : 18))));
   const values = rows.flatMap((row) => visible.flatMap((period) => {
     const value = row.retention[period];
-    return period >= row.observedPeriods || value === null || value === undefined ? [] : [format(value, period)];
+    // A filled cell that stops printing its number reserves no width for it.
+    return period >= row.observedPeriods || value === null || value === undefined || (stopsFigures && period !== 0) ? [] : [format(value, period)];
   }));
   // Normal labels resolve to 56–72px. Authored formats or fonts may need more.
   const support = visible.flatMap(period => {
@@ -426,11 +529,11 @@ function exhibitTracks(rows: ExhibitRow[], visible: number[], data: CohortData, 
     return [
       ...(rows.some(row => row.kind === 'total') && options.basis !== 'previous'
         ? [chartString(options, 'baseValue', { value: formatAutomaticNumber(observed.reduce((sum, row) => sum + row.base, 0), { locale: options.locale?.language, decimals: 0 }) })] : []),
-      ...(options.variant === 'stepped' && (options.formatScope ?? 'column') === 'column'
+      ...(heads && options.variant === 'stepped' && (options.formatScope ?? 'column') === 'column'
         ? rates.length ? [numberRange(format(minOf(rates), period), format(maxOf(rates), period))] : [] : []),
     ];
   });
-  const month = Math.max(tight ? 0 : 56, maxOf([...visible.map((period) => periodName(data.periodLabel, period, options.locale?.language)), ...values]
+  const month = authored?.periods?.width ?? Math.max(tight ? 0 : 56, maxOf([...(heads ? visible.map((period) => periodName(data.periodLabel, period, options.locale?.language)) : []), ...values]
     .map((text) => measure(text, font).width + (tight ? air : 16))), maxOf(support.map((text) => width(text) + (tight ? air : 16))));
   return { label, size, month };
 }
@@ -510,7 +613,19 @@ function buildExhibit(
   // The retained engine disclosure must not become an ordinary numbered note.
   const frameOptions = ownFootnotes.length === authored.length ? options
     : withAuthoredFootnotes(options, authored, ownFootnotes);
-  const rowData = exhibitRows(data, derived, options).map((row) => style === 'stepped' && row.kind === 'total' ? { ...row, label: chartString(options, 'weightedAverage') } : row);
+  const namedRows = exhibitRows(data, derived, options).map((row) => style === 'stepped' && row.kind === 'total' ? { ...row, label: chartString(options, 'weightedAverage') } : row);
+  const totalOnTop = options.totalPosition === 'top' && namedRows.at(-1)?.kind === 'total';
+  const rowData = totalOnTop ? [namedRows.at(-1)!, ...namedRows.slice(0, -1)] : namedRows;
+  const { showSize, sizeAfterPeriods, heads } = exhibitParts(options);
+  const overrides = options.columnOverrides;
+  const alignOf = (id: string, fallback: 'start' | 'middle' | 'end') => {
+    const align = overrides?.[id]?.align;
+    return align === undefined ? fallback : TEXT_ALIGN[align];
+  };
+  const headAlignOf = (id: string, fallback: 'start' | 'middle' | 'end') => {
+    const align = overrides?.[id]?.headAlign;
+    return align === undefined ? alignOf(id, fallback) : TEXT_ALIGN[align];
+  };
   const totalId = rowData.find(row => row.kind === 'total')?.id;
   let formatValue = retentionFormatter(options, rowData);
   const measureName = cohortMeasure(options);
@@ -555,22 +670,29 @@ function buildExhibit(
   const trackFont: FontSpec = { family: theme.type.family, ...theme.type.label, weight: tableEmphasis(theme) };
   // Field heads (the corner and the size head) print in the table family's head face; period heads are values and keep theirs.
   const headFont = fieldHeadFont(theme);
-  const sizeHead = { font: headFont, text: fieldHeadText(options.cohortSizeLabel ?? chartString(options, 'cohortSize'), theme) };
+  const sizeHead = { font: headFont, text: fieldHeadText(sizeHeadRoom(options), theme) };
   // The compact form sets the column ranges and average bases in the secondary step (ticks and markers).
   const stackFont = secondaryFont(theme);
   let tracks = exhibitTracks(rowData, visible, data, options, trackFont, measure, formatValue, stackFont, sizeHead);
   const regularWidth = tracks.label + tracks.size + visible.length * tracks.month;
   const nameFont: FontSpec = { family: theme.type.family, ...theme.type.label };
+  const gap = options[TIGHT_SPACING]?.names === true ? 4 : 12;
+  const labelWidth = overrides?.label?.width;
   const rowNames = fitColumn(rowData.map(row => {
     const font = row.kind === 'total' ? { ...nameFont, weight: tableEmphasis(theme) } : nameFont;
-    const cap = Math.max(24, frame.plot.w * 0.3 - 12);
+    const cap = labelWidth === undefined ? Math.max(24, frame.plot.w * 0.3 - 12) : Math.max(1, labelWidth - gap);
     return { text: row.label, font, maxWidth: cap, maxLines: 2,
-      wider: gutterBudget(cap, frame.plot.w, tracks.size + visible.length * tracks.month) - 12,
+      wider: labelWidth === undefined ? gutterBudget(cap, frame.plot.w, tracks.size + visible.length * tracks.month) - 12 : cap,
       shrink: stepDownFont(theme, font, 'label', options.target, textScaleOf(options)),
       target: options.target, textScale: textScaleOf(options), typeRole: 'label' as const };
   }), measure);
-  const gap = options[TIGHT_SPACING]?.names === true ? 4 : 12;
-  tracks.label = Math.max(measure(chartString(options, 'cohort'), nameFont).width + gap, measure(fieldHeadText(chartString(options, 'cohort'), theme), headFont).width + gap, maxOf(rowNames.map(name => name.w + gap)));
+  const cornerWords = overrides?.label?.label;
+  const cornerText = fieldHeadText(cornerWords ?? chartString(options, 'cohort'), theme);
+  // A long authored corner head stops at the band row names may take, and is cut there.
+  const cornerShare = cornerWords === undefined ? Infinity : frame.plot.w * 0.45;
+  const cornerRoomWords = options[DEFAULT_HEAD_ROOM] ? chartString(options, 'cohort') : cornerWords ?? chartString(options, 'cohort');
+  const cornerReserve = !heads ? 0 : Math.max(measure(cornerRoomWords, nameFont).width + gap, measure(fieldHeadText(cornerRoomWords, theme), headFont).width + gap);
+  tracks.label = labelWidth ?? Math.max(Math.min(cornerReserve, cornerShare), maxOf(rowNames.map(name => name.w + gap)));
   rowH = Math.max(rowH, maxOf(rowNames.map(name => name.h + rowAir)));
 
   const fullWidth = tracks.label + tracks.size + visible.length * tracks.month;
@@ -606,18 +728,19 @@ function buildExhibit(
   // The period columns share the width the label and size columns leave, as a pure table's do.
   // heightFill 'none' keeps a stepped column at its measured width.
   const heightFill = options.heightFill !== 'none';
-  const monthW = style === 'stepped' && !heightFill ? tracks.month * scale : (frame.plot.w - labelW - sizeW) / visible.length;
+  // An authored width replaces the shared one, and the room it leaves stays empty right of the table.
+  const monthW = overrides?.periods?.width !== undefined || (style === 'stepped' && !heightFill) ? tracks.month * scale : (frame.plot.w - labelW - sizeW) / visible.length;
   const tableLeft = frame.plot.x;
-  const sizeLeft = tableLeft + labelW;
-  const monthLeft = sizeLeft + sizeW;
-  const tableRight = monthLeft + visible.length * monthW;
+  const sizeLeft = tableLeft + labelW + (sizeAfterPeriods ? visible.length * monthW : 0);
+  const monthLeft = tableLeft + labelW + (sizeAfterPeriods ? 0 : sizeW);
+  const tableRight = sizeAfterPeriods ? sizeLeft + sizeW : monthLeft + visible.length * monthW;
   // Each weighted average prints the base it rests on, under it.
   const averageBases = derived.total && derived.basis !== 'previous'
     ? visible.map((period) => derived.cohorts.reduce((sum, row) => sum + (period < row.observedPeriods ? row.base : 0), 0))
     : undefined;
   // A column-normalised table prints each column's range under its
   // head, so "Low" and "High" have numbers.
-  const columnRanges = scope === 'column'
+  const columnRanges = scope === 'column' && heads
     ? visible.map((period) => {
       const values = derived.cohorts.flatMap((row) => {
         const value = period < row.observedPeriods ? row.retention[period] : null;
@@ -631,9 +754,26 @@ function buildExhibit(
   const baseFont: FontSpec = options[STACKED_TEXT] ? stackFont : { family: theme.type.family, ...theme.type.label };
   const lineH = (font: FontSpec) => font.size * (font.lineHeight ?? 1.2);
   const wrapped = (text: string, font: FontSpec, room: number) => options[STACKED_TEXT] && measure(text, font).width > room ? twoLines(text, font, measure) : [text];
-  const sizeHeader = sizeHead.text;
+  const sizeHeader = fieldHeadText(sizeHeadWords(options), theme);
   const sizeHeaderFont: FontSpec = headFont;
-  const sizeHeaderLines = wrapped(sizeHeader, sizeHeaderFont, sizeW - 4);
+  // An authored head text wider than its track wraps, then is cut, because it never costs a period or the chart.
+  // Where the rows are already tight it takes no second line.
+  const headFit = (text: string, room: number) => (text !== '' && measure(text, headFont).width > room
+    ? fitText(text, headFont, Math.max(1, room), tightRows || options[DEFAULT_HEAD_ROOM] === 'oneLine' ? 1 : 2, measure, { target: options.target, typeRole: 'label' }) : undefined);
+  const sizeFit = overrides?.size?.label === undefined ? undefined : headFit(sizeHeader, sizeW - 4);
+  const sizeHeaderLines = showSize && heads ? sizeFit?.lines ?? wrapped(sizeHeader, sizeHeaderFont, sizeW - 4) : [];
+  // The size column's figures end this far inside it; the compact form keeps 4 px.
+  const sizeEnd = sizeLeft + sizeW - (options[STACKED_TEXT] || sizeAfterPeriods || overrides?.size?.width !== undefined ? 4 : 18) * scale;
+  const sizeAt = (align: 'start' | 'middle' | 'end') => (align === 'end' ? sizeEnd : anchorIn(align, sizeLeft, sizeW));
+  const sizeHeadAlign = headAlignOf('size', 'end');
+  const sizeCellAlign = alignOf('size', 'end');
+  const sizeHeadWidth = maxOf(sizeHeaderLines.map((line) => measure(line, headFont).width));
+  // Pure tables and hidden keys name the unit in the corner cell, in the room left of the next head.
+  const cornerRoom = showSize && !sizeAfterPeriods
+    ? leftOf(sizeHeadAlign, sizeAt(sizeHeadAlign), sizeHeadWidth) - 8 - tableLeft
+    : labelW - 8;
+  const cornerFit = cornerWords === undefined || !heads ? undefined : headFit(cornerText, Math.min(labelW - 4, cornerRoom));
+  const cornerLines = cornerFit?.lines ?? (cornerWords === undefined ? [] : [cornerText]);
   const rangeLines = columnRanges?.map((range, column) => {
     if (!range) return [];
     const [low, high] = [formatValue(range.min, visible[column]!), formatValue(range.max, visible[column]!)];
@@ -641,10 +781,14 @@ function buildExhibit(
   });
   const baseLines = averageBases?.map((base) => wrapped(chartString(options, 'baseValue', { value: formatAutomaticNumber(base, { locale: options.locale?.language, decimals: 0 }) }), baseFont, monthW - 4));
   const extraLines = (blocks: string[][] | undefined) => Math.max(0, maxOf((blocks ?? []).map((lines) => lines.length - 1)));
-  headerRowH = Math.max(headerRowH, sizeHeaderLines.length * lineH(sizeHeaderFont) + rowAir);
+  // A hidden size head keeps its line: the period heads and the range lines under them rest on that height.
+  headerRowH = Math.max(headerRowH, Math.max(1, sizeHeaderLines.length, cornerLines.length) * lineH(sizeHeaderFont) + rowAir);
   const baseLineH = averageBases ? baseRowH + extraLines(baseLines) * lineH(baseFont) : 0;
-  const headerH = headerRowH + (columnRanges ? baseRowH + extraLines(rangeLines) * lineH(axisFont) : 0);
+  const headerH = !heads ? 0 : headerRowH + (columnRanges ? baseRowH + extraLines(rangeLines) * lineH(axisFont) : 0);
   const naturalRowH = rowH;
+  // Wrapped row names can raise the row height past the head row's. Track settings let a table fit at widths where the
+  // default does not reach that state, so there a period head stays in its own row, clear of the range line under it.
+  const headBand = columnRanges && (!showSize || sizeAfterPeriods || overrides !== undefined) ? Math.min(naturalRowH, headerRowH) : naturalRowH;
   const naturalBottom = tableTop + headerH + rowData.length * rowH + totalGap + baseLineH;
   let tableBottom = naturalBottom;
   {
@@ -673,7 +817,7 @@ function buildExhibit(
   const totalPaint: Paint = totalGround(theme, options.palette);
   const mutedInk: Paint = { token: 'inkMuted' };
   const background: Paint = { token: 'background' };
-  const designated = options.designatedPeriod ?? 3;
+  const designated = options.designatedPeriod === false ? undefined : options.designatedPeriod ?? 3;
   const binByPeriod = columnBins(derived, visible, scope, steps, totalId);
 
   // Rules are drawn over the cell fills: a cell that starts on a rule, or the
@@ -686,7 +830,7 @@ function buildExhibit(
   };
   // One rule closes the head block, as on the table; none stands above it.
   const head = headRule(theme);
-  addLine('cohort-header-bottom', tableLeft, tableTop + headerH, tableRight, tableTop + headerH, head.width, head.stroke, 'tableRule');
+  if (heads) addLine('cohort-header-bottom', tableLeft, tableTop + headerH, tableRight, tableTop + headerH, head.width, head.stroke, 'tableRule');
 
   const addLabel = (
     id: Id,
@@ -730,97 +874,153 @@ function buildExhibit(
       h: measured.height,
     };
   };
-  // A wrapped text of the compact form: its lines centred on, or ending at, `x`, the block centred in `h` from `y`.
-  const addBlock = (id: Id, lines: string[], font: FontSpec, x: number, y: number, h: number, align: 'middle' | 'end', ink: Paint,
-    owner: { seriesId?: Id; categoryId?: Id }, kind: LabelRequest['kind']) => {
+  // A wrapped text of the compact form: its lines centred on, starting at or ending at `x`, the block centred in `h` from `y`.
+  const addBlock = (id: Id, lines: string[], font: FontSpec, x: number, y: number, h: number, align: 'start' | 'middle' | 'end', ink: Paint,
+    owner: { seriesId?: Id; categoryId?: Id }, kind: LabelRequest['kind'], title?: string) => {
     const w = maxOf(lines.map((line) => measure(line, font).width));
     const blockH = lines.length === 1 ? measure(lines[0]!, font).height : lines.length * lineH(font);
-    const rect = { x: align === 'middle' ? x - w / 2 : x - w, y: y + (h - blockH) / 2, w, h: blockH };
+    const rect = { x: leftOf(align, x, w), y: y + (h - blockH) / 2, w, h: blockH };
     addLabel(id, lines.join(' '), rect, font, ink, owner, kind, undefined,
-      { lines, w, h: blockH, font, ...(font === stackFont ? { typeRole: 'secondary' as const } : {}) }, lines.length === 1 ? undefined : align);
+      { lines, w, h: blockH, font, ...(title === undefined ? {} : { title }), ...(font === stackFont ? { typeRole: 'secondary' as const } : {}) }, lines.length === 1 || align === 'start' ? undefined : align);
   };
 
   const keyShowsUnit = showSteppedLegend && (keyCaption !== undefined || (scope === 'classic' && carriesUnit(caption)));
-  // The size column's figures end this far inside it; the compact form keeps 4 px.
-  const sizeEnd = sizeLeft + sizeW - (options[STACKED_TEXT] ? 4 : 18) * scale;
-  // Pure tables and hidden keys name the unit in the corner cell, in the room left of the size header.
-  const cornerRoom = sizeEnd - maxOf(sizeHeaderLines.map((line) => measure(line, headFont).width)) - 8 - tableLeft;
   const cornerTexts = [unitCaption, subtitleUnitClause(unit, '').trim(), unit];
-  // A unit that fits nowhere keeps the default "Cohort"; the render pipeline's unit line then names it.
-  const unitCorner = needsUnit && !keyShowsUnit ? cornerTexts.find((text) => text !== '' && measure(text, headerFont).width <= cornerRoom) : undefined;
-  const corner = unitCorner ?? fieldHeadText(chartString(options, 'cohort'), theme);
-  const cornerFont = unitCorner === undefined ? headFont : headerFont;
   const headPaint = headInk();
-  addLabel('cohort-header-label', corner, measuredRect(corner, cornerFont, tableLeft, tableTop, 'start', naturalRowH), cornerFont, headPaint, {}, 'axisTitle');
-  if (sizeHeaderLines.length > 1) addBlock('cohort-header-size', sizeHeaderLines, headFont, sizeEnd, tableTop, headerRowH, 'end', headPaint, {}, 'axisTitle');
-  else addLabel('cohort-header-size', sizeHeader, measuredRect(sizeHeader, headFont, sizeEnd, tableTop, 'end', naturalRowH), headFont, headPaint, {}, 'axisTitle');
-  visible.forEach((period, column) => {
-    const text = periodName(data.periodLabel, period, options.locale?.language);
-    const ink: Paint = style === 'pure' && period === designated ? emphasisInk(theme) : headPaint;
-    addLabel(
-      `cohort-header-period:${period}`,
-      text,
-      measuredRect(text, headerFont, monthLeft + (column + 0.5) * monthW, tableTop, 'middle', naturalRowH),
-      headerFont,
-      ink,
-      {},
-      'axisTitle',
-    );
-    const range = columnRanges?.[column];
-    if (range && options[STACKED_TEXT]) {
-      addBlock(`cohort-header-range:${period}`, rangeLines![column]!, axisFont, monthLeft + (column + 0.5) * monthW, tableTop + headerRowH - 4, headerH - headerRowH, 'middle', mutedInk, { categoryId: `t${period}` }, 'point');
-    } else if (range) {
-      const rangeFont: FontSpec = { family: theme.type.family, ...theme.type.axis };
-      const [low, high] = [formatValue(range.min, period), formatValue(range.max, period)];
-      const rangeText = low === high ? low : numberRange(low, high);
-      const measured = measure(rangeText, rangeFont);
-      addLabel(`cohort-header-range:${period}`, rangeText,
-        { x: monthLeft + (column + 0.5) * monthW - measured.width / 2, y: tableTop + headerRowH - 4 + (baseRowH - measured.height) / 2, w: measured.width, h: measured.height },
-        rangeFont, mutedInk, { categoryId: `t${period}` }, 'point');
+  const periodHeadAlign = headAlignOf('periods', 'middle');
+  const periodCellAlign = alignOf('periods', 'middle');
+  const columnAt = (column: number, align: 'start' | 'middle' | 'end') => (align === 'middle' ? monthLeft + (column + 0.5) * monthW : anchorIn(align, monthLeft + column * monthW, monthW));
+  // Text that names what the columns mean, kept where the head that held it goes.
+  const unitInCorner = needsUnit && !keyShowsUnit;
+  if (cornerWords !== undefined && heads && unitInCorner && !carriesUnit(cornerWords)) {
+    warnings.push({
+      code: 'cohort-unit-unprinted', severity: 'warn', field: ['options', 'columnOverrides', 'label', 'label'],
+      message: `the corner head was the only place that named the unit (${unit}), and columnOverrides.label.label does not; the rates now print with no unit`,
+      suggest: 'name the unit in that head, or set unit with a subtitle measure',
+    });
+  }
+  if (!heads) {
+    const lost = [
+      `the periods (${periodRuns(data.periodLabel, visible, options.locale?.language)})`,
+      ...(unitInCorner ? [`the unit (${unit})`] : []),
+      ...(scope === 'column' && showSteppedLegend ? ["the numbers behind the key's Low and High"] : []),
+    ];
+    warnings.push({
+      code: 'cohort-heads-hidden', severity: 'warn', field: ['options', 'columnHeads'],
+      message: `columnHeads false leaves ${lost.join(', ')} printed nowhere, so the reader cannot tell the columns apart`,
+      suggest: 'name them in the title, the subtitle or a note, or keep the heads',
+    });
+  }
+  if (heads) {
+    if (cornerWords !== '') {
+      const cornerAlign = headAlignOf('label', 'start');
+      // An aligned corner stays clear of a size head that reaches into the label track.
+      const cornerSpan = Math.min(labelW - gap, cornerRoom);
+      // A corner wider than that span has no room to align, so it starts at the table edge and keeps its text on the chart.
+      const placeCorner = (width: number) => {
+        if (cornerAlign === 'start' || width <= cornerSpan) return { x: cornerAlign === 'start' ? tableLeft : cornerAlign === 'end' ? tableLeft + cornerSpan : tableLeft + cornerSpan / 2, align: cornerAlign };
+        if (overrides?.label?.headAlign !== undefined && overrides.label.headAlign !== 'left') warnings.push(overrideIgnored('label', 'headAlign', 'the head fills its track, so it has no room to align'));
+        return { x: tableLeft, align: 'start' as const };
+      };
+      if (cornerFit) {
+        const { x, align } = placeCorner(Math.max(...cornerFit.lines.map((line) => measure(line, headFont).width)));
+        addBlock('cohort-header-label', cornerFit.lines, headFont, x, tableTop, headerRowH, align, headPaint, {}, 'axisTitle', cornerFit.title);
+      } else if (cornerWords !== undefined) {
+        const { x, align } = placeCorner(measure(cornerText, headFont).width);
+        addLabel('cohort-header-label', cornerText, measuredRect(cornerText, headFont, x, tableTop, align, naturalRowH), headFont, headPaint, {}, 'axisTitle');
+      } else {
+        // A unit that fits nowhere keeps the default "Cohort"; the render pipeline's unit line then names it.
+        const unitCorner = unitInCorner ? cornerTexts.find((text) => text !== '' && measure(text, headerFont).width <= cornerRoom) : undefined;
+        const corner = unitCorner ?? cornerText;
+        const cornerFont = unitCorner === undefined ? headFont : headerFont;
+        const { x, align } = placeCorner(measure(corner, cornerFont).width);
+        addLabel('cohort-header-label', corner, measuredRect(corner, cornerFont, x, tableTop, align, naturalRowH), cornerFont, headPaint, {}, 'axisTitle');
+      }
     }
-  });
+    if (showSize && sizeHeader !== '') {
+      if (sizeHeaderLines.length > 1 || sizeFit) addBlock('cohort-header-size', sizeHeaderLines, headFont, sizeAt(sizeHeadAlign), tableTop, headerRowH, sizeHeadAlign, headPaint, {}, 'axisTitle', sizeFit?.title);
+      else addLabel('cohort-header-size', sizeHeader, measuredRect(sizeHeader, headFont, sizeAt(sizeHeadAlign), tableTop, sizeHeadAlign, naturalRowH), headFont, headPaint, {}, 'axisTitle');
+    }
+    visible.forEach((period, column) => {
+      const text = periodName(data.periodLabel, period, options.locale?.language);
+      const ink: Paint = style === 'pure' && period === designated ? emphasisInk(theme) : headPaint;
+      addLabel(
+        `cohort-header-period:${period}`,
+        text,
+        measuredRect(text, headerFont, columnAt(column, periodHeadAlign), tableTop, periodHeadAlign, headBand),
+        headerFont,
+        ink,
+        {},
+        'axisTitle',
+      );
+      const range = columnRanges?.[column];
+      if (range && options[STACKED_TEXT]) {
+        addBlock(`cohort-header-range:${period}`, rangeLines![column]!, axisFont, columnAt(column, periodHeadAlign), tableTop + headerRowH - 4, headerH - headerRowH, periodHeadAlign, mutedInk, { categoryId: `t${period}` }, 'point');
+      } else if (range) {
+        const rangeFont: FontSpec = { family: theme.type.family, ...theme.type.axis };
+        const [low, high] = [formatValue(range.min, period), formatValue(range.max, period)];
+        const rangeText = low === high ? low : numberRange(low, high);
+        const measured = measure(rangeText, rangeFont);
+        addLabel(`cohort-header-range:${period}`, rangeText,
+          { x: leftOf(periodHeadAlign, columnAt(column, periodHeadAlign), measured.width), y: tableTop + headerRowH - 4 + (baseRowH - measured.height) / 2, w: measured.width, h: measured.height },
+          rangeFont, mutedInk, { categoryId: `t${period}` }, 'point');
+      }
+    });
+  }
 
+  const nameAlign = alignOf('label', 'start');
   rowData.forEach((row, rowIndex) => {
-    const y = tableTop + headerH + rowIndex * rowH + (row.kind === 'total' ? totalGap : 0);
+    // A summary row on top keeps its average bases under it and its gap above the cohorts.
+    const y = tableTop + headerH + rowIndex * rowH + (totalOnTop
+      ? row.kind === 'total' ? 0 : baseLineH + totalGap
+      : row.kind === 'total' ? totalGap : 0);
     const rowFont = row.kind === 'total' ? totalFont : cellFont;
-    if (style === 'pure' && rowIndex > 0 && row.kind !== 'total') {
+    if (style === 'pure' && rowIndex > 0 && row.kind !== 'total' && rowData[rowIndex - 1]!.kind !== 'total') {
       addLine(`cohort-row-rule:${row.id}`, tableLeft, y, tableRight, y, theme.table?.ruleWidths?.row ?? strokeToken(theme, 'hair'), tableRuleInk(), 'rowRule');
     }
     if (row.kind === 'total') {
       const rule = totalRule(theme);
       nodes.push({ t: 'rect', id: `cohort-total-ground:${row.id}`, rect: { x: tableLeft, y, w: tableRight - tableLeft, h: rowH }, fill: totalPaint, owner: {}, part: 'cohortTotalGround' });
-      addLine(`cohort-total-rule:${row.id}`, tableLeft, y - totalGap / 2, tableRight, y - totalGap / 2, rule.width, rule.stroke, 'totalRule');
+      // On top, the head rule closes the row above; without heads the rule sits on the edge of the row.
+      if (!totalOnTop) addLine(`cohort-total-rule:${row.id}`, tableLeft, y - totalGap / 2, tableRight, y - totalGap / 2, rule.width, rule.stroke, 'totalRule');
+      else if (!heads) rules.push({ t: 'line', id: `cohort-total-rule:${row.id}`, x1: tableLeft, y1: y, x2: tableRight, y2: y, stroke: rule.stroke, width: rule.width, owner: {}, part: 'totalRule' });
       // The rule below sits on the edge of the base line's own row, so it claims no label room.
       rules.push({ t: 'line', id: `cohort-total-rule-below:${row.id}`, x1: tableLeft, y1: y + rowH, x2: tableRight, y2: y + rowH, stroke: rule.stroke, width: rule.width, owner: {}, part: 'totalRule' });
     }
     const rowGround: Paint = row.kind === 'total' ? totalPaint : background;
+    const sizeText = formatAutomaticNumber(row.base, { locale: options.locale?.language, ...{ decimals: 0 } });
+    // An aligned name stops clear of this row's size figure, which can reach out of its track, and starts at the table edge where it has no room to align.
+    const nameEnd = Math.min(tableLeft + labelW - gap, showSize && !sizeAfterPeriods ? leftOf(sizeCellAlign, sizeAt(sizeCellAlign), measure(sizeText, rowFont).width) - 4 : Infinity);
+    const nameRoom = nameEnd - tableLeft - rowNames[rowIndex]!.w;
     addLabel(
       `cohort-row:${row.id}`,
       row.label,
-      { x: tableLeft, y: y + (rowH - rowNames[rowIndex]!.h) / 2, w: rowNames[rowIndex]!.w, h: rowNames[rowIndex]!.h },
+      { x: nameAlign === 'start' || nameRoom <= 0 ? tableLeft : tableLeft + (nameAlign === 'end' ? nameRoom : nameRoom / 2), y: y + (rowH - rowNames[rowIndex]!.h) / 2, w: rowNames[rowIndex]!.w, h: rowNames[rowIndex]!.h },
       rowFont,
       { token: 'ink' },
       { seriesId: row.id },
       'series',
       undefined,
       rowNames[rowIndex],
+      nameAlign === 'start' || nameRoom <= 0 ? undefined : nameAlign,
     );
-    const sizeRect: Rect = { x: sizeLeft, y, w: sizeW, h: rowH };
-    const sizeNodeId = `cohort-size:${row.id}`;
-    nodes.push({ t: 'rect', id: sizeNodeId, rect: sizeRect, fill: rowGround, owner: { seriesId: row.id, categoryId: 'cohort-size' }, part: 'cohortSize', display: { value: formatAutomaticNumber(row.base, { locale: options.locale?.language, ...{ decimals: 0 } }) } });
-    occupied.claim(sizeRect, 'mark', { seriesId: row.id, categoryId: 'cohort-size' }, 'cohortSize');
-    (marks.sizeCells as CohortSizeMark[]).push({ rowId: row.id, rowLabel: row.label, value: row.base, rect: sizeRect, nodeId: sizeNodeId, kind: row.kind });
-    const sizeText = formatAutomaticNumber(row.base, { locale: options.locale?.language, ...{ decimals: 0 } });
-    addLabel(
-      `cohort-size-label:${row.id}`,
-      sizeText,
-      measuredRect(sizeText, rowFont, sizeEnd, y, 'end'),
-      rowFont,
-      { token: 'ink' },
-      { seriesId: row.id, categoryId: 'cohort-size' },
-      'point',
-      rowGround,
-    );
+    if (showSize) {
+      const sizeRect: Rect = { x: sizeLeft, y, w: sizeW, h: rowH };
+      const sizeNodeId = `cohort-size:${row.id}`;
+      nodes.push({ t: 'rect', id: sizeNodeId, rect: sizeRect, fill: rowGround, owner: { seriesId: row.id, categoryId: 'cohort-size' }, part: 'cohortSize', display: { value: formatAutomaticNumber(row.base, { locale: options.locale?.language, ...{ decimals: 0 } }) } });
+      occupied.claim(sizeRect, 'mark', { seriesId: row.id, categoryId: 'cohort-size' }, 'cohortSize');
+      (marks.sizeCells as CohortSizeMark[]).push({ rowId: row.id, rowLabel: row.label, value: row.base, rect: sizeRect, nodeId: sizeNodeId, kind: row.kind });
+      addLabel(
+        `cohort-size-label:${row.id}`,
+        sizeText,
+        measuredRect(sizeText, rowFont, sizeAt(sizeCellAlign), y, sizeCellAlign),
+        rowFont,
+        { token: 'ink' },
+        { seriesId: row.id, categoryId: 'cohort-size' },
+        'point',
+        rowGround,
+      );
+    }
 
     visible.forEach((period, column) => {
       const retention = period < row.observedPeriods ? row.retention[period] ?? null : null;
@@ -868,6 +1068,8 @@ function buildExhibit(
         retention,
       });
       if (retention === null && !missing) return;
+      // A filled cell reads from its fill. A cell with no fill keeps its text, because an empty column says nothing.
+      if (options.figures === false && style === 'stepped' && retention !== null && period !== 0) return;
       const text = missing ? '—' : formatValue(retention!, period);
       // Total rates follow the same threshold key as cohort rates.
       const highlighted = style === 'pure' && retention !== null && pureEmphasis(options, period, retention);
@@ -883,7 +1085,7 @@ function buildExhibit(
       addLabel(
         `cohort-cell:${row.id}:t${period}`,
         text,
-        measuredRect(text, font, rect.x + rect.w / 2, y, 'middle'),
+        measuredRect(text, font, periodCellAlign === 'middle' ? rect.x + rect.w / 2 : anchorIn(periodCellAlign, rect.x, rect.w), y, periodCellAlign),
         font,
         ink,
         { seriesId: row.id, categoryId: `t${period}` },
@@ -897,16 +1099,16 @@ function buildExhibit(
   });
 
   if (averageBases) {
-    const y = tableBottom - baseLineH;
+    const y = totalOnTop ? tableTop + headerH + rowH : tableBottom - baseLineH;
     visible.forEach((period, column) => {
       if (options[STACKED_TEXT]) {
-        addBlock(`cohort-average-base:t${period}`, baseLines![column]!, baseFont, monthLeft + (column + 0.5) * monthW, y, baseLineH, 'middle', mutedInk, { seriesId: totalId, categoryId: `t${period}` }, 'annotation');
+        addBlock(`cohort-average-base:t${period}`, baseLines![column]!, baseFont, columnAt(column, periodCellAlign), y, baseLineH, periodCellAlign, mutedInk, { seriesId: totalId, categoryId: `t${period}` }, 'annotation');
         return;
       }
       const text = chartString(options, 'baseValue', { value: formatAutomaticNumber(averageBases[column]!, { locale: options.locale?.language, decimals: 0 }) });
       const measured = measure(text, baseFont);
       addLabel(`cohort-average-base:t${period}`, text,
-        { x: monthLeft + (column + 0.5) * monthW - measured.width / 2, y: y + (baseLineH - measured.height) / 2, w: measured.width, h: measured.height },
+        { x: leftOf(periodCellAlign, columnAt(column, periodCellAlign), measured.width), y: y + (baseLineH - measured.height) / 2, w: measured.width, h: measured.height },
         baseFont, mutedInk, { seriesId: totalId, categoryId: `t${period}` }, 'annotation');
     });
   }
@@ -982,7 +1184,7 @@ function buildExhibit(
     derived,
     a11y: {
       title: accessibleTitle(options.title, chartString(options, 'exhibitTitle', { measure: measureName.toLocaleLowerCase(options.locale?.language ?? 'en'), count: String(derived.cohorts.length) })),
-      desc: chartString(options, 'exhibitDesc', { measure: measureName, periods: visible.map(period => periodName(data.periodLabel, period, options.locale?.language)).join(', '), formula: cohortFormula(options, derived.basis), anchor: visible.includes(0) ? chartString(options, 'exhibitDescAnchor') : '', missing: derived.cohorts.some(row => visible.some(period => missingCohortRate(row, period, derived.basis))) ? chartString(options, 'exhibitDescMissing') : '', total: derived.total ? chartString(options, 'exhibitDescTotal', { basis: chartString(options, derived.basis === 'previous' ? 'previousBasis' : 'cohortBasis') }) : '' }),
+      desc: chartString(options, showSize ? 'exhibitDesc' : 'exhibitDescNoSize', { measure: measureName, periods: visible.map(period => periodName(data.periodLabel, period, options.locale?.language)).join(', '), formula: cohortFormula(options, derived.basis), anchor: visible.includes(0) ? chartString(options, 'exhibitDescAnchor') : '', missing: derived.cohorts.some(row => visible.some(period => missingCohortRate(row, period, derived.basis))) ? chartString(options, 'exhibitDescMissing') : '', total: derived.total ? chartString(options, 'exhibitDescTotal', { basis: chartString(options, derived.basis === 'previous' ? 'previousBasis' : 'cohortBasis') }) : '' }),
     },
     warnings,
     debug: { occupied: occupied.snapshot(), decisions: solved.decisions },

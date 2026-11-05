@@ -352,6 +352,7 @@ describe('published option behaviour census', () => {
     'tilemap.colorblindSafe': { options: { scale: { kind: 'diverging', midpoint: 0, polarity: 'higherIsBetter' } }, reason: 'Needs two scale poles.' },
     'cohort.labels': { options: { variant: 'heatmap' }, reason: 'Exhibit variants have a fixed label set.' },
     'cohort.steps': { options: { variant: 'stepped', formatScope: 'classic' }, reason: 'Only absolute stepped classes read steps.' },
+    'cohort.figures': { options: { variant: 'stepped' }, reason: 'Only stepped fills can stop their numbers.' },
     'table.figures': { options: { encodings: { actual: 'heat' } }, reason: 'Figures can be hidden only on a heat lane.' },
     'dimswitch.figures': { options: { encodings: { range: 'heat' } }, reason: 'Figures can be hidden only on a heat lane.' },
     'dimswitch.heightFill': { options: { size: { width: 900, height: 900 } }, reason: 'Only a pinned height has spare height to fill.' },
@@ -580,7 +581,10 @@ describe('published option behaviour census', () => {
         if (type === 'line' && key === 'fan') value = { of: 'output', bands: [{ low: 'output', high: 'market', label: 'Census bounds' }] };
         if (type === 'bartable' && key === 'combinedShare') value = { rows: [ids[1], ids[2]] };
         // 'bottom' is the default, so only 'top' moves the Total row.
-        if (type === 'bartable' && key === 'totalPosition') value = 'top';
+        if ((type === 'bartable' || type === 'cohort') && key === 'totalPosition') value = 'top';
+        if (type === 'cohort' && key === 'columnVisibility') value = { size: false };
+        if (type === 'cohort' && key === 'columnOverrides') value = { size: { label: 'Census size' } };
+        if (type === 'cohort' && key === 'columnOrder') value = ['periods', 'size'];
         if (type === 'grid' && key === 'alignmentRules') value = [{ id: 'census', orientation: 'horizontal', at: { panelId: 'rev', anchor: 'plotTop' } }];
         if (type === 'waffle' && key === 'panelGroups') value = [{ id: 'census', panels: ids, label: 'Census group' }];
         if (type === 'waffle' && key === 'subtotal') value = { series, label: 'Census subtotal' };
