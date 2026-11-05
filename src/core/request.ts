@@ -735,6 +735,7 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
     if (drawn) {
       while (hi - lo > 1) {
         const mid = Math.floor((lo + hi) / 2);
+        if (mid <= lo || mid >= hi) break;
         const probe = fullAt(mid);
         if (probe) [hi, drawn] = [mid, probe];
         else lo = mid;

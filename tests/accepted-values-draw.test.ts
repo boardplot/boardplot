@@ -1,15 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import { measure } from '../src/cli/measure';
 import { render } from '../src/cli/render';
 
 interface Warned { code: string; path?: string }
 
 function drawn(spec: unknown, width?: number) {
   const result = render({ spec, ...(width === undefined ? {} : { width }), return: ['svg'] });
-  const body = result.body as { svg?: string; warnings?: Warned[] };
-  return { svg: body.svg ?? '', warnings: body.warnings ?? [], codes: (body.warnings ?? []).map((warning) => warning.code) };
+  const body = result.body as { svg?: string; warnings?: Warned[]; errors?: unknown[] };
+  return { svg: body.svg ?? '', errors: body.errors ?? [], warnings: body.warnings ?? [], codes: (body.warnings ?? []).map((warning) => warning.code) };
 }
-
-const labelX = (svg: string, row: string) => Number(new RegExp(`data-id="cell:${row}:name"[^>]*? x="([0-9.]+)"`).exec(svg)?.[1]);
 
 const rungTree = (rung: number) => ({
   type: 'table',
@@ -63,32 +62,16 @@ describe('a value in the spec does not set the length of a layout loop', () => {
     expect(svg).toContain('North');
   });
 
-  // A rung is an authored level and needs no row at each step above it: a cap at the row count moved this child onto its parent.
-  it('keeps a rung deeper than the rows where the frame holds it', () => {
-    const { svg, codes } = drawn(rungTree(2), 960);
-    expect(labelX(svg, 'Group')).toBe(56);
-    expect(labelX(svg, 'Detail')).toBe(72);
-    expect(codes).not.toContain('table-rung-capped');
+  // A midpoint above 2^53 stops moving, so the search for the width to advise never ended and a draw held a server.
+  it('refuses a tree at the largest rung through render', () => {
+    const { svg, errors } = drawn(rungTree(Number.MAX_SAFE_INTEGER), 960);
+    expect(svg).toBe('');
+    expect(errors.length).toBeGreaterThan(0);
   });
 
-  // A rung past the frame refused the chart, and at the largest integer the refusal's own width search never ended.
-  it.each([1000, Number.MAX_SAFE_INTEGER])('gives way on a tree rung of %d at a fixed width', (rung) => {
-    const { svg, codes } = drawn(rungTree(rung), 960);
-    expect(svg).toContain('Detail');
-    expect(codes).toContain('table-rung-capped');
-  });
-
-  // A flat table has no indent, so its rung costs no width and nothing gives way.
-  it('leaves a flat table at the largest rung alone', () => {
-    const { svg, codes } = drawn({
-      type: 'table',
-      data: {
-        columns: [{ id: 'name', kind: 'rowLabel', label: 'Name' }, { id: 'v', kind: 'value', label: 'Value' }],
-        rows: [{ id: 'north', label: 'North', rung: Number.MAX_SAFE_INTEGER, cells: { v: 1 } }, { id: 'south', label: 'South', cells: { v: 2 } }],
-      },
-    }, 960);
-    expect(svg).toContain('North');
-    expect(codes).not.toContain('table-rung-capped');
+  // The measure verb has its own search for the least width, and it held a server the same way.
+  it('returns a tree at the largest rung through measure', () => {
+    expect(measure({ spec: rungTree(Number.MAX_SAFE_INTEGER), width: 960 }).body).toBeDefined();
   });
 
   // A month step past the last date a Date holds never reached the end of the range, so the tick list grew until the array length ran out.

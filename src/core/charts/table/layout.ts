@@ -128,10 +128,8 @@ const isLeafRow = (row: ResolvedRow): boolean => row.role !== 'total' && row.rol
 const SUB_LINES = Symbol('tableSubLines');
 /** Regular spacing only: no tight rung. A caller that has other regular forms to try first (dimswitch) or only reads the floor (classFloor) sets it. */
 export const REGULAR_SPACING = Symbol('tableRegularSpacing');
-/** The deepest rung a label indents at, on a fixed-width table that refuses at its authored rung. */
-const RUNG_CAP = Symbol('tableRungCap');
 /** The compact retry carries the canvas height its caller gave the full table. */
-type LayoutOptions = TableOptions & { [RUNG_CAP]?: number; [SIZING_ONLY]?: boolean; [COMPACT_RETRY]?: number; [HEAD_LINES]?: number; [TIGHT_SPACING]?: { columns: boolean; rows: boolean }; [HEAD_AIR_MIN]?: boolean; [SUB_LINES]?: number; [REGULAR_SPACING]?: boolean; [HEAD_LOOSE]?: boolean; [ENGINE_NOTES]?: string[]; [SOFT_LABEL_CAP]?: boolean; [LABEL_WRAP_FLOOR]?: boolean };
+type LayoutOptions = TableOptions & { [SIZING_ONLY]?: boolean; [COMPACT_RETRY]?: number; [HEAD_LINES]?: number; [TIGHT_SPACING]?: { columns: boolean; rows: boolean }; [HEAD_AIR_MIN]?: boolean; [SUB_LINES]?: number; [REGULAR_SPACING]?: boolean; [HEAD_LOOSE]?: boolean; [ENGINE_NOTES]?: string[]; [SOFT_LABEL_CAP]?: boolean; [LABEL_WRAP_FLOOR]?: boolean };
 type FormatFits = Map<string, ReturnType<typeof fitTableFormats>>;
 /** The frame gutter of a card-class table: 12 px a side at 480 px and narrower. */
 const CARD_GUTTER = 12;
@@ -152,64 +150,6 @@ function cutCount(geometry: Geometry<TableMarks, TableDerived>): number {
  * text.
  */
 export function layoutTable(authoredData: TableData, options: TableOptions = {}, resolved = resolvedForSize(authoredData, options)): Geometry<TableMarks, TableDerived> {
-  const drawn = layoutTableFitted(authoredData, options, resolved);
-  const cap = fittingRung(authoredData, options, resolved, drawn);
-  return cap === undefined ? drawn : layoutTableFitted(authoredData, { ...options, [RUNG_CAP]: cap } as LayoutOptions, resolved);
-}
-
-/**
- * The depth of the tree the rows make, with section headings taken out: a rung
- * above it is authored, and it is the only part of an indent that may give way.
- */
-function treeDepth(rows: readonly ResolvedRow[]): number {
-  const byId = new Map(rows.map((row) => [row.id, row]));
-  const depthOf = (row: ResolvedRow): number => {
-    let depth = 0;
-    for (let parent = row.parentId === undefined ? undefined : byId.get(row.parentId); parent !== undefined; parent = parent.parentId === undefined ? undefined : byId.get(parent.parentId)) {
-      if (parent.role !== 'section') depth += 1;
-    }
-    return depth;
-  };
-  return Math.max(0, ...rows.map(depthOf));
-}
-
-/**
- * The deepest rung at which a table whose authored rung misses a fixed width fits it.
- * Undefined where the table fits, keeps its rungs, or misses for another reason.
- */
-function fittingRung(data: TableData, options: TableOptions, resolved: ReturnType<typeof resolveTable>, drawn: Geometry<TableMarks, TableDerived>): number | undefined {
-  // A floor probe at another width asks what the table needs at its authored rung, so the floor a drawing reports stays its own.
-  const target = (options as TargetSizeOptions)[TARGET_SIZE];
-  const probing = (options as LayoutOptions)[SIZING_ONLY] === true || (options as { [WIDTH_PROBE]?: unknown })[WIDTH_PROBE] !== undefined
-    || (target !== undefined && resolveSize(options.size).width !== target.sizePx.width);
-  if ((options as LayoutOptions)[RUNG_CAP] !== undefined || probing || options.belowMinimum === 'refuse' || !missesWidth(drawn, options)) return undefined;
-  const { rows } = resolved.table;
-  const deepest = Math.max(0, ...rows.map((row) => row.indentStep ?? row.step));
-  const depth = treeDepth(rows);
-  if (!rows.some((row) => row.hasChildren) || deepest <= depth) return undefined;
-  const fitsAt = (cap: number) => !missesWidth(layoutTableFitted(data, { ...options, [RUNG_CAP]: cap } as LayoutOptions, resolved), options);
-  if (!fitsAt(depth)) return undefined;
-  // An indent step is at least a pixel wherever an indent can miss, so a rung past the frame's pixels never fits.
-  let [low, high] = [depth, Math.min(deepest, Math.ceil(drawn.size.width) + 1)];
-  while (high - low > 1) {
-    const mid = Math.floor((low + high) / 2);
-    if (fitsAt(mid)) low = mid;
-    else high = mid;
-  }
-  return low;
-}
-
-/** The rung cap a host without the fit ladder (the React grid) takes at a fixed width, so it agrees with the drawing. */
-export function tableRungCap(known: { table: ResolvedTable } | ReturnType<typeof resolveTable>, data: TableData, options: TableOptions): number | undefined {
-  const { rows } = known.table;
-  // Almost every table stops here, before any layout runs.
-  if (!rows.some((row) => row.hasChildren) || Math.max(0, ...rows.map((row) => row.indentStep ?? row.step)) <= treeDepth(rows)) return undefined;
-  // A prepared snapshot leaves out what a layout reads.
-  const resolved = 'computedCells' in known ? known : resolvedForSize(data, options);
-  return fittingRung(data, options, resolved, layoutTableFitted(data, options, resolved));
-}
-
-function layoutTableFitted(authoredData: TableData, options: TableOptions, resolved: ReturnType<typeof resolveTable>): Geometry<TableMarks, TableDerived> {
   // A nonzero figure lifted off "0.0" ("0.0005") is wider than the plain rounded text. Where that costs a refusal,
   // a cut or a compact step the rounded text does not take, it prints its bound ("<0.1"), also where the bound costs
   // one too: the automatic number rule never prints a nonzero figure as a bare "0.0". Only where the bound would
@@ -274,11 +214,6 @@ function sharedWidthPlan(table: ResolvedTable, theme: Theme, measure: TextMeasur
     byKey.set(key, plan = tableWidths(table, theme, measure, options, view, preparation));
   }
   return plan;
-}
-
-/** Whether a table layout misses the width its frame fixes. */
-function missesWidth(geometry: Geometry<TableMarks, TableDerived>, options: TableOptions): boolean {
-  return (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.width !== false && geometry.sizing !== undefined && geometry.size.width < geometry.sizing.minWidth;
 }
 
 /** Whether a table layout misses the size its frame fixes. */
@@ -814,7 +749,7 @@ function layoutTableOnce(
   }
   const { lineBox, pad: levelPad } = ladder;
   const widthPlan = sharedWidthPlan(table, theme, measure, options, {
-    columns: cols, rows, widthRows, fullRows, available: plot.w, rungCap: options[RUNG_CAP], spacerTotal, headLines: options[HEAD_LINES], subLines: options[SUB_LINES], headGlue: options[HEAD_LOOSE] !== true,
+    columns: cols, rows, widthRows, fullRows, available: plot.w, spacerTotal, headLines: options[HEAD_LINES], subLines: options[SUB_LINES], headGlue: options[HEAD_LOOSE] !== true,
   });
   cellPadX = widthPlan.cellPadX;
   if (frameInput.footerInset !== cellPadX) {

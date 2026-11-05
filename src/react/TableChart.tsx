@@ -1,8 +1,6 @@
 import type { OptionsInput } from '../core/types/optionInput';
 import { hasPolarityBadge, isFigureCell, polarityBadgeInk } from '../core/charts/table/chips';
 import { belowTableViewportFloor, tableWidths } from '../core/charts/table/widths';
-import { tableRungCap } from '../core/charts/table/layout';
-import { DEFAULT_TARGET, TARGET_SIZE, resolveTargetSize, type TargetSizeOptions } from '../core/target';
 import {
   createContext,
   memo,
@@ -22,7 +20,7 @@ import {
 } from 'react';
 import { useIsomorphicLayoutEffect as useLayoutEffect } from './useIsomorphicLayoutEffect';
 import { resolveCanvasOptions, resolveSize } from '../core/normalize/shared';
-import { canvasMargin, resolvedThemeRef } from '../core/theme';
+import { canvasMargin } from '../core/theme';
 import { measureResolvedRequest, resolveChartRequest, type ResolvedChartRequest } from '../core/request';
 import { asFirstFrame, DeferredCoreError, type DeferredName } from '../core/deferred';
 import { useDeferredModule, useDeferredRevision } from './deferredCore';
@@ -1031,26 +1029,18 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     () => table ? visibleColumns(table, Object.fromEntries([...table.columnToggles.map((toggle) => [toggle.id, toggle.defaultVisible] as const), ...Object.entries(defaultColumnVisibility ?? {})])) : [],
     [table, defaultColumnVisibility],
   );
-  // The rung the drawing gives way to at this width, so the grid indents as the SVG does. An unknown width keeps the authored rung.
-  const rungCap = useMemo(() => {
-    if (!resolved || !tableOptions || !request || available === undefined || size === undefined) return undefined;
-    const frameWidth = size === 'container' ? container.size?.width : resolveSize(size).width;
-    if (frameWidth === undefined) return undefined;
-    const frame = { width: frameWidth };
-    return tableRungCap(resolved!, layoutRequest!.data as TableData, { ...sizeFreeOptions, theme: resolvedThemeRef(request.theme), density, size: frame, [TARGET_SIZE]: resolveTargetSize(request.target ?? DEFAULT_TARGET, frame) } as TableOptions & TargetSizeOptions);
-  }, [resolved, tableOptions, available, size, container.size?.width, layoutRequest?.data, density, request]);
   const measured = useMemo(() => table && theme ? tableWidths(table, theme, width.measure, {
     ...tableOptions, density, target: request?.target, inlineVisibility,
     [SOFT_LABEL_CAP]: softLabelCap, [LABEL_WRAP_FLOOR]: labelWrapFloor,
   }, {
-    columns, allColumns, defaultColumns, rows, available, rungCap, frameStart, scroll: true,
+    columns, allColumns, defaultColumns, rows, available, frameStart, scroll: true,
     withMarks: !readOnlyTree || tableOptions?.outlineMarks === true,
     sortable: sortableIds, leadWidth: rowLabelLead?.width,
     trailingTracking: true, groupStart: groupMarks.groupStart, groupEnd: groupMarks.groupEnd,
     slack: width.browser ? undefined : browserSlack,
     fit: size === 'container' ? fit : undefined,
   }) : undefined, [table, theme, width, tableOptions, density, request?.target, inlineVisibility, softLabelCap, labelWrapFloor,
-    columns, allColumns, defaultColumns, rows, available, rungCap, frameStart, readOnlyTree, sortableIds, rowLabelLead?.width, groupMarks, size, fit]);
+    columns, allColumns, defaultColumns, rows, available, frameStart, readOnlyTree, sortableIds, rowLabelLead?.width, groupMarks, size, fit]);
   const padX = measured?.cellPadX ?? 12;
   const indents = measured?.indents ?? { base: 0, step: 16 };
   const operatorSlot = measured?.operatorSlot ?? 0;
@@ -1690,7 +1680,6 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   } : undefined;
   const rowShared: SharedRowProps = {
     palette: tableOptions.palette,
-    rungCap,
     rowIndices,
     columnIndices,
     isTree,
@@ -2221,8 +2210,6 @@ function headCellStyle(
 
 interface SharedRowProps {
   palette?: string;
-  /** The deepest rung a label indents at, where the frame gives a deeper one way. */
-  rungCap?: number;
   rowIndices: ReadonlyMap<Id, number>;
   columnIndices: ReadonlyMap<Id, number>;
   isTree: boolean;
@@ -2395,7 +2382,6 @@ function TableChildren({ rowId, collapsed, onClosed, children }: {
  */
 function TableGridRow({
   palette,
-  rungCap,
   oneLineLabel,
   row,
   rowIndices,
@@ -2483,7 +2469,7 @@ function TableGridRow({
   const step = Math.min(3, row.step);
   // An empty band before the row; the first drawn row takes none.
   const style = {
-    '--bp-level': Math.min(row.indentStep ?? row.step, rungCap ?? Infinity),
+    '--bp-level': row.indentStep ?? row.step,
     ...(row.spacer === undefined ? {} : { '--bp-row-spacer': `${row.spacer}px` }),
   } as CSSProperties;
   // A section heading is one cell across the whole grid, and its hairline
