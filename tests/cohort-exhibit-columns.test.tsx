@@ -92,6 +92,29 @@ describe('keys on a variant that can never have the part', () => {
   });
 });
 
+// A corner aligned past the left edge of the table is hidden as a collision, and the unit it carried goes with it.
+describe('a corner head wider than its track', () => {
+  const small: CohortData = { cohorts: [{ id: 'a', label: 'A', active: [100, 60, 50] }, { id: 'b', label: 'B', active: [100, 70] }] };
+  const corner = (label: NonNullable<CohortOptions['columnOverrides']>[string], chart = small) => {
+    const geometry = layout({ variant: 'pure', total: false, cohortSizeLabel: 'N', size: { width: 720 }, columnOverrides: { label } }, chart);
+    const head = geometry.labels.find((item) => item.id === 'cohort-header-label');
+    const ignored = geometry.warnings.some((item) => item.code === 'option-ignored' && item.field?.join('.') === 'options.columnOverrides.label.headAlign');
+    return { x: head?.rect.x, left: geometry.plot.x, ignored };
+  };
+
+  it.each([[{ headAlign: 'right' }, true], [{ headAlign: 'center' }, true], [{ align: 'right' }, false]] as const)('%j stays in the table', (label, ignored) => {
+    const { x, left, ignored: warned } = corner(label);
+    expect(x).toBeGreaterThanOrEqual(left);
+    expect(warned).toBe(ignored);
+  });
+
+  it('keeps its alignment where it fits', () => {
+    const { x, left, ignored } = corner({ headAlign: 'right' }, { cohorts: [{ ...small.cohorts[0]!, label: 'A longer cohort name' }, small.cohorts[1]!] });
+    expect(x).toBeGreaterThan(left);
+    expect(ignored).toBe(false);
+  });
+});
+
 describe('authored widths', () => {
   const wide: CohortData = { periodLabel: 'Month', cohorts: Array.from({ length: 4 }, (_, row) => ({ id: `r${row}`, label: `Signup group ${row + 1}`, active: Array.from({ length: 12 - row }, (_, t) => 10000 - t * 317 - row * 13) })) };
   const compact: CohortOptions = { variant: 'stepped', mode: 'compact', size: { width: 320 } };

@@ -916,15 +916,25 @@ function buildExhibit(
       const cornerAlign = headAlignOf('label', 'start');
       // An aligned corner stays clear of a size head that reaches into the label track.
       const cornerSpan = Math.min(labelW - gap, cornerRoom);
-      const cornerX = cornerAlign === 'start' ? tableLeft : cornerAlign === 'end' ? tableLeft + cornerSpan : tableLeft + cornerSpan / 2;
-      if (cornerFit) addBlock('cohort-header-label', cornerFit.lines, headFont, cornerX, tableTop, headerRowH, cornerAlign, headPaint, {}, 'axisTitle', cornerFit.title);
-      else if (cornerWords !== undefined) addLabel('cohort-header-label', cornerText, measuredRect(cornerText, headFont, cornerX, tableTop, cornerAlign, naturalRowH), headFont, headPaint, {}, 'axisTitle');
-      else {
+      // A corner wider than that span has no room to align, so it starts at the table edge and keeps its text on the chart.
+      const placeCorner = (width: number) => {
+        if (cornerAlign === 'start' || width <= cornerSpan) return { x: cornerAlign === 'start' ? tableLeft : cornerAlign === 'end' ? tableLeft + cornerSpan : tableLeft + cornerSpan / 2, align: cornerAlign };
+        if (overrides?.label?.headAlign !== undefined && overrides.label.headAlign !== 'left') warnings.push(overrideIgnored('label', 'headAlign', 'the head fills its track, so it has no room to align'));
+        return { x: tableLeft, align: 'start' as const };
+      };
+      if (cornerFit) {
+        const { x, align } = placeCorner(Math.max(...cornerFit.lines.map((line) => measure(line, headFont).width)));
+        addBlock('cohort-header-label', cornerFit.lines, headFont, x, tableTop, headerRowH, align, headPaint, {}, 'axisTitle', cornerFit.title);
+      } else if (cornerWords !== undefined) {
+        const { x, align } = placeCorner(measure(cornerText, headFont).width);
+        addLabel('cohort-header-label', cornerText, measuredRect(cornerText, headFont, x, tableTop, align, naturalRowH), headFont, headPaint, {}, 'axisTitle');
+      } else {
         // A unit that fits nowhere keeps the default "Cohort"; the render pipeline's unit line then names it.
         const unitCorner = unitInCorner ? cornerTexts.find((text) => text !== '' && measure(text, headerFont).width <= cornerRoom) : undefined;
         const corner = unitCorner ?? cornerText;
         const cornerFont = unitCorner === undefined ? headFont : headerFont;
-        addLabel('cohort-header-label', corner, measuredRect(corner, cornerFont, cornerX, tableTop, cornerAlign, naturalRowH), cornerFont, headPaint, {}, 'axisTitle');
+        const { x, align } = placeCorner(measure(corner, cornerFont).width);
+        addLabel('cohort-header-label', corner, measuredRect(corner, cornerFont, x, tableTop, align, naturalRowH), cornerFont, headPaint, {}, 'axisTitle');
       }
     }
     if (showSize && sizeHeader !== '') {
