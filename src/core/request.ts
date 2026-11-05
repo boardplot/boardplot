@@ -2,7 +2,7 @@ import { fractionLineWarnings, prepareFractionAnnotations, percentScaleWarnings 
 import { readFormatExamples } from './formatSpec';
 import { colorVariableWarnings } from './colorVariables';
 import { drawnRequest } from './drawnRequest';
-import { PLAN_ONLY, withPlanInputs } from './layoutPlan';
+import { PLAN_ONLY, withPlanInputs, copyPlannedValue } from './layoutPlan';
 import { shownNoteKinds } from './notes';
 import { canonicalChartType, getChart } from './registry';
 import { chartSizing, compactFallbackApplies, declaredSizing, fitsSize, FIXED_SIZE_PROBE, FULL_LAYOUT_PROBE, SIZE_TOLERANCE, LAYOUT_CALL, type LayoutCall, plotFloorHeight, plotRepairHeight, resolveSizing, sizeRefusal, VERIFY_ADVICE, verifiedSizeRepair, WIDTH_PROBE } from './sizing';
@@ -293,9 +293,13 @@ export function layoutResolvedRequest(request: ResolvedChartRequest): LayoutResu
 }
 
 /** Internal host sizing path. Tables keep their fit diagnostics without drawing a scene. */
-export function planResolvedRequest(request: ResolvedChartRequest): LayoutResult {
-  if (request.type !== 'table' && request.type !== 'dimswitch') return layoutResolvedRequest(request);
-  return withPlanInputs(() => layoutRequest({ ...request, options: { ...request.options, [PLAN_ONLY]: true } as RequestOptions }));
+export function planResolvedRequest(request: ResolvedChartRequest): Pick<LayoutResult, 'type' | 'size' | 'sizing' | 'warnings'> & { refused?: true; plot?: Geometry['plot']; scene: [] } {
+  const result = request.type === 'table' || request.type === 'dimswitch'
+    ? withPlanInputs(() => layoutRequest({ ...request, options: { ...request.options, [PLAN_ONLY]: true } as RequestOptions }))
+    : layoutResolvedRequest(request);
+  // A host owns its dimensions and diagnostics. Internal cell models and draw closures stay inside the engine.
+  return copyPlannedValue({ type: result.type, size: result.size, sizing: result.sizing, warnings: result.warnings,
+    ...(result.refused ? { refused: true as const } : { plot: result.plot }), scene: [] });
 }
 
 function layoutRequest(request: ResolvedChartRequest): LayoutResult {
