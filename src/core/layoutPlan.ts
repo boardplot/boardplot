@@ -2,7 +2,7 @@
 import { copyFrame, footerPlans } from './footer';
 import { emptyIdRecord } from './idRecords';
 import { currentSmallValues } from './formatPrecision';
-import type { FontSpec, TextMeasurer, TextSize } from './text';
+import { isCachedTextMeasurer, type FontSpec, type TextMeasurer, type TextSize } from './text';
 import type { FrameGeometry, Geometry } from './types/scene';
 
 type AnyGeometry = Geometry<object, object>;
@@ -32,11 +32,20 @@ function inputJson(value: object): string {
   return key;
 }
 
+const inputVersions = new WeakMap<object, { json: string; version: number }>();
+let nextInputVersion = 0;
+function inputVersion(value: object): number {
+  const json = inputJson(value);
+  let known = inputVersions.get(value);
+  if (!known || known.json !== json) inputVersions.set(value, known = { json, version: nextInputVersion++ });
+  return known.version;
+}
+
 /** Data and theme snapshots are shared only during one synchronous request, including nested mutable fields. */
 export function layoutKey(data: object, options: object): string {
   const { theme, ...rest } = options as { theme?: unknown };
   const symbols = Object.getOwnPropertySymbols(options).map(symbol => [symbol.description, (options as Record<symbol, unknown>)[symbol]]);
-  return JSON.stringify([inputJson(data), rest, theme && typeof theme === 'object' ? inputJson(theme) : theme, symbols, currentSmallValues()], keyFunction);
+  return JSON.stringify([inputVersion(data), rest, theme && typeof theme === 'object' ? inputVersion(theme) : theme, symbols, currentSmallValues()], keyFunction);
 }
 
 const measurers = new WeakMap<TextMeasurer, TextMeasurer>();
@@ -46,7 +55,7 @@ const sameFont = (a: FontSpec, b: FontSpec) => a.family === b.family && a.size =
 
 /** A distinct string is measured once per complete font during a numeric fit. No rounding is introduced. */
 export function tableTextMeasure(raw: TextMeasurer): TextMeasurer {
-  if (wrappedMeasurers.has(raw)) return raw;
+  if (isCachedTextMeasurer(raw) || wrappedMeasurers.has(raw)) return raw;
   let wrapped = measurers.get(raw);
   if (!wrapped) {
     wrapped = (text, font) => {
