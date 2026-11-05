@@ -316,6 +316,14 @@ function measureTableTracks(table: ResolvedTable, theme: Theme, measure: TextMea
   }
   /** What a set of tracks and the spacers between them take across the plot. */
   const sumOf = (map: Map<Id, number>): number => [...map.values()].reduce((a, b) => a + b, spacerTotal);
+  // Only the visible rows contribute to this uncut label need. It is independent of available width and head face.
+  let oneLineLabelWidth: number | undefined;
+  const uncutLabelWidth = (): number => oneLineLabelWidth ??= Math.ceil(Math.max(0, maxOf(rows.map((row) => {
+    const cell = row.cells[labelColumn!.id];
+    if (row.role === 'section' || !cell?.displayed) return 0;
+    const font = cellFont(cell);
+    return measure(cell.displayed, font).width + affixRoom(row, font) + rowIndent(indentStep(cell)) + 2 * cellPadX;
+  }))));
   /**
    * The head faces. A table of twenty columns or more shrank its
    * heads by column count, on a canvas wide enough for the regular face too.
@@ -327,7 +335,7 @@ function measureTableTracks(table: ResolvedTable, theme: Theme, measure: TextMea
    */
   const regular = trackWidths(regularFonts);
   const dense = cols.length >= DENSE_COLUMNS ? trackWidths(tableFonts(theme, ladder, cols.length)) : undefined;
-  return { cols, rows, widthRows, spacerBefore, spacerTotal, figures, wideTable, cellPadX, labelColumn, labelLead, groupCell, headingFaces, regularFonts, cellStep, indentStep, childCount, indents, operatorSlot, rowIndent, cellFont, affixRoom, columnHeaderText, chipSpan, sumOf, hasChanges, regular, dense };
+  return { cols, rows, widthRows, spacerBefore, spacerTotal, figures, wideTable, cellPadX, labelColumn, labelLead, groupCell, headingFaces, regularFonts, cellStep, indentStep, childCount, indents, operatorSlot, rowIndent, cellFont, affixRoom, columnHeaderText, chipSpan, sumOf, hasChanges, uncutLabelWidth, regular, dense };
 }
 
 const measuredTables = new WeakMap<ResolvedTable, Map<string, ReturnType<typeof measureTableTracks>>>();
@@ -382,7 +390,7 @@ function measuredTable(table: ResolvedTable, theme: Theme, measure: TextMeasurer
 
 /** Solve measured content, authored widths and floors against the available frame. */
 function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions = {}, view: TableWidthView = {}) {
-  const { cols, rows, widthRows, spacerBefore, spacerTotal, figures, wideTable, cellPadX, labelColumn, labelLead, groupCell, headingFaces, regularFonts, cellStep, indentStep, childCount, indents, operatorSlot, rowIndent, cellFont, affixRoom, columnHeaderText, chipSpan, sumOf, hasChanges, regular, dense } = measuredTable(table, theme, measure, options, view);
+  const { cols, widthRows, spacerBefore, spacerTotal, figures, wideTable, cellPadX, labelColumn, labelLead, groupCell, headingFaces, regularFonts, cellStep, indentStep, childCount, indents, operatorSlot, rowIndent, cellFont, columnHeaderText, chipSpan, sumOf, hasChanges, uncutLabelWidth, regular, dense } = measuredTable(table, theme, measure, options, view);
   const available = view.available ?? Infinity;
   const warnings: LintWarning[] = [];
   // A lower bound can rule wrapping out without another layout. These floors
@@ -647,12 +655,7 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
   if (labelColumn !== undefined && labelColumn.width === undefined) {
     const labelId = labelColumn.id;
     const need = view.scroll ? intrinsicColumnWidth({ ...labelColumn, maxWidth: undefined, maxTextWidth: undefined }, widthRows,
-      { ...chosen.context, hint: undefined }) + labelLead : Math.ceil(Math.max(0, maxOf(rows.map((row) => {
-      const cell = row.cells[labelId];
-      if (row.role === 'section' || !cell?.displayed) return 0;
-      const font = cellFont(cell);
-      return measure(cell.displayed, font).width + affixRoom(row, font) + rowIndent(indentStep(cell)) + 2 * cellPadX;
-    }))));
+      { ...chosen.context, hint: undefined }) + labelLead : uncutLabelWidth();
     const cap = labelColumn.maxWidth !== undefined && options[SOFT_LABEL_CAP] !== true ? labelColumn.maxWidth : Infinity;
     labelNeed = Math.min(need, cap);
     let short = labelNeed - widths.get(labelId)!;

@@ -202,6 +202,10 @@ const widthPlans = new WeakMap<object, Map<string, ReturnType<typeof tableWidths
 function sharedWidthPlan(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: LayoutOptions, view: Parameters<typeof tableWidths>[4] & object): ReturnType<typeof tableWidths> {
   if (typeof options.theme === 'string') return tableWidths(table, theme, measure, options, view);
   const { size, [TARGET_SIZE]: target, [WIDTH_PROBE]: _probe, [COMPACT_RETRY]: _retry, [PLAN_ONLY]: _plan, ...rest } = options as LayoutOptions & TargetSizeOptions & { [WIDTH_PROBE]?: unknown };
+  // These flags choose a fit candidate or its row/frame work. Width-affecting head and spacer values are in view.
+  // Keep public options and the width solver's LABEL_WRAP_FLOOR/SOFT_LABEL_CAP flags unchanged.
+  const widthOptions = rest as Record<PropertyKey, unknown>;
+  for (const symbol of [SIZING_ONLY, REGULAR_SPACING, VERIFY_ADVICE, WIDTH_REPAIR_PROBE, HEAD_LINES, HEAD_AIR_MIN, HEAD_LOOSE, SUB_LINES, TIGHT_SPACING, ENGINE_NOTES]) delete widthOptions[symbol];
   const heightOpen = target?.fixed.height === false || (typeof size === 'object' && size.height === undefined);
   const key = `${optionKey(rest)}:${JSON.stringify({ rows: view.rows!.map((row) => row.id), widthRows: view.widthRows!.map((row) => row.id), columns: view.columns!.map((col) => col.id),
     available: view.available, spacerTotal: view.spacerTotal, headLines: view.headLines, subLines: view.subLines, headGlue: view.headGlue,
