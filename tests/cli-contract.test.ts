@@ -783,7 +783,7 @@ describe('render and measure on the command line', () => {
     ]);
     // --out - keeps stderr one JSON object.
     const piped = runCli(['render', writeDoc(dir, 'untitled.json', untitled), '--out', '-', '--quiet']);
-    expect(() => JSON.parse(piped.error.join('\n'))).not.toThrow();
+    expect(JSON.parse(piped.error.join('\n')).warnings).toContainEqual(expect.objectContaining({ code: 'missing-message-title' }));
   });
 
   it.skipIf(!availableRasterizer())('draws a PNG for --out x.png without --format', () => {

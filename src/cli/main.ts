@@ -66,14 +66,17 @@ function rowFlags(flags: Flags): { rowsFile?: string; columns?: Record<string, s
  */
 function quietRender(flags: Flags, result: VerbResult): VerbResult {
   if (flags.quiet !== true || result.exit !== 0) return result;
-  const svgReturned = (result.body.warnings as { code: string }[] | undefined)?.filter(warning => warning.code === 'svg-returned');
+  const warnings = result.body.warnings as { code: string; severity?: string }[] | undefined;
+  const svgReturned = warnings?.filter(warning => warning.code === 'svg-returned');
+  // With --out - stderr is one JSON object, so warn-level warnings stay in that object.
+  const kept = warnings?.filter(warning => warning.code === 'svg-returned' || (text(flags, 'out') === '-' && warning.severity === 'warn'));
   const returned = (text(flags, 'return') ?? (svgReturned?.length ? 'svg' : '')).split(',').map((entry) => entry.trim().toLowerCase());
   const pick = (from: Record<string, unknown>) => Object.fromEntries(returned.filter((key) => key in from).map((key) => [key, from[key]]));
   // A document answers per chart, under charts with each chart's name.
   const charts = Array.isArray(result.body.charts) && returned.some((key) => key !== '')
     ? { charts: (result.body.charts as Record<string, unknown>[]).map((chart) => ({ name: chart.name, ...pick(chart) })) } : {};
   return { ...result, body: { ok: true, ...(result.body.outputs ? { outputs: result.body.outputs } : {}), ...pick(result.body), ...charts,
-    ...(svgReturned?.length ? { warnings: svgReturned } : {}) } };
+    ...(kept?.length ? { warnings: kept } : {}) } };
 }
 
 /** Warnings the stderr line already says or quiet mode keeps in its JSON. */
