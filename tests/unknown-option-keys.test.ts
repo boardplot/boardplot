@@ -219,6 +219,21 @@ describe('unknown option keys are refused on every type', () => {
     expect(wordUnknownKeys([{ path: ['tile'], node: tree }], tree)[0]).toMatchObject({ suggest: "Rename 'tile' to 'title'." });
     expect(wordUnknownKeys([{ path: ['tile'], node: tree }], tree)[0]).not.toHaveProperty('fix');
   });
+  // xTitle is one edit from title: its patch moved an axis title into the chart title, unread by an agent that applies fixes.
+  it('sends axis-title keys of other libraries to axisTitles, never to title', () => {
+    const errors = (type: string, options: object) => cliErrors({ type, data: getFixtures(type)[0]!.data, options }).errors as (Finding & { fix?: unknown })[];
+    const column = errors('column', { xTitle: 'Year', yAxisTitle: 'Revenue', yLabel: 'EUR' });
+    expect(column.map((finding) => [finding.message, finding.fix])).toEqual([
+      ["unknown option 'xTitle' — it is axisTitles", undefined],
+      ["unknown option 'yAxisTitle' — it is axisTitles", undefined],
+      ["unknown option 'yLabel' — it is axisTitles", undefined],
+    ]);
+    expect(errors('scatter', { xTitle: 'Price' })[0]).toMatchObject({ suggest: "Remove 'xTitle' here and set options.axisTitles.x instead." });
+    // A type without axis titles names no near key at all.
+    expect(errors('pie', { xTitle: 'Year' })[0]).toMatchObject({ message: "unknown option 'xTitle'", suggest: "Remove 'xTitle'; this key is not supported here." });
+    const tree: OptionKeyTree = { title: 0, axisTitles: { x: 0, y: 0 } };
+    expect(wordUnknownKeys([{ path: ['yTitle'], node: tree }], tree)[0]).toMatchObject({ suggest: "Remove 'yTitle' here and set options.axisTitles.y instead." });
+  });
   // A patch that renames a nested key onto a boolean option but keeps the string 'yes' leaves the chart refused.
   it('patches a nested typo only when the renamed key takes the authored value', () => {
     const data = getFixtures('column')[0]!.data;

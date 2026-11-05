@@ -10,7 +10,7 @@ import { flattenIssues } from '../schema/flattenIssues';
 import { allowedValues, expectedTypes } from '../diagnostics/describe';
 import { refusalSuggest } from '../schema/capabilityReasons';
 import { LABEL_KINDS } from '../schema/capability';
-import { WORDING_KEYS, closestKey, dataKeySynonym, movedKey, nearestOptionTerm, typoRenameFix, unknownKeySuggest, unknownOptionMessage, valueChangeSuggest } from '../schema/unknownKeyWords';
+import { WORDING_KEYS, closestKey, closestOptionKey, dataKeySynonym, movedKey, nearestOptionTerm, typoRenameFix, unknownKeySuggest, unknownOptionMessage, valueChangeSuggest } from '../schema/unknownKeyWords';
 import { ownedDocumentCopy } from './docExpand';
 import { chartSchemaDiagnostic, chartSchemaSource, completeChartDiagnostic } from './diagnostics';
 import { parseJsonPointer, toJsonPointer, type JsonPatchOperation } from '../diagnostics/jsonPatch';
@@ -588,7 +588,7 @@ function sweepStrippedOptionKeys(
     // At the top the near miss also reads the words an option's values use (showValues -> labels).
     const near = parent.length === 0 ? nearestOptionKey(key, schema) : undefined;
     const siblings = known ?? expectedObjectKeys(schema, parent);
-    const nearest = near ? { key: near, near: true } : closestKey(key, siblings);
+    const nearest = near ? { key: near, near: true } : closestOptionKey(key, siblings);
     const dotted = keyPath.join('.');
     const moved = movedKey(dotted, (target) => expectedObjectKeys(schema, target.slice(0, -1)).includes(target.at(-1)!));
     // A rename is advice only when the near option takes the authored value too.
