@@ -79,14 +79,15 @@ export const OPTION_CAPABILITY = {
   // reads only labelDensity/labelPlacements. Across the registry:
   // 21 layouts read `options.labels` directly, and cohort/likert/pareto/
   // pyramid forward it to a reading host (heatmap/bar/combo/butterfly).
-  // waterfall and pvm (whose host IS waterfall) never consult it, grid reads
+  // pvm takes only `labels.point: false`, which its waterfall host reads;
+  // waterfall's own schema refuses the key, grid reads
   // it neither for itself nor for panels (panels author their own), and
   // table/diagram have their own display models.
   labels: {
     implementedBy: [
       'bar', 'bartable', 'box', 'bullet', 'butterfly', 'choropleth', 'cohort', 'column',
       'combo', 'dot', 'funnel', 'gantt', 'heatmap', 'histogram', 'kpi',
-      'likert', 'line', 'mekko', 'pareto', 'pie', 'pyramid', 'scatter',
+      'likert', 'line', 'mekko', 'pareto', 'pie', 'pvm', 'pyramid', 'scatter',
       'slope', 'status', 'tilemap', 'variance',
     ],
   },
@@ -343,6 +344,7 @@ export const LABEL_KINDS: Readonly<Record<string, readonly string[]>> = {
   mekko: ['category', 'segment', 'total', 'axisTitle'],
   pareto: ['category', 'point', 'grandTotal', 'axisTitle'],
   pie: ['category', 'total', 'insidePie', 'outsidePie'],
+  pvm: ['point'],
   pyramid: ['category', 'series', 'point'],
   scatter: ['point', 'value'],
   slope: ['category', 'series'],

@@ -201,6 +201,10 @@ Set protected only where the claim is true: the lock states that the zone is pro
 | inset.rows | array |  | Up to 12 short rows. |
 | inset.rows[].label | string | yes | Row name, at most 60 Unicode code points. |
 | inset.rows[].value | string | yes | Row value as text, at most 24 Unicode code points. |
+| inset.heading | false |  | false draws no panel title, with its height and gap gone. The title stays the accessible name. One of `false`. |
+| inset.columnOverrides | object |  | Settings of the rows' two columns: label, value. |
+| inset.columnOverrides.*.width | number |  | Track width in px. It beats the width the type would pick. |
+| inset.columnOverrides.*.align | string |  | Alignment of the column: its cell text and, unless headAlign is set, its head. Bars keep starting at the panel origin. One of `'left'`, `'right'`, `'center'`. |
 
 ## Options
 
@@ -261,6 +265,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | pipeline-health | example | A data pipeline with its service levels beside it |
 | long-names | torture | Long names keep every word at every width |
 | twenty-node-platform | torture | Twenty nodes and thirty edges across four zones |
+| inset-no-heading | example | An inset without its title, with authored column widths and alignment |
 
 ## Not for
 

@@ -69,12 +69,16 @@ One form; its chart ID is `pvm`.
 
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
+| labels | object |  |  | Which generated numbers print. labelDensity still thins them. |
+| labels.point | false | `false` |  | false stops printing the values of the steps and totals. The bars, hover and records keep them. The net change has its own switch, netChange, and takes the seat of the closing value. |
 | interaction | string | `'in-price'`, `'separate'` | `'in-price'` | Where the price x volume interaction is booked: 'in-price' reads price at current volumes and absorbs it; 'separate' splits it into a Laspeyres price bar plus an explicit joint bar. |
 | volumeMix | string | `'split'`, `'combined'` | `'split'` | 'split' (default) draws Volume and Mix separately; the boundary between them depends on the counting unit, which methodNote: true states on the exhibit. 'combined' draws one 'Volume & mix' bar and the decomposition is then unit-invariant. |
 | methodNote | boolean |  |  | Default false. true adds the short convention ("volume and mix at prior prices") to the one footer line, which joins the coverage note ("Covers the 4 items in both periods") while items enter or leave the book; the coverage part prints regardless. Where Volume and Mix nearly cancel (their sum under a tenth of the larger) the convention and the counting unit print without it, since the split between them then carries the story. The long method notes are in derived, and join the notes list when notes is set. |
 | netChange | boolean |  | `true` | Default true. Prints the net change from the opening to the closing total, absolute and in percent, in its sign colour above the closing column. false leaves the closing column with its value only. |
+| columnOverrides | object |  |  | Horizontal bridge only: width in px of the name band (label) and the value band (value). A bridge that draws vertical warns option-ignored. It never changes the choice of the form. |
+| columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `labels`, `valueAxis.min`, `valueAxis.max`, `valueAxis.tickStep`, `valueAxis.includeZero`, `valueAxis.percent`, `valueAxis.log`, `valueAxis.reverse`, `hatchStrength`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis.min`, `valueAxis.max`, `valueAxis.tickStep`, `valueAxis.includeZero`, `valueAxis.percent`, `valueAxis.log`, `valueAxis.reverse`, `hatchStrength`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 
@@ -110,6 +114,8 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | revenue-bridge-notes-listed | example | The revenue bridge on a slide with its method notes in the notes list |
 | named-periods-and-ranges | torture | PVM names each period and entry or exit range |
 | revenue-bridge-no-net-change | example | The revenue bridge without the net change over the closing column |
+| no-point-labels | example | The revenue bridge prints no step or total values, and keeps the net change |
+| column-overrides | example | A bridge whose long names turn it horizontal takes an authored name band |
 
 ## Not for
 

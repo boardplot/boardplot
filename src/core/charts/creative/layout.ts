@@ -15,6 +15,7 @@ import { accessibleTitle, NormalizeError, resolveSize, resolveSubtitle } from '.
 import { rowDrivenHeight } from '../../rowCanvas';
 import { heightOmitted, resolveSizing, SIZE_TOLERANCE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
+import { widthsThatFit, withoutWidths } from '../../generatedWidths';
 import { defaultMeasurer, wrapText, type FontSpec, type TextMeasurer } from '../../text';
 import {
   strokeToken,
@@ -34,6 +35,7 @@ import type { CreativeData, CreativeOptions } from './types';
 import { composedTextRole } from '../../textRole';
 import { pushAll } from '../../arrays';
 import { withUnit } from '../../unitJoin';
+import { generatedIdWarnings } from '../../schema/generatedColumns';
 
 /**
  * Below 640 px the card stacks: a media thumbnail beside
@@ -186,50 +188,149 @@ function mediaCaption(data: CreativeData, options: CreativeOptions): string | un
 /** Air from a row's text box to its rule, and from the rule to the next row. */
 const ROW_RULE_GAP = 3;
 
-function metricRows(theme: Theme, data: CreativeData, box: { x: number; y: number; w: number }, add: AddText, nodes: SceneNode[], fonts: CardFonts, stacked: boolean, options: CreativeOptions, target?: RenderTarget, tight = false): { end: number; marks: Record<string, Rect> } {
+type NumberColumn = 'value' | 'median' | 'delta';
+type ColumnAlign = 'left' | 'right' | 'center';
+const NUMBER_COLUMNS: readonly NumberColumn[] = ['value', 'median', 'delta'];
+const NUMBER_GAP = 8;
+const TEXT_ALIGN = { left: 'start', right: 'end', center: 'middle' } as const;
+
+/** What the authored column and row keys leave of the table. Hidden is display only: fatigue and the medians read the data. */
+interface TablePlan {
+  columns: readonly NumberColumn[];
+  rows: readonly (typeof creativeMetrics)[number][];
+  /** False while no key changes the table: the card keeps its fixed edges. */
+  authored: boolean;
+}
+
+export function tablePlan(options: CreativeOptions): TablePlan {
+  const listed = (options.columnOrder ?? []).filter((id): id is NumberColumn => (NUMBER_COLUMNS as readonly string[]).includes(id));
+  const columns = [...new Set([...listed, ...NUMBER_COLUMNS])].filter((id) => options.columnVisibility?.[id] !== false);
+  const named = (options.rowOrder ?? []).flatMap((id) => creativeMetrics.filter(([key]) => key === id));
+  const rows = [...new Set([...named, ...creativeMetrics])].filter(([key]) => options.rowVisibility?.[key] !== false);
+  return { columns, rows, authored: options.columnVisibility !== undefined || options.columnOverrides !== undefined || options.columnOrder !== undefined
+    || options.rowVisibility !== undefined || options.rowOrder !== undefined || options.rowOverrides !== undefined };
+}
+
+const longestWord = (texts: readonly string[], font: FontSpec, measure: TextMeasurer) =>
+  Math.max(0, ...texts.flatMap((text) => text.split(/\s+/).map((word) => Math.ceil(measure(word, font).width) + 1)));
+
+/** The tracks of an authored table: a width beats the share, a floor keeps every word whole, and the box caps the sum. */
+function authoredTracks(box: { x: number; w: number }, stacked: boolean, columns: readonly NumberColumn[], overrides: CreativeOptions['columnOverrides'], need: Record<'label' | NumberColumn, number>) {
+  const share: Record<NumberColumn, number> = { value: 0.2, median: stacked ? 0.25 : 0.28, delta: stacked ? 0.25 : 0.22 };
+  const gaps = Math.max(0, columns.length - 1) * NUMBER_GAP;
+  const wanted = (id: 'label' | NumberColumn) => overrides?.[id]?.width;
+  const fixed = (id: 'label' | NumberColumn) => Math.max(need[id], wanted(id) ?? 0);
+  const free = columns.filter((id) => wanted(id) === undefined);
+  const restNeed = free.reduce((sum, id) => sum + need[id], 0);
+  let labelW = wanted('label') === undefined ? Math.max(need.label, box.w * 0.3) : fixed('label');
+  const authoredColumns = columns.filter((id) => wanted(id) !== undefined);
+  let authoredSum = authoredColumns.reduce((sum, id) => sum + fixed(id), 0);
+  const allowed = box.w - gaps - restNeed;
+  let capped = false;
+  if (labelW + authoredSum > allowed) {
+    capped = (wanted('label') ?? 0) > need.label || authoredColumns.some((id) => wanted(id)! > need[id]);
+    if (wanted('label') !== undefined) labelW = Math.max(need.label, allowed - authoredSum);
+    authoredSum = Math.max(authoredColumns.reduce((sum, id) => sum + need[id], 0), Math.min(authoredSum, allowed - labelW));
+  }
+  const extra = authoredColumns.reduce((sum, id) => sum + fixed(id) - need[id], 0);
+  const roomOverNeed = authoredSum - authoredColumns.reduce((sum, id) => sum + need[id], 0);
+  const widthOf = (id: NumberColumn) => need[id] + (extra > 0 ? (fixed(id) - need[id]) * roomOverNeed / extra : 0);
+  const room = Math.max(0, box.w - labelW - gaps - authoredSum);
+  const shares = free.reduce((sum, id) => sum + share[id], 0);
+  const widths = new Map<NumberColumn, number>(columns.map((id) => [id, wanted(id) !== undefined ? widthOf(id) : Math.max(need[id], room * share[id] / shares)]));
+  const total = [...widths.values()].reduce((sum, width) => sum + width, 0) + gaps;
+  // Every column authored: the numbers stay flush with the rules' right end.
+  let left = box.x + box.w - total;
+  const tracks = new Map<NumberColumn, { x: number; w: number }>();
+  for (const id of columns) {
+    tracks.set(id, { x: left, w: widths.get(id)! });
+    left += widths.get(id)! + NUMBER_GAP;
+  }
+  const floored = (['label', ...columns] as const).some((id) => wanted(id) !== undefined && wanted(id)! < need[id]);
+  return { labelW, tracks, capped, floored };
+}
+
+function metricRows(theme: Theme, data: CreativeData, box: { x: number; y: number; w: number }, add: AddText, nodes: SceneNode[], fonts: CardFonts, stacked: boolean, options: CreativeOptions, target: RenderTarget | undefined, tight: boolean, plan: TablePlan, measure: TextMeasurer, warnings: LintWarning[]): { end: number; marks: Record<string, Rect> } {
   const marks: Record<string, Rect> = {};
-  const labelW = box.w * 0.3 - 4;
+  const overrides = options.columnOverrides;
+  const cells = plan.rows.map(([key, label, suffix]) => {
+    const unit = suffix === 'currency' ? data.facts.currency : suffix;
+    const metric = data.metrics[key];
+    const pair = [metric.value, metric.accountMedian];
+    const fixedName = key === 'frequency' ? chartString(options, 'creativeFrequency') : key === 'hookRate' ? chartString(options, 'creativeHookRate') : key === 'holdRate' ? chartString(options, 'creativeHoldRate') : label;
+    return { key, metric,
+      name: options.rowOverrides?.[key]?.label || fixedName,
+      value: creativeValue(metric.value, unit, pair, target, options),
+      median: creativeValue(metric.accountMedian, unit, pair, target, options),
+      delta: creativeDelta(key, metric, options) };
+  });
+  const heads = { label: overrides?.label?.label ?? chartString(options, 'metric'), value: overrides?.value?.label ?? chartString(options, 'creativeColumn'),
+    median: overrides?.median?.label ?? chartString(options, 'accountMedianColumn'), delta: overrides?.delta?.label ?? chartString(options, 'vsMedianColumn') };
+  const headsDrawn = options.columnHeads !== false && cells.length > 0;
+  let labelW = box.w * 0.3 - 4;
   // Right edges of the number columns: half way, three quarters (stacked) or 78 % (wide), the end.
   const valueRight = box.x + box.w * 0.5;
   const medianRight = box.x + box.w * (stacked ? 0.75 : 0.78);
   const deltaRight = box.x + box.w;
   const column = (left: number, right: number) => ({ x: left, w: right - left });
-  const valueCol = column(box.x + box.w * 0.3, valueRight);
-  const medianCol = column(valueRight + 8, medianRight);
-  const deltaCol = column(medianRight + 8, deltaRight);
+  const fixedTracks: Record<NumberColumn, { x: number; w: number }> = { value: column(box.x + box.w * 0.3, valueRight), median: column(valueRight + NUMBER_GAP, medianRight), delta: column(medianRight + NUMBER_GAP, deltaRight) };
+  let tracks = new Map<NumberColumn, { x: number; w: number }>(plan.columns.map((id) => [id, fixedTracks[id]]));
+  if (plan.authored) {
+    const need = {
+      label: longestWord([...cells.map((cell) => cell.name), ...(headsDrawn ? [heads.label] : [])], fonts.note, measure),
+      value: longestWord([...cells.map((cell) => cell.value), ...(headsDrawn ? [heads.value] : [])], fonts.row, measure),
+      median: longestWord([...cells.map((cell) => cell.median), ...(headsDrawn ? [heads.median] : [])], fonts.row, measure),
+      delta: longestWord([...cells.map((cell) => cell.delta.text), ...(headsDrawn ? [heads.delta] : [])], fonts.delta, measure),
+    };
+    need.label = longestWord(cells.map((cell) => cell.name), fonts.row, measure) || need.label;
+    const planned = authoredTracks(box, stacked, plan.columns, overrides, need);
+    labelW = overrides?.label?.width !== undefined || planned.labelW > box.w * 0.3 ? planned.labelW : labelW;
+    tracks = planned.tracks;
+    if (planned.floored) warnings.push({ code: 'generated-column-width-floored', severity: 'warn', field: ['options', 'columnOverrides'],
+      message: 'an authored column width is narrower than its longest word, so it was raised', suggest: 'Use a larger width, or leave the width out.' });
+    if (planned.capped) warnings.push({ code: 'generated-column-width-capped', severity: 'warn', field: ['options', 'columnOverrides'],
+      message: `the authored column widths do not fit the ${Math.round(box.w)} px table, so they were reduced`, suggest: 'Use smaller widths, or give the chart more width.' });
+  }
+  const textAlign = (id: 'label' | NumberColumn, what: 'cell' | 'head') => {
+    const override = overrides?.[id];
+    const chosen: ColumnAlign | undefined = what === 'head' ? override?.headAlign ?? override?.align : override?.align;
+    return chosen === undefined ? undefined : TEXT_ALIGN[chosen];
+  };
   const head = { font: fonts.note, ink: 'inkMuted' as const, typeRole: 'footnote' as const };
-  const headH = Math.max(
-    add('creative:metric-heading', chartString(options, 'metric'), { ...box, w: labelW }, head).h,
-    add('creative:value-heading', chartString(options, 'creativeColumn'), { ...valueCol, y: box.y }, { ...head, align: 'end' }).h,
-    add('creative:median-heading', chartString(options, 'accountMedianColumn'), { ...column(valueRight + 10, medianRight), y: box.y }, { ...head, align: 'end' }).h,
-    add('creative:delta-heading', chartString(options, 'vsMedianColumn'), { ...column(medianRight + 10, deltaRight), y: box.y }, { ...head, align: 'end' }).h,
-  );
-  const ruleY = box.y + headH + 2;
-  nodes.push({ t: 'line', id: 'creative:header-rule', x1: box.x, x2: box.x + box.w, y1: ruleY, y2: ruleY, stroke: { token: 'inkMuted' }, width: strokeToken(theme, 'hair'), owner: {}, part: 'rowRule' });
+  const headIds: Record<NumberColumn, string> = { value: 'creative:value-heading', median: 'creative:median-heading', delta: 'creative:delta-heading' };
+  let y = box.y;
+  if (headsDrawn) {
+    const heights = heads.label === '' ? [0] : [add('creative:metric-heading', heads.label, { ...box, w: labelW }, { ...head, ...(textAlign('label', 'head') ? { align: textAlign('label', 'head') } : {}) }).h];
+    plan.columns.forEach((id, index) => {
+      const track = tracks.get(id)!;
+      // A head after another number column keeps 2 px more air than its cells.
+      const indent = index === 0 ? 0 : 2;
+      if (heads[id] !== '') heights.push(add(headIds[id], heads[id], { x: track.x + indent, w: track.w - indent, y: box.y }, { ...head, align: textAlign(id, 'head') ?? 'end' }).h);
+    });
+    const ruleY = box.y + Math.max(...heights) + 2;
+    nodes.push({ t: 'line', id: 'creative:header-rule', x1: box.x, x2: box.x + box.w, y1: ruleY, y2: ruleY, stroke: { token: 'inkMuted' }, width: strokeToken(theme, 'hair'), owner: {}, part: 'rowRule' });
+    y = ruleY + (stacked ? 4 : 6);
+  }
   // A tight table keeps its rows 2 px closer (the last step of the fit ladder).
   const basePitch = Math.round(fonts.row.size * (stacked ? 1.7 : 1.86)) - (tight ? 2 : 0);
   const ruleGap = tight ? ROW_RULE_GAP - 1 : ROW_RULE_GAP;
-  let y = ruleY + (stacked ? 4 : 6);
   let end = y;
-  for (const [key, label, suffix] of creativeMetrics) {
-    const unit = suffix === 'currency' ? data.facts.currency : suffix;
+  const valueDrawn = plan.columns.includes('value');
+  for (const { key, metric, name, value, median, delta } of cells) {
     const owner = { seriesId: key, categoryId: data.id };
-    const metric = data.metrics[key];
-    const pair = [metric.value, metric.accountMedian];
-    const value = creativeValue(metric.value, unit, pair, target, options);
-    const median = creativeValue(metric.accountMedian, unit, pair, target, options);
-    const delta = creativeDelta(key, metric, options);
-    const line: SceneNode = { t: 'line', id: `creative:row:${key}`, x1: box.x, x2: box.x + box.w, y1: y, y2: y, stroke: { token: 'grid' }, width: strokeToken(theme, 'hair'), owner, part: 'metric', display: { value, state: metric.value === null ? 'missing' : 'value' } };
+    const line: SceneNode = { t: 'line', id: `creative:row:${key}`, x1: box.x, x2: box.x + box.w, y1: y, y2: y, stroke: { token: 'grid' }, width: strokeToken(theme, 'hair'), owner, part: 'metric', ...(valueDrawn ? { display: { value, state: metric.value === null ? 'missing' as const : 'value' as const } } : {}) };
     nodes.push(line);
     const body = { font: fonts.row, owner, typeRole: 'label' as const };
-    const name = key === 'frequency' ? chartString(options, 'creativeFrequency') : key === 'hookRate' ? chartString(options, 'creativeHookRate') : key === 'holdRate' ? chartString(options, 'creativeHoldRate') : label;
-    const textH = Math.max(
-      add(`creative:metric:${key}`, name, { ...box, y, w: labelW }, body).h,
-      add(`creative:value:${key}`, value, { ...valueCol, y }, { ...body, align: 'end', role: composedTextRole(value) }).h,
-      add(`creative:median:${key}`, median, { ...medianCol, y }, { ...body, align: 'end', ink: 'inkMuted', role: composedTextRole(median) }).h,
-      add(`creative:delta:${key}`, delta.text, { ...deltaCol, y }, { ...body, font: delta.tone === 'neutral' ? fonts.row : fonts.delta, align: 'end',
-        ink: delta.tone === 'good' ? 'good' : delta.tone === 'bad' ? 'bad' : 'inkMuted', role: composedTextRole(delta.text) }).h,
-    );
+    const heights = [add(`creative:metric:${key}`, name, { ...box, y, w: labelW }, { ...body, ...(textAlign('label', 'cell') ? { align: textAlign('label', 'cell') } : {}) }).h];
+    for (const id of plan.columns) {
+      const track = { ...tracks.get(id)!, y };
+      const align = textAlign(id, 'cell') ?? 'end';
+      if (id === 'value') heights.push(add(`creative:value:${key}`, value, track, { ...body, align, role: composedTextRole(value) }).h);
+      else if (id === 'median') heights.push(add(`creative:median:${key}`, median, track, { ...body, align, ink: 'inkMuted', role: composedTextRole(median) }).h);
+      else heights.push(add(`creative:delta:${key}`, delta.text, track, { ...body, font: delta.tone === 'neutral' ? fonts.row : fonts.delta, align,
+        ink: delta.tone === 'good' ? 'good' : delta.tone === 'bad' ? 'bad' : 'inkMuted', role: composedTextRole(delta.text) }).h);
+    }
+    const textH = Math.max(...heights);
     const pitch = Math.max(basePitch, Math.ceil(textH + 2 * ruleGap));
     line.y1 = line.y2 = y + textH + ruleGap;
     marks[key] = { x: box.x, y, w: box.w, h: textH + ruleGap };
@@ -239,14 +340,27 @@ function metricRows(theme: Theme, data: CreativeData, box: { x: number; y: numbe
   return { end, marks };
 }
 
-/** The note under the table: the period both columns cover (once), the median basis and the colour key. */
-function comparisonText(data: CreativeData, options: CreativeOptions): string {
+/**
+ * The note under the table: the period of the drawn columns (once), the median
+ * basis while the median or the change draws, and the colour key while the change draws.
+ */
+function comparisonText(data: CreativeData, options: CreativeOptions, plan: TablePlan): string {
   const { startDate, endDate, population } = data.comparison;
   const own = readerSpan(data.facts.launchDate, data.facts.endDate ?? data.facts.asOf, options);
   const medians = readerSpan(startDate, endDate, options);
-  const period = own === medians ? chartString(options, 'bothColumns', { v1: own }) : chartString(options, 'splitColumns', { v1: own, v2: medians });
-  const tones = creativeMetrics.map(([key]) => creativeDelta(key, data.metrics[key], options).tone);
-  const cpaJudged = creativeDelta('cpa', data.metrics.cpa, options).tone !== 'neutral';
+  const rowsDrawn = plan.rows.length > 0;
+  const valueDrawn = rowsDrawn && plan.columns.includes('value');
+  const medianDrawn = rowsDrawn && plan.columns.includes('median');
+  const deltaDrawn = rowsDrawn && plan.columns.includes('delta');
+  const overrides = options.columnOverrides;
+  const renamed = overrides?.value?.label !== undefined || overrides?.median?.label !== undefined;
+  const period = valueDrawn && medianDrawn && !renamed
+    ? (own === medians ? chartString(options, 'bothColumns', { v1: own }) : chartString(options, 'splitColumns', { v1: own, v2: medians }))
+    : [...(valueDrawn ? [`${overrides?.value?.label ?? chartString(options, 'creativeColumn')}: ${own}.`] : []),
+      ...(medianDrawn ? [`${overrides?.median?.label ?? chartString(options, 'accountMedianColumn')}: ${medians}.`] : [])].join(' ');
+  const drawnKeys = plan.rows.map(([key]) => key);
+  const tones = deltaDrawn ? drawnKeys.map((key) => creativeDelta(key, data.metrics[key], options).tone) : [];
+  const cpaJudged = drawnKeys.includes('cpa') && creativeDelta('cpa', data.metrics.cpa, options).tone !== 'neutral';
   let key = '';
   // The key says which deltas are coloured, never which colour: the
   // theme names no colour and a repaint may change it.
@@ -256,7 +370,7 @@ function comparisonText(data: CreativeData, options: CreativeOptions): string {
     key = chartString(options, better && worse ? 'keyBoth' : better ? 'keyBetter' : 'keyWorse');
     key += cpaJudged ? ` (${chartString(options, 'lowerCpaBetter')}).` : '.';
   }
-  return [period, chartString(options, 'medianBasis', { v1: population.replace(/\.$/, '') }), key].filter(Boolean).join(' ');
+  return [period, ...(medianDrawn || deltaDrawn ? [chartString(options, 'medianBasis', { v1: population.replace(/\.$/, '') })] : []), key].filter(Boolean).join(' ');
 }
 
 /** The fatigue lines a reader needs. Without a rule that is one line; the author's instruction goes to the warnings. */
@@ -423,6 +537,19 @@ const THREE_COLUMNS_FROM = 900;
  * (as `footnotes: false`), and a table 2 px tighter per row. When none fits, the form with the lowest floor reports it.
  */
 export function layoutCreative(data: CreativeData, options: CreativeOptions & Pick<BaseOptions, 'measure'> = {}): Geometry<CreativeMarks, CreativeDerived> {
+  if (options.columnOverrides === undefined) return layoutFirstFit(data, options);
+  const pinned = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height ?? !heightOmitted(options.size);
+  const attempt = (next: typeof options) => {
+    try { return layoutFirstFit(data, next); } catch (error) {
+      if (error instanceof NormalizeError && error.code === 'creative-text-overflow') return undefined;
+      throw error;
+    }
+  };
+  // With no room even at the unset widths, that spec's own overflow reports.
+  return widthsThatFit(options, attempt, pinned) ?? layoutFirstFit(data, withoutWidths(options));
+}
+
+function layoutFirstFit(data: CreativeData, options: CreativeOptions & Pick<BaseOptions, 'measure'>): Geometry<CreativeMarks, CreativeDerived> {
   const first = layoutForm(data, options, {});
   const fits = (g: typeof first) => (g.sizing?.minHeight ?? 0) <= g.size.height + SIZE_TOLERANCE;
   // An unpinned card keeps its first form and takes the height it needs.
@@ -457,7 +584,20 @@ function layoutForm(data: CreativeData, options: CreativeOptions & Pick<BaseOpti
   if (!fatigue.rule) warnings.push({ code: 'creative-fatigue-no-rule', severity: 'info', field: ['data', 'fatigueRule'],
     message: 'No fatigue rule: the card prints "Fatigue: not assessed".',
     suggest: 'Supply data.fatigueRule with a metric, two windows, a threshold, minimum observations and a missing-data rule.' });
-  const comparison = comparisonText(data, options);
+  const plan = tablePlan(options);
+  const drawnColumns = ['label', ...plan.columns];
+  const metricIds = creativeMetrics.map(([key]) => key);
+  warnings.push(
+    ...generatedIdWarnings('creative', 'columnVisibility', options.columnVisibility, ['label', ...NUMBER_COLUMNS]),
+    ...generatedIdWarnings('creative', 'columnOverrides', options.columnOverrides, drawnColumns),
+    ...generatedIdWarnings('creative', 'columnOrder', options.columnOrder, ['label', ...NUMBER_COLUMNS]),
+    ...generatedIdWarnings('creative', 'rowVisibility', options.rowVisibility, metricIds),
+    ...generatedIdWarnings('creative', 'rowOrder', options.rowOrder, metricIds),
+    ...generatedIdWarnings('creative', 'rowOverrides', options.rowOverrides, metricIds),
+  );
+  if (options.columnOrder?.includes('label') && options.columnOrder[0] !== 'label') warnings.push({ code: 'generated-name-column-kept', severity: 'warn', field: ['options', 'columnOrder'],
+    message: "columnOrder cannot move 'label': the label block stays first", suggest: "Remove 'label' from columnOrder." });
+  const comparison = comparisonText(data, options, plan);
   // The source's own definitions of its metrics; the card never writes them.
   const definitions = definitionLines(data.definitions);
   // Under `footnotes: false` the method lines leave the card with the source
@@ -469,7 +609,7 @@ function layoutForm(data: CreativeData, options: CreativeOptions & Pick<BaseOpti
   const sides = canvasMargin(theme, size.width);
   const margin = stacked ? { top: 16, right: 16, bottom: 16, left: 16 } : { top: 24, right: sides.right, bottom: 24, left: sides.left };
   const frame = solveFrame({ size, margin, cardGaps: true,
-    ...frameTextOptions(options), ...(notesOff ? { footnotes: [comparison, ...(data.definitions?.trim() ? [data.definitions.trim()] : []), ...fatigueLines.slice(1)] } : {}),
+    ...frameTextOptions(options), ...(notesOff ? { footnotes: [...(comparison ? [comparison] : []), ...(data.definitions?.trim() ? [data.definitions.trim()] : []), ...fatigueLines.slice(1)] } : {}),
     subtitle: resolveSubtitle(options.subtitle), theme, measure }, occupied);
   const { plot } = frame;
   const nodes: SceneNode[] = [...frame.nodes];
@@ -504,9 +644,9 @@ function layoutForm(data: CreativeData, options: CreativeOptions & Pick<BaseOpti
   if (stacked && caption) { y += 2; y += add('creative:media-caption', caption, { ...info, y }, muted(fonts.note)).h; }
 
   const table = stacked ? { x: plot.x, y: Math.max(y, media.y + media.h) + 16, w: plot.w } : { x: info.x, y: y + 14, w: info.w };
-  const metrics = metricRows(theme, data, table, add, nodes, fonts, stacked, options, options.target, form.tight === true);
+  const metrics = metricRows(theme, data, table, add, nodes, fonts, stacked, options, options.target, form.tight === true, plan, measure, warnings);
 
-  const noteLines: [string, string][] = notesOff ? [] : [['creative:comparison', comparison], ...definitions.map((text, i): [string, string] => [i === 0 ? 'creative:definitions' : `creative:definitions:${i}`, text])];
+  const noteLines: [string, string][] = notesOff ? [] : [...(comparison ? [['creative:comparison', comparison] as [string, string]] : []), ...definitions.map((text, i): [string, string] => [i === 0 ? 'creative:definitions' : `creative:definitions:${i}`, text])];
   const fatigueOwner = { seriesId: 'fatigue', categoryId: data.id };
   let strip: ReturnType<typeof trends>, contentEnd: number;
   if (three) {
@@ -575,7 +715,7 @@ function layoutForm(data: CreativeData, options: CreativeOptions & Pick<BaseOpti
   pushAll(nodes, labelNodes);
   return { type: 'creative', size, sizing: resolveSizing(creativeSizing, size, { minHeight: requiredHeight, naturalHeight: requiredHeight }),
     plot, scene: nodes, labels: solved.placed, axes: [], annotations: [], frame: frame.frame,
-    marks: { media, metrics: metrics.marks }, derived: { fatigue, deltas: creativeMetrics.map(([key]) => ({ key, ...data.metrics[key], ...creativeDelta(key, data.metrics[key], options) })) },
+    marks: { media, metrics: metrics.marks }, derived: { fatigue, deltas: (plan.columns.includes('delta') ? plan.rows : []).map(([key]) => ({ key, ...data.metrics[key], ...creativeDelta(key, data.metrics[key], options) })) },
     a11y: { title: accessibleTitle(options.title, data.facts.name), desc: chartString(options, 'creativeDesc', { v1: data.media.alt, v2: fatigueLines.join(' ') }) },
     warnings: [...warnings, ...(frame.frame.warnings ?? []), ...solved.warnings], debug: { occupied: occupied.snapshot(), decisions: solved.decisions } };
 }

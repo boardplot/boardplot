@@ -297,7 +297,7 @@ The keys of `labels` each type reads. A type refuses a key it does not read as `
 | `item` | [gantt](gantt.md) |
 | `outsidePie` | [pie](pie.md) |
 | `percentIndicator` | [bar](bar.md), [column](column.md), [line](line.md) |
-| `point` | [bar](bar.md), [bartable](bartable.md), [box](box.md), [bullet](bullet.md), [butterfly](butterfly.md), [cohort](cohort.md), [column](column.md), [combo](combo.md), [dot](dot.md), [funnel](funnel.md), [heatmap](heatmap.md), [histogram](histogram.md), [kpi](kpi.md), [line](line.md), [pareto](pareto.md), [pyramid](pyramid.md), [scatter](scatter.md), [variance](variance.md) |
+| `point` | [bar](bar.md), [bartable](bartable.md), [box](box.md), [bullet](bullet.md), [butterfly](butterfly.md), [cohort](cohort.md), [column](column.md), [combo](combo.md), [dot](dot.md), [funnel](funnel.md), [heatmap](heatmap.md), [histogram](histogram.md), [kpi](kpi.md), [line](line.md), [pareto](pareto.md), [pvm](pvm.md), [pyramid](pyramid.md), [scatter](scatter.md), [variance](variance.md) |
 | `restSeries` | [bar](bar.md), [column](column.md), [line](line.md) |
 | `segment` | [bar](bar.md), [column](column.md), [combo](combo.md), [funnel](funnel.md), [likert](likert.md), [mekko](mekko.md) |
 | `series` | [butterfly](butterfly.md), [cohort](cohort.md), [heatmap](heatmap.md), [line](line.md), [pyramid](pyramid.md), [slope](slope.md), [status](status.md) |

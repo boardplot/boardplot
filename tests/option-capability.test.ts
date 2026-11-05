@@ -341,6 +341,7 @@ describe('published option behaviour census', () => {
     driverTones: 'never', judgements: 'exceptions', show: 'withData',
     columnOverrides: { label: { width: 150 } }, columnOrder: ['plot'], columnHeads: false,
     rowVisibility: { census: false }, rowOrder: ['census'], rowOverrides: { census: { label: 'Census row' } },
+    valueTableEmphasis: false,
   };
 
   /** Options | companion settings | reason. Applied to both renders. */

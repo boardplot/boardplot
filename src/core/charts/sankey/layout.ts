@@ -20,11 +20,14 @@ import { shareSetFormatter } from '../../format';
 import { valueNote } from '../../notes';
 import { formatterFromExample, seriesRasterFormatter } from '../../formatSpec';
 import { round2, type Rect } from '../../geometry';
+import { pushAll } from '../../arrays';
+import { generatedIdWarnings } from '../../schema/generatedColumns';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelCtx, PRIORITY, solveLabels, type LabelRequest } from '../../label/solver';
 import { accessibleTitle, resolveHighlight, resolveSize } from '../../normalize/shared';
-import { chartSizing, resolveSizing } from '../../sizing';
+import { chartSizing, heightOmitted, resolveSizing } from '../../sizing';
+import { widthsThatFit } from '../../generatedWidths';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { spread1DResult } from '../../collide';
 import { defaultMeasurer, graphemes, type FontSpec, type TextMeasurer } from '../../text';
@@ -63,6 +66,14 @@ export function sankeyDefaultStrings(options: SankeyOptions): Record<string, str
 interface LabelText { lines: string[]; oneLine: boolean; w: number; h: number }
 
 export function layoutSankey(data: SankeyData, options: SankeyOptions = {}): Geometry<SankeyMarks, SankeyDerived> {
+  if (options.columnOverrides === undefined) return layoutSankeyPass(data, options);
+  const pinned = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height ?? !heightOmitted(options.size);
+  return widthsThatFit(options, (next) => layoutSankeyPass(data, next), pinned, {
+    hidden: (geometry) => geometry.labels.filter((label) => label.hidden !== undefined && label.hidden !== 'redundant').length,
+  })!;
+}
+
+function layoutSankeyPass(data: SankeyData, options: SankeyOptions): Geometry<SankeyMarks, SankeyDerived> {
   const warnings: LintWarning[] = [];
   const size = resolveSize(options.size, options.target);
   const theme = themeForWidth(resolveTheme(options.theme), panelTypeClass(options) ?? size.width);
@@ -139,6 +150,8 @@ export function layoutSankey(data: SankeyData, options: SankeyOptions = {}): Geo
     const share = shareFmt(shareOf(node));
     return nodeValue === 'share' ? share : nodeValue === 'value-share' ? `${fmt(node.value)} (${share})` : fmt(node.value);
   };
+  // nodeValue false stops the printing only: the mark keeps valueText for hover and records.
+  const printsValue = nodeValue !== false;
 
   // ---- the note: Other members, then the names too small to print ----
   const otherNotes = nodes.filter((node) => node.other).map((node) => {
@@ -167,8 +180,14 @@ export function layoutSankey(data: SankeyData, options: SankeyOptions = {}): Geo
 
   // ---- labels: the narrowest box each node can take, and its box at a width ----
   const nameOf = (node: GraphNode) => node.label;
-  const minLabelW = (node: GraphNode): number => Math.max(textW(valueText(node), valueFont), narrowestName(nameOf(node), nameFont, measure));
+  const minLabelW = (node: GraphNode): number => Math.max(printsValue ? textW(valueText(node), valueFont) : 0, narrowestName(nameOf(node), nameFont, measure));
   const labelAt = (node: GraphNode, width: number): LabelText => {
+    if (!printsValue) {
+      const name = textW(nameOf(node), nameFont);
+      if (name <= width) return { lines: [nameOf(node)], oneLine: true, w: name, h: lineH };
+      const lines = wrapName(nameOf(node), nameFont, width, measure);
+      return { lines, oneLine: false, w: Math.max(...lines.map((line) => textW(line, nameFont))), h: lineH * lines.length };
+    }
     const value = valueText(node);
     const one = textW(`${nameOf(node)} `, nameFont) + textW(value, valueFont);
     if (one <= width) return { lines: [`${nameOf(node)} ${value}`], oneLine: true, w: one, h: lineH };
@@ -176,14 +195,25 @@ export function layoutSankey(data: SankeyData, options: SankeyOptions = {}): Geo
     const w = Math.max(textW(value, valueFont), ...nameLines.map((line) => textW(line, nameFont)));
     return { lines: [...nameLines, value], oneLine: false, w, h: lineH * (nameLines.length + 1) };
   };
-  const naturalW = (node: GraphNode) => textW(`${nameOf(node)} `, nameFont) + textW(valueText(node), valueFont);
+  const naturalW = (node: GraphNode) => (printsValue ? textW(`${nameOf(node)} `, nameFont) + textW(valueText(node), valueFont) : textW(nameOf(node), nameFont));
   const columnNeed = realOrder.map((column) => Math.max(0, ...column.map((node) => minLabelW(nodes[node]!))));
   const columnNatural = realOrder.map((column) => Math.max(0, ...column.map((node) => naturalW(nodes[node]!))));
   const last = columnCount - 1;
 
   // ---- horizontal form: both gutters, then the right gutter alone, then the left, then none ----
   type Form = { left: boolean; right: boolean };
-  const gutterW = (c: number) => Math.max(columnNeed[c]!, Math.min(columnNatural[c]!, plot.w * GUTTER_SHARE));
+  const automaticGutter = (c: number) => Math.max(columnNeed[c]!, Math.min(columnNatural[c]!, plot.w * GUTTER_SHARE));
+  const authoredGutter = (id: 'first' | 'last') => options.columnOverrides?.[id]?.width;
+  // An authored gutter beats the share. It stays at least as wide as its labels' floor, and leaves the columns and ribbons their room.
+  const gutterRoom = plot.w - barW - 2 * LABEL_GAP - Math.max(1, last) * Math.max(barW + MIN_RIBBON_W,
+    ...realOrder.map((_, c) => (c > 0 && c < last ? columnNeed[c]! + barW + 2 * LABEL_GAP : 0)));
+  const sideGutter = (c: number, other: number) => {
+    const wanted = authoredGutter(c === 0 ? 'first' : 'last');
+    if (wanted === undefined) return automaticGutter(c);
+    const otherWanted = authoredGutter(other === 0 ? 'first' : 'last');
+    return Math.max(columnNeed[c]!, Math.min(wanted, gutterRoom - (otherWanted === undefined ? automaticGutter(other) : Math.max(columnNeed[other]!, Math.min(otherWanted, gutterRoom / 2)))));
+  };
+  const gutterW = (c: number) => (c === 0 || c === last ? sideGutter(c, c === 0 ? last : 0) : automaticGutter(c));
   const plan = (form: Form) => {
     const gl = form.left ? gutterW(0) + LABEL_GAP : 0;
     const gr = form.right ? gutterW(last) + LABEL_GAP : 0;
@@ -202,6 +232,15 @@ export function layoutSankey(data: SankeyData, options: SankeyOptions = {}): Geo
   const forms: Form[] = [{ left: true, right: true }, { left: false, right: true }, { left: true, right: false }, { left: false, right: false }];
   const plans = forms.map(plan);
   const chosen = plans.find((p) => p.fits) ?? plans[plans.length - 1]!;
+  if (options.columnOverrides) {
+    pushAll(warnings, generatedIdWarnings('sankey', 'columnOverrides', options.columnOverrides, [...(chosen.form.left ? ['first'] : []), ...(chosen.form.right ? ['last'] : [])]));
+    const capped = (chosen.form.left && (authoredGutter('first') ?? 0) > gutterW(0)) || (chosen.form.right && (authoredGutter('last') ?? 0) > gutterW(last));
+    const floored = (chosen.form.left && (authoredGutter('first') ?? Infinity) < columnNeed[0]!) || (chosen.form.right && (authoredGutter('last') ?? Infinity) < columnNeed[last]!);
+    if (floored) warnings.push({ code: 'generated-column-width-floored', severity: 'warn', field: ['options', 'columnOverrides'],
+      message: 'an authored gutter width is narrower than its longest word, so it was raised', suggest: 'Use a larger width, or leave the width out.' });
+    if (capped) warnings.push({ code: 'generated-column-width-capped', severity: 'warn', field: ['options', 'columnOverrides'],
+      message: `the authored gutter widths leave too little of the ${Math.round(plot.w)} px plot for the flows, so they were reduced`, suggest: 'Use smaller widths, or give the chart more width.' });
+  }
   // The width at which the last form fits: every column gap holds its labels.
   const insideNeed = Math.max(...realOrder.map((_, c) => {
     const shared = (c === last || c === last - 1) && last >= 1;
@@ -322,7 +361,7 @@ export function layoutSankey(data: SankeyData, options: SankeyOptions = {}): Geo
       const id = `node:${own.key}`;
       const owner = { categoryId: own.key };
       const priority = PRIORITY.interior + round2(shareOf(own));
-      const note = `${nodeName(own)} ${valueText(own)}`;
+      const note = printsValue ? `${nodeName(own)} ${valueText(own)}` : nodeName(own);
       if (!shown.has(k)) {
         requests.push({ id, kind: 'item', owner, text: note, lines: [note], font: nameFont, priority, redundant: true, suppressedAs: 'density', candidates: [], noteText: note, owed: true });
         return;
@@ -331,8 +370,10 @@ export function layoutSankey(data: SankeyData, options: SankeyOptions = {}): Geo
       const b = box(node);
       const x = where === 'left' ? columnX(c) - LABEL_GAP - text.w : columnX(c) + barW + LABEL_GAP;
       const rect = { x, y: at - text.h / 2, w: text.w, h: text.h };
-      if (text.oneLine) oneLine.set(id, [{ text: `${nameOf(own)} ` }, { text: valueText(own), weight: valueFont.weight }]);
-      else valueLines.set(id, text.lines.length - 1);
+      if (printsValue) {
+        if (text.oneLine) oneLine.set(id, [{ text: `${nameOf(own)} ` }, { text: valueText(own), weight: valueFont.weight }]);
+        else valueLines.set(id, text.lines.length - 1);
+      }
       // A label moved off its node's height gets a leader from the bar.
       sides.set(id, where);
       if (at < b.y0 - 1 || at > b.y1 + 1) leaders.set(id, { x: where === 'left' ? columnX(c) : columnX(c) + barW, y: Math.min(Math.max(at, b.y0), b.y1) });
@@ -351,7 +392,7 @@ export function layoutSankey(data: SankeyData, options: SankeyOptions = {}): Geo
       const from = layered.nodes[layered.segments[s]!.source]!.column;
       const text = fmt(link.value);
       // The only inflow of a node reads the node's own label, so printing it twice side by side adds nothing. A label that prints a share only does not carry the count.
-      if (nodeValue !== 'share' && text === fmt(nodes[layered.segments[s]!.target]!.value)) return;
+      if (nodeValue !== 'share' && printsValue && text === fmt(nodes[layered.segments[s]!.target]!.value)) return;
       const w = textW(text, headerFont);
       const x = columnX(from + 1) - LABEL_GAP - w;
       if (x < columnX(from) + barW + LABEL_GAP) return;
@@ -399,6 +440,7 @@ export function layoutSankey(data: SankeyData, options: SankeyOptions = {}): Geo
     const halo = label.slot === 'inside' ? { halo: true } : {};
     const runs = oneLine.get(id);
     if (runs) return [{ ...node, ...halo, x, align, runs, role: composedTextRole(label.text) }];
+    if (!printsValue) return [{ ...node, ...halo, x, align, role: 'category' }];
     const head = valueLines.get(id)!;
     return [
       { ...node, ...halo, x, align, y: label.rect.y, lines: label.lines.slice(0, head), role: 'category' },

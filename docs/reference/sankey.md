@@ -80,7 +80,9 @@ One form; its chart ID is `sankey`.
 | other | false \| object | `false` (or another value of its type) |  | Small nodes folded into one Other node per column, so a long tail stays readable; the note lists every folded node with its value. A column folds only when at least two nodes qualify. The Other node is as tall as its members together, so each column keeps its total. Default { share: 0.02 } without stages; off with stage-qualified links, where an object folds an id in every stage or in none. false keeps every node. |
 | other.share | number |  |  | Fold nodes under this share of their column's total; default 0.02. |
 | other.label | string |  |  | Name of the folded node; default strings.others, else 'Others'. |
-| nodeValue | string | `'value'`, `'share'`, `'value-share'` |  | What a node prints in bold after its name: 'value' (default), 'share' of its column's total, or 'value-share' as "420 (38%)". A percent format applies to the shares. |
+| nodeValue | string \| false | `'value'`, `'share'`, `'value-share'`, `false` |  | What a node prints in bold after its name: 'value' (default), 'share' of its column's total, or 'value-share' as "420 (38%)". A percent format applies to the shares. false prints the name only; the marks, hover and records keep the value, and linkValue still decides the ribbon values. |
+| columnOverrides | object |  |  | Settings per generated column. Ids: first, last. |
+| columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
 | linkValue | string | `'none'`, `'large'` | `'large'` | Flow values on the ribbons: 'large' (default) prints the value of every ribbon at least one line high at its arriving end, right aligned to the next bar; thinner ribbons print nothing, and a value that would cover a node label is left out. 'none' prints node values only. |
 
 Plus the [shared options](options.md). This type does not accept `detailFields`, `labels`, `valueAxis`, `story`, `hatchStrength`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
@@ -106,6 +108,8 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | sales-stages | torture | Six stages with drop-outs that skip columns as long links |
 | long-names-phone | torture | Long node names on a 280 px phone card: names wrap and break with a hyphen |
 | unbalanced-nodes | torture | Nodes whose inflow and outflow differ, duplicate rows that add up and a zero row |
+| no-node-values | example | Nodes print their names only |
+| column-overrides | example | Authored widths for the label gutters of the first and last stage |
 
 ## Not for
 
