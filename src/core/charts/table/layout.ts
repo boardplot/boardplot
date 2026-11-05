@@ -1,5 +1,5 @@
 import { tableWidths, type TableWidthPreparation } from './widths';
-import { copyFrame, footerPlans } from '../../footer';
+import { deepCopy, layoutKey, tableRequestOwns } from '../../tableOwnership';
 import { liftOrFallback, missesSize, tightSpacingWarning } from '../tableFit';
 import { chartTheme } from '../chartEnv';
 import { structureCount } from '../../structureCounts';
@@ -36,7 +36,7 @@ import {
 } from '../../theme';
 import type { Theme } from '../../types/theme';
 import type { Id } from '../../types/cell';
-import type { FrameGeometry, Geometry, SceneNode, LintWarning, Paint, PaintWarningRule } from '../../types/scene';
+import type { Geometry, SceneNode, LintWarning, Paint, PaintWarningRule } from '../../types/scene';
 import type { ColumnKind, ResolvedCell, ResolvedColumn, ResolvedRow, RowRole, TableData, TableDerived, TableOptions } from '../../types/table';
 import { arrowKey, emitArrow, emitHeat, emitInCellBar, emitSparkline, heatKey, heatRanges, sparklineDomains, sparklineSourceValues, tableSparklineDomain } from './encodings';
 import { tableCellKey, tableCellNodeId } from './cellKey';
@@ -61,9 +61,7 @@ import { fixedHeightCanvas, rowDrivenHeight, spareShare } from '../../rowCanvas'
 import { CARD_CLASS_WIDTH, heightOmitted, rowSizing, VERIFY_ADVICE, WIDTH_PROBE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { textScaleOf } from '../../typeFloors';
-import { currentSmallValues } from '../../formatPrecision';
 import { maxOf, minOf, pushAll } from '../../arrays';
-import { emptyIdRecord } from '../../idRecords';
 
 export interface TableMarks {
   table: Rect;
@@ -165,6 +163,8 @@ export function layoutTable(authoredData: TableData, options: TableOptions = {},
 }
 
 const resolvedTables = new WeakMap<object, Map<string, ReturnType<typeof resolveTable>>>();
+
+export { layoutKey };
 
 /**
  * The resolved table of one spec, shared by every frame a request tries: nothing
@@ -372,13 +372,13 @@ function widthRepairHeight(data: TableData, options: TableOptions, geometry: Geo
 
 /** The registered table layout: the ladder above, then the height floor at card widths. */
 export function layoutTableCard(data: TableData, options: TableOptions = {}): Geometry<TableMarks, TableDerived> {
-  return memoLayout(data, options, () => widthRepairHeight(data, options,
-    cardHeightFloor(layoutTableCard, data, options, classFloor(layoutTable, data, options, layoutTable(data, options)))));
+  const layout = () => widthRepairHeight(data, options,
+    cardHeightFloor(layoutTableCard, data, options, classFloor(layoutTable, data, options, layoutTable(data, options))));
+  // The request keeps its returned result. The layouts of its fit passes stay inside it and need no copy.
+  return tableRequestOwns(data) ? layout() : memoLayout(data, options, layout);
 }
 
 const layouts = new WeakMap<object, Map<string, unknown>>();
-const functionIds = new WeakMap<object, number>();
-let nextFunctionId = 0;
 
 /**
  * One request lays a table out many times (the fit passes, the repair loop,
@@ -398,53 +398,6 @@ export function memoLayout<G>(data: object, options: object, layout: () => G): G
   if (!byKey || byKey.size >= 32) layouts.set(data, byKey = new Map());
   if (!byKey.has(key)) byKey.set(key, layout());
   return deepCopy(byKey.get(key)) as G;
-}
-
-/**
- * The cache key of a layout: the data, the options and their symbol keys.
- * A function (the text measurer) enters by identity. The data is part of the
- * key, so data changed in place never reads an older result.
- */
-export function layoutKey(data: object, options: object): string {
-  const symbols = Object.getOwnPropertySymbols(options).map((symbol) => [symbol.description, (options as Record<symbol, unknown>)[symbol]]);
-  // The smallValues mode in force too: a nested table inherits its enclosing chart's mode.
-  return JSON.stringify([data, options, symbols, currentSmallValues()], (_key, value: unknown) => {
-    if (typeof value !== 'function') return value;
-    if (!functionIds.has(value)) functionIds.set(value, nextFunctionId++);
-    return `function ${functionIds.get(value)}`;
-  });
-}
-
-/** Copy shared fonts and cells once per result. A copy of every array, Map, Set and plain object; a function and any other value is shared (the compiled options hold the measurer). */
-function deepCopy<T>(value: T, copies = new Map<object, unknown>()): T {
-  if (value === null || typeof value !== 'object') return value;
-  const known = copies.get(value);
-  if (known !== undefined) return known as T;
-  if (Array.isArray(value)) {
-    const copy: unknown[] = [];
-    copies.set(value, copy);
-    for (const entry of value) copy.push(deepCopy(entry, copies));
-    return copy as T;
-  }
-  if (value instanceof Map) {
-    const copy = new Map();
-    copies.set(value, copy);
-    for (const [key, entry] of value) copy.set(key, deepCopy(entry, copies));
-    return copy as T;
-  }
-  if (value instanceof Set) {
-    const copy = new Set();
-    copies.set(value, copy);
-    for (const entry of value) copy.add(deepCopy(entry, copies));
-    return copy as T;
-  }
-  if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) return value;
-  // A null-prototype record (cells keyed by column id) stays one, so a column named __proto__ keeps its cell.
-  const copy: Record<PropertyKey, unknown> = footerPlans.has(value as FrameGeometry)
-    ? copyFrame(value as FrameGeometry) as Record<PropertyKey, unknown> : Object.getPrototypeOf(value) === null ? emptyIdRecord() : {};
-  copies.set(value, copy);
-  for (const key of Reflect.ownKeys(value)) copy[key] = deepCopy((value as Record<PropertyKey, unknown>)[key], copies);
-  return copy as T;
 }
 
 /**
