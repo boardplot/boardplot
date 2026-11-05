@@ -605,7 +605,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
     // canvas holds every minimum. Each panel takes its minimum, the rest follows the weights.
     const minimums = tierMinimums();
     const usable = area.h - theme.space.tierGap * (n - 1);
-    if (repair && !varianceWeights && slots.some((slot, i) => slot.h + 0.5 < minimums[i]!) && minimums.reduce((a, b) => a + b, 0) <= usable) {
+    if (repair && !varianceWeights && slots.some((slot, i) => slot.h + 0.5 < minimums[i]! && children[i]!.geo.plot.h < (children[i]!.geo.frame.plotMinHeight ?? 0)) && minimums.reduce((a, b) => a + b, 0) <= usable) {
       settle(heightsHoldingMinimums(usable, weights, minimums));
     }
     // Content that needs more than the canvas gives (a tier at its plot floor keeps its frame) takes

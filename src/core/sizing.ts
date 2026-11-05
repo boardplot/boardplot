@@ -1452,9 +1452,11 @@ function fitOnce<D, O extends ChartOptions, M extends object, DV extends object>
         // ask for more at the height they were measured at, so a taller natural height is drawn again.
         // The canvas keeps its height when the slots ask for less there.
         if (definition.type === 'grid' && probe.sizing?.fit !== 'content') {
-          // A refused probe has no frame to tell the two apart: measure again at the height it names.
-          if (probe.refused && pass < 3) { refusedProbe = true; height = natural; continue; }
-          if (refusedProbe && !probe.refused && !slotDemandHeight.has(probe.frame)) return probe;
+          // A first refused probe has no frame to tell the two apart: measure once at the height it names.
+          // A second refusal goes to the caller, which finds a height with room for the labels too.
+          if (probe.refused && pass === 0) { refusedProbe = true; height = natural; continue; }
+          if (probe.refused) break;
+          if (refusedProbe && !slotDemandHeight.has(probe.frame)) return probe;
         }
         const slotGrid = !probe.refused && slotDemandHeight.has(probe.frame) && probe.sizing?.fit !== 'content';
         if (slotGrid && natural < height) return probe;

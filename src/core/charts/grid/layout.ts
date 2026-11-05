@@ -1326,7 +1326,8 @@ function layoutAuthoredGrid(
     let reportedRows: number[] | undefined;
     // A slot under its panel's minimum draws a strip below a gap, although the canvas holds every minimum.
     const minimums = children.map(child => child.geometry.sizing?.minHeight ?? 0);
-    if (packed && children.some((child, index) => child.slot.h + 0.5 < minimums[index]!) && minimums.reduce((sum, value) => sum + value, 0) <= available) {
+    if (packed && !typeStepsFirst && children.some((child, index) => child.slot.h + 0.5 < minimums[index]! && child.geometry.plot.h < (child.geometry.frame.plotMinHeight ?? 0))
+      && minimums.reduce((sum, value) => sum + value, 0) <= available) {
       // The repair moves the tiers only: the grid still reports the size of the slots it asked for.
       reportedRows = rowWeights.map((_, row) => tierSlots[provisional.findIndex(p => p.row === row)]!.h);
       const heights = heightsHoldingMinimums(available, naturalTierWeights, minimums);
