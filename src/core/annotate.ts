@@ -945,7 +945,7 @@ function placeNote(s: AnnotationScope, ann: Extract<Annotation, { kind: 'callout
   if (repeats && !text && !glyph) return;
   // A headline is the first line, over the text: "${value}" over the words.
   const headline = ann.kind === 'callout' && ann.headline !== undefined ? ann.headline.replace(/\$\{value\}/g, value) : undefined;
-  if (!text.trim() && headline === undefined && !glyph) return warn(s, 'annotation-empty', `${ann.kind} '${s.id}': its text is empty, so it draws nothing`);
+  if (!text.trim() && headline === undefined && !glyph) warn(s, 'annotation-empty', `${ann.kind} '${s.id}': its text is empty, so it prints no words; any arrow or leader stays`);
   const placedGlyph = glyph ? planCalloutGlyph(s, at, glyph, text) : undefined;
   // Prose. The `${value}` token is substituted from the engine, but the
   // sentence built around it is the author's, so the record carries the

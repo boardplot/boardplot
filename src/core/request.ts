@@ -449,6 +449,8 @@ function drawnAdvice(request: ResolvedChartRequest, result: LayoutResult, layout
   let [low, high] = [Math.max(Math.ceil(result.size.width), staticMinWidth) - 1, drawn ? need.width - 1 : need.width];
   while (drawn && high - low > 1) {
     const mid = Math.floor((low + high) / 2);
+    // Past 2^53 the next whole number is no longer a number: the middle stops moving, so the search has its answer.
+    if (mid <= low || mid >= high) break;
     const probe = fullAt(mid);
     if (probe) [high, drawn] = [mid, probe];
     else low = mid;

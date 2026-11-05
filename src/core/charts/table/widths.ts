@@ -36,6 +36,8 @@ interface TableWidthView {
   widthRows?: readonly ResolvedRow[];
   fullRows?: readonly ResolvedRow[];
   available?: number;
+  /** The deepest rung a label indents at, where a fixed frame cannot hold a deeper one. */
+  rungCap?: number;
   /** A scrolling host keeps authored tracks; a fixed frame uses the existing shrink order. */
   scroll?: boolean;
   spacerTotal?: number;
@@ -130,6 +132,16 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
   const headingFaces = (faces: TableFonts) => groupHeadingFaces(view.trailingTracking
     ? { ...faces.group, letterSpacing: Math.round((faces.group.letterSpacing ?? 0) * 1000) / 1000 } : faces.group);
   const warnings: LintWarning[] = [];
+  const cappedRow = view.rungCap === undefined ? undefined : fullRows.find((row) => (row.indentStep ?? row.step) > view.rungCap!);
+  if (cappedRow) {
+    warnings.push({
+      code: 'table-rung-capped',
+      severity: 'warn',
+      message: `row '${cappedRow.id}' sits at rung ${cappedRow.indentStep ?? cappedRow.step}, deeper than this frame can hold, so its label indents at rung ${view.rungCap}, the deepest that fits`,
+      owner: { rowId: cappedRow.id },
+      suggest: 'Set a smaller rung, or give the table more width.',
+    });
+  }
   const ladder = levelLadder(theme, options.density ?? 'regular', options.target, textScaleOf(options));
   const regularFonts = tableFonts(theme, ladder);
   const rowById = new Map([...widthRows, ...rows].map(row => [row.id, row]));
@@ -142,7 +154,8 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
   const isTree = fullRows.some(row => row.hasChildren);
   const indents = labelIndents(cellPadX, options.labelIndent, view.withMarks ?? options.outlineMarks === true);
   const operatorSlot = operatorWidth(rows, theme);
-  const rowIndent = (level: number) => (isTree ? indents.base + level * indents.step : 0) + operatorSlot;
+  const indentLevel = (level: number) => Math.min(level, view.rungCap ?? Infinity);
+  const rowIndent = (level: number) => (isTree ? indents.base + indentLevel(level) * indents.step : 0) + operatorSlot;
   const inlineFont = (level: number, signed: boolean) => ladderInlineFont(theme, ladder, level, signed);
   function cellFont(cell: ResolvedCell): FontSpec {
     const row = rowById.get(cell.rowId);
@@ -627,7 +640,7 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
   const labelBeforeFill = labelColumn === undefined ? undefined : beforeFill.get(labelColumn.id);
   return { tracks, gridTracks, spacerBefore, spacerTotal, labelNeed, labelBeforeFill, labelsWrap, widths, minimumWidths, sizingMinimums, totalW, minimumW, fonts, regularFonts,
     context: chosen.context, wouldWrap: (dense ?? regular).wouldWrap, wrapMinimumWidth, warnings, cellPadX,
-    rowIndent, cellFont, cellStep, indentStep, columnHeaderText, indents, operatorSlot, childCount, hasChanges };
+    rowIndent, indentLevel, cellFont, cellStep, indentStep, columnHeaderText, indents, operatorSlot, childCount, hasChanges };
 }
 
 /**

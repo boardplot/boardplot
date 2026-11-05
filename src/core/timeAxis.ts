@@ -299,13 +299,22 @@ function stepLength(step: TimeStep): number {
 }
 
 /**
+ * A sub-day step longer than a day ticks at each local midnight, so its ticks follow the days of the
+ * range and not the step. Over more days than the plot has pixels those ticks only make a solid bar.
+ */
+export function timeStepOutrunsPlot(lo: number, hi: number, step: TimeStep, pixels: number): boolean {
+  const subDay = UNIT_MS[step.unit];
+  return subDay !== undefined && subDay * step.n > DAY && (hi - lo) / DAY > pixels;
+}
+
+/**
  * The ticks of one step inside [lo, hi], on the zone's wall clock: 6-hour
  * ticks at 00, 06, 12 and 18 local time, days at local midnight, weeks on the
  * week start, months on the 1st, years on 1 January. A wall time the zone
  * repeats ticks at both instants; one it skips has no tick.
  */
-export function timeTicks(lo: number, hi: number, step: TimeStep, clock: ZoneClock, weekStartsOn: 0 | 1 = 1, limit = 400): number[] | undefined {
-  if (!(hi >= lo) || (hi - lo) / stepLength(step) > limit) return undefined;
+export function timeTicks(lo: number, hi: number, step: TimeStep, clock: ZoneClock, weekStartsOn: 0 | 1 = 1, limit = 400, pixels = Infinity): number[] | undefined {
+  if (!(hi >= lo) || (hi - lo) / stepLength(step) > limit || timeStepOutrunsPlot(lo, hi, step, pixels)) return undefined;
   const walls: number[] = [];
   const wallLo = lo + clock.offsetAt(lo) - DAY, wallHi = hi + clock.offsetAt(hi) + DAY;
   const subDay = UNIT_MS[step.unit];

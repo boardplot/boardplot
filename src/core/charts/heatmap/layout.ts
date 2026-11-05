@@ -678,9 +678,7 @@ export function layoutHeatmap(
   const rowSuffixShort = fittedRows.short;
 
   // A cell note gets a side seat only within 15% of the remaining grid width.
-  // A note with no words and nothing else to show takes no seat: the annotation pass warns and draws nothing.
-  const blankNote = (a: Annotation) => 'text' in a && a.text?.trim() === '' && !('headline' in a && a.headline !== undefined) && !('icon' in a && a.icon) && !('status' in a && a.status);
-  const notes = annotations.filter(a => (a.kind === 'callout' || a.kind === 'note') && !blankNote(a));
+  const notes = annotations.filter(a => a.kind === 'callout' || a.kind === 'note');
   const noteSize = (a: Annotation, width = plot0.w, maxLines?: number) => {
     const ref = 'at' in a ? a.at : undefined;
     const ci = cols.findIndex(c => c.id === (typeof ref === 'string' ? ref : ref && 'categoryId' in ref ? ref.categoryId : undefined));

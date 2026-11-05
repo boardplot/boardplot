@@ -914,6 +914,17 @@ function memoizedMerge(base: Theme, overrides: object, resolve: () => Theme): Th
 }
 
 /**
+ * The ref of a theme this module already resolved, for a host that lays out from
+ * a resolved request: it reads back as that theme and is not checked a second time.
+ */
+export function resolvedThemeRef(theme: Theme): ThemeRef {
+  const preset = currentPreset(theme.name);
+  const base = Object.hasOwn(themes, preset) ? themes[preset] : adoptedTheme(preset);
+  if (base) memoizedMerge(base, theme, () => theme);
+  return { preset, overrides: theme };
+}
+
+/**
  * A patch is external input, so the MERGED RESULT is validated — the same
  * gate `parseThemeJson` applies to a whole-theme upload. Without it a legal
  * patch shape (`{color:{series:42}}`, `{color:{ink:99}}`, `{space:{tierGap:400}}`,
