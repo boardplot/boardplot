@@ -1250,7 +1250,8 @@ function layoutTableOnce(
   const targetSize = (options as TargetSizeOptions)[TARGET_SIZE];
   if (!sizingOnly && targetSize?.fixed.height === false) {
     const height = tableSizing(size, plot, y, totalW, 0).naturalHeight;
-    if (height !== size.height) {
+    // A later, taller frame may be the card-height floor. Only the initial provisional frame may shrink.
+    if (height > size.height || (height < size.height && size.height === targetSize.sizePx.height)) {
       const nextSize = { width: size.width, height };
       const nextFramePlan = sharedTableFrame(table, { ...frameInput, size: nextSize });
       const nextFrame = nextFramePlan.frame;
