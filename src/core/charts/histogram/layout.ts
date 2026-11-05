@@ -69,7 +69,7 @@ import { localeStrings, stringFields } from '../../strings';
 import { AUTO_LEGEND, isAutomaticLegend } from '../../legendPolicy';
 import { authoredNotes, frameTextOptions, withAuthoredFootnotes } from '../../frame';
 import { disclosureNote } from '../../notes';
-import { assertCountsCoverSample, computeBinning, countPerBin, onEdgeGrid, round12 } from './binning';
+import { assertCountsCoverSample, cappedOpenAbove, computeBinning, countPerBin, MAX_BINS, onEdgeGrid, round12 } from './binning';
 import type {
   HistogramBinMark,
   HistogramData,
@@ -178,14 +178,15 @@ export function layoutHistogram(
       });
     }
   }
-  const membership = computeBinning({
+  const binningInput = {
     sorted,
     min,
     max,
     interquartileRange: spread,
     bins: binSpec,
     snap: options.binSnap ?? true,
-  });
+  };
+  const membership = computeBinning(binningInput);
   const counts = countPerBin(sorted, membership.edges);
   assertCountsCoverSample(counts, n);
   const k = counts.length;
@@ -202,6 +203,7 @@ export function layoutHistogram(
     hFd: round12(membership.hFd),
     hSturges: round12(membership.hSturges),
     hAuto: round12(membership.hAuto),
+    ...(membership.autoCap ? { autoCap: { ...membership.autoCap, width: round12(membership.autoCap.width) } } : {}),
   };
 
   // ---- options the histogram grammar refuses ----
@@ -351,7 +353,7 @@ export function layoutHistogram(
    * above the 98th percentile as the start of an open last bin, when that
    * edge gives back at least a quarter of the axis.
    */
-  if (binSpec === 'auto' && !perValue && k >= 8) {
+  if (binSpec === 'auto' && !perValue && k >= 8 && !binning.autoCap) {
     const low = binning.edges[0]!, high = binning.edges[k]!;
     const quarter = low + (high - low) / 4;
     const tallest = maxOf(counts);
@@ -372,6 +374,24 @@ export function layoutHistogram(
         suggest: `set bins: { openAbove: ${value} } to gather the ${count(above)} observations from ${fmt(value)} up into one open last bin`,
       });
     }
+  }
+  /**
+   * The narrower rule width would have smeared the sample over more bins than
+   * the cap, so the wider Sturges width drew them: the shape is coarse, and an
+   * open bin for the far tail gives the rest its finer bins back.
+   */
+  if (binning.autoCap) {
+    const count = (value: number) => formatAutomaticNumber(value, { locale: options.locale?.language, decimals: 0 });
+    const openAbove = cappedOpenAbove(binningInput, q3, membership.autoCap!.width);
+    const above = openAbove === undefined ? 0 : n - sorted.findIndex((value) => value >= openAbove);
+    warnings.push({
+      code: 'histogram-auto-sturges',
+      severity: 'warn',
+      message: `a Freedman-Diaconis bin width of ${fmt(binning.autoCap.width)} would need ${count(binning.autoCap.bins)} bins (limit ${MAX_BINS}) across observations from ${fmt(min)} to ${fmt(max)}; the bins take the wider Sturges width of ${fmt(binning.width)} instead, so the shape is coarse`,
+      suggest: openAbove === undefined
+        ? 'pass an explicit bins count or bins.width, or chart the far values that stretch the range apart from the rest'
+        : `set bins: { openAbove: ${openAbove} } to gather the ${count(above)} observations from ${fmt(openAbove)} up into one open last bin and draw the rest in finer bins`,
+    });
   }
   const collapsedEdges = edgeLabels.filter(
     (text, index) => index > 0 && text === edgeLabels[index - 1],
@@ -517,7 +537,7 @@ export function layoutHistogram(
   function methodNoteText(withBase: boolean): string {
     let rule: string;
     if (binning.rule === 'auto') {
-      const chosen = binning.hFd > 0 && binning.hFd <= binning.hSturges ? 'Freedman-Diaconis' : 'Sturges';
+      const chosen = !binning.autoCap && binning.hFd > 0 && binning.hFd <= binning.hSturges ? 'Freedman-Diaconis' : 'Sturges';
       rule = binning.snapped ? stringFields(strings.histogramSnapped, { rule: chosen }) : chosen;
     } else {
       rule = binning.rule === 'count' ? strings.histogramRuleCount : strings.histogramRuleWidth;
