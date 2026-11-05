@@ -59,7 +59,7 @@ import type { ResolvedTable } from '../../types/table';
 import { DEFAULT_EMPTY_MESSAGE } from '../../emptyData';
 import { cellDrawsTabular, cellHoldsNumber, emptyMessageRow, expansionRootsHidden, finalClosers, hasNoDataRows, groupSpans, heatColumn, printsFigures, rowGrounds, tableFootnotes, visibleColumns, visibleInlineRows, visibleRows } from './view';
 import { fixedHeightCanvas, rowDrivenHeight, spareShare } from '../../rowCanvas';
-import { CARD_CLASS_WIDTH, heightOmitted, rowSizing, VERIFY_ADVICE, WIDTH_PROBE, FIXED_SIZE_PROBE } from '../../sizing';
+import { heightOmitted, rowSizing, VERIFY_ADVICE, WIDTH_PROBE, FIXED_SIZE_PROBE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { textScaleOf } from '../../typeFloors';
 import { maxOf, minOf, pushAll } from '../../arrays';
@@ -377,7 +377,7 @@ function widthRepairHeight(data: TableData, options: TableOptions, geometry: Geo
   return geometry;
 }
 
-/** The registered table layout: the ladder above, then the height floor at card widths. */
+/** The registered table layout: select spacing and use the content height at the requested width. */
 export function layoutTableCard(data: TableData, options: TableOptions = {}): Geometry<TableMarks, TableDerived> {
   return memoLayout(data, options, () => {
     const planned = { ...options, [PLAN_ONLY]: true };
@@ -385,7 +385,7 @@ export function layoutTableCard(data: TableData, options: TableOptions = {}): Ge
     // Class recalibration changes only the reported floor. A fitting ordinary table keeps its selected class.
     const precise = (options as LayoutOptions)[SIZING_ONLY] || (options as { [VERIFY_ADVICE]?: boolean })[VERIFY_ADVICE] || missesFrame(geometry, options);
     const sized = precise ? classFloor(layoutTable, data, planned, geometry) : geometry;
-    return widthRepairHeight(data, planned, cardHeightFloor(layoutTableCard, data, planned, sized));
+    return widthRepairHeight(data, planned, sized);
   });
 }
 
@@ -453,37 +453,6 @@ export function classFloor<D extends object, O extends Omit<TableOptions, 'varia
 }
 
 const classFloors = new WeakMap<object, Map<string, number>>();
-const cardHeights = new WeakMap<object, Map<string, number | undefined>>();
-
-/**
- * A table takes its height from its content: under
- * 480 px a card is never shorter than the same table at the next wider card
- * step (400, then 480), so 320 >= 400 >= 480. The narrower card can be
- * shorter because a head that wrapped at the wider step fits on one line, or
- * a period the card leaves out took a line. The wider card is laid out by the
- * same layout and its height is cached per data object and options. A fixed
- * height and a panel in a grid keep their own height.
- */
-export function cardHeightFloor<D extends object, O extends Omit<TableOptions, 'variant'>, G extends Geometry<TableMarks, object>>(
-  layout: (data: D, options: O) => G, data: D, options: O, geometry: G,
-): G {
-  const width = geometry.size.width;
-  const automatic = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed?.height === false;
-  if (!automatic || geometry.refused || !geometry.sizing || width >= CARD_CLASS_WIDTH || panelTypeClass(options) !== undefined) return geometry;
-  const step = width < 400 ? 400 : CARD_CLASS_WIDTH;
-  let byKey = cardHeights.get(data);
-  if (!byKey) cardHeights.set(data, byKey = new Map());
-  const key = layoutKey(data, { ...options, size: step });
-  if (byKey.size >= 32 && !byKey.has(key)) byKey.delete(byKey.keys().next().value!);
-  if (!byKey.has(key)) {
-    const wider = layout(data, { ...options, size: { width: step }, [PLAN_ONLY]: true });
-    byKey.set(key, wider.refused || !wider.sizing ? undefined : wider.sizing.naturalHeight);
-  }
-  const floor = byKey.get(key);
-  if (floor !== undefined && floor > geometry.sizing.naturalHeight) geometry.sizing = { ...geometry.sizing, naturalHeight: floor };
-  return geometry;
-}
-
 /** The last step: the compact density, tight margins and, where the height was left open, a row-driven height. */
 function compactTable(
   authoredData: TableData, options: TableOptions, full: Geometry<TableMarks, TableDerived>,
@@ -1260,7 +1229,7 @@ function layoutTableOnce(
   const targetSize = (options as TargetSizeOptions)[TARGET_SIZE];
   if (!sizingOnly && targetSize?.fixed.height === false) {
     const height = tableSizing(size, plot, y, totalW, 0).naturalHeight;
-    // A later, taller frame may be the card-height floor. Only the initial provisional frame may shrink.
+    // A later, taller frame may carry a caller's height floor. Only the initial provisional frame may shrink.
     if (height > size.height || (height < size.height && size.height === targetSize.sizePx.height)) {
       const nextSize = { width: size.width, height };
       const nextFramePlan = sharedTableFrame(table, { ...frameInput, size: nextSize });

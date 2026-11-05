@@ -3,7 +3,7 @@ import type { ChartCore } from '../../registry';
 import type { Geometry } from '../../types/scene';
 import { CARD_MIN_WIDTH, chartSizing, heightOmitted, isWidthProbe, VERIFY_ADVICE, WIDTH_PROBE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
-import { cardHeightFloor, classFloor, layoutKey, layoutTable, memoLayout, REGULAR_SPACING, type TableMarks } from '../table/layout';
+import { classFloor, layoutKey, layoutTable, memoLayout, REGULAR_SPACING, type TableMarks } from '../table/layout';
 import { resolveTable } from '../table/resolve';
 import { compileDimSwitch, dimSwitchTableWarnings, dimswitchRowId, FOLDED, hostPeriods, PARTIAL_NOTE_OFF, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning, type DimSwitchForm } from './compile';
 import type { DimSwitchData, DimSwitchOptions, DimSwitchDerived } from './types';
@@ -241,7 +241,7 @@ function foldToFit(data: DimSwitchData, options: DimSwitchOptions, formsOf: (fol
 /** The folds of a drawn table. A sizing probe has no drawn rows to count, and this list holds there too. */
 const foldedRows=(geometry: Form) => geometry.derived.compiled.options.expansion?.collapsed?.length ?? 0;
 
-/** The registered layout: the forms above, then the height floor at card widths (320 >= 400 >= 480). */
+/** The registered layout: select a form and use its content height at the requested width. */
 function layoutDimSwitchCard(data: DimSwitchData, options: DimSwitchOptions = {}): Geometry<TableMarks, DimSwitchDerived> {
   return memoLayout(data, options, () => {
     const folded=new Map<string,Map<string,PreparedForm>>();
@@ -256,7 +256,7 @@ function layoutDimSwitchCard(data: DimSwitchData, options: DimSwitchOptions = {}
       if (misses) return noteOff;
       return !noteOff.refused && !missesFixedHeight(step,noteOff) && foldedRows(noteOff)<foldedRows(drawn) ? noteOff : drawn;
     };
-    return cardHeightFloor(layoutDimSwitchCard,data,options,classFloor(layout,data,options,layout(data,options)));
+    return classFloor(layout,data,options,layout(data,options));
   });
 }
 
