@@ -59,6 +59,21 @@ test('draws known regions beside unknown ids and resolves case variants consiste
   expect(() => layoutChoropleth({ pack: 'eu27', regions: [{ id: 'GB', value: 99 }] })).toThrow(expect.objectContaining({ code: 'choropleth-unknown-region' }));
 });
 
+// ISO 3166 alpha-3 ids on the europe tile pack refused the map with no hint and a message that read as a partial map, so the author blamed the one non-European id.
+test('a tilemap names the pack id for an unknown country code and refuses an empty map as empty', () => {
+  const regions = (...ids: string[]) => ids.map((id, index) => ({ id, value: index + 1 }));
+  const body = render({ spec: { type: 'tilemap', data: { pack: 'europe', regions: regions('DEU', 'FRA', 'USA') } } }).body as any;
+  expect(body.errors).toEqual([expect.objectContaining({
+    code: 'tilemap-unknown-region',
+    message: "regions[0].id: none of the 3 listed regions is in tile pack 'europe', starting with 'DEU'",
+    path: '/data/regions/0/id',
+    suggest: "Did you mean 'DE'?",
+  })]);
+  // A country the pack leaves out names the world pack; a spelling match would offer ES for US.
+  const partial = withEngineNotes(() => layoutTilemap({ pack: 'europe', regions: regions('DE', 'US') }));
+  expect(partial.warnings.find(warning => warning.code === 'tilemap-unknown-region')?.suggest).toBe("'US' is in tile pack 'world'; set pack: 'world' to draw it.");
+});
+
 // Reordering a pie must not swap category paints while its shared key keeps the first pie's mapping.
 test('overlay pies and their key share one paint per label and reject tone conflicts', () => {
   const shares = [{ label: 'Passed', value: 80 }, { label: 'Failed', value: 20 }];

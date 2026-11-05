@@ -2,7 +2,6 @@ import { chartString } from '../../strings/choropleth';
 import { disclosureNote } from '../../notes';
 import { chartTheme } from '../chartEnv';
 import { structureCount } from '../../structureCounts';
-import { levenshtein } from '../../spelling';
 import { authoredNotes, frameTextOptions, legendRequired, noteLine, solveFrame, SIDE_KEY_PLOT_SHARE, unitPrinted } from '../../frame';
 import { formatAutomaticNumber } from '../../format';
 import { formatterFromExample } from '../../formatSpec';
@@ -12,7 +11,7 @@ import { boxGap, rectContains, rectHitsConvexPolygon, rectsOverlap, round2, type
 // register the pack it draws.
 import { decodeGeoPack, fitGeoPack } from '../../geo/decode';
 import { fitGeoLonLat } from '../../geo/project';
-import { geoRegionIdIndex, resolveGeoRegionId, type GeoRegionIdIndex } from '../../geo/resolveRegionId';
+import { geoRegionIdIndex, nearestRegionId, resolveGeoRegionId, type GeoRegionIdIndex } from '../../geo/resolveRegionId';
 import type { FittedGeoBoundary, FittedGeoRegion, GeoPack, GeoPoint } from '../../geo/types';
 import { getGeoPack } from '../../geo/packs/registry';
 import { labelsToNodes } from '../../label/emit';
@@ -2779,21 +2778,6 @@ function boundsOfPolygons(polygons: GeoPoint[][][]): [number, number, number, nu
   return bounds;
 }
 
-function nearestRegionId(
-  input: string,
-  candidates: string[],
-  canonical: ReadonlyMap<string, string>,
-): string | undefined {
-  let best: { id: string; distance: number } | undefined;
-  for (const candidate of candidates) {
-    const distance = levenshtein(input.toUpperCase(), candidate.toUpperCase());
-    if (!best || distance < best.distance || (distance === best.distance && candidate < best.id)) {
-      best = { id: candidate, distance };
-    }
-  }
-  if (!best || best.distance > Math.max(2, Math.floor(input.length / 2))) return undefined;
-  return canonical.get(best.id);
-}
 
 function pointInRect(x: number, y: number, rect: Rect): boolean {
   return x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h;

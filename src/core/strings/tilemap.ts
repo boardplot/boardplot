@@ -4,6 +4,8 @@ const EN = {
   // reader-facing wording linked only by its consumers.
   "notInData": "Not in data",
   "unknownRegionLeftOut": "Region '{v1}' is not in tile pack '{v2}' and was left out.",
+  "regionIdSuggestion": "Did you mean '{v1}'?",
+  "regionInOtherPack": "'{v1}' is in tile pack '{v2}'; set pack: '{v2}' to draw it.",
   "regionsLeftOutNote": "Not on this map",
   "regionCountPrefix": "{v1}-region",
   "listedRegions": "{v1} listed regions",
@@ -31,6 +33,8 @@ const DE: { [K in keyof typeof EN]: string } = {
   // reader-facing wording linked only by its consumers.
   "notInData": "Nicht in den Daten",
   "unknownRegionLeftOut": "Region '{v1}' ist nicht im Kachelpaket '{v2}' enthalten und wurde weggelassen.",
+  "regionIdSuggestion": "War '{v1}' gemeint?",
+  "regionInOtherPack": "'{v1}' liegt im Kachelpaket '{v2}'; setze pack: '{v2}', um die Region zu zeichnen.",
   "regionsLeftOutNote": "Nicht auf dieser Karte",
   "regionCountPrefix": "{v1} {v1|Region|Regionen}",
   "listedRegions": "{v1} {v1|aufgeführte Region|aufgeführte Regionen}",
