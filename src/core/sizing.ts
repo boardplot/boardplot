@@ -800,6 +800,7 @@ export function prepareFitLayout<D, O extends ChartOptions, M extends object, DV
   definition: ChartCore<D, O, M, DV>, data: D, origins = new WeakMap<object, object>(),
 ): FitLayout<O, M, DV> {
   const probes = new Map<string, LayoutResult<M, DV>>();
+  const memoKeys: PreparedMemoKeys | undefined = definition.type === 'table' || definition.type === 'dimswitch' ? {} : undefined;
   const heightFloors = definition.type === 'mekko' ? mekkoHeightFloors.get(origins) ?? new Map<string, ResolvedSizing>() : undefined;
   if (heightFloors) mekkoHeightFloors.set(origins, heightFloors);
   const at: SizeLayout<O, M, DV> = (runOptions, compact) => {
@@ -819,7 +820,7 @@ export function prepareFitLayout<D, O extends ChartOptions, M extends object, DV
         && requested!.height + SIZE_TOLERANCE < floor.minHeight) {
         return sizeRefusal(definition.type, definition.title, requested!, { ...floor });
       }
-      result = fitSizeMemo(definition, data, runOptions, compact);
+      result = fitSizeMemo(definition, data, runOptions, compact, memoKeys);
       if (fixedMekko && result.sizing && (result.refused ? plotChromeFloor.has(result) : plotChromeFloor.has(result.frame))) {
         heightFloors!.set(floorKey, result.sizing);
       }
@@ -858,7 +859,10 @@ export function prepareFitLayout<D, O extends ChartOptions, M extends object, DV
       if (!borrowed) { memo.active = false; memo.heights.clear(); memo.references = undefined; }
     }
   })) as FitLayout<O, M, DV>;
-  run.finish = () => { probes.clear(); heightFloors?.clear(); };
+  run.finish = () => {
+    probes.clear(); heightFloors?.clear();
+    if (memoKeys) { memoKeys.scope = undefined; memoKeys.parts = undefined; }
+  };
   return run;
 }
 
@@ -1625,12 +1629,15 @@ function memoId(value: object | symbol): number {
   return id;
 }
 
+type MemoKeyPart = { value: unknown; text: string; cost: number };
+type PreparedMemoKeys = { scope?: object; parts?: Map<PropertyKey, MemoKeyPart> };
+
 /**
  * Every input by value: own string and symbol keys, nested ones in their order (a layout can
  * read them in that order), the top-level options sorted by name. Frozen objects (themes), functions, class instances, Maps and Sets, and the
  * call-state objects count by identity; neither can change during one synchronous call.
  */
-function memoKey(value: unknown, depth = 0): string {
+function memoKey(value: unknown, depth = 0, parts?: Map<PropertyKey, MemoKeyPart>): string {
   // Every value and every name counts against the budget: a long numeric array must not bypass it.
   if (--memoKeyBudget < 0) throw MEMO_KEY_TOO_LONG;
   switch (typeof value) {
@@ -1679,7 +1686,24 @@ function memoKey(value: unknown, depth = 0): string {
     const own = Reflect.ownKeys(object).filter(key => (object as Record<PropertyKey, unknown>)[key] !== undefined);
     const ordered = own.map(key => [memoName(key), key] as const)
       .sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
-    for (const [name, key] of ordered) out += `${name}:${memoKey((object as Record<PropertyKey, unknown>)[key], 1)},`;
+    if (!parts) {
+      for (const [name, key] of ordered) out += `${name}:${memoKey((object as Record<PropertyKey, unknown>)[key], 1)},`;
+      return `${out}}`;
+    }
+    for (const [name, key] of ordered) {
+      const value = (object as Record<PropertyKey, unknown>)[key];
+      const held = parts.get(key);
+      let text: string;
+      if (held && Object.is(held.value, value)) {
+        if ((memoKeyBudget -= held.cost) < 0) throw MEMO_KEY_TOO_LONG;
+        text = held.text;
+      } else {
+        const before = memoKeyBudget;
+        text = memoKey(value, 1);
+        parts.set(key, { value, text, cost: before - memoKeyBudget });
+      }
+      out += `${name}:${text},`;
+    }
     return `${out}}`;
   }
   for (const key of Reflect.ownKeys(object)) {
@@ -1715,7 +1739,7 @@ function memoCopy<M extends object, DV extends object>(result: LayoutResult<M, D
 
 /** fitSize through the request memo: the same chart, data object, options and mode give the same layout. */
 function fitSizeMemo<D, O extends ChartOptions, M extends object, DV extends object>(
-  definition: ChartCore<D, O, M, DV>, data: D, options: O | undefined, compactFallback: boolean,
+  definition: ChartCore<D, O, M, DV>, data: D, options: O | undefined, compactFallback: boolean, keys?: PreparedMemoKeys,
 ): LayoutResult<M, DV> {
   const memo = layoutMemo;
   // A grid panel is small and a grid lays out many: its key costs about as much as its layout.
@@ -1735,11 +1759,14 @@ function fitSizeMemo<D, O extends ChartOptions, M extends object, DV extends obj
     const { [PLOT_SHARE]: _share, ...rest } = keyed as O & { [PLOT_SHARE]?: number };
     keyed = rest;
   }
+  // A prepared table variant already owns stable content: only frame fields vary.
+  // Keep its exact value encodings for this request, then reread caller inputs next time.
+  if (keys && keys.scope !== memo) { keys.scope = memo; keys.parts = new Map(); }
   memoKeyBudget = MEMO_KEY_LIMIT;
   memoKeyData = data;
   let optionsKey: string;
   try {
-    optionsKey = memoKey(keyed);
+    optionsKey = memoKey(keyed, 0, keys?.parts);
   } catch (error) {
     if (error !== MEMO_KEY_TOO_LONG) throw error;
     return fitSize(definition, data, options, compactFallback);
