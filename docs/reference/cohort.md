@@ -60,12 +60,22 @@ Cohorts by periods-since-start: counts in, every retention rate derived, weighte
 | variant | string | `'heatmap'`, `'pure'`, `'stepped'` | `'heatmap'` | Form. 'heatmap' (the default) draws the heatmap surface, which honours 'labels'. 'pure' and 'stepped' draw the exhibit. Stepped columns share the width the label and size columns leave, as pure columns do, and preserve weighted-average and missing-cell notes. The exhibit variants draw a fixed label set, so authoring 'labels' together with variant is refused (the legacy surface honours it). |
 | formatScope | string | `'classic'`, `'column'` |  | Stepped fills use absolute bins ('classic') or normalize within each period ('column'). |
 | steps | array |  |  | Four ascending thresholds in percentage points that split the absolute ('classic') stepped fills into five classes the key names, such as [70, 80, 85, 90] for period-to-period retention. Default [30, 40, 50, 60]. |
-| visiblePeriods | array |  |  | Original zero-based period indices displayed in chronological order by exhibit presets. |
+| visiblePeriods | array |  |  | Original zero-based period indices displayed in chronological order. A hidden period leaves no cell, head, note or record; rates and averages are still derived over all periods. |
 | cohortSizeLabel | string |  |  | Header for the exhibit cohort-size column; defaults to Cohort size. |
 | showPercentSign | boolean |  |  | Print a percent sign in every exhibit cell; defaults to false because the unit is stated once. |
 | threshold | number \| false | `false` (or another value of its type) |  | Pure-exhibit emphasis threshold in percentage points: cohort and total rates above it print bold; period 0 stays neutral. A note prints only when a visible cell uses that emphasis. Defaults to 60; false disables emphasis and its note. |
-| designatedPeriod | integer |  |  | Original zero-based period index receiving the pure-exhibit column tint; defaults to 3. |
-| total | false \| string | `false`, `'weighted'` |  | Exhibit summary row: weighted retention by default, or false to hide it. Never averages cohort percentages equally. |
+| designatedPeriod | integer \| false | `false` (or another value of its type) |  | Original zero-based period index receiving the pure-exhibit column tint; defaults to 3. false draws no tint and no head emphasis, on variant 'pure' only. |
+| total | false \| string | `false`, `'weighted'` |  | Summary row. Exhibit: weighted retention by default, or false to hide it. Heatmap: 'weighted' equals averages 'weighted', false hides the average row, and total wins over averages. Never averages cohort percentages equally. |
+| totalPosition | string | `'top'`, `'bottom'` |  | Exhibit variants: where the summary row stands, with its ground, rules and average bases; default 'bottom'. With total false it warns option-ignored. |
+| columnVisibility | object |  |  | True shows a column and false leaves it out: the ids are data.columnToggles ids on table and column ids elsewhere. Ids: size. |
+| columnOverrides | object |  |  | Settings per generated column. Ids: label, size, periods. A periods width is per period column and replaces the shared width, and the room it leaves stays empty on the right of the table. label on periods warns, because each period keeps its own head. label on the label track sets the corner head, and label on size beats cohortSizeLabel. |
+| columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
+| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Alignment of the column: its cell text and, unless headAlign is set, its head. Bars keep starting at the panel origin. |
+| columnOverrides.*.headAlign | string | `'left'`, `'right'`, `'center'` |  | Head alignment; defaults to align. |
+| columnOverrides.*.label | string |  |  | Head text. |
+| columnOrder | array |  |  | Order of whole blocks; blocks left out follow in default order. Ids: size, periods. |
+| columnHeads | false | `false` |  | false: no visible head row and no group heads, with their height and rule. Assistive technology still reads the head in React, and sortable warns there. |
+| figures | false | `false` |  | Variant 'stepped': false stops the numbers on filled cells. Period 0 and other cells with no fill keep their text. Hover, records and accessible values stay. |
 | excludeCurrentPeriod | boolean |  |  | Remove the newest cohort and longest period before exhibit derivation. |
 | exhibitLabel | string |  |  | Short exhibit heading above the assertion title. |
 | heightFill | string | `'rows'`, `'none'` | `'rows'` | Exhibit variants. 'rows' (default): rows take the spare height of a pinned canvas, up to 1.8 times, and stepped columns share the free width. 'none': natural row height, stepped columns at measured width. |
@@ -144,6 +154,16 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | fractional-step-key | torture | Cohort classes keep fractional open upper bounds |
 | cumulative-conversion-pure | example | Count-derived cumulative conversion with its own wording |
 | cumulative-conversion-stepped | example | Count-derived cumulative conversion with its own wording |
+| no-size-column | example | Pure exhibit without the size column, whose bases stay in the weighted total |
+| column-tracks | example | Pure exhibit with authored track widths, alignment and heads |
+| size-after-periods | example | Stepped exhibit with the size column after the periods |
+| no-column-heads | example | Pure exhibit without its head row, with the periods named in the subtitle |
+| no-column-heads-stepped | example | Stepped exhibit without heads or the range lines under them |
+| total-top | example | Stepped exhibit with the weighted average above the cohorts |
+| no-designated-period | example | Pure exhibit with no tinted column |
+| stepped-no-figures | example | Stepped exhibit whose fills carry the rates without printed numbers |
+| heatmap-weighted-total | example | Heatmap with the weighted average row set by total |
+| heatmap-visible-periods | example | Heatmap showing the later periods only, with no trace of the hidden ones |
 
 ## Not for
 

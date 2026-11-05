@@ -1,7 +1,9 @@
 /** Cohort data and options schemas, without the chart engine. */
 
 import * as z from 'zod';
+import { columnHeadsOption, columnOrderOption, columnOverridesOption, columnVisibilityOption } from '../../schema/generatedColumnOptions';
 import { baseOptionsSchema, idSchema, refusedBaseOptions } from '../../schema/shared';
+import { cohortKeyRefusals } from './optionRefusals';
 import { AVERAGE_ROW_ID } from './retention';
 import type { CohortData, CohortOptions } from './types';
 
@@ -60,6 +62,8 @@ export const cohortDataSchema = z
     });
   }) as unknown as z.ZodType<CohortData>;
 
+const trackOverrides = columnOverridesOption('cohort', ['width', 'align', 'headAlign', 'label']);
+
 export const cohortOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions('cohort')).safeExtend({
   format: baseOptionsSchema.shape.format.describe("Rate format in percentage units, such as '1.0%' or '1.00' for two decimals without a sign on exhibit tables. Default: a decimal below 10%, whole percent otherwise on the heatmap. Exhibit tables share the needed decimal precision. The M0 anchor is neutral and the colour scale stays fixed at 0–100%."),
   basis: z
@@ -92,12 +96,18 @@ export const cohortOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptio
     .refine((steps) => steps.every((step, index) => index === 0 || step > steps[index - 1]!), 'steps must ascend')
     .optional()
     .describe("Four ascending thresholds in percentage points that split the absolute ('classic') stepped fills into five classes the key names, such as [70, 80, 85, 90] for period-to-period retention. Default [30, 40, 50, 60]."),
-  visiblePeriods: z.array(z.number().int().nonnegative()).min(1).optional().describe("Original zero-based period indices displayed in chronological order by exhibit presets."),
+  visiblePeriods: z.array(z.number().int().nonnegative()).min(1).optional().describe("Original zero-based period indices displayed in chronological order. A hidden period leaves no cell, head, note or record; rates and averages are still derived over all periods."),
   cohortSizeLabel: z.string().min(1).optional().describe("Header for the exhibit cohort-size column; defaults to Cohort size."),
   showPercentSign: z.boolean().optional().describe("Print a percent sign in every exhibit cell; defaults to false because the unit is stated once."),
   threshold: z.union([z.number().finite(), z.literal(false)]).optional().describe("Pure-exhibit emphasis threshold in percentage points: cohort and total rates above it print bold; period 0 stays neutral. A note prints only when a visible cell uses that emphasis. Defaults to 60; false disables emphasis and its note."),
-  designatedPeriod: z.number().int().nonnegative().optional().describe("Original zero-based period index receiving the pure-exhibit column tint; defaults to 3."),
-  total: z.union([z.literal(false), z.literal('weighted')]).optional().describe("Exhibit summary row: weighted retention by default, or false to hide it. Never averages cohort percentages equally."),
+  designatedPeriod: z.union([z.number().int().nonnegative(), z.literal(false)]).optional().describe("Original zero-based period index receiving the pure-exhibit column tint; defaults to 3. false draws no tint and no head emphasis, on variant 'pure' only."),
+  total: z.union([z.literal(false), z.literal('weighted')]).optional().describe("Summary row. Exhibit: weighted retention by default, or false to hide it. Heatmap: 'weighted' equals averages 'weighted', false hides the average row, and total wins over averages. Never averages cohort percentages equally."),
+  totalPosition: z.enum(['top', 'bottom']).optional().describe("Exhibit variants: where the summary row stands, with its ground, rules and average bases; default 'bottom'. With total false it warns option-ignored."),
+  columnVisibility: columnVisibilityOption('cohort'),
+  columnOverrides: trackOverrides.describe(`${trackOverrides.description} A periods width is per period column and replaces the shared width, and the room it leaves stays empty on the right of the table. label on periods warns, because each period keeps its own head. label on the label track sets the corner head, and label on size beats cohortSizeLabel.`),
+  columnOrder: columnOrderOption('cohort'),
+  columnHeads: columnHeadsOption(),
+  figures: z.literal(false).optional().describe("Variant 'stepped': false stops the numbers on filled cells. Period 0 and other cells with no fill keep their text. Hover, records and accessible values stay."),
   excludeCurrentPeriod: z.boolean().optional().describe("Remove the newest cohort and longest period before exhibit derivation."),
   exhibitLabel: z.string().min(1).optional().describe("Short exhibit heading above the assertion title."),
   heightFill: z.enum(['rows', 'none']).optional()
@@ -125,5 +135,8 @@ export const cohortOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptio
         message:
           "'labels' is not implemented by the cohort exhibit variants — pure and stepped draw a fixed label set; drop 'labels', or set variant 'heatmap', which honours it",
       });
+    }
+    for (const { key, message } of cohortKeyRefusals(options as Parameters<typeof cohortKeyRefusals>[0])) {
+      ctx.addIssue({ code: 'custom', path: [key], message });
     }
   }) as unknown as z.ZodType<CohortOptions>;

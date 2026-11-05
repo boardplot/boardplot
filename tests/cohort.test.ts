@@ -641,7 +641,7 @@ describe('cohort — the host engine never speaks for itself', () => {
         expected.push('visiblePeriods');
         if (fixture.options.total !== false) expected.push('total');
         if (fixture.options.excludeCurrentPeriod) expected.push('excludedCurrentPeriod');
-      }
+      } else if (fixture.options?.visiblePeriods !== undefined) expected.push('visiblePeriods');
       expect(Object.keys(geometry.derived).sort(), fixture.id).toEqual(expected.sort());
       for (const forbidden of ['colMeans', 'rowMeans', 'max', 'min']) {
         expect(geometry.derived, `${fixture.id}: ${forbidden}`).not.toHaveProperty(forbidden);

@@ -36,7 +36,8 @@ import type { HeatmapOptions } from '../../types/options';
 import type { Geometry, Paint, SceneNode } from '../../types/scene';
 import { AVERAGE_ROW_ID, deriveRetention, missingCohortRate } from './retention';
 import { cohortBasisWarnings, cohortFormula, cohortMeasure } from './wording';
-import { layoutCohortExhibit } from './exhibit';
+import { layoutCohortExhibit, normalizeVisiblePeriods } from './exhibit';
+import { cohortOptionRefusals } from './optionRefusals';
 import type {
   CohortCellMark,
   CohortData,
@@ -58,6 +59,7 @@ export function layoutCohort(
   options: CohortOptions = {},
 ): Geometry<CohortMarks, CohortDerived> {
   const warnings = cohortBasisWarnings(options);
+  pushAll(warnings, cohortOptionRefusals(options));
   if (options.variant !== undefined && options.variant !== 'heatmap') {
     const geometry = layoutCohortExhibit(data, options);
     // Backstop for direct layout() callers — the options schema refuses this
@@ -77,7 +79,8 @@ export function layoutCohort(
     return geometry;
   }
   const basis = options.basis ?? 'cohort';
-  const averagesMode = options.averages ?? false;
+  // `total` wins over `averages`: one row, two names.
+  const averagesMode = options.total ?? options.averages ?? false;
   const methodNote = options.methodNote === true;
 
   // Periods are ordinal time-since-acquisition and cohorts are chronological:
@@ -111,7 +114,7 @@ export function layoutCohort(
   }
 
   const {
-    derived,
+    derived: allPeriods,
     warnings: derivedWarnings,
     notMeaningful,
     unsupportedAveragePeriods,
@@ -121,9 +124,15 @@ export function layoutCohort(
   });
   pushAll(warnings, derivedWarnings);
 
-  const periodCount = derived.periodCount;
+  const periodCount = allPeriods.periodCount;
   const periodIds = Array.from({ length: periodCount }, (_, t) => `t${t}`);
   const periodNames = periodLabels(data.periodLabel, periodCount, options);
+  // Rates and averages are derived over all periods: each average belongs to one column and goes with it.
+  const everyPeriod = periodIds.map((_, t) => t);
+  const visible = normalizeVisiblePeriods(options.visiblePeriods, everyPeriod, warnings);
+  const shown = new Set(visible);
+  const derived: CohortDerived = options.visiblePeriods === undefined ? allPeriods : { ...allPeriods, visiblePeriods: visible };
+  const visibleSpan = (row: CohortDerived['cohorts'][number]) => visible.filter((t) => t < row.observedPeriods);
 
   // The base belongs in the ROW LABEL, not in the grid: a count in the grid
   // would either pollute the colour ramp or need a second scale, and without a
@@ -182,7 +191,7 @@ export function layoutCohort(
   // the opposite end so it stays at the foot of the exhibit either way.
   const reverseRows = segmentSort === 'reverse';
   // An average withheld for a missing count rests on no cohorts, so no support disclosure counts it.
-  const shownSupports = derived.averages?.flatMap((a, t) => derived.cohorts.some(row => missingCohortRate(row, t, basis)) ? [] : [{ support: a.support, t }]) ?? [];
+  const shownSupports = derived.averages?.flatMap((a, t) => !shown.has(t) || derived.cohorts.some(row => missingCohortRate(row, t, basis)) ? [] : [{ support: a.support, t }]) ?? [];
   const supports = shownSupports.map((a) => a.support);
   // The support set is the whole health of a computed average, and in a
   // triangle it collapses to the right. Naming the row 'Weighted average' and
@@ -202,18 +211,18 @@ export function layoutCohort(
         {
           id: AVERAGE_ROW_ID,
           label: averageLabel,
-          values: derived.averages.map((a, t): Cell => cellFor(AVERAGE_ROW_ID, t, a.value, true)),
+          values: visible.map((t): Cell => cellFor(AVERAGE_ROW_ID, t, derived.averages![t]!.value, true)),
         },
       ]
     : [];
   const hostData: ChartData = {
-    categories: periodIds.map((id, t) => ({ id, label: periodNames[t]! })),
+    categories: visible.map((t) => ({ id: periodIds[t]!, label: periodNames[t]! })),
     series: [
       ...(reverseRows ? averageRow : []),
       ...derived.cohorts.map((row, index) => ({
         id: row.id,
         label: cohortLabel(index),
-        values: Array.from({ length: periodCount }, (_, t): Cell => {
+        values: visible.map((t): Cell => {
           if (t >= row.observedPeriods) return null; // not yet reached
           return cellFor(row.id, t, row.retention[t]!, false);
         }),
@@ -224,8 +233,8 @@ export function layoutCohort(
 
   const baseFootnotes = [
     ...authoredNotes(options),
-    ...(derived.cohorts.some(row => row.retention.some((_, t) => missingCohortRate(row, t, basis))) ? [disclosureNote(chartString(options, 'hatchMissing'))] : []),
-    ...cohortNotes(basis, derived.averages, shownSupports, notMeaningful, unsupportedAveragePeriods, periodNames, methodNote, options),
+    ...(derived.cohorts.some(row => visibleSpan(row).some((t) => missingCohortRate(row, t, basis))) ? [disclosureNote(chartString(options, 'hatchMissing'))] : []),
+    ...cohortNotes(basis, derived.averages, shownSupports, shownNotMeaningful(data, derived, visible, notMeaningful), unsupportedAveragePeriods.filter((t) => shown.has(t)), periodNames, methodNote && shown.has(0), methodNote, options),
   ];
 
   const build = (extra: string[]): ReturnType<typeof layoutHeatmap> =>
@@ -250,12 +259,12 @@ export function layoutCohort(
           ...[0, 0.25, 0.5, 0.75, 1].map((r) => ({
             id: `scale:${r * 100}`,
             // The top swatch also paints cells above their own base.
-            label: r === 1 && derived.cohorts.some((cohort) => cohort.retention.some((value) => value !== null && value > 1)) ? '100%+' : `${r * 100}%`,
+            label: r === 1 && derived.cohorts.some((cohort) => visibleSpan(cohort).some((t) => { const value = cohort.retention[t]; return value !== null && value !== undefined && value > 1; })) ? '100%+' : `${r * 100}%`,
             paint: cohortPaint(r),
             ...(rampTint(r) >= 0.8 ? { stroke: { token: 'neutralMark' } as Paint } : {}),
           })),
           // Period 0 is grey, not the ramp's 100%: the key says why.
-          { id: 'scale:base', label: chartString(options, 'periodBase', { period: periodNames[0] }), paint: ANCHOR_PAINT },
+          ...(shown.has(0) ? [{ id: 'scale:base', label: chartString(options, 'periodBase', { period: periodNames[0] }), paint: ANCHOR_PAINT }] : []),
           // The average row rides its own grey ramp; its swatch shows the
           // ramp at 50%, so the key covers every fill drawn.
           ...(derived.averages ? [{ id: 'scale:average', label: chartString(options, 'averageGrey'), paint: averagePaint(0.5) }] : []),
@@ -279,18 +288,18 @@ export function layoutCohort(
   // passes 2 and 3 differ only in the DIGITS of one footnote line, never in the
   // number of lines, so their geometry — and therefore their count — is identical.
   let host = build([]);
-  let lost = countSuppressed(host, derived, methodNote);
+  let lost = countSuppressed(host, derived, methodNote, shown);
   if (lost.total > 0) {
     host = build([disclosureNote(suppressionNote(lost, options))]);
-    const second = countSuppressed(host, derived, methodNote);
+    const second = countSuppressed(host, derived, methodNote, shown);
     if (second.total !== lost.total || second.drawn !== lost.drawn) {
       host = build([disclosureNote(suppressionNote(second, options))]);
-      const third = countSuppressed(host, derived, methodNote);
+      const third = countSuppressed(host, derived, methodNote, shown);
       if (third.total !== second.total || third.drawn !== second.drawn) {
         // Not reachable by the argument above; if it ever were, the exhibit
         // says the true unquantified thing rather than print a wrong count.
         host = build([disclosureNote(chartString(options, 'uncountedSuppressed'))]);
-        lost = countSuppressed(host, derived, methodNote);
+        lost = countSuppressed(host, derived, methodNote, shown);
       } else {
         lost = third;
       }
@@ -410,11 +419,11 @@ export function layoutCohort(
     marks: { cells },
     derived,
     a11y: {
-      title: accessibleTitle(options.title, chartString(options, 'title', { measure: cohortMeasure(options).toLocaleLowerCase(options.locale?.language ?? 'en'), cohorts: String(derived.cohorts.length), periods: String(periodCount) })),
-      counts: [structureCount('cohorts', derived.cohorts.length), structureCount('periods', derived.periodCount),
+      title: accessibleTitle(options.title, chartString(options, 'title', { measure: cohortMeasure(options).toLocaleLowerCase(options.locale?.language ?? 'en'), cohorts: String(derived.cohorts.length), periods: String(visible.length) })),
+      counts: [structureCount('cohorts', derived.cohorts.length), structureCount('periods', visible.length),
         structureCount('cells', unobserved, chartString(options, 'cells', { count: String(unobserved) })),
-        ...(derived.averages ? [derived.averages[0]!, derived.averages[derived.averages.length - 1]!].flatMap(a => a.value === null ? [] : [structureCount('cohorts', a.support, chartString(options, 'support', { count: String(a.support) }))]) : [])],
-      desc: describe(derived, periodNames, unobserved, options),
+        ...(derived.averages ? [derived.averages[visible[0]!]!, derived.averages[visible.at(-1)!]!].flatMap(a => a.value === null ? [] : [structureCount('cohorts', a.support, chartString(options, 'support', { count: String(a.support) }))]) : [])],
+      desc: describe(derived, periodNames, unobserved, options, visible),
     },
     warnings,
   };
@@ -489,6 +498,7 @@ function cohortNotes(
   notMeaningful: string[],
   unsupported: number[],
   periodNames: string[],
+  anchorNote: boolean,
   methodNote: boolean,
   options: CohortOptions,
 ): string[] {
@@ -499,7 +509,7 @@ function cohortNotes(
     // The anchor column's value is stated ONCE here rather than repeated in
     // every cell. With the note off the anchor cells count like any other in
     // the suppression note (countSuppressed).
-    ...(methodNote
+    ...(anchorNote
       ? [disclosureNote(chartString(options, 'anchorNote', { period: periodNames[0] }))]
       : []),
   ];
@@ -581,12 +591,13 @@ function countSuppressed(
   host: Geometry<object, object>,
   derived: CohortDerived,
   methodNote: boolean,
+  shown: ReadonlySet<number>,
 ): SuppressionCount {
   const visible = new Set(host.labels.filter((label) => !label.hidden).map((label) => label.id));
   const drawnPer = new Map<number, number>();
   const lostPer = new Map<number, number>();
   const count = (rowId: Id, t: number, value: number | null): void => {
-    if (value === null) return;
+    if (value === null || !shown.has(t)) return;
     if (t === 0 && methodNote) return;
     drawnPer.set(t, (drawnPer.get(t) ?? 0) + 1);
     if (!visible.has(`point:${rowId}:t${t}`)) lostPer.set(t, (lostPer.get(t) ?? 0) + 1);
@@ -623,17 +634,30 @@ function stripAnswered(options: CohortOptions): HeatmapOptions {
   for (const key of ANSWERED_HERE) delete rest[key];
   delete rest.basis;
   delete rest.averages;
+  delete rest.total;
+  delete rest.visiblePeriods;
   delete rest.methodNote;
   return keepShownNotes(options, rest) as HeatmapOptions;
 }
 
-function describe(derived: CohortDerived, periodNames: string[], unobserved: number, options: CohortOptions): string {
+/** The not-meaningful phrases of the shown cells: each cohort from the first such period the chart shows. */
+function shownNotMeaningful(data: CohortData, derived: CohortDerived, visible: readonly number[], phrases: readonly string[]): string[] {
+  if (derived.visiblePeriods === undefined) return [...phrases];
+  return derived.cohorts.flatMap((row, index) => {
+    const from = visible.find((t) => t < row.observedPeriods && row.retention[t] === null && !missingCohortRate(row, t, derived.basis));
+    return from === undefined ? [] : [`'${data.cohorts[index]!.label ?? row.id}' from period ${from}`];
+  });
+}
+
+function describe(derived: CohortDerived, periodNames: string[], unobserved: number, options: CohortOptions, visible: readonly number[]): string {
   const first = derived.cohorts[0]!;
   const last = derived.cohorts[derived.cohorts.length - 1]!;
   const pct = (v: number): string => `${formatAutomaticNumber(v * 100, { decimals: autoDecimals(v * 100), locale: options.locale?.language })}%`;
   const at = (index: number): string => {
     const row = derived.cohorts[index]!;
-    const t = row.observedPeriods - 1;
+    // The latest period this cohort reached that the chart shows.
+    const t = derived.visiblePeriods === undefined ? row.observedPeriods - 1 : visible.filter((period) => period < row.observedPeriods).at(-1);
+    if (t === undefined) return chartString(options, 'atPeriod', { value: chartString(options, 'notReached'), period: periodNames[visible[0]!] });
     const r = row.retention[t] ?? null;
     return r === null ? chartString(options, 'atPeriod', { value: chartString(options, missingCohortRate(row, t, derived.basis) ? 'missing' : 'notMeaningful'), period: periodNames[t] }) : chartString(options, 'atPeriod', { value: pct(r), period: periodNames[t] });
   };
@@ -645,11 +669,11 @@ function describe(derived: CohortDerived, periodNames: string[], unobserved: num
       : chartString(options, 'valueSupport', { value: pct(a.value), count: String(a.support) });
   const basisWord = cohortFormula(options, derived.basis);
   return (
-    chartString(options, 'descStart', { measure: cohortMeasure(options).toLocaleLowerCase(options.locale?.language ?? 'en'), cohorts: String(derived.cohorts.length), periods: String(derived.periodCount), formula: basisWord }) +
-    chartString(options, 'descReach', { first: at(0), last: at(derived.cohorts.length - 1) }) +
+    chartString(options, 'descStart', { measure: cohortMeasure(options).toLocaleLowerCase(options.locale?.language ?? 'en'), cohorts: String(derived.cohorts.length), periods: String(visible.length), formula: basisWord }) +
+    chartString(options, visible.includes(0) ? 'descReach' : 'descReachShown', { first: at(0), last: at(derived.cohorts.length - 1) }) +
     chartString(options, 'descBlank', { count: String(unobserved) }) +
     (derived.averages
-      ? chartString(options, 'descAverage', { first: average(derived.averages[0]!, 0), last: average(derived.averages[derived.averages.length - 1]!, derived.averages.length - 1) })
+      ? chartString(options, 'descAverage', { first: average(derived.averages[visible[0]!]!, visible[0]!), last: average(derived.averages[visible.at(-1)!]!, visible.at(-1)!) })
       : '') +
     chartString(options, 'descBases', { first: String(first.base), last: String(last.base) })
   );

@@ -568,8 +568,13 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
         if (node.part === 'cell' && value !== undefined) displayed.set(node.id, value);
       }
       const claims: ClaimRecordV1[] = [];
+      // A period the heatmap does not show has no cell, so it has no receipt. An exhibit keeps the
+      // receipt of a period it leaves out, with nothing displayed.
+      const exhibit = (geo.marks as { sizeCells?: unknown }).sizeCells !== undefined;
+      const shown = (t: number) => exhibit || derived.visiblePeriods === undefined || derived.visiblePeriods.includes(t);
       for (const row of derived.cohorts) {
         for (let t = 0; t < row.observedPeriods; t++) {
+          if (!shown(t)) continue;
           const nodeId = `cell:${row.id}:t${t}`;
           const ratio = row.retention[t] ?? null;
           const previous = derived.basis === 'previous' && t > 0;
@@ -594,6 +599,7 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
         }
       }
       (derived.averages ?? []).forEach((average, t) => {
+        if (!shown(t)) return;
         const nodeId = `cell:${COHORT_AVERAGE_ROW_ID}:t${t}`;
         claims.push({
           id: `cohort:average:t${t}`,

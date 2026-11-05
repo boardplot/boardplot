@@ -38,7 +38,7 @@ export const GENERATED_COLUMNS = {
   butterfly: { columns: ['label', 'diff'], blocks: [], rows: [] },
   // choropleth/smallMembers.ts:581 draws the lookup value. Region ids go through the pack's aliases.
   choropleth: { columns: ['swatch', 'code', 'value'], blocks: [], rows: [], rowsFromData: 'each region id, through the aliases of the map pack' },
-  // cohort/exhibit.ts:406 plans the tracks and :761 draws the period heads. Periods stay on visiblePeriods.
+  // cohort/exhibit.ts: exhibitTracks plans the tracks and buildExhibit draws them. Periods stay on visiblePeriods.
   cohort: { columns: ['size'], tracks: ['label', 'size', 'periods'], blocks: ['size', 'periods'], rows: [] },
   // creative/layout.ts:191 sets the label track, and the value, median and delta right edges follow it.
   creative: { columns: ['label', 'value', 'median', 'delta'], blocks: ['label', 'value', 'median', 'delta'], rows: ['ctr', 'cpa', 'roas', 'hookRate', 'holdRate', 'frequency'] },
