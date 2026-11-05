@@ -770,6 +770,22 @@ describe('render and measure on the command line', () => {
     expect(Object.keys(JSON.parse(doc.log[0]!).charts[0])).toEqual(['name', 'svg', 'reading']);
   });
 
+  // --quiet dropped every warning, so a shell loop never learned that a chart needed a fix.
+  it('prints each warn-level warning on stderr under --quiet, before the written paths', () => {
+    const dir = tdir();
+    const out = join(dir, 'out');
+    const untitled = { ...SPEC, options: {} };
+    const result = runCli(['render', writeDoc(dir, 'untitled.json', untitled), '--out', out, '--quiet']);
+    expect(result.log).toEqual([JSON.stringify({ ok: true, outputs: [join(out, 'chart.svg')] })]);
+    expect(result.error).toEqual([
+      'warning missing-message-title: consulting titles carry the message; this title is missing or generic',
+      `Wrote ${join(out, 'chart.svg')}`,
+    ]);
+    // --out - keeps stderr one JSON object.
+    const piped = runCli(['render', writeDoc(dir, 'untitled.json', untitled), '--out', '-', '--quiet']);
+    expect(() => JSON.parse(piped.error.join('\n'))).not.toThrow();
+  });
+
   it.skipIf(!availableRasterizer())('draws a PNG for --out x.png without --format', () => {
     const dir = tdir();
     const file = join(dir, 'chart-x.png');
