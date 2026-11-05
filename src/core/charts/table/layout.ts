@@ -1134,7 +1134,8 @@ function layoutTableOnce(
   }
   const plannedCellText = new Map<string, ReturnType<typeof cellText>>();
   let cuts = 0;
-  for (const row of rows) for (const col of cols) {
+  const statusColumns = cols.filter(col => col.kind === 'status');
+  for (const row of rows) for (const col of statusColumns) {
     const cell = row.cells[col.id];
     const isSection = row.role === 'section';
     if (!cell || col.kind === 'encoding' || ((isSection || (row.kind === 'member' && expandedIds.has(row.id))) && col.kind !== 'rowLabel')) continue;
@@ -1147,24 +1148,37 @@ function layoutTableOnce(
       else if (fit.title !== undefined) { noteStatusCut(col, row, fit.text, fit.title); cuts++; }
       continue;
     }
-    if (col.kind !== 'rowLabel' && col.kind !== 'text') continue;
-    const font = cellFont(cell);
-    const indent = cell.kind === 'rowLabel' ? rowIndent(indentStep(cell)) : 0;
-    const badge = isSection && col.kind === 'rowLabel' ? row.badge : undefined;
-    const badgeW = badge === undefined ? 0 : Math.round(measure(badge.text, fonts.chip).width + 2 * CHIP_PAD_X);
-    const affixFont = theme.table?.qualifier === undefined
-      ? { ...inlineFont(row.step, false), weight: theme.type.label.weight, ...(font.style ? { style: font.style } : {}) }
-      : qualifierFont(font, theme);
-    const affixWidth = col.kind === 'rowLabel' && row.unitAffix !== undefined && !(row.kind === 'member' && expandedIds.has(row.id))
-      ? theme.table?.qualifier === undefined ? measure(` ${row.unitAffix}`, affixFont).width : measure(row.unitAffix, affixFont).width + (theme.table.qualifier.gap ?? 4) : 0;
-    const contentW = (isSection ? tableW - (track.x - gridX) : track.w) - 2 * cellPadX;
-    const maxW = contentW - indent - (badgeW === 0 ? 0 : badgeW + BADGE_GAP) - (affixBelow.has(row.id) ? 0 : affixWidth)
-      - (cell.note && col.kind !== 'rowLabel' && col.noteLine !== true ? measure(` ${cell.note}`, fonts.note).width : 0);
-    const key = tableCellKey(row.id, col.id);
-    const fit = cellText(cell, col.kind, isSection, font, maxW, wrappedLines.get(key), cutTitles.get(key), measure, theme.table?.section?.case);
-    plannedCellText.set(key, fit);
-    if (fit.title !== undefined) cuts++;
   }
+  const textColumns = cols.filter(col => col.kind === 'rowLabel' || col.kind === 'text');
+  let cellsFitted = false;
+  const plannedCuts = () => {
+    if (cellsFitted) return cuts;
+    cellsFitted = true;
+    for (const row of rows) for (const col of textColumns) {
+      const cell = row.cells[col.id];
+      const isSection = row.role === 'section';
+      if (!cell || col.kind === 'encoding' || ((isSection || (row.kind === 'member' && expandedIds.has(row.id))) && col.kind !== 'rowLabel')) continue;
+      const track = colX.get(col.id)!;
+      if (col.kind !== 'rowLabel' && col.kind !== 'text') continue;
+      const font = cellFont(cell);
+      const indent = cell.kind === 'rowLabel' ? rowIndent(indentStep(cell)) : 0;
+      const badge = isSection && col.kind === 'rowLabel' ? row.badge : undefined;
+      const badgeW = badge === undefined ? 0 : Math.round(measure(badge.text, fonts.chip).width + 2 * CHIP_PAD_X);
+      const affixFont = theme.table?.qualifier === undefined
+        ? { ...inlineFont(row.step, false), weight: theme.type.label.weight, ...(font.style ? { style: font.style } : {}) }
+        : qualifierFont(font, theme);
+      const affixWidth = col.kind === 'rowLabel' && row.unitAffix !== undefined && !(row.kind === 'member' && expandedIds.has(row.id))
+        ? theme.table?.qualifier === undefined ? measure(` ${row.unitAffix}`, affixFont).width : measure(row.unitAffix, affixFont).width + (theme.table.qualifier.gap ?? 4) : 0;
+      const contentW = (isSection ? tableW - (track.x - gridX) : track.w) - 2 * cellPadX;
+      const maxW = contentW - indent - (badgeW === 0 ? 0 : badgeW + BADGE_GAP) - (affixBelow.has(row.id) ? 0 : affixWidth)
+        - (cell.note && col.kind !== 'rowLabel' && col.noteLine !== true ? measure(` ${cell.note}`, fonts.note).width : 0);
+      const key = tableCellKey(row.id, col.id);
+      const fit = cellText(cell, col.kind, isSection, font, maxW, wrappedLines.get(key), cutTitles.get(key), measure, theme.table?.section?.case);
+      plannedCellText.set(key, fit);
+      if (fit.title !== undefined) cuts++;
+    }
+    return cuts;
+  };
   const cutNotes = cols.flatMap((col) => {
     const cut = statusCuts.get(col.id);
     const entry = ({ shown, full, rows: named }: { shown: string; full: string; rows: string[] }) => `${shown !== '' ? shown : named.join(', ')} = ${full}`;
@@ -1194,11 +1208,10 @@ function layoutTableOnce(
       ...(callerH === undefined ? {} : { ceiling: callerH }) });
     if (grow !== undefined) return layoutTableOnce(authoredData, { ...options, size: { width: size.width, height: grow } }, initialResolved, sizingOnly, formatFits, wantsScene);
   }
-  // The first open-height pass already measured the rows. Move only the frame
+  // An open-height candidate already measured its rows. Move only the frame
   // when its top and width stay fixed; otherwise the normal height retry handles it.
   const targetSize = (options as TargetSizeOptions)[TARGET_SIZE];
-  if (!sizingOnly && targetSize?.fixed.height === false
-    && size.width === targetSize.sizePx.width && size.height === targetSize.sizePx.height) {
+  if (!sizingOnly && targetSize?.fixed.height === false) {
     const height = tableSizing(size, plot, y, totalW, 0).naturalHeight;
     if (height !== size.height) {
       const nextSize = { width: size.width, height };
@@ -1282,6 +1295,7 @@ function layoutTableOnce(
   const plannedWarnings = [...warnings];
   return deferLayout(geometry, () => {
   warnings = [...plannedWarnings];
+  plannedCuts();
   const numericStats = new Map<
     Id,
     { min: number; max: number; maxAbs: number; textReserve: number; signed: boolean }
@@ -2427,7 +2441,7 @@ function layoutTableOnce(
     ...(paintWarningRules.length > 0 ? { paintWarningRules } : {}),
     debug: { occupied: occupied.snapshot(), decisions: [] },
   };
-  }, cuts);
+  }, plannedCuts);
 }
 
 function tableSizing(size: Size, plot: Rect, bottom: number, totalW: number, minimumW: number) {

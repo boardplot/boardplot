@@ -77,16 +77,20 @@ export function tableTextMeasure(raw: TextMeasurer): TextMeasurer {
 
 export const PLAN_ONLY = Symbol('tablePlanOnly');
 const PLAN = Symbol('tableLayoutPlan');
-type Plan = { draw: () => AnyGeometry; warnings: number; cuts: number; rendered?: AnyGeometry };
+type Plan = { draw: () => AnyGeometry; warnings: number; cuts: number | (() => number); rendered?: AnyGeometry };
 type Planned = { [PLAN]?: Plan };
 
-export function deferLayout<G extends AnyGeometry>(geometry: G, draw: () => G, cuts: number): G {
+export function deferLayout<G extends AnyGeometry>(geometry: G, draw: () => G, cuts: number | (() => number)): G {
   (geometry as G & Planned)[PLAN] = { draw, cuts, warnings: geometry.warnings.length };
   return geometry;
 }
 
 export function isPlanned(value: object): boolean { return (value as Planned)[PLAN] !== undefined; }
-export function plannedCutCount(value: AnyGeometry): number | undefined { return (value as Planned)[PLAN]?.cuts; }
+export function plannedCutCount(value: AnyGeometry): number | undefined {
+  const plan = (value as Planned)[PLAN];
+  if (typeof plan?.cuts === 'function') plan.cuts = plan.cuts();
+  return plan?.cuts;
+}
 export function transferLayout<G extends object>(source: object, target: G): G {
   const plan = (source as Planned)[PLAN];
   if (plan) (target as G & Planned)[PLAN] = plan;
