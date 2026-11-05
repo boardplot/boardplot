@@ -64,22 +64,9 @@ interface TableWidthView {
 
 type WidthOptions = TableOptions & { [LABEL_WRAP_FLOOR]?: boolean; [SOFT_LABEL_CAP]?: boolean };
 
-interface PreparedTableTracks {
-  widths: Map<Id, number>;
-  minimumWidths: Map<Id, number>;
-  wouldWrap: ResolvedColumn[];
-  wrapFloors: Map<Id, number>;
-  chipFloor: number;
-  labelFloor: number;
-  wrappedOneLines: Map<Id, number>;
-}
-
-/** One resolved table, theme, measurer and non-frame option/view set; the caller owns invalidation. */
-export type TableWidthPreparation = Map<string, PreparedTableTracks>;
-
 /** One content width rule. Dense padding is a fallback only when normal padding cannot fit. */
-export function tableWidths(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions = {}, view: TableWidthView = {}, preparation: TableWidthPreparation = new Map()): ReturnType<typeof tableWidthsWithHeads> {
-  if (options.columnHeads !== false) return tableWidthsWithHeads(table, theme, measure, options, view, preparation);
+export function tableWidths(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions = {}, view: TableWidthView = {}): ReturnType<typeof tableWidthsWithHeads> {
+  if (options.columnHeads !== false) return tableWidthsWithHeads(table, theme, measure, options, view);
   // No head draws, so no head pays for a track: only the cells size the columns.
   const { columnHeads: _heads, ...withHeads } = options;
   const bare = (columns: readonly ResolvedColumn[]) => columns.map((col): ResolvedColumn => {
@@ -91,10 +78,10 @@ export function tableWidths(table: ResolvedTable, theme: Theme, measure: TextMea
     ...(view.columns === undefined ? {} : { columns: bare(view.columns) }),
     ...(view.allColumns === undefined ? {} : { allColumns: bare(view.allColumns) }),
     ...(view.defaultColumns === undefined ? {} : { defaultColumns: bare(view.defaultColumns) }),
-  }, preparation);
+  });
 }
 
-function tableWidthsWithHeads(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions = {}, view: TableWidthView = {}, preparation: TableWidthPreparation = new Map()) {
+function tableWidthsWithHeads(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions = {}, view: TableWidthView = {}) {
   const { defaultColumns, ...own } = view;
   const shown = own.columns ?? visibleColumns(table);
   if (own.scroll && defaultColumns !== undefined
@@ -104,24 +91,23 @@ function tableWidthsWithHeads(table: ResolvedTable, theme: Theme, measure: TextM
     // The width the labels and their folded-row hints need, not the room a wide frame handed the label: only that keeps rows from wrapping.
     if (track !== undefined && base.labelNeed !== undefined) own.labelKeep = Math.min(track, Math.max(base.labelNeed, base.labelBeforeFill ?? 0));
   }
-  const regular = tableWidthsOnce(table, theme, measure, options, own, preparation);
+  const regular = tableWidthsOnce(table, theme, measure, options, own);
   const count = (view.columns ?? visibleColumns(table)).length;
   const densePad = count >= 25 ? 3 : count >= DENSE_COLUMNS ? 5 : regular.cellPadX;
   if (options.cellPadX !== undefined || densePad >= regular.cellPadX || Math.max(regular.minimumW, regular.totalW) <= (view.available ?? Infinity)) return regular;
-  const dense = tableWidthsOnce(table, theme, measure, { ...options, cellPadX: densePad }, own, preparation);
+  const dense = tableWidthsOnce(table, theme, measure, { ...options, cellPadX: densePad }, own);
   const regularOverflow = regular.warnings.find(warning => warning.code === 'table-overflow');
   // The wider-size repair must also fit after normal padding returns.
   if (regularOverflow) dense.warnings = dense.warnings.map(warning => warning.code === 'table-overflow' ? regularOverflow : warning);
   return dense;
 }
 
-/** Content, authored widths, fitting and the width floor are resolved together. */
-function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions, view: TableWidthView, preparation: TableWidthPreparation) {
+/** Measurements do not depend on available space. Rungs solve copies of these numeric tracks. */
+function measureTableTracks(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions, view: TableWidthView) {
   const cols = view.columns ?? visibleColumns(table);
   const rows = view.rows ?? visibleRows(table);
   const fullRows = view.fullRows ?? table.rows;
   const widthRows = view.widthRows ?? table.rows;
-  const available = view.available ?? Infinity;
   const spacerBefore = new Map<Id, number>();
   for (const group of table.columnGroups) {
     if (group.spacer === undefined || group.spacer <= 0) continue;
@@ -142,7 +128,6 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
     } };
   const headingFaces = (faces: TableFonts) => groupHeadingFaces(view.trailingTracking
     ? { ...faces.group, letterSpacing: Math.round((faces.group.letterSpacing ?? 0) * 1000) / 1000 } : faces.group);
-  const warnings: LintWarning[] = [];
   const ladder = levelLadder(theme, options.density ?? 'regular', options.target, textScaleOf(options));
   const regularFonts = tableFonts(theme, ladder);
   const rowById = new Map([...widthRows, ...rows].map(row => [row.id, row]));
@@ -157,7 +142,8 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
   const operatorSlot = operatorWidth(rows, theme);
   const rowIndent = (level: number) => (isTree ? indents.base + level * indents.step : 0) + operatorSlot;
   const inlineFont = (level: number, signed: boolean) => ladderInlineFont(theme, ladder, level, signed);
-  function cellFont(cell: ResolvedCell): FontSpec {
+  const cellFonts = new Map<ResolvedCell, FontSpec>();
+  function makeCellFont(cell: ResolvedCell): FontSpec {
     const row = rowById.get(cell.rowId);
     const kind = row?.kind;
     const totalFace = kind === undefined || (kind !== 'subtotal' && kind !== 'result' && kind !== 'driver' &&
@@ -165,6 +151,11 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
     if (cell.role === 'total' && cell.kind !== 'rowLabel' && totalFace) return regularFonts.totalValue;
     const font = kindFont(ladderRowFont(theme, ladder, regularFonts, cell.role, cellStep(cell), row?.hasChildren === true, hasChanges.has(cell.rowId)), kind, cell.kind === 'rowLabel', theme);
     return cell.state === 'value' ? strongColumnFont(font, colById.get(cell.colId), cell, kind, theme) : font;
+  }
+  function cellFont(cell: ResolvedCell): FontSpec {
+    let font = cellFonts.get(cell);
+    if (font === undefined) cellFonts.set(cell, font = makeCellFont(cell));
+    return font;
   }
   function affixRoom(row: ResolvedRow, font: FontSpec): number {
     if (row.unitAffix === undefined) return 0;
@@ -184,13 +175,14 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
     const text = fieldHeadText(col.label, theme) + columnHeaderAffix(col);
     return view.headGlue === false ? text : text.replace(/ (\S{1,2})$/u, '\u00a0$1');
   };
+  const bodyWidths = measuredBodyWidths(table, theme, measure, options, view, widthRows);
   /** The tracks every column takes at one set of head faces, and the cuts they report. */
   function trackWidths(faces: TableFonts) {
     const widths = new Map<Id, number>();
     const minimumWidths = new Map<Id, number>();
     const wrappedOneLines = new Map<Id, number>();
     const context: WidthContext = {
-      theme, measure, fonts: faces, cellFont, inlineFont, changeFont: (level) => changeLineFont(theme, ladder, level), rowIndent, inlineIndent: INLINE_LABEL_INDENT, padX: cellPadX,
+      theme, measure, bodyWidths, fonts: faces, cellFont, inlineFont, changeFont: (level) => changeLineFont(theme, ladder, level), rowIndent, inlineIndent: INLINE_LABEL_INDENT, padX: cellPadX,
       headerText: columnHeaderText,
       headerReserve: col => view.sortable?.has(col.id) ? SORT_CHEVRON_RESERVE : 0,
       headerTrailingTracking: view.trailingTracking,
@@ -205,14 +197,6 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
       hint: (row: ResolvedRow) => collapsedHintWidth(row, table.levelNouns, childCount.get(row.id) ?? 0, measure, faces.hint),
       ...(view.headLines === undefined ? {} : { headLines: view.headLines }),
     };
-    // Dense heads change only their tracking; automatic dense padding has its own measurements.
-    const key = `${cellPadX}:${faces.header.letterSpacing}:${view.labelKeep ?? ''}`;
-    const measured = preparation.get(key);
-    const fittedCopy = (tracks: PreparedTableTracks) => ({ ...tracks, context,
-      widths: new Map(tracks.widths), minimumWidths: new Map(tracks.minimumWidths),
-      wrapFloors: new Map(tracks.wrapFloors), wrappedOneLines: new Map(tracks.wrappedOneLines),
-      wouldWrap: [...tracks.wouldWrap] });
-    if (measured !== undefined) return fittedCopy(measured);
     for (const col of cols) {
       const heatOnlyWidth = Math.max(HEAT_ONLY_CELL_W, Math.ceil((view.scroll ? headerContentWidth(col, context)
         : measure(columnHeaderText(col), faces.header).width) + 2 * cellPadX));
@@ -298,9 +282,7 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
       wrapFloors.set(col.id, floor);
       return true;
     });
-    const tracks = { widths, minimumWidths, wouldWrap, wrapFloors, chipFloor, labelFloor, wrappedOneLines };
-    preparation.set(key, tracks);
-    return fittedCopy(tracks);
+    return { widths, minimumWidths, context, wouldWrap, wrapFloors, chipFloor, labelFloor, wrappedOneLines };
   }
   /**
    * The narrowest label track at which no row label, inline label or head word is cut and no unit runs past the
@@ -334,6 +316,14 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
   }
   /** What a set of tracks and the spacers between them take across the plot. */
   const sumOf = (map: Map<Id, number>): number => [...map.values()].reduce((a, b) => a + b, spacerTotal);
+  // Only the visible rows contribute to this uncut label need. It is independent of available width and head face.
+  let oneLineLabelWidth: number | undefined;
+  const uncutLabelWidth = (): number => oneLineLabelWidth ??= Math.ceil(Math.max(0, maxOf(rows.map((row) => {
+    const cell = row.cells[labelColumn!.id];
+    if (row.role === 'section' || !cell?.displayed) return 0;
+    const font = cellFont(cell);
+    return measure(cell.displayed, font).width + affixRoom(row, font) + rowIndent(indentStep(cell)) + 2 * cellPadX;
+  }))));
   /**
    * The head faces. A table of twenty columns or more shrank its
    * heads by column count, on a canvas wide enough for the regular face too.
@@ -345,6 +335,64 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
    */
   const regular = trackWidths(regularFonts);
   const dense = cols.length >= DENSE_COLUMNS ? trackWidths(tableFonts(theme, ladder, cols.length)) : undefined;
+  return { cols, rows, widthRows, spacerBefore, spacerTotal, figures, wideTable, cellPadX, labelColumn, labelLead, groupCell, headingFaces, regularFonts, cellStep, indentStep, childCount, indents, operatorSlot, rowIndent, cellFont, affixRoom, columnHeaderText, chipSpan, sumOf, hasChanges, uncutLabelWidth, regular, dense };
+}
+
+const measuredTables = new WeakMap<ResolvedTable, Map<string, ReturnType<typeof measureTableTracks>>>();
+const measureIds = new WeakMap<object, number>();
+let nextMeasureId = 0;
+const measureId = (fn: object | undefined): number | undefined => {
+  if (fn === undefined) return undefined;
+  let id = measureIds.get(fn);
+  if (id === undefined) measureIds.set(fn, id = nextMeasureId++);
+  return id;
+};
+
+const measuredBodies = new WeakMap<ResolvedTable, Map<string, Map<string, Map<number, number>>>>();
+
+/** Cell text is independent of the fitting rung's padding, head face and label indent. */
+function measuredBodyWidths(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions, view: TableWidthView, rows: readonly ResolvedRow[]) {
+  const key = JSON.stringify([theme.type, theme.table, measureId(measure), measureId(view.slack),
+    options.density, options.target, textScaleOf(options), options.inlineVisibility, rows.map(row => row.id)]);
+  let variants = measuredBodies.get(table);
+  if (!variants) measuredBodies.set(table, variants = new Map());
+  let widths = variants.get(key);
+  if (!widths) {
+    if (variants.size >= 64) variants.delete(variants.keys().next().value!);
+    variants.set(key, widths = new Map());
+  }
+  return widths;
+}
+
+/** Resolved tables are private immutable models; all frame-dependent typography enters by value. */
+function measuredTable(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions, view: TableWidthView) {
+  const ids = (entries: readonly { id: Id }[] | undefined) => entries?.map(entry => entry.id);
+  const key = JSON.stringify([
+    theme.type, theme.table, measureId(measure), measureId(view.slack),
+    options.density, options.target, textScaleOf(options), options.cellPadX, options.labelIndent,
+    options.outlineMarks, options.figures, options.inlineVisibility, options.rowLabelLines, options[LABEL_WRAP_FLOOR],
+    ids(view.columns), ids(view.rows), ids(view.widthRows), ids(view.fullRows), ids(view.allColumns),
+    view.spacerTotal, view.scroll, view.headLines, view.headGlue, view.withMarks, view.trailingTracking,
+    view.sortable && [...view.sortable], view.groupStart && [...view.groupStart], view.groupEnd && [...view.groupEnd], view.leadWidth, view.labelKeep,
+  ]);
+  let variants = measuredTables.get(table);
+  if (!variants) measuredTables.set(table, variants = new Map());
+  let measured = variants.get(key);
+  if (!measured) {
+    // shortcut: retain 64 typography/spacing variants per resolved table; another variant replaces the oldest.
+    if (variants.size >= 64) variants.delete(variants.keys().next().value!);
+    variants.set(key, measured = measureTableTracks(table, theme, measure, options, view));
+  }
+  // Solving may shrink or grow tracks. The measured inputs never change.
+  return { ...measured, regular: { ...measured.regular, widths: new Map(measured.regular.widths) },
+    dense: measured.dense && { ...measured.dense, widths: new Map(measured.dense.widths) } };
+}
+
+/** Solve measured content, authored widths and floors against the available frame. */
+function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions = {}, view: TableWidthView = {}) {
+  const { cols, widthRows, spacerBefore, spacerTotal, figures, wideTable, cellPadX, labelColumn, labelLead, groupCell, headingFaces, regularFonts, cellStep, indentStep, childCount, indents, operatorSlot, rowIndent, cellFont, columnHeaderText, chipSpan, sumOf, hasChanges, uncutLabelWidth, regular, dense } = measuredTable(table, theme, measure, options, view);
+  const available = view.available ?? Infinity;
+  const warnings: LintWarning[] = [];
   // A lower bound can rule wrapping out without another layout. These floors
   // include the longest word, header and padding. Keep unknown spans and dense
   // heads undecided; render retains the existing advice in those cases.
@@ -606,12 +654,7 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
   if (labelColumn !== undefined && labelColumn.width === undefined) {
     const labelId = labelColumn.id;
     const need = view.scroll ? intrinsicColumnWidth({ ...labelColumn, maxWidth: undefined, maxTextWidth: undefined }, widthRows,
-      { ...chosen.context, hint: undefined }) + labelLead : Math.ceil(Math.max(0, maxOf(rows.map((row) => {
-      const cell = row.cells[labelId];
-      if (row.role === 'section' || !cell?.displayed) return 0;
-      const font = cellFont(cell);
-      return measure(cell.displayed, font).width + affixRoom(row, font) + rowIndent(indentStep(cell)) + 2 * cellPadX;
-    }))));
+      { ...chosen.context, hint: undefined }) + labelLead : uncutLabelWidth();
     const cap = labelColumn.maxWidth !== undefined && options[SOFT_LABEL_CAP] !== true ? labelColumn.maxWidth : Infinity;
     labelNeed = Math.min(need, cap);
     let short = labelNeed - widths.get(labelId)!;

@@ -132,6 +132,8 @@ export function canDraw<D, O extends object>(request: ChartRequest<D, O & Reques
 
 export type { CanDraw } from './core/request';
 export { layoutResolvedRequest, measureResolvedRequest } from './core/request';
+/** @internal A host sizes a table with it, with no scene and no hidden render. */
+export { planResolvedRequest } from './core/request';
 export { isRefused } from './core/schema/refusals';
 export { InputError, specFromRows, type RowsColumns, type RowsReading, type SpecFromRowsInput } from './rows';
 export type { ChartRequest, ResolvedChartRequest, RequestInputOptions as RequestOptions, RequestInputOptions, RequestContext, ChartMeasurement } from './core/request';

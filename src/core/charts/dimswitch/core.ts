@@ -1,8 +1,9 @@
+import { PLAN_ONLY } from '../../layoutPlan';
 import type { ChartCore } from '../../registry';
 import type { Geometry } from '../../types/scene';
 import { CARD_MIN_WIDTH, chartSizing, heightOmitted, isWidthProbe, VERIFY_ADVICE, WIDTH_PROBE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
-import { cardHeightFloor, classFloor, layoutKey, layoutTable, memoLayout, REGULAR_SPACING, type TableMarks } from '../table/layout';
+import { classFloor, layoutKey, layoutTable, memoLayout, REGULAR_SPACING, type TableMarks } from '../table/layout';
 import { resolveTable } from '../table/resolve';
 import { compileDimSwitch, dimSwitchTableWarnings, dimswitchRowId, FOLDED, hostPeriods, PARTIAL_NOTE_OFF, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning, type DimSwitchForm } from './compile';
 import type { DimSwitchData, DimSwitchOptions, DimSwitchDerived } from './types';
@@ -19,7 +20,7 @@ export function resolveDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
 type PreparedForm = { compiled: ReturnType<typeof compileDimSwitch>; resolved: ReturnType<typeof resolveTable> };
 
 /** The options a probe sets for itself. The compiled form does not depend on them, so a probe at another size reuses it. */
-const PER_PROBE = [TARGET_SIZE, WIDTH_PROBE, REGULAR_SPACING] as const;
+const PER_PROBE = [TARGET_SIZE, WIDTH_PROBE, REGULAR_SPACING, PLAN_ONLY] as const;
 const keptForms = new WeakMap<object, Map<string, PreparedForm>>();
 
 /**
@@ -54,7 +55,8 @@ function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwi
   const compiled={...prepared.compiled,options:{...prepared.compiled.options,size:options.size}};
   const resolved=prepared.resolved;
   // The compile is shared across spacing passes and carries the first pass's options: the spacing is this request's.
-  const geometry=layoutTable(compiled.data,{...options,...compiled.options,[REGULAR_SPACING]:(options as {[REGULAR_SPACING]?: boolean})[REGULAR_SPACING]} as typeof compiled.options,resolved);
+  // Period selection reads compact-floor slack, so it retains that floor even during ordinary rendering.
+  const geometry=layoutTable(compiled.data,{...options,...compiled.options,[PLAN_ONLY]:true,[REGULAR_SPACING]:(options as {[REGULAR_SPACING]?: boolean})[REGULAR_SPACING]} as typeof compiled.options,resolved,true);
   // The frame can reach its automatic height without a second compile.
   if ((options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false
     && typeof compiled.options.size === 'object' && compiled.options.size.height !== undefined
@@ -239,7 +241,7 @@ function foldToFit(data: DimSwitchData, options: DimSwitchOptions, formsOf: (fol
 /** The folds of a drawn table. A sizing probe has no drawn rows to count, and this list holds there too. */
 const foldedRows=(geometry: Form) => geometry.derived.compiled.options.expansion?.collapsed?.length ?? 0;
 
-/** The registered layout: the forms above, then the height floor at card widths (320 >= 400 >= 480). */
+/** The registered layout: select a form and use its content height at the requested width. */
 function layoutDimSwitchCard(data: DimSwitchData, options: DimSwitchOptions = {}): Geometry<TableMarks, DimSwitchDerived> {
   return memoLayout(data, options, () => {
     const folded=new Map<string,Map<string,PreparedForm>>();
@@ -254,7 +256,7 @@ function layoutDimSwitchCard(data: DimSwitchData, options: DimSwitchOptions = {}
       if (misses) return noteOff;
       return !noteOff.refused && !missesFixedHeight(step,noteOff) && foldedRows(noteOff)<foldedRows(drawn) ? noteOff : drawn;
     };
-    return cardHeightFloor(layoutDimSwitchCard,data,options,classFloor(layout,data,options,layout(data,options)));
+    return classFloor(layout,data,options,layout(data,options));
   });
 }
 

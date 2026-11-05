@@ -1,8 +1,8 @@
-import { layoutKey, ownTableRequest } from './tableOwnership';
 import { fractionLineWarnings, prepareFractionAnnotations, percentScaleWarnings } from './normalize/fraction';
 import { readFormatExamples } from './formatSpec';
 import { colorVariableWarnings } from './colorVariables';
 import { drawnRequest } from './drawnRequest';
+import { PLAN_ONLY, withPlanInputs, copyPlannedValue, repeatedResult } from './layoutPlan';
 import { shownNoteKinds } from './notes';
 import { canonicalChartType, getChart } from './registry';
 import { chartSizing, compactFallbackApplies, declaredSizing, fitsSize, FIXED_SIZE_PROBE, FULL_LAYOUT_PROBE, SIZE_TOLERANCE, LAYOUT_CALL, type LayoutCall, plotFloorHeight, plotRepairHeight, resolveSizing, sizeRefusal, VERIFY_ADVICE, verifiedSizeRepair, WIDTH_PROBE } from './sizing';
@@ -289,20 +289,33 @@ function prepared(def: { prepare?: (data: any, options?: any) => any }, data: un
 
 /** The same registered layout used by components, measurement and artifacts. */
 export function layoutResolvedRequest(request: ResolvedChartRequest): LayoutResult {
-  const layout = (): LayoutResult => {
-    const first = layoutOnce(request);
-    const fitted = widthsGiveWay(request, first, layoutOnce);
-    if (fitted) return withClipWarnings(fitted[1], request.fontMetrics);
-    const [asked, result] = steppedType(request, first) ?? [request, first];
-    const plainRequest = withoutAskedNotes(asked, result);
-    const plain = plainRequest && layoutOnce(plainRequest);
-    const drawn = plain && !plain.refused ? askedNotesOff(plain, result) : result;
-    const fittedLate = widthsGiveWay(asked, drawn, layoutOnce);
-    return withClipWarnings(fittedLate ? fittedLate[1] : drawn, request.fontMetrics);
-  };
-  if (request.type !== 'table' || request.data === null || typeof request.data !== 'object') return layout();
-  const { data, theme, target, size, fixed, inputWarnings } = request;
-  return ownTableRequest(data, layoutKey({ data, theme, target, size, fixed, inputWarnings }, request.options), layout);
+  if ((request.type !== 'table' && request.type !== 'dimswitch') || request.data === null || typeof request.data !== 'object') return layoutRequest(request);
+  const { type, theme, target, size, fixed, inputWarnings } = request;
+  return repeatedResult(request.data, request.options, { type, theme, target, size, fixed, inputWarnings }, () => layoutRequest(request));
+}
+
+/** @internal Host sizing path. Tables keep their fit diagnostics without drawing a scene. */
+export function planResolvedRequest(request: ResolvedChartRequest): Pick<LayoutResult, 'type' | 'size' | 'sizing' | 'warnings'> & { refused?: true; plot?: Geometry['plot']; scene: [] } {
+  const result = request.type === 'table' || request.type === 'dimswitch'
+    ? withPlanInputs(() => layoutRequest({ ...request, options: { ...request.options, [PLAN_ONLY]: true } as RequestOptions }))
+    : layoutResolvedRequest(request);
+  // A host owns its dimensions and diagnostics. Internal cell models and draw closures stay inside the engine.
+  return copyPlannedValue({ type: result.type, size: result.size, sizing: result.sizing, warnings: result.warnings,
+    ...(result.refused ? { refused: true as const } : { plot: result.plot }), scene: [] });
+}
+
+function layoutRequest(request: ResolvedChartRequest): LayoutResult {
+  const finish = (result: LayoutResult): LayoutResult => (request.options as { [PLAN_ONLY]?: boolean })[PLAN_ONLY]
+    ? result : withClipWarnings(result, request.fontMetrics);
+  const first = layoutOnce(request);
+  const fitted = widthsGiveWay(request, first, layoutOnce);
+  if (fitted) return finish(fitted[1]);
+  const [asked, result] = steppedType(request, first) ?? [request, first];
+  const plainRequest = withoutAskedNotes(asked, result);
+  const plain = plainRequest && layoutOnce(plainRequest);
+  const drawn = plain && !plain.refused ? askedNotesOff(plain, result) : result;
+  const fittedLate = widthsGiveWay(asked, drawn, layoutOnce);
+  return finish(fittedLate ? fittedLate[1] : drawn);
 }
 
 interface WidthEntry { id?: string; type?: string; options?: { columnOverrides?: Record<string, ColumnOverride> }; data?: WidthLevel }
@@ -432,9 +445,9 @@ function askedNotesOff(plain: LayoutResult, refused: LayoutResult): LayoutResult
 
 /**
  * An open height grows with the width, so a size refusal at an open height advises the width alone.
- * The width the registry names can stand above the narrowest one that draws (a narrow diagram card
- * reads under its static floor), so the advice is the narrowest whole pixel that draws in full, the
- * same width measure names. The height is the one drawn there. A pinned height keeps the pair.
+ * Tables keep a verified repair width without searching for the smallest possible width.
+ * Measurement still finds the exact minimum. Other chart types keep their existing whole-pixel
+ * advice search. The height is the one drawn there. A pinned height keeps the pair.
  */
 function drawnAdvice(request: ResolvedChartRequest, result: LayoutResult, layoutAt: LayoutCall<any, any, any>): LayoutResult {
   const finding = result.refused ? result.warnings[0] : undefined;
@@ -445,15 +458,16 @@ function drawnAdvice(request: ResolvedChartRequest, result: LayoutResult, layout
   const def = getChart(request.type);
   const staticMinWidth = def === undefined ? 0 : declaredSizing(def, request.options).minWidth;
   const floorOptions = request.type === 'table' || request.type === 'dimswitch' ? {} : { belowMinimum: 'refuse' as const };
+  // Ordinary table rendering needs a safe repair width. measure() retains its exact minimum search.
+  const safeWidth = request.type === 'table' || request.type === 'dimswitch';
   const fullAt = (width: number): Geometry | undefined => {
-    const probe = layoutAt.probe({ ...request.options, ...floorOptions, size: { width }, [WIDTH_PROBE]: request.type });
+    const probe = layoutAt.probe({ ...request.options, ...floorOptions, size: { width }, [WIDTH_PROBE]: request.type, ...(safeWidth ? { [PLAN_ONLY]: true } : {}) });
     return !isRefused(probe) && (probe as Geometry).mode !== 'compact' ? probe as Geometry : undefined;
   };
-  // One probe one pixel under the registry width ends the search when nothing narrower draws; a layout
-  // is made for each step of the search only when it does.
-  let drawn = need.width <= staticMinWidth ? undefined : fullAt(need.width - 1);
-  let [low, high] = [Math.max(Math.ceil(result.size.width), staticMinWidth) - 1, drawn ? need.width - 1 : need.width];
-  while (drawn && high - low > 1) {
+  let drawn = safeWidth ? fullAt(need.width) : need.width <= staticMinWidth ? undefined : fullAt(need.width - 1);
+  if (safeWidth && !drawn) return result;
+  let [low, high] = [Math.max(Math.ceil(result.size.width), staticMinWidth) - 1, safeWidth ? need.width : drawn ? need.width - 1 : need.width];
+  while (!safeWidth && drawn && high - low > 1) {
     const mid = Math.floor((low + high) / 2);
     // Past 2^53 the next whole number is no longer a number: the middle stops moving, so the search has its answer.
     if (mid <= low || mid >= high) break;
@@ -466,8 +480,12 @@ function drawnAdvice(request: ResolvedChartRequest, result: LayoutResult, layout
   const advice = sizeRefusal(result.type, result.title, result.size, { ...result.sizing, minWidth: width, minHeight: height }).warnings[0]!;
   const warning = {
     ...advice,
-    message: `${result.title} needs at least ${width}px of width; received ${Math.round(result.size.width)}px`,
-    suggest: `Render it at ${width}px wide or wider; the height follows the width.${result.sizing.hint ? ` ${result.sizing.hint}` : ''}`,
+    message: safeWidth
+      ? `${result.title} does not fit at ${Math.round(result.size.width)}px wide. A verified width is ${width}px.`
+      : `${result.title} needs at least ${width}px of width; received ${Math.round(result.size.width)}px`,
+    suggest: safeWidth
+      ? `Render it at ${width}px wide. The height follows the width.${result.sizing.hint ? ` ${result.sizing.hint}` : ''}`
+      : `Render it at ${width}px wide or wider; the height follows the width.${result.sizing.hint ? ` ${result.sizing.hint}` : ''}`,
     fix: [{ op: 'replace' as const, path: '/options/size', value: { width } }],
   };
   return { ...result, warnings: [warning, ...result.warnings.slice(1)] };
@@ -542,7 +560,7 @@ function preparedLayout(request: ResolvedChartRequest, verifyAdvice = false): La
   const at = ((frame: RequestOptions) => {
     if (!run) return disclose(def.layout(request.data, { ...frame, theme: options.theme, [REMOVED_NAMES]: options[REMOVED_NAMES] }));
     const current: Record<PropertyKey, unknown> = { ...options, [LAYOUT_CALL]: run };
-    for (const key of ['size', 'mode', 'belowMinimum', FULL_LAYOUT_PROBE, WIDTH_PROBE, FIXED_SIZE_PROBE] as const) {
+    for (const key of ['size', 'mode', 'belowMinimum', FULL_LAYOUT_PROBE, WIDTH_PROBE, FIXED_SIZE_PROBE, PLAN_ONLY] as const) {
       if (Object.hasOwn(frame, key)) current[key] = (frame as RequestOptions & Record<PropertyKey, unknown>)[key];
       else delete current[key];
     }

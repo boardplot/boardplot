@@ -1,5 +1,5 @@
 /** Build a per-chart TextMeasurer from generated font tables. */
-import { cachedMeasurer, capHeightOfFace, defaultMeasurer, estimateTextWidthForFace, type TextMeasurer } from '../text';
+import { cachedMeasurer, markCachedTextMeasurer, capHeightOfFace, defaultMeasurer, estimateTextWidthForFace, type TextMeasurer } from '../text';
 import {
   DEFAULT_FAMILY,
   buildCodePointIndex,
@@ -66,7 +66,7 @@ function withBundledFallback(own: TextMeasurer, families: readonly string[]): Te
   };
   const measure: TextMeasurer = (text, font) => owner(font.family)(text, font);
   measure.capHeight = (font) => owner(font.family).capHeight?.(font);
-  return measure;
+  return markCachedTextMeasurer(measure);
 }
 
 function measurerOverTables(tables: FontMetricTables): TextMeasurer {
