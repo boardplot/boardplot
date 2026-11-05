@@ -1,5 +1,5 @@
 import { tableWidths } from './widths';
-import { copyFrame, footerPlans } from '../../footer';
+import { PLAN_ONLY, copyPlannedValue, deferLayout, isPlanned, materializeLayout, plannedCutCount } from '../../layoutPlan';
 import { liftOrFallback, missesSize, tightSpacingWarning } from '../tableFit';
 import { chartTheme } from '../chartEnv';
 import { structureCount } from '../../structureCounts';
@@ -36,7 +36,7 @@ import {
 } from '../../theme';
 import type { Theme } from '../../types/theme';
 import type { Id } from '../../types/cell';
-import type { FrameGeometry, Geometry, SceneNode, LintWarning, Paint, PaintWarningRule } from '../../types/scene';
+import type { Geometry, SceneNode, LintWarning, Paint, PaintWarningRule } from '../../types/scene';
 import type { ColumnKind, ResolvedCell, ResolvedColumn, ResolvedRow, RowRole, TableData, TableDerived, TableOptions } from '../../types/table';
 import { arrowKey, emitArrow, emitHeat, emitInCellBar, emitSparkline, heatKey, heatRanges, sparklineDomains, sparklineSourceValues, tableSparklineDomain } from './encodings';
 import { tableCellKey, tableCellNodeId } from './cellKey';
@@ -63,7 +63,6 @@ import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { textScaleOf } from '../../typeFloors';
 import { currentSmallValues } from '../../formatPrecision';
 import { maxOf, minOf, pushAll } from '../../arrays';
-import { emptyIdRecord } from '../../idRecords';
 
 export interface TableMarks {
   table: Rect;
@@ -131,14 +130,14 @@ const SUB_LINES = Symbol('tableSubLines');
 /** Regular spacing only: no tight rung. A caller that has other regular forms to try first (dimswitch) or only reads the floor (classFloor) sets it. */
 export const REGULAR_SPACING = Symbol('tableRegularSpacing');
 /** The compact retry carries the canvas height its caller gave the full table. */
-type LayoutOptions = TableOptions & { [SIZING_ONLY]?: boolean; [COMPACT_RETRY]?: number; [HEAD_LINES]?: number; [TIGHT_SPACING]?: { columns: boolean; rows: boolean }; [HEAD_AIR_MIN]?: boolean; [SUB_LINES]?: number; [REGULAR_SPACING]?: boolean; [HEAD_LOOSE]?: boolean; [ENGINE_NOTES]?: string[]; [SOFT_LABEL_CAP]?: boolean; [LABEL_WRAP_FLOOR]?: boolean };
+type LayoutOptions = TableOptions & { [PLAN_ONLY]?: boolean; [SIZING_ONLY]?: boolean; [COMPACT_RETRY]?: number; [HEAD_LINES]?: number; [TIGHT_SPACING]?: { columns: boolean; rows: boolean }; [HEAD_AIR_MIN]?: boolean; [SUB_LINES]?: number; [REGULAR_SPACING]?: boolean; [HEAD_LOOSE]?: boolean; [ENGINE_NOTES]?: string[]; [SOFT_LABEL_CAP]?: boolean; [LABEL_WRAP_FLOOR]?: boolean };
 type FormatFits = Map<string, ReturnType<typeof fitTableFormats>>;
 /** The frame gutter of a card-class table: 12 px a side at 480 px and narrower. */
 const CARD_GUTTER = 12;
 
 /** The cell texts a layout cut (each keeps its full text as a title). */
 function cutCount(geometry: Geometry<TableMarks, TableDerived>): number {
-  return geometry.scene.filter((node) => node.t === 'text' && node.id.startsWith('cell:') && node.title !== undefined).length;
+  return plannedCutCount(geometry) ?? geometry.scene.filter((node) => node.t === 'text' && node.id.startsWith('cell:') && node.title !== undefined).length;
 }
 
 /**
@@ -156,12 +155,13 @@ export function layoutTable(authoredData: TableData, options: TableOptions = {},
   // a cut or a compact step the rounded text does not take, it prints its bound ("<0.1"), also where the bound costs
   // one too: the automatic number rule never prints a nonzero figure as a bare "0.0". Only where the bound would
   // refuse a size the rounded text draws at does the rounded text draw.
-  return liftOrFallback((mode) => {
+  const geometry = liftOrFallback((mode) => {
     if (mode === 'full') return layoutTableLadder(authoredData, options, resolved);
     const step = { ...options, [ZERO_LIFT]: mode } as TableOptions & ZeroLiftOptions;
     return layoutTableLadder(authoredData, step, resolvedForSize(authoredData, step));
   }, (lifted, plain) => costsWidth(lifted, plain, options), resolved.lifted,
   (bound, plain) => missesFrame(bound, options) && !missesFrame(plain, options));
+  return (options as LayoutOptions)[PLAN_ONLY] || (options as LayoutOptions)[SIZING_ONLY] ? geometry : materializeLayout(geometry);
 }
 
 const resolvedTables = new WeakMap<object, Map<string, ReturnType<typeof resolveTable>>>();
@@ -174,7 +174,7 @@ const resolvedTables = new WeakMap<object, Map<string, ReturnType<typeof resolve
  */
 function resolvedForSize(data: TableData, options: TableOptions): ReturnType<typeof resolveTable> {
   if (typeof options.theme === 'string') return resolveTable(data, options);
-  const { size: _size, [TARGET_SIZE]: _target, [WIDTH_PROBE]: _probe, ...rest } = options as TableOptions & TargetSizeOptions & { [WIDTH_PROBE]?: unknown };
+  const { size: _size, [TARGET_SIZE]: _target, [WIDTH_PROBE]: _probe, [PLAN_ONLY]: _plan, ...rest } = options as LayoutOptions & TargetSizeOptions & { [WIDTH_PROBE]?: unknown };
   const key = layoutKey(data, rest);
   let byKey = resolvedTables.get(data);
   if (!byKey || byKey.size >= 32) resolvedTables.set(data, byKey = new Map());
@@ -193,7 +193,7 @@ const widthPlans = new WeakMap<object, Map<string, ReturnType<typeof tableWidths
  */
 function sharedWidthPlan(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: LayoutOptions, view: Parameters<typeof tableWidths>[4] & object): ReturnType<typeof tableWidths> {
   if (typeof options.theme === 'string') return tableWidths(table, theme, measure, options, view);
-  const { size, [TARGET_SIZE]: target, [WIDTH_PROBE]: _probe, [COMPACT_RETRY]: _retry, ...rest } = options as LayoutOptions & TargetSizeOptions & { [WIDTH_PROBE]?: unknown };
+  const { size, [TARGET_SIZE]: target, [WIDTH_PROBE]: _probe, [COMPACT_RETRY]: _retry, [PLAN_ONLY]: _plan, ...rest } = options as LayoutOptions & TargetSizeOptions & { [WIDTH_PROBE]?: unknown };
   const heightOpen = target?.fixed.height === false || (typeof size === 'object' && size.height === undefined);
   const key = layoutKey({ rows: view.rows!.map((row) => row.id), widthRows: view.widthRows!.map((row) => row.id), columns: view.columns!.map((col) => col.id),
     available: view.available, spacerTotal: view.spacerTotal, headLines: view.headLines, subLines: view.subLines, headGlue: view.headGlue,
@@ -363,8 +363,11 @@ function widthRepairHeight(data: TableData, options: TableOptions, geometry: Geo
 
 /** The registered table layout: the ladder above, then the height floor at card widths. */
 export function layoutTableCard(data: TableData, options: TableOptions = {}): Geometry<TableMarks, TableDerived> {
-  return memoLayout(data, options, () => widthRepairHeight(data, options,
-    cardHeightFloor(layoutTableCard, data, options, classFloor(layoutTable, data, options, layoutTable(data, options)))));
+  return memoLayout(data, options, () => {
+    const planned = { ...options, [PLAN_ONLY]: true };
+    return widthRepairHeight(data, planned, cardHeightFloor(layoutTableCard, data, planned,
+      classFloor(layoutTable, data, planned, layoutTable(data, planned))));
+  });
 }
 
 const layouts = new WeakMap<object, Map<string, unknown>>();
@@ -383,12 +386,16 @@ let nextFunctionId = 0;
  * shortcut: 32 results per data object, then the map starts again.
  */
 export function memoLayout<G>(data: object, options: object, layout: () => G): G {
-  if (typeof (options as { theme?: unknown }).theme === 'string') return layout();
-  const key = layoutKey(data, options);
+  const finish = (value: G): G => isPlanned(value as object)
+    ? ((options as LayoutOptions)[PLAN_ONLY] ? { ...value, warnings: [...(value as Geometry).warnings] } : materializeLayout(value as Geometry)) as G
+    : copyPlannedValue(value);
+  if (typeof (options as { theme?: unknown }).theme === 'string') return finish(layout());
+  const { [PLAN_ONLY]: _plan, ...answerOptions } = options as LayoutOptions;
+  const key = layoutKey(data, answerOptions);
   let byKey = layouts.get(data);
   if (!byKey || byKey.size >= 32) layouts.set(data, byKey = new Map());
   if (!byKey.has(key)) byKey.set(key, layout());
-  return deepCopy(byKey.get(key)) as G;
+  return finish(byKey.get(key) as G);
 }
 
 /**
@@ -406,37 +413,6 @@ export function layoutKey(data: object, options: object): string {
   });
 }
 
-/** Copy shared fonts and cells once per result. A copy of every array, Map, Set and plain object; a function and any other value is shared (the compiled options hold the measurer). */
-function deepCopy<T>(value: T, copies = new Map<object, unknown>()): T {
-  if (value === null || typeof value !== 'object') return value;
-  const known = copies.get(value);
-  if (known !== undefined) return known as T;
-  if (Array.isArray(value)) {
-    const copy: unknown[] = [];
-    copies.set(value, copy);
-    for (const entry of value) copy.push(deepCopy(entry, copies));
-    return copy as T;
-  }
-  if (value instanceof Map) {
-    const copy = new Map();
-    copies.set(value, copy);
-    for (const [key, entry] of value) copy.set(key, deepCopy(entry, copies));
-    return copy as T;
-  }
-  if (value instanceof Set) {
-    const copy = new Set();
-    copies.set(value, copy);
-    for (const entry of value) copy.add(deepCopy(entry, copies));
-    return copy as T;
-  }
-  if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) return value;
-  // A null-prototype record (cells keyed by column id) stays one, so a column named __proto__ keeps its cell.
-  const copy: Record<PropertyKey, unknown> = footerPlans.has(value as FrameGeometry)
-    ? copyFrame(value as FrameGeometry) as Record<PropertyKey, unknown> : Object.getPrototypeOf(value) === null ? emptyIdRecord() : {};
-  copies.set(value, copy);
-  for (const key of Reflect.ownKeys(value)) copy[key] = deepCopy((value as Record<PropertyKey, unknown>)[key], copies);
-  return copy as T;
-}
 
 /**
  * With the ladder, a table reports one minimum
@@ -496,7 +472,7 @@ export function cardHeightFloor<D extends object, O extends Omit<TableOptions, '
   if (!byKey || byKey.size >= 32) cardHeights.set(data, byKey = new Map());
   const key = layoutKey(data, { ...options, size: step });
   if (!byKey.has(key)) {
-    const wider = layout(data, { ...options, size: { width: step } });
+    const wider = layout(data, { ...options, size: { width: step }, [PLAN_ONLY]: true });
     byKey.set(key, wider.refused || !wider.sizing ? undefined : wider.sizing.naturalHeight);
   }
   const floor = byKey.get(key);
@@ -588,7 +564,7 @@ function layoutTableOnce(
   const measure = options.measure ?? defaultMeasurer;
   let data = authoredData;
   let resolved = initialResolved;
-  const warnings: LintWarning[] = [...resolved.warnings];
+  let warnings: LintWarning[] = [...resolved.warnings];
   const theme = resolveSemanticPaletteTheme(
     chartTheme(options),
     options.palette,
@@ -648,6 +624,7 @@ function layoutTableOnce(
   const dataRows = visibleRows(table, undefined, expansionRootsHidden(table, options.expansion));
   // A table with no data row draws one row under its head that says so; the React grid draws the same row.
   const rows = hasNoDataRows(table) ? [...dataRows, emptyMessageRow(table, DEFAULT_EMPTY_MESSAGE)] : dataRows;
+  const expandedIds = new Set<Id>(rows.map((row) => row.parentId).filter((id): id is Id => id !== undefined));
   // Column widths follow the full data set: every authored row before topN
   // folds it (collapsed rows included), plus the rows topN generates. Another
   // sort, topN or expansion then keeps every column in place, unless a
@@ -920,6 +897,56 @@ function layoutTableOnce(
       headerBand: { x: gridX, y: gridY, w: totalW, h: 0 },
     });
   }
+  /** The room a row's unit affix takes on its label's line. */
+  function affixRoom(row: ResolvedRow, font: FontSpec): number {
+    if (row.unitAffix === undefined) return 0;
+    return theme.table?.qualifier === undefined ? measure(` ${row.unitAffix}`, inlineFont(row.step, false)).width
+      : measure(row.unitAffix, qualifierFont(font, theme)).width + (theme.table.qualifier.gap ?? 4);
+  }
+
+  function noteStatusCut(col: ResolvedColumn, row: ResolvedRow, shown: string, full: string): void {
+    let cuts = statusCuts.get(col.id);
+    if (!cuts) statusCuts.set(col.id, cuts = new Map());
+    // One entry per label: a square alone names its rows.
+    const key = `${shown}\0${full}`;
+    const cut = cuts.get(key) ?? { shown, full, rows: [] };
+    cuts.set(key, cut);
+    if (shown === '' && !cut.rows.includes(row.label)) cut.rows.push(row.label);
+  }
+  /**
+   * A status label cut for its track. All labels of the column are cut together, so two
+   * labels never share one cut: a cut that would read like another takes `distinctCut`,
+   * and of labels that still share a cut only the shortest prints it.
+   */
+  function statusFit(col: ResolvedColumn, label: string, font: FontSpec, room: number, trackRoom: number): { text: string; title?: string } | null {
+    const key = `${col.id}\0${room}\0${trackRoom}`;
+    let fits = statusFits.get(key);
+    if (fits === undefined) {
+      // Every row of the column, visible or not, so an expand, sort or topN step keeps each cut.
+      const labels = [...new Set(widthRows.flatMap((row) => {
+        const cell = row.cells[col.id];
+        return cell?.kind === 'status' && cell.state === 'value' ? [cell.displayed] : [];
+      }))];
+      fits = new Map(labels.map((text) => {
+        const fit = fitStatusLabel(text, font, room, trackRoom, measure);
+        const distinct = fit?.title === undefined ? undefined : distinctCut(text, [fit.text], labels, font, room, measure);
+        // A cut with no leading letter ("…limited") reads as nothing: the mark draws alone. A label's own leading "…" is not the cutter's.
+        const cut = distinct === undefined ? fit : { text: distinct, title: text };
+        return [text, cut && cut.text !== text && cut.text.slice(text.startsWith('…') ? 1 : 0).startsWith('…') ? null : cut];
+      }));
+      // Of labels that share a cut, the shortest keeps it; the others draw the square, named in the notes.
+      const keeper = new Map<string, string>();
+      for (const [text, fit] of fits) {
+        const kept = fit?.title === undefined ? undefined : keeper.get(fit.text);
+        if (fit?.title !== undefined && (kept === undefined || text.length < kept.length)) keeper.set(fit.text, text);
+      }
+      for (const [text, fit] of fits) if (fit?.title !== undefined && keeper.get(fit.text) !== text) fits.set(text, null);
+      statusFits.set(key, fits);
+    }
+    const fit = fits.get(label);
+    return fit === undefined ? fitStatusLabel(label, font, room, trackRoom, measure) : fit;
+  }
+
   // ---- geometry: header band + rows ----
   const hasGroups = table.columnGroups.length > 0;
   // A group may keep its meaning and draw no heading; where none
@@ -1111,6 +1138,46 @@ function layoutTableOnce(
       else if (grow > 0) rowExtra.set(row.id, Math.max(rowExtra.get(row.id) ?? 0, grow));
     }
   }
+  const plannedCellText = new Map<string, ReturnType<typeof cellText>>();
+  let cuts = 0;
+  for (const row of rows) for (const col of cols) {
+    const cell = row.cells[col.id];
+    const isSection = row.role === 'section';
+    if (!cell || col.kind === 'encoding' || ((isSection || (row.kind === 'member' && expandedIds.has(row.id))) && col.kind !== 'rowLabel')) continue;
+    const track = colX.get(col.id)!;
+    if (cell.kind === 'status' && cell.state === 'value') {
+      const square = col.statusMark === 'square' ? statusSquare(fonts.body.size) : undefined;
+      const reserve = square ? square.side + square.gap : 2 * CHIP_PAD_X;
+      const fit = statusFit(col, cell.displayed, square ? fonts.body : fonts.chip, track.w - 2 * cellPadX - reserve, track.w - reserve);
+      if (fit === null) noteStatusCut(col, row, '', cell.displayed);
+      else if (fit.title !== undefined) { noteStatusCut(col, row, fit.text, fit.title); cuts++; }
+      continue;
+    }
+    if (col.kind !== 'rowLabel' && col.kind !== 'text') continue;
+    const font = cellFont(cell);
+    const indent = cell.kind === 'rowLabel' ? rowIndent(indentStep(cell)) : 0;
+    const badge = isSection && col.kind === 'rowLabel' ? row.badge : undefined;
+    const badgeW = badge === undefined ? 0 : Math.round(measure(badge.text, fonts.chip).width + 2 * CHIP_PAD_X);
+    const affixFont = theme.table?.qualifier === undefined
+      ? { ...inlineFont(row.step, false), weight: theme.type.label.weight, ...(font.style ? { style: font.style } : {}) }
+      : qualifierFont(font, theme);
+    const affixWidth = col.kind === 'rowLabel' && row.unitAffix !== undefined && !(row.kind === 'member' && expandedIds.has(row.id))
+      ? theme.table?.qualifier === undefined ? measure(` ${row.unitAffix}`, affixFont).width : measure(row.unitAffix, affixFont).width + (theme.table.qualifier.gap ?? 4) : 0;
+    const contentW = (isSection ? tableW - (track.x - gridX) : track.w) - 2 * cellPadX;
+    const maxW = contentW - indent - (badgeW === 0 ? 0 : badgeW + BADGE_GAP) - (affixBelow.has(row.id) ? 0 : affixWidth)
+      - (cell.note && col.kind !== 'rowLabel' && col.noteLine !== true ? measure(` ${cell.note}`, fonts.note).width : 0);
+    const key = tableCellKey(row.id, col.id);
+    const fit = cellText(cell, col.kind, isSection, font, maxW, wrappedLines.get(key), cutTitles.get(key), measure, theme.table?.section?.case);
+    plannedCellText.set(key, fit);
+    if (fit.title !== undefined) cuts++;
+  }
+  const cutNotes = cols.flatMap((col) => {
+    const cut = statusCuts.get(col.id);
+    const entry = ({ shown, full, rows: named }: { shown: string; full: string; rows: string[] }) => `${shown !== '' ? shown : named.join(', ')} = ${full}`;
+    return cut ? [disclosureNote(`${col.label}: ${[...cut.values()].map(entry).join('; ')}`)] : [];
+  }).filter((note) => !(options[ENGINE_NOTES] ?? []).includes(note));
+  if (!sizingOnly && cutNotes.length > 0) return layoutTableOnce(authoredData, { ...options, [ENGINE_NOTES]: [...(options[ENGINE_NOTES] ?? []), ...cutNotes] }, initialResolved, sizingOnly, formatFits, wantsScene);
+
   const rowY = new Map<Id, { y: number; h: number }>();
   let y = gridY + headerH;
   for (const [index, row] of rows.entries()) {
@@ -1184,7 +1251,7 @@ function layoutTableOnce(
   if (sizingOnly || wantsScene !== undefined) {
     const probe = sizingProbe(sizing, { table: { x: gridX, y: gridY, w: tableW, h: naturalTableH }, columns: cols.map(col => ({ id: col.id, ...colX.get(col.id)! })), rows: [], headerBand: { x: gridX, y: gridY, w: tableW, h: headerH } });
     // A status label cut in the scene adds a note and a second pass, so that pass alone knows its final size.
-    if (sizingOnly || (!cols.some((col) => col.kind === 'status') && !wantsScene!(probe))) return probe;
+    if (sizingOnly || !wantsScene!(probe)) return probe;
   }
 
   // A pinned canvas with height to spare gives it to the leaf rows as air, up to the theme's 16 px a side.
@@ -1206,6 +1273,21 @@ function layoutTableOnce(
     }
   }
 
+  const geometry: Geometry<TableMarks, TableDerived> = {
+    type: 'table', size, sizing, plot, scene: [], labels: [], axes: [], annotations: [], frame: frame.frame,
+    marks: {
+      table: { x: gridX, y: gridY, w: tableW, h: tableH },
+      headerBand: { x: gridX, y: gridY, w: tableW, h: headerH },
+      columns: cols.map((col) => ({ id: col.id, ...colX.get(col.id)! })),
+      rows: rows.map((row) => ({ id: row.id, ...rowY.get(row.id)! })),
+    },
+    derived: { table, computedCells: resolved.computedCells },
+    a11y: { title: accessibleTitle(options.title, 'Table'), counts: [structureCount('rows', dataRows.length), structureCount('columns', cols.length)], desc: `Table with ${dataRows.length} rows and ${cols.length} columns` },
+    warnings, debug: { occupied: [], decisions: [] },
+  };
+  const plannedWarnings = [...warnings];
+  return deferLayout(geometry, () => {
+  warnings = [...plannedWarnings];
   const numericStats = new Map<
     Id,
     { min: number; max: number; maxAbs: number; textReserve: number; signed: boolean }
@@ -1545,7 +1627,7 @@ function layoutTableOnce(
   };
   // A parent is expanded when its children are among the drawn rows; a
   // collapsed one hides them, and its mark and hint say so.
-  const expandedIds = new Set<Id>(rows.map((row) => row.parentId).filter((id): id is Id => id !== undefined));
+
   // `options.groupGround`, else the theme key: only an open group's header row carries the group ground by default.
   const groundMode = options.groupGround ?? theme.table?.groupGround ?? 'expanded';
   const groundShown = (open: boolean) => groundMode === 'always' || (groundMode === 'expanded' && open);
@@ -1736,22 +1818,6 @@ function layoutTableOnce(
     return (kind !== 'member' && kind !== 'measure') || theme.table?.weights?.figures?.[kind] === undefined;
   }
 
-  /** The room a row's unit affix takes on its label's line. */
-  function affixRoom(row: ResolvedRow, font: FontSpec): number {
-    if (row.unitAffix === undefined) return 0;
-    return theme.table?.qualifier === undefined ? measure(` ${row.unitAffix}`, inlineFont(row.step, false)).width
-      : measure(row.unitAffix, qualifierFont(font, theme)).width + (theme.table.qualifier.gap ?? 4);
-  }
-
-  function noteStatusCut(col: ResolvedColumn, row: ResolvedRow, shown: string, full: string): void {
-    let cuts = statusCuts.get(col.id);
-    if (!cuts) statusCuts.set(col.id, cuts = new Map());
-    // One entry per label: a square alone names its rows.
-    const key = `${shown}\0${full}`;
-    const cut = cuts.get(key) ?? { shown, full, rows: [] };
-    cuts.set(key, cut);
-    if (shown === '' && !cut.rows.includes(row.label)) cut.rows.push(row.label);
-  }
   /** A status track too narrow for the cut floor draws the tone square alone, centred, with the full label as its title. */
   function emitStatusMark(cell: ResolvedCell, row: ResolvedRow, col: ResolvedColumn, cx: number, w: number, ry: number, rh: number): void {
     const owner = { rowId: row.id, colId: col.id };
@@ -1768,39 +1834,6 @@ function layoutTableOnce(
       display: { state: cell.displayed },
     });
     noteStatusCut(col, row, '', cell.displayed);
-  }
-  /**
-   * A status label cut for its track. All labels of the column are cut together, so two
-   * labels never share one cut: a cut that would read like another takes `distinctCut`,
-   * and of labels that still share a cut only the shortest prints it.
-   */
-  function statusFit(col: ResolvedColumn, label: string, font: FontSpec, room: number, trackRoom: number): { text: string; title?: string } | null {
-    const key = `${col.id}\0${room}\0${trackRoom}`;
-    let fits = statusFits.get(key);
-    if (fits === undefined) {
-      // Every row of the column, visible or not, so an expand, sort or topN step keeps each cut.
-      const labels = [...new Set(widthRows.flatMap((row) => {
-        const cell = row.cells[col.id];
-        return cell?.kind === 'status' && cell.state === 'value' ? [cell.displayed] : [];
-      }))];
-      fits = new Map(labels.map((text) => {
-        const fit = fitStatusLabel(text, font, room, trackRoom, measure);
-        const distinct = fit?.title === undefined ? undefined : distinctCut(text, [fit.text], labels, font, room, measure);
-        // A cut with no leading letter ("…limited") reads as nothing: the mark draws alone. A label's own leading "…" is not the cutter's.
-        const cut = distinct === undefined ? fit : { text: distinct, title: text };
-        return [text, cut && cut.text !== text && cut.text.slice(text.startsWith('…') ? 1 : 0).startsWith('…') ? null : cut];
-      }));
-      // Of labels that share a cut, the shortest keeps it; the others draw the square, named in the notes.
-      const keeper = new Map<string, string>();
-      for (const [text, fit] of fits) {
-        const kept = fit?.title === undefined ? undefined : keeper.get(fit.text);
-        if (fit?.title !== undefined && (kept === undefined || text.length < kept.length)) keeper.set(fit.text, text);
-      }
-      for (const [text, fit] of fits) if (fit?.title !== undefined && keeper.get(fit.text) !== text) fits.set(text, null);
-      statusFits.set(key, fits);
-    }
-    const fit = fits.get(label);
-    return fit === undefined ? fitStatusLabel(label, font, room, trackRoom, measure) : fit;
   }
   /** The theme's authored ground under a total or subtotal row. */
   /** The ground the theme authors for a subtotal or total row; a transparent one is no ground. */
@@ -2019,7 +2052,7 @@ function layoutTableOnce(
     const maxW = contentW - indent - badgeReserve - lineAffix
       - (cell.note && col.kind !== 'rowLabel' && col.noteLine !== true ? measure(` ${cell.note}`, fonts.note).width : 0);
     const wrappedCell = wrappedLines.get(tableCellKey(rowId, colId));
-    const { text, title: cutTitle } = cellText(
+    const { text, title: cutTitle } = plannedCellText.get(tableCellKey(rowId, colId)) ?? cellText(
       cell, col.kind, isSection, font, maxW, wrappedCell, cutTitles.get(tableCellKey(rowId, colId)), measure, theme.table?.section?.case,
     );
     const lines = wrappedCell ?? [text];
@@ -2378,15 +2411,6 @@ function layoutTableOnce(
   // colorblindSafe swaps every good/bad paint the table drew.
   const scene = options.colorblindSafe === true ? colorblindRoles(nodes).value : nodes;
 
-  // The cut labels in full, one disclosure per status column. The tracks do
-  // not depend on the notes, so the second pass draws the same cuts.
-  const cutNotes = cols.flatMap((col) => {
-    const cuts = statusCuts.get(col.id);
-    // A label drawn as the square alone names every row that draws it; entries part with "; " since one can list several rows.
-    const entry = ({ shown, full, rows: named }: { shown: string; full: string; rows: string[] }) => `${shown !== '' ? shown : named.join(', ')} = ${full}`;
-    return cuts ? [disclosureNote(`${col.label}: ${[...cuts.values()].map(entry).join('; ')}`)] : [];
-  }).filter((note) => !(options[ENGINE_NOTES] ?? []).includes(note));
-  if (cutNotes.length > 0) return layoutTableOnce(authoredData, { ...options, [ENGINE_NOTES]: [...(options[ENGINE_NOTES] ?? []), ...cutNotes] }, initialResolved, sizingOnly, formatFits, wantsScene);
 
   return {
     type: 'table',
@@ -2409,6 +2433,7 @@ function layoutTableOnce(
     ...(paintWarningRules.length > 0 ? { paintWarningRules } : {}),
     debug: { occupied: occupied.snapshot(), decisions: [] },
   };
+  }, cuts);
 }
 
 function tableSizing(size: Size, plot: Rect, bottom: number, totalW: number, minimumW: number) {

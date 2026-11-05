@@ -1,3 +1,4 @@
+import { PLAN_ONLY } from '../../layoutPlan';
 import type { ChartCore } from '../../registry';
 import type { Geometry } from '../../types/scene';
 import { CARD_MIN_WIDTH, chartSizing, heightOmitted, isWidthProbe, VERIFY_ADVICE, WIDTH_PROBE } from '../../sizing';
@@ -19,7 +20,7 @@ export function resolveDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
 type PreparedForm = { compiled: ReturnType<typeof compileDimSwitch>; resolved: ReturnType<typeof resolveTable> };
 
 /** The options a probe sets for itself. The compiled form does not depend on them, so a probe at another size reuses it. */
-const PER_PROBE = [TARGET_SIZE, WIDTH_PROBE, REGULAR_SPACING] as const;
+const PER_PROBE = [TARGET_SIZE, WIDTH_PROBE, REGULAR_SPACING, PLAN_ONLY] as const;
 const keptForms = new WeakMap<object, Map<string, PreparedForm>>();
 
 /**
@@ -54,7 +55,7 @@ function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwi
   const compiled={...prepared.compiled,options:{...prepared.compiled.options,size:options.size}};
   const resolved=prepared.resolved;
   // The compile is shared across spacing passes and carries the first pass's options: the spacing is this request's.
-  const geometry=layoutTable(compiled.data,{...options,...compiled.options,[REGULAR_SPACING]:(options as {[REGULAR_SPACING]?: boolean})[REGULAR_SPACING]} as typeof compiled.options,resolved);
+  const geometry=layoutTable(compiled.data,{...options,...compiled.options,[PLAN_ONLY]:true,[REGULAR_SPACING]:(options as {[REGULAR_SPACING]?: boolean})[REGULAR_SPACING]} as typeof compiled.options,resolved);
   // The frame can reach its automatic height without a second compile.
   if ((options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false
     && typeof compiled.options.size === 'object' && compiled.options.size.height !== undefined

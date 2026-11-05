@@ -3,6 +3,9 @@ import '../src/core/charts';
 import { getFixtures } from '../src/fixtures';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { renderSvg } from '../src/core/svg/renderSvg';
+import { layoutTableCard } from '../src/core/charts/table/layout';
+import { PLAN_ONLY, materializeLayout } from '../src/core/layoutPlan';
+import type { TableData, TableOptions } from '../src/core/types/table';
 import type { Geometry } from '../src/core/types/scene';
 
 const fixture = getFixtures('table').find((entry) => entry.id === 'steering-monthly')!;
@@ -19,4 +22,19 @@ describe('table width plan shared on one data object', () => {
     draw(shared, first);
     expect(draw(shared, second)).toBe(draw(structuredClone(fixture.data) as object, second));
   });
+});
+
+// Sizing candidates must not draw, and a caller's edited scene must not corrupt the memoized plan.
+it('defers drawing and returns an isolated result from the same numeric plan', () => {
+  const data = structuredClone(fixture.data) as TableData;
+  const options = { ...fixture.options, size: { width: 878 }, [PLAN_ONLY]: true } as TableOptions;
+  const plan = layoutTableCard(data, options);
+  expect(plan.scene).toEqual([]);
+  const first = materializeLayout(plan);
+  const expected = JSON.stringify(first);
+  first.scene.length = 0;
+  first.derived.table.rows[0]!.label = 'changed';
+  const repeated = layoutTableCard(data, options);
+  expect(repeated.scene).toEqual([]);
+  expect(JSON.stringify(materializeLayout(repeated))).toBe(expected);
 });
