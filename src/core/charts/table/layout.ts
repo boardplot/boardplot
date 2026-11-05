@@ -184,7 +184,8 @@ function resolvedForSize(data: TableData, options: TableOptions): ReturnType<typ
   semantic.theme = { glyphs: theme.table?.glyphs, noPrevious: theme.table?.noPrevious, dataGap: theme.table?.dataGap };
   const key = layoutKey(data, semantic);
   let byKey = resolvedTables.get(data);
-  if (!byKey || byKey.size >= 32) resolvedTables.set(data, byKey = new Map());
+  if (!byKey) resolvedTables.set(data, byKey = new Map());
+  if (byKey.size >= 32 && !byKey.has(key)) byKey.delete(byKey.keys().next().value!);
   let resolved = byKey.get(key);
   if (resolved === undefined) byKey.set(key, resolved = resolveTable(data, options));
   return resolved;
@@ -208,7 +209,8 @@ function sharedWidthPlan(table: ResolvedTable, theme: Theme, measure: TextMeasur
     // The theme's fonts follow the frame's type class, and two classes can share one plot width.
     typeClass: panelTypeClass(options) ?? typeWidthClass(resolveSize(size).width) }, rest);
   let byKey = widthPlans.get(table);
-  if (!byKey || byKey.size >= 32) widthPlans.set(table, byKey = new Map());
+  if (!byKey) widthPlans.set(table, byKey = new Map());
+  if (byKey.size >= 32 && !byKey.has(key)) byKey.delete(byKey.keys().next().value!);
   let plan = byKey.get(key);
   if (plan === undefined) byKey.set(key, plan = tableWidths(table, theme, measure, options, view));
   return plan;
@@ -384,7 +386,7 @@ const layouts = new WeakMap<object, Map<string, unknown>>();
  * fields; materialization owns a deep copy for a caller that can edit the result.
  * Data content and function identities enter the key, so edits resolve again.
  * A named theme bypasses the memo because the name can be registered again.
- * shortcut: 32 results per data object, then the map starts again.
+ * shortcut: retain 32 results per data object; a new result replaces the oldest.
  */
 export function memoLayout<G>(data: object, options: object, layout: () => G): G {
   return withPlanInputs(() => {
@@ -395,7 +397,8 @@ export function memoLayout<G>(data: object, options: object, layout: () => G): G
   const { [PLAN_ONLY]: _plan, ...answerOptions } = options as LayoutOptions;
   const key = layoutKey(data, answerOptions);
   let byKey = layouts.get(data);
-  if (!byKey || byKey.size >= 32) layouts.set(data, byKey = new Map());
+  if (!byKey) layouts.set(data, byKey = new Map());
+  if (byKey.size >= 32 && !byKey.has(key)) byKey.delete(byKey.keys().next().value!);
   if (!byKey.has(key)) byKey.set(key, layout());
   return finish(byKey.get(key) as G);
   });
@@ -420,9 +423,10 @@ export function classFloor<D extends object, O extends Omit<TableOptions, 'varia
   // At the height the fix names: a frame too short for the rows refuses there, and the floor must hold at its fix.
   const height = Math.max(geometry.size.height, sizing.minHeight);
   let byKey = classFloors.get(data);
-  if (!byKey || byKey.size >= 32) classFloors.set(data, byKey = new Map());
+  if (!byKey) classFloors.set(data, byKey = new Map());
   // The registry lays a table out several times per request; the floor is cached per data and options.
   const key = layoutKey(data, { ...options, size: [sizing.minWidth, typeWidthClass(geometry.size.width), height] });
+  if (byKey.size >= 32 && !byKey.has(key)) byKey.delete(byKey.keys().next().value!);
   let floor = byKey.get(key);
   if (floor === undefined) {
     floor = sizing.minWidth;
@@ -458,8 +462,9 @@ export function cardHeightFloor<D extends object, O extends Omit<TableOptions, '
   if (!automatic || geometry.refused || !geometry.sizing || width >= CARD_CLASS_WIDTH || panelTypeClass(options) !== undefined) return geometry;
   const step = width < 400 ? 400 : CARD_CLASS_WIDTH;
   let byKey = cardHeights.get(data);
-  if (!byKey || byKey.size >= 32) cardHeights.set(data, byKey = new Map());
+  if (!byKey) cardHeights.set(data, byKey = new Map());
   const key = layoutKey(data, { ...options, size: step });
+  if (byKey.size >= 32 && !byKey.has(key)) byKey.delete(byKey.keys().next().value!);
   if (!byKey.has(key)) {
     const wider = layout(data, { ...options, size: { width: step }, [PLAN_ONLY]: true });
     byKey.set(key, wider.refused || !wider.sizing ? undefined : wider.sizing.naturalHeight);

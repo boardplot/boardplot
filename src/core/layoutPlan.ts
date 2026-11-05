@@ -15,13 +15,14 @@ const keyFunction = (_key: string, value: unknown): unknown => {
   return `function ${functionIds.get(value)}`;
 };
 type TextPlan = { font: FontSpec; texts: Map<string, TextSize> };
-type Inputs = { json: WeakMap<object, string>; texts: WeakMap<TextMeasurer, Map<string, TextPlan>>; fonts: WeakMap<FontSpec, { key: string; font: FontSpec }> };
+type FontPlans = { families: Map<FontSpec['family'], Map<number, TextPlan[]>>; last?: TextPlan };
+type Inputs = { json: WeakMap<object, string>; texts: WeakMap<TextMeasurer, FontPlans> };
 let inputs: Inputs | undefined;
 
 /** Synchronous probes share snapshots; the next public call reads mutable inputs again. */
 export function withPlanInputs<T>(run: () => T): T {
   if (inputs) return run();
-  inputs = { json: new WeakMap(), texts: new WeakMap(), fonts: new WeakMap() };
+  inputs = { json: new WeakMap(), texts: new WeakMap() };
   try { return run(); } finally { inputs = undefined; }
 }
 
@@ -50,15 +51,19 @@ export function tableTextMeasure(raw: TextMeasurer): TextMeasurer {
   if (!wrapped) {
     wrapped = (text, font) => {
       if (!inputs) return raw(text, font);
-      let known = inputs.fonts.get(font);
-      if (!known || !sameFont(known.font, font)) {
-        known = { key: JSON.stringify([font.family, font.size, font.weight, font.style, font.letterSpacing, font.tabular, font.lineHeight]), font: { ...font } };
-        inputs.fonts.set(font, known);
-      }
       let fonts = inputs.texts.get(raw);
-      if (!fonts) inputs.texts.set(raw, fonts = new Map());
-      let plan = fonts.get(known.key);
-      if (!plan) fonts.set(known.key, plan = { font: known.font, texts: new Map() });
+      if (!fonts) inputs.texts.set(raw, fonts = { families: new Map() });
+      let plan = fonts.last;
+      if (!plan || !sameFont(plan.font, font)) {
+        let family = fonts.families.get(font.family);
+        if (!family) fonts.families.set(font.family, family = new Map());
+        const key = font.size * 4096 + font.weight;
+        let variants = family.get(key);
+        if (!variants) family.set(key, variants = []);
+        plan = variants.find(candidate => sameFont(candidate.font, font));
+        if (!plan) { plan = { font: { ...font }, texts: new Map() }; variants.push(plan); }
+        fonts.last = plan;
+      }
       let result = plan.texts.get(text);
       if (!result) plan.texts.set(text, result = { ...raw(text, font) });
       return result;

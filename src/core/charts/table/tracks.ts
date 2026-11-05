@@ -234,6 +234,8 @@ export function browserSlack(font: FontSpec, width: number): number {
 }
 
 export interface WidthContext {
+  /** Cell content by level, independent of column padding, header faces and indentation. */
+  bodyWidths?: Map<string, Map<number, number>>;
   theme?: Theme;
   measure: TextMeasurer;
   fonts: TableFonts;
@@ -383,16 +385,12 @@ function encodingTrackWidth(column: ResolvedColumn, rows: readonly ResolvedRow[]
  * affix DOES share the label's line, so the track pays for both, and so does
  * a collapsed hint where the surface prints one (`ctx.hint`).
  */
-export function intrinsicColumnWidth(
-  column: ResolvedColumn,
-  rows: readonly ResolvedRow[],
-  ctx: WidthContext,
-  figuresOnly = false,
-): number {
-  if (column.kind === 'encoding') return encodingTrackWidth(column, rows, ctx);
+function intrinsicBodyWidths(column: ResolvedColumn, rows: readonly ResolvedRow[], ctx: WidthContext, figuresOnly: boolean): Map<number, number> {
+  const key = JSON.stringify([column.id, column.width === undefined, column.maxTextWidth, ctx.labelLines, figuresOnly, ctx.hint !== undefined, ctx.inlineIndent]);
+  const known = ctx.bodyWidths?.get(key);
+  if (known) return known;
   const isRowLabel = column.kind === 'rowLabel';
-  const headerW = figuresOnly ? 0 : headerContentWidth(column, ctx);
-  let cellMax = 0;
+  const levels = new Map<number, number>();
   for (const row of rows) {
     if (row.inline === true) continue;
     if (isRowLabel && row.role === 'section') continue;
@@ -421,7 +419,6 @@ export function intrinsicColumnWidth(
       ).width;
       width = underFigure ? Math.max(width, note) : width + note;
     }
-    if (isRowLabel) width += ctx.rowIndent(row.step);
     if (cell.kind === 'status' && cell.state === 'value' && column.statusMark === 'square') {
       const text = ctx.measure(cell.displayed, ctx.fonts.body).width;
       const square = statusSquare(ctx.fonts.body.size);
@@ -431,7 +428,8 @@ export function intrinsicColumnWidth(
       const chip = ctx.measure(cell.displayed, ctx.fonts.chip).width;
       width = chip + (ctx.slack?.(ctx.fonts.chip, chip) ?? 0) + 2 * CHIP_PAD_X;
     }
-    cellMax = Math.max(cellMax, width);
+    const step = isRowLabel ? row.step : 0;
+    let cellMax = Math.max(levels.get(step) ?? 0, width);
     for (const line of row.inlineRows ?? []) {
       const lineFont = ctx.changeFont?.(row.step) ?? ctx.inlineFont(row.step, line.polarity !== undefined);
       const text = isRowLabel ? line.label : (line.cells[column.id]?.displayed ?? '');
@@ -440,10 +438,26 @@ export function intrinsicColumnWidth(
       cellMax = Math.max(
         cellMax,
         // An inline line's label sits in from its parent's (inlineLabelIndent).
-        ctx.measure(text, figureFont(lineFont, tabular)).width + (isRowLabel ? ctx.rowIndent(row.step) + (ctx.inlineIndent ?? 8) : 0),
+        ctx.measure(text, figureFont(lineFont, tabular)).width + (isRowLabel ? ctx.inlineIndent ?? 8 : 0),
       );
     }
+    levels.set(step, cellMax);
   }
+  ctx.bodyWidths?.set(key, levels);
+  return levels;
+}
+
+export function intrinsicColumnWidth(
+  column: ResolvedColumn,
+  rows: readonly ResolvedRow[],
+  ctx: WidthContext,
+  figuresOnly = false,
+): number {
+  if (column.kind === 'encoding') return encodingTrackWidth(column, rows, ctx);
+  const isRowLabel = column.kind === 'rowLabel';
+  const headerW = figuresOnly ? 0 : headerContentWidth(column, ctx);
+  let cellMax = 0;
+  for (const [level, width] of intrinsicBodyWidths(column, rows, ctx, figuresOnly)) cellMax = Math.max(cellMax, width + (isRowLabel ? ctx.rowIndent(level) : 0));
   const natural = Math.ceil(Math.max(headerW, cellMax + (figuresOnly ? 0 : ctx.reserve?.(column) ?? 0)) + 2 * ctx.padX);
   return column.kind === 'rowLabel' && column.width === undefined && column.maxWidth !== undefined ? Math.min(natural, column.maxWidth) : natural;
 }

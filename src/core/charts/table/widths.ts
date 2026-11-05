@@ -175,13 +175,14 @@ function measureTableTracks(table: ResolvedTable, theme: Theme, measure: TextMea
     const text = fieldHeadText(col.label, theme) + columnHeaderAffix(col);
     return view.headGlue === false ? text : text.replace(/ (\S{1,2})$/u, '\u00a0$1');
   };
+  const bodyWidths = measuredBodyWidths(table, theme, measure, options, view, widthRows);
   /** The tracks every column takes at one set of head faces, and the cuts they report. */
   function trackWidths(faces: TableFonts) {
     const widths = new Map<Id, number>();
     const minimumWidths = new Map<Id, number>();
     const wrappedOneLines = new Map<Id, number>();
     const context: WidthContext = {
-      theme, measure, fonts: faces, cellFont, inlineFont, changeFont: (level) => changeLineFont(theme, ladder, level), rowIndent, inlineIndent: INLINE_LABEL_INDENT, padX: cellPadX,
+      theme, measure, bodyWidths, fonts: faces, cellFont, inlineFont, changeFont: (level) => changeLineFont(theme, ladder, level), rowIndent, inlineIndent: INLINE_LABEL_INDENT, padX: cellPadX,
       headerText: columnHeaderText,
       headerReserve: col => view.sortable?.has(col.id) ? SORT_CHEVRON_RESERVE : 0,
       headerTrailingTracking: view.trailingTracking,
@@ -338,6 +339,22 @@ const measureId = (fn: object | undefined): number | undefined => {
   if (id === undefined) measureIds.set(fn, id = nextMeasureId++);
   return id;
 };
+
+const measuredBodies = new WeakMap<ResolvedTable, Map<string, Map<string, Map<number, number>>>>();
+
+/** Cell text is independent of the fitting rung's padding, head face and label indent. */
+function measuredBodyWidths(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions, view: TableWidthView, rows: readonly ResolvedRow[]) {
+  const key = JSON.stringify([theme.type, theme.table, measureId(measure), measureId(view.slack),
+    options.density, options.target, textScaleOf(options), options.inlineVisibility, rows.map(row => row.id)]);
+  let variants = measuredBodies.get(table);
+  if (!variants) measuredBodies.set(table, variants = new Map());
+  let widths = variants.get(key);
+  if (!widths) {
+    if (variants.size >= 64) variants.delete(variants.keys().next().value!);
+    variants.set(key, widths = new Map());
+  }
+  return widths;
+}
 
 /** Resolved tables are private immutable models; all frame-dependent typography enters by value. */
 function measuredTable(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions, view: TableWidthView) {
