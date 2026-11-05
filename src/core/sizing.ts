@@ -1249,7 +1249,7 @@ export const ACCEPTANCE_PROBE = Symbol('boardplot.acceptanceProbe');
 
 export function isWidthProbe(type: string, options: ChartOptions | undefined): boolean {
   return (options as { [WIDTH_PROBE]?: string } | undefined)?.[WIDTH_PROBE] === type
-    && options?.belowMinimum === 'refuse' && panelTypeClass(options) === undefined;
+    && (options?.belowMinimum === 'refuse' || type === 'table') && panelTypeClass(options) === undefined;
 }
 
 function forcedCompact(options: unknown): boolean {
@@ -1434,6 +1434,11 @@ function fitOnce<D, O extends ChartOptions, M extends object, DV extends object>
     function contentHeight(): LayoutResult<M, DV> {
       for (let pass = 0; pass < 4; pass++) {
         const probe = at(width, height);
+        // A table without a side key cannot gain width by settling its open height.
+        const legend = typeof options!.legend === 'object' ? options!.legend.position : options!.legend;
+        if (definition.type === 'table' && isWidthProbe('table', options) && legend !== 'left' && legend !== 'right'
+          && probe.refused && probe.warnings[0]?.code === 'size-below-floor'
+          && width + SIZE_TOLERANCE < probe.sizing!.minWidth) return probe;
         const natural = probe.sizing?.naturalHeight;
         // Tables can resize their frame around measured rows without replaying the ladder.
         if (natural === height || ((definition.type === 'table' || definition.type === 'dimswitch')

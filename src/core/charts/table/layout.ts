@@ -1142,11 +1142,16 @@ function layoutTableOnce(
         ? { hint: `Or set wrap: true on text column ${widthPlan.wouldWrap.map((col) => `'${col.id}'`).join(', ')}: its cells then take as many lines as they need instead of one line's width.` }
         : {}),
     };
+  // A width the table cannot take is rejected on its sizing, so a width search draws no scene for it.
+  // A status label cut in the scene adds a note and a second pass, so that pass alone knows its final size.
+  const rejectedWidthProbe = panelTypeClass(options) === undefined
+    && (tableRequestOwns(authoredData) || (options as { [WIDTH_PROBE]?: string })[WIDTH_PROBE] === 'table')
+    && !cols.some((col) => col.kind === 'status') && !warnings.some((warning) => warning.code === 'invalid-options')
+    && missesSize({ size, sizing }, options).width;
   // A floor probe only reads sizing; its tracks and wrapped rows are already measured.
-  if (sizingOnly || wantsScene !== undefined) {
+  if (sizingOnly || rejectedWidthProbe || wantsScene !== undefined) {
     const probe = sizingProbe(sizing, { table: { x: gridX, y: gridY, w: tableW, h: naturalTableH }, columns: cols.map(col => ({ id: col.id, ...colX.get(col.id)! })), rows: [], headerBand: { x: gridX, y: gridY, w: tableW, h: headerH } });
-    // A status label cut in the scene adds a note and a second pass, so that pass alone knows its final size.
-    if (sizingOnly || (!cols.some((col) => col.kind === 'status') && !wantsScene!(probe))) return probe;
+    if (sizingOnly || rejectedWidthProbe || (!cols.some((col) => col.kind === 'status') && !wantsScene!(probe))) return probe;
   }
 
   // A pinned canvas with height to spare gives it to the leaf rows as air, up to the theme's 16 px a side.
