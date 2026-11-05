@@ -122,7 +122,7 @@ export function gridSizing(size: Size, area: Rect,
     : required('row', rows, rowGaps, 'natural');
   return resolveSizing(content ? { ...policy, fit: 'content', aspect: 'content', minHeight: 0 } : policy, size, {
     minWidth: size.width - area.w + required('column', columns, columnGaps),
-    minHeight: chrome + minimumHeight,
+    minHeight: chrome + Math.min(minimumHeight, slotMinimum),
     ...(content ? { naturalHeight: chrome + naturalRows }
       // The minimum may come from tier minimums, below what the panels ask for: the natural height keeps that demand.
       : minimumHeight < slotMinimum ? { naturalHeight: Math.max(resolveSizing(policy, size).naturalHeight, chrome + slotMinimum, askedRows && size.height >= chrome + minimumHeight ? chrome + required('row', askedRows, rowGaps, 'asked') : 0) } : {}),

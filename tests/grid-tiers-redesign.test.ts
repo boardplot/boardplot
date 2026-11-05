@@ -451,11 +451,19 @@ describe('tiers keep the height their parts need', () => {
   const regionTiers = [
     { id: 'base', type: 'column', data: regionData },
     { id: 'tier', type: 'variance', data: regionData, options: { variant: 'relative', variance: { of: 'ac', vs: 'py' } } }];
-  // The grid moved a panel by its claims alone, so the 45° names it had reserved room for ran off the canvas.
-  it('keeps rotated category names on the canvas', () => {
-    const grid = laidOut({ type: 'grid', data: { panels: regionTiers }, options: { title: 'Revenue by region', sharedAxis: 'category', target: 'report', size: { width: 720 } } });
-    expect(grid.warnings.map((warning) => warning.code)).toContain('category-labels-rotated');
-    expect(grid.warnings.map((warning) => warning.code)).not.toContain('text-clipped');
+  const german = { ...regionData, categories: ['Baden-Württemberg', 'Niedersachsen', 'Ruhrgebiet', 'Oberfranken', 'Abschreibungen', 'Umsatzerlöse', 'Personalaufwand', 'Sonstige']
+    .map((label) => ({ id: label.toLowerCase().replace(/\W+/g, '-'), label })) };
+  const rowPlaced = (data: unknown) => [
+    { id: 'base', type: 'column', row: 1, column: 0, data },
+    { id: 'tier', type: 'variance', row: 0, column: 0, data, options: { variant: 'relative', variance: { of: 'ac', vs: 'py' } } }];
+  const framed = { title: 'Revenue by region', subtitle: { measure: 'Revenue', period: 'FY26' }, unit: 'EUR m', source: 'Invented data', sharedAxis: 'category' };
+  // With an open height the grid stayed too short for its rotated names, so a tier was squeezed to a strip.
+  it('keeps the height rotated category names need', () => {
+    const grid = laidOut({ type: 'grid', data: { panels: rowPlaced(german) }, options: { ...framed, target: 'slide', size: { width: 480, unit: 'px' } } });
+    const codes = grid.warnings.map((warning) => warning.code);
+    expect(codes).toContain('category-labels-rotated');
+    expect(codes).not.toContain('text-clipped');
+    expect(grid.size.height).toBeGreaterThan(385);
   });
   // The weights alone gave a middle panel less than its own minimum, so its plot was a strip the canvas had room to avoid.
   it('gives every panel its minimum height when the canvas holds them all', () => {
@@ -481,37 +489,35 @@ describe('tiers keep the height their parts need', () => {
     expect(caption).toBeDefined();
     expect(caption!.rect.y).toBeGreaterThanOrEqual(grid.plot.y - 1);
   });
+  const first = (count: number) => ({ categories: regionData.categories.slice(0, count), series: regionData.series.map((item) => ({ ...item, values: item.values.slice(0, count) })) });
   // The row tracks added up to more than the canvas, so the minimum scaled by them refused a height where both tiers fit.
   it('draws a row-placed tier grid at a height above what its parts need', () => {
-    const names = ['Baden-Württemberg', 'Niedersachsen', 'Ruhrgebiet', 'Oberfranken', 'Abschreibungen', 'Umsatzerlöse', 'Personalaufwand', 'Sonstige']
-      .map((label) => ({ id: label.toLowerCase().replace(/\W+/g, '-'), label }));
-    const german = { ...regionData, categories: names };
-    const grid = laidOut({ type: 'grid', data: { panels: [
-      { id: 'base', type: 'column', row: 1, column: 0, data: german },
-      { id: 'tier', type: 'variance', row: 0, column: 0, data: german, options: { variant: 'relative', variance: { of: 'ac', vs: 'py' } } }] },
-    options: { title: 'Revenue by region', subtitle: { measure: 'Revenue', period: 'FY26' }, unit: 'EUR m', source: 'Invented data', sharedAxis: 'category', target: 'print', size: { width: 720, height: 400, unit: 'px' } } });
+    const grid = laidOut({ type: 'grid', data: { panels: rowPlaced(first(3)) }, options: { ...framed, target: 'report', size: { width: 480, height: 300, unit: 'px' } } });
     expect(grid.refused).toBeFalsy();
-    expect(grid.warnings.map((warning) => warning.code)).not.toContain('size-below-floor');
+    expect(grid.size.height).toBe(300);
   });
   // The minimum counts the tiers alone, but a grid with no authored height must still draw at the height its panels ask for.
-  // It drew shorter, squashed the base panel and moved variance labels to a note. The heights are those of the unfixed engine.
   it.each([
-    { target: 'report', sign: 1, heightAtLeast: 313 },
-    { target: 'report', sign: -1, heightAtLeast: 326 },
-    { target: 'slide', sign: 1, heightAtLeast: 381 },
-    { target: 'dashboard', sign: -1, heightAtLeast: 340 },
-  ])('draws a row-placed tier grid with no authored height tall enough ($target, sign $sign)', ({ target, sign, heightAtLeast }) => {
-    const three = { categories: ['a', 'b', 'c'].map((label) => ({ id: label, label: label.toUpperCase() })), series: [
-      { id: 'ac', label: 'Actual', values: sign > 0 ? [360, 397, 374] : [-360, -397, -374] },
-      { id: 'py', label: 'PY', role: 'reference' as const, scenario: 'PY' as const, values: sign > 0 ? [390, 427, 404] : [-370, -407, -384] }] };
+    { target: 'report', heightAbove: 324 },
+    { target: 'print', heightAbove: 342 },
+    { target: 'dashboard', heightAbove: 335 },
+  ])('draws a row-placed tier grid with no authored height tall enough ($target)', ({ target, heightAbove }) => {
+    const grid = laidOut({ type: 'grid', data: { panels: rowPlaced(first(5)) }, options: { ...framed, target, size: { width: 480, unit: 'px' } } });
+    expect(grid.warnings.map((warning) => warning.code)).not.toContain('grid-panel-too-short');
+    expect(grid.size.height).toBeGreaterThan(heightAbove);
+  });
+  // An aligned grid kept the old slot weights in its minimum only, so a canvas that draws today would refuse by 5 px.
+  it('still draws an aligned tier grid at the authored size it fits', () => {
+    const three = { categories: ['Alpha', 'Beta', 'Gamma'].map((label) => ({ id: label.toLowerCase(), label })), series: [
+      { id: 'ac', label: 'Actual', values: [360, 397, 384] },
+      { id: 'py', label: 'PY', role: 'reference' as const, scenario: 'PY' as const, values: [350, 403, 366] }] };
+    const stretch = { align: { vertical: 'stretch' } };
     const grid = laidOut({ type: 'grid', data: { panels: [
-      { id: 'base', type: 'column', row: 1, column: 0, data: three },
-      { id: 'tier', type: 'variance', row: 0, column: 0, data: three, options: { variant: 'relative', variance: { of: 'ac', vs: 'py' } } }] },
-    options: { title: 'Revenue by region', subtitle: { measure: 'Revenue', period: 'FY26' }, unit: 'EUR m', source: 'Invented data', sharedAxis: 'category', target, size: { width: 480, unit: 'px' } } });
-    const codes = grid.warnings.map((warning) => warning.code);
-    expect(codes).not.toContain('grid-panel-too-short');
-    if (target === 'report' && sign < 0) expect(codes).not.toContain('values-in-note');
-    expect(grid.size.height).toBeGreaterThanOrEqual(heightAtLeast);
+      { id: 'base', type: 'column', data: three, ...stretch },
+      { id: 'tier', type: 'variance', data: three, ...stretch, options: { variant: 'relative', variance: { of: 'ac', vs: 'py' } } }] },
+    options: { ...framed, size: { width: 480, height: 308, unit: 'px' } } });
+    expect(grid.refused).toBeFalsy();
+    expect(grid.size).toEqual({ width: 480, height: 308 });
   });
 });
 

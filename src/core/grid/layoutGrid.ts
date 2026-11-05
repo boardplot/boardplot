@@ -589,7 +589,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
     Array(columns).fill(1), rowGaps, Array(columns - 1).fill(gap), true);
   // A short probe already needs a larger canvas. Packing slack there cannot
   // make it renderable and can repeatedly cross label-wrapping thresholds.
-  if (packedTiers && requirements().minHeight <= size.height) {
+  const packTiers = (repair: boolean) => {
     const weights = tierWeights(data.panels);
     const wSum = weights.reduce((sum, weight) => sum + weight, 0);
     const gapFloor = Math.min(4, theme.space.tierGap);
@@ -607,18 +607,8 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
     // canvas holds every minimum. Each panel takes its minimum, the rest follows the weights.
     const minimums = tierMinimums();
     const usable = area.h - theme.space.tierGap * (n - 1);
-    if (!varianceWeights && slots.some((slot, i) => slot.h + 0.5 < minimums[i]!) && minimums.reduce((a, b) => a + b, 0) <= usable) {
-      const held = new Set<number>();
-      let heights: number[] = [];
-      for (;;) {
-        const free = usable - [...held].reduce((sum, i) => sum + minimums[i]!, 0);
-        const open = weights.reduce((sum, weight, i) => sum + (held.has(i) ? 0 : weight), 0);
-        heights = weights.map((weight, i) => held.has(i) ? minimums[i]! : free * weight / open);
-        const under = heights.flatMap((height, i) => !held.has(i) && height < minimums[i]! ? [i] : []);
-        if (under.length === 0) break;
-        under.forEach((i) => held.add(i));
-      }
-      settle(heights);
+    if (repair && !varianceWeights && slots.some((slot, i) => slot.h + 0.5 < minimums[i]!) && minimums.reduce((a, b) => a + b, 0) <= usable) {
+      settle(heightsHoldingMinimums(usable, weights, minimums));
     }
     // Content that needs more than the canvas gives (a tier at its plot floor keeps its frame) takes
     // the height from the panels that still have plot to give, down to their minimums.
@@ -642,7 +632,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
         break;
       }
       if (slack < -gapCapacity) {
-        if (!squeeze(-slack - gapCapacity)) break;
+        if (!repair || !squeeze(-slack - gapCapacity)) break;
         continue;
       }
       if (slack <= theme.space.tierGap) break;
@@ -686,10 +676,22 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
         break;
       }
     }
-    if (slackNow() < -gapCapacity - 1) {
+    if (repair && slackNow() < -gapCapacity - 1) {
       warnings.push({ code: 'grid-panel-too-short', severity: 'warn',
         message: `the tiers need ${Math.ceil(-slackNow() - gapCapacity)} px more height than the canvas gives, so the top tier runs into the frame above it`,
         suggest: 'increase the grid height' });
+    }
+  };
+  if (packedTiers && requirements().minHeight <= size.height) {
+    const unpacked = { slots: slots.map((slot) => ({ ...slot })), children, tierContents, sharedX, sharedW, warnings: warnings.length };
+    packTiers(true);
+    // A repair that raises a panel's minimum above the canvas gives way, so the chart still draws.
+    if (requirements().minHeight > size.height) {
+      unpacked.slots.forEach((slot, i) => { slots[i] = slot; });
+      ({ children, tierContents, sharedX, sharedW } = unpacked);
+      warnings.length = unpacked.warnings;
+      effectiveTierGap = theme.space.tierGap;
+      packTiers(false);
     }
   }
   const sizing = requirements();
@@ -902,6 +904,19 @@ function appendPanelScene(
 export function withoutCategoryLabels(labels: unknown): unknown {
   if (labels === false) return false;
   return { ...(isRecord(labels) ? labels : {}), category: false };
+}
+
+/** Slot heights that hold every panel's minimum: a panel under its share keeps the minimum, the others split the rest by weight. */
+export function heightsHoldingMinimums(usable: number, weights: readonly number[], minimums: readonly number[]): number[] {
+  const held = new Set<number>();
+  for (;;) {
+    const free = usable - [...held].reduce((sum, i) => sum + minimums[i]!, 0);
+    const open = weights.reduce((sum, weight, i) => sum + (held.has(i) ? 0 : weight), 0);
+    const heights = weights.map((weight, i) => held.has(i) ? minimums[i]! : free * weight / open);
+    const under = heights.flatMap((height, i) => !held.has(i) && height < minimums[i]! ? [i] : []);
+    if (under.length === 0) return heights;
+    under.forEach((i) => held.add(i));
+  }
 }
 
 /**

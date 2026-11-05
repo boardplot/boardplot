@@ -25,6 +25,7 @@ import {
   sharedCategoryLabelOwner,
   sharedYGroup,
   withoutCategoryLabels,
+  heightsHoldingMinimums,
   occupiedBounds,
   type GridDerived as ComposedGridDerived,
   type GridMarks as ComposedGridMarks,
@@ -1318,6 +1319,15 @@ function layoutAuthoredGrid(
     const available = area.h - rowGaps.reduce((sum, gap) => sum + gap, 0);
     const weight = naturalTierWeights.reduce((sum, value) => sum + value, 0);
     const packed = children.every(child => !child.panel.align) && !options.anchors?.baselines;
+    // A slot under its panel's minimum draws a strip below a gap, although the canvas holds every minimum.
+    const minimums = children.map(child => child.geometry.sizing?.minHeight ?? 0);
+    if (packed && children.some((child, index) => child.slot.h + 0.5 < minimums[index]!) && minimums.reduce((sum, value) => sum + value, 0) <= available) {
+      const heights = heightsHoldingMinimums(available, naturalTierWeights, minimums);
+      children.forEach((child, index) => {
+        child.slot.h = heights[index]!;
+        child.geometry = child.relayout!(child.margin);
+      });
+    }
     if (packed && children.every(child => child.slot.h >= (child.geometry.sizing?.minHeight ?? 0))) {
       for (let pass = 0; pass < 8; pass++) {
         const slack = available - contentHeight();
