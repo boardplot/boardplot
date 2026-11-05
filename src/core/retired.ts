@@ -232,7 +232,15 @@ export function ignoreChartSettings<C extends { options?: unknown; data?: unknow
  * later too, so both are read here: an omitted cohort variant is heatmap, an
  * omitted bar variant is grouped.
  */
+const VARIANT_NAMES: Readonly<Record<string, readonly string[]>> = {
+  cohort: ['heatmap', 'pure', 'stepped'],
+  bar: ['grouped', 'stacked', 'stacked100', 'football-field', 'tornado'],
+  dot: ['dot', 'dumbbell', 'lollipop'],
+};
+
 function ignoreVariantSettings(type: string, name: unknown, options: Record<string, unknown>, ignore: (field: string[], severity: 'warn' | 'info', on: string) => void): void {
+  // The schema path accepts a variant in any case and runs this again after conversion, so it warns there. React reads the raw text and draws another layout.
+  if (typeof options.variant === 'string' && VARIANT_NAMES[type] && !VARIANT_NAMES[type].includes(options.variant)) return;
   const drop = (field: string[], variant: string) => ignore(field, 'warn', `${type} variant '${variant}'`);
   const set = (key: string) => options[key] !== undefined;
   const restCount = () => { if (isRecord(options.topN) && options.topN.showRestCount !== undefined) drop(['options', 'topN', 'showRestCount'], String(options.variant ?? name)); };

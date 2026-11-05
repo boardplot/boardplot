@@ -240,13 +240,20 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     message: 'columnVisibility leaves out every value column, so the table draws its labels only.', suggest: 'Keep range or one period in the table.' });
   // The table resolver ignores an encodings key that names no column; here the columns are the drawn range, pp, pl (with a plan) and the displayed period ids.
   const columnIds = [...blockColumns, ...authoredPeriods.map(p => p.id)];
-  for (const id of Object.keys(options.encodings ?? {})) if (!columnIds.includes(id)) {
+  // A hidden range, pp, pl or period takes its encoding back when a host shows the column again, so only 'label' and an id of no column may go.
+  const removable = (id: string) => !columnIds.includes(id) && !['range', 'pp', ...(plan ? ['pl'] : []), ...allPeriodIds].includes(id);
+  // Heat as figuresNeedHeat in table/schema.ts reads it: that file pulls in zod, and this runs in the zod-free React path.
+  const isHeat = (entry: unknown) => entry === 'heat' || typeof entry === 'object';
+  const encodings = Object.entries(options.encodings ?? {});
+  // figures: false refuses with no heat entry left, so a removal must leave one that stays.
+  const heatMustStay = options.figures === false && !encodings.some(([id, entry]) => isHeat(entry) && !removable(id));
+  for (const [id, entry] of encodings) if (!columnIds.includes(id)) {
     const asKind = data.periods.find(p => p.kind && p.id === id);
     const guess = asKind ? { key: asKind.kind === 'prior' ? 'pp' : asKind.kind === 'plan' ? 'pl' : 'range', near: true } : closestKey(id, columnIds);
     warnings.push({ code: 'dimswitch-encoding-column', severity: 'warn', field: ['options', 'encodings', id],
       message: `options.encodings key '${id}' names no column of this dimswitch, so it draws nothing.`,
       suggest: `${guess?.near ? `Use '${guess.key}'. ` : ''}The column ids are ${columnIds.map(c => `'${c}'`).join(', ')}.`,
-      fix: [{ op: 'remove', path: toJsonPointer(['options', 'encodings', id]) }] });
+      ...(removable(id) && !(heatMustStay && isHeat(entry)) ? { fix: [{ op: 'remove' as const, path: toJsonPointer(['options', 'encodings', id]) }] } : {}) });
   }
   const warned = new Set<string>();
   const warn = (code: string, id: string, message: string, severity: 'info' | 'warn' = 'warn') => { if (!warned.has(code + id)) { warned.add(code + id); warnings.push({ code, severity, field: ['data', 'measures', data.measures.findIndex(m => m.id === id)], message }); } };
