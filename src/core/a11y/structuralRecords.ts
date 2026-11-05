@@ -4,6 +4,7 @@ import type { DimSwitchDerived } from '../charts/dimswitch/types';
 import type { GridDerived } from '../charts/grid/layout';
 import type { MetricStackData } from '../charts/grid/metricStack';
 import { wholeCurrencyValue } from '../format';
+import { LABEL_ONLY_ROW, type LabelOnlyRowSource } from '../formatSpec';
 import { calcPreservesScale, columnOwnsFormat } from '../tableCalc';
 import type { BarTableData, BarTableDerived, BarTableMarks, BarTableOptions } from '../charts/bartable/types';
 import type { GanttMarks } from '../charts/gantt/layout';
@@ -84,10 +85,10 @@ function suppressedTableCells(data: TableData): Set<string> {
 }
 
 /** Each authored row's own format, calc and cells, by id, nested rows included. */
-function authoredRowSpecs(data: TableData): Map<string, { format?: string; calc?: unknown; cells?: TableRow['cells'] }> {
-  const specs = new Map<string, { format?: string; calc?: unknown; cells?: TableRow['cells'] }>();
+function authoredRowSpecs(data: TableData): Map<string, { format?: string; calc?: unknown; cells?: TableRow['cells']; labelOnly?: true }> {
+  const specs = new Map<string, { format?: string; calc?: unknown; cells?: TableRow['cells']; labelOnly?: true }>();
   const visit = (row: TableRow): void => {
-    specs.set(row.id, { ...(row.format === undefined ? {} : { format: row.format }), ...(row.calc === undefined ? {} : { calc: row.calc }), cells: row.cells });
+    specs.set(row.id, { ...(row.format === undefined ? {} : { format: row.format }), ...(row.calc === undefined ? {} : { calc: row.calc }), ...((row as LabelOnlyRowSource)[LABEL_ONLY_ROW] ? { labelOnly: true as const } : {}), cells: row.cells });
     row.children?.forEach(visit);
   };
   data.rows.forEach(visit);
@@ -98,7 +99,7 @@ function tableRecordCells(table: TableDerived['table'], data: TableData, options
   const withheld = suppressedTableCells(data);
   const rowSpecs = authoredRowSpecs(data);
   const authoredFormat = new Set(data.columns.filter(columnOwnsFormat).map((column) => column.id));
-  return table.rows.flatMap(row => table.columns.flatMap(column => {
+  return table.rows.flatMap(row => rowSpecs.get(row.id)?.labelOnly ? [] : table.columns.flatMap(column => {
     const resolved = row.cells[column.id];
     // The resolved cell already prints the theme's glyph; a record
     // keeps it, so records, hover and CSV say what the table shows.

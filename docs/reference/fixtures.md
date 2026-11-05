@@ -322,6 +322,12 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | bands-and-plan | dimswitch.by-member | example | Value bands with separate prior and plan changes |
 | thresholds-by-kind | dimswitch.by-measure | example | Separate thresholds for each change kind |
 | multiple-sample-bases | dimswitch.by-member | example | Judge only when both sample fields pass |
+| no-bars | dimswitch.by-measure | example | KPIs without the automatic size bars |
+| no-total-block | dimswitch.by-member | example | Channels and their KPIs without the Total block |
+| total-row-blank | dimswitch.by-measure | example | KPIs over their members with blank Total cells |
+| total-bottom | dimswitch.by-member | example | Channels and their KPIs with the Total block last |
+| no-group-heads | dimswitch.by-measure | example | KPIs without their section heads |
+| no-group-heads-by-member | dimswitch.by-member | example | Channels with grouped KPIs and no group label rows |
 | card-notes-de | dimswitch.by-member | torture | German engine notes on a phone card |
 
 ## table

@@ -4,6 +4,8 @@ import '../src/core/charts';
 import { compileDimSwitch, dimswitchRowId, FOLDED } from '../src/core/charts/dimswitch/compile';
 import { resolveDimSwitch, dimswitchCore } from '../src/core/charts/dimswitch/core';
 import { exampleData } from '../src/core/charts/dimswitch/example';
+import { statementData } from '../src/core/charts/dimswitch/statementExample';
+import { ENGINE_NOTES } from '../src/core/charts/table/tracks';
 import { dimswitchDataSchema } from '../src/core/charts/dimswitch/schema';
 import { visibleRows } from '../src/core/charts/table/view';
 import { renderSvg } from '../src/core/svg/renderSvg';
@@ -17,6 +19,8 @@ import { claimsForChart } from '../src/core/claims/browser';
 import { tableCellNodeId } from '../src/core/charts/table/cellKey';
 import { DERIVATION_KINDS, recomputeClaim } from './helpers/recompute';
 import { getFixtures } from '../src/fixtures';
+import { interactionRecords } from '../src/core/a11y/records';
+import { accessibleDataTable } from '../src/core/a11y/accessibility';
 // Wraps the real compile to count calls; the output is unchanged.
 vi.mock('../src/core/charts/dimswitch/compile', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/core/charts/dimswitch/compile')>();
@@ -508,5 +512,108 @@ describe('dimswitch generated columns', () => {
   it('warns on a wrong id in every key and draws', () => {
     const geometry = layout(exampleData, { columnVisibility: { nope: false }, columnOverrides: { nope: { width: 10 } }, columnOrder: ['nope'] });
     expect(geometry.warnings.filter(warning => warning.code === 'generated-id-unknown').map(warning => warning.field)).toEqual([['options', 'columnVisibility', 'nope'], ['options', 'columnOverrides', 'nope'], ['options', 'columnOrder', 0]]);
+  });
+});
+
+describe('dimswitch rowVisibility', () => {
+  const money: DimSwitchData = {
+    ...exampleData,
+    measures: [
+      { id: 'rev', label: 'Revenue', scale: 'money', value: { field: 'rev' } },
+      { id: 'n', label: 'Buyers', scale: 'count', value: { field: 'n' } },
+      { id: 'ratio', label: 'Revenue per buyer', scale: 'perUnit', value: { op: 'div', a: { field: 'rev' }, b: { field: 'n' } } },
+      { id: 'share', label: 'Share of revenue', scale: 'percent', format: '1.2%', change: 'pp', value: { op: 'div', a: { field: 'rev' }, b: { total: { field: 'rev' } }, factor: 100 } },
+    ],
+    dimension: { label: 'Channel', total: { id: 'total', label: 'Total' }, members: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], headline: ['rev'] },
+    facts: ['total', 'a', 'b'].flatMap((memberId, i) => ['range', 'prior', 'w1', 'w2'].map(periodId => ({ memberId, periodId, sums: { rev: [1200000, 210000, 990000][i]!, n: [2500000, 1900000, 600000][i]! }, ref: { rev: [1100000, 200000, 900000][i]!, n: [2400000, 1800000, 600000][i]! } }))),
+  };
+  const layout = (data: DimSwitchData, options: object) => requireGeometry(dimswitchCore.layout(data, { size: { width: 900 }, ...options }));
+  const printed = (data: DimSwitchData, options: object): Record<string, string> => Object.fromEntries((layout(data, options).scene as unknown as { t: string; id?: string; lines?: string[] }[]).filter(node => node.t === 'text' && /^cell(line)?:/.test(node.id ?? '')).map(node => [node.id!, node.lines?.join(' ') ?? '']));
+  // A Total that leaves must not change the figures of the members: 0.2M beside a 1.2M Total would turn into 210.0k.
+  it.each(['by-measure', 'by-member'] as const)('keeps every printed member figure with the Total hidden in %s', variant => {
+    const shown = printed(money, { variant, depth: 2 }), hidden = printed(money, { variant, depth: 2, rowVisibility: { total: false } });
+    expect(Object.keys(hidden).length).toBeGreaterThan(0);
+    expect(Object.keys(hidden).length).toBeLessThan(Object.keys(shown).length);
+    for (const [id, text] of Object.entries(hidden)) if (text !== '') expect([id, text]).toEqual([id, shown[id]]);
+    expect(Object.values(hidden).filter(text => /^\d\.\d+M$/.test(text))).not.toHaveLength(0);
+  });
+  // The KPI name has to stay over its members, and a number on it would be the Total the author took out.
+  it('keeps the by-measure Total line as a label over its members, with no change line', () => {
+    const compiled = compileDimSwitch(exampleData, { depth: 2, splits: true, rowVisibility: { total: false } });
+    const row = compiled.data.rows.find(r => r.id === dimswitchRowId('by-measure', 'total', 'orders'))!;
+    expect([row.label, row.missing, Object.keys(row.cells ?? {})]).toEqual(['Orders', 'blank', []]);
+    expect(compiled.data.rows.some(r => r.id === `${row.id}:change`)).toBe(false);
+    expect(compiled.data.rows.some(r => r.id === dimswitchRowId('by-measure', 'total', 'new'))).toBe(false);
+    expect(compiled.data.rows.some(r => r.parentId === row.id && !r.inline)).toBe(true);
+    expect(compiled.levels[row.id]).toBe(compileDimSwitch(exampleData, { depth: 2, splits: true }).levels[row.id]);
+  });
+  // A hidden row must leave no claim behind, while the sums that shown ratios cite stay checkable.
+  it('removes the calc records of a hidden Total and keeps its partition records', () => {
+    const data: DimSwitchData = { ...exampleData, dimension: { ...exampleData.dimension, sums: true } };
+    const compiled = compileDimSwitch(data, { variant: 'by-member', depth: 2, rowVisibility: { total: false } });
+    const totalRows = compiled.computedCells.filter(record => record.rowId.includes('"total"'));
+    expect(totalRows.filter(record => record.kind === 'calc')).toEqual([]);
+    expect(compiled.computedCells.some(record => record.rowId === 'total' && record.op === 'dimswitch:partition-sum')).toBe(true);
+  });
+  // A hidden value is not a missing one: hover and screen readers must not say "missing" on a row that prints nothing by design.
+  it('keeps no record and no "missing" on the blank Total lines', () => {
+    const request = resolveChartRequest({ type: 'dimswitch', data: exampleData, options: { variant: 'by-measure', depth: 2, rowVisibility: { total: false } }, size: { width: 900 } });
+    const records = interactionRecords({ request, geometry: requireGeometry(layoutResolvedRequest(request)), scope: request.scope, claims: [] });
+    const lines = new Set(exampleData.measures.map(measure => dimswitchRowId('by-measure', 'total', measure.id)));
+    expect(records.length).toBeGreaterThan(0);
+    expect(records.filter(record => lines.has(record.target.owner.rowId ?? ''))).toEqual([]);
+    const table = accessibleDataTable(records);
+    expect(table.columns.filter(column => lines.has(column.key))).toEqual([]);
+    expect(table.columns.filter((column, index) => !column.key.endsWith(':change') && table.rows.some(row => row.cells[index]?.state === 'missing'))).toEqual([]);
+  });
+  // A note about a change no reader can see would point at nothing.
+  it('prints no near-zero note for a hidden Total', () => {
+    const data: DimSwitchData = { ...exampleData, facts: exampleData.facts.map(f => f.memberId === 'total' && f.periodId === 'prior' ? { ...f, sums: { ...f.sums, orders: 0 } } : f) };
+    const notes = (options: object) => compileDimSwitch(data, { variant: 'by-member', ...options }).options[ENGINE_NOTES as never] as unknown as string[] | undefined;
+    expect(notes({ rowVisibility: { total: false } })?.length).toBe(notes({})!.length - 1);
+  });
+  // A wrong id must say which ids exist, and a table with no number left must say why, and neither may refuse.
+  it('warns on an id the form does not draw and on a table with no value left', () => {
+    const codes = (options: object) => { const geometry = layout(exampleData, options); expect(geometry.refused).toBeFalsy(); return geometry.warnings.map(warning => warning.code); };
+    expect(codes({ rowVisibility: { 'group:': false } })).toContain('generated-id-unknown');
+    expect(codes({ variant: 'by-member', rowVisibility: { 'group:': false, total: false } })).toContain('generated-id-unknown');
+    expect(codes({ rowVisibility: { total: false } })).toContain('dimswitch-labels-only');
+    expect(codes({ depth: 2, rowVisibility: { total: false } })).not.toContain('dimswitch-labels-only');
+    expect(codes({ rowVisibility: { total: true, nope: true } })).not.toContain('generated-id-unknown');
+  });
+  // A key that changes nothing must say so, or the author believes the chart obeyed it.
+  it('warns on a key with no part to act on, and stays quiet where it acts', () => {
+    const ignored = (data: DimSwitchData, options: object) => layout(data, options).warnings.filter(warning => warning.code === 'option-ignored').map(warning => warning.field);
+    const statement = getFixtures('dimswitch').find(entry => entry.id === 'statement')!;
+    expect(ignored(statement.data as DimSwitchData, { ...statement.options, bars: false })).toEqual([['options', 'bars']]);
+    expect(ignored(exampleData, { variant: 'by-member', depth: 2, totalPosition: 'bottom', rowVisibility: { total: false } })).toEqual([['options', 'totalPosition']]);
+    expect(ignored(money, { depth: 2, bars: false })).toEqual([]);
+    const bars = (options: object) => JSON.stringify(layout(money, { depth: 2, ...options }).scene);
+    expect(bars({ bars: false })).not.toBe(bars({}));
+  });
+  // A Total whose id looks like a group id has to stay addressable.
+  it('reads a key equal to the Total id as the Total', () => {
+    const data: DimSwitchData = { ...exampleData, measures: exampleData.measures.map(m => m.id === 'cac' ? { ...m, group: 'X' } : m), dimension: { ...exampleData.dimension, total: { id: 'group:X', label: 'Total' } }, facts: exampleData.facts.map(f => f.memberId === 'total' ? { ...f, memberId: 'group:X' } : f) };
+    const compiled = compileDimSwitch(data, { depth: 2, rowVisibility: { 'group:X': false } });
+    expect(compiled.data.rows.some(row => row.role === 'section' && row.label === 'X')).toBe(true);
+    expect(compiled.data.rows.find(row => row.id === dimswitchRowId('by-measure', 'group:X', 'orders'))?.missing).toBe('blank');
+  });
+  // In by-measure the Total row owns its members, so a moved block cannot exist there; the author has to hear that.
+  it('moves the by-member Total block and warns in by-measure', () => {
+    const ids = (options: object) => compileDimSwitch(exampleData, { variant: 'by-member', ...options }).data.rows.filter(row => row.parentId === undefined).map(row => row.label);
+    expect(ids({ totalPosition: 'bottom' })).toEqual([...ids({}).slice(1), 'Total']);
+    expect(compileDimSwitch(exampleData, { totalPosition: 'bottom' }).warnings.find(warning => warning.code === 'option-ignored')?.field).toEqual(['options', 'totalPosition']);
+  });
+  // A group hidden on one side only would leave a stray head when its roots are split: every head of the group goes, and the closing rule still reads the boundary.
+  it('hides every head of a group whose roots are split and keeps the section boundaries', () => {
+    const data: DimSwitchData = { ...statementData, measures: statementData.measures };
+    const groups = [...new Set(data.measures.map(m => m.group).filter(g => g !== undefined))];
+    const hidden = Object.fromEntries(groups.map(g => [`group:${g}`, false]));
+    const options = { depth: 2, thresholds: { effect: [0.3, 1] as [number, number] } };
+    const finals = (o: object) => compileDimSwitch(data, { ...options, ...o }).data.rows.filter(row => row.final).map(row => row.id);
+    expect(compileDimSwitch(data, { ...options, rowVisibility: hidden }).data.rows.filter(row => row.role === 'section' && row.label !== (data.dimension.total.heading ?? data.dimension.total.label))).toEqual([]);
+    expect(finals({ rowVisibility: hidden })).toEqual(finals({}));
+    const split: DimSwitchData = { ...exampleData, measures: exampleData.measures.map((m, i) => ({ ...m, group: i % 2 ? 'A' : 'B' })) };
+    expect(compileDimSwitch(split, { rowVisibility: { 'group:A': false } }).data.rows.filter(row => row.role === 'section').map(row => row.label)).toEqual(['B', 'B']);
   });
 });
