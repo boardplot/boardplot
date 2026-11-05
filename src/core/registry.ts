@@ -729,6 +729,7 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     run.probe = at => run({ ...at, [FULL_LAYOUT_PROBE]: true } as unknown as O);
     run.finish = () => { probes.clear(); layoutOnce.finish(); if (!borrowed) { memo.active = false; memo.heights.clear(); memo.references = undefined; } };
     const variable = new Set<PropertyKey>(['size', 'mode', 'belowMinimum', LAYOUT_CALL, FULL_LAYOUT_PROBE, FORCE_COMPACT, WIDTH_PROBE, ACCEPTANCE_PROBE, PLAN_ONLY]);
+    if (def.type === 'table' || def.type === 'dimswitch') variable.add(FIXED_SIZE_PROBE);
     run.accepts = (d, at) => d === data && [...new Set([...Reflect.ownKeys(options ?? {}), ...Reflect.ownKeys(at ?? {})])]
       .every(key => variable.has(key) || (options as Record<PropertyKey, unknown> | undefined)?.[key] === (at as Record<PropertyKey, unknown> | undefined)?.[key]);
     return run;
