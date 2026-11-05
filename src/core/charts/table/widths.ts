@@ -102,13 +102,12 @@ function tableWidthsWithHeads(table: ResolvedTable, theme: Theme, measure: TextM
   return dense;
 }
 
-/** Content, authored widths, fitting and the width floor are resolved together. */
-function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions = {}, view: TableWidthView = {}) {
+/** Measurements do not depend on available space. Rungs solve copies of these numeric tracks. */
+function measureTableTracks(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions, view: TableWidthView) {
   const cols = view.columns ?? visibleColumns(table);
   const rows = view.rows ?? visibleRows(table);
   const fullRows = view.fullRows ?? table.rows;
   const widthRows = view.widthRows ?? table.rows;
-  const available = view.available ?? Infinity;
   const spacerBefore = new Map<Id, number>();
   for (const group of table.columnGroups) {
     if (group.spacer === undefined || group.spacer <= 0) continue;
@@ -129,7 +128,6 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
     } };
   const headingFaces = (faces: TableFonts) => groupHeadingFaces(view.trailingTracking
     ? { ...faces.group, letterSpacing: Math.round((faces.group.letterSpacing ?? 0) * 1000) / 1000 } : faces.group);
-  const warnings: LintWarning[] = [];
   const ladder = levelLadder(theme, options.density ?? 'regular', options.target, textScaleOf(options));
   const regularFonts = tableFonts(theme, ladder);
   const rowById = new Map([...widthRows, ...rows].map(row => [row.id, row]));
@@ -144,7 +142,8 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
   const operatorSlot = operatorWidth(rows, theme);
   const rowIndent = (level: number) => (isTree ? indents.base + level * indents.step : 0) + operatorSlot;
   const inlineFont = (level: number, signed: boolean) => ladderInlineFont(theme, ladder, level, signed);
-  function cellFont(cell: ResolvedCell): FontSpec {
+  const cellFonts = new Map<ResolvedCell, FontSpec>();
+  function makeCellFont(cell: ResolvedCell): FontSpec {
     const row = rowById.get(cell.rowId);
     const kind = row?.kind;
     const totalFace = kind === undefined || (kind !== 'subtotal' && kind !== 'result' && kind !== 'driver' &&
@@ -152,6 +151,11 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
     if (cell.role === 'total' && cell.kind !== 'rowLabel' && totalFace) return regularFonts.totalValue;
     const font = kindFont(ladderRowFont(theme, ladder, regularFonts, cell.role, cellStep(cell), row?.hasChildren === true, hasChanges.has(cell.rowId)), kind, cell.kind === 'rowLabel', theme);
     return cell.state === 'value' ? strongColumnFont(font, colById.get(cell.colId), cell, kind, theme) : font;
+  }
+  function cellFont(cell: ResolvedCell): FontSpec {
+    let font = cellFonts.get(cell);
+    if (font === undefined) cellFonts.set(cell, font = makeCellFont(cell));
+    return font;
   }
   function affixRoom(row: ResolvedRow, font: FontSpec): number {
     if (row.unitAffix === undefined) return 0;
@@ -322,6 +326,48 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
    */
   const regular = trackWidths(regularFonts);
   const dense = cols.length >= DENSE_COLUMNS ? trackWidths(tableFonts(theme, ladder, cols.length)) : undefined;
+  return { cols, rows, widthRows, spacerBefore, spacerTotal, figures, wideTable, cellPadX, labelColumn, labelLead, groupCell, headingFaces, regularFonts, cellStep, indentStep, childCount, indents, operatorSlot, rowIndent, cellFont, affixRoom, columnHeaderText, chipSpan, sumOf, hasChanges, regular, dense };
+}
+
+const measuredTables = new WeakMap<ResolvedTable, Map<string, ReturnType<typeof measureTableTracks>>>();
+const measureIds = new WeakMap<object, number>();
+let nextMeasureId = 0;
+const measureId = (fn: object | undefined): number | undefined => {
+  if (fn === undefined) return undefined;
+  let id = measureIds.get(fn);
+  if (id === undefined) measureIds.set(fn, id = nextMeasureId++);
+  return id;
+};
+
+/** Resolved tables are private immutable models; all frame-dependent typography enters by value. */
+function measuredTable(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions, view: TableWidthView) {
+  const ids = (entries: readonly { id: Id }[] | undefined) => entries?.map(entry => entry.id);
+  const key = JSON.stringify([
+    theme.type, theme.table, measureId(measure), measureId(view.slack),
+    options.density, options.target, textScaleOf(options), options.cellPadX, options.labelIndent,
+    options.outlineMarks, options.figures, options.inlineVisibility, options.rowLabelLines, options[LABEL_WRAP_FLOOR],
+    ids(view.columns), ids(view.rows), ids(view.widthRows), ids(view.fullRows), ids(view.allColumns),
+    view.spacerTotal, view.scroll, view.headLines, view.headGlue, view.withMarks, view.trailingTracking,
+    view.sortable && [...view.sortable], view.groupStart && [...view.groupStart], view.groupEnd && [...view.groupEnd], view.leadWidth, view.labelKeep,
+  ]);
+  let variants = measuredTables.get(table);
+  if (!variants) measuredTables.set(table, variants = new Map());
+  let measured = variants.get(key);
+  if (!measured) {
+    // shortcut: retain 64 typography/spacing variants per resolved table; another variant replaces the oldest.
+    if (variants.size >= 64) variants.delete(variants.keys().next().value!);
+    variants.set(key, measured = measureTableTracks(table, theme, measure, options, view));
+  }
+  // Solving may shrink or grow tracks. The measured inputs never change.
+  return { ...measured, regular: { ...measured.regular, widths: new Map(measured.regular.widths) },
+    dense: measured.dense && { ...measured.dense, widths: new Map(measured.dense.widths) } };
+}
+
+/** Solve measured content, authored widths and floors against the available frame. */
+function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions = {}, view: TableWidthView = {}) {
+  const { cols, rows, widthRows, spacerBefore, spacerTotal, figures, wideTable, cellPadX, labelColumn, labelLead, groupCell, headingFaces, regularFonts, cellStep, indentStep, childCount, indents, operatorSlot, rowIndent, cellFont, affixRoom, columnHeaderText, chipSpan, sumOf, hasChanges, regular, dense } = measuredTable(table, theme, measure, options, view);
+  const available = view.available ?? Infinity;
+  const warnings: LintWarning[] = [];
   // A lower bound can rule wrapping out without another layout. These floors
   // include the longest word, header and padding. Keep unknown spans and dense
   // heads undecided; render retains the existing advice in those cases.

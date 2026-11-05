@@ -1,11 +1,11 @@
 import { tableWidths } from './widths';
-import { PLAN_ONLY, copyPlannedValue, deferLayout, isPlanned, materializeLayout, plannedCutCount } from '../../layoutPlan';
+import { PLAN_ONLY, copyPlannedValue, deferLayout, isPlanned, materializeLayout, plannedCutCount, layoutKey, tableTextMeasure, withPlanInputs } from '../../layoutPlan';
 import { liftOrFallback, missesSize, tightSpacingWarning } from '../tableFit';
 import { chartTheme } from '../chartEnv';
 import { structureCount } from '../../structureCounts';
 /**
- * Table layout v0. Consumes resolveTable()'s semantic
- * model and emits a paint-ready scene. Body cells are plain text nodes —
+ * Table layout measures resolveTable()'s semantic model, selects a numeric fit,
+ * and emits only the selected scene. Body cells are plain text nodes —
  * the label solver is never invoked; invariant (every cell text rect
  * inside its cell contentRect; disjoint tiling) replaces the solver
  * invariants and is enforced by the test suite. Claims are COARSE (row
@@ -61,7 +61,6 @@ import { fixedHeightCanvas, rowDrivenHeight, spareShare } from '../../rowCanvas'
 import { CARD_CLASS_WIDTH, heightOmitted, rowSizing, VERIFY_ADVICE, WIDTH_PROBE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { textScaleOf } from '../../typeFloors';
-import { currentSmallValues } from '../../formatPrecision';
 import { maxOf, minOf, pushAll } from '../../arrays';
 
 export interface TableMarks {
@@ -371,21 +370,16 @@ export function layoutTableCard(data: TableData, options: TableOptions = {}): Ge
 }
 
 const layouts = new WeakMap<object, Map<string, unknown>>();
-const functionIds = new WeakMap<object, number>();
-let nextFunctionId = 0;
 
 /**
- * One request lays a table out many times (the fit passes, the repair loop,
- * the legend probe, the React render after measure), and each layout climbs
- * the whole ladder. A layout is a pure function of its data and options, so
- * the registered table layouts keep each result per data object and hand
- * out a deep copy, which a caller may change. The key holds the data too, so
- * data changed in place lays out again; a function in the options (the text
- * measurer) enters the key by identity. A theme named by string always lays
- * out, because a custom theme can be registered again under its name.
+ * Keep the numeric fit per data object and options. Internal probes borrow numeric
+ * fields; materialization owns a deep copy for a caller that can edit the result.
+ * Data content and function identities enter the key, so edits resolve again.
+ * A named theme bypasses the memo because the name can be registered again.
  * shortcut: 32 results per data object, then the map starts again.
  */
 export function memoLayout<G>(data: object, options: object, layout: () => G): G {
+  return withPlanInputs(() => {
   const finish = (value: G): G => isPlanned(value as object)
     ? ((options as LayoutOptions)[PLAN_ONLY] ? { ...value, warnings: [...(value as Geometry).warnings] } : materializeLayout(value as Geometry)) as G
     : copyPlannedValue(value);
@@ -396,23 +390,10 @@ export function memoLayout<G>(data: object, options: object, layout: () => G): G
   if (!byKey || byKey.size >= 32) layouts.set(data, byKey = new Map());
   if (!byKey.has(key)) byKey.set(key, layout());
   return finish(byKey.get(key) as G);
-}
-
-/**
- * The cache key of a layout: the data, the options and their symbol keys.
- * A function (the text measurer) enters by identity. The data is part of the
- * key, so data changed in place never reads an older result.
- */
-export function layoutKey(data: object, options: object): string {
-  const symbols = Object.getOwnPropertySymbols(options).map((symbol) => [symbol.description, (options as Record<symbol, unknown>)[symbol]]);
-  // The smallValues mode in force too: a nested table inherits its enclosing chart's mode.
-  return JSON.stringify([data, options, symbols, currentSmallValues()], (_key, value: unknown) => {
-    if (typeof value !== 'function') return value;
-    if (!functionIds.has(value)) functionIds.set(value, nextFunctionId++);
-    return `function ${functionIds.get(value)}`;
   });
 }
 
+export { layoutKey } from '../../layoutPlan';
 
 /**
  * With the ladder, a table reports one minimum
@@ -561,7 +542,7 @@ function layoutTableOnce(
   const tight = options[TIGHT_SPACING]?.columns === true;
   const tightRows = options[TIGHT_SPACING]?.rows === true;
   let size = resolveSize(options.size);
-  const measure = options.measure ?? defaultMeasurer;
+  const measure = tableTextMeasure(options.measure ?? defaultMeasurer);
   let data = authoredData;
   let resolved = initialResolved;
   let warnings: LintWarning[] = [...resolved.warnings];
@@ -1283,7 +1264,7 @@ function layoutTableOnce(
     },
     derived: { table, computedCells: resolved.computedCells },
     a11y: { title: accessibleTitle(options.title, 'Table'), counts: [structureCount('rows', dataRows.length), structureCount('columns', cols.length)], desc: `Table with ${dataRows.length} rows and ${cols.length} columns` },
-    warnings, debug: { occupied: [], decisions: [] },
+    warnings, paintWarningRules: undefined, debug: { occupied: [], decisions: [] },
   };
   const plannedWarnings = [...warnings];
   return deferLayout(geometry, () => {

@@ -1,9 +1,73 @@
 /** Numeric table fitting keeps scene construction behind the selected plan. */
 import { copyFrame, footerPlans } from './footer';
 import { emptyIdRecord } from './idRecords';
+import { currentSmallValues } from './formatPrecision';
+import type { FontSpec, TextMeasurer, TextSize } from './text';
 import type { FrameGeometry, Geometry } from './types/scene';
 
 type AnyGeometry = Geometry<object, object>;
+
+const functionIds = new WeakMap<object, number>();
+let nextFunctionId = 0;
+const keyFunction = (_key: string, value: unknown): unknown => {
+  if (typeof value !== 'function') return value;
+  if (!functionIds.has(value)) functionIds.set(value, nextFunctionId++);
+  return `function ${functionIds.get(value)}`;
+};
+type TextPlan = { font: FontSpec; texts: Map<string, TextSize> };
+type Inputs = { json: WeakMap<object, string>; texts: WeakMap<TextMeasurer, Map<string, TextPlan>>; fonts: WeakMap<FontSpec, { key: string; font: FontSpec }> };
+let inputs: Inputs | undefined;
+
+/** Synchronous probes share snapshots; the next public call reads mutable inputs again. */
+export function withPlanInputs<T>(run: () => T): T {
+  if (inputs) return run();
+  inputs = { json: new WeakMap(), texts: new WeakMap(), fonts: new WeakMap() };
+  try { return run(); } finally { inputs = undefined; }
+}
+
+function inputJson(value: object): string {
+  let key = inputs?.json.get(value);
+  if (key === undefined) { key = JSON.stringify(value, keyFunction); inputs?.json.set(value, key); }
+  return key;
+}
+
+/** Data and theme snapshots are shared only during one synchronous request, including nested mutable fields. */
+export function layoutKey(data: object, options: object): string {
+  const { theme, ...rest } = options as { theme?: unknown };
+  const symbols = Object.getOwnPropertySymbols(options).map(symbol => [symbol.description, (options as Record<symbol, unknown>)[symbol]]);
+  return JSON.stringify([inputJson(data), rest, theme && typeof theme === 'object' ? inputJson(theme) : theme, symbols, currentSmallValues()], keyFunction);
+}
+
+const measurers = new WeakMap<TextMeasurer, TextMeasurer>();
+const wrappedMeasurers = new WeakSet<TextMeasurer>();
+const sameFont = (a: FontSpec, b: FontSpec) => a.family === b.family && a.size === b.size && a.weight === b.weight && a.style === b.style
+  && a.letterSpacing === b.letterSpacing && a.tabular === b.tabular && a.lineHeight === b.lineHeight;
+
+/** A distinct string is measured once per complete font during a numeric fit. No rounding is introduced. */
+export function tableTextMeasure(raw: TextMeasurer): TextMeasurer {
+  if (wrappedMeasurers.has(raw)) return raw;
+  let wrapped = measurers.get(raw);
+  if (!wrapped) {
+    wrapped = (text, font) => {
+      if (!inputs) return raw(text, font);
+      let known = inputs.fonts.get(font);
+      if (!known || !sameFont(known.font, font)) {
+        known = { key: JSON.stringify([font.family, font.size, font.weight, font.style, font.letterSpacing, font.tabular, font.lineHeight]), font: { ...font } };
+        inputs.fonts.set(font, known);
+      }
+      let fonts = inputs.texts.get(raw);
+      if (!fonts) inputs.texts.set(raw, fonts = new Map());
+      let plan = fonts.get(known.key);
+      if (!plan) fonts.set(known.key, plan = { font: known.font, texts: new Map() });
+      let result = plan.texts.get(text);
+      if (!result) plan.texts.set(text, result = { ...raw(text, font) });
+      return result;
+    };
+    measurers.set(raw, wrapped);
+    wrappedMeasurers.add(wrapped);
+  }
+  return wrapped;
+}
 
 export const PLAN_ONLY = Symbol('tablePlanOnly');
 const PLAN = Symbol('tableLayoutPlan');
