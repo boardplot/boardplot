@@ -409,6 +409,18 @@ it('keeps a DimSwitch column left out in its exported document', async () => {
   expect(document?.charts[0]!.options.columnVisibility).toEqual({ range: false, pp: false });
 });
 
+// The document must reopen as the table on screen, with its rows and bars as the host set them.
+it('keeps DimSwitch rowVisibility, bars and totalPosition in its exported document', async () => {
+  const fixture = getFixtures('dimswitch').find(item => item.id === 'by-member')!;
+  const handle = await exporterOf(exporter => <DimSwitchChart {...fixture.options as object} rowVisibility={{ total: false }} bars={false} totalPosition="bottom" data={fixture.data as never} size={{ width: 720 }} exporter={exporter} />);
+  const result = await handle.svg();
+  expect(result.ok ? '' : result.message).toBe('');
+  const spec = result.ok ? (result.document as { charts: { options: { rowVisibility?: object; bars?: boolean; totalPosition?: string } }[] }).charts[0]! : undefined;
+  expect([spec?.options.rowVisibility, spec?.options.bars, spec?.options.totalPosition]).toEqual([{ total: false }, false, 'bottom']);
+  const again = await exportSvg({ spec: spec as never });
+  expect(again.ok ? '' : again.message).toBe('');
+});
+
 // A default must hide columns as the prop does, and the document must reopen as the table on screen; the prop wins over the default.
 it('resolves defaultColumnVisibility before the DimSwitch compile and keeps it in the document', async () => {
   const fixture = getFixtures('dimswitch').find(item => item.id === 'by-measure')!;
