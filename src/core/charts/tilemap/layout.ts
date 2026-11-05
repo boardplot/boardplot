@@ -8,8 +8,8 @@ import { formatterFromExample } from '../../formatSpec';
 import type { Rect } from '../../geometry';
 // By name, not through the '../../geo' barrel, for the reason choropleth/layout.ts gives.
 import { projectGeoLonLat } from '../../geo/project';
-import { geoRegionIdIndex, resolveGeoRegionId } from '../../geo/resolveRegionId';
-import { getTilePack, type TileRegionRecord } from '../../geo/tiles';
+import { geoRegionIdIndex, nearestRegionId, resolveGeoRegionId, type GeoRegionIdIndex } from '../../geo/resolveRegionId';
+import { getTilePack, WORLD_TILE_PACK, type TilePack, type TileRegionRecord } from '../../geo/tiles';
 import type { GeoPackId } from '../../geo/types';
 import { getGeoPack } from '../../geo/packs/registry';
 import { DEFAULT_TARGET, TARGET_SIZE, type TargetSizeOptions } from '../../target';
@@ -116,6 +116,27 @@ export function layoutTilemap(
   }
 }
 
+/**
+ * The repair for a region id the pack does not know. On a pack of countries
+ * the world pack reads the id first, as its aliases hold the ISO 3166 codes:
+ * DEU names DE, and US on the europe pack names the world pack, where a
+ * spelling match would offer ES. Other ids get the nearest spelling.
+ */
+function unknownRegionSuggest(id: string, pack: TilePack, idIndex: GeoRegionIdIndex, options: TilemapOptions): string | undefined {
+  const world = geoRegionIdIndex(WORLD_TILE_PACK.regions);
+  if (pack.id !== WORLD_TILE_PACK.id && pack.regions.every((region) => world.canonical.has(region.id))) {
+    const resolution = resolveGeoRegionId(world, id);
+    if (resolution.kind === 'ambiguous') return undefined;
+    if (resolution.kind === 'resolved') {
+      return idIndex.canonical.has(resolution.id)
+        ? chartString(options, 'regionIdSuggestion', { v1: idIndex.canonical.get(resolution.id)! })
+        : chartString(options, 'regionInOtherPack', { v1: id, v2: WORLD_TILE_PACK.id });
+    }
+  }
+  const nearest = nearestRegionId(id, [...idIndex.canonical.keys()], idIndex.canonical);
+  return nearest === undefined ? undefined : chartString(options, 'regionIdSuggestion', { v1: nearest });
+}
+
 /** Height and note passes must not grow the call stack. */
 function layoutTilemapPass(
   data: TilemapData,
@@ -129,11 +150,15 @@ function layoutTilemapPass(
   if (!data.regions.length) throw new NormalizeError(EMPTY_DATA, 'regions', 'tilemap requires at least one region', 'add regions[].id and value');
   const pack = getTilePack(data.pack);
   const idIndex = geoRegionIdIndex(pack.regions);
-  const { valuesById, statesById, leftOut } = ingestGeoRegions(data.regions, idIndex, { where: `tile pack '${pack.id}'`, regionWord: 'tile-pack region' }, warnings, (id, index) => ({
-    code: 'tilemap-unknown-region', severity: 'warn',
-    message: chartString(options, 'unknownRegionLeftOut', { v1: id, v2: pack.id }),
-    owner: { categoryId: id }, field: ['data', 'regions', index, 'id'],
-  }));
+  const { valuesById, statesById, leftOut } = ingestGeoRegions(data.regions, idIndex, { where: `tile pack '${pack.id}'`, regionWord: 'tile-pack region' }, warnings, (id, index) => {
+    const suggest = unknownRegionSuggest(id, pack, idIndex, options);
+    return {
+      code: 'tilemap-unknown-region', severity: 'warn',
+      message: chartString(options, 'unknownRegionLeftOut', { v1: id, v2: pack.id }),
+      ...(suggest ? { suggest } : {}),
+      owner: { categoryId: id }, field: ['data', 'regions', index, 'id'],
+    };
+  });
   if (leftOut.length) options = { ...options, notes: { ...options.notes, show: [...new Set([...(options.notes?.show ?? ['note']), 'disclosure' as const])] } };
 
   const theme = resolveSemanticPaletteTheme(

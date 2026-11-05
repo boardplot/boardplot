@@ -350,7 +350,35 @@ The second command prints the same JSON as `boardplot_render`, here in part:
 
 The exit code is 0 when the call succeeded, 1 when the input was rejected and 2 for an internal error. The other commands: `boardplot list`, `boardplot describe waterfall --full`, `boardplot describe mekko --path valueAxis.break`, `boardplot describe column --schema options`, `boardplot render spec.json --rows sales.csv --columns category=month,series=segment,value=revenue` (a relative rows path resolves against the working directory), `boardplot fixtures --type waterfall`, `boardplot measure spec.json --width 400`, `boardplot render spec.json --format png --out ./charts` (a PNG goes to a file), `boardplot fonts build <font-dir>`, `boardplot telemetry status`, `boardplot feedback --category bug --summary "..."` and `boardplot --version`.
 
-A file in `--out` takes the chart's name, `chart` when the spec has none; a taken name gets `-2`, so a render keeps existing files by default, and the warning `out-name-taken` names the requested and the written path. `--overwrite` replaces existing output files at the requested paths. The MCP tool uses `overwrite: true` for the same result. Duplicate chart names within one call still get separate files. `--quiet` prints only `ok` and `outputs` when the render succeeds, which keeps a shell loop over many variants readable; a refused spec still prints its errors. An `--out` that cannot be a folder, such as an existing file or a folder without write permission, is refused with `out-unwritable` and exit 1. A new `--out` path that ends in another file extension made of letters, such as `chart.jpg` or `chart.pdf`, is refused with `invalid-argument`, because Boardplot writes SVG and PNG only; end the path with `/` to make a folder of that name. `--out -` writes the one chart to stdout, the SVG text or the PNG bytes, and prints the JSON answer on stderr: `boardplot render spec.json --out - > chart.svg`.
+A file in `--out` takes the chart's name, `chart` when the spec has none; a taken name gets `-2`, so a render keeps existing files by default, and the warning `out-name-taken` names the requested and the written path. `--overwrite` replaces existing output files at the requested paths. The MCP tool uses `overwrite: true` for the same result. Duplicate chart names within one call still get separate files. `--quiet` prints only `ok` and `outputs` when the render succeeds, which keeps a shell loop over many variants readable; a refused spec still prints its errors. Each warning of severity `warn` still prints one line on stderr, `warning <code>: <message>`, before the line that names the written files; with `--out -` stderr keeps its one JSON object. An `--out` that cannot be a folder, such as an existing file or a folder without write permission, is refused with `out-unwritable` and exit 1. A new `--out` path that ends in another file extension made of letters, such as `chart.jpg` or `chart.pdf`, is refused with `invalid-argument`, because Boardplot writes SVG and PNG only; end the path with `/` to make a folder of that name. `--out -` writes the one chart to stdout, the SVG text or the PNG bytes, and prints the JSON answer on stderr: `boardplot render spec.json --out - > chart.svg`.
+
+### Several charts in one call
+
+A document draws several charts in one call: `{ "version": 1, "charts": [...] }`, with a unique `name` per chart that also names its file under `--out`. A root `theme` or `locale` applies to every chart that sets none. The CLI starts and loads the engine once for all charts, where one `boardplot render` per chart pays that start for every chart. `boardplot_render`, `boardplot_measure` and `boardplot measure` take a document too.
+
+```sh
+boardplot render - --out charts <<'EOF'
+{
+  "version": 1,
+  "charts": [
+    {
+      "name": "revenue",
+      "type": "column",
+      "data": { "categories": ["2024", "2025"], "series": [{ "id": "revenue", "label": "Revenue", "values": [120, 135] }] },
+      "options": { "title": "Revenue grew 12.5 percent", "subtitle": { "measure": "Revenue" }, "unit": "$m" }
+    },
+    {
+      "name": "margin",
+      "type": "line",
+      "data": { "categories": ["2024", "2025"], "series": [{ "id": "margin", "label": "Margin", "values": [18, 21] }] },
+      "options": { "title": "Margin rose three points", "subtitle": { "measure": "EBIT margin" }, "unit": "%" }
+    }
+  ]
+}
+EOF
+```
+
+This writes `charts/revenue.svg` and `charts/margin.svg`. The answer lists each chart under `charts` with its name, and `outputs` lists the files. The document is checked as a whole: one refused chart refuses the call and no file is written. Each error names its chart (`chart 'margin': …`) and points into it (`/charts/1/options/…`), so fix or drop that chart and render again. `--out -` takes a document of one chart only.
 
 ### Problem reports and usage counts
 

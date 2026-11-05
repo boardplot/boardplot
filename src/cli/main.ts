@@ -66,18 +66,33 @@ function rowFlags(flags: Flags): { rowsFile?: string; columns?: Record<string, s
  */
 function quietRender(flags: Flags, result: VerbResult): VerbResult {
   if (flags.quiet !== true || result.exit !== 0) return result;
-  const svgReturned = (result.body.warnings as { code: string }[] | undefined)?.filter(warning => warning.code === 'svg-returned');
+  const warnings = result.body.warnings as { code: string; severity?: string }[] | undefined;
+  const svgReturned = warnings?.filter(warning => warning.code === 'svg-returned');
+  // With --out - stderr is one JSON object, so warn-level warnings stay in that object.
+  const kept = warnings?.filter(warning => warning.code === 'svg-returned' || (text(flags, 'out') === '-' && warning.severity === 'warn'));
   const returned = (text(flags, 'return') ?? (svgReturned?.length ? 'svg' : '')).split(',').map((entry) => entry.trim().toLowerCase());
   const pick = (from: Record<string, unknown>) => Object.fromEntries(returned.filter((key) => key in from).map((key) => [key, from[key]]));
   // A document answers per chart, under charts with each chart's name.
   const charts = Array.isArray(result.body.charts) && returned.some((key) => key !== '')
     ? { charts: (result.body.charts as Record<string, unknown>[]).map((chart) => ({ name: chart.name, ...pick(chart) })) } : {};
   return { ...result, body: { ok: true, ...(result.body.outputs ? { outputs: result.body.outputs } : {}), ...pick(result.body), ...charts,
-    ...(svgReturned?.length ? { warnings: svgReturned } : {}) } };
+    ...(kept?.length ? { warnings: kept } : {}) } };
 }
 
-/** Print before quiet mode removes warnings; stdout keeps its existing JSON shape. */
-function writtenPaths(result: VerbResult): VerbResult {
+/** Warnings the stderr line already says or quiet mode keeps in its JSON. */
+const QUIET_KEPT_WARNINGS: ReadonlySet<string> = new Set(['out-name-taken', 'svg-returned']);
+
+/**
+ * Print before quiet mode removes warnings; stdout keeps its existing JSON shape.
+ * Under --quiet each warn-level warning prints one line first, so a shell loop
+ * still sees what needs a fix; the last line stays the written paths.
+ */
+function writtenPaths(result: VerbResult, quiet: boolean): VerbResult {
+  if (quiet && result.exit === 0) {
+    for (const warning of (result.body.warnings as { code: string; severity?: string; message: string }[] | undefined) ?? []) {
+      if (warning.severity === 'warn' && !QUIET_KEPT_WARNINGS.has(warning.code)) printError(`warning ${warning.code}: ${warning.message}`);
+    }
+  }
   const outputs = result.body.outputs;
   if (result.exit === 0 && Array.isArray(outputs) && outputs.length) {
     const warnings = result.body.warnings as { code: string; suggest?: string }[] | undefined;
@@ -146,7 +161,7 @@ function dispatch(verb: string, flags: Flags, seen: UsageSeen): VerbResult {
         ...(stdout ? { return: [...returned, 'svg'] } : requested === undefined ? {} : { return: returned }),
         ...rowFlags(flags),
       });
-      return quietRender(flags, stdout ? stdoutRender(result) : writtenPaths(result));
+      return quietRender(flags, stdout ? stdoutRender(result) : writtenPaths(result, flags.quiet === true));
     }
     case 'measure':
       seen.spec = readSpecFile(first);

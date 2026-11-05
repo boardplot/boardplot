@@ -68,6 +68,11 @@ export interface Binning {
    * this value, and its upper edge is the largest observation.
    */
   openAbove?: number;
+  /**
+   * Set only when the 'auto' width would have needed more than the bin cap:
+   * that width and its bin count. The bins then take the Sturges width.
+   */
+  autoCap?: { width: number; bins: number };
 }
 
 /**

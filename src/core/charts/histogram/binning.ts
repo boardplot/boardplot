@@ -20,6 +20,10 @@
  * 4. Snap (default on): `h` <- the smallest value of `{1, 2, 2.5, 5} x 10^k`
  *    that is >= `h_auto`. If snapping yields fewer than 3 bins, keep `h_auto`
  *    and set `snapped: false`. Record which happened.
+ * 4a. Cap: when the 'auto' width without an open bin needs more than
+ *    MAX_BINS bins (a few far values set the range, the IQR sets `h_fd`),
+ *    `h_sturges` replaces `h_auto` (then snapped as in step 4) and `autoCap`
+ *    records the width and count it replaced. NumPy would draw the hairlines.
  * 5. Anchor: `first = floor(min / h) * h` (or the explicit `anchor`);
  *    `k = max(1, ceil((max - first) / h))`; `edges[i] = first + i*h`.
  *    Membership keeps full precision; labels are formatted by the layout.
@@ -266,6 +270,7 @@ export function computeBinning(input: BinningInput): Binning {
   let requestedCount: number | undefined;
   let exactWidth: number | undefined;
   let wholeCount: number | undefined;
+  let autoCap: Binning['autoCap'];
 
   if (typeof bins === 'number') {
     // An authored count is exact: that many equal bins from the
@@ -292,9 +297,9 @@ export function computeBinning(input: BinningInput): Binning {
     anchor = bins.anchor ?? (perValue ? min - 0.5 : openAbove !== undefined ? anchorBelow(openAbove, min, width) : derivedAnchor(min, width));
   } else {
     rule = 'auto';
-    width = hAuto;
-    if (snap) {
-      const snappedWidth = snapWidth(hAuto);
+    const ruleGrid = (ruleWidth: number): { width: number; snapped: boolean; perValue: boolean } => {
+      if (!snap) return { width: ruleWidth, snapped: false, perValue: false };
+      const snappedWidth = snapWidth(ruleWidth);
       const candidate = wholeNumbers && snappedWidth < 1 && perValueFits(min, top) ? 1 : snappedWidth;
       // Snapping trades an exact rule for a readable edge, and it is only a
       // good trade while the shape survives. Three bins is the floor at which
@@ -305,10 +310,18 @@ export function computeBinning(input: BinningInput): Binning {
         // `snapped` records a MOVE, not an attempt: a rule width that already
         // sits on the ladder would otherwise print "snapped to a round width"
         // in the method note about a number nothing touched.
-        snapped = candidate !== width;
-        width = candidate;
-        perValue = centred;
+        return { width: candidate, snapped: candidate !== ruleWidth, perValue: centred };
       }
+      return { width: ruleWidth, snapped: false, perValue: false };
+    };
+    ({ width, snapped, perValue } = ruleGrid(hAuto));
+    // A few far values set the range while the narrower rule width stays tied to the
+    // interquartile range: past the cap, the wider Sturges width draws the bins, and
+    // the layout warns with an open bin for the tail. An authored open bin keeps its refusal.
+    const crowded = openAbove === undefined && !perValue ? binCountFor(max, derivedAnchor(min, width), width) : 0;
+    if (crowded > MAX_BINS && hAuto < hSturges) {
+      autoCap = { width, bins: crowded };
+      ({ width, snapped, perValue } = ruleGrid(hSturges));
     }
     // An open bin keeps round edges: a snapped width whose grid from the minimum misses
     // openAbove gives way to the next narrower ladder width whose grid meets it.
@@ -403,7 +416,31 @@ export function computeBinning(input: BinningInput): Binning {
     ...(requestedCount === undefined ? {} : { requestedCount }),
     ...(exactWidth === undefined ? {} : { exactWidth }),
     ...(openAbove === undefined ? {} : { openAbove }),
+    ...(autoCap === undefined ? {} : { autoCap }),
   };
+}
+
+/**
+ * The open bin that answers a capped 'auto' width: it starts on the first edge
+ * of the capped grid above the largest observation inside Tukey's far-out
+ * fence (Q3 + 3 IQR), so only the far tail goes into it. Undefined when no
+ * observation lies past the fence or the bins with it still do not fit.
+ */
+export function cappedOpenAbove(input: BinningInput, q3: number, capWidth: number): number | undefined {
+  const { sorted, min, interquartileRange } = input;
+  const fence = q3 + 3 * interquartileRange;
+  let inside = sorted.length - 1;
+  while (inside > 0 && sorted[inside]! > fence) inside--;
+  if (inside === sorted.length - 1) return undefined;
+  const anchor = derivedAnchor(min, capWidth);
+  const steps = Math.floor((sorted[inside]! - anchor) / capWidth) + 1;
+  const value = round12(edgeSequence(anchor, capWidth, steps)(steps));
+  try {
+    computeBinning({ ...input, bins: { openAbove: value } });
+  } catch {
+    return undefined;
+  }
+  return value;
 }
 
 /**

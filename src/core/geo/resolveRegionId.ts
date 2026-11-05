@@ -13,6 +13,7 @@
  * `scripts/build-geo-packs.mjs` carries the matching bake-time gate, so no
  * new ambiguity can be baked without an explicit entry.
  */
+import { levenshtein } from '../spelling';
 
 /** The shape both geo-pack regions and tile-pack regions share. */
 export interface GeoIdentifiableRegion {
@@ -121,4 +122,21 @@ export function claimedRegionIds(resolution: GeoRegionResolution): readonly stri
   if (resolution.kind === 'resolved') return [resolution.id];
   if (resolution.kind === 'ambiguous') return resolution.candidates;
   return [];
+}
+
+/** The canonical id of the region whose id or alias is spelled nearest `input`, when it is close enough to be a misspelling (DEU for DE). */
+export function nearestRegionId(
+  input: string,
+  candidates: string[],
+  canonical: ReadonlyMap<string, string>,
+): string | undefined {
+  let best: { id: string; distance: number } | undefined;
+  for (const candidate of candidates) {
+    const distance = levenshtein(input.toUpperCase(), candidate.toUpperCase());
+    if (!best || distance < best.distance || (distance === best.distance && candidate < best.id)) {
+      best = { id: candidate, distance };
+    }
+  }
+  if (!best || best.distance > Math.max(2, Math.floor(input.length / 2))) return undefined;
+  return canonical.get(best.id);
 }

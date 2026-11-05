@@ -228,18 +228,30 @@ describe('histogram refuses what it cannot draw honestly', () => {
     expect(error.suggest).toContain('kpi');
   });
 
-  it('throws histogram-bin-explosion instead of drawing hairlines', () => {
+  // A default that refuses its own bin width leaves an author who set nothing
+  // with an error about options.bins: past the cap, 'auto' must draw with the
+  // Sturges width and name the open bin that gives the bulk its finer bins back.
+  it('caps the auto width at the Sturges width instead of refusing a long tail', () => {
     // A tight mass plus one observation four orders of magnitude out: the
     // Freedman-Diaconis width stays tied to the interquartile range while the
     // range is set by the outlier.
     const observations = [...ramp(400, 0.025), 100_000];
+    const geometry = layoutHistogram({ observations }, { bins: 'auto' });
+    const { binning } = geometry.derived;
+    expect(binning.autoCap?.bins).toBeGreaterThan(MAX_BINS);
+    expect(binning.edges.length - 1).toBeLessThanOrEqual(MAX_BINS);
+    expect(binning.width).toBeGreaterThanOrEqual(binning.hSturges);
+    const warning = geometry.warnings.find((entry) => entry.code === 'histogram-auto-sturges');
+    expect(warning?.suggest).toContain('openAbove: 10 ');
+    // The proposed open bin draws: the bulk in fine bins, the outlier on its own.
+    const open = layoutHistogram({ observations }, { bins: { openAbove: 10 } });
+    expect(open.derived.counts.at(-1)).toBe(1);
+    // An authored width keeps its refusal: the author chose the hairlines.
     const error = expectThrows(
-      () => layoutHistogram({ observations }, { bins: 'auto' }),
+      () => layoutHistogram({ observations }, { bins: { width: 1 } }),
       'histogram-bin-explosion',
     );
-    expect(error.message).toMatch(/needs \d+ bins/);
     expect(error.message).toContain(String(MAX_BINS));
-    expect(error.suggest).toContain('bins');
   });
 
   it('refuses an anchor above the data rather than dropping observations', () => {

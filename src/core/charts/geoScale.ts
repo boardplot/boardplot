@@ -511,7 +511,7 @@ export function ingestGeoRegions(
   const statesById = new Map<string, NamedColumnState>();
   const claimedBy = new Map<string, string>();
   const leftOut: string[] = [];
-  let firstUnknown: { warning: LintWarning; index: number } | undefined;
+  let firstUnknown: { warning: LintWarning; index: number; id: string } | undefined;
   regions.forEach((datum, index) => {
     const resolution = resolveGeoRegionId(idIndex, datum.id);
     const claims = claimedRegionIds(resolution);
@@ -542,7 +542,7 @@ export function ingestGeoRegions(
     }
     if (resolution.kind === 'unknown') {
       const warning = unknown(datum.id, index);
-      firstUnknown ??= { warning, index };
+      firstUnknown ??= { warning, index, id: datum.id };
       warnings.push(warning);
       leftOut.push(datum.id);
       return;
@@ -551,9 +551,12 @@ export function ingestGeoRegions(
     if (state) statesById.set(resolution.id, state);
     valuesById.set(resolution.id, datum.value);
   });
+  // Nothing would draw: the refusal says so, as the warning's "left out" would read as a partial map.
   if (leftOut.length === regions.length && firstUnknown) {
-    const { warning, index } = firstUnknown;
-    throw new NormalizeError(warning.code, `regions[${index}].id`, warning.message, warning.suggest);
+    const { warning, index, id } = firstUnknown;
+    const message = regions.length === 1 ? `region '${id}' is not in ${pack.where}`
+      : `none of the ${regions.length} listed regions is in ${pack.where}, starting with '${id}'`;
+    throw new NormalizeError(warning.code, `regions[${index}].id`, message, warning.suggest, undefined, ['data', 'regions', index, 'id']);
   }
   return { valuesById, statesById, leftOut };
 }
