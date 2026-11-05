@@ -6,7 +6,7 @@ import { interactionRecords } from '../core/a11y/records';
 import { overlayInputs } from './hover/placement';
 import { resolveSize } from '../core/normalize/shared';
 import { sceneThemeBindings } from '../core/repaintGeometry';
-import type { ChartRequest, RequestInputOptions } from '../core/request';
+import { resolveChartRequest, planResolvedRequest, measureResolvedRequest, type ChartRequest, type RequestInputOptions } from '../core/request';
 import type { TableData, TableOptions } from '../core/types/table';
 import type { ResolvedChartRequest } from '../core/request';
 import { loadChartTypes } from './loadChartTypes';
@@ -66,6 +66,12 @@ export async function prepareChart(input: PrepareChartRequest, context: Boardplo
   return JSON.parse(canonicalJson({ ...prepared, fit: activeFit, records, ...theme,
     overlay: overlayInputs(resolved, geometry),
     paintThemes: sceneThemeBindings(geometry) })) as PreparedChart;
+}
+
+/** Internal host planner. Load only the requested types before synchronous size calculations. */
+export async function loadChartPlanner(input: Pick<ChartRequest, 'type' | 'data'>) {
+  await loadChartTypes(requestChartTypes(input.type, input.data), { schemas: true, cores: true });
+  return { resolve: resolveChartRequest, layout: planResolvedRequest, measure: measureResolvedRequest };
 }
 
 /** JSON text safe for an application/json script element; this is not a verification receipt. */

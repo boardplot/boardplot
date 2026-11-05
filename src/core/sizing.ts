@@ -1,3 +1,4 @@
+import { PLAN_ONLY, materializeLayout } from './layoutPlan';
 import { boundsOf, type Rect, type Size } from './geometry';
 import { NormalizeError, resolveSize, resolveSubtitle } from './normalize/shared';
 import { panelTypeClass, WIDE_CANVAS_MIN_WIDTH } from './theme';
@@ -847,9 +848,11 @@ export function prepareFitLayout<D, O extends ChartOptions, M extends object, DV
       // Registry and legend passes change labels, warnings and scene nodes.
       // Give them their own result, while the fixed evaluator keeps its frame.
       const fitted = fitOrRepair(definition, data, options, at);
-      const copy = copyLayout(fitted);
+      const selected = !fitted.refused && !(options as { [PLAN_ONLY]?: boolean } | undefined)?.[PLAN_ONLY]
+        ? materializeLayout(fitted) : fitted;
+      const copy = copyLayout(selected);
       origins.set(copy, origins.get(fitted) ?? fitted);
-      if (!copy.refused) sourceFollowsContent(copy, options);
+      if (!copy.refused && !(options as { [PLAN_ONLY]?: boolean } | undefined)?.[PLAN_ONLY]) sourceFollowsContent(copy, options);
       return withPlotFloorWarning(copy, options, definition.title);
     } finally {
       if (!borrowed) { memo.active = false; memo.heights.clear(); memo.references = undefined; }
@@ -1844,7 +1847,7 @@ function fitSize<D, O extends ChartOptions, M extends object, DV extends object>
     // Gantt's own content-height rule requests the next wider card. It removes
     // the call marker before retaining its full-mode options.
     const memo = (runOptions as (O & { [CARD_HEIGHT_MEMO]?: CardHeightMemo }) | undefined)?.[CARD_HEIGHT_MEMO];
-    return definition.layout(data, definition.type === 'gantt' ? { ...clean, ...(memo ? { [CARD_HEIGHT_MEMO]: memo } : {}),
+    return definition.layout(data, definition.type === 'table' || definition.type === 'dimswitch' ? { ...clean, [PLAN_ONLY]: true } as unknown as O : definition.type === 'gantt' ? { ...clean, ...(memo ? { [CARD_HEIGHT_MEMO]: memo } : {}),
       ...((runOptions as { [ACCEPTANCE_PROBE]?: boolean } | undefined)?.[ACCEPTANCE_PROBE] ? { [ACCEPTANCE_PROBE]: true } : {}),
     } as unknown as O : clean);
   };

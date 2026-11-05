@@ -2,6 +2,7 @@ import { fractionLineWarnings, prepareFractionAnnotations, percentScaleWarnings 
 import { readFormatExamples } from './formatSpec';
 import { colorVariableWarnings } from './colorVariables';
 import { drawnRequest } from './drawnRequest';
+import { PLAN_ONLY } from './layoutPlan';
 import { shownNoteKinds } from './notes';
 import { canonicalChartType, getChart } from './registry';
 import { chartSizing, compactFallbackApplies, declaredSizing, fitsSize, FIXED_SIZE_PROBE, FULL_LAYOUT_PROBE, SIZE_TOLERANCE, LAYOUT_CALL, type LayoutCall, plotFloorHeight, plotRepairHeight, resolveSizing, sizeRefusal, VERIFY_ADVICE, verifiedSizeRepair, WIDTH_PROBE } from './sizing';
@@ -288,15 +289,40 @@ function prepared(def: { prepare?: (data: any, options?: any) => any }, data: un
 
 /** The same registered layout used by components, measurement and artifacts. */
 export function layoutResolvedRequest(request: ResolvedChartRequest): LayoutResult {
-  const first = layoutOnce(request);
-  const fitted = widthsGiveWay(request, first, layoutOnce);
-  if (fitted) return withClipWarnings(fitted[1], request.fontMetrics);
-  const [asked, result] = steppedType(request, first) ?? [request, first];
+  return layoutRequest(request);
+}
+
+/** Internal host sizing path. Tables keep their fit diagnostics without drawing a scene. */
+export function planResolvedRequest(request: ResolvedChartRequest): LayoutResult {
+  if (request.type !== 'table' && request.type !== 'dimswitch') return layoutResolvedRequest(request);
+  return layoutRequest({ ...request, options: { ...request.options, [PLAN_ONLY]: true } as RequestOptions });
+}
+
+function layoutRequest(request: ResolvedChartRequest): LayoutResult {
+  const table = request.type === 'table' || request.type === 'dimswitch';
+  const layout = table ? layoutWithoutAdvice : layoutOnce;
+  const finish = (asked: ResolvedChartRequest, result: LayoutResult): LayoutResult => {
+    // Override candidates only need acceptance. Verify advice once, for the refusal returned to the caller.
+    if (table && result.refused) {
+      const run = preparedLayout(asked);
+      try { result = drawnAdvice(asked, result, run); } finally { run.finish(); }
+    }
+    return (asked.options as { [PLAN_ONLY]?: boolean })[PLAN_ONLY] ? result : withClipWarnings(result, asked.fontMetrics);
+  };
+  const first = layout(request);
+  const fitted = widthsGiveWay(request, first, layout);
+  if (fitted) return finish(fitted[0], fitted[1]);
+  const [asked, result] = steppedType(request, first, layout) ?? [request, first];
   const plainRequest = withoutAskedNotes(asked, result);
-  const plain = plainRequest && layoutOnce(plainRequest);
+  const plain = plainRequest && layout(plainRequest);
   const drawn = plain && !plain.refused ? askedNotesOff(plain, result) : result;
-  const fittedLate = widthsGiveWay(asked, drawn, layoutOnce);
-  return withClipWarnings(fittedLate ? fittedLate[1] : drawn, request.fontMetrics);
+  const fittedLate = widthsGiveWay(asked, drawn, layout);
+  return fittedLate ? finish(fittedLate[0], fittedLate[1]) : finish(asked, drawn);
+}
+
+function layoutWithoutAdvice(request: ResolvedChartRequest): LayoutResult {
+  const run = preparedLayout(request);
+  try { return run(request.options); } finally { run.finish(); }
 }
 
 interface WidthEntry { id?: string; type?: string; options?: { columnOverrides?: Record<string, ColumnOverride> }; data?: WidthLevel }
@@ -358,7 +384,13 @@ function widthsGiveWay(
   const asking = (overrides: readonly Record<string, ColumnOverride>[]): ResolvedChartRequest => (grid
     ? { ...request, data: groups.reduce((data, group, at) => withPanelOverrides(data, group.path!, overrides[at]!), request.data as WidthLevel) as typeof request.data }
     : { ...request, options: { ...request.options, columnOverrides: overrides[0]! } as typeof request.options });
-  const fit = widthsThatDraw(groups, request.size.width, (overrides) => !layout(asking(overrides)).refused);
+  const fit = widthsThatDraw(groups, request.size.width, (overrides) => {
+    const asked = asking(overrides);
+    if (request.type === 'table' || request.type === 'dimswitch') {
+      return !layoutWithoutAdvice({ ...asked, options: { ...asked.options, [PLAN_ONLY]: true } as RequestOptions }).refused;
+    }
+    return !layout(asked).refused;
+  });
   if (!fit) return undefined;
   const asked = asking(fit.overrides);
   const drawn = layout(asked);
@@ -534,13 +566,13 @@ function preparedLayout(request: ResolvedChartRequest, verifyAdvice = false): La
   const at = ((frame: RequestOptions) => {
     if (!run) return disclose(def.layout(request.data, { ...frame, theme: options.theme, [REMOVED_NAMES]: options[REMOVED_NAMES] }));
     const current: Record<PropertyKey, unknown> = { ...options, [LAYOUT_CALL]: run };
-    for (const key of ['size', 'mode', 'belowMinimum', FULL_LAYOUT_PROBE, WIDTH_PROBE, FIXED_SIZE_PROBE] as const) {
+    for (const key of ['size', 'mode', 'belowMinimum', FULL_LAYOUT_PROBE, WIDTH_PROBE, FIXED_SIZE_PROBE, PLAN_ONLY] as const) {
       if (Object.hasOwn(frame, key)) current[key] = (frame as RequestOptions & Record<PropertyKey, unknown>)[key];
       else delete current[key];
     }
     return disclose(def.layout(request.data, current));
   }) as LayoutCall<any, any, any>;
-  at.probe = options => at({ ...options, [FULL_LAYOUT_PROBE]: true } as RequestOptions);
+  at.probe = options => at({ ...options, [FULL_LAYOUT_PROBE]: true, ...((request.type === 'table' || request.type === 'dimswitch') ? { [PLAN_ONLY]: true } : {}) } as RequestOptions);
   at.finish = () => run?.finish();
   at.accepts = (data, options) => run?.accepts(data, options) ?? false;
   return at;
