@@ -87,3 +87,21 @@ it('reuses the selected plan across repeated resolved requests', () => {
     widths.mockRestore();
   }
 });
+
+// Ordinary rendering promises a verified width, while measurement still finds the exact floor.
+it('returns a safe width-only table repair without requiring exact minimum advice', () => {
+  const spec = { type: 'table', data: structuredClone(fixture.data),
+    options: { ...fixture.options, size: { width: 200 }, belowMinimum: 'refuse' as const } };
+  const request = resolveChartRequest(spec as Parameters<typeof resolveChartRequest>[0]);
+  const result = layoutResolvedRequest(request);
+  expect(result.refused).toBe(true);
+  const warning = result.warnings.find(w => w.code === 'size-below-floor')!;
+  expect(warning.message).toContain('verified width');
+  const fix = warning.fix?.find(f => f.path === '/options/size');
+  expect(fix && 'value' in fix).toBeTruthy();
+  const size = (fix as { value: { width: number } }).value;
+  expect(Object.keys(size)).toEqual(['width']);
+  const repaired = layoutResolvedRequest(resolveChartRequest({ ...spec, options: { ...spec.options, size } } as Parameters<typeof resolveChartRequest>[0]));
+  expect(repaired.refused).not.toBe(true);
+  expect(repaired.warnings.filter(w => w.severity === 'error')).toEqual([]);
+});

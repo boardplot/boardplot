@@ -443,9 +443,9 @@ function askedNotesOff(plain: LayoutResult, refused: LayoutResult): LayoutResult
 
 /**
  * An open height grows with the width, so a size refusal at an open height advises the width alone.
- * The width the registry names can stand above the narrowest one that draws (a narrow diagram card
- * reads under its static floor), so the advice is the narrowest whole pixel that draws in full, the
- * same width measure names. The height is the one drawn there. A pinned height keeps the pair.
+ * Tables keep a verified repair width without searching for the smallest possible width.
+ * Measurement still finds the exact minimum. Other chart types keep their existing whole-pixel
+ * advice search. The height is the one drawn there. A pinned height keeps the pair.
  */
 function drawnAdvice(request: ResolvedChartRequest, result: LayoutResult, layoutAt: LayoutCall<any, any, any>): LayoutResult {
   const finding = result.refused ? result.warnings[0] : undefined;
@@ -460,11 +460,12 @@ function drawnAdvice(request: ResolvedChartRequest, result: LayoutResult, layout
     const probe = layoutAt.probe({ ...request.options, ...floorOptions, size: { width }, [WIDTH_PROBE]: request.type });
     return !isRefused(probe) && (probe as Geometry).mode !== 'compact' ? probe as Geometry : undefined;
   };
-  // One probe one pixel under the registry width ends the search when nothing narrower draws; a layout
-  // is made for each step of the search only when it does.
-  let drawn = need.width <= staticMinWidth ? undefined : fullAt(need.width - 1);
-  let [low, high] = [Math.max(Math.ceil(result.size.width), staticMinWidth) - 1, drawn ? need.width - 1 : need.width];
-  while (drawn && high - low > 1) {
+  // Ordinary table rendering needs a safe repair width. measure() retains its exact minimum search.
+  const safeWidth = request.type === 'table' || request.type === 'dimswitch';
+  let drawn = safeWidth ? fullAt(need.width) : need.width <= staticMinWidth ? undefined : fullAt(need.width - 1);
+  if (safeWidth && !drawn) return result;
+  let [low, high] = [Math.max(Math.ceil(result.size.width), staticMinWidth) - 1, safeWidth ? need.width : drawn ? need.width - 1 : need.width];
+  while (!safeWidth && drawn && high - low > 1) {
     const mid = Math.floor((low + high) / 2);
     const probe = fullAt(mid);
     if (probe) [high, drawn] = [mid, probe];
@@ -475,8 +476,12 @@ function drawnAdvice(request: ResolvedChartRequest, result: LayoutResult, layout
   const advice = sizeRefusal(result.type, result.title, result.size, { ...result.sizing, minWidth: width, minHeight: height }).warnings[0]!;
   const warning = {
     ...advice,
-    message: `${result.title} needs at least ${width}px of width; received ${Math.round(result.size.width)}px`,
-    suggest: `Render it at ${width}px wide or wider; the height follows the width.${result.sizing.hint ? ` ${result.sizing.hint}` : ''}`,
+    message: safeWidth
+      ? `${result.title} does not fit at ${Math.round(result.size.width)}px wide. A verified width is ${width}px.`
+      : `${result.title} needs at least ${width}px of width; received ${Math.round(result.size.width)}px`,
+    suggest: safeWidth
+      ? `Render it at ${width}px wide. The height follows the width.${result.sizing.hint ? ` ${result.sizing.hint}` : ''}`
+      : `Render it at ${width}px wide or wider; the height follows the width.${result.sizing.hint ? ` ${result.sizing.hint}` : ''}`,
     fix: [{ op: 'replace' as const, path: '/options/size', value: { width } }],
   };
   return { ...result, warnings: [warning, ...result.warnings.slice(1)] };
