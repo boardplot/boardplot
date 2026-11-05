@@ -76,7 +76,7 @@ EOF
 npx boardplot render revenue.json --out charts
 ```
 
-This writes `charts/revenue.svg` and prints the result as JSON. Add `--format png` for a PNG. `npx boardplot list` shows every chart type, and `npx boardplot fixtures --type waterfall` prints complete example specs.
+This writes `charts/revenue.svg` and prints the result as JSON. Add `--format png` for a PNG. `npx boardplot list` shows every chart type, and `npx boardplot fixtures --type waterfall` prints complete example specs. To draw several charts in one call, which starts the CLI once, send `{ "version": 1, "charts": [...] }` with a `name` per chart; see [Several charts in one call](docs/manual.md#several-charts-in-one-call).
 
 The package has ES module entries only (`import`, not `require`). A new `npm init` project is CommonJS, so run `npm pkg set type=module` before a server-side script imports Boardplot.
 
