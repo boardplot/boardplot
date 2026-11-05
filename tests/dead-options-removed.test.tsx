@@ -149,13 +149,40 @@ describe('a removed option keeps an old spec drawing', () => {
       }
     });
 
-    it('label and a typo keep the patch, and the patched spec draws clean', () => {
-      expect(encodingWarnings({ encodings: { label: 'heat' } })[0]!.fix).toEqual([{ op: 'remove', path: '/options/encodings/label' }]);
+    it('a typo keeps the patch, and the patched spec draws clean', () => {
       const typo = spec({ encodings: { oldPeriod: 'heat' } });
       const [warning] = draw(typo).warnings.filter((candidate) => candidate.code === 'dimswitch-encoding-column');
       expect(warning!.fix).toEqual([{ op: 'remove', path: '/options/encodings/oldPeriod' }]);
       expect(patchApplies(typo, warning!.fix!)).toBe(true);
       expect(encodingWarnings({ encodings: {} })).toEqual([]);
+    });
+
+    it('label and an entry that lists columns stay live, so they get no patch', () => {
+      const liveSpread = { figures: false, depth: 2, encodings: { label: { type: 'heat', columns: ['w1'] }, pp: 'heat' }, columnVisibility: {} };
+      expect(encodingWarnings(liveSpread)[0]!.fix).toBeUndefined();
+      const host = document.createElement('div');
+      const root = createRoot(host);
+      let seen: Warning[] = [];
+      act(() => root.render(createElement(DimSwitchChart as never, { data: byMeasure.data, ...spec(liveSpread).options, onWarnings: (warnings: Warning[]) => { seen = warnings; } } as never)));
+      expect(host.querySelectorAll('[data-encoding="heat"]')).toHaveLength(20);
+      expect(seen.find((warning) => warning.code === 'dimswitch-encoding-column')!.fix).toBeUndefined();
+      act(() => root.unmount());
+      for (const options of [
+        { encodings: { oldKey: { type: 'heat', columns: ['w1'] } } },
+        { encodings: { oldKey: { type: 'heat', columns: ['w1'] } }, columnVisibility: { w1: false } },
+        { encodings: { label: 'heat' } },
+        { encodings: { label: { type: 'heat', scale: 'status' } } },
+      ]) expect(encodingWarnings(options)[0]!.fix).toBeUndefined();
+      expect(encodingWarnings({ encodings: { oldKey: { type: 'heat', columns: [] } } })[0]!.fix).toEqual([{ op: 'remove', path: '/options/encodings/oldKey' }]);
+    });
+
+    it('the offered patch leaves the drawing as it was', () => {
+      for (const extra of [{}, { figures: false }]) {
+        const old = spec({ ...extra, encodings: { pp: 'heat', oldKey: 'heat' } });
+        const [warning] = draw(old).warnings.filter((candidate) => candidate.code === 'dimswitch-encoding-column');
+        expect(warning!.fix).toEqual([{ op: 'remove', path: '/options/encodings/oldKey' }]);
+        expect(draw(spec({ ...extra, encodings: { pp: 'heat' } })).svg).toBe(draw(old).svg);
+      }
     });
 
     it('a host that shows the column again gets the encoding back', () => {
