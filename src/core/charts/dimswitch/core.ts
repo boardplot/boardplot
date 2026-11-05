@@ -215,7 +215,8 @@ function foldToFit(data: DimSwitchData, options: DimSwitchOptions, formsOf: (fol
   const total=dimswitchRowId('by-member',data.dimension.total.id);
   const folds: { depth: number; total: boolean }[]=[];
   for (let d=depth-1; d>=1; d--) folds.push({depth:d,total:false});
-  if (byMember && !options.expansion?.collapsed?.includes(total)) folds.push({depth:Math.min(depth,1),total:true});
+  // A hidden Total has no block to fold.
+  if (byMember && options.rowVisibility?.[data.dimension.total.id]!==false && !options.expansion?.collapsed?.includes(total)) folds.push({depth:Math.min(depth,1),total:true});
   let last=first;
   for (const fold of folds) {
     const collapsed=fold.total ? [...(options.expansion?.collapsed ?? []),total] : options.expansion?.collapsed;

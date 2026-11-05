@@ -322,6 +322,12 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | bands-and-plan | dimswitch.by-member | example | Value bands with separate prior and plan changes |
 | thresholds-by-kind | dimswitch.by-measure | example | Separate thresholds for each change kind |
 | multiple-sample-bases | dimswitch.by-member | example | Judge only when both sample fields pass |
+| no-bars | dimswitch.by-measure | example | KPIs without the automatic size bars |
+| no-total-block | dimswitch.by-member | example | Channels and their KPIs without the Total block |
+| total-row-blank | dimswitch.by-measure | example | KPIs over their members with blank Total cells |
+| total-bottom | dimswitch.by-member | example | Channels and their KPIs with the Total block last |
+| no-group-heads | dimswitch.by-measure | example | KPIs without their section heads |
+| no-group-heads-by-member | dimswitch.by-member | example | Channels with grouped KPIs and no group label rows |
 | card-notes-de | dimswitch.by-member | torture | German engine notes on a phone card |
 
 ## table
@@ -449,6 +455,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | two-case-budget-bars | waterfall.horizontal | example | The two-case bridge as bars: each value stands past the end of its own bar |
 | single-segment-authored-format | waterfall.vertical | example | One segment prints one value at the authored precision |
 | repeated-segment-key | waterfall.vertical | torture | Equal segment names and colours share one key |
+| column-overrides | waterfall.horizontal | example | A horizontal bridge with authored name and value bands |
 
 ## kpi
 
@@ -614,6 +621,8 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | revenue-bridge-notes-listed | pvm | example | The revenue bridge on a slide with its method notes in the notes list |
 | named-periods-and-ranges | pvm | torture | PVM names each period and entry or exit range |
 | revenue-bridge-no-net-change | pvm | example | The revenue bridge without the net change over the closing column |
+| no-point-labels | pvm | example | The revenue bridge prints no step or total values, and keeps the net change |
+| column-overrides | pvm | example | A bridge whose long names turn it horizontal takes an authored name band |
 
 ## pie
 
@@ -844,6 +853,8 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | sales-stages | sankey | torture | Six stages with drop-outs that skip columns as long links |
 | long-names-phone | sankey | torture | Long node names on a 280 px phone card: names wrap and break with a hyphen |
 | unbalanced-nodes | sankey | torture | Nodes whose inflow and outflow differ, duplicate rows that add up and a zero row |
+| no-node-values | sankey | example | Nodes print their names only |
+| column-overrides | sankey | example | Authored widths for the label gutters of the first and last stage |
 
 ## grid
 
@@ -982,6 +993,8 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | overlay-measure-heading | choropleth | torture | The overlay measure has a heading |
 | named-null-states | choropleth | torture | Named map states differ from missing values |
 | info-glyphs-with-status | choropleth | torture | Info marker and icon tones appear beside status in the key |
+| lookup-columns | choropleth | example | The value table without swatches, with rows left out, moved and renamed |
+| lookup-no-emphasis | choropleth | example | The value table and the map set no top group in bold |
 
 ## butterfly
 
@@ -1114,6 +1127,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | pipeline-health | diagram.architecture | example | A data pipeline with its service levels beside it |
 | long-names | diagram.architecture | torture | Long names keep every word at every width |
 | twenty-node-platform | diagram.architecture | torture | Twenty nodes and thirty edges across four zones |
+| inset-no-heading | diagram.architecture | example | An inset without its title, with authored column widths and alignment |
 
 ## tilemap
 
@@ -1142,3 +1156,4 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | creative-image-fatigue | creative | example | Creative image with an explicit CTR screening rule |
 | creative-host-card | creative | example | Creative card in a host frame: no method lines, trends ending in a ring |
 | creative-video-poster | creative | torture | Square video creative drawn from its poster |
+| columns-rows | creative | example | A creative table with the median column and two metrics left out |

@@ -13,6 +13,8 @@
  * surface is the in-file twin.
  */
 import { describe, expect, it } from 'vitest';
+import { render } from '../src/cli/render';
+import { requireGeometry } from '../src/core/sizing';
 import { z } from 'zod';
 import '../src/core/charts';
 import { getChartDefinition } from '../src/core/registry';
@@ -632,4 +634,34 @@ it('swaps the good/bad paints of a bullet delta and of the panels of a grid unde
     const result = layoutResolvedRequest(resolveChartRequest({ type: 'column', data: fixture.data, options: { ...fixture.options } } as never));
     return result.refused ? [] : [result.scene, result.labels];
   }
+});
+
+describe('waterfall columnOverrides', () => {
+  const data = { items: [
+    { id: 'open', label: 'Opening balance of the fiscal year', type: 'total', value: 100 },
+    { id: 'gain', label: 'Renewals and upgrades of contracts', value: 20 },
+    { id: 'close', label: 'Closing balance of the fiscal year', type: 'total' },
+  ] };
+  type Bars = { marks: { bars: { rect: { x: number; y: number; w: number; h: number } }[] }; warnings: { code: string }[]; scene: unknown[] };
+  const draw = (options: object) => requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'waterfall', data, options: { title: 'Bridge', ...options } }))) as unknown as Bars;
+  it('refuses the key on an authored vertical bridge', () => {
+    const body = render({ spec: { type: 'waterfall', data, options: { title: 'Bridge', variant: 'vertical', columnOverrides: { label: { width: 100 } } } }, format: 'svg' } as never).body as any;
+    expect(body.ok).toBe(false);
+  });
+  // An omitted variant must pick the same form with and without the key, and a vertical result must say the key did nothing.
+  it('never changes the automatic form', () => {
+    for (const width of [320, 480, 960]) {
+      const plain = draw({ size: { width } });
+      const keyed = draw({ size: { width }, columnOverrides: { label: { width: 90 } } });
+      const rows = (geometry: Bars) => geometry.marks.bars.every((bar) => bar.rect.x >= geometry.marks.bars[0]!.rect.x);
+      expect(rows(keyed)).toEqual(rows(plain));
+      if (keyed.warnings.some((warning) => warning.code === 'option-ignored')) expect(keyed.marks.bars.map((bar) => bar.rect)).toEqual(plain.marks.bars.map((bar) => bar.rect));
+    }
+  });
+  it('sets the name band of a horizontal bridge', () => {
+    const narrow = draw({ variant: 'horizontal', size: { width: 720 }, columnOverrides: { label: { width: 260 } } });
+    const plain = draw({ variant: 'horizontal', size: { width: 720 } });
+    expect(narrow.marks.bars[0]!.rect.x).not.toBe(plain.marks.bars[0]!.rect.x);
+    expect(draw({ variant: 'horizontal', size: { width: 720 }, columnOverrides: { nope: { width: 90 } } }).warnings.map((warning) => warning.code)).toContain('generated-id-unknown');
+  });
 });

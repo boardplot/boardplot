@@ -182,3 +182,47 @@ it('describes its table with options.a11y.description when the author writes one
  const html=renderToStaticMarkup(<DimSwitchChart data={exampleData} a11y={{description}}/>);
  expect(html).toContain(`class="bp-summary">${description}</p>`);
 });
+
+// The table's key check would refuse keys the compile keeps, and a depth 1 compile must not claim a blank table on a depth 2 screen.
+it('draws the row keys, and judges a blank table on the folds on screen',()=>{
+ const host=document.createElement('div'), root=createRoot(host);
+ const warnings:string[][]=[];
+ const draw=(depth:number)=>act(()=>root.render(<DimSwitchChart data={exampleData} depth={depth} bars={false} rowVisibility={{total:false}} size={{width:900}} onWarnings={w=>warnings.push(w.map(item=>item.code))}/>));
+ draw(2);
+ expect(host.textContent).toContain('Paid Search');
+ expect(host.textContent).toContain('Orders');
+ expect(warnings.at(-1)).not.toContain('dimswitch-labels-only');
+ expect(warnings.at(-1)).not.toContain('unknown-option');
+ draw(1);
+ expect(warnings.at(-1)).toContain('dimswitch-labels-only');
+ act(()=>root.unmount());
+});
+// A hidden Total's block must not stay in the grid, and a Total moved in compile must draw last in the grid too.
+it('leaves the Total block out of the grid and moves it last',()=>{
+ const rowsOf=(options:object)=>{
+  const host=document.createElement('div'), root=createRoot(host);
+  act(()=>root.render(<DimSwitchChart data={exampleData} variant="by-member" depth={1} size={{width:900}} {...options}/>));
+  const text=[...host.querySelectorAll('[role="rowheader"]')].map(cell=>cell.textContent ?? '');
+  act(()=>root.unmount());
+  return text;
+ };
+ const hidden=rowsOf({rowVisibility:{total:false}}), bottom=rowsOf({totalPosition:'bottom'});
+ expect(hidden.length).toBeGreaterThan(0);
+ expect(hidden.some(label=>label.startsWith('Total') || label.startsWith('Orders'))).toBe(false);
+ expect(bottom.findIndex(label=>label.startsWith('Total'))).toBeGreaterThan(bottom.findIndex(label=>label.startsWith('Organic')));
+});
+// The grid resolves its own table, so a hidden Total must keep the members' magnitude there too, and its label row must still open and close them.
+it('keeps the member figures and the folds of a hidden Total in the grid',()=>{
+ const data:DimSwitchData={...exampleData,measures:[{id:'rev',label:'Revenue',scale:'money',value:{field:'rev'}}],
+  dimension:{label:'Channel',total:{id:'total',label:'Total'},members:[{id:'a',label:'A'},{id:'b',label:'B'}],headline:['rev']},
+  facts:['total','a','b'].flatMap((memberId,i)=>['range','prior','w1','w2'].map(periodId=>({memberId,periodId,sums:{rev:[1200000,210000,990000][i]!},ref:{rev:[1100000,200000,900000][i]!}})))};
+ const host=document.createElement('div');document.body.append(host);const root=createRoot(host);
+ act(()=>root.render(<DimSwitchChart data={data} depth={2} rowVisibility={{total:false}} size={{width:900}}/>));
+ expect(host.textContent).toContain('0.2M');
+ expect(host.textContent).not.toContain('210.0k');
+ const line=()=>Array.from(host.querySelectorAll<HTMLElement>('[data-row-id]')).find(r=>r.dataset.rowId===dimswitchRowId('by-measure','total','rev'))!;
+ expect(line().querySelector('button')!.getAttribute('aria-expanded')).toBe('true');
+ act(()=>line().querySelector<HTMLButtonElement>('button')!.click());
+ expect(line().querySelector('button')!.getAttribute('aria-expanded')).toBe('false');
+ act(()=>root.unmount());host.remove();
+});

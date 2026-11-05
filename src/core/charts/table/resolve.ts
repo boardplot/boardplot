@@ -16,6 +16,7 @@ import { unitPrinted } from '../../frame';
 import {
   AUTOMATIC_FORMAT,
   type AutomaticFormatSource,
+  MAGNITUDE_FIGURES,
   MAGNITUDE_GROUP,
   type MagnitudeGroupSource,
   formatWithSpec,
@@ -929,10 +930,12 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
   for (const row of flat) {
     const group = groupOf(row);
     if (group === undefined) continue;
-    groupMax.set(group, Math.max(groupMax.get(group) ?? 0, largest(rowValues(row))));
+    const kept = (sourceRows.get(row.id) as MagnitudeGroupSource | undefined)?.[MAGNITUDE_FIGURES];
+    const figures = kept === undefined ? rowCells(row) : [...rowCells(row), ...kept];
+    groupMax.set(group, Math.max(groupMax.get(group) ?? 0, kept === undefined ? largest(rowValues(row)) : largest(figures.map(([, value]) => value))));
     let columns = groupColumns.get(group);
     if (columns === undefined) groupColumns.set(group, columns = new Map());
-    for (const [colId, value] of rowCells(row)) {
+    for (const [colId, value] of figures) {
       const column = columns.get(colId);
       if (column === undefined) columns.set(colId, [value]);
       else column.push(value);
@@ -2217,6 +2220,7 @@ function flattenRows(rows: TableData['rows']): FlatRow[] {
       level,
       order: order++,
       ...((row as MagnitudeGroupSource)[MAGNITUDE_GROUP] === undefined ? {} : { [MAGNITUDE_GROUP]: (row as MagnitudeGroupSource)[MAGNITUDE_GROUP] }),
+      ...((row as MagnitudeGroupSource)[MAGNITUDE_FIGURES] === undefined ? {} : { [MAGNITUDE_FIGURES]: (row as MagnitudeGroupSource)[MAGNITUDE_FIGURES] }),
       ...((row as AutomaticFormatSource)[AUTOMATIC_FORMAT] === true ? { [AUTOMATIC_FORMAT]: true as const } : {}),
     });
     for (const child of row.children ?? []) walk(child, row.id, level + 1);

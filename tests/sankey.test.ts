@@ -169,3 +169,15 @@ it('prints the count of a single-inflow ribbon when node labels print shares', (
   const flows = requireGeometry(layoutResolvedRequest(request)).scene.filter((node) => node.t === 'text' && node.id.startsWith('label:flow:'));
   expect(flows.map((node) => node.t === 'text' && node.lines?.join(''))).toEqual(['300', '100']);
 });
+
+// nodeValue false stops printing only: the hover value on each mark must stay, and a sole inflow's ribbon value is no longer printed by the node.
+it('prints node names without values and keeps the marks hover values', () => {
+  const data: SankeyData = { links: [{ source: 'a', target: 'b', value: 500 }] };
+  const request = resolveChartRequest({ type: 'sankey', data, options: { title: 'Flows', size: { width: 640, height: 400 }, nodeValue: false } });
+  const geometry = requireGeometry(layoutResolvedRequest(request));
+  const node = geometry.scene.find((item) => item.id === 'mark:node:a');
+  expect(node?.display?.value).toBe('500');
+  const nodeLabel = geometry.scene.find((item) => item.id === 'label:node:a');
+  expect(nodeLabel?.t === 'text' && nodeLabel.lines).toEqual(['a']);
+  expect(geometry.labels.some((label) => label.id.startsWith('flow:'))).toBe(true);
+});
