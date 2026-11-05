@@ -1,4 +1,4 @@
-import { PLAN_ONLY, materializeLayout } from './layoutPlan';
+import { PLAN_ONLY, materializeLayout, withPlanInputs } from './layoutPlan';
 import { boundsOf, type Rect, type Size } from './geometry';
 import { NormalizeError, resolveSize, resolveSubtitle } from './normalize/shared';
 import { panelTypeClass, WIDE_CANVAS_MIN_WIDTH } from './theme';
@@ -1611,7 +1611,7 @@ let memoNextId = 0;
 export function withLayoutMemo<T>(run: () => T): T {
   if (layoutMemo) return run();
   layoutMemo = new Map();
-  try { return withEngineNotes(() => withCategoryRowPlans(run)); } finally { layoutMemo = undefined; memoSymbolIds = new Map(); }
+  try { return withPlanInputs(() => withEngineNotes(() => withCategoryRowPlans(run))); } finally { layoutMemo = undefined; memoSymbolIds = new Map(); }
 }
 
 function memoId(value: object | symbol): number {
