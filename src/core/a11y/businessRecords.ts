@@ -1,4 +1,6 @@
 import { chartString } from '../strings/a11y-businessRecords';
+import { chartString as bulletString } from '../strings/bullet';
+import { labelOn } from '../charts/labelOn';
 import type { WaterfallMarks, WaterfallDerived } from '../charts/waterfall/layout';
 import type { KpiMarks, KpiDerived } from '../charts/kpi/layout';
 import type { BulletMarks, BulletDerived } from '../charts/bullet/layout';
@@ -16,7 +18,7 @@ import type { TreemapDerived, TreemapMarks } from '../charts/treemap/types';
 import type { SankeyDerived, SankeyMarks } from '../charts/sankey/types';
 import type { LikertMarks, LikertData, LikertDerived, LikertOptions } from '../charts/likert/layout';
 import { normalizeCategory, normalizeCell, normalizeSeriesValues } from '../normalize/shared';
-import type { MekkoOptions } from '../types/options';
+import type { BulletOptions, MekkoOptions } from '../types/options';
 import type { ChartData, WaterfallData, KpiData, BulletData, SparklineData } from '../types/data';
 import type { Geometry } from '../types/scene';
 import { cellValue, isPctCell, type OwnerRef } from '../types/cell';
@@ -231,25 +233,62 @@ function sparkline(ctx: RecordContext): InteractionRecord[] {
   });
 }
 
+type BulletColumn = 'actual' | 'target' | 'gap' | 'share' | 'delta';
+
 function bullet(ctx: RecordContext): InteractionRecord[] {
   const data = ctx.request.data as BulletData;
+  const options = ctx.request.options as BulletOptions;
   const geo = geometry<BulletMarks, BulletDerived>(ctx);
+  const cells = data.rows.map(row => {
+    const value = cellRecordValue(normalizeCell(row.value, 'value'), options.unit, options.format);
+    return { row, value, target: cellRecordValue(normalizeCell(row.target, 'target'), value.unit, value.format) };
+  });
+  // Only an id this form draws counts: a label switch stops the printing and leaves the record as it is.
+  const pointOn = labelOn(options, 'point');
+  const noteOn = labelOn(options, 'annotation');
+  const drawn: BulletColumn[] = options.sharedScale === 'percentOfTarget'
+    ? [...(pointOn ? ['actual', 'share'] as const : []), ...(noteOn ? ['delta'] as const : [])]
+    : [...(pointOn && cells.some(({ value }) => value.raw !== null) ? ['actual'] as const : []),
+      ...(noteOn && cells.some(({ target }) => target.raw !== null) ? ['target', 'gap'] as const : [])];
+  const removed = (id: BulletColumn) => drawn.includes(id) && options.columnVisibility?.[id] === false;
+  const shown = drawn.filter(id => !removed(id));
+  // A hidden column pushes no record and no hover field. The bar and the tick stay drawn, and derived keeps the calculations.
+  if (drawn.length > 0 && shown.length === 0) return [];
+  // The record leads with the first number the row prints.
+  const leads = removed('actual') ? (['target', 'gap', 'share', 'delta'] as const).find(id => shown.includes(id)) : undefined;
+  const head = (id: BulletColumn, key: 'targetColumn' | 'gapColumn' | 'shareColumn' | 'deltaColumn') =>
+    options.columnOverrides?.[id]?.label ?? bulletString(options, key, { v1: bulletString(options, 'target') });
   return geo.marks.rows.map(mark => {
-    const row = data.rows.find(row => row.id === mark.id)!;
-    const value = cellRecordValue(normalizeCell(row.value, 'value'), ctx.request.options.unit, ctx.request.options.format);
-    const target = cellRecordValue(normalizeCell(row.target, 'target'), value.unit, value.format);
-    // The card names the target in the strings.target word.
-    const word = ctx.request.options.strings?.target ?? 'target';
+    const { row, value, target } = cells.find(({ row }) => row.id === mark.id)!;
+    const word = options.strings?.target ?? 'target';
     const name = word[0]!.toUpperCase() + word.slice(1);
-    return makeRecord(ctx, { categoryId: row.id }, value, {
+    const deltaOf = (raw: number) => numericValue(raw, isPercentLevel(value) && isPercentLevel(target) ? 'pp' : value.unit, value.format);
+    const delta = typeof value.raw === 'number' && typeof target.raw === 'number' ? deltaOf(value.raw - target.raw) : unavailable('Value or target missing');
+    // The column prints the chart's own clean difference, without the float residue of a subtraction.
+    const gapShown = geo.derived.deltaVsTarget[row.id];
+    const drawnDelta = gapShown === undefined ? delta : deltaOf(gapShown);
+    const share = geo.derived.percentOfTarget?.[row.id];
+    const shareValue = share === undefined ? unavailable('Positive reference and value required') : derivedPercent(share);
+    const printed = ([
+      { id: 'gap', label: head('gap', 'gapColumn'), value: drawnDelta },
+      { id: 'share', label: head('share', 'shareColumn'), value: shareValue },
+      { id: 'delta', label: head('delta', 'deltaColumn'), value: drawnDelta },
+    ] as const).filter(column => shown.includes(column.id));
+    const led = printed.find(column => column.id === leads);
+    const lead = leads === 'target' ? { value: target, valueLabel: head('target', 'targetColumn') }
+      : led ? { value: led.value, valueLabel: led.label } : { value };
+    // A comparison holds the actual value, the target and what lies between them, so it needs all of their columns.
+    const compares = !(['actual', 'target', 'gap', 'share', 'delta'] as const).some(removed);
+    return makeRecord(ctx, { categoryId: row.id }, lead.value, {
       label: row.label ?? row.id, anchor: mark.rect,
-      fields: [field('target', name, target)],
-      comparisons: [{ label: name, current: value, reference: target,
-        // A gap between two percentages is in points: 78% against 85% is −7pp, as for every other comparison (compareValues).
-        delta: typeof value.raw === 'number' && typeof target.raw === 'number'
-          ? numericValue(value.raw - target.raw, isPercentLevel(value) && isPercentLevel(target) ? 'pp' : value.unit, value.format) : unavailable('Value or target missing'),
-        percent: typeof value.raw === 'number' && typeof target.raw === 'number' && target.raw > 0
-          ? derivedPercent((value.raw - target.raw) / target.raw * 100) : unavailable('Positive reference and value required') }],
+      ...('valueLabel' in lead ? { valueLabel: lead.valueLabel } : {}),
+      fields: [
+        ...(removed('target') || leads === 'target' ? [] : [field('target', name, target)]),
+        // With the comparison gone, a column that still prints its number keeps it here.
+        ...(compares ? [] : printed.flatMap(column => (column.id === leads || column.value.raw === null ? [] : [field(column.id, column.label, column.value)]))),
+      ],
+      comparisons: compares ? [{ label: name, current: value, reference: target, delta,
+        percent: typeof value.raw === 'number' && typeof target.raw === 'number' && target.raw > 0 ? derivedPercent((value.raw - target.raw) / target.raw * 100) : unavailable('Positive reference and value required') }] : [],
     });
   });
 }

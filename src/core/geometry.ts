@@ -339,7 +339,7 @@ export function rowLabelX(
   laneX: number,
   laneW: number,
   labelW: number,
-  align: 'left' | 'right',
+  align: 'left' | 'right' | 'center',
 ): number {
-  return align === 'right' ? laneX + laneW - labelW : laneX;
+  return align === 'right' ? laneX + laneW - labelW : align === 'center' ? laneX + (laneW - labelW) / 2 : laneX;
 }

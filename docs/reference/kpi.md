@@ -64,6 +64,9 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
 | labels | false \| object | `false` (or another value of its type) |  | False hides comparisons and spark endpoint values. The main number, metric name and authored note remain. total: false explicitly hides the main number. |
+| columnOverrides | object |  |  | Settings per generated column. Ids: label, value. |
+| columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
+| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Alignment of the column: its cell text and, unless headAlign is set, its head. Bars keep starting at the panel origin. |
 | density | string | `'compact'`, `'regular'` | `'regular'` | Card density. 'compact' uses the smaller figure and spark share, and a 280 px default card width instead of 360. An unsized card takes its content height. 'regular' is the default. |
 | comparisons | string | `'chip'`, `'text'` |  | How compare[] and attainment are drawn. Omitted, a standalone regular card without a spark draws the steering form: the comparisons as rows of toned text with their names in a column, the attainment as a progress bar with a 100% tick, in one band on a wide card; a grid panel, a compact card, a card with a spark and a card whose height cannot hold the form draw chips. 'chip' tints a chip behind each; 'text' draws each as delta is drawn: text in its tone, no fill, compare entries on one row. colorblindSafe paints good and bad deltas, chips, attainment and value bands with the theme's colour-blind pair. |
 
@@ -112,6 +115,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | neutral-change | example | A change without a favorable direction |
 | slot-natural-sizes | example | A card in a fixed slot that keeps its natural sizes at the top |
 | value-bands | example | The band that holds the value colours the main value; the comparison keeps its own tone |
+| column-overrides | example | columnOverrides sets the width and alignment of the comparison columns |
 
 ## Not for
 

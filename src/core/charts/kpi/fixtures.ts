@@ -519,4 +519,13 @@ fixtures.push({
   },
 });
 
+fixtures.push({
+  id: 'column-overrides', title: 'columnOverrides sets the width and alignment of the comparison columns', kind: 'example',
+  data: {
+    label: 'Net revenue', value: 412000, format: '$412k',
+    compare: [{ vs: 380000, label: 'PY' }, { vs: 450000, label: 'Plan' }],
+  },
+  options: { size: { width: 420 }, columnOverrides: { value: { width: 130, align: 'right' }, label: { width: 80, align: 'right' } } },
+});
+
 registerFixtures('kpi', fixtures);

@@ -186,6 +186,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | option-small-values-scientific | bar.grouped | torture | Turku prints a power of ten (smallValues scientific) |
 | option-small-values-p-value | bar.grouped | torture | Every rate prints as an APA p-value (smallValues p-value) |
 | key-left | bar.stacked | example | Stacked bars with the key in a column left of the plot |
+| column-overrides | bar.grouped | example | columnOverrides sets the width of the name column |
 
 ## line
 
@@ -489,6 +490,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | neutral-change | kpi | example | A change without a favorable direction |
 | slot-natural-sizes | kpi | example | A card in a fixed slot that keeps its natural sizes at the top |
 | value-bands | kpi | example | The band that holds the value colours the main value; the comparison keeps its own tone |
+| column-overrides | kpi | example | columnOverrides sets the width and alignment of the comparison columns |
 
 ## combo
 
@@ -594,6 +596,10 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | target-columns-off | bullet | example | targetColumns false keeps the plot its full width |
 | band-names-on-rows | bullet | example | bandKey 'row' names each band on its row, on a shared scale with a value axis |
 | column-words-authored | bullet | example | strings set the target and gap column words |
+| column-overrides | bullet | example | columnOverrides sets the widths, alignment and head words of the generated columns |
+| columns-hidden | bullet | example | columnVisibility leaves the share column out of the percent-of-target rows |
+| plot-first | bullet | example | columnOrder puts the marks first and reverses the columns behind them |
+| no-direction-line | bullet | example | labels.direction and labels.position drop the second lines beside the target columns |
 
 ## bartable
 
@@ -790,6 +796,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | ramp-outcomes | funnel.rows | example | Outcome funnel filled from the series ramp, the lost share in badFill at 45 % |
 | signup-options | funnel.rows | example | The sign-up funnel with an authored format, a named palette, narrower bands and explicit label kinds |
 | centered-eight-stages-slide | funnel.centered | example | Eight-stage centered funnel on a full slide, stage name and value on one line |
+| column-overrides | funnel.centered | example | columnOverrides sets the width and head word of the cumulative conversion column |
 
 ## pareto
 
@@ -925,6 +932,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | diverging-sort-net | slope.diverging | example | Diverging panels sorted by net score |
 | diverging-sort-data | slope.diverging | example | Diverging panels in data order, no net |
 | cost-per-unit-plants-variant-lines | slope.lines | torture | Plant slopes with variant 'lines' |
+| column-overrides | slope.lines | example | columnOverrides sets the width, alignment and head word of the change column |
 
 ## dot
 
@@ -945,6 +953,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | nps-rows-left | dot.dot | example | The NPS ranking with its row labels aligned left |
 | highlighted-dumbbell-key | dot.dumbbell | torture | Actual and plan remain distinct |
 | fraction-reference-line | dot.dot | torture | A fraction target shares the percentage scale |
+| column-overrides | dot.dumbbell | example | columnOverrides sets the widths, alignment and head word of the name and gap columns |
 
 ## cohort
 
@@ -1035,6 +1044,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | negatives-magnitude | butterfly | torture | The lighter bar of \|value\| for negative values, from negatives: magnitude |
 | blank-values | butterfly | torture | A value the data lacks prints the not-applicable mark at the pane start |
 | own-scales-mixed | butterfly | torture | Panes of very different size on their own scales each draw a value axis |
+| column-overrides | butterfly | example | columnOverrides sets the name column and the difference column, beating centerColumnWidth |
 
 ## likert
 
@@ -1053,6 +1063,8 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | engagement-notes-pinned | likert | torture | The engagement survey with its net and base pinned as one-line method notes under the author note |
 | engagement-dashboard-notes | likert | torture | The engagement survey on a dashboard with its notes in the info panel |
 | twelve-statements-slide | likert | torture | Twelve statements on a full slide print their shares inside the bars |
+| column-overrides | likert | example | columnOverrides sets the widths, alignment and head words of the name, net and base columns |
+| columns-after-plot | likert | example | columnOrder moves the net and base columns to the other side of the marks |
 
 ## histogram
 
@@ -1081,6 +1093,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | salary-bands-pinned-median | box | example | The IC5 median label pinned above its box through labelPlacements |
 | twelve-teams-median-column | box | example | Twelve dense rows print their medians in one column beside n |
 | outliers-axis-break | box | example | A value-axis break across the empty range keeps two far outliers visible |
+| column-overrides | box | example | columnOverrides sets the name and n columns |
 
 ## waffle
 
@@ -1105,6 +1118,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | torture-pyramid-degenerate | pyramid | torture | 22 bands, one empty in both groups, a 10:1 group imbalance and an open top band |
 | dated-population-comparison | pyramid | example | Growth within the same age band across two observation dates |
 | dated-share-difference | pyramid | example | Each snapshot is its own 100%, and a difference between shares is measured in percentage points |
+| column-overrides | pyramid | example | columnOverrides sets the width and alignment of the band column |
 
 ## diagram
 

@@ -3,12 +3,15 @@ import { readFormatExamples } from './formatSpec';
 import { colorVariableWarnings } from './colorVariables';
 import { drawnRequest } from './drawnRequest';
 import { shownNoteKinds } from './notes';
-import { getChart } from './registry';
+import { canonicalChartType, getChart } from './registry';
 import { chartSizing, compactFallbackApplies, declaredSizing, fitsSize, FIXED_SIZE_PROBE, FULL_LAYOUT_PROBE, SIZE_TOLERANCE, LAYOUT_CALL, type LayoutCall, plotFloorHeight, plotRepairHeight, resolveSizing, sizeRefusal, VERIFY_ADVICE, verifiedSizeRepair, WIDTH_PROBE } from './sizing';
 import { EMPTY_DATA, hasNoDataRows } from './emptyData';
-import { NormalizeError, canonicalLanguage } from './normalize/shared';
+import { NormalizeError, canonicalLanguage, substitute } from './normalize/shared';
 import { withNumberMarks } from './numberMarks';
 import { chartRefusals, isRefused } from './schema/refusals';
+import { movedGridWarnings, movedWidthWarnings, TRACK_WIDTH_TYPES, widthsThatDraw, type WidthGroup, type WidthStep } from './charts/columnOverrides';
+import { isRecord } from './lint/shared';
+import type { ColumnOverride } from './types/options';
 import { DEFAULT_PRESET, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, resolveTheme } from './theme';
 import { DEFAULT_TARGET, floorTextScale, resolveTargetSize } from './target';
 import { textScaleOf, textSizeOf } from './typeFloors';
@@ -286,10 +289,81 @@ function prepared(def: { prepare?: (data: any, options?: any) => any }, data: un
 /** The same registered layout used by components, measurement and artifacts. */
 export function layoutResolvedRequest(request: ResolvedChartRequest): LayoutResult {
   const first = layoutOnce(request);
+  const fitted = widthsGiveWay(request, first, layoutOnce);
+  if (fitted) return withClipWarnings(fitted[1], request.fontMetrics);
   const [asked, result] = steppedType(request, first) ?? [request, first];
   const plainRequest = withoutAskedNotes(asked, result);
   const plain = plainRequest && layoutOnce(plainRequest);
-  return withClipWarnings(plain && !plain.refused ? askedNotesOff(plain, result) : result, request.fontMetrics);
+  const drawn = plain && !plain.refused ? askedNotesOff(plain, result) : result;
+  const fittedLate = widthsGiveWay(asked, drawn, layoutOnce);
+  return withClipWarnings(fittedLate ? fittedLate[1] : drawn, request.fontMetrics);
+}
+
+interface WidthEntry { id?: string; type?: string; options?: { columnOverrides?: Record<string, ColumnOverride> }; data?: WidthLevel }
+interface WidthLevel { panels?: WidthEntry[]; template?: WidthEntry; repeat?: { dimension: string; values: string[] }; bySlice?: Record<string, WidthLevel> }
+
+const hasAuthoredWidth = (overrides: Record<string, ColumnOverride> | undefined): overrides is Record<string, ColumnOverride> =>
+  overrides !== undefined && Object.values(overrides).some((override) => override.width !== undefined);
+const ownWidthGroups = (type: string, options: WidthEntry['options']): WidthGroup[] => (TRACK_WIDTH_TYPES.has(canonicalChartType(type) ?? type) && hasAuthoredWidth(options?.columnOverrides) ? [{ overrides: options.columnOverrides }] : []);
+
+/** The authored widths of a grid's panels, through nested grids at any depth, repeat templates and the slices that draw. */
+function panelWidthGroups(level: WidthLevel | undefined, path: readonly WidthStep[] = []): WidthGroup[] {
+  const widthsOf = (entry: WidthEntry, step: WidthStep): WidthGroup[] => {
+    const type = canonicalChartType(entry.type ?? '') ?? entry.type ?? '';
+    const below = [...path, step];
+    return type === 'grid' ? panelWidthGroups(entry.data, below) : ownWidthGroups(type, entry.options).map((group) => ({ ...group, path: below }));
+  };
+  if (Array.isArray(level?.panels)) return level.panels.flatMap((panel, index) => (isRecord(panel) ? widthsOf(panel, { id: (panel as WidthEntry).id!, index }) : []));
+  const template = level?.template;
+  if (!template) return [];
+  const slices = template.data?.bySlice;
+  if (!slices || !level?.repeat || (canonicalChartType(template.type ?? '') ?? template.type) !== 'grid') return widthsOf(template, 'template');
+  // Only the values draw, each with its placeholder filled in, so ids and types are read from a filled copy. Keys and indexes fit the authored data.
+  const placeholder = `$${level.repeat.dimension}`;
+  return level.repeat.values.flatMap((value) => {
+    if (!Object.hasOwn(slices, value)) return [];
+    const step = { id: substitute(template.id ?? value, placeholder, value) as string, slice: value };
+    return panelWidthGroups(substitute(slices[value], placeholder, value) as WidthLevel, [...path, step]);
+  });
+}
+
+/** A copy of the grid data with one panel's overrides replaced. The caller's data stays as it is. */
+function withPanelOverrides(level: WidthLevel, [step, ...rest]: readonly WidthStep[], columnOverrides: Record<string, ColumnOverride>): WidthLevel {
+  if (step !== 'template' && 'slice' in step!) {
+    const template = level.template!;
+    const slices = template.data!.bySlice!;
+    return { ...level, template: { ...template, data: { ...template.data, bySlice: { ...slices, [step.slice]: withPanelOverrides(slices[step.slice]!, rest, columnOverrides) } } } };
+  }
+  const entry = step === 'template' ? level.template! : level.panels![step!.index]!;
+  const next = rest.length > 0 ? { ...entry, data: withPanelOverrides(entry.data!, rest, columnOverrides) } : { ...entry, options: { ...entry.options, columnOverrides } };
+  if (step === 'template') return { ...level, template: next };
+  const panels = [...level.panels!];
+  panels[step!.index] = next;
+  return { ...level, panels };
+}
+
+/**
+ * Nothing refuses because of an authored column width: where the chart draws with the width unset,
+ * the width gives way toward it and warns. A refusal with every width unset stays as it is. A grid
+ * refuses from the floors its panels add up to, so its panels' widths give way together, against the
+ * whole grid. A request with no authored width returns before any extra layout.
+ */
+function widthsGiveWay(
+  request: ResolvedChartRequest, result: LayoutResult, layout: (asked: ResolvedChartRequest) => LayoutResult,
+): [ResolvedChartRequest, LayoutResult] | undefined {
+  if (!result.refused || result.warnings[0]?.code !== 'size-below-floor') return undefined;
+  const grid = request.type === 'grid';
+  const groups = grid ? panelWidthGroups(request.data as WidthLevel) : ownWidthGroups(request.type, request.options as WidthEntry['options']);
+  if (groups.length === 0) return undefined;
+  const asking = (overrides: readonly Record<string, ColumnOverride>[]): ResolvedChartRequest => (grid
+    ? { ...request, data: groups.reduce((data, group, at) => withPanelOverrides(data, group.path!, overrides[at]!), request.data as WidthLevel) as typeof request.data }
+    : { ...request, options: { ...request.options, columnOverrides: overrides[0]! } as typeof request.options });
+  const fit = widthsThatDraw(groups, request.size.width, (overrides) => !layout(asking(overrides)).refused);
+  if (!fit) return undefined;
+  const asked = asking(fit.overrides);
+  const drawn = layout(asked);
+  if (drawn.refused) return undefined;
+  return [asked, grid ? movedGridWarnings(drawn as Geometry, groups, fit) : { ...drawn, warnings: movedWidthWarnings(drawn.warnings, fit) }];
 }
 
 /**
@@ -814,6 +888,9 @@ export function measureResolvedRequest(request: ResolvedChartRequest): ChartMeas
     let first = layoutAt(request.options);
     // The same step as layoutResolvedRequest, so measure agrees with render and canDraw; the sizing probes then use the stepped text.
     const stepped = steppedType(request, first, steppedRequest => { layoutAt = open(steppedRequest); return layoutAt(steppedRequest.options); });
+    const drawnBy = (opened: ResolvedChartRequest) => open(opened)(opened.options);
+    const fitted = widthsGiveWay(request, first, drawnBy);
+    if (fitted) return measureWithLayout(fitted[0], fitted[1], open(fitted[0]));
     if (stepped) [asked, first] = stepped;
     const plainRequest = withoutAskedNotes(asked, first);
     if (plainRequest) {
@@ -821,6 +898,8 @@ export function measureResolvedRequest(request: ResolvedChartRequest): ChartMeas
       const plain = plainAt(plainRequest.options);
       if (!plain.refused) return measureWithLayout(plainRequest, askedNotesOff(plain, first), plainAt);
     }
+    const fittedLate = widthsGiveWay(asked, first, drawnBy);
+    if (fittedLate) return measureWithLayout(fittedLate[0], fittedLate[1], open(fittedLate[0]));
     return measureWithLayout(asked, first, layoutAt);
   } finally { for (const run of runs) run.finish(); }
 }

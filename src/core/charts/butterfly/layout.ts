@@ -16,6 +16,7 @@ import { fitColumn, fittedLabel, GUTTER_MAX_SHARE, stepDownFont } from '../../la
 import type { AnchorResolution } from '../../annotate';
 import { percentLevels, runAnnotatePass } from '../../annotatePass';
 import { asColumnHeads, fitHead, HEAD_PREFIX, headRequest } from '../bullet/columnHead';
+import { alignedLeft, alignedRight, authoredTrackWidth, columnOverrideWarnings, trackPlotFloor } from '../columnOverrides';
 import { COLUMN_GAP, COLUMN_MIN_WIDTH, columnCellRequest, columnHeadText, columnWidth, differenceFormatter } from '../diffColumn';
 import { marginBracketLayout } from '../../annotateLinks';
 import { memoFormatterFromExample, seriesRasterFormatter } from '../../formatSpec';
@@ -437,11 +438,12 @@ export function layoutButterfly(
     const signed = differenceFormatter({ format: opts.format, locale: opts.locale?.language, decimals: raster.spec.decimals, values: [...aCells, ...bCells].flatMap((cell) => cellValue(cell) ?? []) });
     for (const r of rows) if (r.a !== null && r.b !== null) diffText.set(r.id, signed(r.b, r.a));
   }
+  const diffOverride = opts.columnOverrides?.diff;
+  const labelOverride = opts.columnOverrides?.label;
   const diffHead = diffText.size === 0 ? undefined
-    : columnHeadText('Δ', opts.unit?.startsWith('%') === true || percentLevels([sA, sB].map((s, k) => ({ vals: (k === 0 ? aCells : bCells).map((cell) => ({ v: cellValue(cell), isPct: isPctCell(cell) })), format: s.format, unit: s.unit })), opts.format, opts.unit));
+    : diffOverride?.label ?? columnHeadText('Δ', opts.unit?.startsWith('%') === true || percentLevels([sA, sB].map((s, k) => ({ vals: (k === 0 ? aCells : bCells).map((cell) => ({ v: cellValue(cell), isPct: isPctCell(cell) })), format: s.format, unit: s.unit })), opts.format, opts.unit));
   const diffFont = (id: Id): FontSpec => (highlights.has(id) ? strongFont : labelFont);
-  const diffW = diffHead === undefined ? 0 : columnWidth(measure, [...diffText].map(([id, text]) => ({ text, font: diffFont(id) })), { text: diffHead, font: strongFont });
-  const diffReserve = diffW > 0 ? diffW + COLUMN_GAP : 0;
+  const diffNaturalW = diffHead === undefined ? 0 : columnWidth(measure, [...diffText].map(([id, text]) => ({ text, font: diffFont(id) })), { text: diffHead, font: strongFont });
   // An authored delta of b over a on a row the column covers would print the same number twice: the column keeps it.
   const isPairDelta = (ann: NonNullable<typeof opts.annotations>[number]): boolean => {
     if (ann.kind !== 'delta' || ann.text !== undefined || typeof ann.vs === 'number') return false;
@@ -485,6 +487,11 @@ export function layoutButterfly(
     occupied,
   );
   // The panes give the column its width; the column stands at the frame's right edge.
+  // A pyramid hosts this layout and has no difference column, so its warnings list its own ids.
+  columnOverrideWarnings(comparison?.paneFit ? 'pyramid' : 'butterfly', opts.columnOverrides, ['label', ...(diffHead === undefined ? [] : ['diff'])], ['diff'], warnings);
+  const diffW = diffHead === undefined ? 0 : diffOverride?.width === undefined ? diffNaturalW
+    : authoredTrackWidth('diff', diffOverride.width, diffNaturalW, frameResult.plot.w - COLUMN_GAP - trackPlotFloor(frameResult.plot.w), warnings);
+  const diffReserve = diffW > 0 ? diffW + COLUMN_GAP : 0;
   const plot = diffReserve > 0 ? { ...frameResult.plot, w: frameResult.plot.w - diffReserve } : frameResult.plot;
   const diffRight = frameResult.plot.x + frameResult.plot.w;
   fixedPlotChrome(frameResult);
@@ -612,10 +619,13 @@ export function layoutButterfly(
   // A row-driven card (below 480 px) takes the same lane, so the panes keep
   // the room their value and delta labels need.
   const laneCard = insideCard || (redesign && size.width < 480);
-  const narrowLane = laneCard && opts.centerColumnWidth === undefined && Math.ceil(maxCatLabelW) + 2 * LANE_PAD <= plot.w * 0.35;
+  // An override beats centerColumnWidth. The panes give way first, down to their minimum.
+  const authoredCenter = labelOverride?.width === undefined ? opts.centerColumnWidth
+    : authoredTrackWidth('label', labelOverride.width, 40, Math.max(40, plot.w - Math.max(80, panesMinimum)), warnings);
+  const narrowLane = laneCard && authoredCenter === undefined && Math.ceil(maxCatLabelW) + 2 * LANE_PAD <= plot.w * 0.35;
   const namePad = narrowLane ? 2 * LANE_PAD : 16;
   const centerW = narrowLane ? Math.ceil(maxCatLabelW) + 2 * LANE_PAD : centerColumnWidth(rows.map((r) => ({ label: `${r.label}${r.mark}`, font: catFontOf(r) })), {
-    authored: opts.centerColumnWidth, natural: maxCatLabelW + 20, plotW: plot.w, maxLines: catMaxLines, measure, target: rowDriven ? opts.target : undefined,
+    authored: authoredCenter, natural: maxCatLabelW + 20, plotW: plot.w, maxLines: catMaxLines, measure, target: rowDriven ? opts.target : undefined,
     card: size.width < 480, widest: plot.w - panesMinimum,
   });
   // One column of names: a step down applies to all of them or to none.
@@ -856,7 +866,7 @@ export function layoutButterfly(
     const endpoint = i === 0 || i === rows.length - 1;
     const rowHl = highlights.has(r.id);
     if (diffText.has(r.id)) {
-      labelRequests.push(columnCellRequest({ id: `diff:${r.id}`, owner: { categoryId: r.id }, text: diffText.get(r.id)!, font: diffFont(r.id), measure, right: diffRight, cy }));
+      labelRequests.push(columnCellRequest({ id: `diff:${r.id}`, owner: { categoryId: r.id }, text: diffText.get(r.id)!, font: diffFont(r.id), measure, right: alignedRight(diffRight, diffW, measure(diffText.get(r.id)!, diffFont(r.id)).width, diffOverride?.align ?? 'right'), cy }));
     }
 
     for (const side of ['a', 'b'] as const) {
@@ -999,7 +1009,7 @@ export function layoutButterfly(
       candidates: [
         {
           slot: 'center',
-          rect: { x: centerX0 + centerW / 2 - catW / 2, y: cy - catH / 2, w: catW, h: catH },
+          rect: { x: labelOverride?.align === undefined ? centerX0 + centerW / 2 - catW / 2 : alignedLeft(centerX0 + namePad / 2, centerW - namePad, catW, labelOverride.align), y: cy - catH / 2, w: catW, h: catH },
           penalty: 0,
         },
       ],
@@ -1052,9 +1062,9 @@ export function layoutButterfly(
     });
   }
 
-  if (diffHead !== undefined) {
+  if (diffHead) {
     const head = fitHead(diffHead, strongFont, diffW, measure, { target: opts.target ?? DEFAULT_TARGET, textScale: textScaleOf(opts) });
-    labelRequests.push(headRequest('diff', 0, head, diffRight, plot.y, measure(head.lines[0]!, strongFont).height, false));
+    labelRequests.push(headRequest('diff', 0, head, alignedRight(diffRight, diffW, head.w, diffOverride?.headAlign ?? diffOverride?.align ?? 'right'), plot.y, measure(head.lines[0]!, strongFont).height, false));
   }
 
   // ---- value axes of panes on their own scales ----

@@ -28,6 +28,8 @@ function asksNothing(value: unknown): boolean {
 /** A rule's content form when every value but its no-op forms asks for a mark. */
 const ANY_CONTENT = 'any value but a no-op form';
 const NO_OPS = [false, 'none', {}];
+/** The form of a key with no no-op: any value at all, because the compact mark has no such part. */
+const ANY_VALUE = 'any value';
 
 /**
  * The compact refusals as data: the check below and `describe
@@ -38,6 +40,16 @@ const NO_OPS = [false, 'none', {}];
 export const COMPACT_BULLET_REFUSALS = [
   { key: 'labels', contentForm: ANY_CONTENT, noOpForms: NO_OPS,
     message: "density 'compact' prints no row, value or delta labels; drop labels, or density" },
+  { key: 'labels.position', contentForm: ANY_VALUE,
+    message: "density 'compact' prints no position line; drop labels.position, or density" },
+  { key: 'labels.direction', contentForm: ANY_VALUE,
+    message: "density 'compact' prints no direction line; drop labels.direction, or density" },
+  { key: 'columnOverrides', contentForm: ANY_VALUE,
+    message: "density 'compact' draws no columns to set; drop columnOverrides, or density" },
+  { key: 'columnVisibility', contentForm: ANY_VALUE,
+    message: "density 'compact' draws no columns to hide; drop columnVisibility, or density" },
+  { key: 'columnOrder', contentForm: ANY_VALUE,
+    message: "density 'compact' draws no columns to order; drop columnOrder, or density" },
   { key: 'rowLabels', contentForm: ANY_CONTENT, noOpForms: NO_OPS,
     message: "density 'compact' draws no row labels to align; drop rowLabels, or density" },
   { key: 'axisTitles', contentForm: ANY_CONTENT, noOpForms: NO_OPS,
@@ -52,13 +64,13 @@ export const COMPACT_BULLET_REFUSALS = [
 
 export function compactBulletRefusals(options: {
   density?: unknown; valueAxis?: { show?: unknown }; legend?: unknown; sharedScale?: unknown;
-  labels?: unknown; rowLabels?: unknown; axisTitles?: unknown;
+  labels?: unknown; rowLabels?: unknown; axisTitles?: unknown; columnOverrides?: unknown; columnVisibility?: unknown; columnOrder?: unknown;
 }): LintWarning[] {
   if (options.density !== 'compact') return [];
   return COMPACT_BULLET_REFUSALS.flatMap((rule) => {
     const path = rule.key.split('.');
     const value = path.reduce<unknown>((at, key) => (at as Record<string, unknown> | undefined)?.[key], options);
-    const asks = rule.contentForm === ANY_CONTENT ? !asksNothing(value) : value === rule.contentForm;
+    const asks = rule.contentForm === ANY_VALUE ? value !== undefined : rule.contentForm === ANY_CONTENT ? !asksNothing(value) : value === rule.contentForm;
     return asks ? [refused(path, rule.message)] : [];
   });
 }

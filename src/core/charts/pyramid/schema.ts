@@ -1,6 +1,7 @@
 /** Pyramid data and options schemas, without the chart engine. */
 
 import * as z from 'zod';
+import { columnOverridesOption } from '../../schema/generatedColumnOptions';
 import {
   colorRoleField,
   addDuplicateIdIssues,
@@ -104,6 +105,7 @@ const pyramidOptionsObject = baseOptionsSchema.safeExtend(refusedBaseOptions('py
     })
     .optional()
     .describe('Refused: bands are a contiguous ordered axis; a rest bucket leaves a hole in it.'),
+  columnOverrides: columnOverridesOption('pyramid', ['width', 'align']),
   basis: z
     .enum(['count', 'shareOfTotal', 'shareOfGroup'])
     .optional()

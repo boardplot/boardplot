@@ -495,4 +495,16 @@ fixtures.push({
   annotations: [{ kind: 'valueLine', value: 0.35, valueKind: 'fraction', label: 'Target' }],
 });
 
+fixtures.push({
+  id: 'column-overrides', title: 'columnOverrides sets the widths, alignment and head word of the name and gap columns', kind: 'example',
+  data: {
+    categories: [{ id: 'north', label: 'North region' }, { id: 'south', label: 'South region' }, { id: 'east', label: 'East region' }],
+    series: [{ id: 'fy25', label: 'FY25', values: [42, 55, 31] }, { id: 'fy26', label: 'FY26', values: [48, 51, 39] }],
+  },
+  options: {
+    title: 'East gained the most', variant: 'dumbbell', gapColumn: true, source: 'Illustrative data', size: { width: 720 },
+    columnOverrides: { label: { width: 150, align: 'left' }, gap: { width: 90, label: 'Change', align: 'center' } },
+  },
+});
+
 registerFixtures('dot', fixtures);

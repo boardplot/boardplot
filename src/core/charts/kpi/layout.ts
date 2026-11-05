@@ -49,6 +49,7 @@ import type { Geometry, LintWarning, PlacedLabel, SceneNode } from '../../types/
 import { KPI_HOST_TEXT, KPI_VALUE_SIZE, readerFloorPx, textScaleOf } from '../../typeFloors';
 import { DEFAULT_TARGET, kpiHeroSizesPx, scaleTextPx, TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { composedTextRole } from '../../textRole';
+import { columnOverrideWarnings } from '../columnOverrides';
 import { planSteering, type SteeringPlan } from './steering';
 import { maxOf, pushAll } from '../../arrays';
 
@@ -644,6 +645,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
         label: derived.attainment.label, tone: derived.attainment.tone,
       } } : {}),
       measure, trackTint: surface.chipTint,
+      ...(options.columnOverrides ? { overrides: { label: options.columnOverrides.label, value: options.columnOverrides.value } } : {}),
     })
     : undefined;
   const steerChrome = cardChromeHeight(size.height, plot.y, margin.bottom, frameResult.nodes);
@@ -656,6 +658,9 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
     // render) keeps the form and asks for its height through the sizing.
     if (size.height < steerHeight - 0.5 && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height !== false) steer = undefined;
   }
+  // The two comparison columns exist only in the steering form with comparisons.
+  columnOverrideWarnings('kpi', options.columnOverrides, steer && comparisonVisuals.length > 0 ? ['label', 'value'] : [], [], warnings);
+  if (steer) pushAll(warnings, steer.trackWarnings);
   let minHeight: number;
   let naturalHeight: number;
   let valueFont: FontSpec;

@@ -201,3 +201,13 @@ export function resolveHighlight(h: BaseOptions['highlight']): Id[] {
   if (h === undefined) return [];
   return Array.isArray(h) ? h : [h];
 }
+
+/** A copy with a repeat's placeholder filled in, in every string. Object keys and array order stay. */
+export function substitute(value: unknown, placeholder: string, replacement: string): unknown {
+  if (typeof value === 'string') return value.split(placeholder).join(replacement);
+  if (Array.isArray(value)) return value.map((item) => substitute(item, placeholder, replacement));
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, substitute(item, placeholder, replacement)]));
+  }
+  return value;
+}

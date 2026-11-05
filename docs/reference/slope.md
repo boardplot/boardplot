@@ -77,6 +77,11 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | diverging.net | boolean |  |  | Net score (positive minus negative) and its change under each panel, defined once in the key. Default true. |
 | diverging.neutralNote | boolean |  |  | Note the share that chose neither answer. Default true. |
 | diverging.minBase | number |  |  | Base n below which a panel is hatched and noted. Default 30. |
+| columnOverrides | object |  |  | Settings per generated column. Ids: change. |
+| columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
+| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Alignment of the column: its cell text and, unless headAlign is set, its head. Bars keep starting at the panel origin. |
+| columnOverrides.*.headAlign | string | `'left'`, `'right'`, `'center'` |  | Head alignment; defaults to align. |
+| columnOverrides.*.label | string |  |  | Head text. |
 
 Plus the [shared options](options.md). This type does not accept `valueAxis.tickStep`, `valueAxis.includeZero`, `valueAxis.percent`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `rounding`, `seriesLabels`, `valueLabels`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines`, `legend: 'none'`, `legend: 'auto'` with an `option-ignored` warning.
 
@@ -121,6 +126,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | diverging-sort-net | example | Diverging panels sorted by net score |
 | diverging-sort-data | example | Diverging panels in data order, no net |
 | cost-per-unit-plants-variant-lines | torture | Plant slopes with variant 'lines' |
+| column-overrides | example | columnOverrides sets the width, alignment and head word of the change column |
 
 ## Not for
 
