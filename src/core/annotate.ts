@@ -945,6 +945,7 @@ function placeNote(s: AnnotationScope, ann: Extract<Annotation, { kind: 'callout
   if (repeats && !text && !glyph) return;
   // A headline is the first line, over the text: "${value}" over the words.
   const headline = ann.kind === 'callout' && ann.headline !== undefined ? ann.headline.replace(/\$\{value\}/g, value) : undefined;
+  if (!text.trim() && headline === undefined && !glyph) return warn(s, 'annotation-empty', `${ann.kind} '${s.id}': its text is empty, so it draws nothing`);
   const placedGlyph = glyph ? planCalloutGlyph(s, at, glyph, text) : undefined;
   // Prose. The `${value}` token is substituted from the engine, but the
   // sentence built around it is the author's, so the record carries the
@@ -1486,7 +1487,7 @@ function calloutLabel(
     if (i < headSourceLines) headlineLines += wrapped.length;
     return wrapped;
   });
-  const w = Math.max(...lines.map((line, i) => input.measure(line, i < headlineLines ? { ...font, weight: emphasisWeight(input.theme) } : font).width));
+  const w = Math.max(0, ...lines.map((line, i) => input.measure(line, i < headlineLines ? { ...font, weight: emphasisWeight(input.theme) } : font).width));
   const lineH = input.measure('X', font).height;
   const h = lineH * lines.length;
   const gap = glyph ? glyph.radius + 7 : 8;

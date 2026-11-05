@@ -678,7 +678,9 @@ export function layoutHeatmap(
   const rowSuffixShort = fittedRows.short;
 
   // A cell note gets a side seat only within 15% of the remaining grid width.
-  const notes = annotations.filter(a => a.kind === 'callout' || a.kind === 'note');
+  // A note with no words and nothing else to show takes no seat: the annotation pass warns and draws nothing.
+  const blankNote = (a: Annotation) => 'text' in a && a.text?.trim() === '' && !('headline' in a && a.headline !== undefined) && !('icon' in a && a.icon) && !('status' in a && a.status);
+  const notes = annotations.filter(a => (a.kind === 'callout' || a.kind === 'note') && !blankNote(a));
   const noteSize = (a: Annotation, width = plot0.w, maxLines?: number) => {
     const ref = 'at' in a ? a.at : undefined;
     const ci = cols.findIndex(c => c.id === (typeof ref === 'string' ? ref : ref && 'categoryId' in ref ? ref.categoryId : undefined));
@@ -693,7 +695,7 @@ export function layoutHeatmap(
     const source = `${'headline' in a && a.headline !== undefined ? `${a.headline}\n` : ''}${body}`.replace(/\$\{value\}/g, displayFor(value, pctMatrix, null, row));
     const wrapped = wrapText(source, { ...labelFont, weight: emphasisWeight(theme) }, Math.max(1, width - glyphRoom), maxLines ?? Math.max(1, source.length), measure);
     const lines = wrapped.lines;
-    const w = Math.max(...lines.map(line => measure(line, { ...labelFont, weight: emphasisWeight(theme) }).width));
+    const w = Math.max(0, ...lines.map(line => measure(line, { ...labelFont, weight: emphasisWeight(theme) }).width));
     return { w, h: Math.max(glyphRoom ? 22 : 0, measure('0', labelFont).height * lines.length), sideW: w + (glyphRoom ? 38 : CALLOUT_SEAT), truncated: wrapped.truncated };
   };
   const noteSizes = new Map(notes.map(a => [a.id!, noteSize(a)]));
