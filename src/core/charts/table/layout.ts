@@ -1,4 +1,4 @@
-import { tableWidths } from './widths';
+import { tableWidths, type TableWidthPreparation } from './widths';
 import { copyFrame, footerPlans } from '../../footer';
 import { liftOrFallback, missesSize, tightSpacingWarning } from '../tableFit';
 import { chartTheme } from '../chartEnv';
@@ -184,6 +184,7 @@ function resolvedForSize(data: TableData, options: TableOptions): ReturnType<typ
 }
 
 const widthPlans = new WeakMap<object, Map<string, ReturnType<typeof tableWidths>>>();
+const widthPreparations = new WeakMap<object, Map<string, TableWidthPreparation>>();
 
 /**
  * The tracks of one resolved table, shared by the passes that try other heights
@@ -195,15 +196,23 @@ function sharedWidthPlan(table: ResolvedTable, theme: Theme, measure: TextMeasur
   if (typeof options.theme === 'string') return tableWidths(table, theme, measure, options, view);
   const { size, [TARGET_SIZE]: target, [WIDTH_PROBE]: _probe, [COMPACT_RETRY]: _retry, ...rest } = options as LayoutOptions & TargetSizeOptions & { [WIDTH_PROBE]?: unknown };
   const heightOpen = target?.fixed.height === false || (typeof size === 'object' && size.height === undefined);
-  const key = layoutKey({ rows: view.rows!.map((row) => row.id), widthRows: view.widthRows!.map((row) => row.id), columns: view.columns!.map((col) => col.id),
-    available: view.available, spacerTotal: view.spacerTotal, headLines: view.headLines, subLines: view.subLines, headGlue: view.headGlue,
-    height: heightOpen || size === undefined ? undefined : resolveSize(size).height,
-    // The theme's fonts follow the frame's type class, and two classes can share one plot width.
+  // The theme's fonts follow the frame's type class, and two classes can share one plot width.
+  // Width and height only fit the prepared tracks, so they stay out of the preparation key.
+  const preparationKey = layoutKey({ rows: view.rows!.map((row) => row.id), widthRows: view.widthRows!.map((row) => row.id),
+    fullRows: view.fullRows?.map((row) => row.id), columns: view.columns!.map((col) => col.id),
+    spacerTotal: view.spacerTotal, headLines: view.headLines, subLines: view.subLines, headGlue: view.headGlue,
     typeClass: panelTypeClass(options) ?? typeWidthClass(resolveSize(size).width) }, rest);
+  const key = `${preparationKey}:${view.available}:${heightOpen || size === undefined ? '' : resolveSize(size).height}`;
   let byKey = widthPlans.get(table);
   if (!byKey || byKey.size >= 32) widthPlans.set(table, byKey = new Map());
   let plan = byKey.get(key);
-  if (plan === undefined) byKey.set(key, plan = tableWidths(table, theme, measure, options, view));
+  if (plan === undefined) {
+    let preparations = widthPreparations.get(table);
+    if (!preparations || preparations.size >= 32) widthPreparations.set(table, preparations = new Map());
+    let preparation = preparations.get(preparationKey);
+    if (preparation === undefined) preparations.set(preparationKey, preparation = new Map());
+    byKey.set(key, plan = tableWidths(table, theme, measure, options, view, preparation));
+  }
   return plan;
 }
 
