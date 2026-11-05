@@ -49,7 +49,12 @@ export function deepCopy<T>(value: T, copies = new Map<object, unknown>()): T {
   const copy: Record<PropertyKey, unknown> = footerPlans.has(value as FrameGeometry)
     ? copyFrame(value as FrameGeometry) as Record<PropertyKey, unknown> : Object.getPrototypeOf(value) === null ? emptyIdRecord() : {};
   copies.set(value, copy);
-  for (const key of Reflect.ownKeys(value)) copy[key] = deepCopy((value as Record<PropertyKey, unknown>)[key], copies);
+  for (const key of Reflect.ownKeys(value)) {
+    const entry = deepCopy((value as Record<PropertyKey, unknown>)[key], copies);
+    // Note metadata stays outside a note's public fields, also on the copy a caller receives.
+    if (typeof key === 'symbol' && !Object.prototype.propertyIsEnumerable.call(value, key)) Object.defineProperty(copy, key, { value: entry, configurable: true });
+    else copy[key] = entry;
+  }
   return copy as T;
 }
 
