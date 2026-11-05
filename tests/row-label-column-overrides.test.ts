@@ -3,6 +3,7 @@ import '../src/core/charts';
 import { getFixtures } from '../src/fixtures';
 import { canDraw, layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { render } from '../src/cli/render';
+import { interactionRecords } from '../src/core/a11y/records';
 import type { Geometry } from '../src/core/types/scene';
 
 const fixture = (type: string, id: string) => getFixtures(type as never).find((item) => item.id === id)!;
@@ -65,6 +66,98 @@ describe('authored column widths', () => {
     expect(canDraw(pair).ok).toBe(true);
   });
 
+  describe('in nested grids and under type aliases', () => {
+    const fromFixture = (type: string, id: string) => {
+      const { size: _size, ...options } = fixture(type, id).options as { size?: unknown };
+      return { data: fixture(type, id).data, options };
+    };
+    const side = { id: 'side', type: 'bar', data: { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: 's', label: 'Sales', values: [3, 5] }] } };
+    const narrow = { label: { width: 20 } };
+    const ladderPanel = (id: string, columnOverrides?: object) => {
+      const { data, options } = fromFixture('bullet', 'four-band-neutral-ladder');
+      return { id, type: 'bullet', data, options: { ...options, ...(columnOverrides ? { columnOverrides } : {}) } };
+    };
+    const inner = (id: string, type: string, panels: object[], options?: object) => ({ id, type, data: { panels }, ...(options ? { options } : {}) });
+    const sized = (panels: object[], width: number, height: number) => ({ type: 'grid', data: { panels }, options: { size: { width, height } } }) as never;
+    const widthWarnings = (drawn: { warnings: readonly { code: string; message: string; field?: readonly (string | number)[] }[] }) =>
+      drawn.warnings.filter((warning) => /^generated-column-width-/.test(warning.code));
+    const expectDraws = (spec: never, field: readonly (string | number)[], prefix: string) => {
+      expect(canDraw(spec).ok).toBe(true);
+      const drawn = layoutResolvedRequest(resolveChartRequest(spec));
+      expect(Boolean(drawn.refused)).toBe(false);
+      const moved = widthWarnings(drawn).filter((warning) => warning.field !== undefined);
+      expect(moved.map((warning) => warning.field)).toContainEqual(field);
+      expect(moved.find((warning) => warning.field!.join() === field.join())!.message.startsWith(`${prefix}columnOverrides.label.width`)).toBe(true);
+      return drawn;
+    };
+
+    // The panel type was read before its alias resolved, so the alias refused where the type itself gave way.
+    it('gives way under a panel type alias', () => {
+      const { data, options } = fromFixture('likert', 'engagement-options');
+      const spec = sized([{ id: 'first', type: 'diverging-stacked', data, options: { ...options, columnOverrides: { label: { width: 100 } } } }, side], 800, 600);
+      expectDraws(spec, ['data', 'panels', 0, 'options', 'columnOverrides', 'label', 'width'], '[first] ');
+    });
+
+    // Only the top level of panels was read, so a panel one grid down kept its refusal.
+    it('gives way in a nested grid, also an authored one and one written as an alias', () => {
+      const field = (at: number) => ['data', 'panels', 0, 'data', 'panels', at, 'options', 'columnOverrides', 'label', 'width'];
+      const pair = [ladderPanel('first', narrow), ladderPanel('second', narrow)];
+      expectDraws(sized([inner('outer', 'grid', pair)], 1200, 600), field(1), '[outer] [second] ');
+      expectDraws(sized([inner('outer', 'facets', pair)], 1200, 600), field(1), '[outer] [second] ');
+    });
+
+    it('gives way in a nested authored grid', () => {
+      const pair = [ladderPanel('first', narrow), ladderPanel('second', narrow)];
+      const spec = sized([inner('outer', 'grid', pair, { columns: [1] })], 1200, 600);
+      expect(canDraw(sized([inner('outer', 'grid', pair.map(({ id }) => ladderPanel(id)), { columns: [1] })], 1200, 600)).ok).toBe(true);
+      expectDraws(spec, ['data', 'panels', 0, 'data', 'panels', 1, 'options', 'columnOverrides', 'label', 'width'], '[outer] [second] ');
+    });
+
+    it('gives way in a nested repeat, at the template path', () => {
+      const { data, options } = fromFixture('bullet', 'four-band-neutral-ladder');
+      const repeat = (columnOverrides?: object) => ({ id: 'outer', type: 'grid', data: {
+        repeat: { dimension: 'region', values: ['north', 'south'] },
+        template: { id: '$region', type: 'bullet', data: { bySlice: { north: data, south: data } }, options: { ...options, ...(columnOverrides ? { columnOverrides } : {}) } },
+      } });
+      expect(canDraw(sized([repeat()], 1200, 600)).ok).toBe(true);
+      expectDraws(sized([repeat(narrow)], 1200, 600), ['data', 'panels', 0, 'data', 'template', 'options', 'columnOverrides', 'label', 'width'], '[outer] ');
+    });
+
+    // The ids repeat across the two inner grids. A panel keeps its own warning when only its namesake moved.
+    it('takes back only the warning of the panel that moved', () => {
+      const spec = sized([
+        inner('left', 'grid', [ladderPanel('first', narrow), ladderPanel('second')]),
+        inner('right', 'grid', [ladderPanel('first', { label: { width: 5000 } }), ladderPanel('second')]),
+      ], 1200, 1000);
+      const drawn = layoutResolvedRequest(resolveChartRequest(spec));
+      expect(Boolean(drawn.refused)).toBe(false);
+      const left = widthWarnings(drawn).filter((warning) => warning.message.startsWith('[left] [first] '));
+      expect(left.map((warning) => warning.field)).toEqual([['data', 'panels', 0, 'data', 'panels', 0, 'options', 'columnOverrides', 'label', 'width']]);
+      const right = widthWarnings(drawn).filter((warning) => warning.message.startsWith('[right] [first] '));
+      expect(right.map((warning) => warning.code)).toEqual(['generated-column-width-capped']);
+      // Each level's range still lines up with its own panels, so a repaint replaces the same warnings.
+      const walk = (geometry: { warnings: readonly { message: string }[]; marks: unknown }) => {
+        for (const panel of (geometry.marks as { panels?: { id: string; chart?: { warningOffset?: number; geometry: never } }[] }).panels ?? []) {
+          const chart = panel.chart;
+          if (chart?.warningOffset === undefined) continue;
+          const child = chart.geometry as { warnings: readonly { message: string }[]; marks: unknown };
+          child.warnings.forEach((warning, index) => expect(geometry.warnings[chart.warningOffset! + index]!.message).toBe(`[${panel.id}] ${warning.message}`));
+          walk(child);
+        }
+      };
+      walk(drawn as never);
+    });
+
+    it('does not change the caller object and keeps a refusal that holds with every width unset', () => {
+      const spec = sized([inner('outer', 'grid', [ladderPanel('first', narrow), ladderPanel('second', narrow)])], 1200, 600);
+      const before = JSON.stringify(spec);
+      layoutResolvedRequest(resolveChartRequest(spec));
+      expect(JSON.stringify(spec)).toBe(before);
+      const tooSmall = sized([inner('outer', 'grid', [ladderPanel('first', narrow), ladderPanel('second', narrow)])], 1200, 120);
+      expect(canDraw(tooSmall).ok).toBe(false);
+    });
+  });
+
   // A cap the author does not hear about looks like the option did nothing.
   it('warns when a wide width stops at the plot floor', () => {
     expect(codes('dot', 'column-overrides', { columnOverrides: { label: { width: 5000 } } })).toContain('generated-column-width-capped');
@@ -122,5 +215,68 @@ describe('bullet columns', () => {
     const lower = { ...item.data as object, rows: (item.data as { rows: object[] }).rows.map((row) => ({ ...row, direction: 'lowerIsBetter' })) };
     const scene = (options: object) => JSON.stringify((layoutResolvedRequest(resolveChartRequest({ type: 'bullet', data: lower as never, options: { ...item.options, labels: undefined, ...options } as never })) as Geometry).scene);
     expect(scene({ strings: { lowerBetter: '' } })).toBe(scene({ labels: { direction: false } }));
+  });
+});
+
+describe('hidden bullet columns in records', () => {
+  const rows = [{ id: 'one', label: 'First', value: 42, target: 60 }, { id: 'two', label: 'Second', value: 75, target: 80 }];
+  const records = (options: object) => {
+    const request = resolveChartRequest({ type: 'bullet', data: { rows } as never, options: { size: { width: 900, height: 300 }, ...options } as never });
+    return interactionRecords({ request, geometry: layoutResolvedRequest(request) as Geometry, scope: request.scope, claims: [] });
+  };
+  const first = (options: object) => records(options)[0]!;
+  const numbers = (record: ReturnType<typeof first>) => [record.value.raw, ...record.fields.map((field) => field.value.raw), ...record.comparisons.flatMap((comparison) => [comparison.current.raw, comparison.reference.raw])];
+
+  // A removed column printed nothing on the chart but still printed in the hover card and the data table.
+  it('follows the target-column form, one column at a time', () => {
+    const open = first({ targetColumns: true });
+    expect(open.value.raw).toBe(42);
+    expect(open.fields.map((field) => field.key)).toEqual(['target']);
+    expect(open.comparisons).toHaveLength(1);
+
+    const noActual = first({ targetColumns: true, columnVisibility: { actual: false } });
+    expect(noActual.value.raw).toBe(60);
+    expect(noActual.valueLabel).toBe('Target');
+    expect(noActual.fields).toEqual([]);
+    expect(numbers(noActual)).not.toContain(42);
+
+    const noTarget = first({ targetColumns: true, columnVisibility: { target: false } });
+    expect(noTarget.value.raw).toBe(42);
+    expect(noTarget.fields).toEqual([]);
+    expect(noTarget.comparisons).toEqual([]);
+
+    const noGap = first({ targetColumns: true, columnVisibility: { gap: false } });
+    expect(noGap.fields.map((field) => field.key)).toEqual(['target']);
+    expect(noGap.comparisons).toEqual([]);
+
+    const gapLeads = first({ targetColumns: true, columnVisibility: { actual: false, target: false } });
+    expect(gapLeads.value.raw).toBe(-18);
+    expect(numbers(gapLeads)).toEqual([-18]);
+  });
+
+  it('follows the percent-of-target form, one column at a time', () => {
+    const percent = { sharedScale: 'percentOfTarget' };
+    const shareLeads = first({ ...percent, columnVisibility: { actual: false } });
+    expect(shareLeads.value.raw).toBe(70);
+    expect(numbers(shareLeads)).not.toContain(42);
+    const deltaLeads = first({ ...percent, columnVisibility: { actual: false, share: false } });
+    expect(deltaLeads.value.raw).toBe(-18);
+    expect(first({ ...percent, columnVisibility: { share: false } }).comparisons).toEqual([]);
+    expect(first({ ...percent, columnVisibility: { delta: false } }).comparisons).toEqual([]);
+    expect(records({ ...percent, columnVisibility: { actual: false, share: false, delta: false } })).toEqual([]);
+  });
+
+  it('leaves no record when every column is hidden', () => {
+    expect(records({ targetColumns: true, columnVisibility: { actual: false, target: false, gap: false } })).toEqual([]);
+  });
+
+  // An id the form does not draw and a label switch only stop printing, so the record stays as it was.
+  it('keeps the record for an id the form does not draw and for label switches', () => {
+    const open = first({ targetColumns: true });
+    const same = (record: ReturnType<typeof first>) => [record.value.raw, record.fields.length, record.comparisons.length];
+    expect(same(first({ targetColumns: true, columnVisibility: { share: false, delta: false } }))).toEqual(same(open));
+    expect(same(first({ targetColumns: true, labels: { point: false } }))).toEqual(same(open));
+    expect(same(first({ targetColumns: true, labels: { annotation: false } }))).toEqual(same(open));
+    expect(same(first({ targetColumns: true, labels: { point: false }, columnVisibility: { actual: false } }))).toEqual(same(open));
   });
 });

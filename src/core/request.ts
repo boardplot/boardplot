@@ -3,13 +3,13 @@ import { readFormatExamples } from './formatSpec';
 import { colorVariableWarnings } from './colorVariables';
 import { drawnRequest } from './drawnRequest';
 import { shownNoteKinds } from './notes';
-import { getChart } from './registry';
+import { canonicalChartType, getChart } from './registry';
 import { chartSizing, compactFallbackApplies, declaredSizing, fitsSize, FIXED_SIZE_PROBE, FULL_LAYOUT_PROBE, SIZE_TOLERANCE, LAYOUT_CALL, type LayoutCall, plotFloorHeight, plotRepairHeight, resolveSizing, sizeRefusal, VERIFY_ADVICE, verifiedSizeRepair, WIDTH_PROBE } from './sizing';
 import { EMPTY_DATA, hasNoDataRows } from './emptyData';
 import { NormalizeError, canonicalLanguage } from './normalize/shared';
 import { withNumberMarks } from './numberMarks';
 import { chartRefusals, isRefused } from './schema/refusals';
-import { movedGridWarnings, movedWidthWarnings, TRACK_WIDTH_TYPES, widthsThatDraw, type WidthGroup } from './charts/columnOverrides';
+import { movedGridWarnings, movedWidthWarnings, TRACK_WIDTH_TYPES, widthsThatDraw, type WidthGroup, type WidthStep } from './charts/columnOverrides';
 import type { ColumnOverride } from './types/options';
 import { DEFAULT_PRESET, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, resolveTheme } from './theme';
 import { DEFAULT_TARGET, floorTextScale, resolveTargetSize } from './target';
@@ -298,6 +298,36 @@ export function layoutResolvedRequest(request: ResolvedChartRequest): LayoutResu
   return withClipWarnings(fittedLate ? fittedLate[1] : drawn, request.fontMetrics);
 }
 
+interface WidthEntry { id?: string; type?: string; options?: { columnOverrides?: Record<string, ColumnOverride> }; data?: WidthLevel }
+interface WidthLevel { panels?: WidthEntry[]; template?: WidthEntry }
+
+const hasAuthoredWidth = (overrides: Record<string, ColumnOverride> | undefined): overrides is Record<string, ColumnOverride> =>
+  overrides !== undefined && Object.values(overrides).some((override) => override.width !== undefined);
+const ownWidthGroups = (type: string, options: WidthEntry['options']): WidthGroup[] => (TRACK_WIDTH_TYPES.has(canonicalChartType(type) ?? type) && hasAuthoredWidth(options?.columnOverrides) ? [{ overrides: options.columnOverrides }] : []);
+
+/** The authored widths of a grid's panels, through nested grids at any depth and through repeat templates. */
+function panelWidthGroups(level: WidthLevel | undefined, path: readonly WidthStep[] = []): WidthGroup[] {
+  const entries: [WidthEntry, WidthStep][] = Array.isArray(level?.panels)
+    ? level.panels.map((panel, index) => [panel, { id: panel.id!, index }])
+    : level?.template ? [[level.template, 'template']] : [];
+  return entries.flatMap(([entry, step]) => {
+    const type = canonicalChartType(entry.type ?? '') ?? entry.type ?? '';
+    const below = [...path, step];
+    if (type === 'grid') return panelWidthGroups(entry.data, below);
+    return ownWidthGroups(type, entry.options).map((group) => ({ ...group, path: below }));
+  });
+}
+
+/** A copy of the grid data with one panel's overrides replaced. The caller's data stays as it is. */
+function withPanelOverrides(level: WidthLevel, [step, ...rest]: readonly WidthStep[], columnOverrides: Record<string, ColumnOverride>): WidthLevel {
+  const entry = step === 'template' ? level.template! : level.panels![step!.index]!;
+  const next = rest.length > 0 ? { ...entry, data: withPanelOverrides(entry.data!, rest, columnOverrides) } : { ...entry, options: { ...entry.options, columnOverrides } };
+  if (step === 'template') return { ...level, template: next };
+  const panels = [...level.panels!];
+  panels[step!.index] = next;
+  return { ...level, panels };
+}
+
 /**
  * Nothing refuses because of an authored column width: where the chart draws with the width unset,
  * the width gives way toward it and warns. A refusal with every width unset stays as it is. A grid
@@ -308,25 +338,18 @@ function widthsGiveWay(
   request: ResolvedChartRequest, result: LayoutResult, layout: (asked: ResolvedChartRequest) => LayoutResult,
 ): [ResolvedChartRequest, LayoutResult] | undefined {
   if (!result.refused || result.warnings[0]?.code !== 'size-below-floor') return undefined;
-  const panels = request.type === 'grid' ? (request.data as { panels?: { id: string; type: string; options?: { columnOverrides?: Record<string, ColumnOverride> } }[] }).panels : undefined;
-  const hasWidth = (overrides: Record<string, ColumnOverride> | undefined): overrides is Record<string, ColumnOverride> => overrides !== undefined && Object.values(overrides).some((override) => override.width !== undefined);
-  const own = (request.options as { columnOverrides?: Record<string, ColumnOverride> }).columnOverrides;
-  const groups: WidthGroup[] = panels
-    ? panels.flatMap((panel, index) => (TRACK_WIDTH_TYPES.has(panel.type) && hasWidth(panel.options?.columnOverrides) ? [{ overrides: panel.options!.columnOverrides!, panel: { id: panel.id, index } }] : []))
-    : TRACK_WIDTH_TYPES.has(request.type) && hasWidth(own) ? [{ overrides: own }] : [];
+  const grid = request.type === 'grid';
+  const groups = grid ? panelWidthGroups(request.data as WidthLevel) : ownWidthGroups(request.type, request.options as WidthEntry['options']);
   if (groups.length === 0) return undefined;
-  const asking = (overrides: readonly Record<string, ColumnOverride>[]): ResolvedChartRequest => {
-    if (!panels) return { ...request, options: { ...request.options, columnOverrides: overrides[0]! } as typeof request.options };
-    const next = [...panels];
-    groups.forEach((group, at) => { const panel = next[group.panel!.index]!; next[group.panel!.index] = { ...panel, options: { ...panel.options, columnOverrides: overrides[at]! } }; });
-    return { ...request, data: { ...(request.data as object), panels: next } };
-  };
+  const asking = (overrides: readonly Record<string, ColumnOverride>[]): ResolvedChartRequest => (grid
+    ? { ...request, data: groups.reduce((data, group, at) => withPanelOverrides(data, group.path!, overrides[at]!), request.data as WidthLevel) as typeof request.data }
+    : { ...request, options: { ...request.options, columnOverrides: overrides[0]! } as typeof request.options });
   const fit = widthsThatDraw(groups, request.size.width, (overrides) => !layout(asking(overrides)).refused);
   if (!fit) return undefined;
   const asked = asking(fit.overrides);
   const drawn = layout(asked);
   if (drawn.refused) return undefined;
-  return [asked, panels ? movedGridWarnings(drawn as Geometry, groups, fit) : { ...drawn, warnings: movedWidthWarnings(drawn.warnings, fit) }];
+  return [asked, grid ? movedGridWarnings(drawn as Geometry, groups, fit) : { ...drawn, warnings: movedWidthWarnings(drawn.warnings, fit) }];
 }
 
 /**

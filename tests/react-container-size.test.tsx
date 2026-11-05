@@ -419,6 +419,23 @@ it('draws a grid whose panel width gives way and names the panel to the host', a
   expect(warned.some(warning => /^generated-column-width-/.test(warning.code) && warning.message.startsWith('[main] '))).toBe(true);
 });
 
+// A hidden bullet column printed nothing on the chart, and the data table still printed its values.
+it('leaves hidden bullet columns out of the data table', async () => {
+  const rows = [{ id: 'one', label: 'First', value: 42, target: 60 }, { id: 'two', label: 'Second', value: 75, target: 80 }];
+  const table = async (columnVisibility: Record<string, boolean>) => {
+    act(() => root.render(<BulletChart data={{ rows }} targetColumns a11y={{ table: 'hidden' }} columnVisibility={columnVisibility} size={{ width: 900, height: 300 }} />));
+    await settle();
+    return host.querySelector('[data-bp-a11y-table]')?.textContent ?? '';
+  };
+  const noActual = await table({ actual: false });
+  expect(noActual).toContain('60');
+  expect(noActual).not.toContain('42');
+  const none = await table({ actual: false, target: false, gap: false });
+  expect(none).not.toContain('42');
+  expect(none).not.toContain('75');
+  expect(none).not.toContain('60');
+});
+
 // The document must reopen as the chart on screen, with the columns as the host set them.
 it('keeps bullet and likert column settings in the exported document', async () => {
   const bullet = getFixtures('bullet').find(item => item.id === 'plot-first')!;

@@ -93,10 +93,13 @@ function nearbyWidths(authored: number, canvasW: number): number[] {
   return tries;
 }
 
-/** The authored overrides of one chart: the chart itself, or one panel of a grid, which `panel` names. */
+/** One step down to a panel: a panel of a list, by id and index, or the template of a repeat, which stands for every panel it builds. */
+export type WidthStep = { id: string; index: number } | 'template';
+
+/** The authored overrides of one chart: the chart itself, or a panel of a grid at any depth, which `path` leads to. */
 export interface WidthGroup {
   overrides: Readonly<Record<string, ColumnOverride>>;
-  panel?: { id: string; index: number };
+  path?: readonly WidthStep[];
 }
 
 export interface MovedWidths {
@@ -118,7 +121,7 @@ export function widthsThatDraw(groups: readonly WidthGroup[], canvasW: number, d
   if (!draws(held)) return undefined;
   const warnings: LintWarning[] = [];
   const moved: string[][] = groups.map(() => []);
-  groups.forEach(({ overrides, panel }, at) => {
+  groups.forEach(({ overrides, path = [] }, at) => {
     const withWidth = (id: string, width: number) => held.map((group, index) => (index === at ? { ...group, [id]: { ...group[id]!, width } } : group));
     for (const [id, { width }] of Object.entries(overrides)) {
       if (width === undefined) continue;
@@ -130,8 +133,8 @@ export function widthsThatDraw(groups: readonly WidthGroup[], canvasW: number, d
       const where = seat === undefined ? 'the column keeps its unset width' : `the column takes ${seat} px`;
       warnings.push({
         code: wide ? 'generated-column-width-capped' : 'generated-column-width-floored', severity: 'warn',
-        field: [...(panel ? ['data', 'panels', panel.index] : []), 'options', 'columnOverrides', id, 'width'],
-        message: `${panel ? `[${panel.id}] ` : ''}columnOverrides.${id}.width ${width} does not draw on this canvas, so ${where}`,
+        field: [...path.flatMap((step) => (step === 'template' ? ['data', 'template'] : ['data', 'panels', step.index])), 'options', 'columnOverrides', id, 'width'],
+        message: `${path.flatMap((step) => (step === 'template' ? [] : [`[${step.id}] `])).join('')}columnOverrides.${id}.width ${width} does not draw on this canvas, so ${where}`,
         suggest: seat === undefined ? `Remove columnOverrides.${id}.width, or give the chart more room.` : `Set columnOverrides.${id}.width to ${seat}, or give the chart more room.`,
       });
     }
@@ -139,34 +142,52 @@ export function widthsThatDraw(groups: readonly WidthGroup[], canvasW: number, d
   return { overrides: held, warnings, moved };
 }
 
-const staleWidthWarning = (warning: LintWarning, columns: readonly string[], prefix = '') =>
-  WIDTH_WARNINGS.has(warning.code) && columns.some((id) => warning.message.startsWith(`${prefix}columnOverrides.${id}.`));
+const staleWidthWarning = (warning: LintWarning, columns: readonly string[], path: readonly WidthStep[] = []) => {
+  if (!WIDTH_WARNINGS.has(warning.code)) return false;
+  // A grid prefixes each warning with the id of the panel it came from, at every depth. A repeat's panels take their ids from its slices.
+  let text = warning.message;
+  for (const step of path) {
+    const prefix = step === 'template' ? text.slice(0, text.indexOf('] ') + 2) : `[${step.id}] `;
+    if (prefix.length < 3 || prefix[0] !== '[' || !text.startsWith(prefix)) return false;
+    text = text.slice(prefix.length);
+  }
+  return columns.some((id) => text.startsWith(`columnOverrides.${id}.`));
+};
 
 /** Replaces what a tried width warned with what the author's own width did. */
 export function movedWidthWarnings(warnings: readonly LintWarning[], fit: MovedWidths): LintWarning[] {
   return [...warnings.filter((warning) => !staleWidthWarning(warning, fit.moved[0]!)), ...fit.warnings];
 }
 
-interface PanelChart { geometry: { warnings: LintWarning[] }; warningOffset?: number }
+interface PanelChart { geometry: GridLevel; warningOffset?: number }
+interface GridLevel { warnings: LintWarning[]; marks: unknown }
+interface StaleWidths { path: readonly WidthStep[]; columns: readonly string[] }
 
 /**
- * The same for a grid, whose warnings hold each panel's as a range that repainting a panel replaces. A stale
- * warning leaves the panel's own list and the grid's, and each later range moves back by what left before it.
+ * The warnings a tried width left, gone from this level's list and from every level under it. Each list holds its
+ * panels' lists as ranges that repainting a panel replaces, so each later range moves back by what left before it.
  */
-export function movedGridWarnings<G extends { warnings: LintWarning[]; marks: unknown }>(grid: G, groups: readonly WidthGroup[], fit: MovedWidths): G {
-  const stale = new Set<number>();
-  const movedOf = groups.flatMap((group, at) => (group.panel && fit.moved[at]!.length ? [[group.panel.id, fit.moved[at]!] as const] : []));
-  grid.warnings.forEach((warning, index) => { if (movedOf.some(([id, columns]) => staleWidthWarning(warning, columns, `[${id}] `))) stale.add(index); });
-  const movedColumns = new Map(movedOf);
-  const marks = grid.marks as { panels: { id: string; chart?: PanelChart }[] };
-  const panels = marks.panels.map((panel) => {
+function withoutStaleWidths<G extends GridLevel>(level: G, stale: readonly StaleWidths[]): G {
+  const leaving = level.warnings.flatMap((warning, index) => (stale.some(({ path, columns }) => staleWidthWarning(warning, columns, path)) ? [index] : []));
+  const marks = level.marks as { panels?: { id: string; chart?: PanelChart }[] } | undefined;
+  const panels = marks?.panels?.map((panel) => {
     const chart = panel.chart;
     if (chart?.warningOffset === undefined) return panel;
     const offset = chart.warningOffset;
-    const columns = movedColumns.get(panel.id) ?? [];
+    const below = stale.flatMap(({ path, columns }) => {
+      const [step, ...rest] = path;
+      return step !== undefined && (step === 'template' || step.id === panel.id) ? [{ path: rest, columns }] : [];
+    });
     return { ...panel, chart: { ...chart,
-      warningOffset: offset - [...stale].filter((index) => index < offset).length,
-      geometry: { ...chart.geometry, warnings: chart.geometry.warnings.filter((warning) => !staleWidthWarning(warning, columns)) } } };
+      warningOffset: offset - leaving.filter((index) => index < offset).length,
+      geometry: below.length > 0 ? withoutStaleWidths(chart.geometry, below) : chart.geometry } };
   });
-  return { ...grid, marks: { ...marks, panels }, warnings: [...grid.warnings.filter((_, index) => !stale.has(index)), ...fit.warnings] };
+  return { ...level, ...(panels ? { marks: { ...marks, panels } } : {}), warnings: level.warnings.filter((_, index) => !leaving.includes(index)) };
+}
+
+/** The same for a grid at any depth. What the author's widths did joins the outermost list after all the ranges, so a repaint leaves it alone. */
+export function movedGridWarnings<G extends GridLevel>(grid: G, groups: readonly WidthGroup[], fit: MovedWidths): G {
+  const stale = groups.flatMap((group, at) => (fit.moved[at]!.length > 0 ? [{ path: group.path ?? [], columns: fit.moved[at]! }] : []));
+  const kept = withoutStaleWidths(grid, stale);
+  return { ...kept, warnings: [...kept.warnings, ...fit.warnings] };
 }
