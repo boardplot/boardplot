@@ -988,17 +988,21 @@ function buildExhibit(
       rules.push({ t: 'line', id: `cohort-total-rule-below:${row.id}`, x1: tableLeft, y1: y + rowH, x2: tableRight, y2: y + rowH, stroke: rule.stroke, width: rule.width, owner: {}, part: 'totalRule' });
     }
     const rowGround: Paint = row.kind === 'total' ? totalPaint : background;
+    const sizeText = formatAutomaticNumber(row.base, { locale: options.locale?.language, ...{ decimals: 0 } });
+    // An aligned name stops clear of this row's size figure, which can reach out of its track, and starts at the table edge where it has no room to align.
+    const nameEnd = Math.min(tableLeft + labelW - gap, showSize && !sizeAfterPeriods ? leftOf(sizeCellAlign, sizeAt(sizeCellAlign), measure(sizeText, rowFont).width) - 4 : Infinity);
+    const nameRoom = nameEnd - tableLeft - rowNames[rowIndex]!.w;
     addLabel(
       `cohort-row:${row.id}`,
       row.label,
-      { x: nameAlign === 'start' ? tableLeft : nameAlign === 'end' ? tableLeft + labelW - gap - rowNames[rowIndex]!.w : tableLeft + (labelW - gap - rowNames[rowIndex]!.w) / 2, y: y + (rowH - rowNames[rowIndex]!.h) / 2, w: rowNames[rowIndex]!.w, h: rowNames[rowIndex]!.h },
+      { x: nameAlign === 'start' || nameRoom <= 0 ? tableLeft : tableLeft + (nameAlign === 'end' ? nameRoom : nameRoom / 2), y: y + (rowH - rowNames[rowIndex]!.h) / 2, w: rowNames[rowIndex]!.w, h: rowNames[rowIndex]!.h },
       rowFont,
       { token: 'ink' },
       { seriesId: row.id },
       'series',
       undefined,
       rowNames[rowIndex],
-      nameAlign === 'start' ? undefined : nameAlign,
+      nameAlign === 'start' || nameRoom <= 0 ? undefined : nameAlign,
     );
     if (showSize) {
       const sizeRect: Rect = { x: sizeLeft, y, w: sizeW, h: rowH };
@@ -1006,7 +1010,6 @@ function buildExhibit(
       nodes.push({ t: 'rect', id: sizeNodeId, rect: sizeRect, fill: rowGround, owner: { seriesId: row.id, categoryId: 'cohort-size' }, part: 'cohortSize', display: { value: formatAutomaticNumber(row.base, { locale: options.locale?.language, ...{ decimals: 0 } }) } });
       occupied.claim(sizeRect, 'mark', { seriesId: row.id, categoryId: 'cohort-size' }, 'cohortSize');
       (marks.sizeCells as CohortSizeMark[]).push({ rowId: row.id, rowLabel: row.label, value: row.base, rect: sizeRect, nodeId: sizeNodeId, kind: row.kind });
-      const sizeText = formatAutomaticNumber(row.base, { locale: options.locale?.language, ...{ decimals: 0 } });
       addLabel(
         `cohort-size-label:${row.id}`,
         sizeText,

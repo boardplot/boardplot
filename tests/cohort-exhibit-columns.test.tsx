@@ -108,6 +108,13 @@ describe('a corner head wider than its track', () => {
     expect(warned).toBe(ignored);
   });
 
+  // A name past the table edge is hidden as a collision, and the fallback for that drops the period-0 column.
+  it.each(['right', 'center'] as const)('keeps a %s row name wider than its span in the table', (align) => {
+    const names: CohortData = { cohorts: ['January signups', 'February signups', 'March signups', 'April signups'].map((label, row) => ({ id: `r${row}`, label, active: [100, 70, 60, 50, 40].slice(0, 5 - row) })) };
+    const geometry = layout({ variant: 'pure', total: false, cohortSizeLabel: 'N', size: { width: 320 }, columnOverrides: { label: { align } } }, names);
+    for (const label of geometry.labels.filter((item) => item.id.startsWith('cohort-row:'))) expect(label.rect.x).toBeGreaterThanOrEqual(geometry.plot.x);
+  });
+
   it('keeps its alignment where it fits', () => {
     const { x, left, ignored } = corner({ headAlign: 'right' }, { cohorts: [{ ...small.cohorts[0]!, label: 'A longer cohort name' }, small.cohorts[1]!] });
     expect(x).toBeGreaterThan(left);
