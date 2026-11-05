@@ -617,4 +617,26 @@ fixtures.push({
   ] },
   options: { title: 'Ready and information sites have matching keys', overlayTones: { good: 'Ready', info: 'Information' }, size: { width: 900, height: 650 } },
 });
+fixtures.push(
+  {
+    ...germanStates,
+    id: 'lookup-columns',
+    title: 'The value table without swatches, with rows left out, moved and renamed',
+    tags: ['coverage'],
+    options: { ...germanStates.options, size: { width: 960 },
+      columnVisibility: { swatch: false },
+      columnOverrides: { code: { width: 96 }, value: { align: 'right', headAlign: 'right', label: 'Revenue' } },
+      rowVisibility: { 'DE-HB': false, 'DE-SL': false },
+      rowOrder: ['DE-BE'],
+      rowOverrides: { 'DE-BE': { label: 'Capital' } },
+    },
+  },
+  {
+    ...germanStates,
+    id: 'lookup-no-emphasis',
+    title: 'The value table and the map set no top group in bold',
+    tags: ['coverage'],
+    options: { ...germanStates.options, valueTable: 'below', valueTableEmphasis: false },
+  },
+);
 registerFixtures('choropleth', fixtures);

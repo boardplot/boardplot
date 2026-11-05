@@ -12,6 +12,7 @@ import {
 } from '../../schema/shared';
 import type { WaterfallData } from '../../types/data';
 import type { WaterfallOptions } from '../../types/options';
+import { columnOverridesOption } from '../../schema/generatedColumnOptions';
 
 const segmentSchema = z.object({
   id: idSchema.refine((id) => id !== '__total' && id !== '__value', "'__total' and '__value' name the engine's own bar segments; give this segment another id").describe("Segment identity within its waterfall item; also names connector anchors."),
@@ -191,10 +192,14 @@ const waterfallOptionsShape = baseOptionsSchema.safeExtend(refusedBaseOptions('w
   variant: z.enum(['vertical', 'horizontal']).optional().describe("Left out: vertical columns, turned into a horizontal bridge when the step names would rotate, shorten or drop, the horizontal bridge draws without a new finding, and the spec has no cases and no annotations. 'vertical' always keeps columns. A horizontal bridge draws no annotations: it suppresses them and warns horizontal-annotations-unsupported, so use vertical for annotations."),
   build: z.enum(['up', 'down']).optional().describe("Build label in the accessible description; defaults to up. Item types and signed values determine accumulation in both modes."),
   signColor: z.boolean().optional().describe("Paint each plain step good or bad by sign × item direction, as column's signColor; zero is neutral. Default true unless the theme sets marks.bridge or a palette is named; false paints steps neutral. colorblindSafe paints signed steps, labels and key swatches with the theme's colour-blind pair."),
+  columnOverrides: columnOverridesOption('waterfall', ['width']).describe("Horizontal bridge only: width in px of the name band (label) and the value band (value). With variant 'vertical' it is refused. Left out, the variant is chosen without it, and a bridge that draws vertical warns option-ignored."),
 });
 
-export const waterfallOptionsSchema =
-  waterfallOptionsShape as unknown as z.ZodType<WaterfallOptions>;
+export const waterfallOptionsSchema = waterfallOptionsShape.superRefine((options, ctx) => {
+  if (options.columnOverrides !== undefined && options.variant === 'vertical') {
+    ctx.addIssue({ code: 'custom', path: ['columnOverrides'], message: "columnOverrides sets the bands of a horizontal bridge, and variant 'vertical' has none; drop one of the two" });
+  }
+}) as unknown as z.ZodType<WaterfallOptions>;
 
 /** Option vocabulary, so a misplaced option key can name its correct home. */
 const WATERFALL_OPTION_KEYS = new Set(Object.keys(waterfallOptionsShape.shape));

@@ -47,9 +47,11 @@ import { buildGeoScale, geoLabelFont, quietLandPaint, ingestGeoRegions, geoState
 import { autoDecimals } from '../../formatPrecision';
 import { compareText } from '../../text';
 import { geoOverlayDiameter, geoOverlayInFrame, geoOverlayLegend, renderGeoOverlays, reserveGeoOverlayGlyphs } from './overlays';
+import { generatedIdWarnings } from '../../schema/generatedColumns';
 import { layoutMapKeys, mapKeysSize, MAP_GAP, smallRegionIds, shortestRegionName, valueTable, VALUE_TABLE_MAX_ROWS } from './smallMembers';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
-import { chartSizing, resolveSizing } from '../../sizing';
+import { chartSizing, heightOmitted, resolveSizing } from '../../sizing';
+import { fitsRoom, widthsThatFit } from '../../generatedWidths';
 import { rowDrivenHeight } from '../../rowCanvas';
 import { textScaleOf } from '../../typeFloors';
 import type { GeoOverlay } from './overlayTypes';
@@ -191,9 +193,42 @@ function defaultRegionValues(pack: GeoPack, size: Size, autoLabelled: number, ta
   );
 }
 
-export function layoutChoropleth(
+/** One renamed pack per rowOverrides object: the listed passes share its decoded regions. */
+const renamedPacks = new WeakMap<object, GeoPack>();
+
+/** Lookup rows, map labels and records read one name: a pack whose authored regions carry the new short name. */
+function packWithRowNames(pack: GeoPack, overrides: ChoroplethOptions['rowOverrides'], index: GeoRegionIdIndex): GeoPack {
+  if (!overrides) return pack;
+  const known = renamedPacks.get(overrides);
+  if (known?.id === pack.id) return known;
+  const names = new Map(Object.entries(overrides).flatMap(([id, override]) => {
+    const resolved = resolveGeoRegionId(index, id);
+    return resolved.kind === 'resolved' && override.label ? [[resolved.id, override.label] as const] : [];
+  }));
+  const renamed: GeoPack = { ...pack, regions: pack.regions.map((region) => {
+    const name = names.get(region.id);
+    return name === undefined ? region : { ...region, anchor: { ...region.anchor, name, shortName: name, authored: true } };
+  }) };
+  renamedPacks.set(overrides, renamed);
+  return renamed;
+}
+
+export function layoutChoropleth(data: ChoroplethData, options: ChoroplethOptions = {}): Geometry<ChoroplethMarks, ChoroplethDerived> {
+  if (options.columnOverrides === undefined) return layoutMapPass(data, options);
+  const pinned = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height ?? !heightOmitted(options.size);
+  const drawn = widthsThatFit(options, (next) => layoutMapPass(data, next), pinned)!;
+  const { label, ...valueTrack } = options.columnOverrides.value ?? {};
+  if (label === undefined || fitsRoom(drawn, pinned)) return drawn;
+  // A value head never costs the draw: where its row is the only reason the lookup misses, the row goes.
+  const plain = widthsThatFit({ ...options, columnOverrides: { ...options.columnOverrides, value: valueTrack } }, (next) => layoutMapPass(data, next), pinned)!;
+  if (!fitsRoom(plain, pinned)) return drawn;
+  return { ...plain, warnings: [...plain.warnings, { code: 'option-ignored', severity: 'warn', field: ['options', 'columnOverrides', 'value', 'label'],
+    message: 'the value head needs more height than this chart has, so it does not print', suggest: 'Give the chart more height, or remove the label.' }] };
+}
+
+function layoutMapPass(
   data: ChoroplethData,
-  options: ChoroplethOptions = {},
+  options: ChoroplethOptions,
   /** Regions an earlier pass could not label on the map, or only on a long leader; they join the lookup table. */
   listed?: ReadonlySet<string>,
   pass = 0,
@@ -204,8 +239,9 @@ export function layoutChoropleth(
   // What the schema refuses, refused here for the React entry.
   const warnings: LintWarning[] = geoOptionRefusals(options, 'choropleth');
 
-  const pack = getGeoPack(data.pack);
-  const idIndex = geoRegionIdIndex(pack.regions);
+  const sourcePack = getGeoPack(data.pack);
+  const idIndex = geoRegionIdIndex(sourcePack.regions);
+  const pack = packWithRowNames(sourcePack, options.rowOverrides, idIndex);
   const canonicalIds = idIndex.canonical;
   const { valuesById, statesById, leftOut } = ingestGeoRegions(data.regions, idIndex, { where: `pack '${pack.id}'`, regionWord: 'pack region' }, warnings, (id, index) => {
     const suggestion = nearestRegionId(id, [...canonicalIds.keys()], canonicalIds);
@@ -382,13 +418,27 @@ export function layoutChoropleth(
   const ranks = valueRanks(valuesById);
   // The top quarter by value, at most five, in the emphasis weight.
   const topIds = new Set([...ranks].filter(([, rank]) => tableIds.length >= 4 && rank < Math.min(5, Math.ceil(tableIds.length / 4))).map(([id]) => id));
-  const table = tableMode !== false && tableIds.length > 0 &&
-    (tableMode !== 'auto' || (tableIds.length <= VALUE_TABLE_MAX_ROWS && numericValues.length > 0))
+  // Hidden rows leave the table only: the map, the ranks and the top group still read every region.
+  const canonicalRow = (id: string) => { const resolved = resolveGeoRegionId(idIndex, id); return resolved.kind === 'resolved' ? resolved.id : undefined; };
+  const hiddenRows = new Set(Object.entries(options.rowVisibility ?? {}).flatMap(([id, shown]) => (shown === false ? [canonicalRow(id) ?? id] : [])));
+  const drawnIds = hiddenRows.size > 0 ? tableIds.filter((id) => !hiddenRows.has(id)) : tableIds;
+  const boldIds = options.valueTableEmphasis === false ? new Set<string>() : hiddenRows.size > 0 ? new Set([...topIds].filter((id) => !hiddenRows.has(id))) : topIds;
+  const mapEmphasis = options.valueTableEmphasis === false ? boldIds : topIds;
+  const lookupColumns = options.columnVisibility || options.columnOverrides
+    ? { swatch: options.columnVisibility?.swatch, value: options.columnVisibility?.value, ...(options.columnOverrides ? { overrides: options.columnOverrides } : {}) }
+    : undefined;
+  // A table forced beside the map leaves the map its share: authored widths give way, and the columns stay as wide as their text.
+  const sideTableColumns = Math.ceil(drawnIds.length / SIDE_ROWS);
+  const forcedSideColumnW = tableMode === 'side' ? (frameResult.plot.w * (1 - SIDE_MIN_SHARE) - (sideTableColumns - 1) * TABLE_GAP) / sideTableColumns : undefined;
+  const table = tableMode !== false && drawnIds.length > 0 &&
+    (tableMode !== 'auto' || (drawnIds.length <= VALUE_TABLE_MAX_ROWS && numericValues.length > 0))
     ? valueTable({ options,
-        ids: tableIds, pack, values: valuesById, states: statesById, scale, fmt, theme, measure,
+        ids: drawnIds, pack, values: valuesById, states: statesById, scale, fmt, theme, measure,
+        ...(options.rowOrder ? { rowOrder: options.rowOrder.flatMap((id) => canonicalRow(id) ?? []) } : {}),
+        ...(lookupColumns ? { columns: lookupColumns, maxColumnW: forcedSideColumnW ?? frameResult.plot.w } : {}),
         unit: compactCard && unitPrinted({ subtitle: resolveSubtitle(options.subtitle), unit: options.unit, unitShown: options.unitShown }) ? undefined : options.unit,
         compact: compactCard,
-        bold: topIds,
+        bold: boldIds,
       })
     : undefined;
   const baseSmallIds = table ? new Set<string>() : smallRegionIds(pack, labelPolicy.eligibleIds, explicitLabelIds, options);
@@ -551,12 +601,12 @@ export function layoutChoropleth(
   // and the listed passes take over. When they do not fit, or a region would
   // lose its value, the table goes under the map: values before map size.
   if (table && !tablePlace && tableMode === 'auto') {
-    const fallback = layoutChoropleth(data, { ...options, valueTable: false }, listed, pass, new Map(), omittedOverlays);
+    const fallback = layoutMapPass(data, { ...options, valueTable: false }, listed, pass, new Map(), omittedOverlays);
     const valueLost = (geometry: typeof fallback) => geometry.labels.some(label => label.kind === 'category' && label.hidden && label.hidden !== 'redundant'
       && valuesById.get(label.owner.categoryId!) != null
       && !geometry.labels.some(cell => cell.id === `small-member-value:${label.owner.categoryId}` && !cell.hidden));
     if (!fallback.refused && (fallback.sizing?.minHeight ?? 0) <= size.height && (fallback.sizing?.minWidth ?? 0) <= size.width && !valueLost(fallback)) return fallback;
-    return layoutChoropleth(data, { ...options, valueTable: 'below' }, listed, pass, new Map(), omittedOverlays);
+    return layoutMapPass(data, { ...options, valueTable: 'below' }, listed, pass, new Map(), omittedOverlays);
   }
   if (table && !tablePlace) mapArea = { ...area, h: Math.min(area.h, naturalMapH(area.w)) };
   const tableDrawn = table && tablePlace ? table.draw(tablePlace.x, tablePlace.y, tablePlace.perColumn, occupied, solveCtx, tablePlace.width, tablePlace.full) : undefined;
@@ -580,7 +630,28 @@ export function layoutChoropleth(
   const regionValues = options.regionValues ??
     defaultRegionValues(pack, size, autoLabelled, Boolean(tableDrawn));
   // The table's top group is bold on the map too, so the two read as one key.
-  const withTable: TableLabels = tableDrawn ? { emphasis: topIds } : undefined;
+  const withTable: TableLabels = tableDrawn ? { emphasis: mapEmphasis } : undefined;
+  // Each key warns on the pass that draws, with the rows and columns that pass has.
+  const rowsDrawn = (authored: Readonly<Record<string, unknown>> | readonly string[] | undefined) => (authored === undefined ? [] : tableDrawn
+    ? (Array.isArray(authored) ? authored as readonly string[] : Object.keys(authored)).filter((id) => { const canonical = canonicalRow(id); return canonical !== undefined && tableIds.includes(canonical); })
+    : []);
+  const columnsDrawn = !tableDrawn ? [] : [...(options.columnVisibility?.swatch !== false ? ['swatch'] : []), 'code', ...(options.columnVisibility?.value !== false ? ['value'] : [])];
+  warnings.push(
+    ...generatedIdWarnings('choropleth', 'columnVisibility', options.columnVisibility, tableDrawn ? ['swatch', 'code', 'value'] : []),
+    ...generatedIdWarnings('choropleth', 'columnOverrides', options.columnOverrides, columnsDrawn),
+    ...generatedIdWarnings('choropleth', 'rowVisibility', options.rowVisibility, rowsDrawn(options.rowVisibility)),
+    ...generatedIdWarnings('choropleth', 'rowOrder', options.rowOrder, rowsDrawn(options.rowOrder)),
+    // A new name reaches the map label and the record, with or without a table.
+    ...generatedIdWarnings('choropleth', 'rowOverrides', options.rowOverrides, Object.keys(options.rowOverrides ?? {}).filter((id) => canonicalRow(id) !== undefined)),
+  );
+  if (table?.widthFloored) warnings.push({ code: 'generated-column-width-floored', severity: 'warn', field: ['options', 'columnOverrides'],
+    message: 'an authored lookup column width is narrower than its text, so it was raised', suggest: 'Use a larger width, or leave the width out.' });
+  if (table?.widthCapped) warnings.push({ code: 'generated-column-width-capped', severity: 'warn', field: ['options', 'columnOverrides'],
+    message: `the authored lookup column widths do not fit the ${Math.round(frameResult.plot.w)} px plot, so they were reduced`, suggest: 'Use smaller widths, or give the chart more width.' });
+  // The lookup is where a reader decodes a map code and reads its value.
+  if (tableDrawn && (options.columnVisibility?.value === false || drawnIds.length < tableIds.length)) warnings.push({ code: 'choropleth-lookup-partial', severity: 'warn', field: ['options', options.columnVisibility?.value === false ? 'columnVisibility' : 'rowVisibility'],
+    message: options.columnVisibility?.value === false ? 'the lookup prints no values, so the map colours are the only print of them' : 'a hidden lookup row leaves its map code without a name or a printed value',
+    suggest: 'Keep the column or the rows, or name the regions in the text around the map.' });
   const valueTexts = new Map<string, string>(regionValues
     ? [...valuesById].flatMap(([id, value]) => (value === null ? [] : [[id, fmt(value)] as [string, string]]))
     : []);
@@ -615,7 +686,7 @@ export function layoutChoropleth(
     prepareMapLayout(pack, mapArea, laneSpan, occupied, valuesById, mapLabels, visibleMarkerIds, theme, measure, mapCtx, valueTexts, mapLabels.eligibleIds.size ? undefined : compactPadding, withTable);
   // A map its host did not size takes its natural height.
   const grow = rowDrivenHeight({ options, width: size.width, height: size.height, chromeH: 0, rowsH: naturalHeight });
-  if (grow !== undefined) return layoutChoropleth(data, { ...options, size: { width: size.width, height: grow } }, listed, pass, passes, omittedOverlays);
+  if (grow !== undefined) return layoutMapPass(data, { ...options, size: { width: size.width, height: grow } }, listed, pass, passes, omittedOverlays);
 
   // Crowded glyphs keep their geographic anchors; the later glyph moves to the note. So does a glyph whose
   // anchor the map crop leaves outside the map frame.
@@ -632,7 +703,7 @@ export function layoutChoropleth(
     if (!geoOverlayInFrame(anchor, mapFrame) || (heightReady && glyphDiscs.some(prior => Math.hypot(anchor.x - prior.x, anchor.y - prior.y) < radius + prior.radius))) nextOmitted.add(overlay.id);
     else glyphDiscs.push({ ...anchor, radius });
   });
-  if (nextOmitted.size > omittedOverlays.size) return layoutChoropleth(data, options, listed, pass, new Map(), nextOmitted);
+  if (nextOmitted.size > omittedOverlays.size) return layoutMapPass(data, options, listed, pass, new Map(), nextOmitted);
 
   const nodes: SceneNode[] = [...frameResult.nodes];
   // Region outline, the grammar's hair stroke. It is centred on the path, so a
@@ -923,11 +994,11 @@ export function layoutChoropleth(
     if (!move.length) continue;
     const ids = new Set([...(listed ?? []), ...move]);
     const key = `${pass + 1}:${[...ids].sort().join(',')}`;
-    let next = passes.get(key) ?? layoutChoropleth(data, options, ids, pass + 1, passes, omittedOverlays);
+    let next = passes.get(key) ?? layoutMapPass(data, options, ids, pass + 1, passes, omittedOverlays);
     // An automatic frame can take the list's measured height when it keeps more names.
     const height = Math.ceil(Math.max(next.sizing?.minHeight ?? 0, next.sizing?.naturalHeight ?? 0));
     if ((options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false && height > next.size.height && height <= 1400) {
-      const taller = layoutChoropleth(data, { ...options, size: { width: size.width, height } }, ids, pass + 1, new Map(), omittedOverlays);
+      const taller = layoutMapPass(data, { ...options, size: { width: size.width, height } }, ids, pass + 1, new Map(), omittedOverlays);
       if (hidden(taller) < hidden(geometry)) next = taller;
     }
     passes.set(key, next);

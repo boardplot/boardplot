@@ -176,4 +176,22 @@ export const fixtures: Fixture<SankeyData, SankeyOptions>[] = [
   },
 ];
 
+const channelFlows = fixtures[0]!;
+fixtures.push(
+  {
+    ...channelFlows,
+    id: 'no-node-values',
+    title: 'Nodes print their names only',
+    tags: ['coverage'],
+    options: { ...channelFlows.options, nodeValue: false, linkValue: 'none' },
+  },
+  {
+    ...channelFlows,
+    id: 'column-overrides',
+    title: 'Authored widths for the label gutters of the first and last stage',
+    tags: ['coverage'],
+    options: { ...channelFlows.options, columnOverrides: { first: { width: 150 }, last: { width: 120 } } },
+  },
+);
+
 registerFixtures('sankey', fixtures);

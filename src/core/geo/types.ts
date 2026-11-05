@@ -28,6 +28,8 @@ interface GeoAnchor {
   clearance: number;
   name: string;
   shortName: string;
+  /** The short name came from the author: it prints as written, not the shorter of it and the id. */
+  authored?: boolean;
   fontTier: 0 | 1 | 2;
   leader: boolean;
 }

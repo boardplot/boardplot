@@ -1045,4 +1045,15 @@ fixtures.push({
   options: { variant: 'architecture', title: 'Twenty nodes keep clear routes across four zones', source: 'Illustrative', size: { width: 960 } },
 });
 
+const serviceLevels = fixtures.find((fixture) => (fixture.data as { inset?: unknown }).inset !== undefined)!;
+const serviceInset = (serviceLevels.data as { inset: { title: string; rows: { label: string; value: string }[] } }).inset;
+fixtures.push({
+  ...serviceLevels,
+  id: 'inset-no-heading',
+  title: 'An inset without its title, with authored column widths and alignment',
+  tags: ['coverage'],
+  data: { ...serviceLevels.data, inset: { title: serviceInset.title, rows: serviceInset.rows, heading: false,
+    columnOverrides: { label: { width: 120 }, value: { width: 80, align: 'left' } } } },
+});
+
 registerFixtures('diagram', fixtures);

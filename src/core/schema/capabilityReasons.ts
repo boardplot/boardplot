@@ -20,7 +20,7 @@ export const OPTION_REASONS: Readonly<Record<keyof typeof OPTION_CAPABILITY, str
   secondaryAxis:
     "only 'combo' and 'box' have a second value scale to acknowledge; a single-scale chart has no second axis, so declaring one acknowledges nothing",
   labels:
-    "this type never consults the per-kind label toggle map. On waterfall/pvm use labelDensity ('minimal' keeps totals and endpoints, dropping delta and segment values); on grid author labels on each panel's own options; table and diagram have their own display models",
+    "this type never consults the per-kind label toggle map. On waterfall use labelDensity ('minimal' keeps totals and endpoints, dropping delta and segment values); pvm takes labels.point: false; on grid author labels on each panel's own options; table and diagram have their own display models",
   hatchStrength:
     "this type draws no forecast, partial-period or no-data hatch, so there is nothing to strengthen or soften. Drop hatchStrength",
   sort:
